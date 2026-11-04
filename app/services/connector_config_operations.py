@@ -37,6 +37,14 @@ _DB_CONNECTOR_IDS = _DB_CATALOG_CONNECTOR_IDS
 _DB_CONNECTOR_PERMISSION_DETAIL = "No permission to run DB connectors"
 
 
+def build_saved_connector_run_config(config: ConnectorConfig) -> dict[str, Any]:
+    run_config = dict(config.config or {})
+    definition = get_connector_definition(config.connector_id.strip())
+    if definition is not None and definition.supports_incremental:
+        run_config["_state"] = dict(config.state or {})
+    return run_config
+
+
 def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
     connector_id = str(cfg.connector_id or "").strip()
     config = redact_connection_info(
@@ -48,8 +56,8 @@ def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
         tenant_id=cfg.tenant_id,
         dataset_id=cfg.dataset_id,
         connector_id=connector_id,
-        name=str(cfg.name or ""),
-        enabled=bool(cfg.enabled),
+        name=cfg.name,
+        enabled=cfg.enabled,
         schedule_cron=(
             str(cfg.schedule_cron).strip() if isinstance(cfg.schedule_cron, str) and cfg.schedule_cron.strip() else None
         ),
@@ -87,18 +95,18 @@ def list_configs(
         dataset_service.assert_dataset_writable(db, dataset, account_id)
         query = query.filter(ConnectorConfig.dataset_id == dataset_id)
     if connector_id:
-        query = query.filter(ConnectorConfig.connector_id == str(connector_id))
+        query = query.filter(ConnectorConfig.connector_id == connector_id)
     if enabled is not None:
-        query = query.filter(ConnectorConfig.enabled.is_(bool(enabled)))
+        query = query.filter(ConnectorConfig.enabled.is_(enabled))
 
     if dataset_id is None:
-        if str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
+        if (member.role or "").lower() not in EDIT_ROLES:
             return {"total": 0, "items": []}
         query = query.filter(
             ConnectorConfig.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id))
         )
 
-    total = int(query.count())
+    total = query.count()
     items = query.order_by(ConnectorConfig.created_at.desc()).offset(skip).limit(limit).all()
 
     return {"total": total, "items": [_config_out(cfg) for cfg in items]}
@@ -116,14 +124,14 @@ def create_config(
     dataset = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    cfg_dict = encrypt_connector_config_secrets(dict(payload.config or {}))
+    cfg_dict = encrypt_connector_config_secrets(dict(payload.config))
 
     cfg = ConnectorConfig(
         tenant_id=tenant_id,
         dataset_id=payload.dataset_id,
-        connector_id=str(payload.connector_id or "").strip(),
-        name=str(payload.name or "").strip(),
-        enabled=bool(payload.enabled),
+        connector_id=payload.connector_id.strip(),
+        name=payload.name.strip(),
+        enabled=payload.enabled,
         schedule_cron=(
             str(payload.schedule_cron).strip()
             if isinstance(payload.schedule_cron, str) and payload.schedule_cron.strip()
@@ -161,16 +169,16 @@ def update_config(
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     if payload.name is not None:
-        cfg.name = str(payload.name or "").strip()  # type: ignore[assignment]
+        cfg.name = payload.name.strip()  # type: ignore[assignment]
     if payload.enabled is not None:
-        cfg.enabled = bool(payload.enabled)  # type: ignore[assignment]
+        cfg.enabled = payload.enabled  # type: ignore[assignment]
     if payload.schedule_cron is not None:
         schedule = payload.schedule_cron.strip()
         cfg.schedule_cron = schedule or None  # type: ignore[assignment]
     if payload.config is not None:
-        cfg.config = encrypt_connector_config_secrets(dict(payload.config or {}))  # type: ignore[assignment]
+        cfg.config = encrypt_connector_config_secrets(dict(payload.config))  # type: ignore[assignment]
     if payload.state is not None:
-        cfg.state = dict(payload.state or {})  # type: ignore[assignment]
+        cfg.state = dict(payload.state)  # type: ignore[assignment]
 
     db.commit()
     db.refresh(cfg)
@@ -244,10 +252,7 @@ async def run_saved_config(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    run_cfg = dict(cfg.config or {})
-    connector_definition = get_connector_definition(connector_id)
-    if connector_definition is not None and connector_definition.supports_incremental:
-        run_cfg["_state"] = dict(cfg.state or {})
+    run_cfg = build_saved_connector_run_config(cfg)
 
     run = _create_pending_connector_run(
         db,
@@ -329,9 +334,9 @@ def reconcile_config(
         dataset_id=str(cfg.dataset_id),
         documents=documents,
         desired_source_refs=desired_refs,
-        apply=bool(apply),
+        apply=apply,
         now=_now(),
-        sample_limit=int(sample_limit),
+        sample_limit=sample_limit,
     )
 
     if apply:

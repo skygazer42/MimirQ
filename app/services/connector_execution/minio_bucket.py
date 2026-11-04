@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import contextlib
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
@@ -24,9 +26,16 @@ from app.services.connector_execution.shared.common import (
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    build_ingestion_options,
 )
 from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
 from app.services.connector_sync_state import get_resume_cursor, normalize_source_manifest
+
+if TYPE_CHECKING:
+    from minio import Minio
+    from minio.datatypes import Object
+
+    from app.storage.object.minio import MinIOService
 
 
 def _get_minio_bucket_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
@@ -75,7 +84,7 @@ def _minio_source_scope_hash(*, bucket_name: str, prefix: str | None, include_se
     return hashlib.sha256("|".join(scope_parts).encode("utf-8")).hexdigest()[:16]
 
 
-def _minio_object_token(obj: object) -> str:
+def _minio_object_token(obj: Object) -> str:
     etag = str(getattr(obj, "etag", "") or "").strip()
 
     last_modified_raw = getattr(obj, "last_modified", None)
@@ -99,10 +108,10 @@ def _minio_object_token(obj: object) -> str:
     return "|".join(parts) or "unknown"
 
 
-def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: Any) -> dict[str, Any]:
+def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: MinIOService) -> dict[str, Any]:
     bucket = cfg.get("bucket") if isinstance(cfg.get("bucket"), str) else None
     prefix = cfg.get("prefix") if isinstance(cfg.get("prefix"), str) else None
-    bucket_name = str(bucket or getattr(minio_service, "_bucket_name", "") or "").strip()
+    bucket_name = str(bucket or minio_service._bucket_name or "").strip()
     if not bucket_name:
         raise RuntimeError("minio bucket is required")
 
@@ -113,17 +122,13 @@ def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: Any)
         "max_objects": int(cfg.get("max_objects") or 50),
         "expiry": int(cfg.get("presign_expiry_sec") or 3600),
         "include_set": include_set,
-        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
-        "chunk_strategy": (
-            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        ),
-        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        **build_ingestion_options(cfg),
         "access": cfg.get("access") if isinstance(cfg.get("access"), dict) else None,
         "scope_hash": _minio_source_scope_hash(bucket_name=bucket_name, prefix=prefix, include_set=include_set),
     }
 
 
-def _list_minio_bucket_objects(client: Any, *, bucket_name: str, prefix: str | None) -> list[dict[str, str]]:
+def _list_minio_bucket_objects(client: Minio, *, bucket_name: str, prefix: str | None) -> list[dict[str, str]]:
     listed_objects: list[dict[str, str]] = []
     for obj in client.list_objects(bucket_name=bucket_name, prefix=(prefix or None), recursive=True):
         name = str(getattr(obj, "object_name", "") or "").strip()
@@ -244,7 +249,7 @@ def _minio_bucket_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
 
 
 async def _ingest_minio_bucket_object(
-    client: Any,
+    client: Minio,
     db: Session,
     *,
     run: ConnectorRun,
@@ -360,7 +365,7 @@ def _persist_minio_bucket_progress(
 
 
 async def _process_minio_bucket_objects(
-    client: Any,
+    client: Minio,
     db: Session,
     *,
     run: ConnectorRun,
@@ -515,7 +520,7 @@ def _mark_minio_bucket_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID,
                 _sync_connector_config_from_run(db, run=run)
 
 
-async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for minio_bucket connector.
     """
@@ -587,7 +592,3 @@ async def _execute_minio_bucket_run(*, run_id: UUID, tenant_id: UUID, requested_
         _mark_minio_bucket_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
-
-
-async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    await _execute_minio_bucket_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)

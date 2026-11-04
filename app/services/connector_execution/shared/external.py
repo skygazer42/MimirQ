@@ -1,5 +1,6 @@
 import contextlib
 import hashlib
+import re
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 from uuid import UUID
@@ -9,16 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.tenant_group import TenantGroup
 
-_DRIVE_FILE_ID_FROM_PATH_RE = None
-
-
-def _drive_file_id_pattern():
-    global _DRIVE_FILE_ID_FROM_PATH_RE
-    if _DRIVE_FILE_ID_FROM_PATH_RE is None:
-        import re
-
-        _DRIVE_FILE_ID_FROM_PATH_RE = re.compile(r"/file/d/([^/]+)")
-    return _DRIVE_FILE_ID_FROM_PATH_RE
+_DRIVE_FILE_ID_FROM_PATH_RE = re.compile(r"/file/d/([^/]+)")
 
 
 def _build_auth_headers(cfg: dict) -> dict[str, str]:
@@ -92,7 +84,7 @@ def _extract_drive_file_id(url: str) -> str | None:
         fid = str(qs["id"][0] or "").strip()
         return fid or None
 
-    match = _drive_file_id_pattern().search(parsed.path or "")
+    match = _DRIVE_FILE_ID_FROM_PATH_RE.search(parsed.path or "")
     if match:
         fid = str(match.group(1) or "").strip()
         return fid or None
@@ -143,9 +135,9 @@ async def _drive_fetch_file_sync_token(
     }
     try:
         resp = await client.get(url, params=params, headers=dict(headers or {}))
-        if int(resp.status_code or 0) >= 400:
+        if resp.status_code >= 400:
             return fallback
-        payload = resp.json() if callable(getattr(resp, "json", None)) else {}
+        payload = resp.json()
     except Exception:
         return fallback
 
@@ -219,7 +211,7 @@ async def _drive_fetch_file_permissions(
         "supportsAllDrives": "true",
     }
     resp = await client.get(url, params=params, headers=headers)
-    if int(resp.status_code or 0) >= 400:
+    if resp.status_code >= 400:
         raise RuntimeError(f"drive api failed (status={resp.status_code})")
 
     data = resp.json()

@@ -16,9 +16,11 @@ from app.services.connector_document_access import (
     _apply_document_access_from_config,
     _delta_sync_connector_documents_acl_by_source_url,
     _soft_disable_connector_documents_by_source_url,
+    build_source_access_settings,
     resolve_configured_source_access,
 )
 from app.services.connector_execution.plans.github_repo import (
+    GitHubRepoExecutionPlan,
     _build_github_repo_execution_plan,
     _initialize_github_repo_run_stats,
 )
@@ -31,6 +33,7 @@ from app.services.connector_execution.shared.common import (
     _connector_config_id_from_run,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import (
     _build_auth_headers,
@@ -81,18 +84,7 @@ def _build_github_repo_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("invalid repo")
 
     branch = str(cfg.get("branch") or "main").strip() or "main"
-    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-    source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
-    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
-    source_acl_mode = (
-        str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
-    )
-    source_acl_fallback_mode = (
-        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
-        if isinstance(source_acl, dict)
-        else "partial_members"
-    )
+    access_settings = build_source_access_settings(cfg)
 
     user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
     auth_headers = _build_auth_headers(cfg)
@@ -109,22 +101,18 @@ def _build_github_repo_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "branch": branch,
         "max_files": int(cfg.get("max_files") or 50),
         "include_set": _normalize_github_include_set(cfg.get("include_extensions")),
-        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
-        "chunk_strategy": (
-            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        ),
-        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
-        "access": access,
-        "source_acl": source_acl,
-        "access_mode": access_mode,
-        "has_manual_access_override": has_manual_access_override,
+        **build_ingestion_options(cfg),
+        "access": access_settings["access"],
+        "source_acl": access_settings["source_acl"],
+        "access_mode": access_settings["access_mode"],
+        "has_manual_access_override": access_settings["has_manual_access_override"],
         "user_agent": user_agent,
         "auth_headers": auth_headers,
         "headers": headers,
         "api_url": f"https://api.github.com/repos/{owner}/{repo_name}/git/trees/{quote(branch, safe='')}?recursive=1",
-        "source_acl_mode": source_acl_mode,
-        "source_acl_fallback_mode": source_acl_fallback_mode,
-        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+        "source_acl_mode": access_settings["source_acl_mode"],
+        "source_acl_fallback_mode": access_settings["source_acl_fallback_mode"],
+        "enable_source_acl": access_settings["enable_source_acl"],
     }
 
 
@@ -378,7 +366,7 @@ def _persist_github_repo_progress(
     db: Session,
     *,
     run: ConnectorRun,
-    plan: dict[str, Any],
+    plan: GitHubRepoExecutionPlan,
     processed: int,
     created: int,
     failed: int,
@@ -454,7 +442,7 @@ async def _process_github_repo_files(
     tenant_id: UUID,
     requested_by: str,
     settings_map: dict[str, Any],
-    plan: dict[str, Any],
+    plan: GitHubRepoExecutionPlan,
     source_acl_context: dict[str, Any],
 ) -> dict[str, Any]:
     created = 0
@@ -618,7 +606,7 @@ def _finalize_github_repo_run_success(
     requested_by: str,
     run_id: UUID,
     settings_map: dict[str, Any],
-    plan: dict[str, Any],
+    plan: GitHubRepoExecutionPlan,
     source_acl_context: dict[str, Any],
     progress: dict[str, Any],
 ) -> None:
@@ -671,7 +659,7 @@ def _mark_github_repo_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, 
                 _sync_connector_config_from_run(db, run=run)
 
 
-async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for github_repo connector.
 
@@ -754,7 +742,3 @@ async def _execute_github_repo_run(*, run_id: UUID, tenant_id: UUID, requested_b
         _mark_github_repo_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
-
-
-async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    await _execute_github_repo_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)

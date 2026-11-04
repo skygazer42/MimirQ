@@ -10,8 +10,8 @@ from app.core.config import settings
 from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
 from app.services import dataset_service
+from app.services.connector_config_operations import build_saved_connector_run_config
 from app.services.connector_execution.shared.runtime import _now
-from app.services.connector_registry import get_connector_definition
 from app.services.connector_run_operations import (
     _DB_CATALOG_CONNECTOR_IDS,
     _URL_INGEST_CONNECTOR_IDS,
@@ -114,14 +114,6 @@ def _config_dataset_is_writable(ctx: _ScheduledTickContext, cfg: ConnectorConfig
     return True
 
 
-def _scheduled_run_config(cfg: ConnectorConfig, connector_id: str) -> dict:
-    run_cfg = dict(cfg.config or {})
-    connector_definition = get_connector_definition(connector_id)
-    if connector_definition is not None and connector_definition.supports_incremental:
-        run_cfg["_state"] = dict(cfg.state or {})
-    return run_cfg
-
-
 def _claim_scheduled_config_window(ctx: _ScheduledTickContext, cfg: ConnectorConfig) -> bool:
     where = [
         ConnectorConfig.id == cfg.id,
@@ -145,7 +137,7 @@ def _create_scheduled_run(ctx: _ScheduledTickContext, cfg: ConnectorConfig, conn
             "dataset_id": cfg.dataset_id,
             "connector_id": connector_id,
             "requested_by": ctx.account_id,
-            "config": _scheduled_run_config(cfg, connector_id),
+            "config": build_saved_connector_run_config(cfg),
             "stats": {"config_id": str(cfg.id), "scheduled": True},
         },
     )
@@ -265,4 +257,4 @@ async def tick_schedules(
         else:
             skipped += 1
 
-    return {"enqueued": int(enqueued), "skipped": int(skipped)}
+    return {"enqueued": enqueued, "skipped": skipped}

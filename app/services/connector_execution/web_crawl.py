@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import contextlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
@@ -8,12 +10,14 @@ from app.api.schemas.document_ingestion import UrlUploadRequest
 from app.core.database import SessionLocal
 from app.core.secrets import decrypt_connector_config_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
+from app.models.document import Document
 from app.services import document_ingestion as ingestion_service
 from app.services.connector_document_access import (
     _apply_document_access_from_config,
     _soft_disable_connector_documents_by_source_url,
 )
 from app.services.connector_execution.plans.web_crawl import (
+    WebCrawlExecutionPlan,
     _build_web_crawl_execution_plan,
     _initialize_web_crawl_run_stats,
     _web_crawl_build_doc_sync_token,
@@ -27,12 +31,16 @@ from app.services.connector_execution.shared.common import (
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import _build_auth_headers
 from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
 
+if TYPE_CHECKING:
+    from app.services.web_crawler import WebCrawlResult
 
-async def crawl_site(**kwargs: Any) -> Any:
+
+async def crawl_site(**kwargs: Any) -> WebCrawlResult:
     from app.services.web_crawler import crawl_site as crawl
 
     return await crawl(**kwargs)
@@ -55,11 +63,7 @@ def _build_web_crawl_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "dedup_canonical": bool(cfg.get("dedup_canonical", True)),
         "user_agent": cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None,
         "filename": cfg.get("filename") if isinstance(cfg.get("filename"), str) else None,
-        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
-        "chunk_strategy": (
-            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        ),
-        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        **build_ingestion_options(cfg),
         "access_mode": access_mode,
         "access_members": _normalize_connector_principal_list(
             access.get("partial_member_list") if isinstance(access, dict) else None
@@ -108,7 +112,7 @@ async def _ingest_web_crawl_url(
     requested_by: str,
     url: str,
     settings_map: dict[str, Any],
-) -> Any:
+) -> Document:
     body = UrlUploadRequest(
         url=url,
         dataset_id=run.dataset_id,
@@ -163,7 +167,7 @@ def _persist_web_crawl_progress(
     db: Session,
     *,
     run: ConnectorRun,
-    plan: dict[str, Any],
+    plan: WebCrawlExecutionPlan,
     idx: int,
     url: str,
     created: int,
@@ -173,7 +177,7 @@ def _persist_web_crawl_progress(
     removed_urls_reconciled: int,
     removed_documents_disabled: int,
     succeeded: bool,
-    ingested_doc: Any,
+    ingested_doc: Document | None,
 ) -> None:
     discovered_manifest = dict(plan.get("discovered_manifest") or {})
     if succeeded and url and url in discovered_manifest:
@@ -218,7 +222,7 @@ async def _process_web_crawl_urls(
     tenant_id: UUID,
     requested_by: str,
     settings_map: dict[str, Any],
-    plan: dict[str, Any],
+    plan: WebCrawlExecutionPlan,
 ) -> dict[str, Any]:
     created = 0
     failed = 0
@@ -313,7 +317,7 @@ def _finalize_web_crawl_run_success(
     db: Session,
     *,
     run: ConnectorRun,
-    plan: dict[str, Any],
+    plan: WebCrawlExecutionPlan,
     created: int,
     failed: int,
     created_doc_ids: list[UUID],
@@ -354,7 +358,7 @@ def _mark_web_crawl_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, ex
                 _sync_connector_config_from_run(db, run=run)
 
 
-async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     db = SessionLocal()
     try:
         run = _get_web_crawl_run(db, run_id=run_id, tenant_id=tenant_id)
@@ -382,8 +386,8 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         plan = _build_web_crawl_execution_plan(
             run_stats=dict(run.stats or {}),
             state=dict(settings_map.get("state") or {}),
-            crawl_urls=list(getattr(crawl, "urls", None) or []),
-            crawl_sync_tokens=dict(getattr(crawl, "sync_tokens", None) or {}),
+            crawl_urls=list(crawl.urls),
+            crawl_sync_tokens=dict(crawl.sync_tokens),
         )
         run.stats = _finalize_connector_stats(_initialize_web_crawl_run_stats(run=run, crawl=crawl, plan=plan))
         db.commit()
@@ -426,7 +430,3 @@ async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         _mark_web_crawl_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
-
-
-async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    await _execute_web_crawl_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)

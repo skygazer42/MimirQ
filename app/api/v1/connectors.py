@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.document import LocalHtmlIngestRequest as LocalHtmlIngestRequest
 from app.api.v1 import (
-    connectors_acl,
     connectors_artifacts,
     connectors_catalog,
     connectors_common,
@@ -58,6 +57,27 @@ from app.services.connector_config_operations import (
 from app.services.connector_config_operations import (
     _config_out as _config_out,
 )
+from app.services.connector_document_access import (
+    _apply_document_access_from_config as _apply_document_access_from_config,
+)
+from app.services.connector_document_access import (
+    _delta_sync_connector_documents_acl_by_source_url as _delta_sync_connector_documents_acl_by_source_url,
+)
+from app.services.connector_document_access import (
+    _delta_sync_jira_documents_acl_by_issue_url as _delta_sync_jira_documents_acl_by_issue_url,
+)
+from app.services.connector_document_access import (
+    _soft_disable_connector_documents_by_source_ref as _soft_disable_connector_documents_by_source_ref,
+)
+from app.services.connector_document_access import (
+    _soft_disable_connector_documents_by_source_url as _soft_disable_connector_documents_by_source_url,
+)
+from app.services.connector_document_access import (
+    _soft_disable_jira_attachment_documents_missing_from_issue as _soft_disable_jira_attachment_documents_missing_from_issue,
+)
+from app.services.connector_document_access import (
+    _soft_disable_jira_linked_artifact_documents_missing_from_issue as _soft_disable_jira_linked_artifact_documents_missing_from_issue,
+)
 from app.services.connector_execution.shared.runtime import _now as _now
 from app.services.connector_reconcile_service import (
     plan_connector_reconcile as plan_connector_reconcile,
@@ -94,7 +114,6 @@ from app.tasks.queue import enqueue_connector_run as enqueue_connector_run
 from app.tasks.queue import get_queue as get_queue
 
 _THIS_MODULE = sys.modules[__name__]
-connectors_acl._leader_module = _THIS_MODULE
 connectors_artifacts._leader_module = _THIS_MODULE
 connectors_confluence._leader_module = _THIS_MODULE
 connectors_state._leader_module = _THIS_MODULE
@@ -166,17 +185,6 @@ _normalize_doc_access_mode = connectors_state._normalize_doc_access_mode
 _fetch_connector_run_acl_summaries = connectors_state._fetch_connector_run_acl_summaries
 _run_out = connectors_state._run_out
 _sync_connector_config_from_run = connectors_state._sync_connector_config_from_run
-_apply_document_access_from_config = connectors_acl._apply_document_access_from_config
-_delta_sync_connector_documents_acl_by_source_url = connectors_acl._delta_sync_connector_documents_acl_by_source_url
-_soft_disable_connector_documents_by_source_url = connectors_acl._soft_disable_connector_documents_by_source_url
-_soft_disable_connector_documents_by_source_ref = connectors_acl._soft_disable_connector_documents_by_source_ref
-_delta_sync_jira_documents_acl_by_issue_url = connectors_acl._delta_sync_jira_documents_acl_by_issue_url
-_soft_disable_jira_attachment_documents_missing_from_issue = (
-    connectors_acl._soft_disable_jira_attachment_documents_missing_from_issue
-)
-_soft_disable_jira_linked_artifact_documents_missing_from_issue = (
-    connectors_acl._soft_disable_jira_linked_artifact_documents_missing_from_issue
-)
 _apply_connector_identity_metadata = connectors_artifacts._apply_connector_identity_metadata
 _normalize_connector_string_list = connectors_artifacts._normalize_connector_string_list
 _normalize_connector_principal_list = connectors_artifacts._normalize_connector_principal_list

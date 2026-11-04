@@ -1,8 +1,21 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.models.connector import ConnectorRun
 from app.services.connector_sync_state import get_resume_cursor, normalize_source_manifest, slice_items_from_cursor
+
+
+class GitHubRepoExecutionPlan(TypedDict):
+    mode: Literal["incremental", "full"]
+    files: list[tuple[str, str]]
+    delta_files: list[tuple[str, str]]
+    removed_paths: list[str]
+    files_to_process: list[tuple[str, str]]
+    cursor_in: int
+    skipped_unchanged: int
+    processed_visible: int
+    source_manifest_state: dict[str, str]
+    resumed_from_state: bool
 
 
 def _github_repo_path_is_included(path: str, include_set: set[str]) -> bool:
@@ -71,7 +84,7 @@ def _build_github_repo_execution_plan(
     include_set: set[str],
     max_files: int,
     enable_source_acl: bool,
-) -> dict[str, Any]:
+) -> GitHubRepoExecutionPlan:
     existing_manifest = normalize_source_manifest(state.get("source_manifest"))
     tracked_paths = set(existing_manifest)
     resume_cursor_raw = get_resume_cursor(state)
@@ -103,33 +116,33 @@ def _build_github_repo_execution_plan(
         "delta_files": delta_files,
         "removed_paths": removed_paths,
         "files_to_process": files_to_process,
-        "cursor_in": int(cursor_in),
-        "skipped_unchanged": int(skipped_unchanged),
-        "processed_visible": int(processed_visible),
+        "cursor_in": cursor_in,
+        "skipped_unchanged": skipped_unchanged,
+        "processed_visible": processed_visible,
         "source_manifest_state": source_manifest_state,
         "resumed_from_state": bool(is_resume_run and ((mode == "incremental") or cursor_in > 0)),
     }
 
 
-def _initialize_github_repo_run_stats(*, run: ConnectorRun, plan: dict[str, Any]) -> dict[str, Any]:
+def _initialize_github_repo_run_stats(*, run: ConnectorRun, plan: GitHubRepoExecutionPlan) -> dict[str, Any]:
     stats = dict(run.stats or {})
     stats.update(
         {
-            "mode": plan.get("mode"),
-            "total_files": int(len(plan.get("files") or [])),
-            "delta_files": int(len(plan.get("delta_files") or [])),
-            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
-            "processed_files": int(plan.get("processed_visible") or 0),
-            "cursor": int(plan.get("cursor_in") or 0),
+            "mode": plan["mode"],
+            "total_files": len(plan["files"]),
+            "delta_files": len(plan["delta_files"]),
+            "skipped_unchanged": plan["skipped_unchanged"],
+            "processed_files": plan["processed_visible"],
+            "cursor": plan["cursor_in"],
             "created": 0,
             "failed": 0,
             "failed_paths": [],
-            "cursor_in": int(plan.get("cursor_in") or 0),
-            "resumed_from_state": bool(plan.get("resumed_from_state")),
-            "removed_paths": int(len(plan.get("removed_paths") or [])),
+            "cursor_in": plan["cursor_in"],
+            "resumed_from_state": plan["resumed_from_state"],
+            "removed_paths": len(plan["removed_paths"]),
             "removed_paths_reconciled": 0,
             "removed_documents_disabled": 0,
-            "source_manifest": dict(plan.get("source_manifest_state") or {}),
+            "source_manifest": dict(plan["source_manifest_state"]),
         }
     )
     return stats

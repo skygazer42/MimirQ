@@ -1,10 +1,28 @@
 import asyncio
-from typing import Any
+from typing import Any, TypedDict
 
 import httpx
 from fastapi import HTTPException
 
 from app.models.connector import ConnectorRun
+
+
+class ConnectorIngestionOptions(TypedDict):
+    parser_backend: str
+    chunk_strategy: str
+    pipeline: dict[str, Any] | None
+
+
+def build_ingestion_options(
+    config: dict[str, Any], *, default_chunk_strategy: str = "langchain_recursive"
+) -> ConnectorIngestionOptions:
+    return {
+        "parser_backend": config.get("parser_backend") if isinstance(config.get("parser_backend"), str) else "auto",
+        "chunk_strategy": (
+            config.get("chunk_strategy") if isinstance(config.get("chunk_strategy"), str) else default_chunk_strategy
+        ),
+        "pipeline": config.get("pipeline") if isinstance(config.get("pipeline"), dict) else None,
+    }
 
 
 def _safe_error_str(exc: Exception) -> str:

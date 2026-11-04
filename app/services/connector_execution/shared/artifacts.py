@@ -13,14 +13,14 @@ from app.services.connector_execution.shared.runtime import _now
 
 def _apply_connector_identity_metadata(
     *,
-    doc: Any,
+    doc: DBDocument,
     run: ConnectorRun,
     connector_id: str,
     source_ref: str | None,
     source_id: str | None = None,
     extra: dict[str, Any] | None = None,
 ) -> None:
-    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+    meta0 = dict(doc.doc_metadata or {})
     connector_meta = dict(meta0.get("connector") or {})
     if isinstance(extra, dict):
         connector_meta.update({key: value for key, value in extra.items() if value is not None})
@@ -200,21 +200,21 @@ def _upsert_db_row_sidecar_document(
     for asset in assets:
         tables_payload.append(
             {
-                "table_id": str(getattr(asset, "table_id", "")),
-                "sheet_index": int(getattr(asset, "sheet_index", 0) or 0),
-                "sheet_name": getattr(asset, "sheet_name", None),
-                "row_count": int(getattr(asset, "row_count", 0) or 0),
-                "col_count": int(getattr(asset, "col_count", 0) or 0),
-                "truncated": bool(getattr(asset, "truncated", False)),
-                "columns": list(getattr(asset, "columns", None) or []),
-                "sample_rows": list(getattr(asset, "sample_rows", None) or []),
-                "row_source_table": getattr(asset, "row_source_table", None),
-                "row_source_sync_token": getattr(asset, "row_source_sync_token", None),
-                "row_source_pk_hash_col": getattr(asset, "row_source_pk_hash_col", None),
+                "table_id": asset.table_id,
+                "sheet_index": asset.sheet_index,
+                "sheet_name": asset.sheet_name,
+                "row_count": asset.row_count,
+                "col_count": asset.col_count,
+                "truncated": asset.truncated,
+                "columns": list(asset.columns),
+                "sample_rows": list(asset.sample_rows),
+                "row_source_table": asset.row_source_table,
+                "row_source_sync_token": asset.row_source_sync_token,
+                "row_source_pk_hash_col": asset.row_source_pk_hash_col,
             }
         )
 
-    meta = dict(getattr(doc, "doc_metadata", None) or {})
+    meta = dict(doc.doc_metadata or {})
     meta["table_store"] = {
         "version": "1",
         "source_ext": ".dbrows",

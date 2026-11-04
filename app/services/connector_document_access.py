@@ -1,6 +1,6 @@
 import contextlib
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -18,6 +18,40 @@ from app.services.document_permission_service import (
 )
 
 logger = get_logger(__name__)
+
+
+class ConnectorSourceAccessSettings(TypedDict):
+    access: dict[str, Any] | None
+    source_acl: dict[str, Any] | None
+    access_mode: str
+    source_acl_mode: str
+    source_acl_fallback_mode: str
+    has_manual_access_override: bool
+    enable_source_acl: bool
+
+
+def build_source_access_settings(config: dict[str, Any]) -> ConnectorSourceAccessSettings:
+    access = config.get("access") if isinstance(config.get("access"), dict) else None
+    source_acl = config.get("source_acl") if isinstance(config.get("source_acl"), dict) else None
+    access_mode = str(access.get("mode") or "inherit").strip().lower() if access is not None else "inherit"
+    has_manual_access_override = access is not None and access_mode != "inherit"
+    source_acl_mode = (
+        str(source_acl.get("mode") or "disabled").strip().lower() if source_acl is not None else "disabled"
+    )
+    source_acl_fallback_mode = (
+        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
+        if source_acl is not None
+        else "partial_members"
+    )
+    return {
+        "access": access,
+        "source_acl": source_acl,
+        "access_mode": access_mode,
+        "source_acl_mode": source_acl_mode,
+        "source_acl_fallback_mode": source_acl_fallback_mode,
+        "has_manual_access_override": has_manual_access_override,
+        "enable_source_acl": source_acl_mode == "inherit" and not has_manual_access_override,
+    }
 
 
 def resolve_configured_source_access(
@@ -47,7 +81,7 @@ def resolve_configured_source_access(
     return access_request.model_dump(mode="json", exclude_none=True), set(access_request.partial_group_list or [])
 
 
-def _now():
+def _now() -> datetime:
     return datetime.now(UTC)
 
 
@@ -56,8 +90,8 @@ def _apply_document_access_from_config(
     *,
     tenant_id: UUID,
     requested_by: str,
-    doc,  # noqa: ANN001
-    access: dict | None,
+    doc: DBDocument,
+    access: dict[str, Any] | None,
     connector_id: str | None = None,
 ) -> None:
     access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"

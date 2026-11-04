@@ -18,6 +18,7 @@ from app.services.connector_execution.shared.common import (
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import _build_auth_headers
 from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
@@ -56,11 +57,7 @@ def _build_url_batch_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "urls": _normalize_connector_string_list(cfg.get("urls")),
         "filename": cfg.get("filename") if isinstance(cfg.get("filename"), str) else None,
         "user_agent": cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None,
-        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
-        "chunk_strategy": (
-            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        ),
-        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        **build_ingestion_options(cfg),
         "access_mode": access_mode,
         "access_members": _normalize_connector_principal_list(
             access.get("partial_member_list") if isinstance(access, dict) else None
@@ -333,7 +330,7 @@ def _mark_url_batch_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, ex
                 _sync_connector_config_from_run(db, run=run)
 
 
-async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
 
     db = SessionLocal()
     run: ConnectorRun | None = None
@@ -375,7 +372,3 @@ async def _execute_url_batch_run(*, run_id: UUID, tenant_id: UUID, requested_by:
         _mark_url_batch_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
-
-
-async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    await _execute_url_batch_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)

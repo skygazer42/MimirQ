@@ -8,12 +8,13 @@ from typing import Any
 from urllib.parse import quote, urlparse
 from uuid import UUID
 
+import httpx
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.schemas.document_ingestion import LocalHtmlIngestRequest, UrlUploadRequest
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.http_client import get_http_client_pool
+from app.core.http_client import HTTPClientPool, get_http_client_pool
 from app.core.secrets import decrypt_connector_config_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
@@ -23,6 +24,7 @@ from app.services.connector_document_access import (
     _delta_sync_jira_documents_acl_by_issue_url,
     _soft_disable_jira_attachment_documents_missing_from_issue,
     _soft_disable_jira_linked_artifact_documents_missing_from_issue,
+    build_source_access_settings,
     resolve_configured_source_access,
 )
 from app.services.connector_execution.confluence import (
@@ -34,6 +36,7 @@ from app.services.connector_execution.shared.common import (
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import (
     _build_auth_headers,
@@ -69,9 +72,9 @@ class JiraProjectIssueContext:
     max_total_linked_artifacts: int
     parser_backend: str
     chunk_strategy: str
-    pipeline: object
-    access: object
-    user_agent: object
+    pipeline: dict[str, Any] | None
+    access: dict[str, Any] | None
+    user_agent: str | None
     auth_headers: dict[str, str]
     enable_source_acl: bool
     source_acl_mode: str
@@ -97,7 +100,7 @@ def _jira_api_base_url(base_url: str) -> str:
     return f"{base}/rest/api/3"
 
 
-async def _jira_request(pool, method: str, url: str, **kwargs):  # noqa: ANN001, ANN201
+async def _jira_request(pool: HTTPClientPool, method: str, url: str, **kwargs: Any) -> httpx.Response:
     """
     Jira API requests are always third-party outbound HTTP calls.
     """
@@ -529,14 +532,14 @@ def _normalize_jira_full_sync_scope(
     return dataset_id, normalized_base_url, normalized_project_key, normalized_connector_id, normalized_seen_urls
 
 
-def _jira_project_connector_metadata(doc: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+def _jira_project_connector_metadata(doc: DBDocument) -> tuple[dict[str, Any], dict[str, Any]]:
     meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
     conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
     return meta, conn
 
 
 def _jira_project_doc_matches_scope(
-    doc: Any,
+    doc: DBDocument,
     *,
     base_url: str,
     project_key: str,
@@ -558,7 +561,7 @@ def _list_recent_jira_project_documents(
     tenant_id: UUID,
     dataset_id: UUID,
     max_docs_scan: int,
-) -> list[Any]:
+) -> list[DBDocument]:
     scan_limit = max(0, int(max_docs_scan or 0)) or 5000
     return (
         db.query(DBDocument)
@@ -583,7 +586,7 @@ def _load_jira_project_documents_for_full_sync(
     project_key: str,
     connector_id: str,
     max_docs_scan: int,
-) -> list[Any]:
+) -> list[DBDocument]:
     try:
         return (
             db.query(DBDocument)
@@ -944,29 +947,6 @@ def _jira_project_custom_fields(cfg: dict[str, Any]) -> list[str]:
     return custom_fields
 
 
-def _jira_project_access_settings(cfg: dict[str, Any]) -> dict[str, Any]:
-    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-    source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
-    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-    source_acl_mode = (
-        str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
-    )
-    source_acl_fallback_mode = (
-        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
-        if isinstance(source_acl, dict)
-        else "partial_members"
-    )
-    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
-    return {
-        "access": access,
-        "source_acl": source_acl,
-        "source_acl_mode": source_acl_mode,
-        "source_acl_fallback_mode": source_acl_fallback_mode,
-        "has_manual_access_override": has_manual_access_override,
-        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
-    }
-
-
 def _jira_project_headers(cfg: dict[str, Any], *, user_agent: str | None) -> tuple[dict[str, str], dict[str, str]]:
     auth_headers = _build_auth_headers(cfg)
     headers: dict[str, str] = {
@@ -987,7 +967,7 @@ def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     include_linked_artifacts, max_linked_artifacts_per_issue, max_total_linked_artifacts = _jira_linked_artifact_limits(
         cfg
     )
-    access_settings = _jira_project_access_settings(cfg)
+    access_settings = build_source_access_settings(cfg)
     user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
     auth_headers, headers = _jira_project_headers(cfg, user_agent=user_agent)
 
@@ -1008,9 +988,7 @@ def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "include_linked_artifacts": bool(include_linked_artifacts),
         "max_linked_artifacts_per_issue": int(max_linked_artifacts_per_issue),
         "max_total_linked_artifacts": int(max_total_linked_artifacts),
-        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
-        "chunk_strategy": cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "jira_ticket",
-        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
+        **build_ingestion_options(cfg, default_chunk_strategy="jira_ticket"),
         "access": access_settings["access"],
         "source_acl": access_settings["source_acl"],
         "source_acl_mode": access_settings["source_acl_mode"],
@@ -1427,7 +1405,7 @@ def _jira_should_send_auth_headers(*, base_url: str, url: str) -> bool:
 def _patch_jira_linked_artifact_document_metadata(
     db: Session,
     *,
-    link_doc: Any,
+    link_doc: DBDocument,
     run: ConnectorRun,
     issue_info: dict[str, str | None],
     link_url: str,
@@ -1668,7 +1646,7 @@ async def _ingest_jira_issue_linked_artifacts(
 def _patch_jira_attachment_document_metadata(
     db: Session,
     *,
-    att_doc: Any,
+    att_doc: DBDocument,
     run: ConnectorRun,
     issue_info: dict[str, str | None],
     attachment_ref: dict[str, str],
@@ -2469,7 +2447,7 @@ def _jira_project_parse_search_payload(payload: object) -> tuple[int | None, lis
 
 
 async def _jira_project_fetch_issue_page(
-    pool,
+    pool: HTTPClientPool,
     *,
     search_url: str,
     headers: dict[str, str],
@@ -2668,7 +2646,7 @@ async def _process_jira_project_issues(
     )
 
 
-async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for jira_project connector.
 
@@ -2732,7 +2710,3 @@ async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_
         _mark_jira_project_run_failed(db, run_id=run_id, tenant_id=tenant_id, exc=exc)
     finally:
         db.close()
-
-
-async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    await _execute_jira_project_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)

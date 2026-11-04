@@ -4,12 +4,13 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+import httpx
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.schemas.document_ingestion import LocalHtmlIngestRequest, UrlUploadRequest
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.http_client import get_http_client_pool
+from app.core.http_client import HTTPClientPool, get_http_client_pool
 from app.core.secrets import decrypt_connector_config_secrets
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
@@ -18,6 +19,7 @@ from app.services import document_ingestion as ingestion_service
 from app.services.connector_document_access import (
     _apply_document_access_from_config,
     _delta_sync_confluence_documents_acl_by_page_id,
+    build_source_access_settings,
     resolve_configured_source_access,
 )
 from app.services.connector_execution.shared.artifacts import _apply_connector_identity_metadata
@@ -25,6 +27,7 @@ from app.services.connector_execution.shared.common import (
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import (
     _build_auth_headers,
@@ -58,7 +61,7 @@ def _load_confluence_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> Conne
     )
 
 
-def _confluence_doc_connector_metadata(doc: Any) -> dict[str, Any]:
+def _confluence_doc_connector_metadata(doc: DBDocument) -> dict[str, Any]:
     meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
     conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
     return conn
@@ -79,7 +82,7 @@ def _confluence_api_base_url(base_url: str) -> str:
     return f"{base}/rest/api"
 
 
-async def _confluence_request(pool, method: str, url: str, **kwargs):  # noqa: ANN001, ANN201
+async def _confluence_request(pool: HTTPClientPool, method: str, url: str, **kwargs: Any) -> httpx.Response:
     """
     Confluence API requests are always third-party outbound HTTP calls.
 
@@ -404,29 +407,6 @@ def _resolve_connector_effective_mode(*, sync_mode: str, cursor_last_modified: s
     return effective_mode
 
 
-def _confluence_source_acl_settings(cfg: dict[str, Any]) -> dict[str, Any]:
-    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-    source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
-    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
-    source_acl_mode = (
-        str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
-    )
-    source_acl_fallback_mode = (
-        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
-        if isinstance(source_acl, dict)
-        else "partial_members"
-    )
-    return {
-        "access": access,
-        "source_acl": source_acl,
-        "source_acl_mode": source_acl_mode,
-        "source_acl_fallback_mode": source_acl_fallback_mode,
-        "has_manual_access_override": has_manual_access_override,
-        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
-    }
-
-
 def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
     base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
     space_key = str(cfg.get("space_key") or "").strip()
@@ -448,7 +428,7 @@ def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
 
     include_attachments, max_attachments_per_page, max_total_attachments = _confluence_attachment_limits(cfg)
     ingest_method = _confluence_ingest_method(cfg)
-    acl_settings = _confluence_source_acl_settings(cfg)
+    acl_settings = build_source_access_settings(cfg)
     user_agent = cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None
     auth_headers = _build_auth_headers(cfg)
     headers: dict[str, str] = {
@@ -470,17 +450,13 @@ def _build_confluence_space_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "max_attachments_per_page": int(max_attachments_per_page),
         "max_total_attachments": int(max_total_attachments),
         "ingest_method": ingest_method,
-        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
-        "chunk_strategy": (
-            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        ),
-        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
-        "access": acl_settings.get("access"),
-        "source_acl": acl_settings.get("source_acl"),
-        "source_acl_mode": acl_settings.get("source_acl_mode"),
-        "source_acl_fallback_mode": acl_settings.get("source_acl_fallback_mode"),
-        "has_manual_access_override": bool(acl_settings.get("has_manual_access_override")),
-        "enable_source_acl": bool(acl_settings.get("enable_source_acl")),
+        **build_ingestion_options(cfg),
+        "access": acl_settings["access"],
+        "source_acl": acl_settings["source_acl"],
+        "source_acl_mode": acl_settings["source_acl_mode"],
+        "source_acl_fallback_mode": acl_settings["source_acl_fallback_mode"],
+        "has_manual_access_override": acl_settings["has_manual_access_override"],
+        "enable_source_acl": acl_settings["enable_source_acl"],
         "user_agent": user_agent,
         "auth_headers": auth_headers,
         "api_base": _confluence_api_base_url(base_url),
@@ -555,7 +531,7 @@ def _initialize_confluence_space_progress() -> dict[str, Any]:
 
 
 async def _fetch_confluence_space_listing_page(
-    pool,
+    pool: HTTPClientPool,
     *,
     settings_map: dict[str, Any],
     start: int,
@@ -617,7 +593,7 @@ def _confluence_source_acl_fallback_access(settings_map: dict[str, Any]) -> dict
 
 
 async def _fetch_confluence_page_restriction_principals(
-    pool,
+    pool: HTTPClientPool,
     *,
     page_id: str,
     settings_map: dict[str, Any],
@@ -734,7 +710,7 @@ def _delta_sync_confluence_page_acl(
 
 
 async def _resolve_confluence_page_acl(
-    pool,
+    pool: HTTPClientPool,
     db: Session,
     *,
     run: ConnectorRun,
@@ -797,7 +773,7 @@ async def _resolve_confluence_page_acl(
 def _patch_confluence_page_document_metadata(
     db: Session,
     *,
-    doc: Any,
+    doc: DBDocument,
     run: ConnectorRun,
     page_id: str,
     title: str,
@@ -849,7 +825,7 @@ async def _ingest_confluence_page_webui(
     page_url: str,
     filename: str | None,
     settings_map: dict[str, Any],
-):
+) -> DBDocument:
     body = UrlUploadRequest(
         url=page_url,
         dataset_id=run.dataset_id,
@@ -888,7 +864,7 @@ def _confluence_page_html_document(*, title: str, page_url: str, page_html: str)
     )
 
 
-async def _fetch_confluence_page_view_html(pool, *, page_id: str, settings_map: dict[str, Any]) -> str:
+async def _fetch_confluence_page_view_html(pool: HTTPClientPool, *, page_id: str, settings_map: dict[str, Any]) -> str:
     content_resp = await _confluence_request(
         pool,
         "GET",
@@ -907,7 +883,7 @@ async def _fetch_confluence_page_view_html(pool, *, page_id: str, settings_map: 
 
 
 async def _ingest_confluence_page_api_view(
-    pool,
+    pool: HTTPClientPool,
     db: Session,
     *,
     run: ConnectorRun,
@@ -918,7 +894,7 @@ async def _ingest_confluence_page_api_view(
     page_url: str,
     filename: str | None,
     settings_map: dict[str, Any],
-):
+) -> DBDocument:
     if not page_id:
         raise ValueError("missing page id")
     page_html = await _fetch_confluence_page_view_html(pool, page_id=page_id, settings_map=settings_map)
@@ -942,7 +918,7 @@ async def _ingest_confluence_page_api_view(
 
 
 async def _ingest_confluence_page_document(
-    pool,
+    pool: HTTPClientPool,
     db: Session,
     *,
     run: ConnectorRun,
@@ -953,7 +929,7 @@ async def _ingest_confluence_page_document(
     page_url: str,
     filename: str | None,
     settings_map: dict[str, Any],
-):
+) -> DBDocument:
     if str(settings_map.get("ingest_method") or "") == "webui":
         return await _ingest_confluence_page_webui(
             db,
@@ -998,7 +974,7 @@ def _track_confluence_run_document(
 
 
 async def _ingest_confluence_page(
-    pool,
+    pool: HTTPClientPool,
     db: Session,
     *,
     run: ConnectorRun,
@@ -1054,7 +1030,7 @@ async def _ingest_confluence_page(
 
 def _patch_confluence_attachment_document_metadata(
     *,
-    att_doc: Any,
+    att_doc: DBDocument,
     run: ConnectorRun,
     page_id: str,
     title: str,
@@ -1177,7 +1153,7 @@ def _confluence_attachment_page_limit(settings_map: dict[str, Any], progress: di
 
 
 async def _fetch_confluence_attachment_refs(
-    pool,
+    pool: HTTPClientPool,
     *,
     page_id: str,
     link_base: str,
@@ -1260,7 +1236,7 @@ async def _process_confluence_attachment_ref(
 
 
 async def _ingest_confluence_page_attachments(
-    pool,
+    pool: HTTPClientPool,
     db: Session,
     *,
     run: ConnectorRun,
@@ -1440,7 +1416,7 @@ def _merge_confluence_attachment_progress(progress: dict[str, Any], attachments:
 
 
 async def _process_single_confluence_page(
-    pool,
+    pool: HTTPClientPool,
     db: Session,
     *,
     run: ConnectorRun,
@@ -1500,7 +1476,7 @@ async def _process_single_confluence_page(
 
 
 async def _process_confluence_space_page_batch(
-    pool,
+    pool: HTTPClientPool,
     db: Session,
     *,
     run: ConnectorRun,
@@ -1567,7 +1543,7 @@ async def _process_confluence_space_page_batch(
 
 
 async def _probe_confluence_space_listing_complete(
-    pool,
+    pool: HTTPClientPool,
     *,
     settings_map: dict[str, Any],
     start: int,
@@ -1614,7 +1590,7 @@ def _confluence_soft_delete_candidates(
     run: ConnectorRun,
     tenant_id: UUID,
     settings_map: dict[str, Any],
-) -> list[Any]:
+) -> list[DBDocument]:
     try:
         return _confluence_space_metadata_query(db, run=run, tenant_id=tenant_id, settings_map=settings_map).all()
     except Exception:
@@ -1632,7 +1608,7 @@ def _confluence_soft_delete_candidates(
 
 
 def _confluence_doc_missing_from_full_sync(
-    doc: Any, *, settings_map: dict[str, Any], observed_page_ids: set[str]
+    doc: DBDocument, *, settings_map: dict[str, Any], observed_page_ids: set[str]
 ) -> bool:
     conn = _confluence_doc_connector_metadata(doc)
     if str(conn.get("connector_id") or "") != "confluence_space":
@@ -1786,7 +1762,7 @@ def _prepare_confluence_space_run(db: Session, *, run: ConnectorRun) -> dict[str
 async def _run_confluence_space_listing_loop(
     *,
     db: Session,
-    pool: Any,
+    pool: HTTPClientPool,
     run: ConnectorRun,
     run_id: UUID,
     tenant_id: UUID,
@@ -1875,7 +1851,7 @@ def _should_soft_delete_confluence_pages(
     )
 
 
-async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for confluence_space connector.
 
@@ -1956,7 +1932,3 @@ async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, reques
         )
     finally:
         db.close()
-
-
-async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    await _execute_confluence_space_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)

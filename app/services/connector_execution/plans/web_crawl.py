@@ -1,11 +1,31 @@
+from __future__ import annotations
+
 import hashlib
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 from app.models.connector import ConnectorRun
+from app.models.document import Document
 from app.services.connector_sync_state import get_resume_cursor, normalize_source_manifest, slice_items_from_cursor
 
+if TYPE_CHECKING:
+    from app.services.web_crawler import WebCrawlResult
+
 URL_SHA256_PREFIX = "url_sha256:"
+
+
+class WebCrawlExecutionPlan(TypedDict):
+    mode: Literal["incremental", "full"]
+    discovered_manifest: dict[str, str]
+    discovered_urls: list[str]
+    delta_urls: list[str]
+    removed_urls: list[str]
+    crawl_urls: list[str]
+    cursor_in: int
+    skipped_unchanged: int
+    processed_visible: int
+    source_manifest_state: dict[str, str]
+    resumed_from_state: bool
 
 
 def _web_crawl_content_fingerprint(
@@ -73,8 +93,8 @@ def _web_crawl_extract_token_part(token: str | None, *, key: str) -> str | None:
     return out or None
 
 
-def _web_crawl_build_doc_sync_token(*, source_url: str, doc: Any, crawl_token: str | None = None) -> str:
-    meta = dict(getattr(doc, "doc_metadata", None) or {})
+def _web_crawl_build_doc_sync_token(*, source_url: str, doc: Document, crawl_token: str | None = None) -> str:
+    meta = dict(doc.doc_metadata or {})
     etag = str(meta.get("source_etag") or "").strip() or None
     last_modified = (
         str(meta.get("source_last_modified_raw") or meta.get("source_last_modified_at") or "").strip() or None
@@ -120,7 +140,7 @@ def _build_web_crawl_execution_plan(
     state: dict[str, Any],
     crawl_urls: list[str],
     crawl_sync_tokens: dict[str, str],
-) -> dict[str, Any]:
+) -> WebCrawlExecutionPlan:
     existing_manifest = normalize_source_manifest(state.get("source_manifest"))
     discovered_manifest = _web_crawl_source_manifest(
         [str(url or "").strip() for url in crawl_urls or [] if str(url or "").strip()],
@@ -158,44 +178,46 @@ def _build_web_crawl_execution_plan(
         "delta_urls": delta_urls,
         "removed_urls": removed_urls,
         "crawl_urls": urls_to_process,
-        "cursor_in": int(cursor_in),
-        "skipped_unchanged": int(skipped_unchanged),
-        "processed_visible": int(processed_visible),
+        "cursor_in": cursor_in,
+        "skipped_unchanged": skipped_unchanged,
+        "processed_visible": processed_visible,
         "source_manifest_state": source_manifest_state,
         "resumed_from_state": bool(is_resume_run and ((mode == "incremental") or cursor_in > 0)),
     }
 
 
-def _initialize_web_crawl_run_stats(*, run: ConnectorRun, crawl: Any, plan: dict[str, Any]) -> dict[str, Any]:
-    discovered_urls = list(plan.get("discovered_urls") or [])
-    delta_urls = list(plan.get("delta_urls") or [])
-    removed_urls = list(plan.get("removed_urls") or [])
+def _initialize_web_crawl_run_stats(
+    *, run: ConnectorRun, crawl: WebCrawlResult, plan: WebCrawlExecutionPlan
+) -> dict[str, Any]:
+    discovered_urls = plan["discovered_urls"]
+    delta_urls = plan["delta_urls"]
+    removed_urls = plan["removed_urls"]
     stats = dict(run.stats or {})
     stats.update(
         {
-            "mode": plan.get("mode"),
-            "visited": int(getattr(crawl, "visited", 0) or 0),
-            "queued": int(getattr(crawl, "queued", 0) or 0),
+            "mode": plan["mode"],
+            "visited": crawl.visited,
+            "queued": crawl.queued,
             "discovered": int(len(discovered_urls)),
             "total_urls": int(len(discovered_urls)),
             "delta_urls": int(len(delta_urls)),
-            "skipped_unchanged": int(plan.get("skipped_unchanged") or 0),
-            "processed_urls": int(plan.get("processed_visible") or 0),
-            "cursor": int(plan.get("cursor_in") or 0),
+            "skipped_unchanged": plan["skipped_unchanged"],
+            "processed_urls": plan["processed_visible"],
+            "cursor": plan["cursor_in"],
             "created": 0,
             "failed": 0,
             "failed_urls": [],
             "errors": [],
             "error_groups": [],
-            "cursor_in": int(plan.get("cursor_in") or 0),
-            "resumed_from_state": bool(plan.get("resumed_from_state")),
+            "cursor_in": plan["cursor_in"],
+            "resumed_from_state": plan["resumed_from_state"],
             "removed_paths": int(len(removed_urls)),
             "removed_paths_reconciled": 0,
             "removed_documents_disabled": 0,
-            "source_manifest": dict(plan.get("source_manifest_state") or {}),
+            "source_manifest": dict(plan["source_manifest_state"]),
         }
     )
-    crawl_errors = getattr(crawl, "errors", None)
+    crawl_errors = crawl.errors
     if crawl_errors:
         stats["crawl_errors"] = list(crawl_errors)[:20]
     return stats

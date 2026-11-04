@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import asyncio
 import contextlib
-from typing import Any
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from uuid import UUID
 
 from fastapi import BackgroundTasks, HTTPException
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import Select, and_, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.schemas.connector import (
@@ -31,13 +33,40 @@ from app.models.tenant_group import TenantGroup, TenantGroupMember
 from app.services import dataset_service
 from app.services.connector_egress_policy import validate_db_connector_config
 from app.services.connector_execution.shared.runtime import _now
-from app.services.connector_registry import get_connector_definition
-from app.services.connector_run_executor import _resolve_connector_executor
+from app.services.connector_registry import ConnectorDefinition, get_connector_definition
+from app.services.connector_run_executor import ConnectorExecutor, _resolve_connector_executor
 from app.services.connector_sync_state import build_persisted_state, get_resume_cursor, normalize_source_manifest
 from app.services.dataset_service import EDIT_ROLES
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.services.security_redaction import redact_connection_info
 from app.tasks.queue import enqueue_connector_run, get_queue
+
+if TYPE_CHECKING:
+    from arq.connections import ArqRedis
+    from arq.jobs import Job
+
+ConnectorRunConfig = (
+    UrlBatchConnectorConfig
+    | WebCrawlConnectorConfig
+    | GitHubRepoConnectorConfig
+    | DriveFilesConnectorConfig
+    | MinioBucketConnectorConfig
+    | ConfluenceSpaceConnectorConfig
+    | JiraProjectConnectorConfig
+    | MySQLCatalogConnectorConfig
+    | SQLServerCatalogConnectorConfig
+)
+
+
+class PendingConnectorRunValues(TypedDict):
+    tenant_id: UUID
+    dataset_id: UUID | None
+    connector_id: str
+    requested_by: str
+    config: dict[str, Any]
+    status: NotRequired[str]
+    stats: NotRequired[dict[str, Any]]
+
 
 _URL_INGEST_CONNECTOR_IDS = frozenset(
     {
@@ -57,7 +86,7 @@ UNSUPPORTED_CONNECTOR_ID_DETAIL = "Unsupported connector_id"
 URL_INGEST_DISABLED_DETAIL = "URL ingestion is disabled"
 CONNECTOR_QUEUE_UNAVAILABLE_DETAIL = "Connector processing queue unavailable"
 CONNECTOR_QUEUE_HANDOFF_FAILED_ERROR = "connector_queue_handoff_failed"
-_CONNECTOR_CONFIG_MODELS: dict[str, Any] = {
+_CONNECTOR_CONFIG_MODELS: dict[str, type[ConnectorRunConfig]] = {
     "url_batch": UrlBatchConnectorConfig,
     "web_crawl": WebCrawlConnectorConfig,
     "github_repo": GitHubRepoConnectorConfig,
@@ -71,7 +100,7 @@ _CONNECTOR_CONFIG_MODELS: dict[str, Any] = {
 _DB_CONNECTOR_PERMISSION_DETAIL = "No permission to run DB connectors"
 
 
-def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
+def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str) -> Select[tuple[UUID]]:
     member_group_ids_subq = select(TenantGroupMember.group_id).where(
         TenantGroupMember.tenant_id == tenant_id,
         TenantGroupMember.user_id == account_id,
@@ -135,7 +164,7 @@ def _assert_connector_run_dataset_writable(db: Session, *, run: ConnectorRun, te
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
 
-def _connector_run_dispatcher(connector_id: str) -> Any:
+def _connector_run_dispatcher(connector_id: str) -> ConnectorExecutor:
     dispatcher = _resolve_connector_executor(connector_id)
     if dispatcher is None:
         raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
@@ -153,7 +182,7 @@ def _validate_connector_run_enabled(connector_id: str) -> None:
 
 def _validate_and_encrypt_run_config(
     connector_id: str, raw_config: dict[str, Any] | None
-) -> tuple[Any, dict[str, Any]]:
+) -> tuple[ConnectorRunConfig, dict[str, Any]]:
     config_model = _CONNECTOR_CONFIG_MODELS.get(connector_id)
     if config_model is None:
         raise HTTPException(status_code=400, detail=UNSUPPORTED_CONNECTOR_ID_DETAIL)
@@ -162,19 +191,18 @@ def _validate_and_encrypt_run_config(
     return cfg, encrypt_connector_config_secrets(cfg_dict)
 
 
-def _connector_run_group_ids_to_check(cfg: Any) -> list[UUID]:
+def _connector_run_group_ids_to_check(cfg: ConnectorRunConfig) -> list[UUID]:
+    if isinstance(cfg, (MySQLCatalogConnectorConfig, SQLServerCatalogConnectorConfig)):
+        return []
     group_ids: list[UUID] = []
-    access = getattr(cfg, "access", None)
-    group_ids.extend(list(getattr(access, "partial_group_list", None) or []))
-    source_acl = getattr(cfg, "source_acl", None)
-    for rule in getattr(source_acl, "group_mappings", None) or []:
-        group_id = getattr(rule, "group_id", None)
-        if group_id:
-            group_ids.append(group_id)
+    if cfg.access is not None:
+        group_ids.extend(cfg.access.partial_group_list or [])
+    if cfg.source_acl is not None:
+        group_ids.extend(rule.group_id for rule in cfg.source_acl.group_mappings)
     return group_ids
 
 
-def _assert_connector_run_groups_exist(db: Session, *, tenant_id: UUID, cfg: Any) -> None:
+def _assert_connector_run_groups_exist(db: Session, *, tenant_id: UUID, cfg: ConnectorRunConfig) -> None:
     group_ids = _connector_run_group_ids_to_check(cfg)
     if not group_ids:
         return
@@ -186,7 +214,7 @@ def _assert_connector_run_groups_exist(db: Session, *, tenant_id: UUID, cfg: Any
 def _create_pending_connector_run(
     db: Session,
     *,
-    values: dict[str, Any],
+    values: PendingConnectorRunValues,
 ) -> ConnectorRun:
     run_values = dict(values)
     run_values.setdefault("status", "pending")
@@ -296,7 +324,7 @@ async def enqueue_or_schedule_run(
 def _schedule_connector_run_dispatch(
     *,
     background_tasks: BackgroundTasks,
-    dispatcher: Any,
+    dispatcher: ConnectorExecutor,
     run_id: UUID,
     tenant_id: UUID,
     requested_by: str,
@@ -313,13 +341,13 @@ def _connector_run_has_abortable_task(*, task_queue_enabled: bool, task_id: obje
     return bool(task_queue_enabled and isinstance(task_id, str) and task_id)
 
 
-def _load_arq_job_class():
+def _load_arq_job_class() -> type[Job]:
     from arq.jobs import Job
 
     return Job
 
 
-async def _get_queue_or_none():
+async def _get_queue_or_none() -> ArqRedis | None:
     try:
         return await get_queue()
     except Exception:
@@ -358,9 +386,9 @@ def _compact_string_list(value: Any) -> list[str]:
     return [str(item or "").strip() for item in value if str(item or "").strip()]
 
 
-def _get_resumable_connector_definition(connector_id: str) -> Any:
+def _get_resumable_connector_definition(connector_id: str) -> ConnectorDefinition:
     connector_definition = get_connector_definition(connector_id)
-    if connector_definition is None or not getattr(connector_definition, "supports_resume", False):
+    if connector_definition is None or not connector_definition.supports_resume:
         raise HTTPException(status_code=400, detail=f"Resume is not supported for {connector_id or 'this connector'}")
     return connector_definition
 
@@ -382,13 +410,13 @@ def _build_url_batch_resume_run_config(
     return new_cfg, {"resume_of": str(run_id), "resume_cursor": int(cursor)}
 
 
-def _stateful_resume_total_key(connector_definition: Any) -> str | None:
-    return next((key for key in getattr(connector_definition, "state_keys", []) if key != "cursor"), None)
+def _stateful_resume_total_key(connector_definition: ConnectorDefinition) -> str | None:
+    return next((key for key in connector_definition.state_keys if key != "cursor"), None)
 
 
 def _stateful_resume_has_no_remaining_items(
     *,
-    connector_definition: Any,
+    connector_definition: ConnectorDefinition,
     stats: dict[str, Any],
     resume_state: dict[str, Any],
     cursor: int,
@@ -405,7 +433,7 @@ def _build_stateful_resume_run_config(
     *,
     run_id: UUID,
     connector_id: str,
-    connector_definition: Any,
+    connector_definition: ConnectorDefinition,
     base_cfg: dict[str, Any],
     stats: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -436,7 +464,7 @@ def _build_resume_run_config(
     *,
     run: ConnectorRun,
     connector_id: str,
-    connector_definition: Any,
+    connector_definition: ConnectorDefinition,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     base_cfg = dict(run.config or {})
     stats = dict(run.stats or {})

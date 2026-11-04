@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 import contextlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session, selectinload
@@ -12,6 +14,10 @@ from app.services.connector_execution.shared.artifacts import (
 )
 from app.services.connector_execution.shared.common import _finalize_connector_stats, _safe_error_str
 from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
+
+if TYPE_CHECKING:
+    from app.connectors.db.catalog_runner import CatalogStore
+    from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
 
 
 def _get_db_catalog_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
@@ -49,7 +55,7 @@ def _db_catalog_connector_config_id(stats: dict[str, Any]) -> UUID | None:
 
 def _build_db_catalog_run_context(
     db: Session, *, run: ConnectorRun
-) -> tuple[str, dict[str, Any], dict[str, Any], UUID | None, Any]:
+) -> tuple[str, dict[str, Any], dict[str, Any], UUID | None, SqlAlchemyCatalogStore]:
     from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
     from app.core.secrets import decrypt_connector_config_secrets
 
@@ -67,7 +73,7 @@ def _run_db_catalog_sync(
     dataset_id: UUID,
     connector_id: str,
     cfg: dict[str, Any],
-    store: Any,
+    store: CatalogStore,
     connector_config_id: UUID | None,
 ) -> tuple[dict[str, Any], float]:
     import time
@@ -177,12 +183,10 @@ def _attach_db_catalog_schema_doc(
 def _db_catalog_row_sync_settings(cfg: dict[str, Any]) -> tuple[bool, int, int, int]:
     from app.core.config import settings
 
-    enabled = bool(getattr(settings, "DB_CATALOG_ROW_SYNC_ENABLED", False) and cfg.get("row_sync_enabled"))
-    max_tables = int(cfg.get("row_sync_max_tables") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_TABLES", 20) or 20)
-    max_rows = int(
-        cfg.get("row_sync_max_rows_per_table") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE", 50) or 50
-    )
-    max_cols = int(cfg.get("row_sync_max_cols") or getattr(settings, "DB_CATALOG_ROW_SYNC_MAX_COLS", 50) or 50)
+    enabled = bool(settings.DB_CATALOG_ROW_SYNC_ENABLED and cfg.get("row_sync_enabled"))
+    max_tables = int(cfg.get("row_sync_max_tables") or settings.DB_CATALOG_ROW_SYNC_MAX_TABLES or 20)
+    max_rows = int(cfg.get("row_sync_max_rows_per_table") or settings.DB_CATALOG_ROW_SYNC_MAX_ROWS_PER_TABLE or 50)
+    max_cols = int(cfg.get("row_sync_max_cols") or settings.DB_CATALOG_ROW_SYNC_MAX_COLS or 50)
     return enabled, max_tables, max_rows, max_cols
 
 

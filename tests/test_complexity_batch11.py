@@ -216,7 +216,7 @@ def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
 def test_delta_sync_jira_documents_acl_fallback_updates_matching_issue_doc_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_acl as connectors_acl
+    import app.services.connector_document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -257,8 +257,8 @@ def test_delta_sync_jira_documents_acl_fallback_updates_matching_issue_doc_only(
 
     monkeypatch.setattr(
         connectors_acl,
-        "_leader_module",
-        SimpleNamespace(_apply_document_access_from_config=_apply_acl),
+        "_apply_document_access_from_config",
+        _apply_acl,
         raising=True,
     )
 
@@ -293,7 +293,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
     doc_kind: str,
     url_field: str,
 ) -> None:
-    import app.api.v1.connectors_acl as connectors_acl
+    import app.services.connector_document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -337,7 +337,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
         ),
     ]
 
-    monkeypatch.setattr(connectors_acl, "_leader_module", SimpleNamespace(_now=lambda: now), raising=True)
+    monkeypatch.setattr(connectors_acl, "_now", lambda: now, raising=True)
     disabled = getattr(connectors_acl, func_name)(
         _FlakyDB(rows),
         tenant_id=tenant_id,

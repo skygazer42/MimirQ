@@ -15,6 +15,7 @@ from app.services.connector_document_access import (
     _delta_sync_connector_documents_acl_by_source_url,
     _soft_disable_connector_documents_by_source_ref,
     _soft_disable_connector_documents_by_source_url,
+    build_source_access_settings,
     resolve_configured_source_access,
 )
 from app.services.connector_execution.shared.artifacts import (
@@ -26,6 +27,7 @@ from app.services.connector_execution.shared.common import (
     _connector_config_id_from_run,
     _connector_run_completion_status,
     _finalize_connector_stats,
+    build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import (
     _build_auth_headers,
@@ -65,41 +67,27 @@ def _mark_drive_files_run_running(db: Session, *, run: ConnectorRun) -> None:
 
 
 def _build_drive_files_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
-    access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
-    source_acl = cfg.get("source_acl") if isinstance(cfg.get("source_acl"), dict) else None
-    access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
-    has_manual_access_override = bool(isinstance(access, dict) and access_mode != "inherit")
-    source_acl_mode = (
-        str(source_acl.get("mode") or "disabled").strip().lower() if isinstance(source_acl, dict) else "disabled"
-    )
-    source_acl_fallback_mode = (
-        str(source_acl.get("fallback_mode") or "partial_members").strip().lower()
-        if isinstance(source_acl, dict)
-        else "partial_members"
-    )
+    access_settings = build_source_access_settings(cfg)
+    source_acl = access_settings["source_acl"]
     return {
         "urls": _normalize_connector_string_list(cfg.get("urls")),
         "filename": cfg.get("filename") if isinstance(cfg.get("filename"), str) else None,
         "user_agent": cfg.get("user_agent") if isinstance(cfg.get("user_agent"), str) else None,
-        "parser_backend": cfg.get("parser_backend") if isinstance(cfg.get("parser_backend"), str) else "auto",
-        "chunk_strategy": (
-            cfg.get("chunk_strategy") if isinstance(cfg.get("chunk_strategy"), str) else "langchain_recursive"
-        ),
-        "pipeline": cfg.get("pipeline") if isinstance(cfg.get("pipeline"), dict) else None,
-        "access": access,
+        **build_ingestion_options(cfg),
+        "access": access_settings["access"],
         "source_acl": source_acl,
         "auth_headers": _build_auth_headers(cfg),
-        "source_acl_mode": source_acl_mode,
-        "source_acl_fallback_mode": source_acl_fallback_mode,
+        "source_acl_mode": access_settings["source_acl_mode"],
+        "source_acl_fallback_mode": access_settings["source_acl_fallback_mode"],
         "allow_anyone": bool(source_acl.get("allow_anyone", False)) if isinstance(source_acl, dict) else False,
-        "access_mode": access_mode,
-        "has_manual_access_override": has_manual_access_override,
-        "enable_source_acl": bool(source_acl_mode == "inherit" and not has_manual_access_override),
+        "access_mode": access_settings["access_mode"],
+        "has_manual_access_override": access_settings["has_manual_access_override"],
+        "enable_source_acl": access_settings["enable_source_acl"],
     }
 
 
 async def _discover_drive_sources(
-    client,
+    client: httpx.AsyncClient,
     *,
     settings_map: dict[str, Any],
 ) -> list[tuple[str, str, str, str]]:
@@ -205,7 +193,7 @@ def _drive_files_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
 
 
 async def _resolve_drive_source_acl(
-    client,
+    client: httpx.AsyncClient,
     db: Session,
     *,
     tenant_id: UUID,
@@ -288,7 +276,7 @@ async def _resolve_drive_source_acl(
 
 
 async def _ingest_drive_file_source(
-    client,
+    client: httpx.AsyncClient,
     db: Session,
     *,
     run: ConnectorRun,
@@ -423,7 +411,7 @@ def _persist_drive_files_progress(
 
 
 async def _process_drive_files_sources(
-    client,
+    client: httpx.AsyncClient,
     db: Session,
     *,
     run: ConnectorRun,
@@ -647,7 +635,7 @@ def _mark_drive_files_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, 
                 _sync_connector_config_from_run(db, run=run)
 
 
-async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
+async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
     """
     Background execution for drive_files connector.
     """
@@ -726,7 +714,3 @@ async def _execute_drive_files_run(*, run_id: UUID, tenant_id: UUID, requested_b
             with contextlib.suppress(Exception):
                 await drive_client.aclose()
         db.close()
-
-
-async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    await _execute_drive_files_run(run_id=run_id, tenant_id=tenant_id, requested_by=requested_by)
