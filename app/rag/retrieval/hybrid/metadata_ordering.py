@@ -1,5 +1,6 @@
 """Deterministic metadata-anchor ordering shared by candidate and evidence stages."""
 
+from collections.abc import Callable
 from typing import Any
 
 from app.core.config import settings
@@ -30,8 +31,8 @@ def order_metadata_anchors(
     after_top = result_key(ordered[0]) if ordered else ""
     if stats is not None:
         stats["applied"] = True
-        stats["annotated"] = int(annotated_count)
-        stats["score_promoted"] = int(promoted_count)
+        stats["annotated"] = annotated_count
+        stats["score_promoted"] = promoted_count
         stats["top_changed"] = bool(before_top and after_top and (before_top != after_top))
     return ordered
 
@@ -57,13 +58,10 @@ def _annotated_metadata_anchor_results(
     return (annotated, annotated_count, promoted_count)
 
 
-def _metadata_anchor_sort_key_factory(annotated: list[tuple[dict[str, Any], int]], *, result_count: int):
-    has_budgeted_prefix = any(
-        (
-            isinstance(result, dict) and result.get("fusion_budgeted_prefix_rank") is not None
-            for result, _pos in annotated
-        )
-    )
+def _metadata_anchor_sort_key_factory(
+    annotated: list[tuple[dict[str, Any], int]], *, result_count: int
+) -> Callable[[tuple[dict[str, Any], int]], tuple[float, float, int]]:
+    has_budgeted_prefix = any((result.get("fusion_budgeted_prefix_rank") is not None for result, _pos in annotated))
     best_anchor_score = max(
         (_float_or_default(item.get("metadata_exact_match_score"), 0.0) for item, _pos in annotated)
     )
@@ -74,18 +72,18 @@ def _metadata_anchor_sort_key_factory(annotated: list[tuple[dict[str, Any], int]
             try:
                 prefix_rank = int(item.get("fusion_budgeted_prefix_rank"))
             except (TypeError, ValueError):
-                prefix_rank = result_count + int(pos) + 1
-            return (float(prefix_rank), -_float_or_default(item.get("metadata_exact_match_score"), 0.0), int(pos))
+                prefix_rank = result_count + pos + 1
+            return (float(prefix_rank), -_float_or_default(item.get("metadata_exact_match_score"), 0.0), pos)
         if best_anchor_score >= 0.65:
             return (
                 -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
                 -_float_or_default(item.get("score"), 0.0),
-                int(pos),
+                pos,
             )
         return (
             -_float_or_default(item.get("score"), 0.0),
             -_float_or_default(item.get("metadata_exact_match_score"), 0.0),
-            int(pos),
+            pos,
         )
 
     return sort_key

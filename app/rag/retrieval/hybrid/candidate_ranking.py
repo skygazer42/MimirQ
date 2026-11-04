@@ -189,9 +189,6 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             self.metrics.setdefault("metadata_exact_db", {})[name] = added
         return records
 
-    def _set_channel_metric(self, key: str, value: Any) -> None:
-        self.metrics[key] = value
-
     def _apply_hybrid_rerank_stack(
         self,
         merged_results: list[dict[str, Any]],
@@ -212,7 +209,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
                 vector_weight=self.request.options.vector_weight,
                 keyword_weight=self.request.options.keyword_weight,
             )
-        if merged_results and bool(self.enable_reranker):
+        if merged_results and self.enable_reranker:
             merged_results = self._apply_optional_llm_reranker(merged_results)
         return merged_results
 
@@ -223,7 +220,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
         rerank_meta: dict[str, Any] = {
             "enabled": True,
             "provider": None,
-            "top_n_config": int(self.reranker_top_n or 0),
+            "top_n_config": self.reranker_top_n or 0,
             "candidates_n": 0,
             "used": False,
             "elapsed_sec": 0.0,
@@ -237,7 +234,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
         rerank_meta["provider"] = provider
         if provider in ("none", "off", "false", "0"):
             rerank_meta["skip_reason"] = "provider_off"
-            self._set_channel_metric("rerank", rerank_meta)
+            self.metrics["rerank"] = rerank_meta
             return merged_results
         final_k = max(
             1,
@@ -245,21 +242,21 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             if self.request.options.requested_k is not None
             else int(self.request.options.top_k or 0),
         )
-        candidates_n = max(int(self.reranker_top_n or settings.RERANKER_TOP_N or 20), final_k)
+        candidates_n = max(self.reranker_top_n or settings.RERANKER_TOP_N or 20, final_k)
         candidates_n = min(candidates_n, len(merged_results))
-        rerank_meta["candidates_n"] = int(candidates_n)
+        rerank_meta["candidates_n"] = candidates_n
         conditional_rerank_enabled = settings.RERANK_CONDITIONAL_ENABLED
         top_score = float(merged_results[0].get("score", 0.0) or 0.0)
         second_score = float(merged_results[1].get("score", 0.0) or 0.0) if len(merged_results) > 1 else 0.0
         score_gap = top_score - second_score
-        rerank_meta["skip_top_score"] = round(float(top_score), 6)
-        rerank_meta["skip_score_gap"] = round(float(score_gap), 6)
-        skip_threshold = float(settings.RERANK_SKIP_THRESHOLD or 0.85)
-        skip_gap = float(settings.RERANK_SKIP_GAP or 0.15)
+        rerank_meta["skip_top_score"] = round(top_score, 6)
+        rerank_meta["skip_score_gap"] = round(score_gap, 6)
+        skip_threshold = settings.RERANK_SKIP_THRESHOLD or 0.85
+        skip_gap = settings.RERANK_SKIP_GAP or 0.15
         if conditional_rerank_enabled and top_score >= skip_threshold and score_gap >= skip_gap:
             rerank_meta["skip_reason"] = "high_confidence"
-            self._set_channel_metric("rerank", rerank_meta)
-            self._set_channel_metric("merged_post_rerank", len(merged_results or []))
+            self.metrics["rerank"] = rerank_meta
+            self.metrics["merged_post_rerank"] = len(merged_results or [])
             return merged_results
         merged_results = self._run_llm_reranker(
             query=self.request.query,
@@ -268,7 +265,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             provider=provider,
             rerank_meta=rerank_meta,
         )
-        self._set_channel_metric("rerank", rerank_meta)
+        self.metrics["rerank"] = rerank_meta
         return merged_results
 
     def _run_llm_reranker(
@@ -355,7 +352,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
         boosted_after_rerank = 0
         phrase_boost_weight = max(
             0.0,
-            float(settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST or 0.0),
+            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST or 0.0,
         )
         for rid in ordered_ids:
             doc = id_to_doc.get(rid)
@@ -375,10 +372,10 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
                     phrase_boost_weight=phrase_boost_weight,
                 ):
                     metadata_boost = float(new_doc.get("metadata_exact_match_boost") or 0.0)
-                final_score = min(1.0, float(rerank_score) + float(phrase_boost) + float(metadata_boost))
-                new_doc["score"] = float(final_score)
+                final_score = min(1.0, rerank_score + phrase_boost + metadata_boost)
+                new_doc["score"] = final_score
                 if phrase_boost > 0.0 or metadata_boost > 0.0:
-                    new_doc["rerank_score_final"] = float(final_score)
+                    new_doc["rerank_score_final"] = final_score
                     boosted_after_rerank += 1
             new_doc["reranker_provider"] = rerank_provider
             new_doc["rerank_elapsed_sec"] = round(float(rerank_elapsed), 3)
@@ -386,7 +383,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             ordered.append(new_doc)
         if boosted_after_rerank > 0:
             ordered = sorted(ordered, key=lambda item: (-float(item.get("score", 0.0) or 0.0), self._result_key(item)))
-            rerank_meta["post_rerank_exact_boosted"] = int(boosted_after_rerank)
+            rerank_meta["post_rerank_exact_boosted"] = boosted_after_rerank
         for doc in merged_results[:candidates_n]:
             rid = self._result_key(doc)
             if rid in used:

@@ -39,15 +39,12 @@ class RetrievalPolicyMixin:
                 policy_plugin_ref = plugin_ref
                 break
 
-        enabled = bool(
-            getattr(settings, "RETRIEVAL_COMPACT_HIGH_CONFIDENCE_ENABLED", False)
-            or policy_config.get("enabled") is True
-        )
+        enabled = bool(settings.RETRIEVAL_COMPACT_HIGH_CONFIDENCE_ENABLED or policy_config.get("enabled") is True)
         if stats is not None:
             stats.clear()
-            stats["enabled"] = bool(enabled)
-            stats["before"] = int(len(limited))
-            stats["after"] = int(len(limited))
+            stats["enabled"] = enabled
+            stats["before"] = len(limited)
+            stats["after"] = len(limited)
             stats["dropped"] = 0
             stats["source"] = "policy" if policy_config.get("enabled") is True else "settings"
             if policy_plugin_ref:
@@ -55,17 +52,15 @@ class RetrievalPolicyMixin:
         if not limited or not enabled:
             return limited
 
-        min_top_score = float(
-            policy_config.get("min_top_score", getattr(settings, "RETRIEVAL_COMPACT_MIN_TOP_SCORE", 0.8)) or 0.8
-        )
+        min_top_score = float(policy_config.get("min_top_score", settings.RETRIEVAL_COMPACT_MIN_TOP_SCORE) or 0.8)
         relative_score_floor = float(
             policy_config.get(
                 "relative_score_floor",
-                getattr(settings, "RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR", 0.65),
+                settings.RETRIEVAL_COMPACT_RELATIVE_SCORE_FLOOR,
             )
             or 0.65
         )
-        min_records = int(policy_config.get("min_records", getattr(settings, "RETRIEVAL_COMPACT_MIN_RECORDS", 1)) or 1)
+        min_records = int(policy_config.get("min_records", settings.RETRIEVAL_COMPACT_MIN_RECORDS) or 1)
         compacted = list(
             compact_high_confidence_items(
                 limited,
@@ -78,11 +73,11 @@ class RetrievalPolicyMixin:
             )
         )
         if stats is not None:
-            stats["after"] = int(len(compacted))
-            stats["dropped"] = int(max(0, len(limited) - len(compacted)))
-            stats["min_top_score"] = float(min_top_score)
-            stats["relative_score_floor"] = float(relative_score_floor)
-            stats["min_records"] = int(min_records)
+            stats["after"] = len(compacted)
+            stats["dropped"] = max(0, len(limited) - len(compacted))
+            stats["min_top_score"] = min_top_score
+            stats["relative_score_floor"] = relative_score_floor
+            stats["min_records"] = min_records
         return compacted
 
     @staticmethod
@@ -119,7 +114,7 @@ class RetrievalPolicyMixin:
         except Exception as exc:  # noqa: BLE001
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
             return {}
-        policy = getattr(descriptor, "retrieval_policy", None)
+        policy = descriptor.retrieval_policy
         if isinstance(policy, dict) and policy.get("schema") == "mimirq.retrieval_policy.v1":
             return dict(policy)
         return {}
@@ -137,7 +132,7 @@ class RetrievalPolicyMixin:
 
         phrase_boost_weight = max(
             0.0,
-            float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST or 0.0,
         )
         exact_adjusted = 0
         for result in out:
@@ -163,18 +158,18 @@ class RetrievalPolicyMixin:
             if not bonus:
                 continue
             current_score = _float_or_default(result.get("score"), 0.0)
-            result["retrieval_policy_bonus"] = round(float(bonus), 6)
-            result["score"] = float(current_score) + float(bonus)
+            result["retrieval_policy_bonus"] = round(bonus, 6)
+            result["score"] = current_score + bonus
             adjusted += 1
-            bonuses.append(float(bonus))
+            bonuses.append(bonus)
 
         if int(diagnostics.get("retrieval_policy_record_count") or 0) > 0 and isinstance(
             self._last_channel_metrics, dict
         ):
-            diagnostics["score_adjusted_record_count"] = int(adjusted)
-            diagnostics["max_bonus"] = round(float(max(bonuses) if bonuses else 0.0), 6)
-            diagnostics["min_bonus"] = round(float(min(bonuses) if bonuses else 0.0), 6)
-            diagnostics["avg_bonus"] = round(float(sum(bonuses) / len(bonuses)) if bonuses else 0.0, 6)
+            diagnostics["score_adjusted_record_count"] = adjusted
+            diagnostics["max_bonus"] = round(max(bonuses) if bonuses else 0.0, 6)
+            diagnostics["min_bonus"] = round(min(bonuses) if bonuses else 0.0, 6)
+            diagnostics["avg_bonus"] = round(sum(bonuses) / len(bonuses) if bonuses else 0.0, 6)
             self._last_channel_metrics["retrieval_policy"] = diagnostics
 
         if adjusted <= 0 and exact_adjusted <= 0:

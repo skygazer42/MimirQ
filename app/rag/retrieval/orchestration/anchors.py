@@ -11,6 +11,7 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.rag.retrieval.metadata_anchor_ranking import MetadataAnchor, rank_metadata_anchor_matches
 from app.rag.retrieval.orchestration.common import _doc_key
 
 _METADATA_EXACT_ANCHOR_SKIP_FIELD_PARTS = (
@@ -115,7 +116,7 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
     if not query_norm:
         return {}
 
-    matches: list[dict[str, Any]] = []
+    matches: list[MetadataAnchor] = []
     for field, anchor_text in _iter_metadata_exact_anchor_values(meta):
         if not _looks_like_metadata_exact_anchor(field, anchor_text):
             continue
@@ -132,40 +133,7 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
             }
         )
 
-    if not matches:
-        return {}
-
-    filtered: list[dict[str, Any]] = []
-    seen_norms: set[str] = set()
-    for item in sorted(matches, key=lambda x: (-len(str(x.get("norm") or "")), -float(x.get("score") or 0.0))):
-        field = str(item.get("field") or "")
-        norm = str(item.get("norm") or "")
-        if any(str(kept.get("field") or "") == field and norm in str(kept.get("norm") or "") for kept in filtered):
-            continue
-        if norm in seen_norms:
-            continue
-        seen_norms.add(norm)
-        filtered.append(item)
-
-    ranked = sorted(
-        filtered,
-        key=lambda x: (-float(x.get("score") or 0.0), -len(str(x.get("norm") or "")), str(x.get("field") or "")),
-    )
-    primary = ranked[0]
-    aggregate = float(primary.get("score") or 0.0)
-    aggregate += 0.5 * sum(float(item.get("score") or 0.0) for item in ranked[1:])
-    aggregate = min(1.0, aggregate)
-
-    fields = list(dict.fromkeys(str(item.get("field") or "") for item in ranked if str(item.get("field") or "")))
-    values = [str(item.get("value") or "") for item in ranked if str(item.get("value") or "")]
-    return {
-        "field": str(primary.get("field") or ""),
-        "value": str(primary.get("value") or ""),
-        "score": round(float(aggregate), 6),
-        "primary_score": round(float(primary.get("score") or 0.0), 6),
-        "fields": fields[:8],
-        "values": values[:8],
-    }
+    return rank_metadata_anchor_matches(matches)
 
 
 def _float_or_default(value: Any, default: float = 0.0) -> float:

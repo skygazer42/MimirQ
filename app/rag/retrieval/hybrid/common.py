@@ -18,6 +18,7 @@ from app.rag.pipeline_plugins.contracts import (
     RECORD_IDENTITY_METADATA_KEY,
     RETRIEVAL_TEXT_METADATA_KEY,
 )
+from app.rag.retrieval.metadata_anchor_ranking import MetadataAnchor, rank_metadata_anchor_matches
 from app.rag.retrieval.query_phrase_match import query_phrase_match
 
 logger = get_logger("rag.retriever")
@@ -86,7 +87,7 @@ def _append_metadata_anchor_values(
     field: str,
     value: Any,
 ) -> None:
-    field_s = str(field or "").strip()
+    field_s = (field or "").strip()
     if not field_s:
         return
     values = list(value) if isinstance(value, (list, tuple)) else [value]
@@ -123,7 +124,7 @@ def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, 
 
 
 def _looks_like_metadata_exact_anchor(field: str, text: str) -> bool:
-    field_norm = str(field or "").strip().lower()
+    field_norm = (field or "").strip().lower()
     if any(field_norm.startswith(prefix) for prefix in _METADATA_EXACT_ANCHOR_SKIP_FIELD_PREFIXES):
         return False
     field_parts = {p for p in _FIELD_PART_RE.split(field_norm) if p}
@@ -155,7 +156,7 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
     if not query_norm:
         return {}
 
-    matches: list[dict[str, Any]] = []
+    matches: list[MetadataAnchor] = []
     for field, anchor_text in _iter_metadata_exact_anchor_values(meta):
         if not _looks_like_metadata_exact_anchor(field, anchor_text):
             continue
@@ -165,50 +166,14 @@ def _metadata_exact_anchor_match(query: str, meta: dict[str, Any]) -> dict[str, 
         score = min(1.0, max(0.45, float(len(anchor_norm)) / float(max(1, len(query_norm)))))
         matches.append(
             {
-                "field": str(field),
-                "value": str(anchor_text),
-                "score": round(float(score), 6),
+                "field": field,
+                "value": anchor_text,
+                "score": round(score, 6),
                 "norm": anchor_norm,
             }
         )
 
-    if not matches:
-        return {}
-
-    # Same metadata field can expose nested aliases, e.g. "注意事项" and
-    # "办理注意事项". Keep the longest per field to avoid double-counting a
-    # single business intent, while still allowing title + intent to combine.
-    filtered: list[dict[str, Any]] = []
-    seen_norms: set[str] = set()
-    for item in sorted(matches, key=lambda x: (-len(str(x.get("norm") or "")), -float(x.get("score") or 0.0))):
-        field = str(item.get("field") or "")
-        norm = str(item.get("norm") or "")
-        if any(str(kept.get("field") or "") == field and norm in str(kept.get("norm") or "") for kept in filtered):
-            continue
-        if norm in seen_norms:
-            continue
-        seen_norms.add(norm)
-        filtered.append(item)
-
-    ranked = sorted(
-        filtered,
-        key=lambda x: (-float(x.get("score") or 0.0), -len(str(x.get("norm") or "")), str(x.get("field") or "")),
-    )
-    primary = ranked[0]
-    aggregate = float(primary.get("score") or 0.0)
-    aggregate += 0.5 * sum(float(item.get("score") or 0.0) for item in ranked[1:])
-    aggregate = min(1.0, aggregate)
-
-    fields = list(dict.fromkeys(str(item.get("field") or "") for item in ranked if str(item.get("field") or "")))
-    values = [str(item.get("value") or "") for item in ranked if str(item.get("value") or "")]
-    return {
-        "field": str(primary.get("field") or ""),
-        "value": str(primary.get("value") or ""),
-        "score": round(float(aggregate), 6),
-        "primary_score": round(float(primary.get("score") or 0.0), 6),
-        "fields": fields[:8],
-        "values": values[:8],
-    }
+    return rank_metadata_anchor_matches(matches)
 
 
 def _query_looks_like_cjk_metadata_anchor(query: str) -> bool:

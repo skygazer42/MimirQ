@@ -49,7 +49,7 @@ def result_content_from_doc(doc: Document) -> str:
     preserved = meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY)
     if isinstance(preserved, str) and preserved:
         return preserved
-    return str(doc.page_content or "")
+    return doc.page_content
 
 
 def result_key(result: dict[str, Any]) -> str:

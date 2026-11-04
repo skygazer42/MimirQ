@@ -19,6 +19,8 @@ The orchestration shim maps an empty provider and the registry's `none` family a
 
 Invalid provider configuration is now visible to retrieval callers. Disabled reranking and missing optional provider modules keep the existing identity result and `fallback=identity` marker. The remaining fallback is limited to those named conditions; Python tests and model-runtime checks were not run per user instruction.
 
+[混合检索排名整理](../simplification/2026-11-05-hybrid-ranking-owned-values.md)保持这里的工厂、禁用别名和 provider 失败归属，只调整排名内部记录与重复赋值。
+
 ## Verification
 
 Ruff check, Ruff format --check, and `git diff --check` passed for the shim and its direct hybrid caller. Static inspection confirmed unknown providers raise in the real factory and disabled aliases are gated before the hybrid factory call. Python tests were not run.
