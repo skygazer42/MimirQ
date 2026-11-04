@@ -47,7 +47,7 @@ def _warn_if_redis_unreachable(redis_settings: RedisSettings) -> None:
         return
 
     host = redis_settings.host
-    port = int(redis_settings.port)
+    port = redis_settings.port
     try:
         with socket.create_connection((host, port), timeout=_SOCKET_CONNECT_PROBE_TIMEOUT_SEC):
             return
@@ -66,9 +66,9 @@ def _warn_if_redis_unreachable(redis_settings: RedisSettings) -> None:
 
 def _build_worker_redis_settings() -> RedisSettings:
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
-    redis_settings.conn_timeout = int(getattr(settings, "TASK_WORKER_REDIS_CONN_TIMEOUT_SEC", 1) or 1)
-    redis_settings.conn_retries = int(getattr(settings, "TASK_WORKER_REDIS_CONN_RETRIES", 60) or 60)
-    redis_settings.conn_retry_delay = int(getattr(settings, "TASK_WORKER_REDIS_CONN_RETRY_DELAY_SEC", 1) or 1)
+    redis_settings.conn_timeout = settings.TASK_WORKER_REDIS_CONN_TIMEOUT_SEC or 1
+    redis_settings.conn_retries = settings.TASK_WORKER_REDIS_CONN_RETRIES or 60
+    redis_settings.conn_retry_delay = settings.TASK_WORKER_REDIS_CONN_RETRY_DELAY_SEC or 1
     _warn_if_redis_unreachable(redis_settings)
     return redis_settings
 
@@ -102,14 +102,14 @@ def _log_heartbeat_task_exit(task: asyncio.Task[None]) -> None:
         logger.error("Worker heartbeat task exited unexpectedly: %s", str(error)[:200])
 
 
-async def startup(ctx):  # noqa: ANN001
-    logger.info("Arq worker starting... max_jobs=%s", getattr(settings, "TASK_WORKER_MAX_JOBS", 10))
+async def startup(ctx: dict[str, Any]) -> None:
+    logger.info("Arq worker starting... max_jobs=%s", settings.TASK_WORKER_MAX_JOBS)
     try:
         from app.services.task_queue_observability_service import observe_task_worker_heartbeat
 
-        queue_name = str(getattr(settings, "TASK_QUEUE_NAME", "mimirq") or "mimirq")
+        queue_name = settings.TASK_QUEUE_NAME or "mimirq"
         worker_id = f"{socket.gethostname()}:{os.getpid()}"
-        interval = float(getattr(settings, "TASK_WORKER_HEARTBEAT_INTERVAL_SEC", 5.0) or 5.0)
+        interval = settings.TASK_WORKER_HEARTBEAT_INTERVAL_SEC or 5.0
         interval = max(1.0, interval)
 
         # Fire-and-forget: never block worker startup.
@@ -130,7 +130,7 @@ async def startup(ctx):  # noqa: ANN001
     await asyncio.sleep(0)
 
 
-async def shutdown(ctx):  # noqa: ANN001
+async def shutdown(ctx: dict[str, Any]) -> None:
     logger.info("Arq worker shutting down...")
     task = ctx.get(_WORKER_HEARTBEAT_TASK_KEY)
     if task is not None:
@@ -144,15 +144,15 @@ async def shutdown(ctx):  # noqa: ANN001
 
 class WorkerSettings:
     redis_settings = _build_worker_redis_settings()
-    queue_name = getattr(settings, "TASK_QUEUE_NAME", "mimirq")
+    queue_name = settings.TASK_QUEUE_NAME
     functions = [
         func(
             process_document_job,
-            max_tries=int(getattr(settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 80) or 80),
+            max_tries=settings.TASK_DOCUMENT_JOB_MAX_TRIES or 80,
         ),
         func(
             extract_kg_job,
-            max_tries=int(getattr(settings, "TASK_KG_JOB_MAX_TRIES", 80) or 80),
+            max_tries=settings.TASK_KG_JOB_MAX_TRIES or 80,
         ),
         reconcile_index_audit_job,
         rebuild_indexes_job,
@@ -162,9 +162,9 @@ class WorkerSettings:
         connector_run_job,
         ping_job,
     ]
-    max_jobs = int(getattr(settings, "TASK_WORKER_MAX_JOBS", 10) or 10)
-    job_timeout = int(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30)
-    max_tries = int(getattr(settings, "TASK_JOB_MAX_TRIES", 80) or 80)
+    max_jobs = settings.TASK_WORKER_MAX_JOBS or 10
+    job_timeout = settings.TASK_JOB_TIMEOUT_SEC or 60 * 30
+    max_tries = settings.TASK_JOB_MAX_TRIES or 80
     allow_abort_jobs = True
     on_startup = startup
     on_shutdown = shutdown
