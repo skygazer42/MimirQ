@@ -10,7 +10,7 @@ import sqlite3
 import threading
 from collections.abc import AsyncIterator, Iterator, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import (
@@ -26,6 +26,9 @@ from langgraph.checkpoint.base import (
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from langgraph.checkpoint.serde.base import SerializerProtocol
 
 logger = get_logger(__name__)
 
@@ -43,13 +46,13 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         db_path: str | None = None,
         *,
         table_prefix: str = "langgraph",
-        serde=None,
+        serde: "SerializerProtocol | None" = None,
     ) -> None:
         super().__init__(serde=serde)
         # Validate table_prefix to prevent SQL injection
         if not re.match(r"^[A-Za-z_]\w*$", table_prefix, flags=re.ASCII):
             raise ValueError(f"Invalid table_prefix '{table_prefix}': must be alphanumeric with underscores only")
-        self.db_path = db_path or getattr(settings, "CHECKPOINT_SQLITE_PATH", "./data/checkpoints.db")
+        self.db_path = db_path or settings.CHECKPOINT_SQLITE_PATH
         self.table_prefix = table_prefix
         self._local = threading.local()
         self._lock = threading.RLock()
@@ -149,7 +152,7 @@ class SqliteSaver(BaseCheckpointSaver[str]):
         ).fetchall()
         return [
             (r["task_id"], r["channel"], self.serde.loads_typed((r["value_type"], r["value_blob"])))
-            for r in (writes_rows or [])
+            for r in writes_rows
         ]
 
     @staticmethod
