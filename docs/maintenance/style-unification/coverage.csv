@@ -3699,7 +3699,7 @@ web/scripts/api-types-drift-baseline.json,inventory,preserved,preserved,"Documen
 web/scripts/check-api-contract.mjs,6,pending,pending,Awaiting file-level convention and contract review,
 web/scripts/check-api-coverage.mjs,6,pending,pending,Awaiting file-level convention and contract review,
 web/scripts/check-api-types-drift.mjs,6,pending,pending,Awaiting file-level convention and contract review,
-web/scripts/check-api-types-drift.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/scripts/check-api-types-drift.test.ts,6,adjusted,adjusted,Controlled one-type fixture separately verifies module/type threshold failures instead of assuming repository counts equal the baseline,Gate test category 05940124f; 4 Vitest checks; direct CLI cases exit 1 without sandbox bypass; ESLint/Prettier passed; production gate/baseline unchanged
 web/scripts/check-bundle-budget.mjs,6,pending,pending,Awaiting file-level convention and contract review,
 web/scripts/check-design-tokens.mjs,6,pending,pending,Awaiting file-level convention and contract review,
 web/scripts/check-interactive-controls.mjs,6,pending,pending,Awaiting file-level convention and contract review,

@@ -9,15 +9,30 @@ const temporaryDirectories: string[] = []
 const script = path.resolve(__dirname, 'check-api-types-drift.mjs')
 const webRoot = path.resolve(__dirname, '..')
 const checkedInBaseline = JSON.parse(
-  fs.readFileSync(path.resolve(__dirname, 'api-types-drift-baseline.json'), 'utf8')
+  fs.readFileSync(path.resolve(__dirname, 'api-types-drift-baseline.json'), 'utf8'),
 ) as { handwrittenModules: number; handwrittenTypes: number }
 
-function runWithBaseline(baseline: { handwrittenModules: number; handwrittenTypes: number }) {
+function runWithBaseline(
+  baseline: { handwrittenModules: number; handwrittenTypes: number },
+  apiModules?: Record<string, string>,
+) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mimirq-api-drift-'))
   temporaryDirectories.push(directory)
   const baselinePath = path.join(directory, 'baseline.json')
   fs.writeFileSync(baselinePath, JSON.stringify(baseline), 'utf8')
-  return spawnSync(process.execPath, [script, '--strict', '--baseline', baselinePath], {
+  let scriptToRun = script
+  if (apiModules) {
+    const scriptsDirectory = path.join(directory, 'scripts')
+    const apiDirectory = path.join(directory, 'lib', 'api')
+    fs.mkdirSync(scriptsDirectory, { recursive: true })
+    fs.mkdirSync(apiDirectory, { recursive: true })
+    scriptToRun = path.join(scriptsDirectory, 'check-api-types-drift.mjs')
+    fs.copyFileSync(script, scriptToRun)
+    for (const [filename, source] of Object.entries(apiModules)) {
+      fs.writeFileSync(path.join(apiDirectory, filename), source, 'utf8')
+    }
+  }
+  return spawnSync(process.execPath, [scriptToRun, '--strict', '--baseline', baselinePath], {
     cwd: webRoot,
     encoding: 'utf8',
   })
@@ -27,7 +42,7 @@ function expectResultUnlessSandboxBlocked(
   result: ReturnType<typeof runWithBaseline>,
   expectedStatus: number,
   output?: string,
-  expectedOutput?: string
+  expectedOutput?: string,
 ) {
   if (result.error) {
     expect((result.error as NodeJS.ErrnoException).code).toBe('EPERM')
@@ -52,19 +67,23 @@ describe('API type drift ratchet', () => {
     expectResultUnlessSandboxBlocked(result, 0)
   })
 
-  it('fails when either drift count exceeds its baseline', () => {
-    const lowerTypeBaseline = checkedInBaseline.handwrittenTypes - 1
-    const result = runWithBaseline({
-      handwrittenModules: checkedInBaseline.handwrittenModules,
-      handwrittenTypes: lowerTypeBaseline,
+  it.each([
+    {
+      count: 'module',
+      baseline: { handwrittenModules: 0, handwrittenTypes: 1 },
+      message: 'hand-written-type modules=1 exceed baseline 0',
+    },
+    {
+      count: 'type',
+      baseline: { handwrittenModules: 1, handwrittenTypes: 0 },
+      message: 'hand-written types=1 exceed baseline 0',
+    },
+  ])('fails when the $count count exceeds its baseline', ({ baseline, message }) => {
+    const result = runWithBaseline(baseline, {
+      'fixture.ts': 'export type Fixture = { value: string }\n',
     })
 
-    expectResultUnlessSandboxBlocked(
-      result,
-      1,
-      result.stderr,
-      `hand-written types=${checkedInBaseline.handwrittenTypes} exceed baseline ${lowerTypeBaseline}`
-    )
+    expectResultUnlessSandboxBlocked(result, 1, result.stderr, message)
   })
 
   it('prompts maintainers to lower a stale baseline', () => {
