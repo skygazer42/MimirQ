@@ -21,21 +21,9 @@ from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
 
 
-def _extract_hierarchy_items(data: object) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    if not isinstance(data, dict):
-        return [], []
-    paragraphs = data.get("paragraphs")
-    sentences = data.get("sentences")
-    paragraph_items = paragraphs if isinstance(paragraphs, list) else []
-    sentence_items = sentences if isinstance(sentences, list) else []
-    return paragraph_items, sentence_items
-
-
 def _group_sentences_by_parent(sentences: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for sentence in sentences:
-        if not isinstance(sentence, dict):
-            continue
         parent_id = str(sentence.get("parent_id") or "").strip()
         if not parent_id:
             continue
@@ -132,7 +120,7 @@ class TextHierarchyChunker(BaseChunker):
       but override `chunk_strategy` + `hierarchy_basis` to keep metadata explicit.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size or 0)
         self.chunk_overlap = int(chunk_overlap or 0)
 
@@ -145,19 +133,19 @@ class TextHierarchyChunker(BaseChunker):
             if not text.strip():
                 continue
 
-            paragraphs, sentences = _extract_hierarchy_items(hierarchical_chunk_markdown(text) or {})
+            data = hierarchical_chunk_markdown(text)
+            paragraphs = data["paragraphs"]
+            sentences = data["sentences"]
             sentences_by_parent = _group_sentences_by_parent(sentences)
 
             for paragraph in paragraphs:
-                if not isinstance(paragraph, dict):
-                    continue
                 paragraph_doc = _build_paragraph_document(base_meta, paragraph, len(out))
                 if paragraph_doc is None:
                     continue
                 out.append(paragraph_doc)
 
-                parent_id = str(paragraph_doc.metadata["parent_id"])
-                parent_start = int(paragraph_doc.metadata["start_char"])
+                parent_id = paragraph_doc.metadata["parent_id"]
+                parent_start = paragraph_doc.metadata["start_char"]
                 for sentence in sentences_by_parent.get(parent_id, []):
                     sentence_doc = _build_sentence_document(base_meta, sentence, parent_id, parent_start, len(out))
                     if sentence_doc is not None:

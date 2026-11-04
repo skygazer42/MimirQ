@@ -34,7 +34,7 @@ class ParentChildChunker(BaseChunker):
         chunk_overlap: int,
         child_ratio: float = 0.5,
         min_child_size: int = 200,
-    ):
+    ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.child_ratio = child_ratio
@@ -218,12 +218,12 @@ class ParentChildChunker(BaseChunker):
             local_chunks, parent_docs, child_docs_by_parent = self._split_single_document(doc, text)
 
             apply_sibling_hierarchy_links(
-                [d.metadata for d in parent_docs if isinstance(getattr(d, "metadata", None), dict)],
+                [d.metadata for d in parent_docs],
                 overwrite=True,
             )
             for siblings in child_docs_by_parent.values():
                 apply_sibling_hierarchy_links(
-                    [d.metadata for d in siblings if isinstance(getattr(d, "metadata", None), dict)],
+                    [d.metadata for d in siblings],
                     overwrite=True,
                 )
 

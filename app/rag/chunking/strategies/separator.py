@@ -3,6 +3,7 @@ Custom separator-based chunking strategy.
 """
 
 import re
+from typing import Any
 
 from langchain_core.documents import Document
 
@@ -35,7 +36,7 @@ class SeparatorChunker(BaseChunker):
         separator: str = "\n\n",
         keep_separator: bool = True,
         max_chunk_size: int = 0,
-    ):
+    ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.separator = separator
@@ -118,7 +119,7 @@ class SeparatorChunker(BaseChunker):
         self,
         text: str,
         base_pos: int,
-        base_metadata: dict | None,
+        base_metadata: dict[str, Any] | None,
     ) -> list[Document]:
         """
         Split oversized chunks at sentence boundaries (best-effort).

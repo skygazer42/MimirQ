@@ -95,7 +95,7 @@ def _assign_chunk_indexes(chunks: list[Document]) -> None:
 
 
 class SentenceWindowChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -133,7 +133,7 @@ class SentenceWindowChunker(BaseChunker):
                 meta["chunk_strategy"] = "sentence_window"
                 meta["start_char"] = chunk_start
                 meta["end_char"] = chunk_end
-                meta["sentence_count"] = int(end_idx - start_idx)
+                meta["sentence_count"] = end_idx - start_idx
                 out.append(Document(page_content=content, metadata=meta))
 
                 start_idx = _next_span_start(spans, start_idx, end_idx, self.chunk_overlap)

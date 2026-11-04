@@ -26,7 +26,7 @@ class SemanticSentenceChunker(BaseChunker):
     _FENCED_CODE_PATTERN = re.compile(r"```.*?```", flags=re.S)
     _LIST_ITEM_RE = re.compile(r"^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)")
 
-    def __init__(self, chunk_size: int, chunk_overlap: int, min_chunk_size: int | None = 256):
+    def __init__(self, chunk_size: int, chunk_overlap: int, min_chunk_size: int | None = 256) -> None:
         self.chunk_size = max(chunk_size, 1)
         self.chunk_overlap = max(chunk_overlap, 0)
         self.min_chunk_size = max(0, int(256 if min_chunk_size is None else min_chunk_size))
@@ -52,7 +52,7 @@ class SemanticSentenceChunker(BaseChunker):
     def _extract_fenced_code_spans(self, text: str) -> list[tuple[int, int]]:
         spans: list[tuple[int, int]] = []
         for m in self._FENCED_CODE_PATTERN.finditer(text or ""):
-            s, e = int(m.start()), int(m.end())
+            s, e = m.start(), m.end()
             if e > s:
                 spans.append((s, e))
         spans.sort(key=lambda x: x[0])
@@ -170,8 +170,8 @@ class SemanticSentenceChunker(BaseChunker):
 
         local_units: list[SemanticSentenceChunker._Unit] = []
         for match in self.SENTENCE_PATTERN.finditer(seg):
-            start = seg_start + int(match.start())
-            end = seg_start + int(match.end())
+            start = seg_start + match.start()
+            end = seg_start + match.end()
             if end > start:
                 local_units.append(self._Unit(text=raw[start:end], start=start, end=end, kind="text"))
         return self._merge_numeric_dot_runs(raw, local_units)
