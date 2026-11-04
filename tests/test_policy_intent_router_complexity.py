@@ -1,7 +1,7 @@
 import pytest
 
+from app.rag.policy import intent_router as orchestration_router
 from app.rag.policy import intent_router as policy_router
-from app.rag.retrieval.orchestration import intent_router as orchestration_router
 
 
 def test_policy_router_normalization_matches_orchestration_contract() -> None:

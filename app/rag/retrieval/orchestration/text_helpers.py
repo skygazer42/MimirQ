@@ -8,6 +8,8 @@ import json
 import re
 from typing import Any, Literal
 
+from app.rag.core.retrieval_modes import normalize_retrieval_mode as normalize_retrieval_mode
+
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
 _QUERY_REWRITE_TRIGGER_SUBSTRINGS = (
     "它",
@@ -35,15 +37,6 @@ _QUERY_REWRITE_TRIGGER_SUBSTRINGS = (
     "同上",
     "同理",
 )
-_VALID_RETRIEVAL_MODES = {"hybrid", "vector", "keyword", "mmr", "auto"}
-_RETRIEVAL_MODE_ALIASES = {
-    "fulltext": "keyword",
-    "bm25": "keyword",
-    "sparse": "keyword",
-    "lexical": "keyword",
-    "dense": "vector",
-    "semantic": "vector",
-}
 _AUTO_LIST_INTENT_RE = re.compile(r"(列举|有哪些|列表|对比|比较|分别|优缺点|差异|汇总|总结)", flags=re.IGNORECASE)
 _AUTO_KEYWORD_HINT_RES = (
     re.compile(r"\b(?:traceback|exception|error)\b"),
@@ -188,16 +181,6 @@ def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
     if len(q) <= short_len:
         return True
     return any(trigger in q for trigger in _QUERY_REWRITE_TRIGGER_SUBSTRINGS)
-
-
-def normalize_retrieval_mode(mode: str | None) -> str:
-    raw = (mode or "").strip().lower()
-    if not raw:
-        return "hybrid"
-    mapped = _RETRIEVAL_MODE_ALIASES.get(raw, raw)
-    if mapped in _VALID_RETRIEVAL_MODES:
-        return mapped
-    return "hybrid"
 
 
 def guess_retrieval_mode(query: str) -> str:

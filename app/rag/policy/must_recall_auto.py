@@ -10,33 +10,14 @@ _FILE_LIKE_RE = re.compile(r"\b[A-Z0-9_.-]{2,120}\.(?:csv|tsv|xlsx|xls|md|txt|js
 _TABLE_LIKE_RE = re.compile(r"\b[A-Za-z_]\w{1,80}\.[A-Za-z_]\w{1,80}\b")
 
 
-def _collect_metadata_filter_source_keys(metadata_filter: Any) -> list[str]:
-    if not isinstance(metadata_filter, dict):
+def _collect_source_key_values(payload: Any, *, fields: tuple[str, ...]) -> list[str]:
+    if not isinstance(payload, dict):
         return []
     out: list[str] = []
-    for key in ("table_id", "document_id", "document_name", "sheet_name", "source"):
-        if key not in metadata_filter:
+    for key in fields:
+        if key not in payload:
             continue
-        raw = metadata_filter.get(key)
-        if isinstance(raw, (list, tuple, set)):
-            values = list(raw)
-        else:
-            values = [raw]
-        for val in values:
-            s = str(val or "").strip()
-            if s:
-                out.append(s)
-    return out
-
-
-def _collect_scope_source_keys(scope: Any) -> list[str]:
-    if not isinstance(scope, dict):
-        return []
-    out: list[str] = []
-    for key in ("source_keys", "table_ids", "document_ids"):
-        if key not in scope:
-            continue
-        raw = scope.get(key)
+        raw = payload.get(key)
         if isinstance(raw, (list, tuple, set)):
             values = list(raw)
         else:
@@ -61,28 +42,31 @@ def infer_expected_source_keys(
 
     if q:
         for m in _QUOTED_TERM_RE.finditer(q):
-            s = str(m.group(1) or "").strip()
+            s = m.group(1).strip()
             if s:
                 hints.append(s)
         if hints:
             reasons.append("query_quoted_terms")
 
-        file_hits = [str(m.group(0) or "").strip() for m in _FILE_LIKE_RE.finditer(q)]
+        file_hits = [m.group(0) for m in _FILE_LIKE_RE.finditer(q)]
         if file_hits:
             hints.extend(file_hits)
             reasons.append("query_file_like")
 
-        table_hits = [str(m.group(0) or "").strip() for m in _TABLE_LIKE_RE.finditer(q)]
+        table_hits = [m.group(0) for m in _TABLE_LIKE_RE.finditer(q)]
         if table_hits:
             hints.extend(table_hits)
             reasons.append("query_table_like")
 
-    meta_hits = _collect_metadata_filter_source_keys(metadata_filter)
+    meta_hits = _collect_source_key_values(
+        metadata_filter,
+        fields=("table_id", "document_id", "document_name", "sheet_name", "source"),
+    )
     if meta_hits:
         hints.extend(meta_hits)
         reasons.append("metadata_filter")
 
-    scope_hits = _collect_scope_source_keys(scope)
+    scope_hits = _collect_source_key_values(scope, fields=("source_keys", "table_ids", "document_ids"))
     if scope_hits:
         hints.extend(scope_hits)
         reasons.append("scope")
@@ -96,7 +80,7 @@ def infer_expected_source_keys(
     return {
         "schema": "mimirq.must_recall_auto_source_keys.v1",
         "expected_source_keys": normalized,
-        "reason_codes": list(reasons),
+        "reason_codes": reasons,
         "confidence": confidence,
     }
 
@@ -122,7 +106,7 @@ def infer_required_anchor_fields(
     return {
         "schema": "mimirq.must_recall_auto_anchor_fields.v1",
         "required_anchor_fields": out,
-        "reason_codes": list(reasons),
+        "reason_codes": reasons,
         "applied": bool(reasons),
     }
 

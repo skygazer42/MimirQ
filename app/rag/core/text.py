@@ -9,6 +9,7 @@ from typing import Any, Literal
 from app.core.token_utils import estimate_tokens as estimate_tokens
 from app.rag.core.claim_nli_verifier import verify_claim_with_nli
 from app.rag.core.claim_verifier import verify_claim
+from app.rag.core.retrieval_modes import normalize_retrieval_mode as normalize_retrieval_mode
 
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
 _QUERY_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
@@ -493,33 +494,6 @@ def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
     if len(q) <= short_len:
         return True
     return any(trigger in q for trigger in _QUERY_REWRITE_TRIGGER_SUBSTRINGS)
-
-
-_VALID_RETRIEVAL_MODES = {"hybrid", "vector", "keyword", "mmr", "auto"}
-_RETRIEVAL_MODE_ALIASES = {
-    "fulltext": "keyword",
-    "bm25": "keyword",
-    "sparse": "keyword",
-    "lexical": "keyword",
-    "dense": "vector",
-    "semantic": "vector",
-}
-
-
-def normalize_retrieval_mode(mode: str | None) -> str:
-    """
-    Normalize retrieval mode strings for API compatibility.
-
-    Supported: auto | hybrid | vector | keyword | mmr
-    Aliases: fulltext/bm25/sparse/lexical -> keyword, dense/semantic -> vector.
-    """
-    raw = (mode or "").strip().lower()
-    if not raw:
-        return "hybrid"
-    mapped = _RETRIEVAL_MODE_ALIASES.get(raw, raw)
-    if mapped in _VALID_RETRIEVAL_MODES:
-        return mapped
-    return "hybrid"
 
 
 _CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")

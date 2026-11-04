@@ -36,6 +36,15 @@ from app.rag.core.temporal import (
 )
 from app.rag.engine_support.doc_utils import DocUtilsMixin
 from app.rag.engine_support.query_model_calls import EngineQueryModels
+from app.rag.policy.intent_router import (
+    route_adaptive_retrieval_overrides as route_adaptive_retrieval_overrides,
+)
+from app.rag.policy.intent_router import (
+    route_intent as route_intent,
+)
+from app.rag.policy.intent_router import (
+    route_retrieval_preset as route_retrieval_preset,
+)
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
@@ -46,6 +55,7 @@ from app.rag.policy.must_recall_auto import (
     infer_required_anchor_fields,
 )
 from app.rag.policy.recall_obligation import build_must_recall_proof
+from app.rag.policy.router_layers import build_router_layers as build_router_layers
 from app.rag.rerank_result_cache import (
     build_evidence_post_rerank_cache_key,
     fingerprint_rerank_candidates,
@@ -295,18 +305,6 @@ from app.rag.retrieval.orchestration.hierarchy import (
 )
 from app.rag.retrieval.orchestration.hierarchy import (
     _update_hierarchy_family_feature as _update_hierarchy_family_feature,
-)
-from app.rag.retrieval.orchestration.intent_router import (
-    build_router_layers as build_router_layers,
-)
-from app.rag.retrieval.orchestration.intent_router import (
-    route_adaptive_retrieval_overrides as route_adaptive_retrieval_overrides,
-)
-from app.rag.retrieval.orchestration.intent_router import (
-    route_intent as route_intent,
-)
-from app.rag.retrieval.orchestration.intent_router import (
-    route_retrieval_preset as route_retrieval_preset,
 )
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _apply_kg_chunk_boost as _apply_kg_chunk_boost,
@@ -590,7 +588,7 @@ def _build_no_retrieval_response(
         "retrieval_profile_requested": profile_norm,
         "no_retrieval_intent": dict(no_retrieval_intent),
     }
-    router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent))
+    router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent), max_reason_codes=6)
     query_debug["router_layers"] = router_layers
     observe_router_layers(router_layers)
     retrieval_trace: dict[str, Any] = {
@@ -3459,6 +3457,7 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
             else None
         ),
         intent_meta=(ctx.intent_router_meta if isinstance(ctx.intent_router_meta, dict) else None),
+        max_reason_codes=6,
     )
     ctx.query_debug["router_layers"] = ctx.router_layers
     ctx.query_debug["intent_router"] = ctx.intent_router_meta

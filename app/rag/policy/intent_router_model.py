@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, NotRequired, TypedDict
 
 INTENT_ROUTER_MODEL_SCHEMA_V1 = "mimirq.intent_router_model.v1"
 INTENT_ROUTER_HINT_SCHEMA_V1 = "mimirq.intent_router_hint.v1"
@@ -21,12 +21,35 @@ _ALLOWED_OVERRIDES = {
 _SAFE_MODEL_PATH_RE = re.compile(r"^[A-Za-z0-9_.\-/]{1,240}$")
 
 
+class IntentRouterModelRule(TypedDict):
+    rule_id: str
+    tokens: list[str]
+    min_match: int
+    confidence: float
+    weight: float
+    overrides: dict[str, Any]
+
+
+class IntentRouterModel(TypedDict):
+    schema: str
+    version: int
+    rules: list[IntentRouterModelRule]
+
+
+class LearnedRouterHint(TypedDict):
+    schema: str
+    used: bool
+    confidence: float
+    reason_codes: list[str]
+    overrides: dict[str, Any]
+    rule_id: str | None
+    matched_tokens: NotRequired[int]
+
+
 def _safe_tokenize(query: str) -> set[str]:
     out: set[str] = set()
     for m in _TOKEN_RE.finditer(str(query or "")):
-        tok = str(m.group(0) or "").strip()
-        if not tok:
-            continue
+        tok = m.group(0)
         out.add(tok.casefold() if tok.isascii() else tok)
         if len(out) >= 256:
             break
@@ -77,7 +100,7 @@ def _normalize_rule_overrides(overrides_raw: Any) -> dict[str, Any]:
     return {str(k): v for k, v in overrides_raw.items() if str(k) in _ALLOWED_OVERRIDES}
 
 
-def _normalize_rule(item: dict[str, Any]) -> dict[str, Any] | None:
+def _normalize_rule(item: dict[str, Any]) -> IntentRouterModelRule | None:
     rid = str(item.get("rule_id") or "").strip()[:40]
     if not rid:
         return None
@@ -103,7 +126,7 @@ def _normalize_rule(item: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def normalize_intent_router_model(raw: Any) -> dict[str, Any] | None:
+def normalize_intent_router_model(raw: Any) -> IntentRouterModel | None:
     payload = raw if isinstance(raw, dict) else {}
     if str(payload.get("schema") or "").strip() != INTENT_ROUTER_MODEL_SCHEMA_V1:
         return None
@@ -111,7 +134,7 @@ def normalize_intent_router_model(raw: Any) -> dict[str, Any] | None:
     if not isinstance(rules_raw, list):
         return None
 
-    rules: list[dict[str, Any]] = []
+    rules: list[IntentRouterModelRule] = []
     for item in rules_raw[:200]:
         if not isinstance(item, dict):
             continue
@@ -128,7 +151,7 @@ def normalize_intent_router_model(raw: Any) -> dict[str, Any] | None:
     }
 
 
-def load_intent_router_model(path: str | None) -> dict[str, Any] | None:
+def load_intent_router_model(path: str | None) -> IntentRouterModel | None:
     path_s = str(path or "").strip()
     if not path_s:
         return None
@@ -147,7 +170,7 @@ def load_intent_router_model(path: str | None) -> dict[str, Any] | None:
         resolved.relative_to(base)
     except Exception:
         return None
-    if str(resolved.suffix or "").lower() != ".json":
+    if resolved.suffix.lower() != ".json":
         return None
     try:
         if not resolved.exists():
@@ -161,8 +184,8 @@ def load_intent_router_model(path: str | None) -> dict[str, Any] | None:
 def predict_learned_router_hint(
     *,
     query: str,
-    model: dict[str, Any] | None,
-) -> dict[str, Any]:
+    model: IntentRouterModel | dict[str, Any] | None,
+) -> LearnedRouterHint:
     mdl = normalize_intent_router_model(model)
     if mdl is None:
         return {
@@ -185,29 +208,23 @@ def predict_learned_router_hint(
             "rule_id": None,
         }
 
-    best: tuple[float, dict[str, Any] | None, int] = (0.0, None, 0)
-    for rule in mdl.get("rules") or []:
-        if not isinstance(rule, dict):
-            continue
-        toks = [str(v) for v in (rule.get("tokens") or []) if str(v).strip()]
-        if not toks:
-            continue
-        toks_norm = {t.casefold() if t.isascii() else t for t in toks}
+    best_score = 0.0
+    best_rule: IntentRouterModelRule | None = None
+    best_matched = 0
+    for rule in mdl["rules"]:
+        toks_norm = {token.casefold() if token.isascii() else token for token in rule["tokens"]}
         matched = len(toks_norm.intersection(query_tokens))
-        min_match = max(1, _coerce_int(rule.get("min_match"), default=1))
-        if matched < min_match:
+        if matched < rule["min_match"]:
             continue
-        token_ratio = float(matched) / float(max(1, len(toks_norm)))
-        confidence = min(1.0, max(0.0, _coerce_float(rule.get("confidence"), default=0.0)))
-        weight = min(2.0, max(0.0, _coerce_float(rule.get("weight"), default=1.0)))
-        score = float(token_ratio * confidence * weight)
+        token_ratio = matched / len(toks_norm)
+        score = token_ratio * rule["confidence"] * rule["weight"]
 
-        best_score, _best_rule, best_matched = best
         if score > best_score or (score == best_score and matched > best_matched):
-            best = (score, rule, matched)
+            best_score = score
+            best_rule = rule
+            best_matched = matched
 
-    score, chosen, matched = best
-    if not isinstance(chosen, dict):
+    if best_rule is None:
         return {
             "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
             "used": False,
@@ -217,15 +234,14 @@ def predict_learned_router_hint(
             "rule_id": None,
         }
 
-    overrides = chosen.get("overrides")
-    overrides = overrides if isinstance(overrides, dict) else {}
+    overrides = best_rule["overrides"]
     return {
         "schema": INTENT_ROUTER_HINT_SCHEMA_V1,
         "used": bool(overrides),
-        "confidence": round(float(score), 6),
+        "confidence": round(best_score, 6),
         "reason_codes": ["rule_match"],
-        "rule_id": str(chosen.get("rule_id") or ""),
-        "matched_tokens": int(matched),
+        "rule_id": best_rule["rule_id"],
+        "matched_tokens": best_matched,
         "overrides": dict(overrides),
     }
 

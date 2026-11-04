@@ -13,9 +13,10 @@ based on the query "shape" (faq/howto/api/log) when enabled.
 import re
 from typing import Any
 
+from app.rag.core.retrieval_modes import normalize_retrieval_mode
 from app.rag.core.retrieval_profiles import PRODUCTION_RETRIEVAL_PROFILE
-from app.rag.core.text import normalize_retrieval_mode
 from app.rag.policy.intent_router_model import (
+    IntentRouterModel,
     load_intent_router_model,
     normalize_intent_router_model,
     predict_learned_router_hint,
@@ -405,7 +406,7 @@ def _apply_matching_policy_rules(
 def _resolve_learned_router_model(
     model: dict[str, Any] | None,
     model_path: str | None,
-) -> dict[str, Any] | None:
+) -> IntentRouterModel | None:
     normalized = normalize_intent_router_model(model)
     if normalized is None and str(model_path or "").strip():
         return load_intent_router_model(model_path)

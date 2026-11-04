@@ -10,12 +10,12 @@ from app.core.config import settings
 from app.rag.core.evidence_expectations import DEFAULT_EVIDENCE_ANCHOR_FIELDS, normalize_anchor_fields
 from app.rag.core.retrieval_profiles import is_recall_first_profile
 from app.rag.core.text import guess_recall_bucket
+from app.rag.policy.intent_router import route_adaptive_retrieval_overrides, route_retrieval_preset
 from app.rag.policy.must_recall import normalize_source_keys
 from app.rag.policy.must_recall_auto import infer_expected_source_keys, infer_required_anchor_fields
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
 from app.rag.retrieval.orchestration.channel_budget import resolve_channel_budget_policy_overrides
 from app.rag.retrieval.orchestration.common import _log_orchestrator_fallback
-from app.rag.retrieval.orchestration.intent_router import route_adaptive_retrieval_overrides, route_retrieval_preset
 from app.rag.retrieval.orchestration.query_contract import (
     HierarchyContractSettings,
     QueryContractNormalizationInput,
