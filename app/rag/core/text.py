@@ -2,13 +2,14 @@
 Small text helpers shared across RAG modules.
 """
 
-import json
 import re
-from typing import Any, Literal
+from collections.abc import Iterator
+from typing import Any, NotRequired, TypedDict
 
 from app.core.token_utils import estimate_tokens as estimate_tokens
 from app.rag.core.claim_nli_verifier import verify_claim_with_nli
-from app.rag.core.claim_verifier import verify_claim
+from app.rag.core.claim_verifier import ClaimVerificationResult, verify_claim
+from app.rag.core.json_text import parse_json_from_text as parse_json_from_text
 from app.rag.core.retrieval_modes import normalize_retrieval_mode as normalize_retrieval_mode
 
 _SENTENCE_RE = re.compile(r"[^。！？.!?\n]+[。！？.!?\n]?", flags=re.S)
@@ -78,45 +79,6 @@ def _is_as_well_as(tokens: list[str], index: int) -> bool:
         and tokens[index + 1].casefold() == "well"
         and tokens[index + 2].casefold() == "as"
     )
-
-
-def _extract_json_fence(text: str) -> str | None:
-    """
-    Extract the first triple-backtick code fence content, limited to:
-      ```json
-      ...
-      ```
-    or:
-      ```
-      ...
-      ```
-
-    Implemented without regex to avoid catastrophic-backtracking hotspots.
-    """
-    raw = text or ""
-    if not raw:
-        return None
-    lower = raw.lower()
-
-    start = lower.find("```")
-    while start != -1:
-        # Determine the opening fence's info string (until newline/end).
-        line_end = raw.find("\n", start + 3)
-        if line_end == -1:
-            line_end = len(raw)
-        info = raw[start + 3 : line_end].strip().lower()
-        if info not in ("", "json"):
-            start = lower.find("```", start + 3)
-            continue
-
-        content_start = line_end + 1 if line_end < len(raw) else line_end
-        end = lower.find("```", content_start)
-        if end == -1:
-            return None
-        inner = raw[content_start:end].strip()
-        return inner or None
-
-    return None
 
 
 def _split_on_en_conjunctions(text: str) -> list[str]:
@@ -223,77 +185,6 @@ def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[
     return out
 
 
-def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[str]:
-    max_items = max(1, int(max_items or 0))
-    items: list[str] = []
-    seen: set[str] = set()
-    for raw_line in (text or "").splitlines():
-        line = raw_line.strip()
-        if not line:
-            continue
-        # Strip common list prefixes: "- ", "* ", "1. ", "1) ", "• ".
-        line = re.sub(r"^[-*•]\s+", "", line)
-        line = re.sub(r"^\d+\s*[.)]\s+", "", line)
-        line = line.strip().strip('"').strip("'").strip()
-        if not line:
-            continue
-        if line in seen:
-            continue
-        seen.add(line)
-        items.append(line)
-        if len(items) >= max_items:
-            break
-    return items
-
-
-def _json_candidates(raw: str) -> list[tuple[str, str]]:
-    candidates: list[tuple[str, str]] = []
-    inner = _extract_json_fence(raw)
-    if inner:
-        candidates.append(("code_fence", inner))
-    candidates.append(("raw", raw))
-
-    obj_start = raw.find("{")
-    obj_end = raw.rfind("}")
-    if obj_start != -1 and obj_end != -1 and obj_end > obj_start:
-        candidates.append(("first_last_brace", raw[obj_start : obj_end + 1].strip()))
-
-    arr_start = raw.find("[")
-    arr_end = raw.rfind("]")
-    if arr_start != -1 and arr_end != -1 and arr_end > arr_start:
-        candidates.append(("first_last_bracket", raw[arr_start : arr_end + 1].strip()))
-    return candidates
-
-
-def _wrapped_json_array(data: dict[str, Any], *, method: str) -> tuple[Any | None, dict[str, Any] | None]:
-    for key in ("items", "queries", "data", "results"):
-        value = data.get(key)
-        if isinstance(value, list):
-            return value, {"ok": True, "method": f"{method}:wrapped:{key}", "error": None}
-    list_values = [value for value in data.values() if isinstance(value, list)]
-    if len(list_values) == 1:
-        return list_values[0], {"ok": True, "method": f"{method}:wrapped:single_list", "error": None}
-    return None, None
-
-
-def _accept_json_candidate(
-    data: Any, *, expected: Literal["any", "array", "object"], method: str
-) -> tuple[Any | None, dict[str, Any] | None, str | None]:
-    if expected == "any":
-        return data, {"ok": True, "method": method, "error": None}, None
-    if expected == "object":
-        if isinstance(data, dict):
-            return data, {"ok": True, "method": method, "error": None}, None
-        return None, None, f"expected_object_got_{type(data).__name__}"
-    if isinstance(data, list):
-        return data, {"ok": True, "method": method, "error": None}, None
-    if isinstance(data, dict):
-        wrapped, meta = _wrapped_json_array(data, method=method)
-        if meta is not None:
-            return wrapped, meta, None
-    return None, None, f"expected_array_got_{type(data).__name__}"
-
-
 def _truncate_with_ellipsis(text: str, *, max_chars: int) -> str:
     return (text[:max_chars] + "...") if max_chars and len(text) > max_chars else text
 
@@ -345,42 +236,6 @@ def _pick_evidence_sentences(sentences: list[str], *, terms: list[str], max_sent
     ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
     picked_idx = sorted([idx for _, _, idx in ranked[:max_sentences]])
     return [sentences[index] for index in picked_idx]
-
-
-def parse_json_from_text(
-    text: str,
-    *,
-    expected: Literal["any", "array", "object"] = "any",
-) -> tuple[Any | None, dict[str, Any]]:
-    """
-    Best-effort JSON parser for LLM outputs.
-
-    Returns: (data, meta) where meta contains ok/method/error.
-    """
-    raw = (text or "").strip()
-    if not raw:
-        return None, {"ok": False, "method": None, "error": "empty"}
-
-    last_error: str | None = None
-    for method, candidate in _json_candidates(raw):
-        if not candidate:
-            continue
-        try:
-            data = json.loads(candidate)
-            accepted, meta, error = _accept_json_candidate(data, expected=expected, method=method)
-            if meta is not None:
-                return accepted, meta
-            last_error = error
-        except ValueError as exc:
-            last_error = str(exc)[:200]
-            continue
-
-    if expected == "array":
-        items = _extract_string_items_from_lines(raw, max_items=12)
-        if items:
-            return items, {"ok": True, "method": "lines", "error": None}
-
-    return None, {"ok": False, "method": None, "error": last_error or "invalid_json"}
 
 
 def extract_evidence_text(
@@ -494,35 +349,6 @@ def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
     if len(q) <= short_len:
         return True
     return any(trigger in q for trigger in _QUERY_REWRITE_TRIGGER_SUBSTRINGS)
-
-
-_CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
-_CLAIM_UNCERTAINTY_RE = re.compile(
-    r"(unable to answer|cannot determine|can't determine|insufficient evidence|"
-    r"not enough (?:info|information)|unknown|unsure|not sure|"
-    r"证据不足|材料不足|无法(确定|判断|回答)|不确定|未知)",
-    flags=re.IGNORECASE,
-)
-_EN_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "by",
-    "for",
-    "from",
-    "in",
-    "is",
-    "of",
-    "on",
-    "or",
-    "the",
-    "to",
-    "with",
-}
 
 
 def _parse_claim_list_item(raw: str) -> str | None:
@@ -639,22 +465,6 @@ def _append_claim_list_item(
     return len(claims) >= max_claims
 
 
-def _claim_token_set(text: str) -> set[str]:
-    tokens: set[str] = set()
-    for m in _CLAIM_TOKEN_RE.finditer(text or ""):
-        t = (m.group(0) or "").strip()
-        if not t:
-            continue
-        if t.isascii():
-            folded = t.casefold()
-            if folded in _EN_STOPWORDS:
-                continue
-            tokens.add(folded)
-        else:
-            tokens.add(t)
-    return tokens
-
-
 def verify_claim_with_fallback(
     claim: str,
     evidence: str,
@@ -665,7 +475,7 @@ def verify_claim_with_fallback(
     nli_provider: str | None = None,
     nli_model_name: str | None = None,
     nli_timeout_sec: float | None = None,
-):
+) -> ClaimVerificationResult:
     result = verify_claim(
         claim,
         evidence,
@@ -752,7 +562,35 @@ def _visible_evidence_skip_keys() -> set[str]:
     }
 
 
-def _visible_evidence_meta(*, max_claims: int, max_depth: int, max_items: int) -> dict[str, Any]:
+class _VisibleEvidenceMeta(TypedDict):
+    strings_scrubbed: int
+    strings_changed: int
+    claims_total: int
+    claims_removed: int
+    claim_check_removed_reasons: list[dict[str, Any]]
+    max_claims: int
+    max_depth: int
+    max_items: int
+    visited_items: NotRequired[int]
+    claims_remaining: NotRequired[int]
+
+
+class _VisibleEvidenceState(TypedDict):
+    evidence_text: str
+    max_items: int
+    meta: _VisibleEvidenceMeta
+    nli_model_name: str | None
+    nli_provider: str | None
+    nli_timeout_sec: float | None
+    remaining_claims: int
+    skip_keys: set[str]
+    use_nli_fallback: bool
+    verifier_enable_contradiction_check: bool
+    verifier_mode: str
+    visited_items: int
+
+
+def _visible_evidence_meta(*, max_claims: int, max_depth: int, max_items: int) -> _VisibleEvidenceMeta:
     return {
         "strings_scrubbed": 0,
         "strings_changed": 0,
@@ -765,11 +603,13 @@ def _visible_evidence_meta(*, max_claims: int, max_depth: int, max_items: int) -
     }
 
 
-def _append_removed_claim_reason(meta: dict[str, Any], claim: str, verification_result: Any) -> None:
-    reasons = meta.get("claim_check_removed_reasons")
-    if not isinstance(reasons, list) or len(reasons) >= 64:
+def _append_removed_claim_reason(
+    meta: _VisibleEvidenceMeta, claim: str, verification_result: ClaimVerificationResult
+) -> None:
+    reasons = meta["claim_check_removed_reasons"]
+    if len(reasons) >= 64:
         return
-    diagnostics = verification_result.diagnostics if isinstance(verification_result.diagnostics, dict) else {}
+    diagnostics = verification_result.diagnostics
     contradiction = diagnostics.get("contradiction_type")
     reasons.append(
         {
@@ -785,7 +625,7 @@ def _scrub_visible_evidence_string(
     *,
     evidence_text: str,
     remaining_claims: int,
-    meta: dict[str, Any],
+    meta: _VisibleEvidenceMeta,
     verifier_mode: str,
     verifier_enable_contradiction_check: bool,
     use_nli_fallback: bool,
@@ -793,12 +633,12 @@ def _scrub_visible_evidence_string(
     nli_model_name: str | None,
     nli_timeout_sec: float | None,
 ) -> tuple[str, int]:
-    text = str(raw or "")
+    text = raw
     if not text.strip() or remaining_claims <= 0:
         return text, 0
 
     claims = split_into_claims(text, max_claims=remaining_claims)
-    meta["claims_total"] = int(meta.get("claims_total", 0) or 0) + len(claims)
+    meta["claims_total"] += len(claims)
 
     kept: list[str] = []
     removed = 0
@@ -819,64 +659,60 @@ def _scrub_visible_evidence_string(
         removed += 1
         _append_removed_claim_reason(meta, claim, verification)
     if removed:
-        meta["claims_removed"] = int(meta.get("claims_removed", 0) or 0) + removed
+        meta["claims_removed"] += removed
     return "\n".join(kept).strip(), len(claims)
 
 
-def _walk_visible_evidence_dict(obj: dict[Any, Any], state: dict[str, Any], *, depth: int) -> dict[Any, Any]:
+def _walk_visible_evidence_dict(obj: dict[Any, Any], state: _VisibleEvidenceState, *, depth: int) -> dict[Any, Any]:
     skip_keys = state["skip_keys"]
     out: dict[Any, Any] = {}
     for key, value in obj.items():
         key_str = str(key)
-        out[key] = (
-            value if key_str in skip_keys else _walk_visible_evidence(value, state, depth=depth - 1, parent_key=key_str)
-        )
+        out[key] = value if key_str in skip_keys else _walk_visible_evidence(value, state, depth=depth - 1)
     return out
 
 
-def _walk_visible_evidence_list(
-    obj: list[Any], state: dict[str, Any], *, depth: int, parent_key: str | None
-) -> list[Any]:
+def _walk_visible_evidence_list(obj: list[Any], state: _VisibleEvidenceState, *, depth: int) -> list[Any]:
     out: list[Any] = []
     for item in obj:
-        value = _walk_visible_evidence(item, state, depth=depth - 1, parent_key=parent_key)
+        value = _walk_visible_evidence(item, state, depth=depth - 1)
         if isinstance(value, str) and not value.strip():
             continue
         out.append(value)
     return out
 
 
-def _walk_visible_evidence(obj: Any, state: dict[str, Any], *, depth: int, parent_key: str | None) -> Any:
-    if int(state["visited_items"]) >= int(state["max_items"]):
+def _walk_visible_evidence(obj: Any, state: _VisibleEvidenceState, *, depth: int) -> Any:
+    if state["visited_items"] >= state["max_items"]:
         return obj
-    state["visited_items"] = int(state["visited_items"]) + 1
+    state["visited_items"] += 1
 
     if depth <= 0:
         return obj
     if isinstance(obj, dict):
         return _walk_visible_evidence_dict(obj, state, depth=depth)
     if isinstance(obj, list):
-        return _walk_visible_evidence_list(obj, state, depth=depth, parent_key=parent_key)
+        return _walk_visible_evidence_list(obj, state, depth=depth)
     if not isinstance(obj, str):
         return obj
 
     meta = state["meta"]
-    meta["strings_scrubbed"] = int(meta.get("strings_scrubbed", 0) or 0) + 1
+    meta["strings_scrubbed"] += 1
     cleaned, consumed = _scrub_visible_evidence_string(
         obj,
         evidence_text=state["evidence_text"],
-        remaining_claims=int(state["remaining_claims"]),
+        remaining_claims=state["remaining_claims"],
         meta=meta,
         verifier_mode=state["verifier_mode"],
-        verifier_enable_contradiction_check=bool(state["verifier_enable_contradiction_check"]),
-        use_nli_fallback=bool(state["use_nli_fallback"]),
+        verifier_enable_contradiction_check=state["verifier_enable_contradiction_check"],
+        use_nli_fallback=state["use_nli_fallback"],
         nli_provider=state["nli_provider"],
         nli_model_name=state["nli_model_name"],
         nli_timeout_sec=state["nli_timeout_sec"],
     )
-    state["remaining_claims"] = int(state["remaining_claims"]) - int(consumed)
+    state["remaining_claims"] -= consumed
     if cleaned != obj:
-        meta["strings_changed"] = int(meta.get("strings_changed", 0) or 0) + 1
+        meta["strings_changed"] += 1
     return cleaned
 
 
@@ -893,7 +729,7 @@ def scrub_structured_output_visible_evidence_only(
     nli_timeout_sec: float | None = None,
     max_depth: int = 6,
     max_items: int = 500,
-) -> tuple[Any, dict[str, Any]]:
+) -> tuple[Any, _VisibleEvidenceMeta]:
     """
     Best-effort structured-output scrubbing for strict grounding.
 
@@ -909,7 +745,7 @@ def scrub_structured_output_visible_evidence_only(
     max_depth = max(1, int(max_depth or 0))
     max_items = max(1, int(max_items or 0))
     meta = _visible_evidence_meta(max_claims=max_claims, max_depth=max_depth, max_items=max_items)
-    state: dict[str, Any] = {
+    state: _VisibleEvidenceState = {
         "evidence_text": evidence_text,
         "max_items": max_items,
         "meta": meta,
@@ -923,9 +759,9 @@ def scrub_structured_output_visible_evidence_only(
         "verifier_mode": verifier_mode,
         "visited_items": 0,
     }
-    scrubbed = _walk_visible_evidence(data, state, depth=max_depth, parent_key=None)
-    meta["visited_items"] = int(state["visited_items"])
-    meta["claims_remaining"] = int(state["remaining_claims"])
+    scrubbed = _walk_visible_evidence(data, state, depth=max_depth)
+    meta["visited_items"] = state["visited_items"]
+    meta["claims_remaining"] = state["remaining_claims"]
     return scrubbed, meta
 
 
@@ -933,38 +769,27 @@ def _abstain_followup_options(citations: list[dict[str, Any]] | None, *, max_opt
     options: list[dict[str, Any]] = []
     seen: set[str] = set()
     for citation in _iter_citation_dicts(citations):
-        document_id, name, key = _citation_followup_identity(citation)
-        if _skip_followup_option(key, seen):
+        document_id = citation.get("document_id")
+        name = citation.get("document_name") or citation.get("source")
+        key = str(document_id or name or "").strip()
+        if not key or key in seen:
             continue
         seen.add(key)
-        options.append(_citation_followup_option(document_id=document_id, name=name))
+        options.append(
+            {
+                "document_id": str(document_id) if document_id is not None else None,
+                "document_name": str(name) if name is not None else None,
+            }
+        )
         if max_options and len(options) >= max_options:
             break
     return options
 
 
-def _iter_citation_dicts(citations: list[dict[str, Any]] | None):
+def _iter_citation_dicts(citations: list[dict[str, Any]] | None) -> Iterator[dict[str, Any]]:
     for citation in (citations or []) if isinstance(citations, list) else []:
         if isinstance(citation, dict):
             yield citation
-
-
-def _citation_followup_identity(citation: dict[str, Any]) -> tuple[Any, Any, str]:
-    document_id = citation.get("document_id")
-    name = citation.get("document_name") or citation.get("source")
-    key = str(document_id or name or "").strip()
-    return document_id, name, key
-
-
-def _skip_followup_option(key: str, seen: set[str]) -> bool:
-    return not key or key in seen
-
-
-def _citation_followup_option(*, document_id: Any, name: Any) -> dict[str, Any]:
-    return {
-        "document_id": str(document_id) if document_id is not None else None,
-        "document_name": str(name) if name is not None else None,
-    }
 
 
 def build_abstain_followup(

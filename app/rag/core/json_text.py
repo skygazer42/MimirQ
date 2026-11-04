@@ -4,44 +4,7 @@ import json
 import re
 from typing import Any, Literal
 
-
-def _extract_json_fence(text: str) -> str | None:
-    """
-    Extract the first triple-backtick code fence content, limited to:
-      ```json
-      ...
-      ```
-    or:
-      ```
-      ...
-      ```
-
-    Implemented without regex to avoid catastrophic-backtracking hotspots.
-    """
-    raw = text or ""
-    if not raw:
-        return None
-    lower = raw.lower()
-
-    start = lower.find("```")
-    while start != -1:
-        # Determine the opening fence's info string (until newline/end).
-        line_end = raw.find("\n", start + 3)
-        if line_end == -1:
-            line_end = len(raw)
-        info = raw[start + 3 : line_end].strip().lower()
-        if info not in ("", "json"):
-            start = lower.find("```", start + 3)
-            continue
-
-        content_start = line_end + 1 if line_end < len(raw) else line_end
-        end = lower.find("```", content_start)
-        if end == -1:
-            return None
-        inner = raw[content_start:end].strip()
-        return inner or None
-
-    return None
+from app.rag.core.code_fence import extract_first_code_fence
 
 
 def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[str]:
@@ -69,7 +32,7 @@ def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[
 
 def _json_candidates(raw: str) -> list[tuple[str, str]]:
     candidates: list[tuple[str, str]] = []
-    inner = _extract_json_fence(raw)
+    inner = extract_first_code_fence(raw, allowed_info_strings=("", "json"))
     if inner:
         candidates.append(("code_fence", inner))
     candidates.append(("raw", raw))
