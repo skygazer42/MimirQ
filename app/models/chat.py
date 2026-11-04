@@ -32,7 +32,7 @@ class Conversation(Base):
     title_source = Column(String(16), nullable=False, default="manual", server_default="manual")
 
     # knowledge scope (document ids)
-    document_ids = Column(ARRAY(UUID(as_uuid=True)), default=[])
+    document_ids = Column(ARRAY(UUID(as_uuid=True)), default=list)
 
     message_count = Column(Integer, default=0)
 
@@ -59,7 +59,7 @@ class Message(Base):
     content = Column(Text, nullable=False)
 
     # citations (assistant messages)
-    citations = Column(JSONB, default=[])
+    citations = Column(JSONB, default=list)
 
     # Token stats
     token_count = Column(Integer, nullable=True)
