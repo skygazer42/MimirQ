@@ -23,9 +23,11 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   })
 
-  return function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
+  function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
+
+  return Wrapper
 }
 
 describe('useTenantAccess', () => {

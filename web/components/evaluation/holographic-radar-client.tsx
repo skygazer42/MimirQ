@@ -17,7 +17,7 @@ type RadarTooltipProps = {
   label?: unknown
 }
 
-const CustomTooltip = ({ active, payload, label }: RadarTooltipProps) => {
+function CustomTooltip({ active, payload, label }: RadarTooltipProps) {
   if (active && payload?.length) {
     return (
       <div className="rounded-lg border border-primary/30 bg-popover p-3 shadow-none">

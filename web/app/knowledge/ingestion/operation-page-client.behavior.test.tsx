@@ -208,9 +208,11 @@ function createWrapper() {
     },
   })
 
-  return function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
+  function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
     return React.createElement(QueryClientProvider, { client: queryClient }, children)
   }
+
+  return Wrapper
 }
 
 function renderPage() {

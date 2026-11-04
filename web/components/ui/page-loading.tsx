@@ -19,7 +19,7 @@ type PageLoadingProps = {
   readonly className?: string
 }
 
-const PageLoading = ({ message, srMessage, className }: PageLoadingProps) => {
+export function PageLoading({ message, srMessage, className }: PageLoadingProps) {
   const t = useTranslations('CommonUi')
   const resolvedMessage = message ?? t('pageLoading.message')
   const resolvedSrMessage = srMessage ?? t('pageLoading.srMessage')
@@ -39,5 +39,3 @@ const PageLoading = ({ message, srMessage, className }: PageLoadingProps) => {
 }
 
 PageLoading.displayName = 'PageLoading'
-
-export { PageLoading }

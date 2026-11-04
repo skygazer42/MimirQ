@@ -2883,10 +2883,10 @@ web/app/knowledge/ingestion/demo-precheck.ts,6,pending,pending,Awaiting file-lev
 web/app/knowledge/ingestion/document-signals.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/knowledge/ingestion/error.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/knowledge/ingestion/loading.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/knowledge/ingestion/operation-page-client.behavior.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/knowledge/ingestion/operation-page-client.behavior.test.tsx,6,pending,conforms,Awaiting file-level convention and contract review Wrapper declaration and formatting migrated; remaining test-file semantic review stays pending.,; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/app/knowledge/ingestion/operation-page-client.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/knowledge/ingestion/operation-page-client.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/app/knowledge/ingestion/page-client.behavior.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/app/knowledge/ingestion/page-client.behavior.test.tsx,6,pending,conforms,Awaiting file-level convention and contract review Wrapper declaration and formatting migrated; remaining test-file semantic review stays pending.,; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/app/knowledge/ingestion/page-client.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/knowledge/ingestion/page.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/app/knowledge/ingestion/presentation.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3112,7 +3112,7 @@ web/components/evaluation/ablation-slice-diff-panel.tsx,6,pending,pending,Awaiti
 web/components/evaluation/ablation-statistics-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/evaluation/evaluation-data-ops-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/evaluation/evaluation-surface-visual.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/evaluation/holographic-radar-client.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/evaluation/holographic-radar-client.tsx,6,adjusted,conforms,"CustomTooltip becomes a local function declaration; tooltip inputs/rendering, public HolographicRadar export, reduced-motion branch, chart data flow, SafeResponsiveChart usage and JSX are preserved.",; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/components/evaluation/holographic-radar.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/evaluation/queryset-health-tab-client.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/evaluation/queryset-health-tab.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3291,7 +3291,7 @@ web/components/settings/settings-switch.tsx,6,conforms,pending,Shared settings s
 web/components/settings/visual-boundary.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/sidebar.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/sonner-toaster.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/task-center.behavior.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/task-center.behavior.test.tsx,6,pending,conforms,Awaiting file-level convention and contract review Wrapper declaration and formatting migrated; remaining test-file semantic review stays pending.,; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/components/task-center.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/task-center.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/test-case-manager.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3299,7 +3299,7 @@ web/components/test-generation-dialog.tsx,6,pending,pending,Awaiting file-level 
 web/components/theme-appearance-provider.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/theme-customizer.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/theme-provider.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/ui/alert-dialog.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/ui/alert-dialog.tsx,6,adjusted,conforms,"Header/footer use exported function declarations and leave the bottom export list; all primitive aliases, forwardRef components, Radix props/ref order, destructive/cancel variants, labels and displayName assignments remain.",; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/components/ui/alert.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/analysis-page-shell.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/analysis-page-tokens.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3312,11 +3312,11 @@ web/components/ui/card.tsx,6,pending,pending,Awaiting file-level convention and 
 web/components/ui/checkbox.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/cinematic-code-block.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/cinematic-typewriter.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/ui/command.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/ui/command.tsx,6,adjusted,conforms,"CommandDialog/CommandShortcut use exported function declarations. Dialog composition, translation hooks, accessibility title/description, forwarded cmdk refs, data attributes, child slots, classes and remaining exports stay unchanged.",; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/components/ui/compact-stat-chip.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/confirm-dialog.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/ui/dialog.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/ui/dropdown-menu.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/ui/dialog.tsx,6,adjusted,conforms,"DialogHeader/DialogFooter use exported function declarations. All Radix aliases, portal/overlay structure, content props and refs, close action/label, title/description and displayName bindings remain.",; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
+web/components/ui/dropdown-menu.tsx,6,adjusted,conforms,"DropdownMenuShortcut uses an exported function declaration. All Radix aliases/ref wrappers, inset handling, checked/radio indicators, side offsets, item props, menu structure and displayName bindings remain.",; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/components/ui/echart.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/empty-state.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/file-queue-item.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3333,7 +3333,7 @@ web/components/ui/page-body.tsx,6,pending,pending,Awaiting file-level convention
 web/components/ui/page-container.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/page-header-bar.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/page-header.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/ui/page-loading.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/ui/page-loading.tsx,6,adjusted,conforms,"PageLoading uses an exported function declaration. Props, translation fallbacks, status/live-region semantics, hidden loading text, reduced-motion classes and displayName remain.",; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/components/ui/page-scaffold.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/page-skeleton.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/page-title-baseline.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3349,7 +3349,7 @@ web/components/ui/scroll-area.tsx,6,pending,pending,Awaiting file-level conventi
 web/components/ui/search-input.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/select.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/separator.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/ui/sheet.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/ui/sheet.tsx,6,adjusted,conforms,"SheetHeader/SheetFooter use exported function declarations. Primitive aliases/ref wrappers, side variants/default, overlay/content props, close action, title/description, labels and displayName bindings remain.",; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/components/ui/skeleton.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/stats-card.source.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/components/ui/stats-card.tsx,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3390,7 +3390,7 @@ web/e2e/visual-regression.spec.ts-snapshots/graph-3d-semantic-list-chromium-linu
 web/e2e/visual-regression.spec.ts-snapshots/ragviz-heatmap-chromium-linux.png,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
 web/eslint.config.js,1,adjusted,conforms,Approved style/tool configuration and developer guidance,Task 1 config checks; dependency lock adds two dev tools only
 web/hooks/use-animated-number.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/hooks/use-auth.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/hooks/use-auth.test.tsx,6,pending,conforms,Awaiting file-level convention and contract review Wrapper declaration and formatting migrated; remaining test-file semantic review stays pending.,; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/hooks/use-auth.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/hooks/use-backend-health.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/hooks/use-backend-meta.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3416,7 +3416,7 @@ web/hooks/use-media-query.test.tsx,6,pending,pending,Awaiting file-level convent
 web/hooks/use-media-query.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/hooks/use-rag-lifecycle.behavior.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
 web/hooks/use-resize-observer.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/hooks/use-tenant-access.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
+web/hooks/use-tenant-access.test.tsx,6,pending,conforms,Awaiting file-level convention and contract review Wrapper declaration and formatting migrated; remaining test-file semantic review stays pending.,; React declaration category2d968d25c: scoped ESLint/Prettier12; full TypeScript;8 existing Vitest files/36 tests; export/JSX/wrapper AST contracts preserved
 web/hooks/use-tenant-access.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/i18n/messages/zh-CN.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/i18n/messages/zh-CN/audit.ts,6,pending,pending,Awaiting file-level convention and contract review,
