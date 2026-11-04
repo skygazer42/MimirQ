@@ -265,7 +265,7 @@ export function listFrontendSourceFiles() {
       if (!ent.isFile()) continue
       const ext = path.extname(ent.name)
       if (!exts.has(ext)) continue
-      const rel = path.relative(ROOT, abs)
+      const rel = path.relative(ROOT, abs).replaceAll(path.sep, '/')
       files.push(rel)
     }
   }
