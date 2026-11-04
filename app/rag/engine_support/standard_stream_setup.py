@@ -18,10 +18,7 @@ from app.rag.retrieval.orchestration.query_routing import resolve_stream_query_r
 
 
 async def agentic_phase(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
-    if (
-        bool(getattr(settings, "RAG_AGENTIC_MODE_ENABLED", False))
-        and runtime.data.complexity_score >= runtime.data.agentic_threshold
-    ):
+    if bool(settings.RAG_AGENTIC_MODE_ENABLED) and runtime.data.complexity_score >= runtime.data.agentic_threshold:
         runtime.data.runner = runtime.module.get_agentic_runner(engine=runtime.engine)
         async for runtime.data.event in runtime.data.runner.stream(
             question=runtime.data.question,
@@ -184,7 +181,7 @@ async def select_model_and_prompt(runtime: StandardStreamState) -> AsyncGenerato
     runtime.module._release_request_session(runtime.data.db)
 
     runtime.data.t_all_start = time.time()
-    runtime.data.temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
+    runtime.data.temporal_intent_enabled = bool(settings.RAG_TEMPORAL_INTENT_ENABLED)
     runtime.data.temporal_intent_meta: dict[str, Any] = {"detected": False, "reason_codes": []}
     runtime.data.temporal_recency_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
     runtime.data.query_for_retrieval = runtime.data.question
@@ -209,7 +206,7 @@ async def rewrite_and_apply_industry_rules(runtime: StandardStreamState) -> Asyn
             industry_enabled=runtime.data.industry_rules_enabled,
             industry_rulesets=runtime.data.industry_rules_rulesets,
         ),
-        temporal_enabled=bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False)),
+        temporal_enabled=bool(settings.RAG_TEMPORAL_INTENT_ENABLED),
     )
     prepared = await prepare_query_async(
         request,

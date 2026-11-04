@@ -30,6 +30,8 @@ RRF 内部值来源更直接，模型端口及资源生命周期保持。若以�
 
 历史审计中，[混合检索排名](2026-11-05-hybrid-ranking-owned-values.md)与内部排名值部分重叠，[查询准备所有者](../architecture/2026-11-03-query-preparation-owner.md)与模型端口和请求边界部分重叠；保留两篇决定并互链，没有替代或扩大已闭合模块的审查范围。
 
+[标准流诊断投影](../bug-fix/2026-11-05-standard-stream-plan-projections.md)沿用原始配置值边界，修复实际查询计划到诊断的字段连接，并保留模型端口和资源时序。
+
 ## Verification
 
 6 个查询、文档与模型端口所有者的 1,046 行基线、49 个函数完整审阅；实际 Engine 构造、同步检索与标准流调用方、LangChain Document 字段和 Pydantic `model_copy` 源码提供边界证据。验证限于 Ruff、格式、Python 3.11 AST、diff 和笔记门禁。按任务限制不添加、修改或运行 Python 测试，不导入或执行应用、SDK、模型、stream、检索、数据库、网络、服务或 fixture。

@@ -145,11 +145,11 @@ async def _execute_retry_queries(
 
 
 def _initialize_retry_fusion(runtime: StandardStreamState) -> None:
-    runtime.data.retry_mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(
+    runtime.data.retry_mq_diversify_enabled = bool(settings.MULTI_QUERY_DIVERSIFY_ENABLED) and bool(
         runtime.data.corrective_second_enable_mq or runtime.data.multi_query_used
     )
     try:
-        retry_budget = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
+        retry_budget = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET or 0)
     except Exception:
         retry_budget = 0
     runtime.data.mq_diversify_budget = max(0, min(retry_budget, int(runtime.data.top_k or 0)))
@@ -384,9 +384,9 @@ def _record_corrective_attempt(runtime: StandardStreamState) -> None:
         {
             "attempt": int(runtime.data.corrective_attempt_count),
             "retrieval_profile": runtime.data.profile_norm or None,
-            "query_count": int(len(runtime.data.retry_queries)),
-            "docs_count": int(len(runtime.data.docs)),
-            "citations_count": int(len(runtime.data.citations)),
+            "query_count": len(runtime.data.retry_queries),
+            "docs_count": len(runtime.data.docs),
+            "citations_count": len(runtime.data.citations),
             "abstain_triggered": bool(runtime.data.abstain_triggered),
             "top_relevance_score": round(float(runtime.data.top_rel or 0.0), 3),
         }

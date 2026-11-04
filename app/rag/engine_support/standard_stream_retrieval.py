@@ -41,7 +41,7 @@ async def extend_queries_and_prepare_plan(runtime: StandardStreamState) -> None:
     runtime.data.docs_by_query: list[list[Document]] = []
     runtime.data.docs_by_query_kinds: list[str] = []
     runtime.data.t_retrieval_start = time.time()
-    runtime.data.retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
+    runtime.data.retrieval_parallelism = max(1, int(settings.RETRIEVAL_QUERY_PARALLELISM or 1))
     runtime.data.retrieval_plan: list[tuple[str, str, Any]] = []
 
 
@@ -142,14 +142,12 @@ async def execute_retrieval_plan(runtime: StandardStreamState) -> AsyncGenerator
             )
 
     runtime.data.retrieval_elapsed = time.time() - runtime.data.t_retrieval_start
-    runtime.data.mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(
-        runtime.data.mq_enabled
-    )
+    runtime.data.mq_diversify_enabled = bool(settings.MULTI_QUERY_DIVERSIFY_ENABLED) and bool(runtime.data.mq_enabled)
 
 
 async def initialize_fusion(runtime: StandardStreamState) -> None:
     try:
-        runtime.data.mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
+        runtime.data.mq_budget_raw = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET or 0)
     except Exception:
         runtime.data.mq_budget_raw = 0
     runtime.data.mq_diversify_budget = max(0, min(int(runtime.data.mq_budget_raw or 0), int(runtime.data.top_k or 0)))
@@ -251,20 +249,18 @@ async def initialize_kg_enrichment(runtime: StandardStreamState) -> None:
     # This turns KG entity linking (query->events->chunk_id) into structured chunk candidates,
     # improving precision without replacing the main retriever.
     runtime.data.kg_chunk_injection_enabled = (
-        bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False))
+        bool(settings.RAG_KG_CHUNK_INJECTION_ENABLED)
         if runtime.data.enable_kg_chunk_injection is None
         else bool(runtime.data.enable_kg_chunk_injection)
     )
     try:
         runtime.data.kg_chunk_injection_max_chunks_i = (
-            int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5)
+            int(settings.RAG_KG_CHUNK_INJECTION_MAX_CHUNKS or 5)
             if runtime.data.kg_chunk_injection_max_chunks is None
             else int(runtime.data.kg_chunk_injection_max_chunks or 0)
         )
     except Exception:
-        runtime.data.kg_chunk_injection_max_chunks_i = int(
-            getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5
-        )
+        runtime.data.kg_chunk_injection_max_chunks_i = int(settings.RAG_KG_CHUNK_INJECTION_MAX_CHUNKS or 5)
     runtime.data.kg_chunk_injection_max_chunks_i = max(
         0, min(int(runtime.data.kg_chunk_injection_max_chunks_i or 0), 50)
     )
@@ -278,8 +274,8 @@ def _kg_chunk_injection_allowed(runtime: StandardStreamState) -> bool:
     )
     return bool(
         runtime.data.kg_chunk_injection_enabled
-        and getattr(settings, "KG_ENABLED", False)
-        and getattr(settings, "KG_CHAT_ENABLED", False)
+        and settings.KG_ENABLED
+        and settings.KG_CHAT_ENABLED
         and runtime.data.db is not None
         and runtime.data.tenant_id is not None
         and has_scope
@@ -415,17 +411,17 @@ async def boost_kg_and_retrieve_images(runtime: StandardStreamState) -> AsyncGen
 
     try:
         runtime.data.kg_boost_enabled = (
-            bool(getattr(settings, "RAG_KG_CHUNK_BOOST_ENABLED", False))
+            bool(settings.RAG_KG_CHUNK_BOOST_ENABLED)
             if runtime.data.enable_kg_chunk_boost is None
             else bool(runtime.data.enable_kg_chunk_boost)
         )
         runtime.data.kg_boost_weight = (
-            float(getattr(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.25)
+            float(settings.RAG_KG_CHUNK_BOOST_WEIGHT or 0.25)
             if runtime.data.kg_chunk_boost_weight is None
             else float(runtime.data.kg_chunk_boost_weight or 0.0)
         )
         runtime.data.kg_boost_max_promoted = (
-            int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 3) or 3)
+            int(settings.RAG_KG_CHUNK_BOOST_MAX_PROMOTED or 3)
             if runtime.data.kg_chunk_boost_max_promoted is None
             else int(runtime.data.kg_chunk_boost_max_promoted or 0)
         )
@@ -449,7 +445,7 @@ async def boost_kg_and_retrieve_images(runtime: StandardStreamState) -> AsyncGen
                 runtime.data.image_meta = {"enabled": False, "used": False, "reason": "missing_scope"}
             else:
                 # Best-effort progress signal (only when the feature is enabled).
-                if bool(getattr(settings, "IMAGE_EMBEDDING_ENABLED", False)):
+                if bool(settings.IMAGE_EMBEDDING_ENABLED):
                     yield {"type": "event", "data": {"message": "检测到图片/图表问题，正在尝试图片检索（CLIP）..."}}
                 runtime.data.image_docs, runtime.data.image_meta = build_chat_image_context_docs(
                     runtime.data.db,
@@ -476,9 +472,9 @@ async def boost_kg_and_retrieve_images(runtime: StandardStreamState) -> AsyncGen
 async def read_images_and_initialize_tag(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
     if runtime.data.image_docs:
         try:
-            if bool(getattr(settings, "VISION_RAG_READER_ENABLED", False)):
+            if bool(settings.VISION_RAG_READER_ENABLED):
                 # Only show progress when the feature is actually enabled.
-                if bool(getattr(settings, "VISION_LLM_ENABLED", False)):
+                if bool(settings.VISION_LLM_ENABLED):
                     yield {"type": "event", "data": {"message": "正在使用视觉模型读取图片证据（VLM-as-Reader）..."}}
                 # Reuse the same privacy knob as the main generation: if PII redaction is enabled,
                 # avoid sending raw identifiers to external vision providers.
@@ -500,7 +496,7 @@ async def read_images_and_initialize_tag(runtime: StandardStreamState) -> AsyncG
         except Exception as exc:  # noqa: BLE001
             runtime.data.vision_reader_docs = []
             runtime.data.vision_reader_meta = {
-                "enabled": bool(getattr(settings, "VISION_RAG_READER_ENABLED", False)),
+                "enabled": bool(settings.VISION_RAG_READER_ENABLED),
                 "used": False,
                 "reason": f"vision_reader_exception:{str(exc)[:160]}",
             }
@@ -511,7 +507,7 @@ async def read_images_and_initialize_tag(runtime: StandardStreamState) -> AsyncG
     # Optional: Vision-native RAG (Vision generation) - generate the final answer with a VLM when
     # image evidence is present. Default off.
     runtime.data.vision_generation_meta: dict[str, Any] = {
-        "enabled": bool(getattr(settings, "VISION_RAG_GENERATION_ENABLED", False)),
+        "enabled": bool(settings.VISION_RAG_GENERATION_ENABLED),
         "used": False,
         "reason": "not_run",
     }
@@ -533,10 +529,10 @@ async def retrieve_tag_context(runtime: StandardStreamState) -> AsyncGenerator[d
         ):
             # Only show TAG progress when the feature is actually enabled.
             if (
-                bool(getattr(settings, "CHAT_TAG_ENABLED", False))
-                and bool(getattr(settings, "TABLE_NL2SQL_ENABLED", False))
-                and bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False))
-                and bool(str(getattr(settings, "LLM_API_KEY", "") or "").strip())
+                bool(settings.CHAT_TAG_ENABLED)
+                and bool(settings.TABLE_NL2SQL_ENABLED)
+                and bool(settings.TABLE_LLM_ALLOW_RESULT_EGRESS)
+                and bool(str(settings.LLM_API_KEY or "").strip())
             ):
                 yield {"type": "event", "data": {"message": "检测到表格资产，正在尝试表格查询（TAG）..."}}
             runtime.data.tag_docs, runtime.data.tag_meta = build_chat_tag_context_docs(

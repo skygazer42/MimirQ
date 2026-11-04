@@ -24,11 +24,11 @@ def _label_value(*, enabled: bool, value: str | None) -> str:
 def _labels(*, tenant_id: str | None, dataset_id: str | None) -> dict[str, str]:
     return {
         "tenant_id": _label_value(
-            enabled=bool(getattr(settings, "PROMETHEUS_RAG_LABEL_TENANT_ID", False)),
+            enabled=bool(settings.PROMETHEUS_RAG_LABEL_TENANT_ID),
             value=tenant_id,
         ),
         "dataset_id": _label_value(
-            enabled=bool(getattr(settings, "PROMETHEUS_RAG_LABEL_DATASET_ID", False)),
+            enabled=bool(settings.PROMETHEUS_RAG_LABEL_DATASET_ID),
             value=dataset_id,
         ),
     }
@@ -73,7 +73,7 @@ def observe_rag_sli(
     rerank_elapsed_sec: float | None,
     has_error: bool,
 ) -> None:
-    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if not bool(settings.PROMETHEUS_ENABLED):
         return
 
     labels = _labels(tenant_id=tenant_id, dataset_id=dataset_id)

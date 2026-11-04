@@ -29,6 +29,8 @@ Query preparation, routing and query expansion have one typed owner. The orchest
 
 [Engine 查询与模型端口](../simplification/2026-11-05-engine-ports-owned-values.md)保留本篇实际准备端口、同步/异步调用及旧参数解析边界，只清理已构造值和声明字段的访问。
 
+[标准流诊断投影](../bug-fix/2026-11-05-standard-stream-plan-projections.md)修复 pending stream caller 的旧字段读取与遗漏的 step-back 配置投影，继续以本篇查询计划为唯一生产者，保留事件键和阶段顺序。
+
 ## Verification
 
 - Ruff check and format checks pass for the modified retrieval modules.
