@@ -21,6 +21,7 @@ import io
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Literal
 
 from app.core.optional_deps import optional_import
@@ -30,7 +31,7 @@ logger = get_logger("services.table_routing")
 
 
 @lru_cache(maxsize=1)
-def _get_openpyxl():  # noqa: ANN201
+def _get_openpyxl() -> ModuleType | None:
     return optional_import("openpyxl", feature="table_routing_xlsx_shape")
 
 
@@ -46,7 +47,7 @@ class TableRouteDecision:
 
 def _safe_stat_size(path: Path) -> int:
     try:
-        return int(path.stat().st_size)
+        return path.stat().st_size
     except Exception:
         return 0
 
@@ -71,7 +72,7 @@ def _estimate_csv_shape(path: Path, *, sample_bytes: int) -> tuple[int, int, boo
         return 0, 0, bool(size > read_n)
 
     # Row count: newline count (+1 if last line not endswith \n).
-    line_count = int(text.count("\n"))
+    line_count = text.count("\n")
     if text and not text.endswith("\n"):
         line_count += 1
     line_count = max(0, line_count)
@@ -94,13 +95,13 @@ def _estimate_csv_shape(path: Path, *, sample_bytes: int) -> tuple[int, int, boo
             dialect = csv.excel
         reader = csv.reader(io.StringIO(text), dialect)
         for row in reader:
-            if row and any(str(c).strip() for c in row):
-                cols_est = int(len(row))
+            if row and any(c.strip() for c in row):
+                cols_est = len(row)
                 break
     except Exception:
         cols_est = 0
 
-    return max(0, int(rows_est)), max(0, int(cols_est)), bool(estimated_rows)
+    return max(0, rows_est), max(0, cols_est), estimated_rows
 
 
 def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int, int, bool, str | None]:
@@ -115,7 +116,7 @@ def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int,
     try:
         wb = openpyxl.load_workbook(str(path), read_only=True, data_only=True)
         sheetnames = list(getattr(wb, "sheetnames", None) or [])
-        sheet_count = int(len(sheetnames))
+        sheet_count = len(sheetnames)
         max_rows = 0
         max_cols = 0
         for name in sheetnames[: max(1, min(int(max_sheets or 1), sheet_count))]:
@@ -124,7 +125,7 @@ def _estimate_xlsx_shape(path: Path, *, max_sheets: int = 20) -> tuple[int, int,
             c = int(getattr(ws, "max_column", 0) or 0)
             max_rows = max(max_rows, r)
             max_cols = max(max_cols, c)
-        return int(max_rows), int(max_cols), int(sheet_count), True, None
+        return max_rows, max_cols, sheet_count, True, None
     except Exception:
         return 0, 0, 0, False, "shape_read_failed"
     finally:
@@ -143,14 +144,14 @@ def _route_for_csv(
     col_threshold: int,
     csv_sample_bytes: int,
 ) -> TableRouteDecision:
-    rows_est, cols_est, estimated_rows = _estimate_csv_shape(file_path, sample_bytes=int(csv_sample_bytes))
+    rows_est, cols_est, estimated_rows = _estimate_csv_shape(file_path, sample_bytes=csv_sample_bytes)
     stats.update(
         {
-            "rows": int(rows_est),
-            "cols": int(cols_est),
-            "estimated_rows": bool(estimated_rows),
-            "row_threshold": int(row_threshold),
-            "col_threshold": int(col_threshold),
+            "rows": rows_est,
+            "cols": cols_est,
+            "estimated_rows": estimated_rows,
+            "row_threshold": row_threshold,
+            "col_threshold": col_threshold,
         }
     )
     if row_threshold > 0 and rows_est >= row_threshold:
@@ -173,17 +174,17 @@ def _route_for_xlsx(
     max_rows, max_cols, sheet_count, ok, degraded_reason = _estimate_xlsx_shape(file_path)
     stats.update(
         {
-            "rows": int(max_rows),
-            "cols": int(max_cols),
-            "sheet_count": int(sheet_count),
-            "row_threshold": int(row_threshold),
-            "col_threshold": int(col_threshold),
-            "sheet_threshold": int(sheet_threshold),
-            "shape_ok": bool(ok),
+            "rows": max_rows,
+            "cols": max_cols,
+            "sheet_count": sheet_count,
+            "row_threshold": row_threshold,
+            "col_threshold": col_threshold,
+            "sheet_threshold": sheet_threshold,
+            "shape_ok": ok,
         }
     )
     if degraded_reason:
-        stats["degraded_reason"] = str(degraded_reason)
+        stats["degraded_reason"] = degraded_reason
     if ok:
         if sheet_threshold > 0 and sheet_count >= sheet_threshold:
             stats["trigger"] = "sheets"
@@ -218,16 +219,16 @@ def decide_table_route(
 
     stats: dict[str, Any] = {
         "ext": ext,
-        "file_size_bytes": int(size),
-        "auto_route": bool(auto_route),
+        "file_size_bytes": size,
+        "auto_route": auto_route,
     }
 
-    if not bool(auto_route):
+    if not auto_route:
         return TableRouteDecision(route="tag", reason="auto_route_disabled", stats=stats)
 
     fb = int(file_bytes_threshold or 0)
     if fb > 0 and size >= fb:
-        stats.update({"trigger": "file_bytes", "file_bytes_threshold": int(fb)})
+        stats.update({"trigger": "file_bytes", "file_bytes_threshold": fb})
         return TableRouteDecision(route="tag", reason="file_bytes_threshold", stats=stats)
 
     rt = int(row_threshold or 0)
@@ -254,7 +255,7 @@ def decide_table_route(
 
     # XLS (legacy): best-effort, file-size only (already applied).
     # We keep the default conservative: do not force TAG when we don't have signals.
-    stats.update({"row_threshold": int(rt), "col_threshold": int(ct), "sheet_threshold": int(st), "shape_ok": False})
+    stats.update({"row_threshold": rt, "col_threshold": ct, "sheet_threshold": st, "shape_ok": False})
     return TableRouteDecision(route="rag", reason="legacy_xls_no_signal", stats=stats)
 
 
