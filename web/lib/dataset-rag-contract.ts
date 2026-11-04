@@ -1,11 +1,10 @@
-import type { RAGConfig } from '@/lib/api/settings'
-import type { DatasetRagDefaults } from '@/types'
+import type { DatasetRagDefaults, DatasetRagViewConfig } from '@/types/datasets'
 
 const MANAGED_DATASET_RAG_FIELDS = [
   ['retrieval_top_k', 'top_k'],
   ['similarity_threshold', 'score_threshold'],
   ['retrieval_mode', 'retrieval_mode'],
-] as const satisfies ReadonlyArray<readonly [keyof RAGConfig, keyof DatasetRagDefaults]>
+] as const satisfies ReadonlyArray<readonly [keyof DatasetRagViewConfig, keyof DatasetRagDefaults]>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -35,9 +34,9 @@ export function hasDatasetRagContract(
 }
 
 export function mergeDatasetRagDefaultsIntoRagConfig(
-  base: RAGConfig,
+  base: DatasetRagViewConfig,
   datasetRagDefaults?: DatasetRagDefaults | null,
-): RAGConfig {
+): DatasetRagViewConfig {
   if (!hasDatasetRagContract(datasetRagDefaults)) return { ...base }
 
   return {
@@ -51,13 +50,13 @@ export function mergeDatasetRagDefaultsIntoRagConfig(
     alpha: toFiniteNumber(datasetRagDefaults.alpha) ?? base.alpha,
     fusion_strategy: toOptionalString(datasetRagDefaults.fusion_strategy) ?? base.fusion_strategy,
     fusion_budgets: isRecord(datasetRagDefaults.fusion_budgets)
-      ? (datasetRagDefaults.fusion_budgets as Record<string, number>)
+      ? datasetRagDefaults.fusion_budgets
       : base.fusion_budgets,
     fusion_min_scores: isRecord(datasetRagDefaults.fusion_min_scores)
-      ? (datasetRagDefaults.fusion_min_scores as Record<string, number>)
+      ? datasetRagDefaults.fusion_min_scores
       : base.fusion_min_scores,
     fusion_weights: isRecord(datasetRagDefaults.fusion_weights)
-      ? (datasetRagDefaults.fusion_weights as Record<string, number>)
+      ? datasetRagDefaults.fusion_weights
       : base.fusion_weights,
     enable_weight_rerank: toOptionalBoolean(datasetRagDefaults.enable_weight_rerank) ?? base.enable_weight_rerank,
     vector_weight: toFiniteNumber(datasetRagDefaults.vector_weight) ?? base.vector_weight,
@@ -72,11 +71,11 @@ export function mergeDatasetRagDefaultsIntoRagConfig(
 
 export function buildDatasetRagDefaultsForUpdate(args: {
   currentDefaults?: DatasetRagDefaults | null
-  savedRag: RAGConfig
-  draftRag: RAGConfig
+  savedRag: DatasetRagViewConfig
+  draftRag: DatasetRagViewConfig
 }): DatasetRagDefaults | null {
   const { currentDefaults, draftRag, savedRag } = args
-  const base = hasDatasetRagContract(currentDefaults) ? ({ ...currentDefaults } as DatasetRagDefaults) : null
+  const base = hasDatasetRagContract(currentDefaults) ? { ...currentDefaults } : null
 
   let changed = false
   const next: DatasetRagDefaults = { ...(base ?? {}) }

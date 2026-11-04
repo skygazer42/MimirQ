@@ -4,31 +4,30 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 import { formatApiError } from '@/lib/api-errors'
-import {
-  ltrApi,
-  metaApi,
-  settingsApi,
-  type BackendMetaDetails,
-  type CacheConfig,
-  type ChatConfig,
-  type DifyExternalKnowledgeConfig,
-  type Etl4LlmConfig,
-  type FeatureFlags,
-  type LangGraphConfig,
-  type LTRModelInfo,
-  type MagicPDFConfig,
-  type MarkerConfig,
-  type MinIOConfig,
-  type MinerUConfig,
-  type NavigationConfig,
-  type ObservabilityConfig,
-  type PaddleVLConfig,
-  type SafetyConfig,
-  type SystemSettings,
-  type SystemStatus,
-  type TextInConfig,
-} from '@/lib/api'
-import { MODEL_PROVIDERS, type ModelProvider, type ProviderCategory, type ProviderConfig } from '@/types/models'
+import { ltrApi, metaApi, settingsApi } from '@/lib/api'
+import type { LTRModelInfo } from '@/lib/api/ltr'
+import type { BackendMetaDetails } from '@/lib/api/meta'
+import { MODEL_PROVIDERS } from '@/types/models'
+import type { ModelProvider, ProviderCategory, ProviderConfig } from '@/types/models'
+import type {
+  CacheConfig,
+  ChatConfig,
+  DifyExternalKnowledgeConfig,
+  Etl4LlmConfig,
+  FeatureFlags,
+  LangGraphConfig,
+  MagicPDFConfig,
+  MarkerConfig,
+  MinIOConfig,
+  MinerUConfig,
+  NavigationConfig,
+  ObservabilityConfig,
+  PaddleVLConfig,
+  SafetyConfig,
+  SystemSettings,
+  SystemStatus,
+  TextInConfig,
+} from '@/types/settings'
 
 type SaveMessage = {
   type: 'success' | 'error'
@@ -178,6 +177,9 @@ const DEFAULT_GOVERNANCE: GovernanceSettings = {
 }
 
 const DEFAULT_MAGICPDF: MagicPDFConfig = {
+  api_url: '',
+  request_timeout_sec: 600,
+  max_concurrent_jobs: 1,
   cli: 'magic-pdf',
   method: 'auto',
   lang: '',
@@ -224,6 +226,8 @@ const DEFAULT_DOCLING: DoclingConfig = {
 const DEFAULT_PADDLE_VL: PaddleVLConfig = {
   api_url: '',
   timeout_sec: 600,
+  pipeline_version: 'v1.5',
+  mode: 'doc_parser',
 }
 
 const DEFAULT_TEXTIN: TextInConfig = {

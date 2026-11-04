@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RAGConfig } from '@/lib/api/settings'
-import type { DatasetRagDefaults } from '@/types'
+import type { DatasetRagDefaults } from '@/types/datasets'
+import type { RAGConfig } from '@/types/settings'
 
 import {
   buildDatasetRagDefaultsForUpdate,

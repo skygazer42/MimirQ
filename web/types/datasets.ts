@@ -6,6 +6,7 @@ import type { DocumentFolderTreeResponse, DocumentPipelineOptions } from './back
 import type { JsonObject, PermissionEnum } from './common'
 import type { components } from './openapi'
 import type { IngestionPolicy } from './processing'
+import type { RAGConfig } from './settings'
 
 // ==================== 数据集相关类型 ====================
 
@@ -16,6 +17,25 @@ export type DatasetEmbeddingDefaults = {
 }
 
 export type DatasetRagDefaults = components['schemas']['DatasetRAGDefaults']
+
+// The workbench combines system RAG settings with these dataset-only overrides.
+export type DatasetRagViewConfig = RAGConfig &
+  Pick<
+    DatasetRagDefaults,
+    | 'retrieval_profile'
+    | 'retrieval_mode'
+    | 'retrieval_contract_mode'
+    | 'alpha'
+    | 'fusion_strategy'
+    | 'fusion_budgets'
+    | 'fusion_min_scores'
+    | 'fusion_weights'
+    | 'enable_weight_rerank'
+    | 'vector_weight'
+    | 'keyword_weight'
+    | 'mmr_lambda'
+    | 'visible_evidence_only'
+  >
 
 export type Dataset = {
   id: string

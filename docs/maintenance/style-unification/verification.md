@@ -950,3 +950,10 @@
 
 - Source category `1e369ea48` applies existing Prettier rules to the dataset RAG helper/test, knowledge settings panel and settings hook. This commit records formatting only; remaining page/hook semantic work is not closed by the reflow.
 - Fresh integrated Prettier passes all four files. Independent AST comparison, including text-bearing JSX leaves and normalized redundant parentheses, proves the formatting preserves runtime structure and visible text.
+
+## Frontend configuration category: view ownership and defaults
+
+- Source category `1a1752e87` gives the dataset workbench an explicit `DatasetRagViewConfig` owned by dataset types: the unchanged system RAG API contract plus exactly 13 supported dataset-only overrides with their original optional/null types. The helper and workbench use that view; the system schema and generated OpenAPI are not widened. Dataset updates still project only top-k, score threshold and retrieval mode, preserving all other existing override content and config-hash requests.
+- MagicPDF initial state now supplies its three required backend defaults, and PaddleVL supplies its two required display/audit defaults. These keys enter parser save payloads when needed; server/edited values retain precedence. Marker config, rendered controls/JSX, and other loading/save/reset/error behavior are unchanged. The earlier report's Marker label was corrected to PaddleVL.
+- Independent virtual-baseline compilation reproduces 23 diagnostics and final whole-project TypeScript has zero. Fresh scoped ESLint/Prettier and API contract/coverage/drift checks pass; the existing three helper behavior tests and seven source checks pass. AST review finds exactly the five default-value additions as runtime differences.
+- Only the dataset helper receives a full new semantic completion; the hook, panel and existing test retain their broader pending/migration statuses, and the already audited dataset type owner keeps its prior full result. No settings-hook/browser/backend runtime check is claimed; source checks do not cover those flows. Evidence: `.superpowers/sdd/2026-11-02-style-unification/frontend-config-contracts-report.json`.

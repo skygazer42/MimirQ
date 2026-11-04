@@ -40,7 +40,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Switch } from '@/components/ui/switch'
 
-import { datasetApi, retrievalApi, settingsApi, type SystemSettings } from '@/lib/api'
+import { datasetApi, retrievalApi, settingsApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 import {
   buildDatasetRagDefaultsForUpdate,
@@ -52,10 +52,14 @@ import {
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise, formatDate } from '@/lib/utils'
-import type { ConnectorRunOut, Dataset } from '@/types'
+import type { ConnectorRunOut } from '@/types/connectors'
+import type { Dataset, DatasetRagViewConfig } from '@/types/datasets'
+import type { SystemSettings } from '@/types/settings'
 
 // --- 类型定义 ---
-type KnowledgeSettingsConfig = Pick<SystemSettings, 'embedding' | 'rag'>
+type KnowledgeSettingsConfig = Pick<SystemSettings, 'embedding'> & {
+  rag: DatasetRagViewConfig
+}
 type DatasetRagVerificationState = {
   datasetId: string
   hash: string
