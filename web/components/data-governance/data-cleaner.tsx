@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AlertTriangle,
@@ -18,16 +18,13 @@ import { useTranslations } from 'next-intl'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { pipelineApi, promptTemplateApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
+import { promptTemplateApi } from '@/lib/api/prompts'
 import { formatApiError } from '@/lib/api-errors'
 import { coerceOneOf } from '@/lib/one-of'
 import { queryKeys } from '@/lib/query-keys'
-import type {
-  CleanPreviewRequest,
-  CleanPreviewResponse,
-  DocumentPipelineOptions,
-  LLMCleanPreviewRequest,
-} from '@/types'
+import type { CleanPreviewRequest, CleanPreviewResponse, LLMCleanPreviewRequest } from '@/types/processing'
+import type { DocumentPipelineOptions } from '@/types/backend'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
@@ -54,7 +51,7 @@ function getSeverityBadgeClass(severity: string) {
   return 'bg-info/10 text-info'
 }
 
-export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onClean }: Readonly<DataCleanerProps>) {
+export function DataCleaner({ content, cleanedContent = '', onClean }: Readonly<DataCleanerProps>) {
   const t = useTranslations('DataCleaner')
   const { options, updateOption, setEnabled } = usePipelineOptions()
   const [previewDiff, setPreviewDiff] = useState(false)
@@ -66,17 +63,52 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
   const [llmEnabled, setLlmEnabled] = useState(false)
   const [promptTemplateId, setPromptTemplateId] = useState<string>('')
   const impact = useMemo(() => computeCleanPreviewImpact(lastPreview), [lastPreview])
+  const activeApplyRef = useRef<{ cleanedContent: string } | null>(null)
+  const onCleanRef = useRef(onClean)
+
+  useEffect(() => {
+    onCleanRef.current = onClean
+  }, [onClean])
+
+  const discardPreview = useCallback(() => {
+    activeApplyRef.current = null
+    setIsApplying(false)
+    setBackendError(null)
+    setBackendInfo(null)
+    setLastPreview(null)
+  }, [])
+
+  useEffect(() => {
+    discardPreview()
+    return () => {
+      activeApplyRef.current = null
+    }
+  }, [content, discardPreview])
+
+  useEffect(() => {
+    const apply = activeApplyRef.current
+    if (apply && apply.cleanedContent !== cleanedContent) discardPreview()
+  }, [cleanedContent, discardPreview])
 
   const promptTemplatesQuery = useQuery({
-    queryKey: queryKeys.prompts.list({ is_active: true, limit: 50 }),
-    queryFn: async () => {
+    queryKey: [...queryKeys.prompts.all, 'selection', { is_active: true }],
+    queryFn: async ({ signal }) => {
       const response = await promptTemplateApi.list({ is_active: true, limit: 50 })
-      return response.items || []
+      const templates = [...response.items]
+      let page = response
+      while (page.items.length > 0 && templates.length < response.total) {
+        signal.throwIfAborted()
+        page = await promptTemplateApi.list({ is_active: true, limit: 50, skip: templates.length })
+        templates.push(...page.items)
+      }
+      return templates
     },
   })
   const promptTemplates = promptTemplatesQuery.data || []
 
   const handleApply = useCallback(async () => {
+    const apply = { cleanedContent }
+    activeApplyRef.current = apply
     setIsApplying(true)
     setBackendError(null)
     setBackendInfo(null)
@@ -136,6 +168,7 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
       }
 
       const response = await pipelineApi.cleanPreview(request)
+      if (activeApplyRef.current !== apply) return
       setLastPreview(response)
 
       const info: string[] = []
@@ -144,8 +177,7 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
         const added = typeof response.added_lines === 'number' ? response.added_lines : 0
         const changedLines = typeof response.changed_lines === 'number' ? response.changed_lines : 0
         const inputChars = typeof response.input_chars === 'number' ? response.input_chars : content.length
-        const outputChars =
-          typeof response.output_chars === 'number' ? response.output_chars : (response.markdown || '').length
+        const outputChars = typeof response.output_chars === 'number' ? response.output_chars : response.markdown.length
 
         info.push(
           t('info.cleaningStats', {
@@ -171,7 +203,7 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
       }
 
       if (response.title) info.push(t('info.title', { value: response.title }))
-      if (Array.isArray(response.tags) && response.tags.length) {
+      if (response.tags?.length) {
         const value = `${response.tags.slice(0, 12).join('，')}${response.tags.length > 12 ? '...' : ''}`
         info.push(t('info.tags', { value }))
       }
@@ -185,12 +217,12 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
             : response.language
         info.push(t('info.language', { value: confidence }))
       }
-      if (Array.isArray(response.keywords) && response.keywords.length) {
+      if (response.keywords?.length) {
         const value = `${response.keywords.slice(0, 12).join('，')}${response.keywords.length > 12 ? '...' : ''}`
         info.push(t('info.keywords', { value }))
       }
-      if (response.frontmatter && typeof response.frontmatter === 'object') {
-        const keys = Object.keys(response.frontmatter || {})
+      if (response.frontmatter) {
+        const keys = Object.keys(response.frontmatter)
         if (keys.length) {
           const value = `${keys.slice(0, 8).join('，')}${keys.length > 8 ? '...' : ''}`
           info.push(t('info.frontmatter', { value }))
@@ -217,7 +249,7 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
             reason: response.drop_reason || t('errors.qualityFilterTriggered'),
           }),
         )
-        onClean(response.markdown || '')
+        onCleanRef.current(response.markdown)
         return
       }
 
@@ -230,22 +262,28 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
             prompt_template_id: promptTemplateId || undefined,
           }
           const llmResponse = await pipelineApi.llmCleanPreview(llmRequest)
+          if (activeApplyRef.current !== apply) return
           next = llmResponse.markdown
           if (llmResponse.warnings?.length) {
             setBackendError(llmResponse.warnings.join('；'))
           }
         } catch (error: unknown) {
+          if (activeApplyRef.current !== apply) return
           setBackendError(formatApiError(error, t('errors.llmCleanFailedKeepPreview')))
         }
       }
 
-      onClean(next)
+      onCleanRef.current(next)
     } catch (error: unknown) {
+      if (activeApplyRef.current !== apply) return
       setBackendError(formatApiError(error, t('errors.backendCleanFailed')))
     } finally {
-      setIsApplying(false)
+      if (activeApplyRef.current === apply) {
+        activeApplyRef.current = null
+        setIsApplying(false)
+      }
     }
-  }, [content, inputFormat, llmEnabled, onClean, options, promptTemplateId, t])
+  }, [cleanedContent, content, inputFormat, llmEnabled, options, promptTemplateId, t])
 
   const applyPipelinePatch = useCallback(
     (patch: Partial<DocumentPipelineOptions>) => {
@@ -260,8 +298,9 @@ export function DataCleaner({ content, cleanedContent: _cleanedContent = '', onC
   )
 
   const handleReset = useCallback(() => {
-    onClean(content)
-  }, [content, onClean])
+    discardPreview()
+    onCleanRef.current(content)
+  }, [content, discardPreview])
 
   const resetButtonClass =
     'h-8 rounded-full border-border/45 bg-background/42 px-3 text-[11px] font-medium text-muted-foreground/78 shadow-none hover:border-border/55 hover:bg-background/64 hover:text-foreground'

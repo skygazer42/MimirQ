@@ -1,16 +1,16 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, FileText, Folder, FolderTree, Plus, Sparkles, Tag, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { pipelineApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientWarning } from '@/lib/client-logging'
 import { cn } from '@/lib/utils'
-import type { AutoDocumentTag } from '@/types'
+import type { AutoDocumentTag } from '@/types/processing'
 
 type DataClassifierProps = {
   content: string
@@ -18,6 +18,8 @@ type DataClassifierProps = {
   initialTags?: string[]
   onClassify: (category: string, tags: string[]) => void
 }
+
+const EMPTY_TAGS: string[] = []
 
 type CategoryId = 'technical' | 'product' | 'business' | 'legal' | 'hr' | 'finance' | 'other'
 
@@ -96,7 +98,7 @@ function dedupeStrings(values: string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   for (const value of values) {
-    const normalized = String(value || '').trim()
+    const normalized = value.trim()
     if (!normalized || seen.has(normalized)) continue
     seen.add(normalized)
     result.push(normalized)
@@ -105,7 +107,7 @@ function dedupeStrings(values: string[]): string[] {
 }
 
 function getTagText(tag: AutoDocumentTag): string {
-  return String(tag.label || tag.value || '').trim()
+  return (tag.label || tag.value).trim()
 }
 
 function selectCategoryTag(tags: AutoDocumentTag[]): AutoDocumentTag | undefined {
@@ -120,7 +122,7 @@ function selectCategoryTag(tags: AutoDocumentTag[]): AutoDocumentTag | undefined
 export function DataClassifier({
   content,
   initialCategory = null,
-  initialTags = [],
+  initialTags = EMPTY_TAGS,
   onClassify,
 }: Readonly<DataClassifierProps>) {
   const t = useTranslations('DataClassifier')
@@ -141,14 +143,37 @@ export function DataClassifier({
   const [isAutoClassifying, setIsAutoClassifying] = useState(false)
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
   const [showAllTags, setShowAllTags] = useState(false)
+  const activeClassificationRef = useRef<symbol | null>(null)
+  const onClassifyRef = useRef(onClassify)
+
+  useEffect(() => {
+    onClassifyRef.current = onClassify
+  }, [onClassify])
+
+  useEffect(() => {
+    activeClassificationRef.current = null
+    setIsAutoClassifying(false)
+    setSelectedCategory(initialCategory)
+    setTags(initialTags)
+  }, [content, initialCategory, initialTags])
+
+  useEffect(() => {
+    setSuggestedTags([])
+    setNewTag('')
+    return () => {
+      activeClassificationRef.current = null
+    }
+  }, [content])
 
   const handleAutoClassify = useCallback(async () => {
-    const source = String(content || '').trim()
+    const source = content.trim()
     if (!source) {
       toast.warning(t('auto.empty'))
       return
     }
 
+    const classification = Symbol()
+    activeClassificationRef.current = classification
     setIsAutoClassifying(true)
     try {
       const response = await pipelineApi.autoAnnotations({
@@ -162,7 +187,8 @@ export function DataClassifier({
         keyword_top_k: 12,
         max_annotations: 60,
       })
-      const documentTags = response.document_tags || []
+      if (activeClassificationRef.current !== classification) return
+      const documentTags = response.document_tags
       const categoryTag = selectCategoryTag(documentTags)
       const nextCategory = categoryTag ? getTagText(categoryTag) : t('categories.other.label')
       const backendSuggestedTags = dedupeStrings(documentTags.map(getTagText)).slice(0, 12)
@@ -171,7 +197,7 @@ export function DataClassifier({
       setSelectedCategory(nextCategory)
       setSuggestedTags(backendSuggestedTags)
       setTags(nextTags)
-      onClassify(nextCategory, nextTags)
+      onClassifyRef.current(nextCategory, nextTags)
 
       if (backendSuggestedTags.length > 0) {
         toast.success(t('auto.success', { count: backendSuggestedTags.length }))
@@ -179,43 +205,53 @@ export function DataClassifier({
         toast.info(t('auto.noTags'))
       }
     } catch (error) {
+      if (activeClassificationRef.current !== classification) return
       reportClientWarning('Backend auto classification failed', error)
       toast.error(t('auto.failed'))
     } finally {
-      setIsAutoClassifying(false)
+      if (activeClassificationRef.current === classification) {
+        activeClassificationRef.current = null
+        setIsAutoClassifying(false)
+      }
     }
-  }, [content, onClassify, t, tags])
+  }, [content, t, tags])
 
   const handleAddTag = useCallback(
     (tag: string) => {
       if (tag && !tags.includes(tag)) {
+        activeClassificationRef.current = null
+        setIsAutoClassifying(false)
         const updated = [...tags, tag]
         setTags(updated)
-        onClassify(selectedCategory || '', updated)
+        onClassifyRef.current(selectedCategory || '', updated)
       }
 
       setNewTag('')
     },
-    [onClassify, selectedCategory, tags],
+    [selectedCategory, tags],
   )
 
   const handleRemoveTag = useCallback(
     (tag: string) => {
+      activeClassificationRef.current = null
+      setIsAutoClassifying(false)
       const updated = tags.filter((item) => item !== tag)
       setTags(updated)
-      onClassify(selectedCategory || '', updated)
+      onClassifyRef.current(selectedCategory || '', updated)
     },
-    [onClassify, selectedCategory, tags],
+    [selectedCategory, tags],
   )
 
   const handleSelectCategory = useCallback(
     (categoryId: CategoryId) => {
       const category = categories.find((item) => item.id === categoryId)
       if (!category) return
+      activeClassificationRef.current = null
+      setIsAutoClassifying(false)
       setSelectedCategory(category.label)
-      onClassify(category.label, tags)
+      onClassifyRef.current(category.label, tags)
     },
-    [categories, onClassify, tags],
+    [categories, tags],
   )
 
   const displayTags = showAllTags ? suggestedTagLabels : suggestedTagLabels.slice(0, 8)

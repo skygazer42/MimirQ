@@ -2218,6 +2218,7 @@ export function DataGovernancePanel() {
                     >
                       {activeTab === 'quality' && (
                         <QualityChecker
+                          key={selectedFileId}
                           content={governanceState.originalContent}
                           initialScore={governanceState.qualityScore}
                           initialIssues={governanceState.issues}
@@ -2226,6 +2227,7 @@ export function DataGovernancePanel() {
                       )}
                       {activeTab === 'clean' && (
                         <DataCleaner
+                          key={selectedFileId}
                           content={governanceState.originalContent}
                           cleanedContent={governanceState.cleanedContent}
                           onClean={handleClean}
@@ -2233,6 +2235,7 @@ export function DataGovernancePanel() {
                       )}
                       {activeTab === 'annotate' && (
                         <DataAnnotator
+                          key={selectedFileId}
                           content={governanceState.cleanedContent}
                           annotations={governanceState.annotations}
                           onAnnotate={handleAnnotate}
@@ -2241,6 +2244,7 @@ export function DataGovernancePanel() {
                       )}
                       {activeTab === 'classify' && (
                         <DataClassifier
+                          key={selectedFileId}
                           content={governanceState.cleanedContent}
                           initialCategory={governanceState.category}
                           initialTags={governanceState.tags}

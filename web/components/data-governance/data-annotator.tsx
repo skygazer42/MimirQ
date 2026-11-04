@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -21,10 +21,10 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { pipelineApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientWarning } from '@/lib/client-logging'
 import { cn } from '@/lib/utils'
-import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types'
+import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types/processing'
 
 export type Annotation = {
   id: string
@@ -34,6 +34,8 @@ export type Annotation = {
   start: number
   end: number
 }
+
+const EMPTY_ANNOTATIONS: Annotation[] = []
 
 type DataAnnotatorProps = {
   content: string
@@ -125,29 +127,29 @@ function getSelectionRoot(): HTMLElement | null {
 }
 
 function normalizeSelectedText(value: string): string {
-  return String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  return value.replace(/\s+/g, ' ').trim()
 }
 
 function findSelectionRange(
   content: string,
   selectedText: string,
 ): { start: number; end: number; text: string } | null {
-  const text = String(selectedText || '').trim()
+  const text = selectedText.trim()
   if (!content || !text) return null
 
   const exactStart = content.indexOf(text)
   if (exactStart >= 0) return { start: exactStart, end: exactStart + text.length, text }
 
-  const normalizedSelection = normalizeSelectedText(text)
-  const normalizedContent = normalizeSelectedText(content)
-  const normalizedStart = normalizedContent.indexOf(normalizedSelection)
-  if (normalizedStart >= 0) {
+  const pattern = normalizeSelectedText(text)
+    .split(' ')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`))
+    .join(String.raw`\s+`)
+  const match = new RegExp(pattern, 'm').exec(content)
+  if (match) {
     return {
-      start: normalizedStart,
-      end: normalizedStart + normalizedSelection.length,
-      text: normalizedSelection,
+      start: match.index,
+      end: match.index + match[0].length,
+      text: match[0],
     }
   }
 
@@ -166,7 +168,12 @@ function dedupeAnnotations(items: Annotation[]): Annotation[] {
   return out
 }
 
-export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumentTags }: Readonly<DataAnnotatorProps>) {
+export function DataAnnotator({
+  content,
+  annotations = EMPTY_ANNOTATIONS,
+  onAnnotate,
+  onDocumentTags,
+}: Readonly<DataAnnotatorProps>) {
   const t = useTranslations('DataAnnotator')
   const annotationTypes = useMemo(
     () =>
@@ -189,6 +196,15 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
   const [semanticSummary, setSemanticSummary] = useState<string | null>(null)
   const [semanticTags, setSemanticTags] = useState<AutoDocumentTag[]>([])
   const [expandedTypes, setExpandedTypes] = useState<Set<AnnotationTypeId>>(new Set())
+  const localAnnotationsRef = useRef(annotations)
+  const activeAnnotationRef = useRef<symbol | null>(null)
+  const onAnnotateRef = useRef(onAnnotate)
+  const onDocumentTagsRef = useRef(onDocumentTags)
+
+  useEffect(() => {
+    onAnnotateRef.current = onAnnotate
+    onDocumentTagsRef.current = onDocumentTags
+  }, [onAnnotate, onDocumentTags])
 
   const annotationsByType = useMemo(() => {
     const grouped: Record<AnnotationTypeId, Annotation[]> = {
@@ -210,31 +226,29 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
     AUTO_TAG_PROVIDER_OPTIONS.find((option) => option.id === autoTagProvider) ?? AUTO_TAG_PROVIDER_OPTIONS[0]
 
   useEffect(() => {
+    activeAnnotationRef.current = null
+    setIsAutoTagging(false)
+    localAnnotationsRef.current = annotations
     setLocalAnnotations(annotations)
-  }, [annotations])
+  }, [annotations, content])
 
   useEffect(() => {
     setSemanticSummary(null)
     setSemanticTags([])
+    setSelection(null)
+    setIsSelecting(false)
+    return () => {
+      activeAnnotationRef.current = null
+    }
   }, [content])
 
-  useEffect(() => {
-    if (!content && selection) {
-      setSelection(null)
-      setIsSelecting(false)
-    }
-  }, [content, selection])
-
-  const commitAnnotations = useCallback(
-    (updater: (prev: Annotation[]) => Annotation[]) => {
-      setLocalAnnotations((prev) => {
-        const next = dedupeAnnotations(updater(prev))
-        onAnnotate(next)
-        return next
-      })
-    },
-    [onAnnotate],
-  )
+  const commitAnnotations = useCallback((updater: (prev: Annotation[]) => Annotation[]) => {
+    const next = dedupeAnnotations(updater(localAnnotationsRef.current))
+    localAnnotationsRef.current = next
+    setLocalAnnotations(next)
+    onAnnotateRef.current(next)
+    return next
+  }, [])
 
   useEffect(() => {
     if (!isSelecting) return
@@ -277,6 +291,8 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
       end: selection.end,
     }
 
+    activeAnnotationRef.current = null
+    setIsAutoTagging(false)
     commitAnnotations((prev) => [...prev, nextAnnotation])
     setSelection(null)
     setIsSelecting(false)
@@ -295,16 +311,21 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
   }
 
   const handleDeleteAnnotation = (annotationId: string) => {
+    activeAnnotationRef.current = null
+    setIsAutoTagging(false)
     commitAnnotations((prev) => prev.filter((annotation) => annotation.id !== annotationId))
   }
 
   const handleAutoAnnotate = async () => {
-    const source = String(content || '').trim()
+    const source = content.trim()
     if (!source) {
       toast.warning(t('auto.empty'))
       return
     }
 
+    const annotation = Symbol()
+    activeAnnotationRef.current = annotation
+    const sourceOffset = content.indexOf(source)
     setIsAutoTagging(true)
     try {
       const response = await pipelineApi.autoAnnotations({
@@ -320,24 +341,32 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         keyword_top_k: 12,
         max_annotations: 80,
       })
-      const nextSemanticTags = response.document_tags || []
+      if (activeAnnotationRef.current !== annotation) return
+      const nextSemanticTags = response.document_tags
       setSemanticSummary(response.summary ?? null)
       setSemanticTags(nextSemanticTags)
       if (nextSemanticTags.length > 0) {
-        onDocumentTags?.(nextSemanticTags.map((tag) => tag.value))
+        onDocumentTagsRef.current?.(nextSemanticTags.map((tag) => tag.value))
       }
-      const candidates: Annotation[] = (response.annotations || []).map((item, index) => ({
+      // Python offsets count code points; DOM string ranges use UTF-16 indices.
+      const offsets = [sourceOffset]
+      const lastOffset = response.annotations.reduce((max, item) => Math.max(max, item.end), 0)
+      for (const codePoint of source) {
+        if (offsets.length > lastOffset) break
+        offsets.push(offsets[offsets.length - 1] + codePoint.length)
+      }
+      const candidates: Annotation[] = response.annotations.map((item, index) => ({
         id: globalThis.crypto?.randomUUID?.() ?? `auto-${item.type}-${item.start}-${item.end}-${index}`,
         text: item.text,
         type: item.type,
         label: item.label || annotationTypes.find((type) => type.id === item.type)?.label || item.type,
-        start: item.start,
-        end: item.end,
+        start: offsets[item.start],
+        end: offsets[item.end],
       }))
 
-      const before = localAnnotations.length
-      commitAnnotations((prev) => [...prev, ...candidates])
-      const added = dedupeAnnotations([...localAnnotations, ...candidates]).length - before
+      const before = localAnnotationsRef.current.length
+      const next = commitAnnotations((prev) => [...prev, ...candidates])
+      const added = next.length - before
       if (added > 0) {
         toast.success(t('auto.success', { count: added }))
       } else if (nextSemanticTags.length > 0) {
@@ -346,10 +375,14 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         toast.info(t('auto.noCandidates'))
       }
     } catch (err) {
+      if (activeAnnotationRef.current !== annotation) return
       reportClientWarning('Auto annotation failed', err)
       toast.error(t('auto.failed'))
     } finally {
-      setIsAutoTagging(false)
+      if (activeAnnotationRef.current === annotation) {
+        activeAnnotationRef.current = null
+        setIsAutoTagging(false)
+      }
     }
   }
 

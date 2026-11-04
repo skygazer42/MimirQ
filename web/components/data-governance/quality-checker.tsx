@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle,
@@ -16,10 +16,11 @@ import {
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
-import { pipelineApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientError } from '@/lib/client-logging'
 import { cn, detachPromise } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import type { GovernanceIssue } from '@/types/processing'
 
 type QualityIssue = {
   id: string
@@ -36,6 +37,8 @@ type QualityCheckerProps = {
   onComplete: (result: { score: number; issues: QualityIssue[] }) => void
 }
 
+const EMPTY_ISSUES: QualityIssue[] = []
+
 type CheckItemId = 'chars' | 'encoding' | 'language' | 'format' | 'issues'
 type Translate = (key: string, values?: Record<string, string | number>) => string
 
@@ -51,10 +54,6 @@ const CHECK_ITEM_CONFIGS = [
 }>
 
 const UTF8_BOM_CODE_POINT = 0xfeff
-
-function getLeadingCodePoint(value: string): number | undefined {
-  return value.codePointAt(0)
-}
 
 function getContentFormat(hasHtml: boolean, hasMarkdown: boolean, t: Translate): string {
   if (hasHtml) return t('format.types.html')
@@ -122,7 +121,7 @@ function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[
   return detectedIssues
 }
 
-function getBackendIssueType(severity: string | null | undefined): QualityIssue['type'] {
+function getBackendIssueType(severity: GovernanceIssue['severity']): QualityIssue['type'] {
   if (severity === 'error') return 'error'
   if (severity === 'warning') return 'warning'
   return 'info'
@@ -188,7 +187,7 @@ function calculateQualityScore(issues: QualityIssue[]): number {
 export function QualityChecker({
   content,
   initialScore = 0,
-  initialIssues = [],
+  initialIssues = EMPTY_ISSUES,
   onComplete,
 }: Readonly<QualityCheckerProps>) {
   const t = useTranslations('QualityChecker')
@@ -207,6 +206,26 @@ export function QualityChecker({
   const [backendScanEnabled, setBackendScanEnabled] = useState(true)
   const [expandedItems, setExpandedItems] = useState<Set<CheckItemId>>(new Set(['chars']))
   const [scanProgress, setScanProgress] = useState(0)
+  const activeScanRef = useRef<symbol | null>(null)
+  const onCompleteRef = useRef(onComplete)
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  useEffect(() => {
+    setScore(initialScore)
+    setIssues(initialIssues)
+  }, [content, initialIssues, initialScore])
+
+  useEffect(() => {
+    activeScanRef.current = null
+    setIsScanning(false)
+    setScanProgress(0)
+    return () => {
+      activeScanRef.current = null
+    }
+  }, [content])
 
   const textStats = useMemo(() => {
     const text = content || ''
@@ -231,7 +250,7 @@ export function QualityChecker({
     }
   }, [content])
 
-  const hasBom = useMemo(() => getLeadingCodePoint(content) === UTF8_BOM_CODE_POINT, [content])
+  const hasBom = useMemo(() => content.codePointAt(0) === UTF8_BOM_CODE_POINT, [content])
   const encoding = useMemo(() => {
     const hasHighByte = [...content].some((char) => (char.codePointAt(0) ?? 0) > 255)
     if (hasBom) return 'UTF-8 (BOM)'
@@ -271,6 +290,8 @@ export function QualityChecker({
   }, [content, t])
 
   const handleScan = useCallback(async () => {
+    const scan = Symbol()
+    activeScanRef.current = scan
     setIsScanning(true)
     setScanProgress(20)
 
@@ -286,6 +307,7 @@ export function QualityChecker({
         )),
       )
     }
+    if (activeScanRef.current !== scan) return
     setScanProgress(100)
 
     setIssues(detectedIssues)
@@ -298,8 +320,9 @@ export function QualityChecker({
     }
 
     setIsScanning(false)
-    onComplete({ score: calculatedScore, issues: detectedIssues })
-  }, [backendScanEnabled, content, formatInfo.format, onComplete, t])
+    activeScanRef.current = null
+    onCompleteRef.current({ score: calculatedScore, issues: detectedIssues })
+  }, [backendScanEnabled, content, formatInfo.format, t])
 
   const toggleExpanded = useCallback((id: CheckItemId) => {
     setExpandedItems((prev) => {
