@@ -60,7 +60,7 @@ def looks_like_transcript(text: str) -> bool:
 
 
 class TranscriptChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -110,7 +110,7 @@ class TranscriptChunker(BaseChunker):
         meta["chunk_strategy"] = "transcript"
         meta["start_char"] = chunk_start
         meta["end_char"] = chunk_end
-        meta["turn_count"] = int(end_idx - start_idx)
+        meta["turn_count"] = end_idx - start_idx
         speakers = TranscriptChunker._unique_speakers(turns, start_idx=start_idx, end_idx=end_idx)
         if speakers:
             meta["speakers"] = speakers

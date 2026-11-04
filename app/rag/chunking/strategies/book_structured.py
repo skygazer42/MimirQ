@@ -10,6 +10,7 @@ fallback RecursiveCharacterTextSplitter inside each section to respect the
 configured chunk size/overlap while preserving positions.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -84,7 +85,9 @@ def _parse_en_num_section(s: str, start: int) -> tuple[str, int] | None:
     return s[start:i], i
 
 
-def _en_heading_candidates() -> tuple[tuple[str, int, tuple[str, ...], Any], ...]:
+def _en_heading_candidates() -> tuple[
+    tuple[str, int, tuple[str, ...], Callable[[str, int], tuple[str, int] | None]], ...
+]:
     return (
         ("volume", 1, ("volume", "vol."), _parse_en_num_simple),
         ("book", 1, ("book",), _parse_en_num_simple),
@@ -106,7 +109,7 @@ def _parse_en_heading(line: str) -> tuple[str, int, str] | None:
     for kind, level, prefixes, num_parser in _en_heading_candidates():
         parsed = _parse_en_heading_candidate(s, low, prefixes=prefixes, num_parser=num_parser)
         if parsed is not None:
-            return kind, int(level), parsed
+            return kind, level, parsed
     return None
 
 
@@ -115,7 +118,7 @@ def _parse_en_heading_candidate(
     low: str,
     *,
     prefixes: tuple[str, ...],
-    num_parser,
+    num_parser: Callable[[str, int], tuple[str, int] | None],
 ) -> str | None:
     n = len(s)
     for pref in prefixes:
@@ -197,7 +200,7 @@ def _iter_headings(text: str) -> list[BookHeading]:
                 start=line_start,
                 end=line_start + len(raw_line),
                 text=line,
-                level=int(level),
+                level=level,
                 kind=kind,
             )
         )
@@ -231,7 +234,7 @@ def _build_sections(text: str, headings: list[BookHeading]) -> list[_Section]:
 
 
 def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     while len(stack) >= level:
         stack.pop()
     stack.append(heading_text)
@@ -269,7 +272,7 @@ def _build_section_chunk_meta(
     sec_heading = section.heading
     if sec_heading is not None:
         meta["book_heading"] = sec_heading.text
-        meta["book_level"] = int(sec_heading.level)
+        meta["book_level"] = sec_heading.level
         meta["book_kind"] = sec_heading.kind
     if path:
         meta["book_path"] = path
@@ -293,7 +296,7 @@ class BookStructuredChunker(BaseChunker):
     Chunker optimized for book-like chapter/part structure.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

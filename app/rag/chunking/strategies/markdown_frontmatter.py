@@ -103,7 +103,7 @@ def looks_like_markdown_frontmatter(text: str) -> bool:
 
 
 class MarkdownFrontmatterChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -181,7 +181,7 @@ class MarkdownFrontmatterChunker(BaseChunker):
             title = _extract_title(fm_text)
             frontmatter_meta: dict[str, Any] = {
                 "markdown_frontmatter": True,
-                "frontmatter_end_char": int(fm_end),
+                "frontmatter_end_char": fm_end,
             }
             if title:
                 frontmatter_meta["frontmatter_title"] = title
@@ -199,7 +199,7 @@ class MarkdownFrontmatterChunker(BaseChunker):
             if body_text.strip():
                 body_meta: dict[str, Any] = {
                     "frontmatter_present": True,
-                    "frontmatter_end_char": int(fm_end),
+                    "frontmatter_end_char": fm_end,
                 }
                 if title:
                     body_meta["frontmatter_title"] = title

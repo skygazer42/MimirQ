@@ -160,9 +160,9 @@ def _cue_chunk(
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
     meta.setdefault("doc_type_kwd", "subtitles")
-    meta["cue_count"] = int(end_idx - start_idx)
-    meta["cue_start_index"] = int(start_idx)
-    meta["cue_end_index"] = int(end_idx - 1)
+    meta["cue_count"] = end_idx - start_idx
+    meta["cue_start_index"] = start_idx
+    meta["cue_end_index"] = end_idx - 1
     meta["first_timecode"] = cues[start_idx].start_ts
     meta["last_timecode"] = cues[end_idx - 1].end_ts
     return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
@@ -211,7 +211,7 @@ def _split_subtitle_document(
 
 
 class SubtitlesChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

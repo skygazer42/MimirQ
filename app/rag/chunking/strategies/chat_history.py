@@ -230,7 +230,7 @@ def _iter_messages(text: str) -> list[_Msg]:
         end = leads[idx + 1][0] if idx + 1 < len(leads) else len(text)
         if not speaker:
             continue
-        msgs.append(_Msg(start=int(start), end=int(end), speaker=str(speaker), ts=(str(ts) if ts else None)))
+        msgs.append(_Msg(start=start, end=end, speaker=speaker, ts=(ts if ts else None)))
     return msgs if len(msgs) >= 2 else []
 
 
@@ -290,7 +290,7 @@ def _build_message_chunk(
     meta["chunk_strategy"] = "chat_history"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["message_count"] = int(end_idx - start_idx)
+    meta["message_count"] = end_idx - start_idx
     participants = _window_participants(msgs, start_idx, end_idx)
     if participants:
         meta["participants"] = participants
@@ -321,7 +321,7 @@ def _next_message_start(msgs: list[_Msg], start_idx: int, end_idx: int, chunk_ov
 
 
 class ChatHistoryChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

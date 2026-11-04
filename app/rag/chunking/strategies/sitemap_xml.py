@@ -106,7 +106,7 @@ def _build_split_documents(
 
 
 class SitemapXMLChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -162,8 +162,8 @@ class SitemapXMLChunker(BaseChunker):
                 split_docs = self._fallback_splitter.create_documents(texts=[ent_text], metadatas=[base_meta])
                 extra_meta: dict[str, Any] = {
                     "sitemap_kind": ent.kind,
-                    "sitemap_index": int(ent.index),
-                    "sitemap_count": int(len(entries)),
+                    "sitemap_index": ent.index,
+                    "sitemap_count": len(entries),
                 }
                 if ent.loc:
                     extra_meta["sitemap_loc"] = ent.loc

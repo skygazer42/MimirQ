@@ -141,7 +141,7 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
             _PlayBlock(
                 start=start,
                 end=end,
-                index=int(j),
+                index=j,
                 name=_extract_play_name(blk_text),
                 hosts=_extract_play_hosts(blk_text),
             )
@@ -174,8 +174,8 @@ def _append_split_documents(
 
 def _play_block_meta(block: _PlayBlock, block_count: int) -> dict[str, Any]:
     meta: dict[str, Any] = {
-        "ansible_play_index": int(block.index),
-        "ansible_play_count": int(block_count),
+        "ansible_play_index": block.index,
+        "ansible_play_count": block_count,
     }
     if block.name:
         meta["ansible_play_name"] = block.name
@@ -204,7 +204,7 @@ def looks_like_ansible_playbook(text: str) -> bool:
 
 
 class AnsiblePlaybookChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

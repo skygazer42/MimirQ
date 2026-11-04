@@ -105,7 +105,7 @@ def looks_like_proto_schema(text: str) -> bool:
 
 
 class ProtoSchemaChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

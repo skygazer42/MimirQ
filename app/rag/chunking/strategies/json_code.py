@@ -39,7 +39,7 @@ class JSONChunker(BaseChunker):
         chunk_overlap: int = 0,  # Usually 0 for JSON
         min_chunk_size: int = 200,
         max_depth: int | None = None,
-    ):
+    ) -> None:
         """
         Initialize the JSON chunker.
 
@@ -356,7 +356,7 @@ class CodeChunker(BaseChunker):
         chunk_overlap: int = 200,
         language: str | None = None,
         preserve_functions: bool = True,
-    ):
+    ) -> None:
         """
         Initialize the code chunker.
 
@@ -525,7 +525,7 @@ class SmartCodeChunker(BaseChunker):
         chunk_size: int = 1500,
         chunk_overlap: int = 200,
         target_language: str = "python",
-    ):
+    ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.target_language = target_language
@@ -556,9 +556,9 @@ class SmartCodeChunker(BaseChunker):
             search_pos = 0
 
             for unit_text, unit_type, unit_name in units:
-                unit_start = text.find(unit_text, max(0, int(search_pos)))
+                unit_start = text.find(unit_text, max(0, search_pos))
                 if unit_start < 0:
-                    unit_start = max(0, min(int(search_pos), len(text)))
+                    unit_start = max(0, min(search_pos, len(text)))
                 unit_end = min(len(text), unit_start + len(unit_text))
                 search_pos = max(unit_end, unit_start + 1)
 
@@ -601,7 +601,7 @@ class SmartCodeChunker(BaseChunker):
 
         return all_chunks
 
-    def _split_python_units(self, text: str) -> list[tuple]:
+    def _split_python_units(self, text: str) -> list[tuple[str, str, str]]:
         """Split Python code into logical units (functions, classes)."""
         units = []
         lines = text.split("\n")

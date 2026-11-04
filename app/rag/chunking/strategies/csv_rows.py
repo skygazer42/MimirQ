@@ -103,7 +103,7 @@ def looks_like_csv_rows(text: str) -> bool:
 
 
 class CsvRowsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -141,9 +141,9 @@ class CsvRowsChunker(BaseChunker):
                 meta["chunk_strategy"] = "csv_rows"
                 meta["start_char"] = chunk_start
                 meta["end_char"] = chunk_end
-                meta["csv_row_count"] = int(end_idx - start_idx)
-                meta["csv_row_start"] = int(rows[start_idx].row_no)
-                meta["csv_row_end"] = int(rows[end_idx - 1].row_no)
+                meta["csv_row_count"] = end_idx - start_idx
+                meta["csv_row_start"] = rows[start_idx].row_no
+                meta["csv_row_end"] = rows[end_idx - 1].row_no
                 out.append(Document(page_content=content, metadata=meta))
 
                 start_idx = _next_row_start(rows, start_idx, end_idx, self.chunk_overlap)

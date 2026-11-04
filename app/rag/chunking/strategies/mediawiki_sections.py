@@ -71,7 +71,7 @@ def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
     title = s[i:j].strip()
     if not title:
         return None
-    level = max(1, min(6, int(i) - 1))
+    level = max(1, min(6, i - 1))
     return level, title
 
 
@@ -99,7 +99,7 @@ def _iter_headings(text: str) -> list[WikiHeading]:
             WikiHeading(
                 start=ln.start,
                 end=ln.end,
-                level=int(level),
+                level=level,
                 title=title,
             )
         )
@@ -129,7 +129,7 @@ def _build_sections(text: str, headings: list[WikiHeading]) -> list[_Section]:
 
 
 def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     while len(stack) >= level:
         stack.pop()
     stack.append(heading_text)
@@ -147,7 +147,7 @@ def looks_like_mediawiki(text: str) -> bool:
 
 
 class MediaWikiSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -184,7 +184,7 @@ class MediaWikiSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["wiki_heading"] = section.heading.title
-                meta["wiki_level"] = int(section.heading.level)
+                meta["wiki_level"] = section.heading.level
             if path:
                 meta["wiki_path"] = path
             if path_str:

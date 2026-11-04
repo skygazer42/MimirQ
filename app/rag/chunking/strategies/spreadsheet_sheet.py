@@ -56,7 +56,7 @@ def _iter_sheets(text: str) -> list[_Sheet]:
         name = _parse_sheet_header(raw_line.rstrip("\r\n"))
         if name is None:
             continue
-        starts.append(int(line_start))
+        starts.append(line_start)
         names.append(name)
 
     if not starts:
@@ -67,7 +67,7 @@ def _iter_sheets(text: str) -> list[_Sheet]:
         name = names[idx] or ""
         if not name:
             name = f"sheet_{idx + 1}"
-        sheets.append(_Sheet(start=int(start), end=int(end), index=idx, name=name))
+        sheets.append(_Sheet(start=start, end=end, index=idx, name=name))
     return sheets
 
 
@@ -79,7 +79,7 @@ def looks_like_spreadsheet(text: str) -> bool:
 
 
 class SpreadsheetSheetChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -154,7 +154,7 @@ class SpreadsheetSheetChunker(BaseChunker):
                     text=sheet_text,
                     base_meta=base_meta,
                     offset=sheet.start,
-                    extra_meta={"sheet_index": int(sheet.index), "sheet_name": sheet.name},
+                    extra_meta={"sheet_index": sheet.index, "sheet_name": sheet.name},
                 )
 
         for idx, chunk in enumerate(out):

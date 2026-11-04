@@ -107,7 +107,7 @@ def _build_stages(text: str) -> list[_Stage]:
             _Stage(
                 start=start,
                 end=end,
-                index=int(idx),
+                index=idx,
                 from_image=img or None,
                 from_alias=als or None,
             )
@@ -135,7 +135,7 @@ def _docker_stage_meta(base_meta: dict[str, Any], *, stage: _Stage, start_char: 
     meta["start_char"] = start_char
     meta["end_char"] = end_char
     meta.setdefault("doc_type_kwd", "dockerfile")
-    meta["docker_stage_index"] = int(stage.index)
+    meta["docker_stage_index"] = stage.index
     if stage.from_image:
         meta["docker_from_image"] = stage.from_image
     if stage.from_alias:
@@ -179,7 +179,7 @@ def _next_instruction_start(instrs: list[_Instr], start_idx: int, end_idx: int, 
 
 
 class DockerfileChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

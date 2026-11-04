@@ -108,7 +108,7 @@ def _slide_title(slide_text: str) -> str | None:
 
 
 class PresentationSlidesChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -162,7 +162,7 @@ class PresentationSlidesChunker(BaseChunker):
                     meta["chunk_strategy"] = "presentation_slides"
                     meta["start_char"] = abs_start
                     meta["end_char"] = abs_end
-                    meta["slide_index"] = int(slide.index)
+                    meta["slide_index"] = slide.index
                     if title:
                         meta["slide_title"] = title
                     out.append(Document(page_content=sd.page_content, metadata=meta))

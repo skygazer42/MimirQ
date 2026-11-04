@@ -42,7 +42,7 @@ _CN_PAREN_NUM_CHARS = set("0123456789一二三四五六七八九十")
 
 def _classify_outline_heading(line: str) -> int | None:
     if (lv := _parse_numeric_heading_level(line)) is not None:
-        return int(lv)
+        return lv
     if parse_cn_prefixed_heading(line, suffixes="章节篇回") is not None:
         return 1
     if _looks_like_cn_num_heading(line):
@@ -84,7 +84,7 @@ def _append_outline_chunks(
 
         if heading is not None:
             meta["outline_heading"] = heading.text
-            meta["outline_level"] = int(heading.level)
+            meta["outline_level"] = heading.level
         if header_path:
             meta["outline_path"] = header_path
         if header_path_str:
@@ -136,7 +136,7 @@ def _parse_numeric_heading_level(line: str) -> int | None:
     title = s[i:].strip()
     if not title:
         return None
-    return int(segs)
+    return segs
 
 
 def _looks_like_cn_num_heading(line: str) -> bool:
@@ -231,7 +231,7 @@ def _iter_headings(text: str) -> list[OutlineHeading]:
                 start=line_start,
                 end=line_start + len(raw_line),
                 text=line,
-                level=int(level),
+                level=level,
             )
         )
 
@@ -265,7 +265,7 @@ def _build_sections(text: str, headings: list[OutlineHeading]) -> list[_Section]
 
 
 def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     # Ensure stack depth matches heading level.
     while len(stack) >= level:
         stack.pop()
@@ -277,7 +277,7 @@ class OutlineChunker(BaseChunker):
     Chunker optimized for numbered-outline documents (manuals, policies, SOPs).
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

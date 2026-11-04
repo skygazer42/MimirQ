@@ -116,7 +116,7 @@ def _build_split_documents(
 
 
 class XMLFeedChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -172,8 +172,8 @@ class XMLFeedChunker(BaseChunker):
                 split_docs = self._fallback_splitter.create_documents(texts=[blk_text], metadatas=[base_meta])
                 extra_meta: dict[str, Any] = {
                     "xml_feed_kind": blk.kind,
-                    "xml_feed_index": int(blk.index),
-                    "xml_feed_count": int(len(blocks)),
+                    "xml_feed_index": blk.index,
+                    "xml_feed_count": len(blocks),
                 }
                 if blk.title:
                     extra_meta["xml_feed_title"] = blk.title

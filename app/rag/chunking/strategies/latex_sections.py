@@ -63,7 +63,7 @@ def _iter_headings(text: str) -> list[LatexHeading]:
         title = (m.group("title") or "").strip()
         if not cmd:
             continue
-        level = int(_CMD_LEVEL.get(cmd, 9))
+        level = _CMD_LEVEL.get(cmd, 9)
         headings.append(
             LatexHeading(
                 start=m.start(),
@@ -100,7 +100,7 @@ def _build_sections(text: str, headings: list[LatexHeading]) -> list[_Section]:
 
 
 def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     while len(stack) >= level:
         stack.pop()
     stack.append(heading_text)
@@ -119,7 +119,7 @@ def looks_like_latex_sections(text: str) -> bool:
 
 
 class LatexSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -156,7 +156,7 @@ class LatexSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["latex_heading"] = section.heading.title
-                meta["latex_level"] = int(section.heading.level)
+                meta["latex_level"] = section.heading.level
                 meta["latex_cmd"] = section.heading.cmd
             if path:
                 meta["latex_path"] = path

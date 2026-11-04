@@ -132,7 +132,7 @@ def _next_entry_start(
 
 
 class LogEventsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -186,7 +186,7 @@ class LogEventsChunker(BaseChunker):
                 "chunk_strategy": "log_events",
                 "start_char": first_entry.start,
                 "end_char": last_entry.end,
-                "log_entry_count": int(end_idx - start_idx),
+                "log_entry_count": end_idx - start_idx,
             }
         )
         meta.setdefault("doc_type_kwd", "log")

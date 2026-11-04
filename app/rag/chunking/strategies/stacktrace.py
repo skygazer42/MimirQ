@@ -156,7 +156,7 @@ def looks_like_stacktrace(text: str) -> bool:
 
 
 class StackTraceChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -197,7 +197,7 @@ class StackTraceChunker(BaseChunker):
                     meta.setdefault("doc_type_kwd", "stacktrace")
 
                     meta["stacktrace_kind"] = b.kind
-                    meta["stacktrace_frame_count"] = int(b.frame_count)
+                    meta["stacktrace_frame_count"] = b.frame_count
                     if b.exception:
                         meta["stacktrace_exception"] = b.exception
 

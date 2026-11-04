@@ -23,13 +23,13 @@ _Q_PREFIX = r"(?:Q(?:uestion)?|问(?:题)?|问题)"
 _A_PREFIX = r"(?:A(?:nswer)?|答(?:案)?|答案)"
 
 _QA_TAG_LINE_RE = re.compile(
-    rf"(?m)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1, 6}\s*)?(?:\*\*|__)?"
+    rf"(?m)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{{1,6}}\s*)?(?:\*\*|__)?"
     rf"(?P<prefix>{_Q_PREFIX}|{_A_PREFIX})(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*(?P<rest>.*)$",
     flags=re.IGNORECASE,
 )
 
 _Q_STRIP_RE = re.compile(
-    rf"(?i)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{1, 6}\s*)?(?:\*\*|__)?{_Q_PREFIX}(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*"
+    rf"(?i)^\s*(?:[-*+]\s*|\d+\.\s*)?(?:#{{1,6}}\s*)?(?:\*\*|__)?{_Q_PREFIX}(?:\*\*|__)?(?:\s*\d{{0,3}})?\s*[:：]\s*"
 )
 
 
@@ -95,7 +95,7 @@ def _build_pairs(text: str, segs: list[_TagSeg]) -> list[_QAPair]:
             _QAPair(
                 start=pair_start,
                 end=next_q_start,
-                has_answer=bool(has_answer),
+                has_answer=has_answer,
                 question_preview=preview,
             )
         )
@@ -178,15 +178,15 @@ def _qa_chunk_document(
     meta["chunk_strategy"] = "qa_markdown"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["qa_pair_count"] = int(end_idx - start_idx)
-    meta["qa_answered_count"] = int(answered)
+    meta["qa_pair_count"] = end_idx - start_idx
+    meta["qa_answered_count"] = answered
     if previews:
         meta["qa_question_previews"] = previews
     return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
 
 
 class QAMarkdownChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
