@@ -8,7 +8,9 @@ Status: implemented
 
 ## Decision
 
-`app.services.indexing.vector_writer` 是向量写入与 Milvus 模式判断的唯一 owner。`indexer.py` 和 `chunks.py` 直接调用公开的 `milvus_backend_enabled`、`dataset_scoped_runtime_unavailable` 与 `dual_write_shadow_vectors_best_effort`。
+`app.services.indexing.vector_writer` 是 shadow writer 配置、缓存、可选双写、共享 runtime 错误与 Milvus 模式判断的唯一 owner。现行 `indexer.py` 直接调用公开的 `milvus_backend_enabled`、`dataset_scoped_runtime_unavailable` 与 `dual_write_shadow_vectors_best_effort`，并继续持有实际主写入流程。
+
+未接入现行调用链的 `chunks.py` 等并行实现及其独占 `ChunkVectorWriter` 类退出，见[活动索引写入所有者](2026-11-05-active-indexing-owner.md)。该清理不迁移主写入策略；这里的 shadow 缓存与失败政策保持原样。
 
 Shadow embedding-space hash 计算失败时，记录 warning 并将可选 shadow writer 缓存为不可用；主向量写入仍可成功。不可用 hash 不会作为空字符串写入 shadow metadata。该缓存沿用配置签名边界，配置变化后重新解析。
 

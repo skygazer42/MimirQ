@@ -8,13 +8,13 @@ import hashlib
 import logging
 import time
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NoReturn, TypeVar
 from uuid import UUID
 
 from langchain_core.documents import Document as LCDocument
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Query, Session, aliased
 
 from app.core.config import settings
 from app.models.dataset import Dataset as DBDataset
@@ -56,6 +56,7 @@ from app.storage.vector.factory import get_vector_store
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 from app.types.indexing import (
     ChunkInput,
+    EventEntityInput,
     EventInput,
     IndexBatchResult,
     IndexingOptions,
@@ -70,18 +71,7 @@ _INDEXER_FALLBACK_LOG_MESSAGE = "Ignoring non-critical indexer fallback failure:
 _CHUNK_METADATA_SCAN_BATCH_SIZE = 256
 
 _INGEST_GATE_ACTION = "document.ingest_gate"
-
-
-def _dataset_scoped_cleanup_ambiguous(
-    *,
-    document_id: UUID,
-    tenant_id: UUID,
-    embedding_space_hash: str,
-) -> DatasetScopedEmbeddingRuntimeResolutionError:
-    return DatasetScopedEmbeddingRuntimeResolutionError(
-        "dataset-scoped vector cleanup target ambiguous from persisted metadata "
-        f"(tenant_id={tenant_id}, document_id={document_id}, embedding_space_hash={embedding_space_hash})"
-    )
+_VectorItem = TypeVar("_VectorItem", KgSourceEvent, KgEntity)
 
 
 def _safe_int(value: Any) -> int | None:
@@ -94,7 +84,7 @@ def _safe_int(value: Any) -> int | None:
 
 
 def _tenant_quota_fail_closed_enabled() -> bool:
-    return bool(settings.TENANT_QUOTA_FAIL_CLOSED)
+    return settings.TENANT_QUOTA_FAIL_CLOSED
 
 
 def _now_iso() -> str:
@@ -174,7 +164,7 @@ def _persist_ingest_gate_outcome_best_effort(
         )
         if db_document is not None:
             db_document.doc_metadata = _record_ingest_gate_outcome(
-                dict(getattr(db_document, "doc_metadata", None) or {}),
+                dict(db_document.doc_metadata or {}),
                 gate=gate,
                 outcome=outcome,
                 reason=reason,
@@ -212,7 +202,7 @@ def _enforce_embedding_quota_gate(
             "quota": "embedding_chars",
             "additional_chars": max(0, int(additional_chars or 0)),
             "error": str(exc)[:200],
-            "fail_closed": bool(closed),
+            "fail_closed": closed,
         }
         log_metrics(
             {
@@ -222,7 +212,7 @@ def _enforce_embedding_quota_gate(
                 "quota": "embedding_chars",
                 "outcome": outcome,
                 "reason": reason,
-                "fail_closed": bool(closed),
+                "fail_closed": closed,
             }
         )
         _persist_ingest_gate_outcome_best_effort(
@@ -272,26 +262,6 @@ def _metadata_flag_enabled(value: Any) -> bool:
     if isinstance(value, (int, float)):
         return bool(value)
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _first_column_value(row: Any) -> Any:
-    if row is None:
-        return None
-    if isinstance(row, dict):
-        return row
-    mapping = getattr(row, "_mapping", None)
-    if mapping is not None:
-        if "metadata" in mapping:
-            return mapping["metadata"]
-        values = list(mapping.values())
-        if len(values) == 1:
-            return values[0]
-    if isinstance(row, (tuple, list)):
-        return row[0] if row else None
-    try:
-        return row[0]
-    except (IndexError, KeyError, TypeError):
-        return row
 
 
 _UNRESOLVED_ROW_VALUE = object()
@@ -354,7 +324,7 @@ def _row_named_value(row: Any, key: str) -> Any:
     return _indexed_row_value(row, key)
 
 
-def _iter_query_rows(query: Any, *, batch_size: int) -> Iterable[Any]:
+def _iter_query_rows(query: Query[Any], *, batch_size: int) -> Iterable[Any]:
     if hasattr(query, "yield_per"):
         query = query.yield_per(batch_size)
     if hasattr(query, "__iter__"):
@@ -697,10 +667,10 @@ def _build_llm_contextual_summary(
 
 
 def _contextual_summary_limits() -> tuple[int, int] | None:
-    if not bool(settings.CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED):
+    if not settings.CONTEXTUAL_RETRIEVAL_LLM_ENRICHMENT_ENABLED:
         return None
-    max_input_chars = max(0, int(settings.CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS or 2400))
-    max_summary_chars = max(0, int(settings.CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS or 180))
+    max_input_chars = max(0, settings.CONTEXTUAL_RETRIEVAL_LLM_MAX_INPUT_CHARS or 2400)
+    max_summary_chars = max(0, settings.CONTEXTUAL_RETRIEVAL_LLM_MAX_SUMMARY_CHARS or 180)
     return (max_input_chars, max_summary_chars) if max_summary_chars > 0 else None
 
 
@@ -719,7 +689,7 @@ def _invoke_contextual_summary_llm(
         api_key=settings.LLM_API_KEY,
         base_url=settings.LLM_API_BASE,
         temperature=0,
-        timeout=max(5, int(settings.LLM_TIMEOUT or 60)),
+        timeout=max(5, settings.LLM_TIMEOUT or 60),
         max_retries=0,
         streaming=False,
     )
@@ -757,9 +727,9 @@ def _build_contextual_prefix_for_chunk(
         raw_body,
         document_title=document_title,
         meta=meta,
-        max_prefix_chars=int(settings.CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS or 240),
-        keywords_top_k=int(settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K or 6),
-        keywords_max_chars=int(settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS or 2000),
+        max_prefix_chars=settings.CONTEXTUAL_RETRIEVAL_PREFIX_MAX_CHARS or 240,
+        keywords_top_k=settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_TOP_K or 6,
+        keywords_max_chars=settings.CONTEXTUAL_RETRIEVAL_KEYWORDS_MAX_CHARS or 2000,
     )
 
 
@@ -805,11 +775,11 @@ def _enrich_entity_best_effort(
     vector: list[Any] | None,
     extra_data: dict[str, Any] | None,
 ) -> None:
-    if description and not getattr(entity, "description", None):
+    if description and not entity.description:
         entity.description = description
-    if vector and not getattr(entity, "vector", None):
+    if vector and not entity.vector:
         entity.vector = vector
-    if extra_data and not getattr(entity, "extra_data", None):
+    if extra_data and not entity.extra_data:
         entity.extra_data = extra_data
 
 
@@ -869,12 +839,12 @@ def _chunk_position_values(chunk: ChunkInput, meta: dict[str, Any]) -> tuple[int
 
 
 def _event_references(event: KgSourceEvent) -> dict[str, Any]:
-    refs = getattr(event, "references", None)
+    refs = event.references
     return refs if isinstance(refs, dict) else {}
 
 
 def _event_pipeline_hash(event: KgSourceEvent, refs: dict[str, Any]) -> str | None:
-    pipeline_hash = str(getattr(event, "pipeline_hash", None) or refs.get("pipeline_hash") or "").strip() or None
+    pipeline_hash = str(event.pipeline_hash or refs.get("pipeline_hash") or "").strip() or None
     return pipeline_hash[:200] if pipeline_hash and len(pipeline_hash) > 200 else pipeline_hash
 
 
@@ -923,12 +893,12 @@ def _event_vector_item(event: KgSourceEvent) -> tuple[dict[str, Any], list[float
 
 
 def _vector_write_batch_size() -> int:
-    return int(settings.VECTOR_WRITE_BATCH_SIZE or 256)
+    return settings.VECTOR_WRITE_BATCH_SIZE or 256
 
 
 def _vector_write_retry_policy() -> tuple[int, float]:
-    max_retries = int(settings.VECTOR_WRITE_MAX_RETRIES or 1)
-    backoff = float(settings.VECTOR_WRITE_RETRY_BACKOFF_SEC or 0.5)
+    max_retries = settings.VECTOR_WRITE_MAX_RETRIES or 1
+    backoff = settings.VECTOR_WRITE_RETRY_BACKOFF_SEC or 0.5
     return max_retries, backoff
 
 
@@ -971,7 +941,7 @@ class Indexer:
     - Event indexing: PostgreSQL + Milvus (events + entities)
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self._db = db
         event_collection = resolve_collection_name("kg_events")
         entity_collection = resolve_collection_name("kg_entities")
@@ -981,22 +951,22 @@ class Indexer:
     def _resolve_chunk_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.chunk_vector_enabled is not None:
             return bool(options.chunk_vector_enabled)
-        return bool(settings.CHUNK_VECTOR_ENABLED)
+        return settings.CHUNK_VECTOR_ENABLED
 
     def _resolve_bm25_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.bm25_index_enabled is not None:
             return bool(options.bm25_index_enabled)
-        return bool(settings.BM25_INDEX_ENABLED)
+        return settings.BM25_INDEX_ENABLED
 
     def _resolve_event_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.event_vector_enabled is not None:
             return bool(options.event_vector_enabled)
-        return bool(settings.EVENT_VECTOR_ENABLED)
+        return settings.EVENT_VECTOR_ENABLED
 
     def _resolve_entity_vector_enabled(self, options: IndexingOptions | None) -> bool:
         if options and options.entity_vector_enabled is not None:
             return bool(options.entity_vector_enabled)
-        return bool(settings.ENTITY_VECTOR_ENABLED)
+        return settings.ENTITY_VECTOR_ENABLED
 
     def _load_document_for_channel_tracking(self, *, tenant_id: UUID, document_id: UUID) -> DBDocument | None:
         return (
@@ -1278,7 +1248,7 @@ class Indexer:
             },
         }
 
-    def index(self, kind: IndexKind, **kwargs):
+    def index(self, kind: IndexKind, **kwargs: Any) -> PersistChunksResult | PersistEventsResult:
         if kind == IndexKind.CHUNK:
             return self.index_chunks(**kwargs)
         if kind == IndexKind.EVENT:
@@ -1342,7 +1312,7 @@ class Indexer:
         )
         return IndexBatchResult(chunk_result=chunk_result, event_result=event_result)
 
-    def delete(self, kind: IndexKind, **kwargs) -> None:
+    def delete(self, kind: IndexKind, **kwargs: Any) -> None:
         if kind == IndexKind.CHUNK:
             return self.delete_chunk_indexes(**kwargs)
         if kind == IndexKind.EVENT:
@@ -1359,7 +1329,7 @@ class Indexer:
         self.delete(IndexKind.CHUNK, tenant_id=tenant_id, document_id=document_id)
         self.delete(IndexKind.EVENT, tenant_id=tenant_id, document_id=document_id, commit=commit)
 
-    def rebuild(self, kind: IndexKind, **kwargs) -> None:
+    def rebuild(self, kind: IndexKind, **kwargs: Any) -> None:
         if kind == IndexKind.CHUNK:
             return self.rebuild_chunk_indexes(**kwargs)
         if kind == IndexKind.EVENT:
@@ -1404,7 +1374,7 @@ class Indexer:
                 "db_document": db_document,
                 "dataset_uuid": db_document.dataset_id,
                 "dataset_id_str": str(db_document.dataset_id) if db_document.dataset_id is not None else None,
-                "file_type_str": str(db_document.file_type) if db_document.file_type is not None else None,
+                "file_type_str": db_document.file_type if db_document.file_type is not None else None,
                 "document_title": _derive_document_title(db_document.filename, doc_meta),
                 "document_retrieval_metadata": dict(doc_meta) if isinstance(doc_meta, dict) else {},
             }
@@ -1417,16 +1387,12 @@ class Indexer:
 
     def _chunk_index_option_flags(self, options: IndexingOptions | None) -> dict[str, bool]:
         return {
-            "embedding_prefix_enabled": bool(getattr(options, "embedding_context_prefix_enabled", False))
+            "embedding_prefix_enabled": bool(options.embedding_context_prefix_enabled) if options else False,
+            "contextual_retrieval_enabled": bool(options.embedding_contextual_retrieval_enabled) if options else False,
+            "contextual_retrieval_lazy_mode": bool(options.embedding_contextual_retrieval_lazy_mode)
             if options
             else False,
-            "contextual_retrieval_enabled": bool(getattr(options, "embedding_contextual_retrieval_enabled", False))
-            if options
-            else False,
-            "contextual_retrieval_lazy_mode": bool(getattr(options, "embedding_contextual_retrieval_lazy_mode", False))
-            if options
-            else False,
-            "field_aware_enabled": bool(getattr(options, "embedding_field_aware_enabled", False)) if options else False,
+            "field_aware_enabled": bool(options.embedding_field_aware_enabled) if options else False,
         }
 
     def _prepare_chunk_index_inputs(
@@ -1689,7 +1655,7 @@ class Indexer:
             self._db,
             tenant_id=tenant_id,
             document_id=document_id,
-            additional_chars=int(total_characters or 0),
+            additional_chars=total_characters or 0,
         )
         flags = self._chunk_index_option_flags(options)
         prepared_chunks = self._prepare_chunk_index_inputs(
@@ -1747,7 +1713,7 @@ class Indexer:
         default_source: str = "unknown",
         commit: bool = True,
         options: IndexingOptions | None = None,
-    ) -> PersistChunksResult:
+    ) -> NoReturn:
         """
         Concurrently index document chunks (vector store, PostgreSQL, BM25).
 
@@ -1778,7 +1744,7 @@ class Indexer:
             return pipeline_hash[:200]
         return pipeline_hash
 
-    def _event_link_extra(self, *, ent: Any, link_extra_data: dict[str, Any]) -> dict[str, Any]:
+    def _event_link_extra(self, *, ent: EventEntityInput, link_extra_data: dict[str, Any]) -> dict[str, Any]:
         link_extra = dict(link_extra_data or {})
         evidence_quote = (ent.evidence_quote or "").strip() if hasattr(ent, "evidence_quote") else ""
         if evidence_quote:
@@ -1800,7 +1766,7 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        ent: Any,
+        ent: EventEntityInput,
         entity_cache: dict[tuple[str, str, str], KgEntity],
     ) -> KgEntity | None:
         name = ent.name.strip()
@@ -1819,7 +1785,7 @@ class Indexer:
                 description=ent.description,
             )
             entity_cache[cache_key] = entity_obj
-        if ent.vector and not getattr(entity_obj, "vector", None):
+        if ent.vector and not entity_obj.vector:
             entity_obj.vector = ent.vector
         return entity_obj
 
@@ -1832,7 +1798,7 @@ class Indexer:
         entity_cache: dict[tuple[str, str, str], KgEntity] = {}
         db_events: list[KgSourceEvent] = []
         for item in events:
-            refs = item.references if isinstance(getattr(item, "references", None), dict) else {}
+            refs = item.references if isinstance(item.references, dict) else {}
             event_obj = KgSourceEvent(
                 tenant_id=tenant_id,
                 pipeline_hash=self._normalized_event_pipeline_hash(refs),
@@ -1873,9 +1839,9 @@ class Indexer:
         document: DBDocument | None,
         channel: str,
         enabled: bool,
-        items: Sequence[Any],
-        candidates: Sequence[Any],
-        writer,
+        items: Sequence[_VectorItem],
+        candidates: Sequence[_VectorItem],
+        writer: Callable[[list[_VectorItem]], list[str]],
         failure_error: str,
         commit: bool,
     ) -> list[str]:
@@ -1935,7 +1901,7 @@ class Indexer:
             channel="event_vector",
             enabled=event_vector_enabled,
             items=db_events,
-            candidates=[event for event in db_events if getattr(event, "content_vector", None)],
+            candidates=[event for event in db_events if event.content_vector],
             writer=self._index_event_vectors,
             failure_error="event_vector_write_failed",
             commit=commit,
@@ -1945,7 +1911,7 @@ class Indexer:
             channel="entity_vector",
             enabled=entity_vector_enabled,
             items=list(entity_cache.values()),
-            candidates=[entity for entity in entity_cache.values() if getattr(entity, "vector", None)],
+            candidates=[entity for entity in entity_cache.values() if entity.vector],
             writer=self._index_entity_vectors,
             failure_error="entity_vector_write_failed",
             commit=commit,
@@ -2165,7 +2131,7 @@ class Indexer:
             strict=strict,
         )
 
-    def _orphan_entity_query(self, *, tenant_id: UUID):
+    def _orphan_entity_query(self, *, tenant_id: UUID) -> Query[tuple[UUID]]:
         rel_as_subject = aliased(KgRelation)
         rel_as_object = aliased(KgRelation)
         return (
@@ -2241,7 +2207,7 @@ class Indexer:
 
         return deleted
 
-    def _event_batch_ids(self, query: Any, *, last_id: UUID | None, batch_size: int) -> list[UUID]:
+    def _event_batch_ids(self, query: Query[KgSourceEvent], *, last_id: UUID | None, batch_size: int) -> list[UUID]:
         query_ids = query.with_entities(KgSourceEvent.id)
         if last_id is not None:
             query_ids = query_ids.filter(KgSourceEvent.id > last_id)
@@ -2306,7 +2272,7 @@ class Indexer:
         self,
         *,
         tenant_id: UUID,
-        query,
+        query: Query[KgSourceEvent],
         commit: bool,
         prune_orphan_entities: bool,
         strict: bool,
@@ -2344,7 +2310,7 @@ class Indexer:
         tenant_id: UUID,
         document_ids: list[UUID] | None = None,
     ) -> None:
-        if not bool(settings.BM25_INDEX_ENABLED):
+        if not settings.BM25_INDEX_ENABLED:
             return
         count = hybrid_retriever.rebuild_bm25_index_for_operational_scope(
             self._db,
@@ -2370,7 +2336,7 @@ class Indexer:
         if document_ids:
             event_query = event_query.filter(KgSourceEvent.document_id.in_(document_ids))
         events = event_query.all()
-        if events and bool(settings.EVENT_VECTOR_ENABLED):
+        if events and settings.EVENT_VECTOR_ENABLED:
             self._index_event_vectors(events)
 
         event_ids = [ev.id for ev in events]
@@ -2385,7 +2351,7 @@ class Indexer:
             return
 
         entities = self._db.query(KgEntity).filter(KgEntity.tenant_id == tenant_id, KgEntity.id.in_(entity_ids)).all()
-        if entities and bool(settings.ENTITY_VECTOR_ENABLED):
+        if entities and settings.ENTITY_VECTOR_ENABLED:
             self._index_entity_vectors(entities)
 
     def _touch_chunk_retrieval_scope(

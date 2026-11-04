@@ -1,0 +1,27 @@
+# Agent Note: 活动索引写入所有者
+
+Status: implemented
+
+## Problem
+
+`indexer.py` 仍是生产、API、解析和任务使用的写入入口；`indexing` 下另有五个模块及 `ChunkVectorWriter` 类组成的并行实现，仅互相引用。它们由同次旧拆分新增，没有接入 `Indexer`、导出或注册。两套代码在可选与严格运行配置、元数据行读取、失败后清理、BM25 调用和 rollback 上已出现差异，不能直接替换活动实现。
+
+## Decision
+
+现行 `Indexer` 继续持有会话、向量客户端、写入与清理流程；移除没有调用入口的并行模块、类和独占辅助函数，以及主模块中两个无调用或注册的旧私有辅助函数。`indexing/vector_writer.py` 继续持有实际使用的运行配置错误、Milvus 判断、shadow 配置、缓存和双写函数。其现有函数体及缓存签名保持。
+
+活动代码直接读取已声明的 Settings 与 ORM 字段。`EventEntityInput`、SQLAlchemy Query 和事件／实体向量回调使用实际类型；禁用的异步写入明确返回 NoReturn。回调仍接收原来的列表和绑定方法，资源初始化、操作顺序、参数、事务、重试、部分写入清理、配额与 channel 状态政策保持。
+
+原始元数据、UUID、查询行形状、位置、可选证据和 provider 内容继续使用原校验。IndexingOptions 等 dataclass 不执行运行时校验，因此可空选项的布尔转换和原有证据数字解析保留。缺失、零和负值的既有默认与分支保持，不新增 Context 或协调器。
+
+## Alternatives considered
+
+接入已有并行类能缩短 `Indexer`，但这些类采用不同的清理和运行配置政策，直接迁移会改变活动调用方的行为。保留两套实现可以避免删除文件，但没有实际入口的副本持续分叉，也会让后续修改选错所有者；因此保留现行入口并清理未使用副本。
+
+## Consequences
+
+项目中的写入调用和现有 private hook 继续使用同一 `Indexer`，客户端与会话归属明确；已构造记录不再重复解析。五个退出模块和类的完整源码已读，Git 跟踪源码、配置、测试与包导出检索没有发现岛外使用或注册。未引入未跟踪文件、依赖或新框架。
+
+验证限于固定 Git 源码、实际 DTO／ORM／Settings／SDK 声明、调用约定、AST 与 Ruff。Python 测试、索引、数据库、向量、模型、网络、workbook 和服务运行时均未执行。
+
+历史笔记中，[向量 writer 所有者](2026-11-03-indexer-vector-writer-owner.md) 与 shadow 函数职责部分重叠，原位同步已退出调用者的事实，缓存决定不变。[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md) 的原始值边界原则沿用，索引的 `_safe_int` 继续返回 None。[语料缓存事务](../bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md) 的事务与失效规则保持；前端索引状态相关笔记属于其他调用链，不被替代。
