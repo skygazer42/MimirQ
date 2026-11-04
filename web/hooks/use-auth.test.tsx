@@ -24,6 +24,7 @@ vi.mock('@/lib/api/auth', () => ({
 vi.mock('@/lib/auth-storage', () => ({
   clearAuthSession: authState.clearAuthSession,
   getAccessToken: () => authState.token,
+  getAuthSessionRevision: () => 0,
   getStoredUser: () => (authState.token ? authState.storedUser : null),
   setStoredUser: authState.setStoredUser,
 }))

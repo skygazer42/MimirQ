@@ -1,4 +1,10 @@
-import { clearAuthSession, getAccessToken, setAccessToken } from '@/lib/auth-storage'
+import {
+  clearAuthSession,
+  getAccessToken,
+  getAuthCacheScope,
+  getAuthSessionRevision,
+  setAccessToken,
+} from '@/lib/auth-storage'
 import { tryRefreshOidcAccessToken } from '@/lib/oidc-session'
 
 type AuthenticatedFetchOptions = RequestInit & {
@@ -7,6 +13,8 @@ type AuthenticatedFetchOptions = RequestInit & {
 
 type InflightOidcRefresh = {
   sessionToken: string
+  sessionRevision: number
+  scope: string
   promise: Promise<Awaited<ReturnType<typeof tryRefreshOidcAccessToken>>>
 }
 
@@ -25,18 +33,26 @@ export async function authenticatedFetch(
   init: AuthenticatedFetchOptions = {},
 ): Promise<Response> {
   const { allowSessionLogoutOnUnauthorized = true, ...requestInit } = init
+  const sessionRevision = getAuthSessionRevision()
+  const scope = getAuthCacheScope()
+  const signal = requestInit.signal ?? (input instanceof Request ? input.signal : undefined)
+  const headers = getRequestHeaders(input, requestInit.headers)
   let response = await fetch(input, requestInit)
   if (response.status !== 401) return response
+  signal?.throwIfAborted()
+  const ownsSession = () => sessionRevision === getAuthSessionRevision() && scope === getAuthCacheScope()
+  if (!ownsSession()) return response
 
   const token = getAccessToken()
-  const headers = getRequestHeaders(input, requestInit.headers)
   const requestAuthorization = headers.get('Authorization')
   const requestUsesSessionToken = !!token && requestAuthorization === `Bearer ${token}`
   const canAttemptRefresh = requestUsesSessionToken && globalThis.window !== undefined
   let attemptedSessionToken = token
 
   if (canAttemptRefresh && token) {
-    const refreshed = await getSharedOidcRefreshResult(token)
+    const refreshed = await getSharedOidcRefreshResult(token, sessionRevision, scope)
+    signal?.throwIfAborted()
+    if (!ownsSession()) return response
     const activeToken = getAccessToken()
     const canReuseRefreshResult = !!refreshed && (activeToken === token || activeToken === refreshed.access_token)
 
@@ -55,6 +71,8 @@ export async function authenticatedFetch(
   }
 
   if (!allowSessionLogoutOnUnauthorized) return response
+  signal?.throwIfAborted()
+  if (!ownsSession()) return response
   const activeToken = getAccessToken()
   if (!token || !requestUsesSessionToken || activeToken !== attemptedSessionToken) return response
 
@@ -71,8 +89,15 @@ export async function authenticatedFetch(
 
 async function getSharedOidcRefreshResult(
   sessionToken: string,
+  sessionRevision: number,
+  scope: string,
 ): Promise<Awaited<ReturnType<typeof tryRefreshOidcAccessToken>>> {
-  if (!inflightOidcRefresh || inflightOidcRefresh.sessionToken !== sessionToken) {
+  if (
+    !inflightOidcRefresh ||
+    inflightOidcRefresh.sessionToken !== sessionToken ||
+    inflightOidcRefresh.sessionRevision !== sessionRevision ||
+    inflightOidcRefresh.scope !== scope
+  ) {
     const promise = Promise.resolve(tryRefreshOidcAccessToken()).finally(() => {
       if (inflightOidcRefresh?.promise === promise) {
         inflightOidcRefresh = null
@@ -80,6 +105,8 @@ async function getSharedOidcRefreshResult(
     })
     inflightOidcRefresh = {
       sessionToken,
+      sessionRevision,
+      scope,
       promise,
     }
   }

@@ -3,7 +3,13 @@ import type { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } fr
 
 import { extractBackendMessage, extractBackendRequestId, extractRateLimitDetail } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
-import { clearAuthSession, getAccessToken, setAccessToken } from '@/lib/auth-storage'
+import {
+  clearAuthSession,
+  getAccessToken,
+  getAuthCacheScope,
+  getAuthSessionRevision,
+  setAccessToken,
+} from '@/lib/auth-storage'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { tryRefreshOidcAccessToken } from '@/lib/oidc-session'
 import { createOpenApiAxiosClient } from '@/lib/openapi-request'
@@ -50,6 +56,8 @@ type RateLimitLogMessageInput = {
 }
 type RetriableRequestConfig = AxiosRequestConfig & {
   __mimirqOidcRetried?: boolean
+  __mimirqAuthSessionRevision?: number
+  __mimirqAuthScope?: string
 }
 type ApiClientError = Error & {
   code?: string
@@ -142,6 +150,11 @@ function isRequestCancellationError(error: unknown): boolean {
 async function handleUnauthorizedApiError(error: ApiClientError, requestId?: string) {
   logRequestScopedError('[API] 未授权，请检查登录状态', requestId)
 
+  if (error.config?.signal?.aborted) throw new axios.CanceledError('canceled')
+  const requestOwnsSession = () =>
+    error.config?.__mimirqAuthSessionRevision === getAuthSessionRevision() &&
+    error.config?.__mimirqAuthScope === getAuthCacheScope()
+  if (!requestOwnsSession()) return undefined
   const token = getAccessToken()
   const requestAuthorization = error.config
     ? headerValueToString(
@@ -157,8 +170,12 @@ async function handleUnauthorizedApiError(error: ApiClientError, requestId?: str
     error.config.__mimirqOidcRetried = true
 
     const refreshed = await tryRefreshOidcAccessToken()
+    if (error.config.signal?.aborted) throw new axios.CanceledError('canceled')
+    if (!requestOwnsSession()) return undefined
+    const activeToken = getAccessToken()
+    if (activeToken !== token && activeToken !== refreshed?.access_token) return undefined
     if (refreshed) {
-      setAccessToken(refreshed)
+      if (activeToken !== refreshed.access_token) setAccessToken(refreshed)
       error.config.headers = AxiosHeaders.from(
         (error.config.headers ?? {}) as Record<string, string | number | boolean>,
       ).set('Authorization', `Bearer ${refreshed.access_token}`)
@@ -254,6 +271,11 @@ async function handleApiClientError(error: unknown) {
 }
 
 function prepareApiRequest(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
+  const requestConfig = config as InternalAxiosRequestConfig & RetriableRequestConfig
+  if (requestConfig.__mimirqAuthSessionRevision === undefined) {
+    requestConfig.__mimirqAuthSessionRevision = getAuthSessionRevision()
+    requestConfig.__mimirqAuthScope = getAuthCacheScope()
+  }
   const headers = AxiosHeaders.from(config.headers)
   const authHeaders = getAuthHeaders()
   for (const [key, value] of Object.entries(authHeaders)) {

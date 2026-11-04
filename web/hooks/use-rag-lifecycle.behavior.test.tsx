@@ -11,6 +11,7 @@ import { waitForAssertion } from '@/test/hook-harness'
 const authStorage = vi.hoisted(() => ({
   clearAuthSession: vi.fn(),
   getAccessToken: vi.fn(() => null as string | null),
+  getAuthSessionRevision: vi.fn(() => 0),
   getStoredUser: vi.fn(() => null),
   setStoredUser: vi.fn(),
 }))
