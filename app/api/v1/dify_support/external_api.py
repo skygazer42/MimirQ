@@ -18,12 +18,12 @@ from app.api.schemas.dify import DifyExternalKnowledgeRecord as DifyExternalKnow
 from app.api.schemas.dify import DifyExternalKnowledgeRequest as DifyExternalKnowledgeRequest
 from app.api.schemas.dify import DifyExternalKnowledgeResponse as DifyExternalKnowledgeResponse
 from app.api.schemas.dify import DifyRetrievalSetting as DifyRetrievalSetting
-from app.api.v1.dify_support.anchor_strength import _dify_kg_bool, _dify_kg_float, _dify_kg_int
-from app.api.v1.dify_support.common import _clamp_score
-from app.api.v1.dify_support.scoring import _diagnostic_query_hash
 from app.core.config import settings
 from app.models.chat import Conversation, Message
 from app.rag.core.logging import get_logger
+from app.services.dify_integration.anchor_strength import _dify_kg_bool, _dify_kg_float, _dify_kg_int
+from app.services.dify_integration.common import _clamp_score
+from app.services.dify_integration.scoring import _diagnostic_query_hash
 from app.services.external_conversation_ingest import _mimirq_citations_for_storage
 from app.types.dify_integration import DifyActor as _DifyActor
 from app.types.dify_integration import DifyKGFlags as _DifyKGFlags
@@ -61,6 +61,15 @@ _DIFY_TRACE_CITATION_METADATA_KEYS = (
     "kg_path",
     "kg_path_provenance",
 )
+
+
+def _request_client_ip(request: Request) -> str:
+    forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        first = forwarded_for.split(",", 1)[0].strip()
+        if first:
+            return first
+    return str(getattr(getattr(request, "client", None), "host", "") or "").strip()
 
 
 def _api():

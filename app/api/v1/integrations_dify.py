@@ -33,219 +33,6 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app.api.schemas.chat import ChatRAGConfig
-from app.api.v1.dify_support.anchor_strength import (
-    _composite_section_text as _composite_section_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _composite_stitched_section_text as _composite_stitched_section_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_bool as _dify_kg_bool,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_float as _dify_kg_float,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_int as _dify_kg_int,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _ordered_section_sibling_records as _ordered_section_sibling_records,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _query_intent_terms as _query_intent_terms,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _question_anchor_intent_groups as _question_anchor_intent_groups,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _question_anchor_subject_text as _question_anchor_subject_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_has_any_requested_slot_field as _record_has_any_requested_slot_field,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_is_composite_exact_anchor_answer as _record_is_composite_exact_anchor_answer,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_is_full_answer_chunk as _record_is_full_answer_chunk,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_matches_requested_slot as _record_matches_requested_slot,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_question_anchor_has_intent_conflict as _record_question_anchor_has_intent_conflict,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_section_type_values as _record_section_type_values,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_slot_field_values as _record_slot_field_values,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _safe_int as _safe_int,
-)
-from app.api.v1.dify_support.common import (
-    _CJK_RE as _CJK_RE,
-)
-from app.api.v1.dify_support.common import (
-    _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
-)
-from app.api.v1.dify_support.common import (
-    _EXACT_PRIMARY_ALIAS_MATCH_BONUS as _EXACT_PRIMARY_ALIAS_MATCH_BONUS,
-)
-from app.api.v1.dify_support.common import (
-    _EXPLICIT_QUESTION_FORM_MARKERS as _EXPLICIT_QUESTION_FORM_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _FAST_ANSWER_QUERY_STOP_TERMS as _FAST_ANSWER_QUERY_STOP_TERMS,
-)
-from app.api.v1.dify_support.common import (
-    _FUZZY_METADATA_ANCHOR_KEYS as _FUZZY_METADATA_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _MAX_HINT_VALUE_CHARS as _MAX_HINT_VALUE_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MAX_QA_HINT_VALUE_CHARS as _MAX_QA_HINT_VALUE_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _METADATA_ANCHOR_KEYS as _METADATA_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _METADATA_SCORE_KEYS as _METADATA_SCORE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_REGION_ANCHOR_OVERLAP_CHARS as _MIN_REGION_ANCHOR_OVERLAP_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_REGIONAL_QUESTION_OVERLAP_CHARS as _MIN_REGIONAL_QUESTION_OVERLAP_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_SPECIFIC_INTENT_CHARS as _MIN_SPECIFIC_INTENT_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_LIST_SPLIT_RE as _MIXED_INTENT_LIST_SPLIT_RE,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_QUERY_MARKERS as _MIXED_INTENT_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE as _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE,
-)
-from app.api.v1.dify_support.common import (
-    _PUBLIC_METADATA_VIEW_KEYS as _PUBLIC_METADATA_VIEW_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_INTENT_GROUPS as _QUESTION_ANCHOR_INTENT_GROUPS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS as _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO as _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_QUERY_MARKERS as _QUESTION_ANCHOR_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS as _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS,
-)
-from app.api.v1.dify_support.common import (
-    _QUOTED_ANCHOR_RE as _QUOTED_ANCHOR_RE,
-)
-from app.api.v1.dify_support.common import (
-    _REGION_ANCHOR_KEYS as _REGION_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _RETRIEVAL_METADATA_VIEW_KEYS as _RETRIEVAL_METADATA_VIEW_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SCORE_KEYS as _SCORE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SERVICE_ANCHOR_ADMIN_MARKERS as _SERVICE_ANCHOR_ADMIN_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _SERVICE_ANCHOR_QUERY_TRAILING_CHARS as _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _SOURCE_RECORD_ID_KEYS as _SOURCE_RECORD_ID_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SOURCE_RECORD_SCOPE_KEYS as _SOURCE_RECORD_SCOPE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_BONUS as _URL_EVIDENCE_BONUS,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_BONUS_MAX as _URL_EVIDENCE_BONUS_MAX,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_QUERY_MARKERS as _URL_EVIDENCE_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _citation_chunk_id as _citation_chunk_id,
-)
-from app.api.v1.dify_support.common import (
-    _citation_dataset_id as _citation_dataset_id,
-)
-from app.api.v1.dify_support.common import (
-    _citation_score as _citation_score,
-)
-from app.api.v1.dify_support.common import (
-    _clamp_score as _clamp_score,
-)
-from app.api.v1.dify_support.common import (
-    _first_non_empty as _first_non_empty,
-)
-from app.api.v1.dify_support.common import (
-    _iter_record_metadata_layers as _iter_record_metadata_layers,
-)
-from app.api.v1.dify_support.common import (
-    _metadata_terms as _metadata_terms,
-)
-from app.api.v1.dify_support.common import (
-    _normalize_match_term as _normalize_match_term,
-)
-from app.api.v1.dify_support.common import (
-    _response_hint_metadata_conditions_match as _response_hint_metadata_conditions_match,
-)
-from app.api.v1.dify_support.compaction import (
-    _compact_fast_answer_value as _compact_fast_answer_value,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_candidate_top_k as _dify_fast_candidate_top_k,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_content_max_chars as _dify_fast_content_max_chars,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_response_top_k as _dify_fast_response_top_k,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_total_content_max_chars as _dify_fast_total_content_max_chars,
-)
-from app.api.v1.dify_support.compaction import (
-    _fast_answer_query_terms as _fast_answer_query_terms,
-)
-from app.api.v1.dify_support.compaction import (
-    _fast_answer_snippet_segments as _fast_answer_snippet_segments,
-)
-from app.api.v1.dify_support.compaction import (
-    _query_requests_url_evidence as _query_requests_url_evidence,
-)
-from app.api.v1.dify_support.compaction import (
-    _record_url_evidence_bonus as _record_url_evidence_bonus,
-)
-from app.api.v1.dify_support.compaction import (
-    _structured_label_values_from_content as _structured_label_values_from_content,
-)
 from app.api.v1.dify_support.external_api import (
     DifyConversationTurnRequest,
     DifyConversationTurnResponse,
@@ -295,176 +82,8 @@ from app.api.v1.dify_support.external_api import (
     _token_matches,
     _uuid_or_none,
 )
-from app.api.v1.dify_support.records import (
-    _coerce_uuid_text as _coerce_uuid_text,
-)
-from app.api.v1.dify_support.records import (
-    _record_dedupe_key as _record_dedupe_key,
-)
-from app.api.v1.dify_support.records import (
-    _row_value as _row_value,
-)
-from app.api.v1.dify_support.records import (
-    _tag_mixed_intent_records as _tag_mixed_intent_records,
-)
-from app.api.v1.dify_support.scoring import (
-    _answer_hints_from_fields as _answer_hints_from_fields,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigram_overlap_count as _cjk_bigram_overlap_count,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigram_overlap_ratio as _cjk_bigram_overlap_ratio,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigrams as _cjk_bigrams,
-)
-from app.api.v1.dify_support.scoring import (
-    _clamp_hint_value as _clamp_hint_value,
-)
-from app.api.v1.dify_support.scoring import (
-    _contains_cjk as _contains_cjk,
-)
-from app.api.v1.dify_support.scoring import (
-    _content_starts_with_response_hint as _content_starts_with_response_hint,
-)
-from app.api.v1.dify_support.scoring import (
-    _diagnostic_query_hash as _diagnostic_query_hash,
-)
-from app.api.v1.dify_support.scoring import (
-    _diagnostic_value_hash as _diagnostic_value_hash,
-)
-from app.api.v1.dify_support.scoring import (
-    _dify_external_reranker_enabled as _dify_external_reranker_enabled,
-)
-from app.api.v1.dify_support.scoring import (
-    _enumerated_answer_hints as _enumerated_answer_hints,
-)
-from app.api.v1.dify_support.scoring import (
-    _extract_numbered_option_terms as _extract_numbered_option_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _field_line_parts as _field_line_parts,
-)
-from app.api.v1.dify_support.scoring import (
-    _find_numbered_marker as _find_numbered_marker,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_anchor_word_char as _is_anchor_word_char,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_cjk_char as _is_cjk_char,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_specific_intent_term as _is_specific_intent_term,
-)
-from app.api.v1.dify_support.scoring import (
-    _iter_anchor_word_segments as _iter_anchor_word_segments,
-)
-from app.api.v1.dify_support.scoring import (
-    _longest_common_substring_length as _longest_common_substring_length,
-)
-from app.api.v1.dify_support.scoring import (
-    _matching_response_hint_group as _matching_response_hint_group,
-)
-from app.api.v1.dify_support.scoring import (
-    _mixed_intent_segment_parts as _mixed_intent_segment_parts,
-)
-from app.api.v1.dify_support.scoring import (
-    _near_question_anchor_match as _near_question_anchor_match,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_explicit_question_form as _query_has_explicit_question_form,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_mixed_intent as _query_has_mixed_intent,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_quoted_anchor_candidate as _query_has_quoted_anchor_candidate,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_is_short_question_anchor_candidate as _query_is_short_question_anchor_candidate,
-)
-from app.api.v1.dify_support.scoring import (
-    _question_marker_overlap_bonus as _question_marker_overlap_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_anchor_match_text as _quoted_anchor_match_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_query_anchor_display_terms as _quoted_query_anchor_display_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_query_anchor_terms as _quoted_query_anchor_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_exact_primary_alias_bonus as _record_exact_primary_alias_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_final_rerank_candidate_id as _record_final_rerank_candidate_id,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_has_query_region_anchor as _record_has_query_region_anchor,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_metadata_anchor_bonus as _record_metadata_anchor_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_needs_final_rerank as _record_needs_final_rerank,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_plugin_ref as _record_plugin_ref,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_policy_slot_coverage_text as _record_policy_slot_coverage_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_region_terms as _record_region_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_source_identity_key as _record_source_identity_key,
-)
-from app.api.v1.dify_support.scoring import (
+from app.api.v1.dify_support.external_api import (
     _request_client_ip as _request_client_ip,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_candidate_terms as _response_hint_candidate_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_dict as _response_hint_dict,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_dict_list as _response_hint_dict_list,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_group_has_required_fields as _response_hint_group_has_required_fields,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_group_matches_query as _response_hint_group_matches_query,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_groups as _response_hint_groups,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_string_list as _response_hint_string_list,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_text as _response_hint_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _rstrip_service_anchor_query_noise as _rstrip_service_anchor_query_noise,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_mixed_intent_noise as _strip_mixed_intent_noise,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_mixed_intent_subject_instruction_tail as _strip_mixed_intent_subject_instruction_tail,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_trailing_service_anchor_admin as _strip_trailing_service_anchor_admin,
-)
-from app.api.v1.dify_support.scoring import (
-    _structured_fields_from_content as _structured_fields_from_content,
 )
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
@@ -520,6 +139,238 @@ from app.services.chat_response_cache import (
 )
 from app.services.chat_response_cache import (
     resolve_inflight_chat_response as resolve_inflight_response,
+)
+from app.services.dify_integration.anchor_strength import (
+    _composite_section_text as _composite_section_text,
+)
+from app.services.dify_integration.anchor_strength import (
+    _composite_stitched_section_text as _composite_stitched_section_text,
+)
+from app.services.dify_integration.anchor_strength import (
+    _dify_kg_bool as _dify_kg_bool,
+)
+from app.services.dify_integration.anchor_strength import (
+    _dify_kg_float as _dify_kg_float,
+)
+from app.services.dify_integration.anchor_strength import (
+    _dify_kg_int as _dify_kg_int,
+)
+from app.services.dify_integration.anchor_strength import (
+    _ordered_section_sibling_records as _ordered_section_sibling_records,
+)
+from app.services.dify_integration.anchor_strength import (
+    _query_intent_terms as _query_intent_terms,
+)
+from app.services.dify_integration.anchor_strength import (
+    _question_anchor_intent_groups as _question_anchor_intent_groups,
+)
+from app.services.dify_integration.anchor_strength import (
+    _question_anchor_subject_text as _question_anchor_subject_text,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_has_any_requested_slot_field as _record_has_any_requested_slot_field,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_is_composite_exact_anchor_answer as _record_is_composite_exact_anchor_answer,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_is_full_answer_chunk as _record_is_full_answer_chunk,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_matches_requested_slot as _record_matches_requested_slot,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_question_anchor_has_intent_conflict as _record_question_anchor_has_intent_conflict,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_section_type_values as _record_section_type_values,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_slot_field_values as _record_slot_field_values,
+)
+from app.services.dify_integration.anchor_strength import (
+    _safe_int as _safe_int,
+)
+from app.services.dify_integration.common import (
+    _ANCHOR_ONLY_QA_RECORD_PENALTY,
+    _ANSWERFUL_RECORD_BONUS,
+    _CONTENT_KEYS,
+    _DEFAULT_RESPONSE_HINT_SOURCE_PREFIX,
+    _EXACT_QUERY_ANCHOR_FIELDS,
+    _INTENT_MATCH_BONUS,
+    _INTENT_MATCH_BONUS_MAX,
+    _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS,
+    _METADATA_KEYS,
+    _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS,
+    _MIXED_INTENT_SPLIT_RE,
+    _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP,
+    _QUESTION_ANCHOR_BIGRAM_MIN_RATIO,
+    _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH,
+    _QUESTION_INTENT_MATCH_BONUS,
+    _RETRIEVAL_INTENT_KEYS,
+    _TITLE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _CJK_RE as _CJK_RE,
+)
+from app.services.dify_integration.common import (
+    _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
+)
+from app.services.dify_integration.common import (
+    _EXACT_PRIMARY_ALIAS_MATCH_BONUS as _EXACT_PRIMARY_ALIAS_MATCH_BONUS,
+)
+from app.services.dify_integration.common import (
+    _EXPLICIT_QUESTION_FORM_MARKERS as _EXPLICIT_QUESTION_FORM_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _FAST_ANSWER_QUERY_STOP_TERMS as _FAST_ANSWER_QUERY_STOP_TERMS,
+)
+from app.services.dify_integration.common import (
+    _FUZZY_METADATA_ANCHOR_KEYS as _FUZZY_METADATA_ANCHOR_KEYS,
+)
+from app.services.dify_integration.common import (
+    _MAX_HINT_VALUE_CHARS as _MAX_HINT_VALUE_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MAX_QA_HINT_VALUE_CHARS as _MAX_QA_HINT_VALUE_CHARS,
+)
+from app.services.dify_integration.common import (
+    _METADATA_ANCHOR_KEYS as _METADATA_ANCHOR_KEYS,
+)
+from app.services.dify_integration.common import (
+    _METADATA_SCORE_KEYS as _METADATA_SCORE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _MIN_REGION_ANCHOR_OVERLAP_CHARS as _MIN_REGION_ANCHOR_OVERLAP_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MIN_REGIONAL_QUESTION_OVERLAP_CHARS as _MIN_REGIONAL_QUESTION_OVERLAP_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MIN_SPECIFIC_INTENT_CHARS as _MIN_SPECIFIC_INTENT_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MIXED_INTENT_LIST_SPLIT_RE as _MIXED_INTENT_LIST_SPLIT_RE,
+)
+from app.services.dify_integration.common import (
+    _MIXED_INTENT_QUERY_MARKERS as _MIXED_INTENT_QUERY_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE as _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE,
+)
+from app.services.dify_integration.common import (
+    _PUBLIC_METADATA_VIEW_KEYS as _PUBLIC_METADATA_VIEW_KEYS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_INTENT_GROUPS as _QUESTION_ANCHOR_INTENT_GROUPS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS as _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO as _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_QUERY_MARKERS as _QUESTION_ANCHOR_QUERY_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS as _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS,
+)
+from app.services.dify_integration.common import (
+    _QUOTED_ANCHOR_RE as _QUOTED_ANCHOR_RE,
+)
+from app.services.dify_integration.common import (
+    _REGION_ANCHOR_KEYS as _REGION_ANCHOR_KEYS,
+)
+from app.services.dify_integration.common import (
+    _RETRIEVAL_METADATA_VIEW_KEYS as _RETRIEVAL_METADATA_VIEW_KEYS,
+)
+from app.services.dify_integration.common import (
+    _SCORE_KEYS as _SCORE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _SERVICE_ANCHOR_ADMIN_MARKERS as _SERVICE_ANCHOR_ADMIN_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _SERVICE_ANCHOR_QUERY_TRAILING_CHARS as _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
+)
+from app.services.dify_integration.common import (
+    _SOURCE_RECORD_ID_KEYS as _SOURCE_RECORD_ID_KEYS,
+)
+from app.services.dify_integration.common import (
+    _SOURCE_RECORD_SCOPE_KEYS as _SOURCE_RECORD_SCOPE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _URL_EVIDENCE_BONUS as _URL_EVIDENCE_BONUS,
+)
+from app.services.dify_integration.common import (
+    _URL_EVIDENCE_BONUS_MAX as _URL_EVIDENCE_BONUS_MAX,
+)
+from app.services.dify_integration.common import (
+    _URL_EVIDENCE_QUERY_MARKERS as _URL_EVIDENCE_QUERY_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _citation_chunk_id as _citation_chunk_id,
+)
+from app.services.dify_integration.common import (
+    _citation_dataset_id as _citation_dataset_id,
+)
+from app.services.dify_integration.common import (
+    _citation_score as _citation_score,
+)
+from app.services.dify_integration.common import (
+    _clamp_score as _clamp_score,
+)
+from app.services.dify_integration.common import (
+    _first_non_empty as _first_non_empty,
+)
+from app.services.dify_integration.common import (
+    _iter_record_metadata_layers as _iter_record_metadata_layers,
+)
+from app.services.dify_integration.common import (
+    _metadata_terms as _metadata_terms,
+)
+from app.services.dify_integration.common import (
+    _normalize_match_term as _normalize_match_term,
+)
+from app.services.dify_integration.common import (
+    _response_hint_metadata_conditions_match as _response_hint_metadata_conditions_match,
+)
+from app.services.dify_integration.compaction import (
+    _compact_fast_answer_value as _compact_fast_answer_value,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_candidate_top_k as _dify_fast_candidate_top_k,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_content_max_chars as _dify_fast_content_max_chars,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_response_top_k as _dify_fast_response_top_k,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_total_content_max_chars as _dify_fast_total_content_max_chars,
+)
+from app.services.dify_integration.compaction import (
+    _fast_answer_query_terms as _fast_answer_query_terms,
+)
+from app.services.dify_integration.compaction import (
+    _fast_answer_snippet_segments as _fast_answer_snippet_segments,
+)
+from app.services.dify_integration.compaction import (
+    _query_requests_url_evidence as _query_requests_url_evidence,
+)
+from app.services.dify_integration.compaction import (
+    _record_url_evidence_bonus as _record_url_evidence_bonus,
+)
+from app.services.dify_integration.compaction import (
+    _structured_label_values_from_content as _structured_label_values_from_content,
 )
 from app.services.dify_integration.metadata_condition_helpers import (
     MetadataConditionValidationError as _MetadataConditionValidationError,
@@ -614,6 +465,174 @@ from app.services.dify_integration.record_helpers import (
 from app.services.dify_integration.record_helpers import (
     strong_question_anchor_records as _service_strong_question_anchor_records,
 )
+from app.services.dify_integration.records import (
+    _coerce_uuid_text as _coerce_uuid_text,
+)
+from app.services.dify_integration.records import (
+    _record_dedupe_key as _record_dedupe_key,
+)
+from app.services.dify_integration.records import (
+    _row_value as _row_value,
+)
+from app.services.dify_integration.records import (
+    _tag_mixed_intent_records as _tag_mixed_intent_records,
+)
+from app.services.dify_integration.scoring import (
+    _answer_hints_from_fields as _answer_hints_from_fields,
+)
+from app.services.dify_integration.scoring import (
+    _cjk_bigram_overlap_count as _cjk_bigram_overlap_count,
+)
+from app.services.dify_integration.scoring import (
+    _cjk_bigram_overlap_ratio as _cjk_bigram_overlap_ratio,
+)
+from app.services.dify_integration.scoring import (
+    _cjk_bigrams as _cjk_bigrams,
+)
+from app.services.dify_integration.scoring import (
+    _clamp_hint_value as _clamp_hint_value,
+)
+from app.services.dify_integration.scoring import (
+    _contains_cjk as _contains_cjk,
+)
+from app.services.dify_integration.scoring import (
+    _content_starts_with_response_hint as _content_starts_with_response_hint,
+)
+from app.services.dify_integration.scoring import (
+    _diagnostic_query_hash as _diagnostic_query_hash,
+)
+from app.services.dify_integration.scoring import (
+    _diagnostic_value_hash as _diagnostic_value_hash,
+)
+from app.services.dify_integration.scoring import (
+    _dify_external_reranker_enabled as _dify_external_reranker_enabled,
+)
+from app.services.dify_integration.scoring import (
+    _enumerated_answer_hints as _enumerated_answer_hints,
+)
+from app.services.dify_integration.scoring import (
+    _extract_numbered_option_terms as _extract_numbered_option_terms,
+)
+from app.services.dify_integration.scoring import (
+    _field_line_parts as _field_line_parts,
+)
+from app.services.dify_integration.scoring import (
+    _find_numbered_marker as _find_numbered_marker,
+)
+from app.services.dify_integration.scoring import (
+    _is_anchor_word_char as _is_anchor_word_char,
+)
+from app.services.dify_integration.scoring import (
+    _is_cjk_char as _is_cjk_char,
+)
+from app.services.dify_integration.scoring import (
+    _is_specific_intent_term as _is_specific_intent_term,
+)
+from app.services.dify_integration.scoring import (
+    _iter_anchor_word_segments as _iter_anchor_word_segments,
+)
+from app.services.dify_integration.scoring import (
+    _longest_common_substring_length as _longest_common_substring_length,
+)
+from app.services.dify_integration.scoring import (
+    _matching_response_hint_group as _matching_response_hint_group,
+)
+from app.services.dify_integration.scoring import (
+    _mixed_intent_segment_parts as _mixed_intent_segment_parts,
+)
+from app.services.dify_integration.scoring import (
+    _near_question_anchor_match as _near_question_anchor_match,
+)
+from app.services.dify_integration.scoring import (
+    _query_has_explicit_question_form as _query_has_explicit_question_form,
+)
+from app.services.dify_integration.scoring import (
+    _query_has_mixed_intent as _query_has_mixed_intent,
+)
+from app.services.dify_integration.scoring import (
+    _query_has_quoted_anchor_candidate as _query_has_quoted_anchor_candidate,
+)
+from app.services.dify_integration.scoring import (
+    _query_is_short_question_anchor_candidate as _query_is_short_question_anchor_candidate,
+)
+from app.services.dify_integration.scoring import (
+    _question_marker_overlap_bonus as _question_marker_overlap_bonus,
+)
+from app.services.dify_integration.scoring import (
+    _quoted_anchor_match_text as _quoted_anchor_match_text,
+)
+from app.services.dify_integration.scoring import (
+    _quoted_query_anchor_display_terms as _quoted_query_anchor_display_terms,
+)
+from app.services.dify_integration.scoring import (
+    _quoted_query_anchor_terms as _quoted_query_anchor_terms,
+)
+from app.services.dify_integration.scoring import (
+    _record_exact_primary_alias_bonus as _record_exact_primary_alias_bonus,
+)
+from app.services.dify_integration.scoring import (
+    _record_final_rerank_candidate_id as _record_final_rerank_candidate_id,
+)
+from app.services.dify_integration.scoring import (
+    _record_has_query_region_anchor as _record_has_query_region_anchor,
+)
+from app.services.dify_integration.scoring import (
+    _record_metadata_anchor_bonus as _record_metadata_anchor_bonus,
+)
+from app.services.dify_integration.scoring import (
+    _record_needs_final_rerank as _record_needs_final_rerank,
+)
+from app.services.dify_integration.scoring import (
+    _record_plugin_ref as _record_plugin_ref,
+)
+from app.services.dify_integration.scoring import (
+    _record_policy_slot_coverage_text as _record_policy_slot_coverage_text,
+)
+from app.services.dify_integration.scoring import (
+    _record_region_terms as _record_region_terms,
+)
+from app.services.dify_integration.scoring import (
+    _record_source_identity_key as _record_source_identity_key,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_candidate_terms as _response_hint_candidate_terms,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_dict as _response_hint_dict,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_dict_list as _response_hint_dict_list,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_group_has_required_fields as _response_hint_group_has_required_fields,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_group_matches_query as _response_hint_group_matches_query,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_groups as _response_hint_groups,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_string_list as _response_hint_string_list,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_text as _response_hint_text,
+)
+from app.services.dify_integration.scoring import (
+    _rstrip_service_anchor_query_noise as _rstrip_service_anchor_query_noise,
+)
+from app.services.dify_integration.scoring import (
+    _strip_mixed_intent_noise as _strip_mixed_intent_noise,
+)
+from app.services.dify_integration.scoring import (
+    _strip_mixed_intent_subject_instruction_tail as _strip_mixed_intent_subject_instruction_tail,
+)
+from app.services.dify_integration.scoring import (
+    _strip_trailing_service_anchor_admin as _strip_trailing_service_anchor_admin,
+)
+from app.services.dify_integration.scoring import (
+    _structured_fields_from_content as _structured_fields_from_content,
+)
 from app.services.metrics_logger import log_metrics
 from app.services.rag_runtime_limiter import (
     RetrievalAdmissionTimeoutError,
@@ -683,60 +702,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 _TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
-_CONTENT_KEYS = ("content", "chunk_content", "text", "quote", "snippet", "page_content")
-_TITLE_KEYS = ("title", "document_name", "filename", "source", "document_id", "chunk_id")
-_METADATA_KEYS = (
-    "document_id",
-    "chunk_id",
-    "chunk_index",
-    "page_number",
-    "header_path",
-    "source_path",
-    "retrieval_role",
-    "hit_type",
-    "rerank_score",
-    "rerank_score_final",
-    "reranker_provider",
-    "rerank_elapsed_sec",
-    "rerank_model_used",
-    "kg_pagerank",
-    "kg_path_length",
-    "kg_shared_events",
-    "kg_evidence_anchored",
-    "kg_path",
-    "kg_path_provenance",
-    "kg_duplicate_candidate",
-    "kg_edge_conf_low",
-    "kg_edge_conf_mid",
-    "kg_edge_conf_high",
-)
-_RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
-_EXACT_QUERY_ANCHOR_FIELDS = (
-    "question",
-    "primary_alias",
-    "aliases",
-    "source_topic",
-    "title",
-)
-_MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS = 3
-_INTENT_MATCH_BONUS = 0.06
-_INTENT_MATCH_BONUS_MAX = 0.18
-_QUESTION_INTENT_MATCH_BONUS = 0.2
-_DEFAULT_RESPONSE_HINT_SOURCE_PREFIX = "Source evidence"
-_ANSWERFUL_RECORD_BONUS = 0.08
-_ANCHOR_ONLY_QA_RECORD_PENALTY = 0.28
-_QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH = 0.8
-_QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
-_QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
-_MIXED_INTENT_SPLIT_RE = re.compile(
-    r"(?:[，,。；;、：:]\s*)?"
-    r"(?:另外|同时|以及|并且|还想|还要|一次知道|分别|顺便|请合并回答|请分别回答|合并回答|一并回答|一起回答|分别回答|分开回答|请合并|请分别)\s*"
-    r"|[；;]"
-)
 _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
 _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE = 0.74
 _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS = 12
-_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS = 8
 _METADATA_ANCHOR_DB_FALLBACK_ARRAY_FIELDS = (
     "retrieval_intents",
     "query_intents",
