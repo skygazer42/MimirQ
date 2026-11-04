@@ -2,9 +2,9 @@
 
 import { useQuery } from '@tanstack/react-query'
 
-import { datasetApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
 import { queryKeys } from '@/lib/query-keys'
-import type { Dataset } from '@/types'
+import type { Dataset } from '@/types/datasets'
 
 export function useDatasets() {
   const listParams = { exhaustive: true }

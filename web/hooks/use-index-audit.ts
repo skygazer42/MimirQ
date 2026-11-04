@@ -4,10 +4,14 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
-import type { IndexAuditReconcileResponse, IndexAuditReconcileStatusResponse, IndexAuditResponse } from '@/types'
+import type {
+  IndexAuditReconcileResponse,
+  IndexAuditReconcileStatusResponse,
+  IndexAuditResponse,
+} from '@/types/observability'
 import { observabilityApi } from '@/lib/api/observability'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
@@ -188,6 +192,11 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
   const pollGenerationRef = useRef(0)
   const reconcileDocumentId = selectedDocumentIds.length === 1 ? selectedDocumentIds[0] : null
   const hasDocumentScope = reconcileDocumentId !== null
+  const reconcileScope = useMemo(
+    () => ({ datasetId: selectedDatasetId, documentId: reconcileDocumentId }),
+    [selectedDatasetId, reconcileDocumentId],
+  )
+  const activeReconcileScopeRef = useRef<typeof reconcileScope | null>(reconcileScope)
 
   const stopReconcilePolling = useCallback(() => {
     pollGenerationRef.current += 1
@@ -196,6 +205,7 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
   }, [])
 
   useEffect(() => {
+    activeReconcileScopeRef.current = reconcileScope
     stopReconcilePolling()
     setReconcileState({
       status: 'idle',
@@ -204,9 +214,11 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
       backendStatus: null,
       currentIndexReadiness: null,
     })
-  }, [hasDocumentScope, selectedDatasetId, stopReconcilePolling])
-
-  useEffect(() => stopReconcilePolling, [stopReconcilePolling])
+    return () => {
+      activeReconcileScopeRef.current = null
+      stopReconcilePolling()
+    }
+  }, [reconcileScope, stopReconcilePolling])
 
   const runIndexAudit = useCallback(async () => {
     if (!selectedDatasetId) {
@@ -227,6 +239,7 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
   }, [refetch, selectedDatasetId])
 
   const reconcileIndexAudit = useCallback(async () => {
+    if (activeReconcileScopeRef.current !== reconcileScope) return
     if (!selectedDatasetId) {
       const message = '请先选择数据集再执行索引修复'
       setReconcileState({
@@ -241,6 +254,15 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
     }
     if (!hasDocumentScope) return
 
+    stopReconcilePolling()
+    const generation = pollGenerationRef.current
+    const controller = new AbortController()
+    pollAbortRef.current = controller
+    const isCurrent = () =>
+      activeReconcileScopeRef.current === reconcileScope &&
+      !controller.signal.aborted &&
+      pollGenerationRef.current === generation
+
     setReconcileState({
       status: 'loading',
       message: '正在提交索引修复任务…',
@@ -252,6 +274,7 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
       const data = await observabilityApi.reconcileIndexAudit(
         buildIndexAuditReconcilePayload(selectedDatasetId, reconcileDocumentId),
       )
+      if (!isCurrent()) return
       const taskId = readReconcileTaskId(data ?? null)
       const message =
         (typeof data?.message === 'string' && data.message.trim()) ||
@@ -265,12 +288,6 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
       })
       toast.success(message)
 
-      stopReconcilePolling()
-      const generation = pollGenerationRef.current + 1
-      pollGenerationRef.current = generation
-      const controller = new AbortController()
-      pollAbortRef.current = controller
-
       const finalState = await pollIndexAuditReconcileStatus({
         datasetId: selectedDatasetId,
         documentId: reconcileDocumentId,
@@ -282,7 +299,7 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
             },
             { signal: controller.signal },
           ),
-        isActive: () => !controller.signal.aborted && pollGenerationRef.current === generation,
+        isActive: isCurrent,
         onUpdate: (nextState) => {
           setReconcileState({
             ...nextState,
@@ -290,15 +307,13 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
           })
         },
       })
-      if (controller.signal.aborted || pollGenerationRef.current !== generation) {
-        return
-      }
+      if (!isCurrent()) return
       setReconcileState({
         ...finalState,
         taskId,
       })
-      pollAbortRef.current = null
     } catch (err) {
+      if (!isCurrent()) return
       if (err && typeof err === 'object' && 'name' in err && (err as { name?: string }).name === 'CanceledError') {
         return
       }
@@ -312,8 +327,10 @@ export function useIndexAudit({ selectedDatasetId, selectedDocumentIds = [] }: U
         currentIndexReadiness: null,
       })
       toast.error(message)
+    } finally {
+      if (pollAbortRef.current === controller) pollAbortRef.current = null
     }
-  }, [hasDocumentScope, reconcileDocumentId, selectedDatasetId, stopReconcilePolling])
+  }, [hasDocumentScope, reconcileDocumentId, reconcileScope, selectedDatasetId, stopReconcilePolling])
 
   return {
     indexAudit: data ?? null,

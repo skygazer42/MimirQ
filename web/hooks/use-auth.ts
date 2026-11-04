@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
-import type { UserProfile } from '@/types'
+import type { UserProfile } from '@/types/backend'
 import { authApi } from '@/lib/api/auth'
 import { clearAuthSession, getAccessToken, getStoredUser, setStoredUser } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
@@ -25,19 +25,20 @@ export function useAuth() {
     refetch,
   } = useQuery<UserProfile | null>({
     queryKey: queryKeys.auth.profile,
-    queryFn: async () => {
+    queryFn: async (context) => {
       const token = getAccessToken()
       if (!token) return getStoredUser()
 
       try {
         const profile = await authApi.me()
+        if (context.signal.aborted) return getStoredUser()
         setStoredUser(profile)
         return profile
       } catch (err) {
+        if (context.signal.aborted) return getStoredUser()
         if (getHttpStatus(err) === 401) {
-          if (getAccessToken()) {
-            clearAuthSession()
-          }
+          if (getAccessToken() !== token) return getStoredUser()
+          clearAuthSession()
           return null
         }
         throw err
