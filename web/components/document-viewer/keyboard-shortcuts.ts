@@ -16,7 +16,7 @@ function normalizeLoopIndex(value: number, length: number) {
 export function resolveChunkKeyboardNavigation(
   input: Readonly<ChunkKeyboardNavigationInput>,
 ): ChunkKeyboardNavigationAction {
-  const key = String(input.key || '').toLowerCase()
+  const key = input.key.toLowerCase()
   if (key !== 'j' && key !== 'k') return null
 
   const delta = key === 'j' ? 1 : -1

@@ -2,7 +2,7 @@
 
 import { Loader2, Sparkles } from 'lucide-react'
 
-import type { DocumentQAGenerateResponse } from '@/types'
+import type { DocumentQAGenerateResponse } from '@/types/backend'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'

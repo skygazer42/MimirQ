@@ -1,8 +1,10 @@
 'use client'
 
 import { FileText, Loader2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 
-import type { ChunkPreviewItem, Citation, DocumentParsedContentResponse } from '@/types'
+import type { DocumentParsedContentResponse } from '@/types/backend'
+import type { ChunkPreviewItem, Citation } from '@/types/processing'
 import { Button } from '@/components/ui/button'
 import { OriginalPreviewMonaco } from '@/components/chunk-preview/components/workbench/preview/original-preview-monaco'
 import { cn } from '@/lib/utils'
@@ -39,7 +41,7 @@ type TextTabPanelProps = {
   onGoToPreview: () => void
 }
 
-function getTextTabRetrieveButtonLabel(retrieveLoading: boolean): React.ReactNode {
+function getTextTabRetrieveButtonLabel(retrieveLoading: boolean): ReactNode {
   if (retrieveLoading) {
     return (
       <span className="inline-flex items-center gap-2">
@@ -86,7 +88,7 @@ export function TextTabPanel({
   const previewActiveChunkIndex = textMode === 'cleaned' ? textActiveChunkIndex : null
   const previewActiveRange = textMode === 'cleaned' ? (highlightRange ?? null) : null
 
-  let retrieveResultsPanel: React.ReactNode = null
+  let retrieveResultsPanel: ReactNode = null
   if (retrieveCitations.length) {
     retrieveResultsPanel = (
       <div className="max-h-[220px] overflow-auto rounded-xl border border-border/60 bg-background/60 p-3">
@@ -128,7 +130,7 @@ export function TextTabPanel({
     )
   }
 
-  let textPanelContent: React.ReactNode
+  let textPanelContent: ReactNode
   if (parsedContentLoading && !parsedContent) {
     textPanelContent = (
       <div className="flex h-full items-center justify-center text-muted-foreground">

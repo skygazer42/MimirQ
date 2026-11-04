@@ -72,6 +72,7 @@ describe('DocumentViewerPanelShell accessibility', () => {
     const props = {
       activeTab: 'preview',
       chunks: [],
+      clearRetrievePreview: vi.fn(),
       closeDocument: vi.fn(),
       copyChunkContent: vi.fn(),
       copyChunkLink: vi.fn(),

@@ -2,7 +2,7 @@
 
 import { Loader2 } from 'lucide-react'
 
-import type { DocumentChunk } from '@/types'
+import type { DocumentChunk } from '@/types/backend'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'

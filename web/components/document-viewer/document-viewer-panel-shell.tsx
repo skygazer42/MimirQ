@@ -47,6 +47,7 @@ export function DocumentViewerPanelShell({
   chunksListRef,
   chunksLoaded,
   chunksLoading,
+  clearRetrievePreview,
   closeDocument,
   copyChunkContent,
   copyChunkLink,
@@ -110,8 +111,6 @@ export function DocumentViewerPanelShell({
   setQaNumPairs,
   setQaPreferLlm,
   setQaReplaceExisting,
-  setRetrieveCitations,
-  setRetrieveError,
   setRetrieveQuery,
   setTextMode,
   submitChunkEditor,
@@ -372,10 +371,7 @@ export function DocumentViewerPanelShell({
                 onLoadAllChunks={() => setLoadAllChunks(true)}
                 onRetrieveQueryChange={setRetrieveQuery}
                 onRunRetrieve={() => detachPromise(runRetrievePreview())}
-                onClearRetrieve={() => {
-                  setRetrieveCitations([])
-                  setRetrieveError(null)
-                }}
+                onClearRetrieve={clearRetrievePreview}
                 onSelectRetrieveChunk={(chunkId) => {
                   handleActiveTabChange('text')
                   setHighlightChunk(chunkId)

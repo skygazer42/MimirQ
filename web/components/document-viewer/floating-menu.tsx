@@ -82,7 +82,7 @@ export function FloatingMenu() {
     return () => globalThis.window.cancelAnimationFrame(raf)
   }, [anchor, visible])
 
-  const handleAction = (action: string) => {
+  const handleAction = (action: 'explain' | 'translate' | 'summarize') => {
     let prompt = ''
     switch (action) {
       case 'explain':

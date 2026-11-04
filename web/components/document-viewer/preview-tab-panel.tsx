@@ -5,7 +5,7 @@ import { FileText, Loader2 } from 'lucide-react'
 
 import type { DocumentPreviewAnchor } from '@/lib/document-preview-anchor'
 import { buildDocumentPreviewBboxOverlay } from '@/lib/document-preview-anchor'
-import type { Document } from '@/types'
+import type { Document } from '@/types/backend'
 import { Button } from '@/components/ui/button'
 import { PdfViewer } from '@/components/parsing/pdf-viewer'
 

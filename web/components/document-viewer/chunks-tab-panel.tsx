@@ -3,7 +3,7 @@
 import type { Key, KeyboardEvent, RefObject } from 'react'
 import { Loader2 } from 'lucide-react'
 
-import type { DocumentChunk } from '@/types'
+import type { DocumentChunk } from '@/types/backend'
 
 import { DocumentChunkCard } from './chunk-renderer'
 import { ChunksToolbarPanel } from './chunks-toolbar-panel'

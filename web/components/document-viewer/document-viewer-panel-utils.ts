@@ -1,6 +1,6 @@
 'use client'
 
-import type { Citation } from '@/types'
+import type { Citation } from '@/types/processing'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)

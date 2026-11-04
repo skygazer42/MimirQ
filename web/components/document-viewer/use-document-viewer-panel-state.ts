@@ -20,19 +20,15 @@ import { globalEventBus } from '@/lib/event-bus'
 import { detachPromise } from '@/lib/utils'
 import { useDocumentView, type DocumentViewSourceContext, type DocumentViewTab } from '@/store/document-view'
 import type {
-  Citation,
   Document,
   DocumentChunk,
   DocumentParsedContentResponse,
   DocumentQAGenerateResponse,
-} from '@/types'
+} from '@/types/backend'
+import type { Citation } from '@/types/processing'
 
 import { resolveChunkKeyboardNavigation } from './keyboard-shortcuts'
 import { toCitation } from './document-viewer-panel-utils'
-
-function mapChunkMatchIds(items: ReadonlyArray<{ id: string }>): string[] {
-  return items.map((item) => item.id)
-}
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -72,6 +68,13 @@ function buildCitationFallbackChunk(params: {
   }
 }
 
+function parseOptionalChunkNumber(value: string): number | undefined {
+  const text = (value || '').trim()
+  if (!text) return undefined
+  const next = Number(text)
+  return Number.isFinite(next) ? Math.max(0, Math.trunc(next)) : undefined
+}
+
 export function useDocumentViewerPanelState() {
   const {
     isOpen,
@@ -101,9 +104,17 @@ export function useDocumentViewerPanelState() {
   const [parsedContentError, setParsedContentError] = React.useState<string | null>(null)
   const [textMode, setTextMode] = React.useState<'cleaned' | 'original'>('cleaned')
   const [retrieveQuery, setRetrieveQuery] = React.useState('')
+  const latestRetrieveQueryRef = React.useRef(retrieveQuery)
   const [retrieveLoading, setRetrieveLoading] = React.useState(false)
   const [retrieveError, setRetrieveError] = React.useState<string | null>(null)
   const [retrieveCitations, setRetrieveCitations] = React.useState<Citation[]>([])
+  const documentVisit = React.useMemo(() => ({ documentId }), [documentId])
+  const activeDocumentVisitRef = React.useRef<typeof documentVisit | null>(documentVisit)
+  const retrieveRequestSeqRef = React.useRef(0)
+  const isCurrentDocumentVisit = React.useCallback(
+    () => documentVisit === activeDocumentVisitRef.current,
+    [documentVisit],
+  )
   const [isExpanded, setIsExpanded] = React.useState(false)
   const [panelWidthPx, setPanelWidthPxState] = React.useState<number | null>(null)
   const chunksListRef = React.useRef<HTMLDivElement>(null)
@@ -130,6 +141,7 @@ export function useDocumentViewerPanelState() {
   const [chunkEditorStartChar, setChunkEditorStartChar] = React.useState<string>('')
   const [chunkEditorEndChar, setChunkEditorEndChar] = React.useState<string>('')
   const [chunkEditorSubmitting, setChunkEditorSubmitting] = React.useState(false)
+  const chunkEditorEpochRef = React.useRef(0)
   const [chunkDeleteSubmitting, setChunkDeleteSubmitting] = React.useState<string | null>(null)
 
   const [qaDialogOpen, setQaDialogOpen] = React.useState(false)
@@ -139,6 +151,7 @@ export function useDocumentViewerPanelState() {
   const [qaMaxSourceChars, setQaMaxSourceChars] = React.useState(12000)
   const [qaSubmitting, setQaSubmitting] = React.useState(false)
   const [qaLastResult, setQaLastResult] = React.useState<DocumentQAGenerateResponse | null>(null)
+  const qaDialogEpochRef = React.useRef(0)
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const rowVirtualizer = useVirtualizer({
@@ -147,6 +160,20 @@ export function useDocumentViewerPanelState() {
     estimateSize: () => 220,
     overscan: 8,
   })
+
+  React.useLayoutEffect(() => {
+    latestRetrieveQueryRef.current = retrieveQuery
+  }, [retrieveQuery])
+
+  React.useLayoutEffect(() => {
+    // Returning to the same document starts a new owner for pending UI work.
+    activeDocumentVisitRef.current = documentVisit
+    return () => {
+      activeDocumentVisitRef.current = null
+      retrieveRequestSeqRef.current += 1
+      matchRequestSeqRef.current += 1
+    }
+  }, [documentVisit])
 
   const flushPersistedLayoutPatch = React.useCallback(
     (targetDocumentId?: string | null) => {
@@ -168,7 +195,7 @@ export function useDocumentViewerPanelState() {
 
   const persistDocumentLayout = React.useCallback(
     (patch: Record<string, unknown>, immediate = false) => {
-      if (!documentId) return
+      if (!documentId || !isCurrentDocumentVisit()) return
 
       if (persistedLayoutDocIdRef.current && persistedLayoutDocIdRef.current !== documentId) {
         flushPersistedLayoutPatch(persistedLayoutDocIdRef.current)
@@ -192,7 +219,7 @@ export function useDocumentViewerPanelState() {
         flushPersistedLayoutPatch(documentId)
       }, 120)
     },
-    [documentId, flushPersistedLayoutPatch],
+    [documentId, flushPersistedLayoutPatch, isCurrentDocumentVisit],
   )
 
   React.useEffect(() => {
@@ -214,6 +241,13 @@ export function useDocumentViewerPanelState() {
     setRetrieveLoading(false)
     setRetrieveError(null)
     setRetrieveCitations([])
+    setChunkEditorOpen(false)
+    setChunkEditorTarget(null)
+    setChunkEditorSubmitting(false)
+    setChunkDeleteSubmitting(null)
+    setQaDialogOpen(false)
+    setQaSubmitting(false)
+    setQaLastResult(null)
     setIsExpanded(Boolean(documentLayout?.isExpanded))
     setPanelWidthPxState(typeof documentLayout?.panelWidthPx === 'number' ? documentLayout.panelWidthPx : null)
     setChunkQuery('')
@@ -409,7 +443,9 @@ export function useDocumentViewerPanelState() {
 
       if (!cancelled) setChunksLoaded(true)
     })()
-      .catch((error: unknown) => reportClientError('Load document chunks failed', error))
+      .catch((error: unknown) => {
+        if (!cancelled) reportClientError('Load document chunks failed', error)
+      })
       .finally(() => {
         if (!cancelled) setChunksLoading(false)
       })
@@ -424,20 +460,14 @@ export function useDocumentViewerPanelState() {
     return chunks.findIndex((chunk) => chunk.id === highlightChunkId)
   }, [chunks, highlightChunkId])
 
-  const textValue = React.useMemo(() => {
-    if (!parsedContent?.available) return ''
-    return textMode === 'original'
+  const textValue = !parsedContent?.available
+    ? ''
+    : textMode === 'original'
       ? String(parsedContent.original_markdown_content || '')
       : String(parsedContent.markdown_content || '')
-  }, [parsedContent, textMode])
 
   const textChunkItems = React.useMemo(() => {
-    const base = (() => {
-      if (chunksLoaded) return chunks
-      if (highlightChunk) return [highlightChunk]
-      return []
-    })()
-
+    const base = chunksLoaded ? chunks : highlightChunk ? [highlightChunk] : []
     return mapDocumentChunksToPreviewItems(base)
   }, [chunks, chunksLoaded, highlightChunk])
 
@@ -470,12 +500,13 @@ export function useDocumentViewerPanelState() {
 
   const setPanelWidthPx = React.useCallback(
     (nextWidthPx: number) => {
+      if (!isCurrentDocumentVisit()) return
       if (!Number.isFinite(nextWidthPx)) return
       const width = Math.round(nextWidthPx)
       setPanelWidthPxState(width)
       persistDocumentLayout({ panelWidthPx: width }, true)
     },
-    [persistDocumentLayout],
+    [isCurrentDocumentVisit, persistDocumentLayout],
   )
 
   React.useEffect(() => {
@@ -552,11 +583,12 @@ export function useDocumentViewerPanelState() {
     const seq = ++matchRequestSeqRef.current
     setServerMatchLoading(true)
     const loadServerMatches = async () => {
+      if (!isCurrentDocumentVisit() || seq !== matchRequestSeqRef.current) return
       try {
         const res = await documentApi.getChunkMatches(documentId, { q: query, limit: 5000 })
         if (seq !== matchRequestSeqRef.current) return
         const items = res?.items || []
-        setServerMatchIds(mapChunkMatchIds(items))
+        setServerMatchIds(items.map((item) => item.id))
         setServerMatchTotal(Number(res?.total) || 0)
         setServerMatchTruncated(Boolean(res?.truncated))
       } catch (err) {
@@ -576,18 +608,18 @@ export function useDocumentViewerPanelState() {
     }, 250)
 
     return () => globalThis.window.clearTimeout(timeoutId)
-  }, [documentId, chunkQuery, chunksLoaded, resetServerMatches])
+  }, [documentId, chunkQuery, chunksLoaded, isCurrentDocumentVisit, resetServerMatches])
 
   const matchChunkIds = React.useMemo(() => {
     if (!chunkQuery.trim()) return []
     return chunksLoaded ? localMatchChunkIds : serverMatchIds
   }, [chunkQuery, chunksLoaded, localMatchChunkIds, serverMatchIds])
 
-  const chunkSearchPlaceholder = React.useMemo(() => {
-    if (serverMatchLoading) return '搜索中…'
-    if (chunksLoaded) return '搜索切片内容…'
-    return '搜索切片内容…（无需加载全部切片）'
-  }, [chunksLoaded, serverMatchLoading])
+  const chunkSearchPlaceholder = serverMatchLoading
+    ? '搜索中…'
+    : chunksLoaded
+      ? '搜索切片内容…'
+      : '搜索切片内容…（无需加载全部切片）'
 
   const chunkMatchSummary = React.useMemo(() => {
     if (!chunkQuery.trim()) return '—'
@@ -608,22 +640,20 @@ export function useDocumentViewerPanelState() {
 
   const handleSelectTextChunkIndex = React.useCallback(
     (chunkIndex: number) => {
+      if (!isCurrentDocumentVisit()) return
       const target =
         chunks.find((chunk) => chunk.chunk_index === chunkIndex) ||
         (highlightChunk?.chunk_index === chunkIndex ? highlightChunk : null)
       if (target) setHighlightChunk(target.id)
     },
-    [chunks, highlightChunk, setHighlightChunk],
+    [chunks, highlightChunk, isCurrentDocumentVisit, setHighlightChunk],
   )
 
   React.useEffect(() => {
     setMatchCursor(0)
   }, [chunkQuery])
 
-  const rawFileUrl = React.useMemo(() => {
-    if (!documentId) return null
-    return `${API_V1_BASE_URL}/documents/${documentId}/download`
-  }, [documentId])
+  const rawFileUrl = documentId ? `${API_V1_BASE_URL}/documents/${documentId}/download` : null
 
   const rawDownloadUrl = React.useMemo(() => {
     if (!documentId) return null
@@ -668,21 +698,26 @@ export function useDocumentViewerPanelState() {
     [documentId],
   )
 
-  const copyText = React.useCallback(async (text: string, okMsg: string) => {
-    const value = (text || '').trim()
-    if (!value) return
+  const copyText = React.useCallback(
+    async (text: string, okMsg: string) => {
+      if (!isCurrentDocumentVisit()) return
+      const value = (text || '').trim()
+      if (!value) return
 
-    try {
-      if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
-        throw new Error('Clipboard API unavailable')
+      try {
+        if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+          throw new Error('Clipboard API unavailable')
+        }
+        await navigator.clipboard.writeText(value)
+        if (isCurrentDocumentVisit()) toast.success(okMsg)
+      } catch (error) {
+        if (!isCurrentDocumentVisit()) return
+        reportClientError('Copy document viewer text failed', error)
+        toast.error('复制失败')
       }
-      await navigator.clipboard.writeText(value)
-      toast.success(okMsg)
-    } catch (error) {
-      reportClientError('Copy document viewer text failed', error)
-      toast.error('复制失败')
-    }
-  }, [])
+    },
+    [isCurrentDocumentVisit],
+  )
 
   const copyChunkContent = React.useCallback(
     (content: string) => {
@@ -709,19 +744,21 @@ export function useDocumentViewerPanelState() {
   const canEditChunks = Boolean(doc && !['pending', 'processing'].includes(String(doc.status || '').toLowerCase()))
   const canRerunRetrieve = Boolean(retrieveQuery.trim())
 
-  const parseOptionalChunkNumber = React.useCallback((value: string) => {
-    const text = (value || '').trim()
-    if (!text) return undefined
-    const next = Number(text)
-    return Number.isFinite(next) ? Math.max(0, Math.trunc(next)) : undefined
-  }, [])
+  const clearRetrievePreview = React.useCallback(() => {
+    if (!isCurrentDocumentVisit()) return
+    retrieveRequestSeqRef.current += 1
+    setRetrieveCitations([])
+    setRetrieveError(null)
+    setRetrieveLoading(false)
+  }, [isCurrentDocumentVisit])
 
   const runRetrievePreviewForQuery = React.useCallback(
     async (query: string) => {
-      if (!documentId) return
+      if (!documentId || !isCurrentDocumentVisit()) return
       const normalized = query.trim()
       if (!normalized) return
 
+      const requestSeq = ++retrieveRequestSeqRef.current
       setRetrieveLoading(true)
       setRetrieveError(null)
       try {
@@ -730,21 +767,26 @@ export function useDocumentViewerPanelState() {
           document_ids: [documentId],
           include_structure_trace: false,
         })
+        if (requestSeq !== retrieveRequestSeqRef.current) return
         const raw = Array.isArray(res?.citations) ? res.citations : []
-        const items = raw.map(toCitation).filter(Boolean) as Citation[]
+        const items = raw.map(toCitation).filter((citation): citation is Citation => citation !== null)
         setRetrieveCitations(items.filter((citation) => citation.document_id === documentId))
       } catch (err) {
+        if (requestSeq !== retrieveRequestSeqRef.current) return
         reportClientError('Run retrieve preview failed', err)
         setRetrieveError('检索测试失败，请稍后重试')
         setRetrieveCitations([])
       } finally {
-        setRetrieveLoading(false)
+        if (requestSeq === retrieveRequestSeqRef.current) setRetrieveLoading(false)
       }
     },
-    [documentId],
+    [documentId, isCurrentDocumentVisit],
   )
 
   const openCreateChunk = React.useCallback(() => {
+    if (!isCurrentDocumentVisit()) return
+    chunkEditorEpochRef.current += 1
+    setChunkEditorSubmitting(false)
     setChunkEditorMode('create')
     setChunkEditorTarget(null)
     setChunkEditorContent('')
@@ -753,10 +795,13 @@ export function useDocumentViewerPanelState() {
     setChunkEditorEndChar('')
     setChunkEditorOpen(true)
     setActiveTab('chunks')
-  }, [setActiveTab])
+  }, [isCurrentDocumentVisit, setActiveTab])
 
   const openEditChunk = React.useCallback(
     (chunk: DocumentChunk) => {
+      if (!isCurrentDocumentVisit()) return
+      chunkEditorEpochRef.current += 1
+      setChunkEditorSubmitting(false)
       setChunkEditorMode('edit')
       setChunkEditorTarget(chunk)
       setChunkEditorContent(chunk.content || '')
@@ -766,12 +811,12 @@ export function useDocumentViewerPanelState() {
       setChunkEditorOpen(true)
       setActiveTab('chunks')
     },
-    [setActiveTab],
+    [isCurrentDocumentVisit, setActiveTab],
   )
 
   const submitChunkEditor = React.useCallback(
     async (mode: 'save' | 'save_reembed' | 'save_rerun' = 'save') => {
-      if (!documentId) return
+      if (!documentId || !isCurrentDocumentVisit()) return
       if (!canEditChunks) return
 
       const content = (chunkEditorContent || '').trim()
@@ -788,6 +833,9 @@ export function useDocumentViewerPanelState() {
         return
       }
 
+      const previewRequestAtSave = retrieveRequestSeqRef.current
+      const targetChunkId = chunkEditorTarget?.id
+      const editorEpoch = ++chunkEditorEpochRef.current
       setChunkEditorSubmitting(true)
       try {
         let savedChunk: DocumentChunk | null = null
@@ -799,20 +847,20 @@ export function useDocumentViewerPanelState() {
             end_char: endChar,
             metadata: {},
           })
-          toast.success('切片已创建')
-
-          if (!chunksLoaded) setLoadAllChunks(true)
-
-          setChunks((prev) => [...prev, created])
-          setDoc((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  chunk_count: typeof prev.chunk_count === 'number' ? prev.chunk_count + 1 : prev.chunk_count,
-                }
-              : prev,
-          )
-          setHighlightChunk(created.id)
+          if (isCurrentDocumentVisit()) {
+            if (chunkEditorEpochRef.current === editorEpoch) toast.success('切片已创建')
+            if (!chunksLoaded) setLoadAllChunks(true)
+            setChunks((prev) => [...prev, created])
+            setDoc((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    chunk_count: typeof prev.chunk_count === 'number' ? prev.chunk_count + 1 : prev.chunk_count,
+                  }
+                : prev,
+            )
+            if (chunkEditorEpochRef.current === editorEpoch) setHighlightChunk(created.id)
+          }
           savedChunk = created
         } else {
           const target = chunkEditorTarget
@@ -823,25 +871,42 @@ export function useDocumentViewerPanelState() {
             start_char: startChar,
             end_char: endChar,
           })
-          toast.success('切片已更新')
-          setChunks((prev) => prev.map((chunk) => (chunk.id === updated.id ? updated : chunk)))
-          setHighlightChunkState((prev) => (prev?.id === updated.id ? updated : prev))
-          setHighlightChunk(updated.id)
+          if (isCurrentDocumentVisit()) {
+            if (chunkEditorEpochRef.current === editorEpoch) toast.success('切片已更新')
+            setChunks((prev) => prev.map((chunk) => (chunk.id === updated.id ? updated : chunk)))
+            setHighlightChunkState((prev) => (prev?.id === updated.id ? updated : prev))
+            if (chunkEditorEpochRef.current === editorEpoch) setHighlightChunk(updated.id)
+          }
           savedChunk = updated
         }
 
-        globalThis.window.requestAnimationFrame(() => rowVirtualizer.measure())
-        setChunkEditorOpen(false)
+        if (isCurrentDocumentVisit()) {
+          globalThis.window.requestAnimationFrame(() => {
+            if (isCurrentDocumentVisit()) rowVirtualizer.measure()
+          })
+          // Automatic close after a successful save preserves its pending re-embed/rerun intent.
+          if (chunkEditorEpochRef.current === editorEpoch) setChunkEditorOpen(false)
+        }
 
+        // Finish the accepted write against its original chunk, including requested re-embedding.
         if (savedChunk && mode !== 'save') {
+          const savedChunkId = savedChunk.id
           try {
             const res = await documentApi.reembedChunks(documentId, {
-              chunk_ids: [savedChunk.id],
+              chunk_ids: [savedChunkId],
               include_disabled: Boolean(savedChunk.disabled_at),
             })
-            toast.success(`已重新嵌入 ${res.reembedded} 个切片`)
+            if (isCurrentDocumentVisit() && chunkEditorEpochRef.current === editorEpoch) {
+              toast.success(`已重新嵌入 ${res.reembedded} 个切片`)
+            }
 
-            if (mode === 'save_rerun') {
+            if (
+              mode === 'save_rerun' &&
+              isCurrentDocumentVisit() &&
+              chunkEditorEpochRef.current === editorEpoch &&
+              previewRequestAtSave === retrieveRequestSeqRef.current &&
+              latestRetrieveQueryRef.current === retrieveQuery
+            ) {
               const query = retrieveQuery.trim()
               if (query) {
                 await runRetrievePreviewForQuery(query)
@@ -850,15 +915,23 @@ export function useDocumentViewerPanelState() {
               }
             }
           } catch (err) {
-            reportClientError('Re-embed saved chunk failed', err)
-            toast.error(formatApiError(err, '切片已保存，但后续重嵌入失败'))
+            reportClientError('Re-embed saved chunk failed', err, {
+              tags: { document_id: documentId, chunk_id: savedChunkId },
+            })
+            if (isCurrentDocumentVisit() && chunkEditorEpochRef.current === editorEpoch) {
+              toast.error(formatApiError(err, '切片已保存，但后续重嵌入失败'))
+            }
           }
         }
       } catch (err) {
-        reportClientError('Save chunk failed', err)
-        toast.error(formatApiError(err, '切片保存失败'))
+        reportClientError('Save chunk failed', err, {
+          tags: targetChunkId ? { document_id: documentId, chunk_id: targetChunkId } : { document_id: documentId },
+        })
+        if (isCurrentDocumentVisit() && chunkEditorEpochRef.current === editorEpoch) {
+          toast.error(formatApiError(err, '切片保存失败'))
+        }
       } finally {
-        setChunkEditorSubmitting(false)
+        if (isCurrentDocumentVisit() && chunkEditorEpochRef.current === editorEpoch) setChunkEditorSubmitting(false)
       }
     },
     [
@@ -871,7 +944,7 @@ export function useDocumentViewerPanelState() {
       chunkEditorTarget,
       chunksLoaded,
       documentId,
-      parseOptionalChunkNumber,
+      isCurrentDocumentVisit,
       retrieveQuery,
       rowVirtualizer,
       runRetrievePreviewForQuery,
@@ -881,14 +954,16 @@ export function useDocumentViewerPanelState() {
 
   const deleteChunk = React.useCallback(
     async (chunk: DocumentChunk) => {
-      if (!documentId) return
+      if (!documentId || !isCurrentDocumentVisit()) return
       if (!canEditChunks) return
 
-      setChunkDeleteSubmitting(chunk.id)
+      const chunkId = chunk.id
+      setChunkDeleteSubmitting(chunkId)
       try {
-        await documentApi.deleteChunk(documentId, chunk.id)
+        await documentApi.deleteChunk(documentId, chunkId)
+        if (!isCurrentDocumentVisit()) return
         toast.success('切片已删除')
-        setChunks((prev) => prev.filter((item) => item.id !== chunk.id))
+        setChunks((prev) => prev.filter((item) => item.id !== chunkId))
         setDoc((prev) =>
           prev
             ? {
@@ -898,20 +973,24 @@ export function useDocumentViewerPanelState() {
               }
             : prev,
         )
-        if (highlightChunkId === chunk.id) {
+        if (useDocumentView.getState().highlightChunkId === chunkId) {
           setHighlightChunk(null)
           setHighlightChunkState(null)
         }
 
-        globalThis.window.requestAnimationFrame(() => rowVirtualizer.measure())
+        globalThis.window.requestAnimationFrame(() => {
+          if (isCurrentDocumentVisit()) rowVirtualizer.measure()
+        })
       } catch (err) {
-        reportClientError('Delete chunk failed', err)
-        toast.error(formatApiError(err, '切片删除失败'))
+        reportClientError('Delete chunk failed', err, { tags: { document_id: documentId, chunk_id: chunkId } })
+        if (isCurrentDocumentVisit()) toast.error(formatApiError(err, '切片删除失败'))
       } finally {
-        setChunkDeleteSubmitting(null)
+        if (isCurrentDocumentVisit()) {
+          setChunkDeleteSubmitting((current) => (current === chunkId ? null : current))
+        }
       }
     },
-    [canEditChunks, documentId, highlightChunkId, rowVirtualizer, setHighlightChunk],
+    [canEditChunks, documentId, isCurrentDocumentVisit, rowVirtualizer, setHighlightChunk],
   )
 
   const handleDeleteChunk = React.useCallback(
@@ -922,20 +1001,24 @@ export function useDocumentViewerPanelState() {
   )
 
   const runQaGeneration = React.useCallback(async () => {
-    if (!documentId) return
+    if (!documentId || !isCurrentDocumentVisit()) return
     if (!canEditChunks) return
 
+    const qaEpoch = ++qaDialogEpochRef.current
     setQaSubmitting(true)
     try {
       const res = await documentApi.generateQa(documentId, {
         num_pairs: Math.max(1, Math.trunc(Number(qaNumPairs) || 0)),
-        replace_existing: Boolean(qaReplaceExisting),
-        prefer_llm: Boolean(qaPreferLlm),
+        replace_existing: qaReplaceExisting,
+        prefer_llm: qaPreferLlm,
         max_source_chars: Math.max(500, Math.trunc(Number(qaMaxSourceChars) || 0)),
         preview_pairs: 5,
       })
-      setQaLastResult(res)
-      toast.success(`Q&A: +${res.created} (-${res.deleted}) [${res.mode}]`)
+      if (!isCurrentDocumentVisit()) return
+      if (qaDialogEpochRef.current === qaEpoch) {
+        setQaLastResult(res)
+        toast.success(`Q&A: +${res.created} (-${res.deleted}) [${res.mode}]`)
+      }
 
       setDoc((prev) =>
         prev
@@ -950,28 +1033,41 @@ export function useDocumentViewerPanelState() {
       setChunksLoaded(false)
       setChunks([])
 
-      if (res.chunk_ids?.length) {
+      if (qaDialogEpochRef.current === qaEpoch && res.chunk_ids?.length) {
         setHighlightChunk(res.chunk_ids[0])
       }
     } catch (err) {
-      reportClientError('Generate document Q&A failed', err)
-      toast.error(formatApiError(err, '问答生成失败'))
+      reportClientError('Generate document Q&A failed', err, { tags: { document_id: documentId } })
+      if (isCurrentDocumentVisit() && qaDialogEpochRef.current === qaEpoch) {
+        toast.error(formatApiError(err, '问答生成失败'))
+      }
     } finally {
-      setQaSubmitting(false)
+      // This job keeps the current visit busy until it finishes, even if the dialog is reopened.
+      if (isCurrentDocumentVisit()) setQaSubmitting(false)
     }
-  }, [canEditChunks, documentId, qaMaxSourceChars, qaNumPairs, qaPreferLlm, qaReplaceExisting, setHighlightChunk])
+  }, [
+    canEditChunks,
+    documentId,
+    isCurrentDocumentVisit,
+    qaMaxSourceChars,
+    qaNumPairs,
+    qaPreferLlm,
+    qaReplaceExisting,
+    setHighlightChunk,
+  ])
 
   const canInlinePreview = (doc?.file_type || '').toLowerCase() === 'pdf'
 
   const jumpToMatch = React.useCallback(
     (nextIndex: number) => {
+      if (!isCurrentDocumentVisit()) return
       if (!matchChunkIds.length) return
       const clamped = ((nextIndex % matchChunkIds.length) + matchChunkIds.length) % matchChunkIds.length
       setMatchCursor(clamped)
       setActiveTab('chunks')
       setHighlightChunk(matchChunkIds[clamped] || null)
     },
-    [matchChunkIds, setActiveTab, setHighlightChunk],
+    [isCurrentDocumentVisit, matchChunkIds, setActiveTab, setHighlightChunk],
   )
 
   const handleChunkSearchKeyDown = React.useCallback(
@@ -994,6 +1090,7 @@ export function useDocumentViewerPanelState() {
   React.useEffect(() => {
     if (!isOpen) return
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isCurrentDocumentVisit()) return
       const noModifier = !event.metaKey && !event.ctrlKey && !event.altKey
       const typingTarget = isTypingTarget(event.target)
 
@@ -1054,6 +1151,7 @@ export function useDocumentViewerPanelState() {
     return () => globalThis.window.removeEventListener('keydown', onKeyDown)
   }, [
     isOpen,
+    isCurrentDocumentVisit,
     activeTab,
     chunkQuery,
     closeDocument,
@@ -1074,34 +1172,47 @@ export function useDocumentViewerPanelState() {
 
   const handleTextScrollTopChange = React.useCallback(
     (textScrollTop: number) => {
+      if (!isCurrentDocumentVisit()) return
       pendingTextScrollRestoreRef.current = textScrollTop
       persistDocumentLayout({ textScrollTop })
     },
-    [persistDocumentLayout],
+    [isCurrentDocumentVisit, persistDocumentLayout],
   )
 
-  const handleChunkEditorOpenChange = React.useCallback((open: boolean) => {
-    if (!open) {
-      setChunkEditorOpen(false)
+  const handleChunkEditorOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (!isCurrentDocumentVisit()) return
+      chunkEditorEpochRef.current += 1
       setChunkEditorSubmitting(false)
-      return
-    }
-    setChunkEditorOpen(true)
-  }, [])
+      if (!open) {
+        setChunkEditorOpen(false)
+        return
+      }
+      setChunkEditorOpen(true)
+    },
+    [isCurrentDocumentVisit],
+  )
 
-  const handleQaDialogOpenChange = React.useCallback((open: boolean) => {
-    setQaDialogOpen(open)
-    if (open) setQaLastResult(null)
-  }, [])
+  const handleQaDialogOpenChange = React.useCallback(
+    (open: boolean) => {
+      if (!isCurrentDocumentVisit()) return
+      qaDialogEpochRef.current += 1
+      setQaDialogOpen(open)
+      if (open) setQaLastResult(null)
+    },
+    [isCurrentDocumentVisit],
+  )
 
   const handleActiveTabChange = React.useCallback(
     (value: string) => {
+      if (!isCurrentDocumentVisit()) return
       if (isDocumentViewTab(value)) setActiveTab(value)
     },
-    [setActiveTab],
+    [isCurrentDocumentVisit, setActiveTab],
   )
 
   const jumpToSource = React.useCallback(() => {
+    if (!isCurrentDocumentVisit()) return
     if (sourceContext?.kind !== 'chat-citation') return
 
     globalEventBus.emit('chat:focus-message', {
@@ -1109,7 +1220,7 @@ export function useDocumentViewerPanelState() {
       documentId: sourceContext.documentId,
       chunkId: sourceContext.chunkId ?? null,
     })
-  }, [sourceContext])
+  }, [isCurrentDocumentVisit, sourceContext])
 
   return {
     activeTab,
@@ -1133,6 +1244,7 @@ export function useDocumentViewerPanelState() {
     chunksListRef,
     chunksLoaded,
     chunksLoading,
+    clearRetrievePreview,
     closeDocument,
     copyChunkContent,
     copyChunkLink,
