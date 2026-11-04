@@ -39,11 +39,11 @@ def main(argv: list[str] | None = None) -> int:
 
     from app.parsing.factory import parser_factory
 
-    input_path = Path(str(args.input_file)).resolve()
-    queries = _read_json(Path(str(args.queries_json)).resolve())
+    input_path = Path(args.input_file).resolve()
+    queries = _read_json(Path(args.queries_json).resolve())
     documents, _backend, _provenance = parser_factory.parse_with_provenance(
         input_path,
-        parser_backend=str(args.parser_backend or "basic").strip().lower() or "basic",
+        parser_backend=(args.parser_backend or "basic").strip().lower() or "basic",
     )
     for item in documents or []:
         page_content = str(getattr(item, "page_content", "") or "")
@@ -55,11 +55,11 @@ def main(argv: list[str] | None = None) -> int:
     fixture = build_retrieval_fixture(
         documents=_serialize_documents(documents),
         queries=queries if isinstance(queries, list) else [],
-        top_k=int(args.top_k or 1),
-        retrieval_mode=str(args.retrieval_mode or "keyword"),
+        top_k=args.top_k or 1,
+        retrieval_mode=args.retrieval_mode or "keyword",
     )
 
-    out_path = Path(str(args.out)).resolve()
+    out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(fixture, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"[build-parsing-retrieval-fixture-from-file] wrote {out_path}")
