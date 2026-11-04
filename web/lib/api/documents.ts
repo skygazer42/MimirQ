@@ -77,15 +77,15 @@ function resolveChunkPreviewStrategy(chunkStrategy?: string): string {
 }
 
 const documentParsedContentResponseSchema: z.ZodType<DocumentParsedContentResponse> = z.looseObject({
-    document_id: z.string(),
-    available: z.boolean(),
-    markdown_content: z.string(),
-    original_markdown_content: z.string(),
-    persisted_meta: z.record(z.string(), z.unknown()).optional(),
-    markdown_truncated: z.boolean(),
-    original_markdown_truncated: z.boolean(),
-    max_chars: z.number().int(),
-  })
+  document_id: z.string(),
+  available: z.boolean(),
+  markdown_content: z.string(),
+  original_markdown_content: z.string(),
+  persisted_meta: z.record(z.string(), z.unknown()).optional(),
+  markdown_truncated: z.boolean(),
+  original_markdown_truncated: z.boolean(),
+  max_chars: z.number().int(),
+})
 
 export const documentApi = {
   async upload(
@@ -96,7 +96,7 @@ export const documentApi = {
       dataset_id?: string
       pipeline?: DocumentPipelineOptions
       user_metadata?: JsonObject
-    } = {}
+    } = {},
   ): Promise<Document> {
     const resolvedParser = resolveParserBackendForFilename(file.name, options.parser_backend)
     const formData = new FormData()
@@ -150,7 +150,7 @@ export const documentApi = {
       pipeline?: DocumentPipelineOptions
       max_concurrent?: number
       user_metadata_map?: Record<string, JsonObject>
-    } = {}
+    } = {},
   ): Promise<DocumentBatchUploadResponse> {
     const resolvedParser = resolveParserBackendForFiles(files, options.parser_backend)
     const formData = new FormData()
@@ -195,7 +195,7 @@ export const documentApi = {
       order_by?: 'created_at' | 'filename' | 'file_size'
       order_dir?: 'asc' | 'desc'
     },
-    options?: ApiRequestOptions
+    options?: ApiRequestOptions,
   ): Promise<DocumentList> {
     const { data } = await apiClient.get('/documents', {
       params,
@@ -214,7 +214,7 @@ export const documentApi = {
       error_code?: string | null
       failed_stage?: string | null
     },
-    options?: ApiRequestOptions
+    options?: ApiRequestOptions,
   ): Promise<IngestDeadLetterList> {
     return openapiRequest({
       path: '/api/v1/documents/dead-letters',
@@ -261,7 +261,7 @@ export const documentApi = {
   async get(
     documentId: string,
     options?: { includeChunks?: boolean; pipeline_hash?: string; all_versions?: boolean },
-    request?: ApiRequestOptions
+    request?: ApiRequestOptions,
   ): Promise<Document> {
     const query = options?.includeChunks
       ? {
@@ -282,7 +282,7 @@ export const documentApi = {
 
   async health(
     documentId: string,
-    params?: { window_minutes?: number; max_bytes?: number; max_chunks_scored?: number }
+    params?: { window_minutes?: number; max_bytes?: number; max_chunks_scored?: number },
   ): Promise<DocumentHealthCard> {
     const encoded = encodeURIComponent(String(documentId))
     const { data } = await apiClient.get(`/documents/${encoded}/health`, { params })
@@ -315,10 +315,7 @@ export const documentApi = {
     })
   },
 
-  async getParsedContent(
-    documentId: string,
-    params?: { max_chars?: number }
-  ): Promise<DocumentParsedContentResponse> {
+  async getParsedContent(documentId: string, params?: { max_chars?: number }): Promise<DocumentParsedContentResponse> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/parsed-content',
       method: 'get',
@@ -331,7 +328,7 @@ export const documentApi = {
 
   async listChunks(
     documentId: string,
-    params?: { skip?: number; limit?: number; q?: string; pipeline_hash?: string; all_versions?: boolean }
+    params?: { skip?: number; limit?: number; q?: string; pipeline_hash?: string; all_versions?: boolean },
   ): Promise<DocumentChunkList> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/chunks',
@@ -343,7 +340,7 @@ export const documentApi = {
 
   async getChunkMatches(
     documentId: string,
-    params: { q: string; limit?: number; pipeline_hash?: string; all_versions?: boolean }
+    params: { q: string; limit?: number; pipeline_hash?: string; all_versions?: boolean },
   ): Promise<DocumentChunkMatchList> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/chunks/matches',
@@ -454,7 +451,7 @@ export const documentApi = {
 
   async retry(
     documentId: string,
-    params?: { force?: boolean; skip_if_unchanged?: boolean; parser_backend?: string }
+    params?: { force?: boolean; skip_if_unchanged?: boolean; parser_backend?: string },
   ): Promise<DocumentStatus> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/retry',
@@ -472,9 +469,7 @@ export const documentApi = {
     })
   },
 
-  async batchDelete(
-    document_ids: string[]
-  ): Promise<{ deleted: number; not_found?: string[]; denied?: string[] }> {
+  async batchDelete(document_ids: string[]): Promise<{ deleted: number; not_found?: string[]; denied?: string[] }> {
     return openapiRequest({
       path: '/api/v1/documents/batch-delete',
       method: 'post',
@@ -559,10 +554,7 @@ export const documentApi = {
     })
   },
 
-  async patchUserMetadata(
-    documentId: string,
-    payload: DocumentUserMetadataPatchRequest
-  ): Promise<Document> {
+  async patchUserMetadata(documentId: string, payload: DocumentUserMetadataPatchRequest): Promise<Document> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/metadata',
       method: 'patch',
@@ -571,10 +563,7 @@ export const documentApi = {
     })
   },
 
-  async patchPipeline(
-    documentId: string,
-    payload: DocumentPipelinePatchRequest
-  ): Promise<Document> {
+  async patchPipeline(documentId: string, payload: DocumentPipelinePatchRequest): Promise<Document> {
     return openapiRequest({
       path: '/api/v1/documents/{document_id}/pipeline',
       method: 'patch',
@@ -590,12 +579,9 @@ export const documentApi = {
 
   async patchLifecycleMetadata(
     documentId: string,
-    payload: DocumentLifecycleMetadataUpdateRequest
+    payload: DocumentLifecycleMetadataUpdateRequest,
   ): Promise<DocumentLifecycleMetadata> {
-    const { data } = await apiClient.patch(
-      `/documents/${encodeURIComponent(documentId)}/lifecycle-metadata`,
-      payload
-    )
+    const { data } = await apiClient.patch(`/documents/${encodeURIComponent(documentId)}/lifecycle-metadata`, payload)
     return data
   },
 
@@ -639,7 +625,7 @@ export const documentApi = {
   },
 
   async batchPatchUserMetadata(
-    payload: DocumentBatchUserMetadataPatchRequest
+    payload: DocumentBatchUserMetadataPatchRequest,
   ): Promise<DocumentBatchUserMetadataPatchResponse> {
     return openapiRequest({
       path: '/api/v1/documents/batch/metadata',
@@ -652,7 +638,7 @@ export const documentApi = {
     file: File,
     parserBackend = 'auto',
     pipeline?: DocumentPipelineOptions,
-    options?: { signal?: AbortSignal; dataset_id?: string }
+    options?: { signal?: AbortSignal; dataset_id?: string },
   ): Promise<DocumentPreview> {
     const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
     const formData = new FormData()
@@ -689,7 +675,7 @@ export const documentApi = {
   async chunkPreview(
     file: File,
     params: ChunkPreviewRequestParams = {},
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal },
   ): Promise<ChunkPreviewResponse> {
     const resolvedParser = resolveParserBackendForFilename(file.name, params.parser_backend || 'auto')
     const effectiveStrategy = resolveChunkPreviewStrategy(params.chunk_strategy)
@@ -715,7 +701,7 @@ export const documentApi = {
       filename?: string
       file_size?: number
     },
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal },
   ): Promise<ChunkPreviewResponse> {
     const name = params.filename || `doc.${String(params.file_type || 'txt').replace(/^\\.+/, '')}`
     const resolvedParser = resolveParserBackendForFilename(name, params.parser_backend || 'auto')

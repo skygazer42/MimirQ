@@ -122,8 +122,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         type: 'chat',
         contextWindow: 1050000,
         maxTokens: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'anthropic',
@@ -154,8 +154,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Claude Haiku 4.5',
         type: 'chat',
         contextWindow: 200000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'deepseek',
@@ -197,8 +197,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         type: 'chat',
         contextWindow: 1000000,
         maxTokens: 384000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'zhipu',
@@ -243,8 +243,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'GLM-4.7',
         type: 'chat',
         contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'qwen',
@@ -284,8 +284,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'qwen3.5-omni-plus',
         displayName: 'Qwen3.5-Omni-Plus',
         type: 'image',
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'moonshot',
@@ -330,8 +330,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Moonshot v1 128K',
         type: 'chat',
         contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'ollama',
@@ -383,8 +383,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Mistral Latest',
         type: 'chat',
         contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'ark',
@@ -424,8 +424,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'doubao-seed-1-8-251228',
         displayName: 'Doubao-Seed-1.8 (251228)',
         type: 'chat',
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'lingyiwanwu',
@@ -449,8 +449,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Yi-Large',
         type: 'chat',
         contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'qianfan',
@@ -488,8 +488,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'ERNIE 4.5 Turbo',
         type: 'chat',
         contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'siliconflow',
@@ -534,8 +534,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'MiniMax-M2.5',
         type: 'chat',
         contextWindow: 128000,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'openrouter',
@@ -551,44 +551,44 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'openrouter/auto',
         displayName: 'Auto (智能选择)',
         type: 'chat',
-        contextWindow: 128000
+        contextWindow: 128000,
       },
       {
         id: 'gpt-5.5-or',
         name: 'openai/gpt-5.5',
         displayName: 'GPT-5.5',
         type: 'chat',
-        contextWindow: 1050000
+        contextWindow: 1050000,
       },
       {
         id: 'claude-opus-4.7-or',
         name: 'anthropic/claude-opus-4-7',
         displayName: 'Claude Opus 4.7',
         type: 'chat',
-        contextWindow: 1000000
+        contextWindow: 1000000,
       },
       {
         id: 'glm-5.1-or',
         name: 'zhipu/glm-5.1',
         displayName: 'GLM-5.1',
         type: 'chat',
-        contextWindow: 128000
+        contextWindow: 128000,
       },
       {
         id: 'kimi-k2.5-or',
         name: 'moonshot/kimi-k2.5',
         displayName: 'Kimi K2.5',
         type: 'chat',
-        contextWindow: 200000
+        contextWindow: 200000,
       },
       {
         id: 'qwen3-max-or',
         name: 'qwen/qwen3-max',
         displayName: 'Qwen3-Max',
         type: 'chat',
-        contextWindow: 128000
-      }
-    ]
+        contextWindow: 128000,
+      },
+    ],
   },
   {
     id: 'together',
@@ -640,8 +640,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Nemotron Latest',
         type: 'chat',
         contextWindow: 131072,
-      }
-    ]
+      },
+    ],
   },
 
   // ==================== Embedding 向量模型 ====================
@@ -660,7 +660,7 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Embedding 3 Large',
         type: 'embedding',
         contextWindow: 8191,
-        pricing: { input: 0.13, output: 0 }
+        pricing: { input: 0.13, output: 0 },
       },
       {
         id: 'text-embedding-3-small',
@@ -668,9 +668,9 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Embedding 3 Small',
         type: 'embedding',
         contextWindow: 8191,
-        pricing: { input: 0.02, output: 0 }
-      }
-    ]
+        pricing: { input: 0.02, output: 0 },
+      },
+    ],
   },
   {
     id: 'qwen-embedding',
@@ -694,8 +694,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         displayName: 'Text Embedding V3',
         type: 'embedding',
         contextWindow: 8192,
-      }
-    ]
+      },
+    ],
   },
   {
     id: 'local-embedding',
@@ -711,23 +711,23 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'BAAI/bge-large-zh-v1.5',
         displayName: 'BGE Large ZH v1.5',
         type: 'embedding',
-        contextWindow: 512
+        contextWindow: 512,
       },
       {
         id: 'bge-base-zh-v1.5',
         name: 'BAAI/bge-base-zh-v1.5',
         displayName: 'BGE Base ZH v1.5',
         type: 'embedding',
-        contextWindow: 512
+        contextWindow: 512,
       },
       {
         id: 'bge-m3',
         name: 'BAAI/bge-m3',
         displayName: 'BGE M3 (多语言)',
         type: 'embedding',
-        contextWindow: 8192
-      }
-    ]
+        contextWindow: 8192,
+      },
+    ],
   },
 
   // ==================== Reranker 重排序模型 ====================
@@ -745,23 +745,23 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         name: 'BAAI/bge-reranker-v2-m3',
         displayName: 'BGE Reranker v2 M3',
         type: 'reranker',
-        contextWindow: 8192
+        contextWindow: 8192,
       },
       {
         id: 'bge-reranker-large',
         name: 'BAAI/bge-reranker-large',
         displayName: 'BGE Reranker Large',
         type: 'reranker',
-        contextWindow: 512
+        contextWindow: 512,
       },
       {
         id: 'bge-reranker-base',
         name: 'BAAI/bge-reranker-base',
         displayName: 'BGE Reranker Base',
         type: 'reranker',
-        contextWindow: 512
-      }
-    ]
+        contextWindow: 512,
+      },
+    ],
   },
   {
     id: 'cohere-reranker',
@@ -776,15 +776,15 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         id: 'rerank-english-v3.0',
         name: 'rerank-english-v3.0',
         displayName: 'Rerank English v3',
-        type: 'reranker'
+        type: 'reranker',
       },
       {
         id: 'rerank-multilingual-v3.0',
         name: 'rerank-multilingual-v3.0',
         displayName: 'Rerank Multilingual v3',
-        type: 'reranker'
-      }
-    ]
+        type: 'reranker',
+      },
+    ],
   },
   {
     id: 'jina-reranker',
@@ -799,8 +799,8 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
         id: 'jina-reranker-v2-base-multilingual',
         name: 'jina-reranker-v2-base-multilingual',
         displayName: 'Jina Reranker v2 多语言',
-        type: 'reranker'
-      }
-    ]
-  }
+        type: 'reranker',
+      },
+    ],
+  },
 ]

@@ -125,17 +125,17 @@ export type RagConfigTemplateNewVersion = {
 }
 
 const evidenceRetrieveResponseSchema = z.looseObject({
-    query_for_retrieval: z.string(),
-    citations: z.array(z.record(z.string(), z.unknown())),
-    schema: z.string().default('mimirq.evidence.v1'),
-    metrics: z.record(z.string(), z.unknown()).optional(),
-    has_evidence: z.boolean().default(false),
-    abstain_triggered: z.boolean().default(false),
-    abstain_reason: z.string().nullable().optional(),
-    retrieval_trace: z.record(z.string(), z.unknown()).nullable().optional(),
-    evidence_capsule: z.record(z.string(), z.unknown()).nullable().optional(),
-    query_debug: z.record(z.string(), z.unknown()).nullable().optional(),
-  })
+  query_for_retrieval: z.string(),
+  citations: z.array(z.record(z.string(), z.unknown())),
+  schema: z.string().default('mimirq.evidence.v1'),
+  metrics: z.record(z.string(), z.unknown()).optional(),
+  has_evidence: z.boolean().default(false),
+  abstain_triggered: z.boolean().default(false),
+  abstain_reason: z.string().nullable().optional(),
+  retrieval_trace: z.record(z.string(), z.unknown()).nullable().optional(),
+  evidence_capsule: z.record(z.string(), z.unknown()).nullable().optional(),
+  query_debug: z.record(z.string(), z.unknown()).nullable().optional(),
+})
 
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {

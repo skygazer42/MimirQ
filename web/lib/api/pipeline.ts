@@ -27,24 +27,15 @@ import type {
   PipelineParsePreviewResponse,
   ZipWithImagesResponse,
 } from '@/types'
-import type {
-  BuiltinProcessingScriptListResponse,
-  OpenApiSchema,
-} from '@/types/backend'
+import type { BuiltinProcessingScriptListResponse, OpenApiSchema } from '@/types/backend'
 import type { OpenApiRequestBody } from '@/types/openapi-helpers'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
-type GovernanceProfileUpdateBody = OpenApiRequestBody<
-  '/api/v1/pipeline/governance-profiles/{profile_ref}',
-  'patch'
->
-type GovernanceProfileCreateBody = OpenApiRequestBody<
-  '/api/v1/pipeline/governance-profiles',
-  'post'
->
+type GovernanceProfileUpdateBody = OpenApiRequestBody<'/api/v1/pipeline/governance-profiles/{profile_ref}', 'patch'>
+type GovernanceProfileCreateBody = OpenApiRequestBody<'/api/v1/pipeline/governance-profiles', 'post'>
 
 type PipelinePluginItemSchema = OpenApiSchema<'PipelinePluginItem'>
 export type PipelinePluginSuggestedPatch = OpenApiSchema<'PipelinePluginSuggestedPatch'>
@@ -140,7 +131,7 @@ function normalizeRegexRuleForApi(rule: { pattern: string; repl?: string; flags?
 }
 
 function normalizeProcessingScriptForApi(
-  script: GovernanceProcessingScript
+  script: GovernanceProcessingScript,
 ): GovernanceProcessingScript & { enabled: boolean } {
   return {
     ...script,
@@ -297,18 +288,12 @@ function normalizeGovernanceProfilePayload(payload: unknown): GovernanceProfileO
   const inputFormatsRaw = p.input_formats
   const validInputFormats = Array.isArray(inputFormatsRaw) ? inputFormatsRaw.filter(isInputFormat) : []
   const input_formats =
-    validInputFormats.length > 0
-      ? validInputFormats
-      : (['markdown'] satisfies Array<'markdown' | 'html'>)
+    validInputFormats.length > 0 ? validInputFormats : (['markdown'] satisfies Array<'markdown' | 'html'>)
   const regex_rules = Array.isArray(p.regex_rules)
     ? p.regex_rules.filter(isRegexRuleInput).map(normalizeRegexRuleForApi)
     : []
-  const processing_scripts = Array.isArray(p.processing_scripts)
-    ? p.processing_scripts.filter(isProcessingScript)
-    : []
-  const pipeline_patch = isRecord(p.pipeline_patch)
-    ? (p.pipeline_patch as DocumentPipelineOptions)
-    : {}
+  const processing_scripts = Array.isArray(p.processing_scripts) ? p.processing_scripts.filter(isProcessingScript) : []
+  const pipeline_patch = isRecord(p.pipeline_patch) ? (p.pipeline_patch as DocumentPipelineOptions) : {}
 
   return {
     version: typeof p.version === 'string' && p.version ? p.version : '1',
@@ -351,9 +336,7 @@ export const pipelineApi = {
     }
   },
 
-  async buildPluginGoldenDraft(
-    payload: PipelinePluginGoldenDraftRequest
-  ): Promise<PipelinePluginGoldenDraftResponse> {
+  async buildPluginGoldenDraft(payload: PipelinePluginGoldenDraftRequest): Promise<PipelinePluginGoldenDraftResponse> {
     const { data } = await apiClient.post('/pipeline/plugins/golden-draft', payload)
     return {
       ...data,
@@ -363,7 +346,7 @@ export const pipelineApi = {
   },
 
   async generateAndImportPluginGoldenDraft(
-    payload: PipelinePluginGoldenDraftImportRequest
+    payload: PipelinePluginGoldenDraftImportRequest,
   ): Promise<PipelinePluginGoldenDraftImportResponse> {
     const { data } = await apiClient.post('/pipeline/plugins/golden-draft/import', payload)
     const draft = isRecord(data?.draft) ? data.draft : {}
@@ -387,9 +370,7 @@ export const pipelineApi = {
     }
   },
 
-  async buildPluginChunkReport(
-    payload: PipelinePluginChunkReportRequest
-  ): Promise<PipelinePluginChunkReportResponse> {
+  async buildPluginChunkReport(payload: PipelinePluginChunkReportRequest): Promise<PipelinePluginChunkReportResponse> {
     const { data } = await apiClient.post('/pipeline/plugins/chunk-report', payload)
     return normalizePipelinePluginChunkReport(data)
   },
@@ -545,7 +526,7 @@ export const pipelineApi = {
   async exportGovernanceProfileIngestionPolicy(profileRef: string): Promise<Blob> {
     const { data } = await apiClient.get(
       `/pipeline/governance-profiles/${encodeURIComponent(profileRef)}/export-ingestion-policy`,
-      { responseType: 'blob' }
+      { responseType: 'blob' },
     )
     return data as Blob
   },
@@ -553,7 +534,7 @@ export const pipelineApi = {
   async parsePreview(
     file: File,
     parserBackend = 'auto',
-    options?: { signal?: AbortSignal }
+    options?: { signal?: AbortSignal },
   ): Promise<PipelineParsePreviewResponse> {
     const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
     const formData = new FormData()
@@ -683,7 +664,11 @@ export const pipelineApi = {
     return openapiRequest({ path: '/api/v1/pipeline/llm-clean-preview', method: 'post', body })
   },
 
-  async uploadZipWithImages(params: { file: File; dataset_id: string; document_id?: string }): Promise<ZipWithImagesResponse> {
+  async uploadZipWithImages(params: {
+    file: File
+    dataset_id: string
+    document_id?: string
+  }): Promise<ZipWithImagesResponse> {
     const formData = new FormData()
     formData.append('file', params.file)
     formData.append('dataset_id', params.dataset_id)
@@ -698,7 +683,7 @@ export const pipelineApi = {
 
   async ingestionPreview(
     file: File,
-    params: { dataset_id: string; parser_backend?: string; chunk_strategy?: string; diff_max_lines?: number }
+    params: { dataset_id: string; parser_backend?: string; chunk_strategy?: string; diff_max_lines?: number },
   ): Promise<IngestionPreviewResponse> {
     const formData = new FormData()
     formData.append('file', file)

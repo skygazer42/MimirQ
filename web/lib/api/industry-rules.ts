@@ -36,26 +36,17 @@ export const industryRulesApi = {
     return data
   },
 
-  async updateGlossary(
-    name: string,
-    body: IndustryRulesGlossaryUpdateRequest
-  ): Promise<IndustryRulesUpdateResponse> {
+  async updateGlossary(name: string, body: IndustryRulesGlossaryUpdateRequest): Promise<IndustryRulesUpdateResponse> {
     const { data } = await apiClient.put(`/industry-rules/rulesets/${encodeURIComponent(name)}/glossary`, body)
     return data
   },
 
-  async updatePatterns(
-    name: string,
-    body: IndustryRulesPatternsUpdateRequest
-  ): Promise<IndustryRulesUpdateResponse> {
+  async updatePatterns(name: string, body: IndustryRulesPatternsUpdateRequest): Promise<IndustryRulesUpdateResponse> {
     const { data } = await apiClient.put(`/industry-rules/rulesets/${encodeURIComponent(name)}/patterns`, body)
     return data
   },
 
-  async updateIntents(
-    name: string,
-    body: IndustryRulesIntentsUpdateRequest
-  ): Promise<IndustryRulesUpdateResponse> {
+  async updateIntents(name: string, body: IndustryRulesIntentsUpdateRequest): Promise<IndustryRulesUpdateResponse> {
     const { data } = await apiClient.put(`/industry-rules/rulesets/${encodeURIComponent(name)}/intents`, body)
     return data
   },

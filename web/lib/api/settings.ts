@@ -46,9 +46,7 @@ export async function getSettings(): Promise<SystemSettings> {
   return data
 }
 
-export async function updateSettings(
-  settings: UpdateSettingsRequest
-): Promise<SettingsUpdateResponse> {
+export async function updateSettings(settings: UpdateSettingsRequest): Promise<SettingsUpdateResponse> {
   const { data } = await apiClient.put('/settings', settings)
   return data
 }

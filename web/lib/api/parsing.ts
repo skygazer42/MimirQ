@@ -87,7 +87,7 @@ type ParsingDocumentListResponse = {
 }
 
 function normalizeExtractFieldSpecMap(
-  value: Record<string, ParsingExtractFieldSpec> | null | undefined
+  value: Record<string, ParsingExtractFieldSpec> | null | undefined,
 ): Record<string, NormalizedParsingExtractFieldSpec> | undefined {
   if (!value) return undefined
   const entries = Object.entries(value)
@@ -275,7 +275,7 @@ export const parsingApi = {
       image_ocr_enabled?: boolean
       vlm_correction_enabled?: boolean
       signal?: AbortSignal
-    }
+    },
   ): Promise<ParsingContentResponse> {
     const params: {
       parser_backend?: string

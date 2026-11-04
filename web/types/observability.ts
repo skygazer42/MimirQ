@@ -298,12 +298,7 @@ export type IndexAuditReconcileEnqueueResponse = {
 }
 
 export type IndexAuditReconcileStatusResponse = {
-  status:
-    | 'legacy_unknown'
-    | 'pending'
-    | 'error'
-    | 'ready'
-    | 'unknown'
+  status: 'legacy_unknown' | 'pending' | 'error' | 'ready' | 'unknown'
   reason?: string | null
   legacy?: boolean | null
   ready?: boolean | null

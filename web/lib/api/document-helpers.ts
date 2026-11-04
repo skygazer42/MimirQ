@@ -42,7 +42,7 @@ function appendFormDataIfBoolean(formData: FormData, key: string, value: boolean
 export function appendChunkPreviewFormFields(
   formData: FormData,
   params: ChunkPreviewRequestParams,
-  effectiveStrategy: string
+  effectiveStrategy: string,
 ) {
   appendFormDataIfString(formData, 'dataset_id', params.dataset_id, true)
   if (effectiveStrategy === 'parent_child') {
@@ -60,8 +60,7 @@ export function buildChunkPreviewQueryParams(params: ChunkPreviewRequestParams) 
   return {
     chunk_size: params.chunk_size ?? params.pipeline?.chunk_size ?? 1000,
     chunk_overlap: params.chunk_overlap ?? params.pipeline?.chunk_overlap ?? 200,
-    include_original_text:
-      typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
+    include_original_text: typeof params.include_original_text === 'boolean' ? params.include_original_text : undefined,
     include_chunks: typeof params.include_chunks === 'boolean' ? params.include_chunks : undefined,
     include_review_signals:
       typeof params.include_review_signals === 'boolean' ? params.include_review_signals : undefined,

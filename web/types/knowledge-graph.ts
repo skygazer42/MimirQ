@@ -123,11 +123,13 @@ export type KGManualEntityInput = {
   extra_data?: JsonObject
 }
 
-export type KGManualEntityRef = string | {
-  key?: string | null
-  name?: string | null
-  type?: string | null
-}
+export type KGManualEntityRef =
+  | string
+  | {
+      key?: string | null
+      name?: string | null
+      type?: string | null
+    }
 
 export type KGManualRelationInput = {
   subject: KGManualEntityRef

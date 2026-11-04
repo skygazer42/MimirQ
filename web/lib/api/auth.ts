@@ -21,9 +21,7 @@ export const authApi = {
       path: '/api/v1/auth/register',
       method: 'post',
       body,
-      headers: bootstrapToken?.trim()
-        ? { 'X-Bootstrap-Token': bootstrapToken.trim() }
-        : undefined,
+      headers: bootstrapToken?.trim() ? { 'X-Bootstrap-Token': bootstrapToken.trim() } : undefined,
     })
   },
 

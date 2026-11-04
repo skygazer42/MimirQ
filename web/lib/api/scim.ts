@@ -37,7 +37,12 @@ export const scimApi = {
     return data
   },
 
-  async listGroups(params: { tenantId: string; scimToken: string; startIndex?: number; count?: number }): Promise<unknown> {
+  async listGroups(params: {
+    tenantId: string
+    scimToken: string
+    startIndex?: number
+    count?: number
+  }): Promise<unknown> {
     const { tenantId, scimToken, ...query } = params
     const { data } = await apiClient.get('/scim/v2/Groups', {
       headers: buildScimHeaders(scimToken, tenantId),
@@ -60,7 +65,12 @@ export const scimApi = {
     return data
   },
 
-  async updateGroup(params: { tenantId: string; scimToken: string; groupId: string; payload: ScimPayload }): Promise<unknown> {
+  async updateGroup(params: {
+    tenantId: string
+    scimToken: string
+    groupId: string
+    payload: ScimPayload
+  }): Promise<unknown> {
     const { data } = await apiClient.put(`/scim/v2/Groups/${encodeURIComponent(params.groupId)}`, params.payload, {
       headers: buildScimHeaders(params.scimToken, params.tenantId),
     })
@@ -74,7 +84,12 @@ export const scimApi = {
     return data
   },
 
-  async listUsers(params: { tenantId: string; scimToken: string; startIndex?: number; count?: number }): Promise<unknown> {
+  async listUsers(params: {
+    tenantId: string
+    scimToken: string
+    startIndex?: number
+    count?: number
+  }): Promise<unknown> {
     const { tenantId, scimToken, ...query } = params
     const { data } = await apiClient.get('/scim/v2/Users', {
       headers: buildScimHeaders(scimToken, tenantId),
@@ -97,14 +112,24 @@ export const scimApi = {
     return data
   },
 
-  async patchUser(params: { tenantId: string; scimToken: string; userId: string; payload: ScimPayload }): Promise<unknown> {
+  async patchUser(params: {
+    tenantId: string
+    scimToken: string
+    userId: string
+    payload: ScimPayload
+  }): Promise<unknown> {
     const { data } = await apiClient.patch(`/scim/v2/Users/${encodeURIComponent(params.userId)}`, params.payload, {
       headers: buildScimHeaders(params.scimToken, params.tenantId),
     })
     return data
   },
 
-  async patchGroup(params: { tenantId: string; scimToken: string; groupId: string; payload: ScimPayload }): Promise<unknown> {
+  async patchGroup(params: {
+    tenantId: string
+    scimToken: string
+    groupId: string
+    payload: ScimPayload
+  }): Promise<unknown> {
     const { data } = await apiClient.patch(`/scim/v2/Groups/${encodeURIComponent(params.groupId)}`, params.payload, {
       headers: buildScimHeaders(params.scimToken, params.tenantId),
     })

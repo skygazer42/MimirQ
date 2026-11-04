@@ -63,16 +63,13 @@ export const kgApi = {
       prompt_template_id?: string
       prompt_template_key?: string
       prompt_ab_experiment_key?: string
-    }
+    },
   ): Promise<KGExtractResponse> {
     const { data } = await apiClient.post(`/kg/documents/${documentId}/extract`, null, { params })
     return data
   },
 
-  async deleteDocumentKG(
-    documentId: string,
-    params?: { prune_orphan_entities?: boolean }
-  ): Promise<KGDeleteResponse> {
+  async deleteDocumentKG(documentId: string, params?: { prune_orphan_entities?: boolean }): Promise<KGDeleteResponse> {
     const { data } = await apiClient.delete(`/kg/documents/${documentId}`, { params })
     return data
   },
@@ -94,7 +91,7 @@ export const kgApi = {
 
   async deleteManualImport(
     importId: string,
-    params?: { prune_entities?: boolean }
+    params?: { prune_entities?: boolean },
   ): Promise<KGManualImportDeleteResponse> {
     const { data } = await apiClient.delete(`/kg/imports/${encodeURIComponent(importId)}`, { params })
     return data
@@ -105,7 +102,11 @@ export const kgApi = {
     return data
   },
 
-  async getStats(params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string }): Promise<KGStatsResponse> {
+  async getStats(params?: {
+    document_ids?: string[]
+    dataset_id?: string
+    pipeline_hash?: string
+  }): Promise<KGStatsResponse> {
     const { data } = await apiClient.get('/kg/stats', { params })
     return data
   },
@@ -222,7 +223,7 @@ export const kgApi = {
 
   async getEvent(
     eventId: string,
-    params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string }
+    params?: { document_ids?: string[]; dataset_id?: string; pipeline_hash?: string },
   ): Promise<KGEventDetailResponse> {
     const { data } = await apiClient.get(`/kg/events/${eventId}`, { params })
     return data
@@ -236,7 +237,7 @@ export const kgApi = {
       pipeline_hash?: string
       max_events?: number
       max_neighbors?: number
-    }
+    },
   ): Promise<KGEntityDetailResponse> {
     const { data } = await apiClient.get(`/kg/entities/${entityId}`, { params })
     return data
@@ -259,7 +260,7 @@ export const kgApi = {
 
   async suggestEntityAliases(
     entityId: string,
-    params?: { mode?: string; k?: number; min_similarity?: number }
+    params?: { mode?: string; k?: number; min_similarity?: number },
   ): Promise<KGEntityAliasSuggestionsResponse> {
     const { data } = await apiClient.get(`/kg/entities/${entityId}/alias_suggestions`, { params })
     return data
@@ -277,7 +278,7 @@ export const kgApi = {
 
   async updatePredicateOntology(
     predicateId: string,
-    body: KGPredicateOntologyUpdateRequest
+    body: KGPredicateOntologyUpdateRequest,
   ): Promise<KGPredicateOntologyItem> {
     const { data } = await apiClient.patch(`/kg/ontology/predicates/${predicateId}`, body)
     return data

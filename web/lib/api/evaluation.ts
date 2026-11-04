@@ -63,10 +63,7 @@ export const evaluationApi = {
   async getRagasConversationReadiness(
     params: RagasConversationReadinessRequest,
   ): Promise<RagasConversationReadinessResponse> {
-    const { data } = await apiClient.post(
-      '/evaluations/ragas/conversation-readiness',
-      params
-    )
+    const { data } = await apiClient.post('/evaluations/ragas/conversation-readiness', params)
     return data
   },
 
@@ -75,18 +72,14 @@ export const evaluationApi = {
     return data
   },
 
-  async listRagasRuns(params?: {
-    skip?: number
-    limit?: number
-    conversation_id?: string
-  }): Promise<RagasRunList> {
+  async listRagasRuns(params?: { skip?: number; limit?: number; conversation_id?: string }): Promise<RagasRunList> {
     const { data } = await apiClient.get('/evaluations/ragas/runs', { params })
     return data
   },
 
   async getRagasRun(
     runId: string,
-    params?: { include_items?: boolean; include_contexts?: boolean }
+    params?: { include_items?: boolean; include_contexts?: boolean },
   ): Promise<RagasRunDetail> {
     const { data } = await apiClient.get(`/evaluations/ragas/runs/${runId}`, { params })
     return data
@@ -187,7 +180,7 @@ export const evaluationApi = {
 
   async getRegressionRun(
     runId: string,
-    params?: { include_items?: boolean; include_contexts?: boolean }
+    params?: { include_items?: boolean; include_contexts?: boolean },
   ): Promise<RegressionRunDetail> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}`, { params })
     return data
@@ -195,16 +188,18 @@ export const evaluationApi = {
 
   async diffRegressionRuns(
     runId: string,
-    params: { base_run_id: string; include_significance?: boolean; include_per_case?: boolean; max_case_diffs?: number }
+    params: {
+      base_run_id: string
+      include_significance?: boolean
+      include_per_case?: boolean
+      max_case_diffs?: number
+    },
   ): Promise<RagasRegressionRunDiffResponse> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff`, { params })
     return data
   },
 
-  async exportRegressionRunDiffHtml(
-    runId: string,
-    params: { base_run_id: string; redact?: boolean }
-  ): Promise<Blob> {
+  async exportRegressionRunDiffHtml(runId: string, params: { base_run_id: string; redact?: boolean }): Promise<Blob> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff/export-html`, {
       params,
       responseType: 'blob',
@@ -221,7 +216,7 @@ export const evaluationApi = {
       max_items?: number
       max_citations?: number
       download?: boolean
-    }
+    },
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/export-bundle`, {
       params,

@@ -119,9 +119,7 @@ function datasetIdentityKey(dataset: Dataset): string | null {
   return id || null
 }
 
-export async function listAllDatasets(
-  params?: ExhaustiveDatasetListParams
-): Promise<Dataset[]> {
+export async function listAllDatasets(params?: ExhaustiveDatasetListParams): Promise<Dataset[]> {
   const requestedPageSize = Number(params?.pageSize ?? DEFAULT_DATASET_PAGE_SIZE)
   const pageSize = Math.max(1, Math.min(DEFAULT_DATASET_PAGE_SIZE, Math.trunc(requestedPageSize)))
   const { pageSize: _pageSize, ...rest } = params || {}
@@ -135,9 +133,7 @@ export async function listAllDatasets(
     const page = await listDatasets({ ...rest, skip, limit: pageSize })
     const pageItems = Array.isArray(page.items) ? page.items : []
     const reportedTotal = Number(page.total)
-    total = Number.isFinite(reportedTotal) && reportedTotal >= 0
-      ? reportedTotal
-      : Number.POSITIVE_INFINITY
+    total = Number.isFinite(reportedTotal) && reportedTotal >= 0 ? reportedTotal : Number.POSITIVE_INFINITY
     if (pageItems.length === 0) break
 
     let added = 0
@@ -192,7 +188,7 @@ export const datasetApi = {
 
   async putRetrievalAudit(
     datasetId: string,
-    payload: DatasetRetrievalAuditPayload
+    payload: DatasetRetrievalAuditPayload,
   ): Promise<DatasetRetrievalAuditPayload> {
     return openapiRequest({
       path: '/api/v1/datasets/{dataset_id}/retrieval-audit',
@@ -207,17 +203,14 @@ export const datasetApi = {
     return data
   },
 
-  async getAnalysisSummary(
-    datasetId: string,
-    params?: DatasetAnalysisFilters
-  ): Promise<DatasetAnalysisResponse> {
+  async getAnalysisSummary(datasetId: string, params?: DatasetAnalysisFilters): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/summary`, { params })
     return data
   },
 
   async getAnalysisExamples(
     datasetId: string,
-    params?: DatasetAnalysisExamplesParams
+    params?: DatasetAnalysisExamplesParams,
   ): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/examples`, { params })
     return data
@@ -225,16 +218,13 @@ export const datasetApi = {
 
   async getAnalysisRuleSuggestions(
     datasetId: string,
-    params: DatasetAnalysisRuleSuggestionParams
+    params: DatasetAnalysisRuleSuggestionParams,
   ): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/rule-suggestions`, { params })
     return data
   },
 
-  async exportAnalysisJson(
-    datasetId: string,
-    params?: DatasetAnalysisFilters
-  ): Promise<DatasetAnalysisResponse> {
+  async exportAnalysisJson(datasetId: string, params?: DatasetAnalysisFilters): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/analysis/export.json`, { params })
     return data
   },
@@ -257,7 +247,7 @@ export const datasetApi = {
 
   async writebackAnalysisGlossary(
     datasetId: string,
-    params: DatasetAnalysisGlossaryWritebackParams
+    params: DatasetAnalysisGlossaryWritebackParams,
   ): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/analysis/glossary-writeback`, undefined, { params })
     return data
@@ -265,7 +255,7 @@ export const datasetApi = {
 
   async createAnalysisPngExportTask(
     datasetId: string,
-    params?: DatasetAnalysisFilters
+    params?: DatasetAnalysisFilters,
   ): Promise<DatasetAnalysisResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/analysis/export.png`, undefined, { params })
     return data
@@ -300,7 +290,10 @@ export const datasetApi = {
     })
   },
 
-  async setCategories(datasetId: string, payload: DatasetCategoryAssignmentRequest): Promise<DatasetCategoryAssignmentResponse> {
+  async setCategories(
+    datasetId: string,
+    payload: DatasetCategoryAssignmentRequest,
+  ): Promise<DatasetCategoryAssignmentResponse> {
     return openapiRequest({
       path: '/api/v1/datasets/{dataset_id}/categories',
       method: 'put',
@@ -317,10 +310,7 @@ export const datasetApi = {
     })
   },
 
-  async purge(
-    datasetId: string,
-    params?: { max_delete?: number; dry_run?: boolean }
-  ): Promise<DatasetPurgeResponse> {
+  async purge(datasetId: string, params?: { max_delete?: number; dry_run?: boolean }): Promise<DatasetPurgeResponse> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/purge`, undefined, { params })
     return data
   },
@@ -410,7 +400,7 @@ export const datasetApi = {
       after_id?: string
       include_sensitive?: boolean
       gzip?: boolean
-    }
+    },
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/documents/export`, {
       params,
@@ -419,10 +409,7 @@ export const datasetApi = {
     return data as Blob
   },
 
-  async exportBundleZip(
-    datasetId: string,
-    params?: { limit?: number; include_sensitive?: boolean }
-  ): Promise<Blob> {
+  async exportBundleZip(datasetId: string, params?: { limit?: number; include_sensitive?: boolean }): Promise<Blob> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/export`, {
       params,
       responseType: 'blob',
@@ -438,7 +425,7 @@ export const datasetApi = {
   async listProfileFinding(
     datasetId: string,
     findingKey: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
   ): Promise<DatasetProfileFindingListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/profile/findings/${findingKey}`, { params })
     return data
@@ -453,20 +440,23 @@ export const datasetApi = {
       limit?: number
       include_preview?: boolean
       preview_max_chars?: number
-    }
+    },
   ): Promise<DatasetProfileDocumentListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/profile/buckets/documents`, { params })
     return data
   },
 
-  async startProfileScan(datasetId: string, body: DatasetProfileScanRunCreateRequest): Promise<DatasetProfileScanRunOut> {
+  async startProfileScan(
+    datasetId: string,
+    body: DatasetProfileScanRunCreateRequest,
+  ): Promise<DatasetProfileScanRunOut> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/profile/scan-runs`, body || {})
     return data
   },
 
   async listProfileScanRuns(
     datasetId: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
   ): Promise<DatasetProfileScanRunListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/profile/scan-runs`, { params })
     return data
@@ -490,14 +480,17 @@ export const datasetApi = {
     return data as Blob
   },
 
-  async startPrecheckScan(datasetId: string, body: DatasetPrecheckScanRunCreateRequest): Promise<DatasetPrecheckScanRunOut> {
+  async startPrecheckScan(
+    datasetId: string,
+    body: DatasetPrecheckScanRunCreateRequest,
+  ): Promise<DatasetPrecheckScanRunOut> {
     const { data } = await apiClient.post(`/datasets/${datasetId}/precheck/scan-runs`, body || {})
     return data
   },
 
   async listPrecheckScanRuns(
     datasetId: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
   ): Promise<DatasetPrecheckScanRunListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs`, { params })
     return data
@@ -516,7 +509,7 @@ export const datasetApi = {
   async listPrecheckFiles(
     datasetId: string,
     scanRunId: string,
-    params?: { dir_prefix?: string; skip?: number; limit?: number }
+    params?: { dir_prefix?: string; skip?: number; limit?: number },
   ): Promise<DatasetPrecheckFindingListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/files`, { params })
     return data
@@ -526,11 +519,14 @@ export const datasetApi = {
     datasetId: string,
     scanRunId: string,
     findingKey: string,
-    params?: { skip?: number; limit?: number }
+    params?: { skip?: number; limit?: number },
   ): Promise<DatasetPrecheckFindingListResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/findings/${findingKey}`, {
-      params,
-    })
+    const { data } = await apiClient.get(
+      `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/findings/${findingKey}`,
+      {
+        params,
+      },
+    )
     return data
   },
 
@@ -557,7 +553,7 @@ export const datasetApi = {
   async getPrecheckSamples(
     datasetId: string,
     scanRunId: string,
-    params?: { size?: number; prefer_artifact?: boolean }
+    params?: { size?: number; prefer_artifact?: boolean },
   ): Promise<DatasetPrecheckSamplesResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/samples`, { params })
     return data
@@ -566,11 +562,11 @@ export const datasetApi = {
   async patchPrecheckSampleReview(
     datasetId: string,
     scanRunId: string,
-    payload: DatasetPrecheckSampleReviewPatchRequest
+    payload: DatasetPrecheckSampleReviewPatchRequest,
   ): Promise<DatasetPrecheckSampleReviewOut> {
     const { data } = await apiClient.patch(
       `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/samples/review`,
-      payload
+      payload,
     )
     return data
   },
@@ -583,7 +579,7 @@ export const datasetApi = {
   async diffPrecheckScanRuns(
     datasetId: string,
     scanRunId: string,
-    params: { base_scan_run_id: string }
+    params: { base_scan_run_id: string },
   ): Promise<DatasetPrecheckDiffResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/diff`, { params })
     return data
@@ -592,11 +588,11 @@ export const datasetApi = {
   async suggestPrecheckIngestionPolicy(
     datasetId: string,
     scanRunId: string,
-    params?: { max_names_per_bucket?: number }
+    params?: { max_names_per_bucket?: number },
   ): Promise<DatasetPrecheckIngestionSuggestionResponse> {
     const { data } = await apiClient.get(
       `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/suggest-ingestion-policy`,
-      { params }
+      { params },
     )
     return data
   },
@@ -604,19 +600,19 @@ export const datasetApi = {
   async applyPrecheckIngestionPolicy(
     datasetId: string,
     scanRunId: string,
-    params?: { replace?: boolean }
+    params?: { replace?: boolean },
   ): Promise<IngestionPolicyImportResponse> {
     const { data } = await apiClient.post(
       `/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/apply-ingestion-policy`,
       undefined,
-      { params }
+      { params },
     )
     return data
   },
 
   async listTables(
     datasetId: string,
-    params?: { skip?: number; limit?: number; include_columns?: boolean; include_sample_rows?: boolean }
+    params?: { skip?: number; limit?: number; include_columns?: boolean; include_sample_rows?: boolean },
   ): Promise<DatasetTablesListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/tables`, { params })
     return data
@@ -625,14 +621,16 @@ export const datasetApi = {
   async getTable(
     datasetId: string,
     tableId: string,
-    params?: { include_columns?: boolean; include_sample_rows?: boolean }
+    params?: { include_columns?: boolean; include_sample_rows?: boolean },
   ): Promise<DatasetTableAsset> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}`, { params })
     return data
   },
 
   async previewTable(datasetId: string, tableId: string, params?: { limit?: number }): Promise<TableQueryResponse> {
-    const { data } = await apiClient.get(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/preview`, { params })
+    const { data } = await apiClient.get(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/preview`, {
+      params,
+    })
     return data
   },
 
@@ -649,15 +647,19 @@ export const datasetApi = {
   },
 
   async lotusSemFilter(datasetId: string, tableId: string, body: LotusSemFilterRequest): Promise<TableQueryResponse> {
-    const { data } = await apiClient.post(`/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`, body, {
-      timeout: API_LONG_TIMEOUT_MS,
-    })
+    const { data } = await apiClient.post(
+      `/datasets/${datasetId}/tables/${encodeURIComponent(tableId)}/lotus/sem-filter`,
+      body,
+      {
+        timeout: API_LONG_TIMEOUT_MS,
+      },
+    )
     return data
   },
 
   async listDbCatalogTables(
     datasetId: string,
-    params?: { skip?: number; limit?: number; engine?: string; q?: string }
+    params?: { skip?: number; limit?: number; engine?: string; q?: string },
   ): Promise<DbCatalogTablesListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/tables`, { params })
     return data
@@ -670,7 +672,7 @@ export const datasetApi = {
 
   async listDbCatalogProfiles(
     datasetId: string,
-    params: { table_id: string; entitlement_hash?: string; skip?: number; limit?: number }
+    params: { table_id: string; entitlement_hash?: string; skip?: number; limit?: number },
   ): Promise<DbProfileSnapshotListResponse> {
     const { data } = await apiClient.get(`/datasets/${datasetId}/db-catalog/profiles`, { params })
     return data

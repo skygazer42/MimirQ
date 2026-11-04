@@ -3462,44 +3462,44 @@ web/lib/api-client.ts,6,conforms,pending,Compatibility barrel remains the single
 web/lib/api-error-reporting.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api-errors.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api-runtime-contracts.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/access.ts,6,adjusted,pending,Access API requests use generated schemas for member and group contracts,Methods paths encoding and error propagation reviewed; frontend checks unavailable; tests not run
-web/lib/api/audit.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/auth.ts,6,adjusted,pending,Auth API uses generated request and response contracts,SAML and bootstrap-token semantics reviewed; frontend checks unavailable; tests not run
+web/lib/api/access.ts,6,adjusted,adjusted,Access API requests use generated schemas for member and group contracts,Methods paths encoding and error propagation reviewed; frontend checks unavailable; tests not run; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/audit.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/auth.ts,6,adjusted,adjusted,Auth API uses generated request and response contracts,SAML and bootstrap-token semantics reviewed; frontend checks unavailable; tests not run; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/lib/api/chat.auth-fetch.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/chat.ts,6,adjusted,pending,Chat API consumes its domain type owner directly,Endpoint types and streaming caller contracts reviewed; frontend tools unavailable
-web/lib/api/connectors.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/chat.ts,6,adjusted,adjusted,Chat API consumes its domain type owner directly,Endpoint types and streaming caller contracts reviewed; frontend tools unavailable; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/connectors.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/lib/api/core.auth-refresh.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/core.ts,6,adjusted,pending,Named interceptor handlers clarify request and response responsibilities,Auth/error/cancel/retry/request-ID behavior reviewed; reviewer pass; frontend tools unavailable
+web/lib/api/core.ts,6,adjusted,adjusted,Named interceptor handlers clarify request and response responsibilities,Auth/error/cancel/retry/request-ID behavior reviewed; reviewer pass; frontend tools unavailable; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/lib/api/datasets.pagination.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/datasets.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/dify.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/document-helpers.ts,6,adjusted,pending,Chunk preview query and FormData mapping use one typed helper owner,Caller contract and field serialization reviewed; frontend tooling unavailable
-web/lib/api/documents.ts,6,adjusted,pending,Document API requests retain explicit endpoint and upload contracts,Paths FormData parser selection timeouts aborts and errors reviewed; frontend tooling unavailable
-web/lib/api/evaluation.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/evidence.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/feedback.ts,6,adjusted,pending,Feedback API contracts import from their domain owner,Type-only migration; endpoints/bodies/errors unchanged; frontend tools unavailable
-web/lib/api/governance.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/graph.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/datasets.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/dify.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/document-helpers.ts,6,adjusted,adjusted,Chunk preview query and FormData mapping use one typed helper owner,Caller contract and field serialization reviewed; frontend tooling unavailable; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/documents.ts,6,adjusted,adjusted,Document API requests retain explicit endpoint and upload contracts,Paths FormData parser selection timeouts aborts and errors reviewed; frontend tooling unavailable; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/evaluation.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/evidence.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/feedback.ts,6,adjusted,adjusted,Feedback API contracts import from their domain owner,Type-only migration; endpoints/bodies/errors unchanged; frontend tools unavailable; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/governance.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/graph.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/lib/api/health.ts,6,adjusted,pending,Health API response types use the generated owner directly,Validation schema endpoint methods and error propagation reviewed; frontend tools unavailable
 web/lib/api/index.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/industry-rules.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/integrations.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/industry-rules.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/integrations.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/lib/api/lineage.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/ltr.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/meta.ts,6,conforms,pending,Backend metadata aliases retain the generated response owner and barrel contract,Direct type/export usage reviewed; frontend tools unavailable
 web/lib/api/observability.auth.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/api/observability.index-audit.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/observability.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/parsing.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/pipeline.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/prompts.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/rag.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/reports.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/lib/api/observability.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/parsing.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/pipeline.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/prompts.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/rag.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/reports.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/lib/api/rtbf.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/scim.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/lib/api/settings.ts,6,adjusted,pending,Settings API methods and public exports retain their existing contract,Caller and legacy export review passed; frontend tooling unavailable so format/type checks remain pending
-web/lib/api/streaming.ts,6,conforms,pending,Precheck SSE owner retains request and event behavior,Auth request ID abort and event parsing reviewed unchanged; frontend tools unavailable
-web/lib/api/usage.ts,6,adjusted,pending,Token and cost usage queries share their matching OpenAPI window parameters,Generated query fields endpoints and error propagation reviewed; frontend tools unavailable
+web/lib/api/scim.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/settings.ts,6,adjusted,adjusted,Settings API methods and public exports retain their existing contract,Caller and legacy export review passed; frontend tooling unavailable so format/type checks remain pending; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/streaming.ts,6,conforms,adjusted,Precheck SSE owner retains request and event behavior,Auth request ID abort and event parsing reviewed unchanged; frontend tools unavailable; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/lib/api/usage.ts,6,adjusted,adjusted,Token and cost usage queries share their matching OpenAPI window parameters,Generated query fields endpoints and error propagation reviewed; frontend tools unavailable; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/lib/auth-headers.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/auth-headers.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/lib/auth-storage.test.ts,6,pending,pending,Awaiting file-level convention and contract review,
@@ -3728,7 +3728,7 @@ web/tailwind.config.test.ts,2,adjusted,adjusted,"Named component, shared type al
 web/tailwind.config.ts,2,adjusted,adjusted,"Named component, shared type aliases, one pipeline mapping and explicit query states; ESM plugin imports; framework default entry retained",Task 2: 6 Chrome scenarios and 421 frontend unit tests passed; scoped ESLint and Prettier passed
 web/test/hook-harness.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/tsconfig.json,inventory,preserved,preserved,"Documentation, static resource, data or non-source configuration; tracked for scope",inventory
-web/types/backend.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/types/backend.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/types/chat.ts,6,adjusted,pending,Chat module re-exports feedback DTOs for path compatibility,DTO shapes moved unchanged; old chat/root imports preserved; frontend tools unavailable
 web/types/clean-preview-rule-stats.typecheck.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/common.ts,6,adjusted,pending,PermissionEnum reuses the generated DatasetPermissionEnum owner,Literal union and direct consumers/barrel reviewed; frontend tools unavailable
@@ -3738,17 +3738,17 @@ web/types/documents.ts,6,pending,pending,Awaiting file-level convention and cont
 web/types/evaluation.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/feedback.ts,6,adjusted,pending,Feedback DTOs have a dedicated domain type owner,Field optional/null and union shapes preserved; old barrels and callers reviewed; frontend tools unavailable
 web/types/index.ts,6,conforms,pending,Root type barrel retains feedback names through the chat re-export,Barrel contract reviewed unchanged; frontend tools unavailable
-web/types/knowledge-graph.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/types/knowledge-graph.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/types/knowledge-health-page.next16-regression.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/types/models.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/types/observability.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/types/openapi-helpers.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/types/models.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/types/observability.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
+web/types/openapi-helpers.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/types/openapi.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/pdfjs-dist-build.d.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/pdfjs-dist-webpack.d.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/processing.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/types/settings.ts,6,adjusted,pending,Settings response shapes use explicit shared types,OpenAPI request types and response fields reviewed; Prettier and TypeScript unavailable in the worktree
-web/types/textarea-caret.d.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/types/textarea-caret.d.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; API/type category formatting fe736f244; scoped Prettier and emitted JavaScript AST unchanged
 web/vitest.config.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/vitest.critical.config.ts,6,pending,pending,Awaiting file-level convention and contract review,
 web/vitest.enterprise-telemetry.config.ts,6,pending,pending,Awaiting file-level convention and contract review,

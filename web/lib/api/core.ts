@@ -20,7 +20,7 @@ function headerValueToString(value: unknown): string | undefined {
     const joined = value
       .filter(
         (item): item is PrimitiveHeaderValue =>
-          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean',
       )
       .map(String)
       .join(', ')
@@ -71,9 +71,7 @@ type HtmlResponseError = Error & {
 
 function asApiClientError(error: unknown): ApiClientError {
   if (error instanceof Error) return error
-  const apiError = new Error(
-    toTrimmedPrimitiveString(error, 'API request failed')
-  ) as ApiClientError
+  const apiError = new Error(toTrimmedPrimitiveString(error, 'API request failed')) as ApiClientError
   if (error && typeof error === 'object') {
     Object.assign(apiError, error)
   }
@@ -110,11 +108,10 @@ export function coerceRetryAfterSeconds(retryAfterBody: unknown, retryAfterHeade
   return toFiniteNumber(retryAfterBody) ?? toFiniteNumber(retryAfterHeader)
 }
 
-export function formatRateLimitLogMessage({
-  retryAfterSec,
-  scope,
-  limit,
-}: Readonly<RateLimitLogMessageInput>): { message: string; extra: string } {
+export function formatRateLimitLogMessage({ retryAfterSec, scope, limit }: Readonly<RateLimitLogMessageInput>): {
+  message: string
+  extra: string
+} {
   const bits: string[] = []
   if (scope) bits.push(`scope=${scope}`)
   if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) bits.push(`limit=${String(limit)}`)
@@ -148,17 +145,14 @@ async function handleUnauthorizedApiError(error: ApiClientError, requestId?: str
   const token = getAccessToken()
   const requestAuthorization = error.config
     ? headerValueToString(
-        AxiosHeaders.from(
-          (error.config.headers ?? {}) as Record<string, string | number | boolean>
-        ).get('Authorization')
+        AxiosHeaders.from((error.config.headers ?? {}) as Record<string, string | number | boolean>).get(
+          'Authorization',
+        ),
       )
     : undefined
   const requestUsesSessionToken = !!token && requestAuthorization === `Bearer ${token}`
   const canAttemptRefresh =
-    requestUsesSessionToken &&
-    globalThis.window !== undefined &&
-    !!error.config &&
-    !error.config.__mimirqOidcRetried
+    requestUsesSessionToken && globalThis.window !== undefined && !!error.config && !error.config.__mimirqOidcRetried
   if (canAttemptRefresh && error.config) {
     error.config.__mimirqOidcRetried = true
 
@@ -166,7 +160,7 @@ async function handleUnauthorizedApiError(error: ApiClientError, requestId?: str
     if (refreshed) {
       setAccessToken(refreshed)
       error.config.headers = AxiosHeaders.from(
-        (error.config.headers ?? {}) as Record<string, string | number | boolean>
+        (error.config.headers ?? {}) as Record<string, string | number | boolean>,
       ).set('Authorization', `Bearer ${refreshed.access_token}`)
       return apiClient.request(error.config)
     }
@@ -191,7 +185,7 @@ function handleResponseStatusError(
   detail: string,
   requestId: string | undefined,
   data: unknown,
-  error: ApiClientError
+  error: ApiClientError,
 ) {
   if (status === 403) {
     logRequestScopedError('[API] 无权限访问', requestId)
@@ -250,9 +244,7 @@ async function handleApiClientError(error: unknown) {
   }
 
   if (apiError.request) {
-    const headers = AxiosHeaders.from(
-      (apiError.config?.headers ?? {}) as Record<string, string | number | boolean>
-    )
+    const headers = AxiosHeaders.from((apiError.config?.headers ?? {}) as Record<string, string | number | boolean>)
     const requestId = headerValueToString(headers.get('X-Request-ID'))
     apiError.requestId = requestId
     logRequestScopedError('[API] 网络连接中断或后端不可达，请检查后端服务 / API 地址', requestId)
@@ -285,7 +277,7 @@ function rejectUnexpectedHtmlResponse(response: AxiosResponse): AxiosResponse | 
       const looksHtml = trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
       if (looksHtml || contentType.includes('text/html')) {
         const err: HtmlResponseError = new Error(
-          'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
+          'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)',
         )
         err.code = 'ERR_BAD_RESPONSE'
         err.response = response

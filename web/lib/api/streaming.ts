@@ -11,19 +11,22 @@ export const sseApi = {
     datasetId: string,
     scanRunId: string,
     onJson: (jsonStr: string) => void,
-    options: { onError?: (error: unknown) => void; signal?: AbortSignal } = {}
+    options: { onError?: (error: unknown) => void; signal?: AbortSignal } = {},
   ): Promise<{ requestId: string }> {
     const requestId = generateRequestId()
 
-    const response = await authenticatedFetch(`${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`, {
-      method: 'GET',
-      headers: withPreferredLanguageHeader({
-        Accept: 'text/event-stream',
-        ...getAuthHeaders(),
-        'X-Request-ID': requestId,
-      }),
-      signal: options.signal,
-    })
+    const response = await authenticatedFetch(
+      `${API_V1_BASE_URL}/datasets/${datasetId}/precheck/scan-runs/${scanRunId}/events`,
+      {
+        method: 'GET',
+        headers: withPreferredLanguageHeader({
+          Accept: 'text/event-stream',
+          ...getAuthHeaders(),
+          'X-Request-ID': requestId,
+        }),
+        signal: options.signal,
+      },
+    )
 
     if (!response.ok) {
       throw await buildFetchError(response, 'Precheck SSE failed')

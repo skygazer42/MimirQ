@@ -3,9 +3,7 @@ import type { paths } from '@/types/openapi'
 
 import { apiClient } from '@/lib/api/core'
 
-type UsageWindowParams = NonNullable<
-  paths['/api/v1/usage/chat/tokens/summary']['get']['parameters']['query']
->
+type UsageWindowParams = NonNullable<paths['/api/v1/usage/chat/tokens/summary']['get']['parameters']['query']>
 type ChatTokenUsageSummary = OpenApiSchema<'ChatTokenUsageSummary'>
 type ChatCostUsageSummary = OpenApiSchema<'ChatCostUsageSummary'>
 type ChatTokenQuotaStatus = OpenApiSchema<'ChatTokenQuotaStatus'>

@@ -18,7 +18,7 @@ function mergeAuditDeleteResponses(responses: AuditLogDeleteResponse[]): AuditLo
       missing: acc.missing + Number(item.missing || 0),
       ids: [...acc.ids, ...(Array.isArray(item.ids) ? item.ids : [])],
     }),
-    { requested: 0, deleted: 0, missing: 0, ids: [] }
+    { requested: 0, deleted: 0, missing: 0, ids: [] },
   )
 }
 
@@ -27,52 +27,58 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export const auditApi = {
-  async listLogs(params: {
-    skip?: number
-    limit?: number
-    actor_id?: string
-    action?: string
-    resource_type?: string
-    resource_id?: string
-    request_id?: string
-    since?: string
-    until?: string
-  } = {}): Promise<AuditLogListResponse> {
+  async listLogs(
+    params: {
+      skip?: number
+      limit?: number
+      actor_id?: string
+      action?: string
+      resource_type?: string
+      resource_id?: string
+      request_id?: string
+      since?: string
+      until?: string
+    } = {},
+  ): Promise<AuditLogListResponse> {
     const { data } = await apiClient.get('/audit/logs', { params })
     return data
   },
 
-  async exportLogs(params: {
-    limit?: number
-    actor_id?: string
-    action?: string
-    resource_type?: string
-    resource_id?: string
-    request_id?: string
-    since?: string
-    until?: string
-    after_created_at?: string
-    after_id?: string
-    include_sensitive?: boolean
-    gzip?: boolean
-  } = {}): Promise<Blob> {
+  async exportLogs(
+    params: {
+      limit?: number
+      actor_id?: string
+      action?: string
+      resource_type?: string
+      resource_id?: string
+      request_id?: string
+      since?: string
+      until?: string
+      after_created_at?: string
+      after_id?: string
+      include_sensitive?: boolean
+      gzip?: boolean
+    } = {},
+  ): Promise<Blob> {
     const { data } = await apiClient.get('/audit/logs/export', { params, responseType: 'blob' })
     return data as Blob
   },
 
-  async purgeLogs(params: {
-    retention_days?: number
-    max_delete?: number
-    dry_run?: boolean
-    purge_scope?: 'retention' | 'filtered'
-    actor_id?: string
-    action?: string
-    resource_type?: string
-    resource_id?: string
-    request_id?: string
-    since?: string
-    until?: string
-  } = {}): Promise<AuditLogPurgeResponse> {
+  async purgeLogs(
+    params: {
+      retention_days?: number
+      max_delete?: number
+      dry_run?: boolean
+      purge_scope?: 'retention' | 'filtered'
+      actor_id?: string
+      action?: string
+      resource_type?: string
+      resource_id?: string
+      request_id?: string
+      since?: string
+      until?: string
+    } = {},
+  ): Promise<AuditLogPurgeResponse> {
     const { data } = await apiClient.post('/audit/logs/purge', undefined, { params })
     return data
   },
@@ -90,38 +96,38 @@ export const auditApi = {
 
     const responses: AuditLogDeleteResponse[] = []
     for (const chunk of chunks) {
-      const { data } = await apiClient.post(
-        '/audit/logs/bulk-delete',
-        { ids: chunk },
-        { timeout: API_LONG_TIMEOUT_MS }
-      )
+      const { data } = await apiClient.post('/audit/logs/bulk-delete', { ids: chunk }, { timeout: API_LONG_TIMEOUT_MS })
       responses.push(data)
     }
     return mergeAuditDeleteResponses(responses)
   },
 
-  async exportAccessGraph(params: {
-    limit?: number
-    after_kind?: string
-    after_created_at?: string
-    after_id?: string
-    include_sensitive?: boolean
-    export_format?: 'ndjson' | 'json'
-    gzip?: boolean
-  } = {}): Promise<Blob> {
+  async exportAccessGraph(
+    params: {
+      limit?: number
+      after_kind?: string
+      after_created_at?: string
+      after_id?: string
+      include_sensitive?: boolean
+      export_format?: 'ndjson' | 'json'
+      gzip?: boolean
+    } = {},
+  ): Promise<Blob> {
     const { data } = await apiClient.get('/audit/access-graph/export', { params, responseType: 'blob' })
     return data as Blob
   },
 
-  async exportAccessGraphPage(params: {
-    limit?: number
-    after_kind?: string
-    after_created_at?: string
-    after_id?: string
-    include_sensitive?: boolean
-    export_format?: 'ndjson' | 'json'
-    gzip?: boolean
-  } = {}): Promise<{
+  async exportAccessGraphPage(
+    params: {
+      limit?: number
+      after_kind?: string
+      after_created_at?: string
+      after_id?: string
+      include_sensitive?: boolean
+      export_format?: 'ndjson' | 'json'
+      gzip?: boolean
+    } = {},
+  ): Promise<{
     blob: Blob
     nextCursor: { after_kind: string; after_created_at: string; after_id: string } | null
   }> {

@@ -25,34 +25,31 @@ type ChatRequestBody = OpenApiRequestBody<'/api/v1/chat', 'post'>
 type ChatResponseBody = OpenApiOkResponse<'/api/v1/chat', 'post'>
 
 const chatCitationSchema = z.looseObject({
-    document_id: z.string(),
-    document_name: z.string(),
-    chunk_content: z.string(),
-    relevance_score: z.number(),
-  })
+  document_id: z.string(),
+  document_name: z.string(),
+  chunk_content: z.string(),
+  relevance_score: z.number(),
+})
 
 const chatResponseSchema = z.looseObject({
-    conversation_id: z.string(),
-    assistant_message_id: z.string(),
-    request_id: z.string(),
-    content: z.string(),
-    citations: z.array(chatCitationSchema).default([]),
-    total_tokens: z.number().int().default(0),
-    total_chars: z.number().int().default(0),
-    metrics: z.record(z.string(), z.unknown()).default({}),
-    structured: z.boolean().default(false),
-    retrieval_mode: z.string().nullable().optional(),
-    vector_backend: z.string().nullable().optional(),
-    confidence_score: z.number().nullable().optional(),
-    followup_questions: z.array(z.string()).optional(),
-    structured_data: z.unknown().optional(),
-  })
+  conversation_id: z.string(),
+  assistant_message_id: z.string(),
+  request_id: z.string(),
+  content: z.string(),
+  citations: z.array(chatCitationSchema).default([]),
+  total_tokens: z.number().int().default(0),
+  total_chars: z.number().int().default(0),
+  metrics: z.record(z.string(), z.unknown()).default({}),
+  structured: z.boolean().default(false),
+  retrieval_mode: z.string().nullable().optional(),
+  vector_backend: z.string().nullable().optional(),
+  confidence_score: z.number().nullable().optional(),
+  followup_questions: z.array(z.string()).optional(),
+  structured_data: z.unknown().optional(),
+})
 
 export const chatApi = {
-  async createConversation(params?: {
-    title?: string
-    document_ids?: string[]
-  }): Promise<Conversation> {
+  async createConversation(params?: { title?: string; document_ids?: string[] }): Promise<Conversation> {
     const { data } = await apiClient.post('/chat/conversations', params)
     return data
   },
@@ -62,23 +59,31 @@ export const chatApi = {
     return data
   },
 
-  async exportConversation(conversationId: string, params?: { fmt?: 'markdown' | 'json'; include_citations?: boolean }): Promise<Blob> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/export`, { params, responseType: 'blob' })
+  async exportConversation(
+    conversationId: string,
+    params?: { fmt?: 'markdown' | 'json'; include_citations?: boolean },
+  ): Promise<Blob> {
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/export`, {
+      params,
+      responseType: 'blob',
+    })
     return data as Blob
   },
 
-  async listConversations(params?: {
-    skip?: number
-    limit?: number
-    q?: string
-  }): Promise<{ total: number; returned?: number; has_more?: boolean; next_skip?: number | null; items: Conversation[] }> {
+  async listConversations(params?: { skip?: number; limit?: number; q?: string }): Promise<{
+    total: number
+    returned?: number
+    has_more?: boolean
+    next_skip?: number | null
+    items: Conversation[]
+  }> {
     const { data } = await apiClient.get('/chat/conversations', { params })
     return data
   },
 
   async getMessages(
     conversationId: string,
-    params?: { limit?: number; before?: string }
+    params?: { limit?: number; before?: string },
   ): Promise<{ conversation_id: string; messages: Message[]; returned?: number; has_more?: boolean }> {
     const { data } = await apiClient.get(`/chat/conversations/${conversationId}/messages`, { params })
     return data
@@ -90,7 +95,7 @@ export const chatApi = {
 
   async getRagTraces(
     conversationId: string,
-    params?: { limit?: number; window_minutes?: number; max_bytes?: number }
+    params?: { limit?: number; window_minutes?: number; max_bytes?: number },
   ): Promise<RagTraceListResponse> {
     const { data } = await apiClient.get(`/chat/conversations/${conversationId}/rag-traces`, { params })
     return data
@@ -103,7 +108,7 @@ export const chatApi = {
       signal?: AbortSignal
       onError?: (error: unknown) => void
       onOpen?: (meta: { requestId: string; conversationId?: string }) => void
-    } = {}
+    } = {},
   ): Promise<{ requestId: string; conversationId?: string }> {
     const requestId = generateRequestId()
 
@@ -150,7 +155,7 @@ export const chatApi = {
 
   async listCheckpoints(
     conversationId: string,
-    params?: { limit?: number; before?: string; include_values?: boolean }
+    params?: { limit?: number; before?: string; include_values?: boolean },
   ): Promise<CheckpointListResponse> {
     const { data } = await apiClient.get(`/chat/conversations/${conversationId}/checkpoints`, { params })
     return data
@@ -159,9 +164,11 @@ export const chatApi = {
   async getCheckpoint(
     conversationId: string,
     checkpointId: string,
-    params?: { include_values?: boolean }
+    params?: { include_values?: boolean },
   ): Promise<CheckpointDetailResponse> {
-    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/checkpoints/${checkpointId}`, { params })
+    const { data } = await apiClient.get(`/chat/conversations/${conversationId}/checkpoints/${checkpointId}`, {
+      params,
+    })
     return data
   },
 

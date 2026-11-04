@@ -68,20 +68,23 @@ export const groupApi = {
 
   async listGroupMembers(
     groupId: string,
-    params: { skip?: number; limit?: number } = {}
+    params: { skip?: number; limit?: number } = {},
   ): Promise<TenantGroupMemberListResponse> {
     const { data } = await apiClient.get(`/groups/${encodeURIComponent(groupId)}/members`, { params })
     return data
   },
 
-  async addGroupMembers(groupId: string, payload: TenantGroupMembersUpdateRequest): Promise<TenantGroupMembersUpdateResponse> {
+  async addGroupMembers(
+    groupId: string,
+    payload: TenantGroupMembersUpdateRequest,
+  ): Promise<TenantGroupMembersUpdateResponse> {
     const { data } = await apiClient.post(`/groups/${encodeURIComponent(groupId)}/members`, payload)
     return data
   },
 
   async removeGroupMembers(
     groupId: string,
-    payload: TenantGroupMembersUpdateRequest
+    payload: TenantGroupMembersUpdateRequest,
   ): Promise<TenantGroupMembersUpdateResponse> {
     const { data } = await apiClient.post(`/groups/${encodeURIComponent(groupId)}/members/remove`, payload)
     return data
