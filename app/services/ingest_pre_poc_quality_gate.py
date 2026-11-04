@@ -59,15 +59,11 @@ def evaluate_ingest_pre_poc_quality_gate(
 
     size_bytes = path.stat().st_size if path.exists() else 0
     sample_bytes = (
-        settings.INGEST_PRE_POC_TEXT_SAMPLE_BYTES or 200_000
-        if text_sample_bytes is None
-        else text_sample_bytes
+        settings.INGEST_PRE_POC_TEXT_SAMPLE_BYTES or 200_000 if text_sample_bytes is None else text_sample_bytes
     )
     sample = _read_text_sample(path, max_bytes=sample_bytes)
     pii_threshold = settings.INGEST_PRE_POC_PII_MAX_HITS if pii_max_hits is None else pii_max_hits
-    secret_threshold = (
-        settings.INGEST_PRE_POC_SECRETS_MAX_HITS if secrets_max_hits is None else secrets_max_hits
-    )
+    secret_threshold = settings.INGEST_PRE_POC_SECRETS_MAX_HITS if secrets_max_hits is None else secrets_max_hits
 
     findings: list[dict[str, Any]] = []
     pii_hits: dict[str, int] = {}

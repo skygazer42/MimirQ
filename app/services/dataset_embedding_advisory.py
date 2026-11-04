@@ -92,8 +92,7 @@ def build_embedding_language_advisories(
     configured = _configured_language_models()
     routing_enabled = settings.EMBEDDING_LANGUAGE_ROUTING_ENABLED
     routed_for_observed_language = routing_enabled and (
-        (language_counts["zh"] > 0 and "zh" in configured)
-        or (language_counts["mixed"] > 0 and "mixed" in configured)
+        (language_counts["zh"] > 0 and "zh" in configured) or (language_counts["mixed"] > 0 and "mixed" in configured)
     )
     if routed_for_observed_language or model_id not in _GENERIC_OPENAI_MODELS:
         return []
