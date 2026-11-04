@@ -3085,23 +3085,23 @@ web/components/document-detail-dialog/document-versions-dialog.tsx,6,pending,adj
 web/components/document-library/dataset-folder-tree.source.test.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; Prettier3.9.10 f7a8650c5 tracked format/hash/equivalence report
 web/components/document-library/dataset-folder-tree.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Prettier3.9.10 f7a8650c5 tracked format/hash/equivalence report
 web/components/document-library/folder-tree.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Prettier3.9.10 f7a8650c5 tracked format/hash/equivalence report
-web/components/document-viewer-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/chunk-editor-dialog.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/chunk-renderer.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/chunks-tab-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/chunks-toolbar-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/document-viewer-header.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/document-viewer-panel-shell.a11y.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/document-viewer-panel-shell.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/document-viewer-panel-utils.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/floating-menu.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/highlight-layer.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/keyboard-shortcuts.ts,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/preview-tab-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/qa-generation-dialog.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/text-tab-panel.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/use-document-viewer-panel-state.test.tsx,6,pending,pending,Awaiting file-level convention and contract review,
-web/components/document-viewer/use-document-viewer-panel-state.ts,6,pending,pending,Awaiting file-level convention and contract review,
+web/components/document-viewer-panel.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/chunk-editor-dialog.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/chunk-renderer.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/chunks-tab-panel.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/chunks-toolbar-panel.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/document-viewer-header.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/document-viewer-panel-shell.a11y.test.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/document-viewer-panel-shell.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/document-viewer-panel-utils.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/floating-menu.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/highlight-layer.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/keyboard-shortcuts.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/preview-tab-panel.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/qa-generation-dialog.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/text-tab-panel.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/use-document-viewer-panel-state.test.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
+web/components/document-viewer/use-document-viewer-panel-state.ts,6,pending,adjusted,Awaiting file-level convention and contract review,; Viewer pureformat aee0b2dd4 syntax/emitted-JS equivalence; scope17; semantic review remains separate
 web/components/documents/document-operations-panel.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Prettier3.9.10 f7a8650c5 tracked format/hash/equivalence report
 web/components/documents/document-tags.tsx,6,pending,conforms,Awaiting file-level convention and contract review,; Prettier3.9.10 f7a8650c5 tracked format/hash/equivalence report
 web/components/evaluation/ablation-case-drilldown.tsx,6,pending,adjusted,Awaiting file-level convention and contract review,; Prettier3.9.10 f7a8650c5 tracked format/hash/equivalence report
