@@ -12,12 +12,17 @@ Design goals:
 
 import threading
 from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+from numpy.typing import NDArray
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from PIL.Image import Image
+    from sentence_transformers import SentenceTransformer
 
 logger = get_logger("rag.embedding.clip")
 
@@ -29,7 +34,7 @@ class _ClipEmbedder:
         self._batch_size = max(1, int(batch_size or 0))
 
         self._lock = threading.Lock()
-        self._model: Any | None = None
+        self._model: "SentenceTransformer | None" = None
 
     def _ensure_loaded(self) -> None:
         if self._model is not None:
@@ -38,21 +43,21 @@ class _ClipEmbedder:
             if self._model is not None:
                 return
             try:
-                from sentence_transformers import SentenceTransformer  # type: ignore
+                from sentence_transformers import SentenceTransformer
 
                 # SentenceTransformer handles device selection ("cpu"/"cuda").
                 self._model = SentenceTransformer(self._model_name, device=self._device)
             except Exception as exc:  # noqa: BLE001
                 raise RuntimeError(f"Failed to load CLIP model: {type(exc).__name__}: {exc}") from exc
 
-    def encode_texts(self, texts: list[str]) -> np.ndarray:
+    def encode_texts(self, texts: list[str]) -> NDArray[np.float32]:
         raw = [str(t or "") for t in (texts or [])]
         if not raw:
             return np.zeros((0, 1), dtype=np.float32)
         self._ensure_loaded()
         if self._model is None:
             raise RuntimeError("CLIP model is not initialized")
-        vecs = self._model.encode(  # type: ignore[no-any-return]
+        vecs = self._model.encode(
             raw,
             batch_size=self._batch_size,
             convert_to_numpy=True,
@@ -61,13 +66,13 @@ class _ClipEmbedder:
         )
         return np.asarray(vecs, dtype=np.float32)
 
-    def encode_images(self, images: list[Any]) -> np.ndarray:
+    def encode_images(self, images: list["Image"]) -> NDArray[np.float32]:
         if not images:
             return np.zeros((0, 1), dtype=np.float32)
         self._ensure_loaded()
         if self._model is None:
             raise RuntimeError("CLIP model is not initialized")
-        vecs = self._model.encode(  # type: ignore[no-any-return]
+        vecs = self._model.encode(
             images,
             batch_size=self._batch_size,
             convert_to_numpy=True,
@@ -82,9 +87,9 @@ _EMBEDDER_LOCK = threading.Lock()
 
 
 def get_clip_embedder() -> _ClipEmbedder:
-    model_name = str(getattr(settings, "IMAGE_EMBEDDING_MODEL_NAME", "") or "clip-ViT-B-32").strip() or "clip-ViT-B-32"
-    device = str(getattr(settings, "IMAGE_EMBEDDING_DEVICE", "cpu") or "cpu").strip().lower() or "cpu"
-    batch_size = int(getattr(settings, "IMAGE_EMBEDDING_BATCH_SIZE", 8) or 8)
+    model_name = (settings.IMAGE_EMBEDDING_MODEL_NAME or "clip-ViT-B-32").strip() or "clip-ViT-B-32"
+    device = (settings.IMAGE_EMBEDDING_DEVICE or "cpu").strip().lower() or "cpu"
+    batch_size = settings.IMAGE_EMBEDDING_BATCH_SIZE or 8
 
     key = (model_name, device, batch_size)
     with _EMBEDDER_LOCK:
@@ -119,7 +124,7 @@ def encode_clip_text(query: str) -> list[float] | None:
         return None
 
 
-def encode_clip_image(image: Any) -> list[float] | None:
+def encode_clip_image(image: "Image | None") -> list[float] | None:
     """
     Encode a single PIL.Image image into a CLIP embedding vector.
 
@@ -160,7 +165,7 @@ def batch_mean_dim(vectors: Iterable[list[float] | None]) -> int:
     for v in vectors:
         if not v:
             continue
-        dims.append(int(len(v)))
+        dims.append(len(v))
     if not dims:
         return 0
     # Use max (safer for Milvus schema); dimensions should be consistent in practice.

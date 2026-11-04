@@ -7,14 +7,18 @@ for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
 
 import hashlib
 import json
+from typing import TYPE_CHECKING
 
 from langchain_core.embeddings import Embeddings
 
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
 from app.rag.embedding.base import BaseEmbeddingModel
-from app.rag.embedding.utils import current_embedding_space_hash, logger
+from app.rag.embedding.utils import current_embedding_space_hash, logger, normalize_embedding_vectors
 from app.services.metrics_logger import log_metrics
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
@@ -37,17 +41,17 @@ def _embed_cache_key(text: str, *, space: str | None = None) -> str:
     # incompatible vectors after a model/endpoint change.
     space = space or current_embedding_space_hash()
     digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
-    prefix = getattr(settings, "EMBEDDING_CACHE_PREFIX", "emb")
+    prefix = settings.EMBEDDING_CACHE_PREFIX
     return f"{prefix}:{space}:{digest}"
 
 
-def _document_cache_client() -> object | None:
-    if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
+def _document_cache_client() -> "Redis | None":
+    if settings.EMBEDDING_CACHE_ENABLED:
         return _get_redis_client()
     return None
 
 
-def _read_cached_document_vectors(client: object, keys: list[str]) -> list[bytes | None] | None:
+def _read_cached_document_vectors(client: "Redis", keys: list[str]) -> list[bytes | None] | None:
     try:
         return client.mget(keys)
     except Exception as exc:  # noqa: BLE001
@@ -83,13 +87,13 @@ def _missing_document_vectors(
 
 def _write_missing_document_vectors(
     *,
-    client: object,
+    client: "Redis",
     keys: list[str],
     missing: list[tuple[int, str]],
     computed: list[list[float]],
     out: list[list[float] | None],
 ) -> None:
-    ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
+    ttl = settings.EMBEDDING_CACHE_TTL_SEC or 0
     try:
         pipe = client.pipeline(transaction=False)
         for (idx, _text), vec in zip(missing, computed, strict=False):
@@ -117,10 +121,10 @@ def _log_document_cache_metrics(*, total: int, hits: int, misses: int, corrupt: 
             {
                 "event": "embedding.cache",
                 "op": "documents",
-                "total": int(total),
-                "hits": int(hits),
-                "misses": int(misses),
-                "corrupt": int(corrupt),
+                "total": total,
+                "hits": hits,
+                "misses": misses,
+                "corrupt": corrupt,
             }
         )
     except Exception as exc:
@@ -146,7 +150,7 @@ class LangChainEmbeddingsAdapter(Embeddings):
         vectorstore = Milvus(embedding_function=embeddings, ...)
     """
 
-    def __init__(self, model: BaseEmbeddingModel, normalize: bool = True, cache_space_hash: str | None = None):
+    def __init__(self, model: BaseEmbeddingModel, normalize: bool = True, cache_space_hash: str | None = None) -> None:
         """Initialize the adapter.
 
         Args:
@@ -185,7 +189,7 @@ class LangChainEmbeddingsAdapter(Embeddings):
             if cached_raw is None:
                 embeddings = self._model.encode(texts)
                 if self._normalize:
-                    embeddings = self._normalize_vectors(embeddings)
+                    embeddings = normalize_embedding_vectors(embeddings)
                 return embeddings
 
             out, missing, cache_hits, cache_misses, cache_corrupt = _missing_document_vectors(
@@ -212,7 +216,7 @@ class LangChainEmbeddingsAdapter(Embeddings):
             )
 
         if self._normalize:
-            embeddings = self._normalize_vectors(embeddings)
+            embeddings = normalize_embedding_vectors(embeddings)
 
         return embeddings
 
@@ -225,7 +229,7 @@ class LangChainEmbeddingsAdapter(Embeddings):
         Returns:
             Embedding vector
         """
-        if bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", True)):
+        if settings.EMBEDDING_CACHE_ENABLED:
             client = _get_redis_client()
         else:
             client = None
@@ -255,7 +259,7 @@ class LangChainEmbeddingsAdapter(Embeddings):
                 cache_misses = 1
                 embeddings = self._model.encode([text])
                 try:
-                    ttl = int(getattr(settings, "EMBEDDING_CACHE_TTL_SEC", 7 * 24 * 3600) or 0)
+                    ttl = settings.EMBEDDING_CACHE_TTL_SEC or 0
                     payload = json.dumps(embeddings[0], separators=(",", ":")).encode("utf-8")
                     if ttl > 0:
                         client.set(key, payload, ex=ttl)
@@ -270,29 +274,20 @@ class LangChainEmbeddingsAdapter(Embeddings):
                     "event": "embedding.cache",
                     "op": "query",
                     "total": 1,
-                    "hits": int(cache_hits),
-                    "misses": int(cache_misses),
+                    "hits": cache_hits,
+                    "misses": cache_misses,
                 }
             )
         except Exception as exc:
             logger.debug("Ignoring non-critical embedding adapter fallback failure: %s", exc)
 
         if self._normalize:
-            embeddings = self._normalize_vectors(embeddings)
+            embeddings = normalize_embedding_vectors(embeddings)
 
         return embeddings[0]
 
-    def _normalize_vectors(self, vectors: list[list[float]]) -> list[list[float]]:
-        """Normalize embeddings to unit length."""
-        import numpy as np
-
-        array = np.array(vectors, dtype=float)
-        norms = np.linalg.norm(array, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        return (array / norms).tolist()
-
     @property
-    def dimension(self) -> int:
+    def dimension(self) -> int | None:
         """Get the embedding dimension."""
         return self._dimension
 
@@ -326,7 +321,7 @@ def create_langchain_embeddings_from_config(
     model: str,
     api_key: str = "",
     base_url: str = "",
-    dimension: int = None,
+    dimension: int | None = None,
     cache_space_hash: str | None = None,
 ) -> LangChainEmbeddingsAdapter:
     """Create LangChain embeddings from config (for compatibility with milvus.py).

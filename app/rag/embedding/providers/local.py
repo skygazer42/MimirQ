@@ -4,9 +4,14 @@ SentenceTransformer local embedding model.
 Supports local sentence-transformers models for embeddings.
 """
 
+from typing import TYPE_CHECKING, Unpack
+
 from app.core.optional_deps import require_dependency
-from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.base import BaseEmbeddingModel, EmbeddingModelOptions
 from app.rag.embedding.utils import logger
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 
 class SentenceTransformerEmbedding(BaseEmbeddingModel):
@@ -21,7 +26,7 @@ class SentenceTransformerEmbedding(BaseEmbeddingModel):
     Requires: pip install sentence-transformers torch
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Unpack[EmbeddingModelOptions]) -> None:
         """Initialize sentence-transformers embedding model.
 
         Args:
@@ -31,7 +36,7 @@ class SentenceTransformerEmbedding(BaseEmbeddingModel):
             api_key: Not used for local models
         """
         super().__init__(**kwargs)
-        self._model = None
+        self._model: "SentenceTransformer | None" = None
         self._device = self._get_device()
 
     def _get_device(self) -> str:
@@ -39,7 +44,7 @@ class SentenceTransformerEmbedding(BaseEmbeddingModel):
         torch = require_dependency("torch", feature="local_embeddings", pip_name="torch")
         return "cuda" if torch.cuda.is_available() else "cpu"
 
-    def _load_model(self):
+    def _load_model(self) -> "SentenceTransformer":
         """Lazy load the sentence-transformers model."""
         if self._model is not None:
             return self._model

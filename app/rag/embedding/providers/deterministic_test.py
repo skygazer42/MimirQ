@@ -3,8 +3,9 @@
 import hashlib
 import re
 import unicodedata
+from typing import Unpack
 
-from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.base import BaseEmbeddingModel, EmbeddingModelOptions
 
 _WORD_RE = re.compile(r"\w+", flags=re.UNICODE)
 _MODEL_NAME = "mimirq-deterministic-test-v1"
@@ -13,7 +14,7 @@ _MODEL_NAME = "mimirq-deterministic-test-v1"
 class DeterministicTestEmbedding(BaseEmbeddingModel):
     """Stable lexical hashing vectors; not intended for production retrieval quality."""
 
-    def __init__(self, **kwargs):  # noqa: ANN003
+    def __init__(self, **kwargs: Unpack[EmbeddingModelOptions]) -> None:
         kwargs["model"] = str(kwargs.get("model") or _MODEL_NAME)
         kwargs["dimension"] = int(kwargs.get("dimension") or 256)
         super().__init__(**kwargs)
