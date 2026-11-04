@@ -33,30 +33,6 @@ type PageScaffoldProps = {
   bodyContainerClassName?: string
 }
 
-function getHeaderSpacingClass(isSystemDense: boolean, compact: boolean): string {
-  if (isSystemDense || compact) return 'px-4 py-2 md:px-5 lg:px-6'
-  return 'px-6 py-3 md:px-8'
-}
-
-function getTopSpacingClass(isSystemDense: boolean, compact: boolean): string {
-  if (isSystemDense || compact) return 'px-4 md:px-5 lg:px-6 pb-2.5'
-  return 'px-6 md:px-8 pb-6'
-}
-
-function getToolbarSpacingClass(isSystemDense: boolean, compact: boolean): string {
-  if (isSystemDense || compact) return 'px-4 md:px-5 lg:px-6 py-2'
-  return 'px-6 md:px-8 py-3 md:py-4'
-}
-
-function getBodyGutter(
-  bodyGutter: PageScaffoldProps['bodyGutter'],
-  isSystemDense: boolean,
-): ComponentProps<typeof PageBody>['gutter'] {
-  if (bodyGutter) return bodyGutter
-  if (isSystemDense) return 'dense'
-  return 'default'
-}
-
 export function PageScaffold({
   title,
   description,
@@ -81,11 +57,16 @@ export function PageScaffold({
   bodyContainerClassName,
 }: Readonly<PageScaffoldProps>) {
   const isSystemDense = density === 'system-dense'
+  const compactSpacing = isSystemDense || compact
+  const headerSpacingClass = compactSpacing ? 'px-4 py-2 md:px-5 lg:px-6' : 'px-6 py-3 md:px-8'
+  const topSpacingClass = compactSpacing ? 'px-4 md:px-5 lg:px-6 pb-2.5' : 'px-6 md:px-8 pb-6'
+  const toolbarSpacingClass = compactSpacing ? 'px-4 md:px-5 lg:px-6 py-2' : 'px-6 md:px-8 py-3 md:py-4'
+  const effectiveBodyGutter = bodyGutter || (isSystemDense ? 'dense' : 'default')
 
   return (
     <>
       {showHeader ? (
-        <div className={cn('flex-shrink-0 relative z-10', getHeaderSpacingClass(isSystemDense, compact))}>
+        <div className={cn('flex-shrink-0 relative z-10', headerSpacingClass)}>
           <PageContainer size={size}>
             <PageHeader
               title={title}
@@ -104,14 +85,14 @@ export function PageScaffold({
       ) : null}
 
       {top ? (
-        <div className={cn('flex-shrink-0 relative z-10', getTopSpacingClass(isSystemDense, compact), topClassName)}>
+        <div className={cn('flex-shrink-0 relative z-10', topSpacingClass, topClassName)}>
           <PageContainer size={size}>{top}</PageContainer>
         </div>
       ) : null}
 
       {toolbar ? (
         <PageHeaderBar className={cn('z-20', toolbarBarClassName)}>
-          <div className={cn(getToolbarSpacingClass(isSystemDense, compact), toolbarClassName)}>
+          <div className={cn(toolbarSpacingClass, toolbarClassName)}>
             <PageContainer size={size}>
               <PageToolbar>{toolbar}</PageToolbar>
             </PageContainer>
@@ -119,7 +100,7 @@ export function PageScaffold({
         </PageHeaderBar>
       ) : null}
 
-      <PageBody className={bodyClassName} compact={compact} gutter={getBodyGutter(bodyGutter, isSystemDense)}>
+      <PageBody className={bodyClassName} compact={compact} gutter={effectiveBodyGutter}>
         <PageContainer size={size} className={bodyContainerClassName}>
           {children}
         </PageContainer>

@@ -9,15 +9,7 @@ type PageBodyProps = {
 
 export function PageBody({ children, className, compact = true, gutter = 'default' }: Readonly<PageBodyProps>) {
   const gutterClass =
-    gutter === 'none'
-      ? 'px-0'
-      : gutter === 'dense'
-        ? compact
-          ? 'px-4 md:px-5 lg:px-6'
-          : 'px-4 md:px-5 lg:px-6'
-        : compact
-          ? 'px-4 md:px-6'
-          : 'px-6 md:px-8'
+    gutter === 'none' ? 'px-0' : gutter === 'dense' ? 'px-4 md:px-5 lg:px-6' : compact ? 'px-4 md:px-6' : 'px-6 md:px-8'
 
   return (
     <section
