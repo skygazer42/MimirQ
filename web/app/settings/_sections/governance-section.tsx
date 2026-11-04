@@ -342,10 +342,8 @@ export function GovernanceSection({
   })
   const membersQuery = useQuery({
     queryKey: queryKeys.rbac.members(RTBF_MEMBERS_PARAMS),
-    queryFn: async () => {
-      const res = await rbacApi.listTenantMembers(RTBF_MEMBERS_PARAMS)
-      return Array.isArray(res.items) ? res.items : []
-    },
+    queryFn: () => rbacApi.listTenantMembers(RTBF_MEMBERS_PARAMS),
+    select: (response) => response.items ?? [],
     retry: false,
   })
   const members = useMemo(() => membersQuery.data || [], [membersQuery.data])

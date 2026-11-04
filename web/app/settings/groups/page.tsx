@@ -5,8 +5,8 @@
  */
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState, type ComponentType } from 'react'
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import {
   CheckCircle2,
   ChevronLeft,
@@ -56,6 +56,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { useAccessAdminSession } from '../use-access-admin-session'
 
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 type PageSizeOption = (typeof PAGE_SIZE_OPTIONS)[number]
@@ -70,7 +72,7 @@ const CARD_CLASS = 'rounded-xl border border-info/20 bg-background/72 shadow-non
 const ICON_BUTTON = 'size-8 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive'
 
 function isPageSizeOption(value: number): value is PageSizeOption {
-  return PAGE_SIZE_OPTIONS.includes(value as PageSizeOption)
+  return PAGE_SIZE_OPTIONS.some((option) => option === value)
 }
 
 type SummaryTone = 'primary' | 'info' | 'success' | 'muted'
@@ -116,9 +118,10 @@ function getListStatusValueClassName(loading: boolean, groupCount: number): stri
 }
 
 export default function SettingsGroupsPage() {
+  const session = useAccessAdminSession()
   return (
     <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="组管理">
-      <SettingsGroupsPageContent />
+      <SettingsGroupsPageContent key={session} />
     </TenantPermissionGate>
   )
 }
@@ -176,65 +179,110 @@ function SettingsGroupsPageContent() {
   const [nameDraft, setNameDraft] = useState('')
   const [externalIdDraft, setExternalIdDraft] = useState('')
 
-  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [deletingIds, setDeletingIds] = useState<Record<string, boolean>>({})
+  const ownerRef = useRef({ active: true, creating: false, deleting: new Set<string>() })
+  const createDraftVersion = useRef(0)
+  const groupsQueryKey: QueryKey = queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS)
+  useEffect(() => {
+    const owner = ownerRef.current
+    owner.active = true
+    return () => {
+      owner.active = false
+    }
+  }, [])
   const groupsQuery = useQuery<TenantGroupOut[]>({
-    queryKey: queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS),
+    queryKey: groupsQueryKey,
     retry: false,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
+      const session = getAuthSessionRevision()
       try {
         const res = await groupApi.listGroups(GROUP_PAGE_LIST_PARAMS)
         return Array.isArray(res.items) ? res.items : []
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '加载组失败（需要管理员权限）'))
+        if (!signal.aborted && session === getAuthSessionRevision()) {
+          toast.error(formatApiError(err, '加载组失败（需要管理员权限）'))
+        }
         throw err
       }
     },
   })
   const groups = useMemo(() => groupsQuery.data || [], [groupsQuery.data])
   const loading = groupsQuery.isFetching
-  const createMutation = useMutation({
-    mutationFn: async () => {
+  async function createGroup(): Promise<void> {
+    const owner = ownerRef.current
+    if (!owner.active || owner.creating || !nameDraft.trim()) return
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey: groupsQueryKey })
+    const session = getAuthSessionRevision()
+    const submittedVersion = createDraftVersion.current
+    const canRefreshCache = () =>
+      session === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey: groupsQueryKey, exact: true }) === originQuery
+    const isCurrent = () => owner.active && canRefreshCache()
+    owner.creating = true
+    setCreating(true)
+    try {
       const name = String(nameDraft || '').trim()
       const externalId = String(externalIdDraft || '').trim()
-      return groupApi.createGroup({
+      const created = await groupApi.createGroup({
         name,
         external_id: externalId || undefined,
       })
-    },
-    onSuccess: (created) => {
+      if (!canRefreshCache()) return
+      if (!owner.active) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.groups.all,
+          predicate: (query) => query.queryKey[1] === queryKeys.groups.list()[1],
+        })
+        return
+      }
       toast.success(`已创建组：${created.name}`)
-      setCreateOpen(false)
-      setNameDraft('')
-      setExternalIdDraft('')
+      if (createDraftVersion.current === submittedVersion) {
+        setCreateOpen(false)
+        setNameDraft('')
+        setExternalIdDraft('')
+      }
       queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
-    },
-    onError: (err: unknown) => {
-      toast.error(formatApiError(err, '创建组失败'))
-    },
-  })
-  const deleteMutation = useMutation({
-    mutationFn: async (groupId: string) => {
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(formatApiError(err, '创建组失败'))
+    } finally {
+      owner.creating = false
+      if (owner.active) setCreating(false)
+    }
+  }
+
+  async function deleteGroup(groupId: string): Promise<void> {
+    const owner = ownerRef.current
+    if (!owner.active || owner.deleting.has(groupId)) return
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey: groupsQueryKey })
+    const session = getAuthSessionRevision()
+    const canRefreshCache = () =>
+      session === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey: groupsQueryKey, exact: true }) === originQuery
+    const isCurrent = () => owner.active && canRefreshCache()
+    owner.deleting.add(groupId)
+    setDeletingIds((current) => ({ ...current, [groupId]: true }))
+    try {
       await groupApi.deleteGroup(groupId)
-      return groupId
-    },
-    onMutate: (groupId) => {
-      setDeletingId(groupId)
-    },
-    onSuccess: (groupId) => {
+      if (!canRefreshCache()) return
+      if (!owner.active) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.groups.all,
+          predicate: (query) => query.queryKey[1] === queryKeys.groups.list()[1],
+        })
+        queryClient.invalidateQueries({ queryKey: queryKeys.groups.detail(groupId) })
+        return
+      }
       toast.success('已删除组')
-      queryClient.setQueryData<TenantGroupOut[]>(queryKeys.groups.list(GROUP_PAGE_LIST_PARAMS), (prev) =>
-        (prev || []).filter((g) => g.id !== groupId),
-      )
+      queryClient.setQueryData<TenantGroupOut[]>(groupsQueryKey, (prev) => prev?.filter((g) => g.id !== groupId))
       queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
-    },
-    onError: (err: unknown) => {
-      toast.error(formatApiError(err, '删除组失败'))
-    },
-    onSettled: () => {
-      setDeletingId(null)
-    },
-  })
-  const creating = createMutation.isPending
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(formatApiError(err, '删除组失败'))
+    } finally {
+      owner.deleting.delete(groupId)
+      if (owner.active) setDeletingIds((current) => ({ ...current, [groupId]: false }))
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = String(query || '')
@@ -318,6 +366,7 @@ function SettingsGroupsPageContent() {
             <Dialog
               open={createOpen}
               onOpenChange={(open) => {
+                createDraftVersion.current += 1
                 setCreateOpen(open)
                 if (open) {
                   setNameDraft('')
@@ -346,7 +395,10 @@ function SettingsGroupsPageContent() {
                       className={INPUT_CLASS}
                       id="group-name"
                       value={nameDraft}
-                      onChange={(e) => setNameDraft(e.target.value)}
+                      onChange={(e) => {
+                        createDraftVersion.current += 1
+                        setNameDraft(e.target.value)
+                      }}
                       placeholder="例如：研发 / 法务 / 财务"
                       autoComplete="off"
                     />
@@ -357,7 +409,10 @@ function SettingsGroupsPageContent() {
                       className={INPUT_CLASS}
                       id="group-external-id"
                       value={externalIdDraft}
-                      onChange={(e) => setExternalIdDraft(e.target.value)}
+                      onChange={(e) => {
+                        createDraftVersion.current += 1
+                        setExternalIdDraft(e.target.value)
+                      }}
                       placeholder="例如：Okta/AzureAD 组 ID"
                       autoComplete="off"
                     />
@@ -380,7 +435,7 @@ function SettingsGroupsPageContent() {
                     className="h-8 rounded-lg px-3 text-xs font-semibold"
                     onClick={() => {
                       if (!canCreate) return
-                      createMutation.mutate()
+                      void createGroup()
                     }}
                     disabled={!canCreate || creating}
                   >
@@ -465,7 +520,7 @@ function SettingsGroupsPageContent() {
               {hasVisibleGroups
                 ? visibleGroups.map((g) => {
                     const gid = String(g.id || '').trim()
-                    const deleting = Boolean(deletingId && deletingId === gid)
+                    const deleting = Boolean(deletingIds[gid])
                     const initial = String(g.name || gid || '?')
                       .trim()
                       .slice(0, 1)
@@ -529,7 +584,7 @@ function SettingsGroupsPageContent() {
                                 <AlertDialogAction
                                   onClick={() => {
                                     if (!gid) return
-                                    deleteMutation.mutate(gid)
+                                    void deleteGroup(gid)
                                   }}
                                   disabled={deleting}
                                 >

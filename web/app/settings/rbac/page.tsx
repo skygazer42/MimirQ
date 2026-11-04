@@ -1,7 +1,7 @@
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -31,11 +31,14 @@ import { formatApiError } from '@/lib/api-errors'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { cn } from '@/lib/utils'
 import { rbacApi, type TenantMember } from '@/lib/api'
+import type { TenantMemberListResponse } from '@/lib/api/access'
 import { queryKeys } from '@/lib/query-keys'
 import { EmptyState } from '@/components/ui/empty-state'
 import { SamlOpsPanel } from '@/components/settings/saml-ops-panel'
 import { ScimProvisioningPanel } from '@/components/settings/scim-provisioning-panel'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { useAccessAdminSession } from '../use-access-admin-session'
 
 const ROLE_OPTIONS = [
   {
@@ -154,9 +157,10 @@ function fmtDateTime(value?: string | null) {
 }
 
 export default function SettingsRbacPage() {
+  const session = useAccessAdminSession()
   return (
     <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="成员权限">
-      <SettingsRbacPageContent />
+      <SettingsRbacPageContent key={session} />
     </TenantPermissionGate>
   )
 }
@@ -172,22 +176,33 @@ function SettingsRbacPageContent() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(7)
+  const ownerRef = useRef({ active: true, writing: new Set<string>() })
+  const membersQueryKey: QueryKey = queryKeys.rbac.members(RBAC_MEMBERS_PARAMS)
+  useEffect(() => {
+    const owner = ownerRef.current
+    owner.active = true
+    return () => {
+      owner.active = false
+    }
+  }, [])
 
-  const membersQuery = useQuery<RbacMembersSnapshot>({
-    queryKey: queryKeys.rbac.members(RBAC_MEMBERS_PARAMS),
+  const membersQuery = useQuery<TenantMemberListResponse, Error, RbacMembersSnapshot>({
+    queryKey: membersQueryKey,
     retry: false,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
+      const session = getAuthSessionRevision()
       try {
-        const res = await rbacApi.listTenantMembers(RBAC_MEMBERS_PARAMS)
-        const items = Array.isArray(res.items) ? res.items : []
-        return {
-          items,
-          total: Number(res.total || items.length || 0),
-        }
+        return await rbacApi.listTenantMembers(RBAC_MEMBERS_PARAMS)
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '加载成员失败（需要管理员权限）'))
+        if (!signal.aborted && session === getAuthSessionRevision()) {
+          toast.error(formatApiError(err, '加载成员失败（需要管理员权限）'))
+        }
         throw err
       }
+    },
+    select: (response) => {
+      const items = response.items ?? []
+      return { items, total: Number(response.total || items.length || 0) }
     },
   })
 
@@ -224,23 +239,38 @@ function SettingsRbacPageContent() {
   const safePage = Math.min(page, pageCount)
   const pagedMembers = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
 
-  const saveRoleMutation = useMutation({
-    mutationFn: async ({ uid, desired }: { uid: string; desired: string }) => {
-      return rbacApi.patchTenantMemberRole(uid, { role: desired })
-    },
-    onMutate: ({ uid }) => {
-      setSavingIds((prev) => ({ ...prev, [uid]: true }))
-    },
-    onSuccess: (updated, { uid, desired }) => {
-      queryClient.setQueryData<RbacMembersSnapshot>(queryKeys.rbac.members(RBAC_MEMBERS_PARAMS), (prev) => {
-        const previousItems = Array.isArray(prev?.items) ? prev.items : []
+  async function saveRole(userId: string): Promise<void> {
+    const owner = ownerRef.current
+    const uid = String(userId || '').trim()
+    if (!uid || !owner.active || owner.writing.has(uid)) return
+    const currentRole = members.find((member) => String(member.user_id || '') === uid)?.role || 'viewer'
+    const desired = String(roleDraft[uid] || currentRole || 'viewer').trim() || 'viewer'
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey: membersQueryKey })
+    const session = getAuthSessionRevision()
+    const canRefreshCache = () =>
+      session === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey: membersQueryKey, exact: true }) === originQuery
+    const isCurrent = () => owner.active && canRefreshCache()
+    owner.writing.add(uid)
+    setSavingIds((prev) => ({ ...prev, [uid]: true }))
+    try {
+      const updated = await rbacApi.patchTenantMemberRole(uid, { role: desired })
+      if (!canRefreshCache()) return
+      if (!owner.active) {
+        queryClient.invalidateQueries({ predicate: (query) => query === originQuery })
+        return
+      }
+      queryClient.setQueryData<TenantMemberListResponse>(membersQueryKey, (prev) => {
+        if (!prev) return prev
+        const previousItems = prev.items ?? []
         const nextItems = previousItems.map((member) => (String(member.user_id || '') === uid ? updated : member))
         return {
           items: nextItems.length ? nextItems : [updated],
-          total: Number(prev?.total ?? (nextItems.length || 1)),
+          total: Number(prev.total ?? (nextItems.length || 1)),
         }
       })
       setRoleDraft((prev) => {
+        if (prev[uid] !== desired) return prev
         const next = { ...prev }
         delete next[uid]
         return next
@@ -248,38 +278,42 @@ function SettingsRbacPageContent() {
       const roleLabel = ROLE_OPTIONS.find((option) => option.key === desired)?.label ?? `角色键（${desired}）`
       toast.success(`已更新角色：${uid} -> ${roleLabel}`)
       queryClient.invalidateQueries({
-        queryKey: queryKeys.rbac.members(RBAC_MEMBERS_PARAMS),
+        queryKey: membersQueryKey,
       })
-    },
-    onError: (err: unknown) => {
-      toast.error(formatApiError(err, '更新角色失败'))
-    },
-    onSettled: (_data, _error, variables) => {
-      if (!variables?.uid) return
-      setSavingIds((prev) => ({ ...prev, [variables.uid]: false }))
-    },
-  })
-
-  function saveRole(userId: string): void {
-    const uid = String(userId || '').trim()
-    if (!uid) return
-    const currentRole = members.find((member) => String(member.user_id || '') === uid)?.role || 'viewer'
-    const desired = String(roleDraft[uid] || currentRole || 'viewer').trim()
-    saveRoleMutation.mutate({ uid, desired: desired || 'viewer' })
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(formatApiError(err, '更新角色失败'))
+    } finally {
+      owner.writing.delete(uid)
+      if (owner.active) setSavingIds((prev) => ({ ...prev, [uid]: false }))
+    }
   }
 
-  const removeMemberMutation = useMutation({
-    mutationFn: async (uid: string) => rbacApi.removeTenantMember(uid),
-    onMutate: (uid) => {
-      setRemovingIds((prev) => ({ ...prev, [uid]: true }))
-    },
-    onSuccess: (_result, uid) => {
-      queryClient.setQueryData<RbacMembersSnapshot>(queryKeys.rbac.members(RBAC_MEMBERS_PARAMS), (prev) => {
-        const previousItems = Array.isArray(prev?.items) ? prev.items : []
+  async function removeMember(userId: string): Promise<void> {
+    const owner = ownerRef.current
+    const uid = String(userId || '').trim()
+    if (!uid || !owner.active || owner.writing.has(uid)) return
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey: membersQueryKey })
+    const session = getAuthSessionRevision()
+    const canRefreshCache = () =>
+      session === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey: membersQueryKey, exact: true }) === originQuery
+    const isCurrent = () => owner.active && canRefreshCache()
+    owner.writing.add(uid)
+    setRemovingIds((prev) => ({ ...prev, [uid]: true }))
+    try {
+      await rbacApi.removeTenantMember(uid)
+      if (!canRefreshCache()) return
+      if (!owner.active) {
+        queryClient.invalidateQueries({ predicate: (query) => query === originQuery })
+        return
+      }
+      queryClient.setQueryData<TenantMemberListResponse>(membersQueryKey, (prev) => {
+        if (!prev) return prev
+        const previousItems = prev.items ?? []
         const nextItems = previousItems.filter((member) => String(member.user_id || '') !== uid)
         return {
           items: nextItems,
-          total: Math.max(0, Number(prev?.total ?? previousItems.length) - 1),
+          total: Math.max(0, Number(prev.total ?? previousItems.length) - 1),
         }
       })
       setRoleDraft((prev) => {
@@ -289,22 +323,14 @@ function SettingsRbacPageContent() {
       })
       toast.success(`已移除成员：${uid}`)
       queryClient.invalidateQueries({
-        queryKey: queryKeys.rbac.members(RBAC_MEMBERS_PARAMS),
+        queryKey: membersQueryKey,
       })
-    },
-    onError: (err: unknown) => {
-      toast.error(formatApiError(err, '移除成员失败'))
-    },
-    onSettled: (_data, _error, uid) => {
-      if (!uid) return
-      setRemovingIds((prev) => ({ ...prev, [uid]: false }))
-    },
-  })
-
-  function removeMember(userId: string): void {
-    const uid = String(userId || '').trim()
-    if (!uid) return
-    removeMemberMutation.mutate(uid)
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(formatApiError(err, '移除成员失败'))
+    } finally {
+      owner.writing.delete(uid)
+      if (owner.active) setRemovingIds((prev) => ({ ...prev, [uid]: false }))
+    }
   }
 
   return (
@@ -575,14 +601,14 @@ function SettingsRbacPageContent() {
                                     title="移除成员？"
                                     description={removeDescription}
                                     confirmLabel="确认移除"
-                                    confirmDisabled={!canRemove || removing}
+                                    confirmDisabled={!canRemove || saving || removing}
                                     onConfirm={() => removeMember(uid)}
                                   >
                                     <Button
                                       variant="outline"
                                       size="icon"
                                       className="size-8 rounded-full border-destructive/20 bg-destructive/10 text-destructive hover:bg-destructive/15 hover:text-destructive disabled:opacity-50"
-                                      disabled={!uid || removing}
+                                      disabled={!uid || saving || removing}
                                       title={isSelf ? '查看不能移除当前用户的原因' : '移除成员'}
                                       aria-label={isSelf ? '不能移除当前用户' : `移除成员 ${display.primary}`}
                                     >

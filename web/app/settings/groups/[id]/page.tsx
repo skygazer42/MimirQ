@@ -5,8 +5,8 @@
  */
 'use client'
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { ArrowLeft, Loader2, RefreshCw, Save, Trash2, UserPlus, Users } from 'lucide-react'
 import { toast } from 'sonner'
@@ -33,6 +33,8 @@ import { formatApiError } from '@/lib/api-errors'
 import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 import { groupApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { useAccessAdminSession } from '../../use-access-admin-session'
 import { useRouter } from '@/i18n/navigation'
 import type { TenantGroupMemberListResponse, TenantGroupMemberOut, TenantGroupOut } from '@/types/backend'
 import {
@@ -82,21 +84,22 @@ function normalizeMemberIds(raw: string): { ids: string[]; error?: string } {
 }
 
 export default function SettingsGroupDetailPage() {
+  const session = useAccessAdminSession()
+  const params = useParams<{ id?: string | string[] }>()
+  const groupId = asGroupId(params?.id)
   return (
     <TenantPermissionGate permission={TENANT_PERMISSIONS.SETTINGS_READ} pageName="组管理">
-      <SettingsGroupDetailPageContent />
+      <SettingsGroupDetailPageContent key={`${session}:${groupId || ''}`} groupId={groupId} />
     </TenantPermissionGate>
   )
 }
 
-function SettingsGroupDetailPageContent() {
+function SettingsGroupDetailPageContent({ groupId }: Readonly<{ groupId: string | null }>) {
   const router = useRouter()
   const queryClient = useQueryClient()
-  const params = useParams<{ id?: string | string[] }>()
-  const groupId = asGroupId(params?.id)
 
-  const groupDetailQueryKey = queryKeys.groups.detail(groupId || '')
-  const membersQueryKey = queryKeys.groups.members(groupId || '', GROUP_MEMBERS_PARAMS)
+  const groupDetailQueryKey: QueryKey = queryKeys.groups.detail(groupId || '')
+  const membersQueryKey: QueryKey = queryKeys.groups.members(groupId || '', GROUP_MEMBERS_PARAMS)
 
   const [draft, setDraft] = useState<GroupDraft | null>(null)
   const [memberQuery, setMemberQuery] = useState('')
@@ -104,18 +107,30 @@ function SettingsGroupDetailPageContent() {
   const [addOpen, setAddOpen] = useState(false)
   const [addText, setAddText] = useState('')
 
-  const [removingUserId, setRemovingUserId] = useState<string | null>(null)
+  const [savingGroup, setSavingGroup] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [removingUserIds, setRemovingUserIds] = useState<Record<string, boolean>>({})
+  const ownerRef = useRef({ active: true, saving: false, adding: false, removing: new Set<string>() })
+  const addDraftVersion = useRef(0)
+  useEffect(() => {
+    const owner = ownerRef.current
+    owner.active = true
+    return () => {
+      owner.active = false
+    }
+  }, [])
 
   const groupQuery = useQuery<TenantGroupOut | null>({
     queryKey: groupDetailQueryKey,
     enabled: Boolean(groupId),
     retry: false,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!groupId) return null
+      const session = getAuthSessionRevision()
       try {
         return await groupApi.getGroup(groupId)
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '加载组详情失败'))
+        if (!signal.aborted && session === getAuthSessionRevision()) toast.error(formatApiError(err, '加载组详情失败'))
         throw err
       }
     },
@@ -125,12 +140,13 @@ function SettingsGroupDetailPageContent() {
     queryKey: membersQueryKey,
     enabled: Boolean(groupId),
     retry: false,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!groupId) return { items: [], total: 0 }
+      const session = getAuthSessionRevision()
       try {
         return await groupApi.listGroupMembers(groupId, GROUP_MEMBERS_PARAMS)
       } catch (err: unknown) {
-        toast.error(formatApiError(err, '加载成员失败'))
+        if (!signal.aborted && session === getAuthSessionRevision()) toast.error(formatApiError(err, '加载成员失败'))
         throw err
       }
     },
@@ -176,75 +192,9 @@ function SettingsGroupDetailPageContent() {
     )
   }, [members, memberQuery])
 
-  const saveGroupMutation = useMutation({
-    mutationFn: async ({ name, externalId }: { name: string; externalId: string }) => {
-      if (!groupId) throw new Error('缺少组 ID')
-      return groupApi.patchGroup(groupId, {
-        name,
-        external_id: externalId || null,
-      })
-    },
-    onSuccess: (updated) => {
-      queryClient.setQueryData(queryKeys.groups.detail(updated.id), updated)
-      setDraft({
-        groupId: updated.id,
-        name: String(updated.name || ''),
-        externalId: String(updated.external_id || ''),
-      })
-      toast.success('已保存组信息')
-      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
-    },
-    onError: (err: unknown) => {
-      toast.error(formatApiError(err, '保存失败'))
-    },
-  })
-
-  const addMembersMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      if (!groupId) throw new Error('缺少组 ID')
-      return groupApi.addGroupMembers(groupId, { member_ids: ids })
-    },
-    onSuccess: (res) => {
-      toast.success(`已添加 ${res.updated} 个成员`)
-      setAddText('')
-      setAddOpen(false)
-      queryClient.invalidateQueries({ queryKey: membersQueryKey })
-    },
-    onError: (err: unknown) => {
-      toast.error(formatApiError(err, '添加成员失败'))
-    },
-  })
-
-  const removeMemberMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      if (!groupId) throw new Error('缺少组 ID')
-      return groupApi.removeGroupMembers(groupId, { member_ids: [userId] })
-    },
-    onMutate: (userId) => {
-      setRemovingUserId(userId)
-    },
-    onSuccess: (res, userId) => {
-      toast.success(`已移除 ${res.updated} 个成员`)
-      queryClient.setQueryData<TenantGroupMemberListResponse>(membersQueryKey, (prev) => {
-        const previousItems = Array.isArray(prev?.items) ? prev.items : []
-        const nextItems = previousItems.filter((m) => String(m.user_id || '') !== userId)
-        return {
-          items: nextItems,
-          total: Math.max(0, Number(prev?.total ?? previousItems.length) - 1),
-        }
-      })
-      queryClient.invalidateQueries({ queryKey: membersQueryKey })
-    },
-    onError: (err: unknown) => {
-      toast.error(formatApiError(err, '移除成员失败'))
-    },
-    onSettled: () => {
-      setRemovingUserId(null)
-    },
-  })
-
-  const saveGroup = () => {
-    if (!groupId) return
+  async function saveGroup(): Promise<void> {
+    const owner = ownerRef.current
+    if (!groupId || !owner.active || owner.saving) return
     const name = String(nameDraft || '').trim()
     const externalId = String(externalIdDraft || '').trim()
     if (!name) {
@@ -260,11 +210,40 @@ function SettingsGroupDetailPageContent() {
       return
     }
 
-    saveGroupMutation.mutate({ name, externalId })
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey: groupDetailQueryKey })
+    const session = getAuthSessionRevision()
+    const submittedDraft = draft
+    const canRefreshCache = () =>
+      session === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey: groupDetailQueryKey, exact: true }) === originQuery
+    const isCurrent = () => owner.active && canRefreshCache()
+    owner.saving = true
+    setSavingGroup(true)
+    try {
+      const updated = await groupApi.patchGroup(groupId, { name, external_id: externalId || null })
+      if (!canRefreshCache()) return
+      if (!owner.active) {
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.groups.all,
+          predicate: (query) => query === originQuery || query.queryKey[1] === queryKeys.groups.list()[1],
+        })
+        return
+      }
+      queryClient.setQueryData(queryKeys.groups.detail(updated.id), updated)
+      setDraft((current) => (current === submittedDraft ? null : current))
+      toast.success('已保存组信息')
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups.all })
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(formatApiError(err, '保存失败'))
+    } finally {
+      owner.saving = false
+      if (owner.active) setSavingGroup(false)
+    }
   }
 
-  const addMembers = () => {
-    if (!groupId) return
+  async function addMembers(): Promise<void> {
+    const owner = ownerRef.current
+    if (!groupId || !owner.active || owner.adding) return
     const { ids, error } = normalizeMemberIds(addText)
     if (error) {
       toast.error(error)
@@ -275,20 +254,76 @@ function SettingsGroupDetailPageContent() {
       return
     }
 
-    addMembersMutation.mutate(ids)
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey: membersQueryKey })
+    const session = getAuthSessionRevision()
+    const submittedVersion = addDraftVersion.current
+    const canRefreshCache = () =>
+      session === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey: membersQueryKey, exact: true }) === originQuery
+    const isCurrent = () => owner.active && canRefreshCache()
+    owner.adding = true
+    setAdding(true)
+    try {
+      const res = await groupApi.addGroupMembers(groupId, { member_ids: ids })
+      if (!canRefreshCache()) return
+      if (!owner.active) {
+        queryClient.invalidateQueries({ predicate: (query) => query === originQuery })
+        return
+      }
+      toast.success(`已添加 ${res.updated} 个成员`)
+      if (addDraftVersion.current === submittedVersion) {
+        setAddText('')
+        setAddOpen(false)
+      }
+      queryClient.invalidateQueries({ queryKey: membersQueryKey })
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(formatApiError(err, '添加成员失败'))
+    } finally {
+      owner.adding = false
+      if (owner.active) setAdding(false)
+    }
   }
 
-  const removeMember = (userId: string) => {
-    if (!groupId) return
+  async function removeMember(userId: string): Promise<void> {
+    const owner = ownerRef.current
+    if (!groupId || !owner.active) return
     const uid = String(userId || '').trim()
-    if (!uid) return
+    if (!uid || owner.removing.has(uid)) return
 
-    removeMemberMutation.mutate(uid)
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey: membersQueryKey })
+    const session = getAuthSessionRevision()
+    const canRefreshCache = () =>
+      session === getAuthSessionRevision() &&
+      queryClient.getQueryCache().find({ queryKey: membersQueryKey, exact: true }) === originQuery
+    const isCurrent = () => owner.active && canRefreshCache()
+    owner.removing.add(uid)
+    setRemovingUserIds((current) => ({ ...current, [uid]: true }))
+    try {
+      const res = await groupApi.removeGroupMembers(groupId, { member_ids: [uid] })
+      if (!canRefreshCache()) return
+      if (!owner.active) {
+        queryClient.invalidateQueries({ predicate: (query) => query === originQuery })
+        return
+      }
+      toast.success(`已移除 ${res.updated} 个成员`)
+      queryClient.setQueryData<TenantGroupMemberListResponse>(membersQueryKey, (prev) => {
+        if (!prev) return prev
+        const previousItems = Array.isArray(prev.items) ? prev.items : []
+        return {
+          items: previousItems.filter((m) => String(m.user_id || '') !== uid),
+          total: Math.max(0, Number(prev.total ?? previousItems.length) - 1),
+        }
+      })
+      queryClient.invalidateQueries({ queryKey: membersQueryKey })
+    } catch (err: unknown) {
+      if (isCurrent()) toast.error(formatApiError(err, '移除成员失败'))
+    } finally {
+      owner.removing.delete(uid)
+      if (owner.active) setRemovingUserIds((current) => ({ ...current, [uid]: false }))
+    }
   }
 
   const title = group?.name ? `组：${group.name}` : '组详情'
-  const savingGroup = saveGroupMutation.isPending
-  const adding = addMembersMutation.isPending
 
   return (
     <AppFrame>
@@ -411,6 +446,7 @@ function SettingsGroupDetailPageContent() {
                   <Dialog
                     open={addOpen}
                     onOpenChange={(open) => {
+                      addDraftVersion.current += 1
                       setAddOpen(open)
                       if (open) setAddText('')
                     }}
@@ -435,7 +471,10 @@ function SettingsGroupDetailPageContent() {
                         <Textarea
                           id="group-members"
                           value={addText}
-                          onChange={(e) => setAddText(e.target.value)}
+                          onChange={(e) => {
+                            addDraftVersion.current += 1
+                            setAddText(e.target.value)
+                          }}
                           placeholder="alice\nbob\ncharlie"
                           className="font-mono text-sm"
                         />
@@ -470,7 +509,7 @@ function SettingsGroupDetailPageContent() {
                 {filteredMembers.length ? (
                   filteredMembers.map((m) => {
                     const uid = String(m.user_id || '').trim()
-                    const removing = Boolean(removingUserId && removingUserId === uid)
+                    const removing = Boolean(removingUserIds[uid])
                     return (
                       <div
                         key={uid}
