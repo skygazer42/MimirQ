@@ -13,10 +13,6 @@ const DOCS = path.join(REPO, 'docs-site', 'docs')
 const TARGET = path.join(REPO, 'docs-site', 'i18n', 'en', 'docusaurus-plugin-content-docs', 'current')
 const OVERRIDES = path.join(REPO, 'docs-site', 'i18n', 'en-overrides', 'current')
 
-function rmrf(p) {
-  if (fs.existsSync(p)) fs.rmSync(p, { recursive: true, force: true })
-}
-
 function copyRecursive(src, dest) {
   fs.mkdirSync(dest, { recursive: true })
   for (const ent of fs.readdirSync(src, { withFileTypes: true })) {
@@ -27,7 +23,7 @@ function copyRecursive(src, dest) {
   }
 }
 
-rmrf(TARGET)
+if (fs.existsSync(TARGET)) fs.rmSync(TARGET, { recursive: true, force: true })
 copyRecursive(DOCS, TARGET)
 
 if (fs.existsSync(OVERRIDES)) {

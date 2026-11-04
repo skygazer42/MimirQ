@@ -33,7 +33,7 @@ function checkFile(file) {
   const errors = []
   let m
   while ((m = LINK_RE.exec(text)) !== null) {
-    let href = m[1].trim()
+    const href = m[1].trim()
     if (href.startsWith('http://') || href.startsWith('https://')) continue
     if (href.startsWith('mailto:') || href.startsWith('#')) continue
     const noHash = href.split('#')[0]

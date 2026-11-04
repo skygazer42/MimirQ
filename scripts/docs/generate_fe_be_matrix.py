@@ -50,7 +50,7 @@ def extract_ts_paths() -> dict[str, list[str]]:
         if fp.name.endswith((".test.ts", ".spec.ts")):
             continue
         text = fp.read_text(encoding="utf-8", errors="replace")
-        found = set()
+        found: set[str] = set()
         for rx in (PATH_RE, PATH_TEMPLATE_RE):
             for m in rx.finditer(text):
                 p = m.group("p")
@@ -62,7 +62,7 @@ def extract_ts_paths() -> dict[str, list[str]]:
     return out
 
 
-def app_path_to_route(file_path: Path) -> str | None:
+def app_path_to_route(file_path: Path) -> str:
     rel = file_path.relative_to(WEB_APP)
     parts: list[str] = []
     for seg in rel.parts[:-1]:  # drop page.tsx or layout
@@ -86,9 +86,7 @@ def list_next_routes() -> list[str]:
     if not WEB_APP.exists():
         return routes
     for p in WEB_APP.rglob("page.tsx"):
-        r = app_path_to_route(p)
-        if r:
-            routes.append(r)
+        routes.append(app_path_to_route(p))
     return sorted(set(routes))
 
 
