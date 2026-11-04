@@ -1,5 +1,5 @@
 import json
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ def create_pre_poc_dashboard_app(
 
     @app.get("/events")
     def events() -> StreamingResponse:
-        def gen():  # noqa: ANN202
+        def gen() -> Iterator[str]:
             for event in list_events() or []:
                 payload = json.dumps(dict(event or {}), ensure_ascii=False)
                 yield f"data: {payload}\n\n"

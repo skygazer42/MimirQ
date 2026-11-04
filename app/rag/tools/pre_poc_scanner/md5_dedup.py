@@ -34,15 +34,15 @@ def find_exact_md5_duplicates(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "md5": digest,
                 "keep_path": str(keep.get("path") or ""),
                 "duplicate_paths": duplicates,
-                "count": int(len(members_sorted)),
+                "count": len(members_sorted),
             }
         )
 
     return {
         "schema": "mimirq.pre_poc.md5_dedup.v1",
         "summary": {
-            "duplicate_groups": int(len(groups_out)),
-            "duplicate_files": int(duplicate_files),
+            "duplicate_groups": len(groups_out),
+            "duplicate_files": duplicate_files,
         },
         "groups": groups_out,
     }

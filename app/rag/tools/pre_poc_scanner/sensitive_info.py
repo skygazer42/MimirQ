@@ -40,16 +40,16 @@ def collect_sensitive_review_samples(
 
     samples: list[dict[str, Any]] = []
     for match in find_pii_matches(raw, max_matches=max_pii_samples):
-        start = int(match.start)
-        end = int(match.end)
+        start = match.start
+        end = match.end
         ctx = raw[max(0, start - pii_context_chars) : min(len(raw), end + pii_context_chars)]
         ctx = anonymize_pii(ctx, enabled=True, mode="mask").text
         ctx = redact_secrets(ctx, enabled=True, mode="mask").text
         samples.append(
             {
                 "category": "pii",
-                "kind": str(match.kind),
-                "masked": _mask_pii_value(str(match.kind), str(match.text)),
+                "kind": match.kind,
+                "masked": _mask_pii_value(match.kind, match.text),
                 "context": ctx,
                 "start": start,
                 "end": end,
@@ -57,16 +57,16 @@ def collect_sensitive_review_samples(
         )
 
     for match in find_secret_matches(raw, max_matches=max_secret_samples):
-        start = int(match.start)
-        end = int(match.end)
+        start = match.start
+        end = match.end
         ctx = raw[max(0, start - secrets_context_chars) : min(len(raw), end + secrets_context_chars)]
         ctx = anonymize_pii(ctx, enabled=True, mode="mask").text
         ctx = redact_secrets(ctx, enabled=True, mode="mask").text
         samples.append(
             {
                 "category": "secret",
-                "kind": str(match.kind),
-                "masked": _mask_secret_value(str(match.kind), str(match.text)),
+                "kind": match.kind,
+                "masked": _mask_secret_value(match.kind, match.text),
                 "context": ctx,
                 "start": start,
                 "end": end,
@@ -75,8 +75,8 @@ def collect_sensitive_review_samples(
 
     return {
         "schema": "mimirq.pre_poc.sensitive_review.v1",
-        "pii_hits_total": {str(k): int(v) for k, v in (pii_masked.hits or {}).items()},
-        "secrets_hits_total": {str(k): int(v) for k, v in (secrets_masked.hits or {}).items()},
+        "pii_hits_total": dict(pii_masked.hits),
+        "secrets_hits_total": dict(secrets_masked.hits),
         "samples": samples,
     }
 
