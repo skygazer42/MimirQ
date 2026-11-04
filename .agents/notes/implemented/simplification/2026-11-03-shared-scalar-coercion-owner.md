@@ -14,6 +14,8 @@ Status: implemented
 
 Citation parse-quality summaries use the same standard numeric conversion error list. A malformed optional score tries the next declared metadata field; unexpected errors are not treated as missing metadata.
 
+chunk 质量追踪的可选分数也使用相同的标准转换异常列表，意外失败继续交给既有追踪入口记录。其实际调用链与未接入模块的退出条件见[质量评分所有者](2026-11-05-chunk-quality-score-owner.md)。
+
 ## Alternatives considered
 
 - Keep both common helper pairs: this avoids caller edits, but leaves two implementations of the same defaulting and clamping rules.
