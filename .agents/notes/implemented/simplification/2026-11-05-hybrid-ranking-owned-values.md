@@ -27,3 +27,5 @@ Status: implemented
 [语料与索引内部值](2026-11-05-retrieval-corpus-owned-values.md)将相同的生产者边界原则用于索引记录和本地计数，保留旧参数与可变 Settings 的值转换；本篇排名决定保持。
 
 [检索编排内部记录](2026-11-05-retrieval-orchestration-owned-values.md)将相同原则用于插件锚点配置与后重排校准行，保留原始分数解析、零值排序规则和 provider 失败归属。
+
+[Engine 查询与模型端口](2026-11-05-engine-ports-owned-values.md)将同一边界原则用于 RRF 本地分数和命中计数，保留原始 base score、排序规则和活动类方法钩子。

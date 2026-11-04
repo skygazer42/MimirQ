@@ -74,7 +74,7 @@ def _contains(query: str, term: str) -> bool:
     if not query or not term:
         return False
     if term.isascii():
-        return bool(_term_pattern(term).search(query))
+        return _term_pattern(term).search(query) is not None
     return term in query
 
 
@@ -233,7 +233,7 @@ def load_base_dictionary_rules() -> dict[str, list[str]]:
         return {}
     parsed: dict[str, list[str]] = {}
     current_key: str | None = None
-    for ln in (raw or "").splitlines():
+    for ln in raw.splitlines():
         line = ln.rstrip("\r\n")
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):

@@ -41,11 +41,11 @@ class LlmRoutingMixin:
         In dev/E2E we optionally use a fake streaming LLM to avoid external network calls.
         """
         _ = chat_cls
-        if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+        if bool(settings.LLM_MOCK_ENABLED):
             # Lazy import to keep default startup lightweight.
             from langchain_core.language_models.fake import FakeStreamingListLLM
 
-            response = str(getattr(settings, "LLM_MOCK_RESPONSE", "") or "Hello from mock LLM.")
+            response = str(settings.LLM_MOCK_RESPONSE or "Hello from mock LLM.")
             return FakeStreamingListLLM(responses=[response])
 
         return build_chat_model_from_config(
@@ -84,7 +84,7 @@ class LlmRoutingMixin:
         if ("/" in route_model) != ("/" in default_model):
             return False
 
-        api_base = str(getattr(settings, "LLM_API_BASE", "") or "").casefold()
+        api_base = str(settings.LLM_API_BASE or "").casefold()
         if "siliconflow" in api_base and "/" not in route_model:
             return False
         return True
@@ -106,15 +106,15 @@ class LlmRoutingMixin:
         model_route: str,
         structured_output: bool,
     ) -> tuple[Any, dict[str, Any]]:
-        base_temperature = float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0)
-        target_temperature = float(getattr(settings, "LLM_STRUCTURED_TEMPERATURE", base_temperature) or 0.0)
+        base_temperature = float(settings.LLM_TEMPERATURE or 0.0)
+        target_temperature = float(settings.LLM_STRUCTURED_TEMPERATURE or 0.0)
         meta = {
             "structured_temperature": target_temperature,
             "base_temperature": base_temperature,
             "structured_temperature_override_applied": False,
         }
 
-        if not structured_output or bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+        if not structured_output or bool(settings.LLM_MOCK_ENABLED):
             return llm, meta
         if abs(target_temperature - base_temperature) < 1e-9:
             return llm, meta
@@ -161,7 +161,7 @@ class LlmRoutingMixin:
             pattern_matches = 0
 
         if pattern_matches > 0:
-            threshold = float(getattr(settings, "MODEL_COMPLEXITY_THRESHOLD", 160) or 160)
+            threshold = float(settings.MODEL_COMPLEXITY_THRESHOLD or 160)
             bonus_per_match = max(0.0, threshold * 0.35)
             score += float(min(pattern_matches, 6)) * bonus_per_match
 
@@ -188,25 +188,25 @@ class LlmRoutingMixin:
 
     def _route_retrieval_params(self, complexity_score: float) -> dict[str, Any]:
         """Apply coarse retrieval overrides for simple vs. complex queries."""
-        if not bool(getattr(settings, "ADAPTIVE_RETRIEVAL_ROUTING_ENABLED", False)):
+        if not bool(settings.ADAPTIVE_RETRIEVAL_ROUTING_ENABLED):
             return {}
 
-        simple_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD", 80.0) or 80.0)
-        complex_threshold = float(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD", 200.0) or 200.0)
+        simple_threshold = float(settings.ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD or 80.0)
+        complex_threshold = float(settings.ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD or 200.0)
 
         if complexity_score < simple_threshold:
             return {
-                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K", 10) or 10)),
+                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K or 10)),
                 "enable_multi_query": False,
             }
 
         if complexity_score >= complex_threshold:
             return {
-                "top_k": max(1, int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K", 40) or 40)),
+                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K or 40)),
                 "enable_multi_query": True,
                 "multi_query_count": max(
                     1,
-                    int(getattr(settings, "ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT", 5) or 5),
+                    int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT or 5),
                 ),
                 "retrieval_profile": "recall50",
             }

@@ -27,6 +27,8 @@ Query preparation, routing and query expansion have one typed owner. The orchest
 
 [检索编排内部记录](../simplification/2026-11-05-retrieval-orchestration-owned-values.md)保留本篇查询计划与运行阶段顺序，只收窄已构造记录和声明字段的访问，注入回调继续保留原始值解析。
 
+[Engine 查询与模型端口](../simplification/2026-11-05-engine-ports-owned-values.md)保留本篇实际准备端口、同步/异步调用及旧参数解析边界，只清理已构造值和声明字段的访问。
+
 ## Verification
 
 - Ruff check and format checks pass for the modified retrieval modules.
