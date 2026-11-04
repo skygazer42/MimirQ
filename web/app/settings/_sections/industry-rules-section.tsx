@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, type QueryKey } from '@tanstack/react-query'
 import {
   ArrowRight,
   BookOpenText,
@@ -110,10 +110,9 @@ export function IndustryRulesSection() {
   ): Promise<void> {
     const owner = actionOwnerRef.current
     if (!owner.active || owner.running) return
-    const queryKey =
+    const queryKey: QueryKey =
       key === 'list' ? queryKeys.industryRules.rulesets : queryKeys.industryRules.ruleset(trimmedRulesetName)
-    const originQuery = queryClient.getQueryCache().find({ queryKey, exact: true })
-    if (!originQuery) return
+    const originQuery = queryClient.getQueryCache().build(queryClient, { queryKey })
     const sessionRevision = getAuthSessionRevision()
     const isActive = () =>
       owner.active &&

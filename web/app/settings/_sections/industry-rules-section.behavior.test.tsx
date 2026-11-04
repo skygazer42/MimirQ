@@ -133,6 +133,84 @@ afterEach(() => {
 })
 
 describe('industry rules read ownership', () => {
+  it('allows a new explicit load after idle cache clear without rendering or editing first', async () => {
+    const view = await mount()
+    await waitForAssertion(() => expect(button(view.container, 'industrial_control')).toBeDefined())
+    const key = queryKeys.industryRules.ruleset('industrial_control')
+    const previous = view.client.getQueryCache().find({ queryKey: key, exact: true })
+    expect(previous).toBeDefined()
+    act(() => view.client.clear())
+    expect(view.client.getQueryCache().find({ queryKey: key, exact: true })).toBeUndefined()
+
+    await act(async () => button(view.container, '载入').click())
+
+    expect(api.getRuleset).toHaveBeenCalledOnce()
+    expect(JSON.parse(view.container.querySelectorAll('textarea')[0].value)).toEqual(detail().ruleset.glossary)
+    expect(view.client.getQueryCache().find({ queryKey: key, exact: true })).not.toBe(previous)
+  })
+
+  it('allows a new explicit index refresh after idle cache clear without another render', async () => {
+    api.listRulesets.mockResolvedValueOnce({ schema: 'mimirq.industry_rules_index.v1', count: 0, rulesets: [] })
+    const view = await mount()
+    await waitForAssertion(() => expect(button(view.container, '获取规则集').disabled).toBe(false))
+    act(() => view.client.clear())
+    expect(
+      view.client.getQueryCache().find({ queryKey: queryKeys.industryRules.rulesets, exact: true }),
+    ).toBeUndefined()
+
+    await act(async () => button(view.container, '获取规则集').click())
+
+    expect(api.listRulesets).toHaveBeenCalledTimes(2)
+    await waitForAssertion(() => expect(button(view.container, 'industrial_control')).toBeDefined())
+  })
+
+  it.each(['preview', 'patterns'] as const)(
+    'allows a fresh %s after idle clear without triggering a detail fetch',
+    async (action) => {
+      api.previewRewrite.mockResolvedValueOnce({
+        schema: 'mimirq.industry_rules_preview.v1',
+        ruleset: 'industrial_control',
+        original_query: 'PLC 报警如何排查？',
+        expanded_query: 'PLC 报警如何排查？',
+        changed: false,
+      })
+      const view = await mount()
+      await waitForAssertion(() => expect(button(view.container, 'industrial_control')).toBeDefined())
+      act(() => view.client.clear())
+
+      await act(async () => button(view.container, action === 'preview' ? '预览' : '保存规则').click())
+
+      expect(action === 'preview' ? api.previewRewrite : api.updatePatterns).toHaveBeenCalledOnce()
+      expect(api.getRuleset).not.toHaveBeenCalled()
+      expect(notices.success).toHaveBeenCalledOnce()
+    },
+  )
+
+  it('keeps a removed in-flight save retired without manually rendering after clear', async () => {
+    const pending = deferred<{ schema: string; ruleset: string; section: string; updated_count: number }>()
+    api.updatePatterns.mockReturnValueOnce(pending.promise)
+    const view = await mount()
+    act(() => button(view.container, '保存规则').click())
+    await waitForAssertion(() => expect(api.updatePatterns).toHaveBeenCalledOnce())
+    const key = queryKeys.industryRules.ruleset('industrial_control')
+    const previous = view.client.getQueryCache().find({ queryKey: key, exact: true })
+    act(() => view.client.clear())
+    await act(async () =>
+      pending.resolve({
+        schema: 'mimirq.industry_rules_update.v1',
+        ruleset: 'industrial_control',
+        section: 'patterns',
+        updated_count: 0,
+      }),
+    )
+    await waitForAssertion(() => expect(button(view.container, '保存规则').disabled).toBe(false))
+
+    expect(view.client.getQueryCache().find({ queryKey: key, exact: true })).not.toBe(previous)
+    expect(view.client.getQueryState(key)?.isInvalidated).toBe(false)
+    expect(notices.success).not.toHaveBeenCalled()
+    expect(notices.error).not.toHaveBeenCalled()
+  })
+
   it('does not replace another ruleset draft when an earlier load resolves', async () => {
     const old = deferred<ReturnType<typeof detail>>()
     api.getRuleset.mockReturnValueOnce(old.promise)
