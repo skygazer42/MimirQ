@@ -1,5 +1,4 @@
-import uuid
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,6 +8,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentChunkList, DocumentChunkMatchList, DocumentChunkSchema
 from app.core.database import get_db
+from app.core.pipeline_versions import resolve_doc_pipeline_key
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
@@ -31,7 +31,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 @router.get("/{document_id}/chunks", response_model=DocumentChunkList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_document_chunks(
-    document_id: uuid.UUID,
+    document_id: UUID,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=2000)] = 500,
     q: Annotated[str | None, Query(max_length=200)] = None,
@@ -45,7 +45,7 @@ def list_document_chunks(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     List document chunks (paged).
 
@@ -69,11 +69,9 @@ def list_document_chunks(
     )
 
     if not all_versions:
-        from app.core.pipeline_versions import resolve_doc_pipeline_key
-
         target_key = resolve_doc_pipeline_key(
             document_id,
-            getattr(document, "doc_metadata", None),
+            document.doc_metadata,
             pipeline_hash,
             all_versions=all_versions,
         )
@@ -96,7 +94,7 @@ def list_document_chunks(
     "/{document_id}/chunks/matches", response_model=DocumentChunkMatchList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
 )
 def list_document_chunk_matches(
-    document_id: uuid.UUID,
+    document_id: UUID,
     q: Annotated[str, Query(..., max_length=200, description="Case-insensitive substring match against chunk content")],
     limit: Annotated[int, Query(ge=1, le=5000, description="Max returned matches (may be truncated)")] = 2000,
     pipeline_hash: Annotated[
@@ -109,7 +107,7 @@ def list_document_chunk_matches(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     List chunk matches for a document (lightweight payload).
 
@@ -143,11 +141,9 @@ def list_document_chunk_matches(
         .order_by(DocumentChunk.chunk_index.asc())
     )
     if not all_versions:
-        from app.core.pipeline_versions import resolve_doc_pipeline_key
-
         target_key = resolve_doc_pipeline_key(
             document_id,
-            getattr(document, "doc_metadata", None),
+            document.doc_metadata,
             pipeline_hash,
             all_versions=all_versions,
         )
@@ -156,15 +152,15 @@ def list_document_chunk_matches(
                 DocumentChunk.doc_metadata["doc_pipeline_key"].astext == target_key  # type: ignore[attr-defined]
             )
 
-    total = int(query.count())
+    total = query.count()
     rows = (
         query.with_entities(DocumentChunk.id, DocumentChunk.chunk_index, DocumentChunk.page_number).limit(limit).all()
     )
     items = [
         {
             "id": str(row[0]),
-            "chunk_index": int(row[1]),
-            "page_number": row[2] if row[2] is None else int(row[2]),
+            "chunk_index": row[1],
+            "page_number": row[2],
         }
         for row in rows
     ]
@@ -180,13 +176,13 @@ def list_document_chunk_matches(
     "/{document_id}/chunks/{chunk_id}", response_model=DocumentChunkSchema, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
 )
 def get_document_chunk(
-    document_id: uuid.UUID,
-    chunk_id: uuid.UUID,
+    document_id: UUID,
+    chunk_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentChunk:
     """
     Get a single chunk for a document.
     """

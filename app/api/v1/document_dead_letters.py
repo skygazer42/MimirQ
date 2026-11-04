@@ -1,5 +1,5 @@
 import contextlib
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
@@ -41,7 +41,7 @@ def list_ingest_dead_letters(
     failed_stage: Annotated[str | None, Query(max_length=50)] = None,
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=1, le=200)] = 100,
-) -> dict:
+) -> dict[str, Any]:
     dataset_service.ensure_member(db, tenant_id, account_id)
     document = aliased(DBDocument)
     readable_dataset_ids = select(Dataset.id).where(
@@ -88,7 +88,7 @@ def list_ingest_dead_letters(
     if failed_stage:
         query = query.filter(IngestDeadLetter.failed_stage == failed_stage.strip().lower())
 
-    total = int(query.count())
+    total = query.count()
     items = (
         query.order_by(IngestDeadLetter.last_attempt_at.desc(), IngestDeadLetter.id.asc())
         .offset(skip)
@@ -110,7 +110,7 @@ async def replay_ingest_dead_letter(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-) -> dict:
+) -> dict[str, Any]:
     dataset_service.ensure_member(db, tenant_id, account_id)
     dead_letter = (
         db.query(IngestDeadLetter)
@@ -140,7 +140,7 @@ async def replay_ingest_dead_letter(
     document_status = await retry_document_processing(
         document_id=dead_letter.document_id,
         background_tasks=background_tasks,
-        force=str(document.status or "").strip().lower() == "completed",
+        force=(document.status or "").strip().lower() == "completed",
         skip_if_unchanged=False,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -153,6 +153,6 @@ async def replay_ingest_dead_letter(
     return {
         "dead_letter_id": dead_letter_id,
         "document_id": dead_letter.document_id,
-        "dead_letter_status": getattr(dead_letter, "status", "replayed"),
+        "dead_letter_status": dead_letter.status,
         "document_status": document_status,
     }

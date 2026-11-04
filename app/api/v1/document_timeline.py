@@ -1,4 +1,4 @@
-import uuid
+from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -91,13 +91,13 @@ def _sanitize_timeline_value(value: Any, *, depth: int) -> Any:
     "/{document_id}/timeline", response_model=DocumentTimelineResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
 )
 def get_document_timeline(
-    document_id: uuid.UUID,
+    document_id: UUID,
     limit: Annotated[int, Query(ge=1, le=200)] = 200,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentTimelineResponse:
     """User-facing document timeline (audit logs + synthetic document state events)."""
     dataset_service.ensure_member(db, tenant_id, account_id)
 
@@ -119,13 +119,13 @@ def get_document_timeline(
             AuditLog.resource_id == str(document_id),
         )
         .order_by(desc(AuditLog.created_at), desc(AuditLog.id))
-        .limit(int(limit or 200))
+        .limit(limit or 200)
         .all()
     )
 
     items: list[DocumentTimelineItem] = []
 
-    created_at = getattr(document, "created_at", None)
+    created_at = document.created_at
     if created_at is not None:
         items.append(
             DocumentTimelineItem(
@@ -133,14 +133,14 @@ def get_document_timeline(
                 action="document.created",
                 created_at=created_at,
                 source="synthetic",
-                actor_id=(getattr(document, "owner_id", None) or None),
-                stage=(getattr(document, "current_stage", None) or None),
-                status=(str(getattr(document, "status", "") or "").strip() or None),
-                progress=int(getattr(document, "processing_progress", 0) or 0),
+                actor_id=(document.owner_id or None),
+                stage=(document.current_stage or None),
+                status=((document.status or "").strip() or None),
+                progress=document.processing_progress or 0,
             )
         )
 
-    updated_at = getattr(document, "updated_at", None)
+    updated_at = document.updated_at
     if updated_at is not None and (created_at is None or updated_at != created_at):
         items.append(
             DocumentTimelineItem(
@@ -148,14 +148,14 @@ def get_document_timeline(
                 action="document.status",
                 created_at=updated_at,
                 source="synthetic",
-                stage=(getattr(document, "current_stage", None) or None),
-                status=(str(getattr(document, "status", "") or "").strip() or None),
-                progress=int(getattr(document, "processing_progress", 0) or 0),
+                stage=(document.current_stage or None),
+                status=((document.status or "").strip() or None),
+                progress=document.processing_progress or 0,
             )
         )
 
     for row in audit_rows:
-        raw_details = getattr(row, "details", None)
+        raw_details = row.details
         safe_details = _sanitize_timeline_details(raw_details)
 
         stage = safe_details.get("stage") if isinstance(safe_details.get("stage"), str) else None
@@ -165,12 +165,12 @@ def get_document_timeline(
 
         items.append(
             DocumentTimelineItem(
-                id=str(getattr(row, "id", "") or ""),
-                action=str(getattr(row, "action", "") or ""),
-                created_at=getattr(row, "created_at", None),
+                id=str(row.id),
+                action=row.action or "",
+                created_at=row.created_at,
                 source="audit",
-                actor_id=(getattr(row, "actor_id", None) or None),
-                request_id=(getattr(row, "request_id", None) or None),
+                actor_id=(row.actor_id or None),
+                request_id=(row.request_id or None),
                 stage=stage,
                 status=status,
                 progress=progress,
@@ -178,13 +178,13 @@ def get_document_timeline(
             )
         )
 
-    def _dt_ts(value: Any) -> float:
+    def _dt_ts(value: datetime | None) -> float:
         try:
-            return float(value.timestamp()) if value is not None else 0.0
+            return value.timestamp() if value is not None else 0.0
         except Exception:
             return 0.0
 
-    items.sort(key=lambda item: (_dt_ts(item.created_at), str(item.id)), reverse=True)
-    items = items[: int(limit or 200)]
+    items.sort(key=lambda item: (_dt_ts(item.created_at), item.id), reverse=True)
+    items = items[: limit or 200]
 
     return DocumentTimelineResponse(total=len(items), items=items)

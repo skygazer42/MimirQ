@@ -1,6 +1,6 @@
 import contextlib
-import uuid
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Any, TypedDict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -36,7 +36,16 @@ PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-def _get_version_document_or_404(*, db: Session, tenant_id: UUID, document_id: UUID):
+class _DocumentVersionEntry(TypedDict):
+    pipeline_hash: str
+    doc_pipeline_key: str
+    chunk_count: int
+    first_chunk_at: datetime | None
+    last_chunk_at: datetime | None
+    active: bool
+
+
+def _get_version_document_or_404(*, db: Session, tenant_id: UUID, document_id: UUID) -> DBDocument:
     document = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not document:
         raise HTTPException(status_code=404, detail=DOC_NOT_FOUND_DETAIL)
@@ -84,7 +93,7 @@ def _load_version_signatures(
         )
 
     out: list[str] = []
-    for chunk_id, meta in rows or []:
+    for chunk_id, meta in rows:
         metadata = meta if isinstance(meta, dict) else {}
         if str(metadata.get("doc_pipeline_key") or "").strip() != target_key:
             continue
@@ -94,7 +103,7 @@ def _load_version_signatures(
 
 
 def _version_provenance_pair(
-    document, *, from_hash: str, to_hash: str
+    document: DBDocument, *, from_hash: str, to_hash: str
 ) -> tuple[dict[str, object] | None, dict[str, object] | None]:
     doc_meta = dict(document.doc_metadata or {})
     prov_versions = (
@@ -138,7 +147,7 @@ def _load_version_chunk_ids(
             )
             .all()
         )
-        return [chunk_id for (chunk_id,) in rows if isinstance(chunk_id, UUID)]
+        return [chunk_id for (chunk_id,) in rows]
     except Exception:
         rows = (
             db.query(DocumentChunk.id, DocumentChunk.doc_metadata)
@@ -158,12 +167,12 @@ def _load_version_chunk_ids(
 
 @router.get("/{document_id}/versions", response_model=DocumentVersionList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def list_document_versions(
-    document_id: uuid.UUID,
+    document_id: UUID,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     List document pipeline versions (keyed by pipeline_hash).
 
@@ -190,7 +199,7 @@ def list_document_versions(
     active_hash = get_active_pipeline_hash(doc_meta)
     active_key = f"{document_id}:{active_hash}" if active_hash else None
 
-    items = []
+    items: list[_DocumentVersionEntry] = []
     try:
         rows = (
             db.query(
@@ -221,7 +230,7 @@ def list_document_versions(
                 {
                     "pipeline_hash": pipeline_hash_norm,
                     "doc_pipeline_key": key,
-                    "chunk_count": int(cnt or 0),
+                    "chunk_count": cnt,
                     "first_chunk_at": first_at,
                     "last_chunk_at": last_at,
                     "active": bool(active_key and key == active_key),
@@ -233,7 +242,7 @@ def list_document_versions(
             .filter(DocumentChunk.tenant_id == tenant_id, DocumentChunk.document_id == document_id)
             .all()
         )
-        by_key: dict[str, dict] = {}
+        by_key: dict[str, _DocumentVersionEntry] = {}
         for meta, created_at in rows:
             metadata = meta if isinstance(meta, dict) else {}
             pipeline_hash_norm = str(metadata.get("pipeline_hash") or "").strip()
@@ -248,7 +257,7 @@ def list_document_versions(
                 "last_chunk_at": None,
                 "active": bool(active_key and key == active_key),
             }
-            entry["chunk_count"] = int(entry.get("chunk_count") or 0) + 1
+            entry["chunk_count"] += 1
             if created_at:
                 if entry["first_chunk_at"] is None or created_at < entry["first_chunk_at"]:
                     entry["first_chunk_at"] = created_at
@@ -259,9 +268,9 @@ def list_document_versions(
 
     items.sort(
         key=lambda item: (
-            item.get("active") is True,
-            item.get("last_chunk_at") is not None,
-            item.get("last_chunk_at"),
+            item["active"] is True,
+            item["last_chunk_at"] is not None,
+            item["last_chunk_at"],
         ),
         reverse=True,
     )
@@ -278,7 +287,7 @@ def list_document_versions(
     "/{document_id}/versions/diff", response_model=DocumentVersionDiff, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES
 )
 def diff_document_versions(
-    document_id: uuid.UUID,
+    document_id: UUID,
     from_pipeline_hash: Annotated[
         str,
         Query(..., alias="from", max_length=64, description="Source pipeline_hash version (from)"),
@@ -295,7 +304,7 @@ def diff_document_versions(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> dict[str, Any]:
     """
     Diff two document pipeline versions by chunk `content_hash` (multiset semantics).
 
@@ -337,18 +346,18 @@ def diff_document_versions(
     diff = content_hash_multiset_diff(
         from_hashes=from_sigs,
         to_hashes=to_sigs,
-        sample_limit=int(sample_limit or 0),
+        sample_limit=sample_limit,
     )
     from_prov, to_prov = _version_provenance_pair(document, from_hash=from_hash, to_hash=to_hash)
     return {
         "document_id": document_id,
         "from_pipeline_hash": from_hash,
         "to_pipeline_hash": to_hash,
-        "from_chunk_count": int(diff.from_chunk_count),
-        "to_chunk_count": int(diff.to_chunk_count),
-        "unchanged_chunks": int(diff.unchanged_chunks),
-        "added_chunks": int(diff.added_chunks),
-        "removed_chunks": int(diff.removed_chunks),
+        "from_chunk_count": diff.from_chunk_count,
+        "to_chunk_count": diff.to_chunk_count,
+        "unchanged_chunks": diff.unchanged_chunks,
+        "added_chunks": diff.added_chunks,
+        "removed_chunks": diff.removed_chunks,
         "added_hashes": list(diff.added_hashes),
         "removed_hashes": list(diff.removed_hashes),
         "from_provenance": from_prov,
@@ -363,13 +372,13 @@ def diff_document_versions(
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
 def activate_document_version(
-    document_id: uuid.UUID,
+    document_id: UUID,
     pipeline_hash: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DBDocument:
     """
     Activate (rollback to) a specific pipeline_hash version for retrieval/citations.
 
@@ -388,11 +397,7 @@ def activate_document_version(
         document=document,
     )
 
-    pipeline_hash_norm = str(pipeline_hash or "").strip()
-    if not pipeline_hash_norm:
-        raise HTTPException(status_code=400, detail="pipeline_hash is required")
-    if len(pipeline_hash_norm) > 64:
-        raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
+    pipeline_hash_norm = _normalize_pipeline_hash(pipeline_hash, required_detail="pipeline_hash is required")
 
     target_key = f"{document_id}:{pipeline_hash_norm}"
     exists = (
@@ -472,13 +477,13 @@ def activate_document_version(
 
 @router.delete("/{document_id}/versions/{pipeline_hash}", status_code=204, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def delete_document_version(
-    document_id: uuid.UUID,
+    document_id: UUID,
     pipeline_hash: str,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> Response:
     """
     Delete a non-active document pipeline version (best-effort cleanup).
 
@@ -497,8 +502,8 @@ def delete_document_version(
         document=document,
     )
     pipeline_hash_norm = _normalize_pipeline_hash(pipeline_hash, required_detail="pipeline_hash is required")
-    doc_status = str(getattr(document, "status", "") or "").lower()
-    meta = dict(getattr(document, "doc_metadata", None) or {})
+    doc_status = (document.status or "").lower()
+    meta = dict(document.doc_metadata or {})
     current_hash = str(meta.get("pipeline_hash") or "").strip()
     if doc_status in {"pending", "processing"} and current_hash == pipeline_hash_norm:
         raise HTTPException(status_code=409, detail="Cannot delete the current in-progress pipeline version")
