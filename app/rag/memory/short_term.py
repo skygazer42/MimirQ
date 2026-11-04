@@ -34,9 +34,9 @@ MessageLike = BaseMessage | dict[str, Any]
 
 
 # Configuration defaults
-SHORT_TERM_MEMORY_MAX_TOKENS = getattr(settings, "SHORT_TERM_MEMORY_MAX_TOKENS", 4000)
-SUMMARIZATION_THRESHOLD = getattr(settings, "SUMMARIZATION_THRESHOLD", 10)
-CHAT_HISTORY_WINDOW = getattr(settings, "CHAT_HISTORY_WINDOW", 5)
+SHORT_TERM_MEMORY_MAX_TOKENS = settings.SHORT_TERM_MEMORY_MAX_TOKENS
+SUMMARIZATION_THRESHOLD = settings.SUMMARIZATION_THRESHOLD
+CHAT_HISTORY_WINDOW = settings.CHAT_HISTORY_WINDOW
 
 
 def _estimate_tokens(text: str) -> int:
@@ -278,7 +278,7 @@ class ShortTermMemoryManager:
         include_system: bool = True,
         enable_summarization: bool = True,
         llm: Any | None = None,
-    ):
+    ) -> None:
         """
         Initialize the short-term memory manager.
 
@@ -405,7 +405,7 @@ class ShortTermMemoryManager:
 
         return f"[Previous context: {len(messages)} messages]\n" + "\n".join(parts)
 
-    def clear_cache(self, session_id: str | None = None):
+    def clear_cache(self, session_id: str | None = None) -> None:
         """Clear summary cache."""
         if session_id:
             self._summary_cache.pop(session_id, None)
@@ -435,7 +435,7 @@ class SummarizationMiddleware:
         history_key: str = "history",
         messages_key: str = "messages",
         llm: Any | None = None,
-    ):
+    ) -> None:
         """
         Initialize the summarization middleware.
 
@@ -498,12 +498,12 @@ class SummarizationMiddleware:
         """
 
         @wraps(func)
-        async def async_wrapper(state: dict[str, Any], *args, **kwargs):
+        async def async_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             state = await self.abefore_model(state)
             return await func(state, *args, **kwargs)
 
         @wraps(func)
-        def sync_wrapper(state: dict[str, Any], *args, **kwargs):
+        def sync_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             state = self.before_model(state)
             return func(state, *args, **kwargs)
 

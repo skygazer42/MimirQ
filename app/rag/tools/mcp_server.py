@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
@@ -7,7 +9,7 @@ from app.rag.tools.mcp_tools import register_default_tools
 
 class ExecuteToolRequest(BaseModel):
     name: str = Field(min_length=1)
-    arguments: dict = Field(default_factory=dict)
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 def create_mcp_registry() -> MCPToolRegistry:
@@ -21,7 +23,7 @@ def create_mcp_app() -> FastAPI:
     registry = create_mcp_registry()
 
     @app.get("/tools")
-    async def list_tools() -> dict:
+    async def list_tools() -> dict[str, Any]:
         tools = await registry.list_tools()
         return {
             "tools": [
@@ -46,7 +48,7 @@ def create_mcp_app() -> FastAPI:
         }
 
     @app.post("/tools/execute")
-    async def execute_tool(body: ExecuteToolRequest) -> dict:
+    async def execute_tool(body: ExecuteToolRequest) -> dict[str, Any]:
         result = await registry.call_tool(body.name, body.arguments)
         return {
             "success": bool(result.success),

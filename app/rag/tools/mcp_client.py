@@ -28,10 +28,10 @@ logger = get_logger("rag.tools.mcp_client")
 
 
 # Configuration
-MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
-MCP_SERVER_URL = getattr(settings, "MCP_SERVER_URL", "")
-MCP_TIMEOUT = getattr(settings, "MCP_TIMEOUT", 30)
-MCP_MAX_RETRIES = getattr(settings, "MCP_MAX_RETRIES", 3)
+MCP_ENABLED = settings.MCP_ENABLED
+MCP_SERVER_URL = settings.MCP_SERVER_URL
+MCP_TIMEOUT = settings.MCP_TIMEOUT
+MCP_MAX_RETRIES = settings.MCP_MAX_RETRIES
 
 
 class MCPError(Exception):
@@ -157,7 +157,7 @@ class MCPClient:
         timeout: int = 30,
         max_retries: int = 3,
         headers: dict[str, str] | None = None,
-    ):
+    ) -> None:
         """
         Initialize the MCP client.
 
@@ -402,7 +402,7 @@ class MCPToolRegistry:
     Manages both remote MCP tools and local tool implementations.
     """
 
-    def __init__(self, mcp_client: MCPClient | None = None):
+    def __init__(self, mcp_client: MCPClient | None = None) -> None:
         """
         Initialize the registry.
 
@@ -410,13 +410,13 @@ class MCPToolRegistry:
             mcp_client: MCP client instance
         """
         self.mcp_client = mcp_client
-        self._local_tools: dict[str, Callable] = {}
+        self._local_tools: dict[str, Callable[..., Any]] = {}
         self._tool_schemas: dict[str, MCPTool] = {}
 
     def register(
         self,
         name: str,
-        func: Callable,
+        func: Callable[..., Any],
         description: str = "",
         parameters: list[ToolParameter] | None = None,
     ) -> "MCPToolRegistry":
@@ -479,7 +479,7 @@ class MCPToolRegistry:
         arguments = arguments or {}
 
         chain = None
-        if bool(getattr(settings, "MIDDLEWARE_ENABLED", True)):
+        if settings.MIDDLEWARE_ENABLED:
             from app.rag.middleware import ToolMiddlewareChain
 
             chain = ToolMiddlewareChain()

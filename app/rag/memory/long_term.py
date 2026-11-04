@@ -27,11 +27,11 @@ logger = get_logger("rag.memory.long_term")
 
 
 # Configuration
-LONG_TERM_MEMORY_ENABLED = getattr(settings, "LONG_TERM_MEMORY_ENABLED", False)
-MEMORY_STORE_TYPE = getattr(settings, "MEMORY_STORE_TYPE", "memory")
-MEMORY_SQLITE_PATH = getattr(settings, "MEMORY_SQLITE_PATH", "./data/memory.db")
-LONG_TERM_MEMORY_TOP_K = getattr(settings, "LONG_TERM_MEMORY_TOP_K", 3)
-LONG_TERM_MEMORY_MIN_LEN = getattr(settings, "LONG_TERM_MEMORY_MIN_LEN", 20)
+LONG_TERM_MEMORY_ENABLED = settings.LONG_TERM_MEMORY_ENABLED
+MEMORY_STORE_TYPE = settings.MEMORY_STORE_TYPE
+MEMORY_SQLITE_PATH = settings.MEMORY_SQLITE_PATH
+LONG_TERM_MEMORY_TOP_K = settings.LONG_TERM_MEMORY_TOP_K
+LONG_TERM_MEMORY_MIN_LEN = settings.LONG_TERM_MEMORY_MIN_LEN
 
 
 class MemoryItem:
@@ -61,7 +61,7 @@ class MemoryItem:
         created_at: datetime | None = None,
         updated_at: datetime | None = None,
         expires_at: datetime | None = None,
-    ):
+    ) -> None:
         self.id = id or str(uuid4())
         self.namespace = namespace
         self.key = key
@@ -90,7 +90,7 @@ class MemoryItem:
     def from_dict(cls, data: dict[str, Any]) -> "MemoryItem":
         """Create from dictionary."""
 
-        def parse_datetime(value):
+        def parse_datetime(value: Any) -> datetime | None:
             if value is None:
                 return None
             if isinstance(value, datetime):
@@ -119,7 +119,7 @@ class BaseMemoryStore(ABC):
     """
 
     @abstractmethod
-    def put(self, namespace: str, key: str, value: Any, **kwargs) -> MemoryItem:
+    def put(self, namespace: str, key: str, value: Any, **kwargs: Any) -> MemoryItem:
         """
         Store a memory item.
 
@@ -220,11 +220,11 @@ class InMemoryStore(BaseMemoryStore):
     Suitable for development and testing.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._store: dict[str, dict[str, MemoryItem]] = {}
         self._lock = threading.RLock()
 
-    def put(self, namespace: str, key: str, value: Any, **kwargs) -> MemoryItem:
+    def put(self, namespace: str, key: str, value: Any, **kwargs: Any) -> MemoryItem:
         with self._lock:
             if namespace not in self._store:
                 self._store[namespace] = {}
@@ -330,7 +330,7 @@ class SqliteStore(BaseMemoryStore):
     across application restarts.
     """
 
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, db_path: str | None = None) -> None:
         self.db_path = db_path or MEMORY_SQLITE_PATH
         self._local = threading.local()
         self._init_db()
@@ -347,7 +347,7 @@ class SqliteStore(BaseMemoryStore):
             self._local.conn.row_factory = sqlite3.Row
         return self._local.conn
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         """Initialize database schema."""
         conn = self._get_conn()
         conn.execute("""
@@ -373,7 +373,7 @@ class SqliteStore(BaseMemoryStore):
             ON memory_items(namespace, memory_type)
         """)
 
-    def put(self, namespace: str, key: str, value: Any, **kwargs) -> MemoryItem:
+    def put(self, namespace: str, key: str, value: Any, **kwargs: Any) -> MemoryItem:
         conn = self._get_conn()
         now = datetime.now(UTC).replace(tzinfo=None)
 
@@ -530,7 +530,7 @@ class UserMemory:
         user_id: str,
         tenant_id: str | None = None,
         store: BaseMemoryStore | None = None,
-    ):
+    ) -> None:
         """
         Initialize user memory.
 
@@ -544,7 +544,7 @@ class UserMemory:
         self.store = store or get_memory_store()
         self._namespace = f"user:{self.tenant_id}:{self.user_id}"
 
-    def set_preference(self, key: str, value: Any, **kwargs) -> MemoryItem:
+    def set_preference(self, key: str, value: Any, **kwargs: Any) -> MemoryItem:
         """Set a user preference."""
         return self.store.put(self._namespace, f"pref:{key}", value, memory_type="preference", **kwargs)
 
@@ -553,7 +553,7 @@ class UserMemory:
         item = self.store.get(self._namespace, f"pref:{key}")
         return item.value if item else default
 
-    def set_fact(self, key: str, value: Any, **kwargs) -> MemoryItem:
+    def set_fact(self, key: str, value: Any, **kwargs: Any) -> MemoryItem:
         """Store a user fact."""
         return self.store.put(self._namespace, f"fact:{key}", value, memory_type="fact", **kwargs)
 
@@ -562,7 +562,7 @@ class UserMemory:
         item = self.store.get(self._namespace, f"fact:{key}")
         return item.value if item else default
 
-    def add_context(self, key: str, value: Any, **kwargs) -> MemoryItem:
+    def add_context(self, key: str, value: Any, **kwargs: Any) -> MemoryItem:
         """Add conversation context."""
         return self.store.put(self._namespace, f"ctx:{key}", value, memory_type="context", **kwargs)
 
@@ -656,7 +656,7 @@ def get_memory_store() -> BaseMemoryStore:
     return _memory_store
 
 
-def set_memory_store(store: BaseMemoryStore):
+def set_memory_store(store: BaseMemoryStore) -> None:
     """
     Set the memory store instance (for testing).
 

@@ -3,7 +3,7 @@ Prebuilt Agent Integration for LangGraph.
 
 """
 
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
@@ -32,7 +32,7 @@ def create_rag_agent(
     checkpointer: Any | None = None,
     store: Any | None = None,
     max_iterations: int | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> CompiledStateGraph:
     """
     Create a prebuilt ReAct agent for RAG workflows.
@@ -138,7 +138,7 @@ def create_rag_tool_node(
 
 
 def create_retriever_tool(
-    retriever_func: Callable[[str], list[dict[str, Any]]],
+    retriever_func: Callable[[str], list[dict[str, Any]] | Awaitable[list[dict[str, Any]]]],
     name: str = "retrieve",
     description: str = "Retrieve relevant documents for a query",
 ) -> BaseTool:
@@ -202,7 +202,7 @@ def create_retriever_tool(
 
 
 def create_search_tool(
-    search_func: Callable[[str], list[dict[str, Any]]],
+    search_func: Callable[[str], list[dict[str, Any]] | Awaitable[list[dict[str, Any]]]],
     name: str = "search",
     description: str = "Search for information in the knowledge base",
 ) -> BaseTool:
@@ -228,7 +228,7 @@ class RAGAgentConfig:
         max_iterations: int = AGENT_MAX_ITERATIONS,
         enable_checkpointing: bool = True,
         enable_memory: bool = False,
-    ):
+    ) -> None:
         self.model = model
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
@@ -252,7 +252,7 @@ class RAGAgent:
         result = await agent.query("What is RAG?")
     """
 
-    def __init__(self, config: RAGAgentConfig | None = None):
+    def __init__(self, config: RAGAgentConfig | None = None) -> None:
         self.config = config or RAGAgentConfig()
         self._tools: list[BaseTool | Callable] = []
         self._graph: CompiledStateGraph | None = None
@@ -265,7 +265,7 @@ class RAGAgent:
 
     def add_retriever(
         self,
-        retriever_func: Callable[[str], list[dict[str, Any]]],
+        retriever_func: Callable[[str], list[dict[str, Any]] | Awaitable[list[dict[str, Any]]]],
         name: str = "retrieve",
         description: str = "Retrieve relevant documents",
     ) -> "RAGAgent":
@@ -356,7 +356,7 @@ class RAGAgent:
         query: str,
         thread_id: str | None = None,
         stream_mode: str = "updates",
-    ):
+    ) -> Iterator[Any]:
         """
         Stream agent responses.
 

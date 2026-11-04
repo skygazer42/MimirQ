@@ -14,11 +14,11 @@ Additional optional phases:
 
 import asyncio
 import threading
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
-from typing import Any, Optional
+from typing import Any
 
 from app.rag.core.logging import get_logger
 
@@ -27,7 +27,7 @@ logger = get_logger("rag.middleware.base")
 # Type aliases
 StateDict = dict[str, Any]
 MiddlewareFunc = Callable[[StateDict], StateDict]
-AsyncMiddlewareFunc = Callable[[StateDict], "asyncio.Future[StateDict]"]
+AsyncMiddlewareFunc = Callable[[StateDict], Awaitable[StateDict]]
 WrapperFunc = Callable[[Callable], Callable]
 
 
@@ -63,7 +63,7 @@ class MiddlewareRegistry:
     Middlewares are registered per phase and executed in priority order.
     """
 
-    _instance: Optional["MiddlewareRegistry"] = None
+    _instance: "MiddlewareRegistry | None" = None
     _lock: threading.Lock = threading.Lock()
 
     def __new__(cls) -> "MiddlewareRegistry":
@@ -72,7 +72,7 @@ class MiddlewareRegistry:
                 # Double-check locking pattern
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._middlewares: dict[MiddlewarePhase, list[tuple]] = {
+                    cls._instance._middlewares: dict[MiddlewarePhase, list[tuple[int, str, Callable]]] = {
                         phase: [] for phase in MiddlewarePhase
                     }
         return cls._instance
@@ -381,7 +381,7 @@ def after_agent(
 class ToolMiddlewareChain:
     """Tool-call middleware chain (before/after + wrapper)."""
 
-    def __init__(self, registry: MiddlewareRegistry | None = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None) -> None:
         self._registry = registry or _registry
         self._custom_before: list[Callable] = []
         self._custom_after: list[Callable] = []
@@ -443,7 +443,7 @@ class ToolMiddlewareChain:
 class AgentMiddlewareChain:
     """Agent lifecycle middleware chain (before/after)."""
 
-    def __init__(self, registry: MiddlewareRegistry | None = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None) -> None:
         self._registry = registry or _registry
         self._custom_before: list[Callable] = []
         self._custom_after: list[Callable] = []
@@ -497,7 +497,7 @@ class MiddlewareChain:
         state = chain.run_after(state)
     """
 
-    def __init__(self, registry: MiddlewareRegistry | None = None):
+    def __init__(self, registry: MiddlewareRegistry | None = None) -> None:
         self._registry = registry or _registry
         self._custom_before: list[Callable] = []
         self._custom_after: list[Callable] = []
@@ -613,7 +613,7 @@ def apply_middlewares(
         chain.add_wrapper(w)
 
     @wraps(func)
-    async def async_wrapper(state: StateDict, *args, **kwargs) -> StateDict:
+    async def async_wrapper(state: StateDict, *args: Any, **kwargs: Any) -> StateDict:
         state = chain.run_before(state)
         wrapped_func = chain.wrap_call(func)
 
@@ -626,7 +626,7 @@ def apply_middlewares(
         return state
 
     @wraps(func)
-    def sync_wrapper(state: StateDict, *args, **kwargs) -> StateDict:
+    def sync_wrapper(state: StateDict, *args: Any, **kwargs: Any) -> StateDict:
         state = chain.run_before(state)
         wrapped_func = chain.wrap_call(func)
         state = wrapped_func(state, *args, **kwargs)
