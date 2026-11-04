@@ -115,27 +115,6 @@ def _populate_manual_existing_image_metadata(content: str, metadata: dict[str, A
         metadata["img_id"] = match.group(1).strip()
 
 
-def _append_manual_chunk_record(
-    *,
-    records: list[IndexRecord],
-    document: DBDocument,
-    chunk: ManualChunkCreate,
-    content: str,
-    metadata: dict[str, Any],
-) -> None:
-    records.append(
-        IndexRecord(
-            kind=IndexKind.CHUNK,
-            content=content,
-            metadata=metadata,
-            document_id=document.id,
-            page_number=chunk.page_number,
-            start_char=chunk.start_char,
-            end_char=chunk.end_char,
-        )
-    )
-
-
 def _merge_manual_document_image_ids(document: DBDocument, image_ids: set[str]) -> None:
     if not settings.MINIO_ENABLED or not image_ids:
         return
@@ -223,12 +202,16 @@ def _index_manual_document_chunks(
             metadata.setdefault("img_id", image_ids[0])
             metadata.setdefault("img_ids", image_ids)
             metadata.setdefault("image_count", len(image_ids))
-        _append_manual_chunk_record(
-            records=records,
-            document=document,
-            chunk=chunk,
-            content=content,
-            metadata=metadata,
+        records.append(
+            IndexRecord(
+                kind=IndexKind.CHUNK,
+                content=content,
+                metadata=metadata,
+                document_id=document.id,
+                page_number=chunk.page_number,
+                start_char=chunk.start_char,
+                end_char=chunk.end_char,
+            )
         )
 
     _merge_manual_document_image_ids(document, document_image_ids)

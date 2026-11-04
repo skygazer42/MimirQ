@@ -5,7 +5,7 @@ import contextlib
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID
 
 from fastapi import BackgroundTasks, HTTPException
@@ -106,10 +106,6 @@ async def run_document_processing_limited(
         )
 
 
-def task_queue_required() -> bool:
-    return settings.TASK_QUEUE_ENABLED
-
-
 def mark_document_processing_schedule_failed(*, db: Session, document: DBDocument) -> None:
     meta = dict(document.doc_metadata or {})
     meta.pop("task_id", None)
@@ -126,7 +122,7 @@ def mark_document_processing_schedule_failed(*, db: Session, document: DBDocumen
         logger.error("Failed to mark unscheduled document as failed: %s", str(exc)[:200])
 
 
-def _raise_queue_unavailable(*, db: Session, document: DBDocument, exc: Exception | None = None) -> None:
+def _raise_queue_unavailable(*, db: Session, document: DBDocument, exc: Exception | None = None) -> NoReturn:
     mark_document_processing_schedule_failed(db=db, document=document)
     if exc is not None:
         raise HTTPException(status_code=503, detail=DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL) from exc
@@ -174,7 +170,7 @@ async def dispatch_uploaded_document(
 ) -> bool:
     """Return whether the accepted local worker owns the request's source file."""
     object_backed = is_object_storage_uri(document.file_path)
-    queue_required = task_queue_required()
+    queue_required = settings.TASK_QUEUE_ENABLED
     task_id = None
     try:
         task_id = await _enqueue(
@@ -260,7 +256,7 @@ async def dispatch_retry_document(
             tenant_id=tenant_id, document=document, requested_by=requested_by, pipeline_hash=pipeline_hash
         )
     except Exception as exc:
-        if task_queue_required():
+        if settings.TASK_QUEUE_ENABLED:
             logger.error(
                 "Document queue unavailable while retry handoff is required for document %s: %s",
                 document.id,
@@ -271,7 +267,7 @@ async def dispatch_retry_document(
     if task_id:
         _persist_task_id(db=db, document=document, task_id=task_id)
         return
-    if task_queue_required():
+    if settings.TASK_QUEUE_ENABLED:
         logger.error("Document queue returned no task id while retry handoff is required for document %s", document.id)
         _raise_queue_unavailable(db=db, document=document)
     meta = document.doc_metadata or {}
