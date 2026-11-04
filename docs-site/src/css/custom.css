@@ -9,9 +9,9 @@
   --ifm-background-color: #fff;
   --ifm-background-surface-color: #f7f9f7;
   --ifm-navbar-height: 4.25rem;
-  --ifm-font-family-base: "Aptos", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --ifm-heading-font-family: "Aptos Display", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --ifm-font-family-monospace: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --ifm-font-family-base: 'Aptos', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ifm-heading-font-family: 'Aptos Display', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --ifm-font-family-monospace: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   --ifm-heading-font-weight: 650;
   --ifm-code-font-size: 90%;
   --ifm-line-height-base: 1.75;
@@ -192,7 +192,9 @@ a {
   border-radius: 0.5rem;
   color: var(--mimirq-muted);
   line-height: 1.45;
-  transition: background-color 140ms ease, color 140ms ease;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
 }
 
 .menu__link:hover {
@@ -442,7 +444,9 @@ html[lang='en'] .table-of-contents::before {
   border: 1px solid var(--mimirq-line);
   border-radius: 0.7rem;
   background: var(--mimirq-paper);
-  transition: border-color 150ms ease, background-color 150ms ease;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
 }
 
 .pagination-nav__link:hover {
