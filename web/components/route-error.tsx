@@ -200,7 +200,7 @@ function RouteErrorScene({ error, reset, title, message, href = '/', hrefLabel, 
         </div>
         <div className="mt-6 space-y-1 text-xs font-mono text-muted-foreground">
           {requestId ? <p>{t('error.requestId', { requestId })}</p> : null}
-          {error?.digest ? <p>{t('error.errorId', { errorId: error.digest })}</p> : null}
+          {error.digest ? <p>{t('error.errorId', { errorId: error.digest })}</p> : null}
         </div>
       </div>
     </section>

@@ -53,13 +53,15 @@ export async function waitForAssertion(assertion: () => void, timeoutMs = 1000) 
   const deadline = Date.now() + timeoutMs
   let lastError: unknown
 
-  while (Date.now() < deadline) {
+  while (true) {
     try {
       assertion()
       return
     } catch (error) {
       lastError = error
     }
+
+    if (Date.now() >= deadline) break
 
     await act(async () => {
       await new Promise((resolve) => globalThis.setTimeout(resolve, 0))
