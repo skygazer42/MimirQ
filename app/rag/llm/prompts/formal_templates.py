@@ -44,7 +44,7 @@ FORMAL_JSON_OUTPUT_RULES_ZH = """<json_output_policy>
 
 
 def _join_lines(lines: Iterable[str]) -> str:
-    return "\n".join(line.rstrip() for line in lines if str(line).strip())
+    return "\n".join(line.rstrip() for line in lines if line.strip())
 
 
 def _escape_f_string_literals(value: str) -> str:

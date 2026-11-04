@@ -2,7 +2,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.rag.core.text import parse_json_from_text
+from app.rag.core.json_text import parse_json_from_text
 
 
 class _StructuredBase(BaseModel):
@@ -112,8 +112,9 @@ def _repair_with_schema(
 
     try:
         validated = model.model_validate(merged)
-        repaired = not isinstance(data, dict) or dict(validated.model_dump(mode="json")) != data
-        return dict(validated.model_dump(mode="json")), repaired
+        payload = validated.model_dump(mode="json")
+        repaired = not isinstance(data, dict) or payload != data
+        return payload, repaired
     except ValidationError:
         fallback_validated = model.model_validate(
             build_structured_abstain_payload(
@@ -122,7 +123,7 @@ def _repair_with_schema(
                 citations=fallback_citations,
             )
         )
-        return dict(fallback_validated.model_dump(mode="json")), True
+        return fallback_validated.model_dump(mode="json"), True
 
 
 def parse_and_repair_structured_output(
@@ -139,9 +140,9 @@ def parse_and_repair_structured_output(
         fallback_answer=fallback_answer,
         fallback_citations=fallback_citations,
     )
-    out_meta = dict(meta or {})
+    out_meta = dict(meta)
     out_meta["schema_key"] = normalize_structured_preset_key(preset) or "default"
-    out_meta["repaired"] = bool(repaired)
+    out_meta["repaired"] = repaired
     out_meta["fallback_used"] = not bool(out_meta.get("ok"))
     return payload, out_meta
 

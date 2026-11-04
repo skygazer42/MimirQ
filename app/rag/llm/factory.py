@@ -5,10 +5,11 @@ Factory for LLM and embedding clients backed by the existing project settings.
 import asyncio
 import json
 import os
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
@@ -19,7 +20,11 @@ from app.rag.core.logging import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.fallback import FallbackLLMClient
 from app.rag.llm.models import LLMMessage, LLMResponse, LLMRole
-from app.rag.llm.prompt_cache import annotate_prompt_cache_content, detect_anthropic_compatible
+from app.rag.llm.prompt_cache import (
+    annotate_prompt_cache_content,
+    detect_anthropic_compatible,
+    message_content_to_text,
+)
 from app.storage.vector.factory import get_embedding_client as get_active_embedding_client
 
 logger = get_logger("rag.llm.factory")
@@ -31,24 +36,6 @@ def _resolve_explicit_http_proxy() -> str | None:
         if value and not value.lower().startswith("socks"):
             return value
     return None
-
-
-def _message_content_to_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, str):
-                parts.append(item)
-                continue
-            if not isinstance(item, dict):
-                continue
-            if str(item.get("type") or "").strip().lower() != "text":
-                continue
-            parts.append(str(item.get("text") or ""))
-        return "".join(parts)
-    return str(content or "")
 
 
 class OpenAIChatClient(BaseLLMClient):
@@ -105,22 +92,14 @@ class OpenAIChatClient(BaseLLMClient):
             client_kwargs["http_async_client"] = http_async_client
         self._client = ChatOpenAI(**client_kwargs)
 
-    def _should_cache_message(self, msg: LLMMessage) -> bool:
-        _content, applied = annotate_prompt_cache_content(
-            role=str(msg.role or ""),
-            content=msg.content,
-            anthropic_compatible=bool(self._is_anthropic_compatible),
-        )
-        return bool(applied)
-
-    def _convert_messages(self, messages: list[LLMMessage]):
-        converted = []
+    def _convert_messages(self, messages: list[LLMMessage]) -> list[BaseMessage]:
+        converted: list[BaseMessage] = []
         cached_count = 0
         for msg in messages:
             content, applied = annotate_prompt_cache_content(
-                role=str(msg.role or ""),
+                role=str(msg.role),
                 content=msg.content,
-                anthropic_compatible=bool(self._is_anthropic_compatible),
+                anthropic_compatible=self._is_anthropic_compatible,
             )
             if applied:
                 cached_count += 1
@@ -131,10 +110,10 @@ class OpenAIChatClient(BaseLLMClient):
             else:
                 converted.append(HumanMessage(content=content))
         self._last_invocation_meta = {
-            "selected_model": getattr(self, "model_name", None),
+            "selected_model": self.model_name,
             "prompt_cache_applied": bool(cached_count),
-            "prompt_cache_message_count": int(cached_count),
-            "provider_anthropic_compatible": bool(self._is_anthropic_compatible),
+            "prompt_cache_message_count": cached_count,
+            "provider_anthropic_compatible": self._is_anthropic_compatible,
         }
         return converted
 
@@ -152,7 +131,7 @@ class OpenAIChatClient(BaseLLMClient):
             max_tokens=max_tokens,
             **kwargs,
         )
-        return LLMResponse(content=_message_content_to_text(resp.content), raw=resp)
+        return LLMResponse(content=message_content_to_text(resp.content), raw=resp)
 
     def chat_stream(
         self,
@@ -161,10 +140,10 @@ class OpenAIChatClient(BaseLLMClient):
         max_tokens: int | None = None,
         include_reasoning: bool = False,
         **kwargs: Any,
-    ):
+    ) -> AsyncIterator[tuple[str, str | None]]:
         _ = include_reasoning
 
-        async def _gen():
+        async def _gen() -> AsyncIterator[tuple[str, str | None]]:
             converted = self._convert_messages(messages)
             async for chunk in self._client.astream(
                 converted,
@@ -172,7 +151,7 @@ class OpenAIChatClient(BaseLLMClient):
                 max_tokens=max_tokens,
                 **kwargs,
             ):
-                text = _message_content_to_text(getattr(chunk, "content", ""))
+                text = message_content_to_text(chunk.content)
                 if text:
                     yield text, None
 
@@ -182,23 +161,23 @@ class OpenAIChatClient(BaseLLMClient):
 class EmbeddingClient:
     """Adapter to reuse the project's embedding provider."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._provider = get_active_embedding_client()
 
     async def generate(self, text: str) -> list[float]:
         provider = self._provider
         if hasattr(provider, "embed_query"):
-            return await asyncio.to_thread(provider.embed_query, text)  # type: ignore[attr-defined]
+            return await asyncio.to_thread(provider.embed_query, text)
         if hasattr(provider, "embed_documents"):
-            out = await asyncio.to_thread(provider.embed_documents, [text])  # type: ignore[attr-defined]
+            out = await asyncio.to_thread(provider.embed_documents, [text])
             return out[0] if out else []
         raise RuntimeError("Embedding provider missing embed_query/embed_documents")
 
     async def generate_batch(self, texts: list[str]) -> list[list[float]]:
         provider = self._provider
         batch_limit = min(
-            max(1, int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64)),
-            max(1, int(getattr(settings, "KG_EXTRACT_EMBED_BATCH_SIZE", 128) or 128)),
+            max(1, settings.EMBEDDING_API_BATCH_SIZE or 64),
+            max(1, settings.KG_EXTRACT_EMBED_BATCH_SIZE or 128),
         )
         if len(texts or []) > batch_limit:
             out: list[list[float]] = []
@@ -206,7 +185,7 @@ class EmbeddingClient:
                 out.extend(await self.generate_batch(texts[start : start + batch_limit]))
             return out
         if hasattr(provider, "embed_documents"):
-            return await asyncio.to_thread(provider.embed_documents, texts)  # type: ignore[attr-defined]
+            return await asyncio.to_thread(provider.embed_documents, texts)
         return [await self.generate(t) for t in texts]
 
 
@@ -256,7 +235,7 @@ def _parse_fallback_specs(raw: str) -> list[dict[str, Any]]:
 
 
 def _resolve_fallback_specs(*, base_config: dict[str, Any] | None) -> list[dict[str, Any]]:
-    raw = str(getattr(settings, "LLM_FALLBACK_MODELS", "") or "").strip()
+    raw = settings.LLM_FALLBACK_MODELS.strip()
     parsed = _parse_fallback_specs(raw)
     if not parsed:
         return []
@@ -275,8 +254,8 @@ def _resolve_fallback_specs(*, base_config: dict[str, Any] | None) -> list[dict[
 def _llm_ctor_kwargs(
     *,
     model_config: dict[str, Any] | None,
-    http_client: Any,
-    http_async_client: Any,
+    http_client: httpx.Client | None,
+    http_async_client: httpx.AsyncClient | None,
 ) -> dict[str, Any]:
     ctor_kwargs: dict[str, Any] = {"model_config": model_config}
     if http_client is not None:
@@ -290,8 +269,8 @@ async def _build_fallback_clients(
     *,
     primary: BaseLLMClient,
     model_config: dict[str, Any] | None,
-    http_client: Any,
-    http_async_client: Any,
+    http_client: httpx.Client | None,
+    http_async_client: httpx.AsyncClient | None,
 ) -> list[BaseLLMClient]:
     specs = _resolve_fallback_specs(base_config=model_config)
     if not specs:
@@ -339,7 +318,7 @@ async def create_llm_client(
         ),
     )
 
-    if not bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)):
+    if not settings.LLM_FALLBACK_ENABLED:
         return primary
 
     clients = await _build_fallback_clients(

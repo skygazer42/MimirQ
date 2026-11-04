@@ -9,6 +9,7 @@ from app.rag.llm.prompts.oneshots import (
 from app.rag.llm.prompts.schemas import (
     ActionItemsPromptSchema,
     AssistantPromptSchema,
+    BasePromptSchema,
     SummaryPromptSchema,
 )
 from app.rag.llm.prompts.system_prompts import (
@@ -22,7 +23,7 @@ from app.rag.llm.prompts.system_prompts import (
 class PromptBundle:
     key: str
     system_prompt: str
-    response_model: type
+    response_model: type[BasePromptSchema]
     template: str
     oneshot_example: dict[str, Any]
 
