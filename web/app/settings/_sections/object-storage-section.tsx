@@ -204,7 +204,7 @@ export function ObjectStorageSection({ minio, updateMinIO }: Readonly<ObjectStor
             value={minio.image_max_bytes}
             onChange={(event) =>
               updateMinIO({
-                image_max_bytes: Math.max(0, Number.parseInt(event.target.value || '0', 10)),
+                image_max_bytes: Math.max(0, Number(event.target.value || '0')),
               })
             }
             className={STORAGE_INPUT}

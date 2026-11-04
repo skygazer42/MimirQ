@@ -86,7 +86,7 @@ export function UrlIngestSection({ urlIngest, updateUrlIngest }: Readonly<UrlIng
                 className="h-8 border-info/15 bg-info/[0.025] text-[12px]"
                 onChange={(event) =>
                   updateUrlIngest({
-                    max_bytes: Math.max(0, Number.parseInt(event.target.value || '0', 10)),
+                    max_bytes: Math.max(0, Number(event.target.value || '0')),
                   })
                 }
               />

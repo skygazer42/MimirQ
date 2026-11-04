@@ -1,13 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, Copy, Database, KeyRound, Link2, PlugZap, RefreshCw, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
-import { datasetApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { formatApiError } from '@/lib/api-errors'
 import { cn } from '@/lib/utils'
 import type { Dataset } from '@/types/datasets'
 import type { SystemSettings } from '@/types/settings'
@@ -19,42 +21,32 @@ type DifyIntegrationSectionProps = {
   updateDifyExternalKnowledge: (patch: Partial<DifyExternalKnowledgeSettings>) => void
 }
 
-function parseKnowledgeMap(raw: string): Record<string, string[]> {
-  if (!raw.trim()) return {}
-  const parsed = JSON.parse(raw)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+type KnowledgeMap = Record<string, unknown>
 
-  const map: Record<string, string[]> = {}
-  for (const [knowledgeId, value] of Object.entries(parsed)) {
-    if (typeof value === 'string') {
-      map[knowledgeId] = [value]
-      continue
-    }
-    if (Array.isArray(value)) {
-      map[knowledgeId] = value.map((item) => (typeof item === 'string' ? item : '')).filter(Boolean)
-      continue
-    }
-    if (value && typeof value === 'object') {
-      const obj = value as Record<string, unknown>
-      const ids = obj.dataset_ids ?? obj.datasets ?? obj.dataset_id
-      if (typeof ids === 'string') {
-        map[knowledgeId] = [ids]
-      } else if (Array.isArray(ids)) {
-        map[knowledgeId] = ids.map((item) => (typeof item === 'string' ? item : '')).filter(Boolean)
-      }
-    }
-  }
-  return map
+function isKnowledgeMapping(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function formatKnowledgeMap(map: Record<string, string[]>): string {
-  const cleaned: Record<string, string[]> = {}
-  for (const [knowledgeId, datasetIds] of Object.entries(map)) {
-    const key = knowledgeId.trim()
-    const ids = Array.from(new Set(datasetIds.map((id) => id.trim()).filter(Boolean)))
-    if (key && ids.length > 0) cleaned[key] = ids
+function parseKnowledgeMap(raw: string): KnowledgeMap {
+  if (!raw.trim()) return {}
+  const parsed: unknown = JSON.parse(raw)
+  if (!isKnowledgeMapping(parsed)) throw new TypeError('Knowledge map must be a JSON object')
+  return parsed
+}
+
+function bindingDatasetIds(value: unknown): string[] {
+  if (typeof value === 'string') return value ? [value] : []
+  if (Array.isArray(value)) return value.flatMap(bindingDatasetIds)
+  if (isKnowledgeMapping(value)) {
+    for (const key of ['dataset_ids', 'datasets', 'dataset_id']) {
+      if (key in value) return bindingDatasetIds(value[key])
+    }
   }
-  return Object.keys(cleaned).length ? JSON.stringify(cleaned) : ''
+  return []
+}
+
+function formatKnowledgeMap(map: KnowledgeMap): string {
+  return Object.keys(map).length ? JSON.stringify(map) : ''
 }
 
 function shortId(value: string): string {
@@ -89,16 +81,18 @@ export function DifyIntegrationSection({
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const [origin, setOrigin] = useState('')
   const [copied, setCopied] = useState(false)
+  const copyOwnerRef = useRef({ active: true })
+  const copyTimerRef = useRef<number | null>(null)
 
   const endpointPath = difyExternalKnowledge.endpoint_path || '/api/v1/integrations/dify/retrieval'
   const endpointUrl = `${origin}${endpointPath}`
 
-  let knowledgeMap: Record<string, string[]> = {}
+  let knowledgeMap: KnowledgeMap = {}
   let knowledgeMapError = ''
   try {
     knowledgeMap = parseKnowledgeMap(difyExternalKnowledge.knowledge_map_json || '')
   } catch {
-    knowledgeMapError = '当前绑定配置不是有效 JSON，可重新生成绑定覆盖'
+    knowledgeMapError = '当前绑定配置不是有效的 JSON 对象，可重新生成绑定覆盖'
   }
 
   const selectedDatasets = useMemo(
@@ -107,7 +101,13 @@ export function DifyIntegrationSection({
   )
 
   useEffect(() => {
+    const owner = { active: true }
+    copyOwnerRef.current = owner
     setOrigin(globalThis.window.location.origin)
+    return () => {
+      owner.active = false
+      if (copyTimerRef.current != null) globalThis.window.clearTimeout(copyTimerRef.current)
+    }
   }, [])
 
   useEffect(() => {
@@ -145,10 +145,17 @@ export function DifyIntegrationSection({
   const writeBinding = () => {
     const ids = selectedDatasets.map((dataset) => dataset.id)
     if (ids.length === 0) return
+    const bindingId = knowledgeId.trim() || buildKnowledgeId(selectedDatasets)
+    const current = knowledgeMap[bindingId]
+    let binding: unknown = ids
+    if (isKnowledgeMapping(current)) {
+      const selector = ['dataset_ids', 'datasets', 'dataset_id'].find((key) => key in current) || 'dataset_ids'
+      binding = { ...current, [selector]: ids }
+    }
     updateDifyExternalKnowledge({
       knowledge_map_json: formatKnowledgeMap({
         ...knowledgeMap,
-        [knowledgeId.trim() || buildKnowledgeId(selectedDatasets)]: ids,
+        [bindingId]: binding,
       }),
     })
   }
@@ -161,9 +168,17 @@ export function DifyIntegrationSection({
 
   const copyEndpoint = async () => {
     if (!endpointUrl) return
-    await navigator.clipboard?.writeText(endpointUrl)
-    setCopied(true)
-    globalThis.setTimeout(() => setCopied(false), 1200)
+    const owner = copyOwnerRef.current
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('当前浏览器不支持剪贴板复制')
+      await navigator.clipboard.writeText(endpointUrl)
+      if (!owner.active) return
+      setCopied(true)
+      if (copyTimerRef.current != null) globalThis.window.clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = globalThis.window.setTimeout(() => setCopied(false), 1200)
+    } catch (error) {
+      if (owner.active) toast.error(formatApiError(error, '复制接入地址失败'))
+    }
   }
 
   return (
@@ -339,13 +354,13 @@ export function DifyIntegrationSection({
                 暂无绑定选择数据集后生成一个 knowledge_id
               </div>
             ) : null}
-            {Object.entries(knowledgeMap).map(([bindingId, datasetIds]) => (
+            {Object.entries(knowledgeMap).map(([bindingId, binding]) => (
               <div key={bindingId} className="rounded-[13px] border border-border/60 bg-muted/30 px-3 py-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-mono text-[12px] font-semibold text-foreground">{bindingId}</div>
                     <div className="mt-1 flex flex-wrap gap-1.5">
-                      {datasetIds.map((datasetId) => (
+                      {Array.from(new Set(bindingDatasetIds(binding))).map((datasetId) => (
                         <span
                           key={datasetId}
                           className="rounded-full border border-info/20 bg-info/[0.035] px-2 py-0.5 text-[10.5px] text-muted-foreground"
@@ -391,7 +406,7 @@ export function DifyIntegrationSection({
                 className="mt-1 h-8 rounded-[10px] border-info/15 bg-info/[0.025] text-[12px]"
                 onChange={(event) =>
                   updateDifyExternalKnowledge({
-                    top_k_max: Math.max(1, Math.min(200, Number.parseInt(event.target.value || '50', 10))),
+                    top_k_max: Math.max(1, Math.min(200, Number(event.target.value || '50'))),
                   })
                 }
               />

@@ -220,7 +220,7 @@ export function ParserServicesSection({
                 value={etl4llm.timeout_sec}
                 onChange={(event) =>
                   updateEtl4Llm({
-                    timeout_sec: Number.parseInt(event.target.value || '0', 10) || 120,
+                    timeout_sec: Number(event.target.value || '0') || 120,
                   })
                 }
               />
@@ -316,7 +316,7 @@ export function ParserServicesSection({
                 value={docling.request_timeout_sec}
                 onChange={(event) =>
                   updateDocling({
-                    request_timeout_sec: Number.parseInt(event.target.value || '0', 10) || 600,
+                    request_timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
@@ -342,7 +342,7 @@ export function ParserServicesSection({
                 value={docling.health_timeout_sec}
                 onChange={(event) =>
                   updateDocling({
-                    health_timeout_sec: Number.parseInt(event.target.value || '0', 10) || 5,
+                    health_timeout_sec: Number(event.target.value || '0') || 5,
                   })
                 }
               />
@@ -403,7 +403,7 @@ export function ParserServicesSection({
                 value={marker.timeout_sec}
                 onChange={(event) =>
                   updateMarker({
-                    timeout_sec: Number.parseInt(event.target.value || '0', 10) || 600,
+                    timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
@@ -441,7 +441,7 @@ export function ParserServicesSection({
                 value={paddleVl.timeout_sec}
                 onChange={(event) =>
                   updatePaddleVL({
-                    timeout_sec: Number.parseInt(event.target.value || '0', 10) || 600,
+                    timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
@@ -479,7 +479,7 @@ export function ParserServicesSection({
                 value={textIn.timeout_sec}
                 onChange={(event) =>
                   updateTextIn({
-                    timeout_sec: Number.parseInt(event.target.value || '0', 10) || 180,
+                    timeout_sec: Number(event.target.value || '0') || 180,
                   })
                 }
               />
@@ -542,7 +542,7 @@ export function ParserServicesSection({
                 value={textIn.dpi}
                 onChange={(event) =>
                   updateTextIn({
-                    dpi: Number.parseInt(event.target.value || '0', 10) || 144,
+                    dpi: Number(event.target.value || '0') || 144,
                   })
                 }
               />
@@ -557,7 +557,7 @@ export function ParserServicesSection({
                 value={textIn.page_count}
                 onChange={(event) =>
                   updateTextIn({
-                    page_count: Number.parseInt(event.target.value || '0', 10) || 0,
+                    page_count: Number(event.target.value || '0') || 0,
                   })
                 }
               />
@@ -634,7 +634,7 @@ export function ParserServicesSection({
                 value={magicPdf.timeout_sec}
                 onChange={(event) =>
                   updateMagicPDF({
-                    timeout_sec: Number.parseInt(event.target.value || '0', 10) || 600,
+                    timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
