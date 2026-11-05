@@ -68,7 +68,6 @@ LIVE_CORE_GATE_EXTRA_ARGS ?=
 PYTEST_ARGS ?=
 VITEST_ARGS ?=
 PIP_INSTALL_ARGS ?= --retries 10 --timeout 120
-PYTORCH_CPU_INDEX_URL ?= https://download.pytorch.org/whl/cpu
 PLUGIN_HELP_TARGETS ?=
 CHANGZHOU_GOV_PLUGIN_MAKEFILE := plugins/pipelines/changzhou-gov-service-knowledge/changzhou-gov-service-knowledge.mk
 
@@ -184,7 +183,7 @@ init:
 install-host:
 	$(HOST_PYTHON) -m venv .venv
 	$(VENV_PY) -m pip install $(PIP_INSTALL_ARGS) --upgrade pip setuptools wheel
-	$(VENV_PY) -m pip install $(PIP_INSTALL_ARGS) --extra-index-url $(PYTORCH_CPU_INDEX_URL) -r requirements.txt
+	$(VENV_PY) -m pip install $(PIP_INSTALL_ARGS) -r requirements.txt
 	$(VENV_PY) -m pip check
 	cd web && pnpm install
 
@@ -507,6 +506,7 @@ compileall-docker:
 # - ecdsa: JWT signing uses the cryptography backend; verification is unaffected.
 audit-py:
 	PIP_DEFAULT_TIMEOUT=60 $(PY) -m pip_audit -r requirements.txt \
+		-r requirements-local-models.txt -r requirements-chroma.txt -r requirements-faiss.txt \
 		--timeout 60 \
 		--index-url https://pypi.org/simple \
 		--extra-index-url https://download.pytorch.org/whl/cpu \

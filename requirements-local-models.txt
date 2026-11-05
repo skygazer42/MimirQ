@@ -1,0 +1,12 @@
+# Optional in-process embeddings, cross-encoder reranking and HanLP keywords.
+# Linux CPU pins prevent PyPI's CUDA runtime from entering this profile.
+--extra-index-url https://download.pytorch.org/whl/cpu
+-r requirements.txt
+
+torch==2.13.0+cpu; platform_system == "Linux"
+torch==2.13.0; platform_system != "Linux"
+torchvision==0.28.0+cpu; platform_system == "Linux"
+torchvision==0.28.0; platform_system != "Linux"
+sentence-transformers==5.3.0
+accelerate==1.13.0
+hanlp==2.1.3

@@ -475,9 +475,9 @@ def test_ci_backend_full_suite_runs_pytest_xdist_in_parallel() -> None:
     # parallelized with pytest-xdist (`-n auto`).
     assert "$(PY) -m pytest -q -n auto $(PYTEST_ARGS)" in makefile
     assert "pytest-xdist==3.8.0" in requirements_dev
-    # Both jobs install the complete dev set; xgboost-cpu keeps the dependency
+    # Both jobs explicitly install the complete regression profile; xgboost-cpu keeps the dependency
     # graph CPU-only without filtering requirements or bypassing pip metadata.
-    assert workflow.count("python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt") == 2
+    assert workflow.count("python -m pip install --retries 10 --timeout 120 -r requirements-ci.txt") == 2
     assert "filter_cpu_ci_requirements.py" not in workflow
     assert "--no-deps xgboost" not in workflow
     assert workflow.count("run: make test\n") == 2
@@ -554,13 +554,12 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}" in workflow
     assert "PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}" in workflow
     assert "PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}" in workflow
-    assert "TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}" in workflow
     assert "SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}" in workflow
     _assert_uses_self_hosted_bootstrap(
         workflow,
-        "bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir",
+        "bash scripts/prepare_self_hosted_ci.sh",
         count=1,
     )
     assert "runner.name == 'mimirq-main-01'" not in workflow
@@ -570,7 +569,8 @@ def test_api_docs_workflow_actually_deploys_pages() -> None:
     assert "\n  build:\n" in workflow
     assert "runs-on: ubuntu-latest" in workflow
     assert workflow.count("make api-docs-build") == 2
-    assert workflow.count("python ci/download_verified_wheels.py") == 2
+    assert "download_verified_wheels.py" not in workflow
+    assert "TORCH_WHEEL_DIR" not in workflow
     assert "make api-docs-build-static" not in workflow
     assert "Upload API site artifact" in workflow
     assert "actions/upload-artifact@" in workflow
@@ -626,17 +626,25 @@ def test_backend_dockerfile_uses_bundled_buildkit_frontend() -> None:
     assert not dockerfile.lstrip().startswith("# syntax=docker/dockerfile:")
 
 
-def test_cpu_torch_wheels_match_linux_runtime_requirements() -> None:
-    requirements = _read("requirements.txt")
+def test_cpu_torch_wheels_match_optional_local_model_requirements() -> None:
+    requirements = _read("requirements-local-models.txt")
     torch_version = re.search(r'^torch==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
     torchvision_version = re.search(r'^torchvision==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
 
     assert torch_version is not None
     assert torchvision_version is not None
-    for install_surface in ("docker/Dockerfile", ".github/workflows/ci.yml"):
+    assert torch_version.group(1).endswith("+cpu")
+    assert torchvision_version.group(1).endswith("+cpu")
+    dockerfile = _read("docker/Dockerfile")
+    assert "ARG REQUIREMENTS_FILE=requirements.txt" in dockerfile
+    assert "torch-" not in dockerfile
+    assert "torchvision-" not in dockerfile
+    for install_surface in ("ci/download_verified_wheels.py", ".github/workflows/ci.yml"):
         content = _read(install_surface)
-        assert set(re.findall(r"\btorch-([0-9.]+)\+cpu-", content)) == {torch_version.group(1)}
-        assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {torchvision_version.group(1)}
+        assert set(re.findall(r"\btorch-([0-9.]+)\+cpu-", content)) == {torch_version.group(1).removesuffix("+cpu")}
+        assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {
+            torchvision_version.group(1).removesuffix("+cpu")
+        }
 
 
 def test_docker_ci_supports_cold_web_builds() -> None:
@@ -755,7 +763,7 @@ def test_built_web_jwt_browser_smoke_is_explicitly_wired() -> None:
     assert "MIMIRQ_SMOKE_PASSWORD=%s" in script
 
     assert "PLAYWRIGHT_EXTERNAL_SERVER" in playwright_config
-    assert "webServer: useExternalServer ? undefined" in playwright_config
+    assert re.search(r"webServer:\s*useExternalServer\s*\?\s*undefined", playwright_config)
     assert "Install JWT browser smoke dependencies" in docker_job
     assert "Prepare self-hosted Node" in docker_job
     assert "node -v" in docker_job

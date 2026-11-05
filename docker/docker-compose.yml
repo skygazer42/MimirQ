@@ -5,6 +5,7 @@ x-backend-build: &backend_build
   dockerfile: docker/Dockerfile
   network: ${DOCKER_BUILD_NETWORK:-default}
   args:
+    REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements.txt}
     # Optional build metadata (exposed via /api/v1/meta)
     MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
     MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}

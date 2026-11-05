@@ -1,169 +1,100 @@
-# 依赖说明
+# Ragvia 依赖与安装配置
 
-MimirQ 支持两种 Embedding 模式，对应不同的依赖需求。
+默认 API 环境使用 Milvus 客户端和远程模型接口。主依赖不安装 Torch、torchvision、sentence-transformers、HanLP、Accelerate、Chroma 或 FAISS；需要这些功能时，显式选择对应的安装配置。
 
-本仓库提供三组依赖文件：
-- `requirements.txt`：统一依赖（包含 API 模式 / 本地 Embedding / 开发工具）
+基础环境仍包含现有文档处理、ONNX OCR、评测和监控依赖。这里的拆分解决本地 Torch 推理与可替代向量后端的默认安装问题，不代表 API 已经只剩 Web 框架和数据库驱动。
 
----
+## 安装配置
 
-## 🌐 API 模式（推荐，默认）
+| 文件                            | 安装内容                                                                | 使用场景                                            |
+| ------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------- |
+| `requirements.txt`              | 默认后端依赖、Milvus 客户端、BM25、常规解析                             | API 与远程 Embedding/Rerank                         |
+| `requirements-dev.txt`          | 基础环境和 pytest、Ruff、pip-audit 等工具                               | 日常开发、基础验证                                  |
+| `requirements-local-models.txt` | 基础环境和 Torch、torchvision、sentence-transformers、Accelerate、HanLP | 进程内 Embedding、CrossEncoder、HanLP 关键词        |
+| `requirements-chroma.txt`       | 基础环境和 Chroma、LangChain Chroma 适配器                              | 显式选择 Chroma 的本地知识库                        |
+| `requirements-faiss.txt`        | 基础环境和 FAISS                                                        | FAISS 后端或 ColBERT ANN 加速；无官方 Windows wheel |
+| `requirements-ci.txt`           | 开发工具和上述所有可选依赖                                              | 现有完整后端回归；不用于默认 API 镜像               |
 
-**适用场景**：生产环境、需要快速部署
+所有可选配置都引用基础文件，可以独立安装。依赖版本沿用项目原有固定版本。
 
-**优势**：
-- ✅ 无需下载模型
-- ✅ 安装快速（依赖包小）
-- ✅ 无需 GPU
-- ✅ 支持多种 API 服务（OpenAI、通义千问、DeepSeek 等）
+## 默认 API 与开发安装
 
-**安装**：
+在仓库根目录运行：
+
 ```bash
-pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+python -m pip install -r requirements.txt
+
+# 需要测试、格式检查和依赖审计工具时：
+python -m pip install -r requirements-dev.txt
 ```
 
-**配置**：
-```bash
-# .env（OpenAI API 示例，不是仓库默认部署值）
+默认安装不需要 PyTorch 专用下载源。`make install-host` 也安装基础后端依赖，再安装前端依赖。
+
+Embedding 配置应与实际模型服务一致。例如调用提供 BGE-M3 的 OpenAI-compatible 服务：
+
+```dotenv
 EMBEDDING_PROVIDER=openai_compatible
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_API_KEY=your-api-key
-EMBEDDING_API_BASE=https://api.openai.com/v1
+EMBEDDING_MODEL=BAAI/bge-m3
 ```
 
-**说明**：如需启用更多可选能力（本地 Embedding / OCR / 高级解析等），参考下方条目安装额外依赖。
+同时按 `.env.example` 配置实际的 `EMBEDDING_API_BASE` 和 `EMBEDDING_API_KEY`。官方 OpenAI 服务应使用其提供的模型名，例如 `text-embedding-3-small`。Embedding 与 Rerank 服务可以部署在内网，API 调用方式不要求使用外部公有云。
 
-**对齐说明**：仓库随 `.env.example` 发布的默认 `EMBEDDING_MODEL` 是 `BAAI/bge-m3`，需要指向实际提供该模型的 OpenAI-compatible 服务；上面的官方 OpenAI 示例则使用 `text-embedding-3-small`。如果没有显式设置 `EMBEDDING_MODEL`，后端代码也以 `text-embedding-3-small` 作为回退值。生产和团队环境应以 `.env.example` / 部署配置为准，不要依赖进程内默认值。
+## 本地模型按需安装
 
----
-
-## 💻 本地模式（可选）
-
-**适用场景**：离线环境、高隐私需求、无 API 费用预算
-
-**优势**：
-- ✅ 完全离线运行
-- ✅ 数据隐私
-- ✅ 无 API 调用费用
-
-**劣势**：
-- ❌ 需下载模型（约 1.5GB）
-- ❌ 需要较大内存（建议 8GB+）
-- ❌ 首次启动较慢
-
-**安装**：
 ```bash
-pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
+python -m pip install -r requirements-local-models.txt
 ```
 
-**配置**：
+安装后才能选择 `EMBEDDING_PROVIDER=local` 或本地 CrossEncoder/HanLP 功能。模型权重另行准备，首次模型加载仍可能下载权重；仅安装 Python 包不等于模型已经就绪。
+
+Linux 配置明确固定 `torch==2.13.0+cpu`、`torchvision==0.28.0+cpu`，并提供官方 CPU 源，防止默认拉入 CUDA 运行库。需要 GPU 推理时，优先使用独立模型服务及其专用 CUDA 环境。HanLP、Accelerate 都依赖 Torch，因此随本地模型一起安装。
+
+## Chroma 与 FAISS 按需安装
+
 ```bash
-# .env
-EMBEDDING_PROVIDER=local
-EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+# VECTOR_BACKEND=chroma
+python -m pip install -r requirements-chroma.txt
+
+# VECTOR_BACKEND=faiss，仅适用于有对应 FAISS wheel 的平台
+python -m pip install -r requirements-faiss.txt
 ```
 
-**依赖大小**：约 2-3GB（包含 PyTorch）
+项目生产默认仍为 Milvus。切换后端不会迁移已有向量索引；已有 Chroma/FAISS 数据应继续使用原后端，直到单独完成迁移。
 
----
+`rank-bm25` 保留在基础环境：知识库混合检索和聊天记忆均通过 LangChain 的 BM25Retriever 使用它。它不需要 Torch 或模型权重；其进程内索引占用取决于实际文档数量。迁移到服务端 BM25 属于后续检索设计工作，不能用删除依赖替代。
 
-## 📦 依赖对比
+## Docker 与 Compose
 
-| 依赖包 | API 模式 | 本地模式 | 大小 | 用途 |
-|-------|---------|---------|------|------|
-| fastapi | ✅ | ✅ | ~50MB | Web 框架 |
-| langchain | ✅ | ✅ | ~100MB | AI 应用框架 |
-| pymilvus | ✅ | ✅ | ~20MB | 向量数据库 |
-| **torch** | ❌ | ✅ | ~2GB | 深度学习框架 |
-| **sentence-transformers** | ❌ | ✅ | ~100MB | 本地 Embedding |
+主 Dockerfile 默认安装 `requirements.txt`，不预下载 Torch。显式构建可选镜像时选择相应配置：
 
----
-
-## 🔄 切换模式
-
-### 从本地模式切换到 API 模式
-
-1. 修改 `.env`：
 ```bash
-EMBEDDING_PROVIDER=openai_compatible
-EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_API_KEY=your-api-key
-EMBEDDING_API_BASE=https://api.openai.com/v1
+docker build -f docker/Dockerfile -t ragvia-api .
+docker build -f docker/Dockerfile --build-arg REQUIREMENTS_FILE=requirements-chroma.txt -t ragvia-api-chroma .
 ```
 
-2. 重启服务即可（无需卸载依赖）
+Compose 的 `BACKEND_REQUIREMENTS_FILE` 映射到该构建参数。主 Compose 默认使用基础配置；已有 lite 和 retrieval-dev 环境默认使用 `requirements-chroma.txt`，与其既有 Chroma 后端保持一致。
 
-### 从 API 模式切换到本地模式
+如将 lite 环境显式改为 FAISS，在 `.env` 中同时配置：
 
-1. 修改 `.env`：
-```bash
-EMBEDDING_PROVIDER=local
-EMBEDDING_MODEL=BAAI/bge-large-zh-v1.5
+```dotenv
+BACKEND_REQUIREMENTS_FILE=requirements-faiss.txt
+VECTOR_BACKEND_LITE=faiss
 ```
 
-2. 重启服务
+配置变化后需要重新构建 API 和 worker 镜像。组合多个可选能力时，可以安装多份 requirements；自定义镜像应提供引用所需配置的 requirements 文件，并通过构建参数显式选择。
 
----
+## 现有环境与验证边界
 
-## 💡 推荐配置
+修改 requirements 不会自动卸载当前环境已经安装的包。建议在新的虚拟环境或重新构建的镜像中验证依赖和占用，保留原环境用于回退；不要把声明减少直接等同于已释放磁盘空间。
 
-### 开发环境
-```bash
-# 推荐使用 API 模式，快速启动
-EMBEDDING_PROVIDER=openai_compatible
-```
-
-### 生产环境
-```bash
-# 根据需求选择
-# - 有 API 预算 → openai_compatible
-# - 高隐私需求 → local
-```
-
-### 离线环境
-```bash
-# 必须使用本地模式
-EMBEDDING_PROVIDER=local
-```
-
----
-
-## ❓ 常见问题
-
-### Q1: 为什么要分离依赖？
-
-**A**: 为了减少文件数量与部署复杂度，本仓库已合并为单一 `requirements.txt`。如需减小体积，可在自建镜像/环境中自行裁剪 `torch` 等重依赖。
-
-### Q3: 本地模式支持 GPU 吗？
-
-**A**: 支持！系统会自动检测 GPU：
-- 有 CUDA GPU → 自动使用 GPU 加速
-- 无 GPU → 自动使用 CPU
-
-无需手动配置。
-
-### Q4: 可以混用吗？
-
-**A**: 不建议。请选择一种模式：
-- 要么全部用 API（LLM + Embedding 都用 API）
-- 要么全部用本地（需要更多配置）
-
----
-
-## 📊 性能对比
-
-| 指标 | API 模式 | 本地模式（CPU） | 本地模式（GPU） |
-|------|---------|----------------|----------------|
-| 启动时间 | ~3秒 | ~30秒 | ~10秒 |
-| 内存占用 | ~500MB | ~2GB | ~3GB |
-| Embedding 速度 | 中等（受网络影响） | 慢 | 快 |
-| 成本 | API 费用 | 硬件成本 | 硬件成本 |
+本地界面开发继续只运行前端、API 和必要的 PostgreSQL，不因本次拆分启动模型、解析服务或完整容器栈。需要验证所有可选实现的 CI 使用 `requirements-ci.txt`；依赖审计覆盖基础与可选配置。
 
 ---
 
 ## 🔐 JWT 组同步（Enterprise，可选）
 
 当 `AUTH_MODE=jwt` 时，可以选择从 **已验证的 JWT** 中读取 groups claim，并将其同步为：
+
 - `tenant_groups`（租户组）
 - `tenant_group_members`（组成员关系）
 
@@ -184,6 +115,7 @@ JWT_GROUPS_SYNC_TTL_SEC=60
 ```
 
 说明：
+
 - best-effort：同步失败不会阻塞请求（不会影响鉴权结果）。
 - 有节流：`JWT_GROUPS_SYNC_TTL_SEC` 用于降低写放大（单进程内 best-effort TTL）。
 - 当前实现为 add-only（仅补齐缺失的组/成员，不做删除）。

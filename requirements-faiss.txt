@@ -1,0 +1,5 @@
+# Optional FAISS backend and ColBERT ANN acceleration.
+# FAISS has no official Windows wheels.
+-r requirements.txt
+
+faiss-cpu==1.13.2; platform_system != "Windows"
