@@ -218,6 +218,24 @@ function formatChunkTargetLabel(value: unknown): string {
     .replace('Overlap waste', '重叠成本')
 }
 
+function qualityBucketLabel(key: string): string {
+  switch (String(key || '').toLowerCase()) {
+    case 'high_density':
+      return '高密度'
+    case 'mid_density':
+      return '中密度'
+    case 'low_density':
+      return '低密度'
+    case 'outline_heavy':
+      return '目录/标题占比高'
+    case 'tiny':
+      return '内容过短'
+    case 'unknown':
+    default:
+      return '未知'
+  }
+}
+
 function asDocumentStatus(status: string | null | undefined): Document['status'] {
   switch (status) {
     case 'pending':
@@ -481,24 +499,6 @@ export default function DatasetProfilePage() {
     if (other > 0) top.push({ key: '__other__', name: '其他', value: other })
     return top
   }, [summary])
-
-  function qualityBucketLabel(key: string): string {
-    switch (String(key || '').toLowerCase()) {
-      case 'high_density':
-        return '高密度'
-      case 'mid_density':
-        return '中密度'
-      case 'low_density':
-        return '低密度'
-      case 'outline_heavy':
-        return '目录/标题占比高'
-      case 'tiny':
-        return '内容过短'
-      case 'unknown':
-      default:
-        return '未知'
-    }
-  }
 
   const qualityBucketChartData = useMemo(() => {
     const m = summary?.by_quality_bucket || {}

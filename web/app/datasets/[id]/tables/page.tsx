@@ -21,7 +21,7 @@ import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
-import type { Dataset, DatasetTableAsset, TableAskResponse, TableQueryResponse } from '@/types'
+import type { DatasetTableAsset, TableAskResponse, TableQueryResponse } from '@/types'
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -99,7 +99,7 @@ export default function DatasetTablesPage() {
     },
     enabled: Boolean(datasetId),
   })
-  const dataset = (datasetQuery.data ?? null) as Dataset | null
+  const dataset = datasetQuery.data ?? null
   const items: DatasetTableAsset[] = useMemo(() => tablesQuery.data?.items || [], [tablesQuery.data?.items])
   const isLoading = datasetQuery.isFetching || tablesQuery.isFetching
   const loadError = datasetQuery.error ?? tablesQuery.error

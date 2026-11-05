@@ -42,7 +42,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { useRouter } from '@/i18n/navigation'
 import { cn, detachPromise } from '@/lib/utils'
 
-import type { Dataset, DatasetConfigBundle, DatasetConfigExport, DatasetConfigImportRequest } from '@/types'
+import type { DatasetConfigBundle, DatasetConfigImportRequest } from '@/types'
 
 type DatasetWorkflowGraphNode = GraphNode & {
   meta?: {
@@ -116,8 +116,8 @@ export default function DatasetWorkflowPage() {
     },
     enabled: Boolean(datasetId),
   })
-  const dataset = (datasetQuery.data ?? null) as Dataset | null
-  const exportRes = (configQuery.data ?? null) as DatasetConfigExport | null
+  const dataset = datasetQuery.data ?? null
+  const exportRes = configQuery.data ?? null
   const loading = datasetQuery.isFetching || configQuery.isFetching
   const loadError = datasetQuery.error ?? configQuery.error
   const loadErrorUpdatedAt = Math.max(datasetQuery.errorUpdatedAt, configQuery.errorUpdatedAt)

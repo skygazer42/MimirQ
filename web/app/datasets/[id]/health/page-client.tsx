@@ -38,7 +38,7 @@ import { sanitizeFilename } from '@/lib/sanitize'
 import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import { useRouter } from '@/i18n/navigation'
 
-import type { Dataset, DatasetHealthResponse, DatasetProfileFindingSummary } from '@/types'
+import type { DatasetProfileFindingSummary } from '@/types'
 
 const PIE_COLORS = [
   'hsl(var(--chart-5))',
@@ -105,8 +105,8 @@ export default function DatasetHealthPage() {
     enabled: Boolean(datasetId),
   })
 
-  const dataset = (datasetQuery.data ?? null) as Dataset | null
-  const health = (healthQuery.data ?? null) as DatasetHealthResponse | null
+  const dataset = datasetQuery.data ?? null
+  const health = healthQuery.data ?? null
   const isLoading = datasetQuery.isFetching || healthQuery.isFetching
 
   const loadError = datasetQuery.error ?? healthQuery.error
