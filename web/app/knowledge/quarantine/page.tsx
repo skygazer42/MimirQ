@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
   ArrowRight,
@@ -33,8 +33,9 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { cn, detachPromise, formatDate, formatFileSize } from '@/lib/utils'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { captureApiError } from '@/lib/api-error-reporting'
 import { useDatasets } from '@/hooks/use-datasets'
 import type { Document, DocumentPipelineOptions } from '@/types'
@@ -49,7 +50,6 @@ import { QUARANTINE_BACKGROUND_CLASS, QUARANTINE_GRID_OVERLAY_CLASS, QUARANTINE_
 import { buildDemoQuarantineDocuments } from './demo-quarantine'
 import {
   createReviewMetadataPatch,
-  downloadTextFile,
   extractTuningOverrides,
   getDropReasons,
   getQuarantineSeverity,
@@ -58,6 +58,7 @@ import {
   getSeverityClassName,
   isReviewed,
   reasonLabel,
+  downloadTextFile,
 } from './quarantine-signals'
 import type { ActingState, JsonRecord, QuarantineSeverity, QueueSyncStatus, ReviewState } from './types'
 
@@ -83,6 +84,7 @@ export default function QuarantineQueuePage() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const demoMode = /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const { openDocument } = useDocumentView()
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -97,7 +99,12 @@ export default function QuarantineQueuePage() {
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [reviewDrawerOpen, setReviewDrawerOpen] = useState(false)
-  const [acting, setActing] = useState<ActingState>(null)
+  const [actingByDocumentId, setActingByDocumentId] = useState<ReadonlyMap<string, NonNullable<ActingState>>>(new Map())
+  const actingRef = useRef(new Map<string, NonNullable<ActingState>>())
+  const mountedRef = useRef(false)
+  const tuneVisitRef = useRef<object>({})
+  const reviewVisitRef = useRef<object>({})
+  const queueVisitRef = useRef<object>({})
   const [detailOpen, setDetailOpen] = useState(false)
   const [detailDocumentId, setDetailDocumentId] = useState<string | null>(null)
   const [lastQueueSync, setLastQueueSync] = useState<QueueSyncStatus | null>(null)
@@ -108,11 +115,35 @@ export default function QuarantineQueuePage() {
   const { datasets, isLoading: datasetsLoading } = useDatasets()
   const selectedDatasetId = selectedDataset === 'all' ? null : selectedDataset
 
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const changeTuneOpen = useCallback((open: boolean) => {
+    if (!open) tuneVisitRef.current = {}
+    setTuneOpen(open)
+  }, [])
+
+  useEffect(
+    () => () => {
+      reviewVisitRef.current = {}
+    },
+    [reviewDrawerOpen, selectedId],
+  )
+  useEffect(
+    () => () => {
+      queueVisitRef.current = {}
+    },
+    [demoMode, selectedDatasetId],
+  )
+
   const {
     data,
     error: queueError,
     isFetching,
-    refetch,
   } = useQuery({
     queryKey: ['quarantine-documents', 'quarantined', selectedDatasetId],
     queryFn: ({ signal }) =>
@@ -133,7 +164,6 @@ export default function QuarantineQueuePage() {
     data: failedData,
     error: failedQueueError,
     isFetching: isFetchingFailed,
-    refetch: refetchFailed,
   } = useQuery({
     queryKey: ['quarantine-documents', 'failed', selectedDatasetId],
     queryFn: ({ signal }) =>
@@ -161,25 +191,23 @@ export default function QuarantineQueuePage() {
   }, [failedQueueError, queueError])
   const refreshQueue = useCallback(
     async ({ notify = false }: { notify?: boolean } = {}) => {
+      const authRevision = getAuthSessionRevision()
+      const visit = queueVisitRef.current
+      const queryKeys = ['quarantined', 'failed'].map((status) => ['quarantine-documents', status, selectedDatasetId])
+      const ownsView = () =>
+        mountedRef.current && queueVisitRef.current === visit && authRevision === getAuthSessionRevision()
       try {
-        const [quarantineResult, failedResult] = await Promise.all([refetch(), refetchFailed()])
-        const err = quarantineResult.error || failedResult.error
-        if (err) {
-          const info = captureApiError(err, '隔离队列同步失败', {
-            level: 'warning',
-            tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
-          })
-          setLastQueueSync({
-            type: 'error',
-            message: info.message,
-            at: new Date().toISOString(),
-          })
-          if (notify) toast.error(info.message)
-          return false
-        }
-
-        const quarantinedTotal = quarantineResult.data?.total ?? data?.total ?? 0
-        const failedTotal = failedResult.data?.total ?? failedData?.total ?? 0
+        await Promise.all(
+          queryKeys.map((queryKey) =>
+            queryClient.refetchQueries({ queryKey, exact: true, type: 'all' }, { throwOnError: true }),
+          ),
+        )
+        if (!ownsView()) return authRevision === getAuthSessionRevision()
+        const [quarantineResult, failedResult] = queryKeys.map((queryKey) =>
+          queryClient.getQueryData<Awaited<ReturnType<typeof documentApi.list>>>(queryKey),
+        )
+        const quarantinedTotal = quarantineResult?.total ?? 0
+        const failedTotal = failedResult?.total ?? 0
         const message =
           quarantinedTotal + failedTotal > 0
             ? `同步完成：待审核 ${quarantinedTotal} 条，失败 ${failedTotal} 条`
@@ -192,6 +220,7 @@ export default function QuarantineQueuePage() {
         if (notify) toast.success(message)
         return true
       } catch (err) {
+        if (!ownsView()) return false
         const info = captureApiError(err, '隔离队列同步失败', {
           level: 'warning',
           tags: { page: 'knowledge-quarantine', action: 'manual-sync' },
@@ -205,7 +234,7 @@ export default function QuarantineQueuePage() {
         return false
       }
     },
-    [data?.total, failedData?.total, refetch, refetchFailed],
+    [queryClient, selectedDatasetId],
   )
 
   useEffect(() => {
@@ -492,20 +521,30 @@ export default function QuarantineQueuePage() {
 
   const handleRetry = useCallback(
     async (doc: Document) => {
+      if (actingRef.current.has(doc.id)) return
       if (demoMode) {
         toast.success('Demo 模式仅用于预览布局，不执行真实重试')
         return
       }
-      setActing({ id: doc.id, action: 'retry' })
+      const action = { id: doc.id, action: 'retry' } as const
+      const authRevision = getAuthSessionRevision()
+      actingRef.current.set(doc.id, action)
+      setActingByDocumentId(new Map(actingRef.current))
       try {
         await documentApi.retry(doc.id)
+        if (authRevision !== getAuthSessionRevision()) return
         await markReviewed(doc.id, { quarantine_action: 'retry' })
-        toast.success('已触发重新入库')
+        if (authRevision !== getAuthSessionRevision()) return
+        if (mountedRef.current) toast.success('已触发重新入库')
         await refreshQueue()
       } catch (err: unknown) {
+        if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
         toast.error(formatApiError(err, '重试失败'))
       } finally {
-        setActing(null)
+        if (actingRef.current.get(doc.id) === action) {
+          actingRef.current.delete(doc.id)
+          if (mountedRef.current) setActingByDocumentId(new Map(actingRef.current))
+        }
       }
     },
     [demoMode, markReviewed, refreshQueue],
@@ -513,27 +552,38 @@ export default function QuarantineQueuePage() {
 
   const handleRelease = useCallback(
     async (doc: Document) => {
+      if (actingRef.current.has(doc.id)) return
       if (demoMode) {
         toast.success('Demo 模式仅用于预览布局，不执行真实放行')
         return
       }
-      setActing({ id: doc.id, action: 'release' })
+      const action = { id: doc.id, action: 'release' } as const
+      const authRevision = getAuthSessionRevision()
+      actingRef.current.set(doc.id, action)
+      setActingByDocumentId(new Map(actingRef.current))
       try {
         const patch = buildRecommendedPatch(doc)
         if (Object.keys(patch).length) {
           await documentApi.patchPipeline(doc.id, { patch, replace: false })
+          if (authRevision !== getAuthSessionRevision()) return
         }
         await documentApi.retry(doc.id)
+        if (authRevision !== getAuthSessionRevision()) return
         await markReviewed(doc.id, {
           quarantine_action: 'release_retry',
           quarantine_reason: getDropReasons(doc).join(','),
         })
-        toast.success('已放行并重试')
+        if (authRevision !== getAuthSessionRevision()) return
+        if (mountedRef.current) toast.success('已放行并重试')
         await refreshQueue()
       } catch (err: unknown) {
+        if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
         toast.error(formatApiError(err, '放行失败'))
       } finally {
-        setActing(null)
+        if (actingRef.current.get(doc.id) === action) {
+          actingRef.current.delete(doc.id)
+          if (mountedRef.current) setActingByDocumentId(new Map(actingRef.current))
+        }
       }
     },
     [buildRecommendedPatch, demoMode, markReviewed, refreshQueue],
@@ -541,23 +591,33 @@ export default function QuarantineQueuePage() {
 
   const handleDelete = useCallback(
     async (doc: Document) => {
+      if (actingRef.current.has(doc.id)) return
       if (demoMode) {
         toast.success('Demo 模式仅用于预览布局，不执行真实删除')
         return
       }
-      setActing({ id: doc.id, action: 'delete' })
+      const action = { id: doc.id, action: 'delete' } as const
+      const authRevision = getAuthSessionRevision()
+      const reviewVisit = reviewVisitRef.current
+      actingRef.current.set(doc.id, action)
+      setActingByDocumentId(new Map(actingRef.current))
       try {
         await documentApi.delete(doc.id)
-        toast.success('已删除文档')
-        if (selectedId === doc.id) {
+        if (authRevision !== getAuthSessionRevision()) return
+        if (mountedRef.current) toast.success('已删除文档')
+        if (mountedRef.current && reviewVisitRef.current === reviewVisit && selectedId === doc.id) {
           setSelectedId(null)
           setReviewDrawerOpen(false)
         }
         await refreshQueue()
       } catch (err: unknown) {
+        if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
         toast.error(formatApiError(err, '删除失败'))
       } finally {
-        setActing(null)
+        if (actingRef.current.get(doc.id) === action) {
+          actingRef.current.delete(doc.id)
+          if (mountedRef.current) setActingByDocumentId(new Map(actingRef.current))
+        }
       }
     },
     [demoMode, refreshQueue, selectedId],
@@ -565,19 +625,28 @@ export default function QuarantineQueuePage() {
 
   const handleMarkReviewedOnly = useCallback(
     async (doc: Document) => {
+      if (actingRef.current.has(doc.id)) return
       if (demoMode) {
         toast.success('Demo 模式仅用于预览布局，不写入真实审核状态')
         return
       }
-      setActing({ id: doc.id, action: 'review' })
+      const action = { id: doc.id, action: 'review' } as const
+      const authRevision = getAuthSessionRevision()
+      actingRef.current.set(doc.id, action)
+      setActingByDocumentId(new Map(actingRef.current))
       try {
         await markReviewed(doc.id, { quarantine_action: 'reviewed' })
-        toast.success('已标记为已处理')
+        if (authRevision !== getAuthSessionRevision()) return
+        if (mountedRef.current) toast.success('已标记为已处理')
         await refreshQueue()
       } catch (err: unknown) {
+        if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
         toast.error(formatApiError(err, '标记失败'))
       } finally {
-        setActing(null)
+        if (actingRef.current.get(doc.id) === action) {
+          actingRef.current.delete(doc.id)
+          if (mountedRef.current) setActingByDocumentId(new Map(actingRef.current))
+        }
       }
     },
     [demoMode, markReviewed, refreshQueue],
@@ -585,6 +654,7 @@ export default function QuarantineQueuePage() {
 
   const openTuneDialog = useCallback(
     (doc: Document) => {
+      tuneVisitRef.current = {}
       const current = extractTuningOverrides(doc)
       const recommended = buildRecommendedPatch(doc)
       setTuneTarget(doc)
@@ -596,32 +666,44 @@ export default function QuarantineQueuePage() {
 
   const saveTune = useCallback(
     async (opts: { retryAfterSave: boolean }) => {
-      if (!tuneTarget) return
+      if (!tuneTarget || actingRef.current.has(tuneTarget.id)) return
       if (demoMode) {
         toast.success('Demo 模式仅用于预览布局，不写入真实规则配置')
         setTuneOpen(false)
         return
       }
       const doc = tuneTarget
-      setActing({ id: doc.id, action: 'tune' })
+      const action = { id: doc.id, action: 'tune' } as const
+      const authRevision = getAuthSessionRevision()
+      const tuneVisit = tuneVisitRef.current
+      actingRef.current.set(doc.id, action)
+      setActingByDocumentId(new Map(actingRef.current))
       try {
         await documentApi.patchPipeline(doc.id, {
           patch: tunePatch,
           replace: false,
         })
+        if (authRevision !== getAuthSessionRevision()) return
         if (opts.retryAfterSave) {
           await documentApi.retry(doc.id)
+          if (authRevision !== getAuthSessionRevision()) return
           await markReviewed(doc.id, { quarantine_action: 'tune_retry' })
-          toast.success('已保存配置并重试')
-        } else {
-          toast.success('已保存配置')
+          if (authRevision !== getAuthSessionRevision()) return
         }
-        setTuneOpen(false)
+        if (mountedRef.current && tuneVisitRef.current === tuneVisit) {
+          toast.success(opts.retryAfterSave ? '已保存配置并重试' : '已保存配置')
+          setTuneOpen(false)
+        }
         await refreshQueue()
       } catch (err: unknown) {
+        if (!mountedRef.current || tuneVisitRef.current !== tuneVisit || authRevision !== getAuthSessionRevision())
+          return
         toast.error(formatApiError(err, '保存失败'))
       } finally {
-        setActing(null)
+        if (actingRef.current.get(doc.id) === action) {
+          actingRef.current.delete(doc.id)
+          if (mountedRef.current) setActingByDocumentId(new Map(actingRef.current))
+        }
       }
     },
     [demoMode, markReviewed, refreshQueue, tunePatch, tuneTarget],
@@ -982,7 +1064,7 @@ export default function QuarantineQueuePage() {
           if (!next) setSelectedId(null)
         }}
         selected={selected}
-        acting={acting}
+        acting={selected ? (actingByDocumentId.get(selected.id) ?? null) : null}
         onRelease={handleRelease}
         onRetry={handleRetry}
         onTune={openTuneDialog}
@@ -997,9 +1079,9 @@ export default function QuarantineQueuePage() {
 
       <IngestionDetailDialog open={detailOpen} onOpenChange={setDetailOpen} documentId={detailDocumentId} />
 
-      <Dialog open={tuneOpen} onOpenChange={(v) => setTuneOpen(v)}>
+      <Dialog open={tuneOpen} onOpenChange={changeTuneOpen}>
         <QuarantineTuneDialog
-          acting={acting}
+          acting={tuneTarget ? (actingByDocumentId.get(tuneTarget.id) ?? null) : null}
           open={tuneOpen}
           patch={tunePatch}
           target={tuneTarget}
@@ -1010,7 +1092,7 @@ export default function QuarantineQueuePage() {
               governance_drop_low_density: false,
             }))
           }
-          onOpenChange={setTuneOpen}
+          onOpenChange={changeTuneOpen}
           onPatchChange={setTunePatch}
           onResetRecommended={() => {
             if (!tuneTarget) return

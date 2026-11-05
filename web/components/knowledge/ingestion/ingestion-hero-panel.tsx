@@ -16,13 +16,14 @@ import { Button } from '@/components/ui/button'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { cn } from '@/lib/utils'
 import { IngestionViewSwitch } from '@/app/knowledge/ingestion/view-switch'
+import type { IngestionMode } from '@/app/knowledge/ingestion/types'
 
 type IngestionHeroPanelProps = {
   demoMode: boolean
   desktopScopeCollapsed: boolean
   headerBodyVisibilityClass: string
   ingestionRecommendationLabel: string
-  mode: 'sales-audit' | 'execution-monitor'
+  mode: IngestionMode
   salesAuditComplexity: string
   salesAuditPocSampleLabel: string
   selectedDatasetLabel: string

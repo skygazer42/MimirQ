@@ -25,7 +25,7 @@ import {
   UploadCloud,
   type LucideIcon,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -35,8 +35,12 @@ import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
+import { connectorApi } from '@/lib/api/connectors'
+import { datasetApi } from '@/lib/api/datasets'
+import { documentApi } from '@/lib/api/documents'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { readClientStorage } from '@/lib/client-storage'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
 import type {
@@ -276,15 +280,13 @@ function getSelectOptionTitle<T extends string>(options: Array<SelectOption<T>>,
   return options.find((option) => option.value === value)?.title ?? value
 }
 
-function SelectOptionBody({
-  badge,
-  description,
-  title,
-}: Readonly<{
+type SelectOptionBodyProps = {
   badge?: string
   description: string
   title: string
-}>) {
+}
+
+function SelectOptionBody({ badge, description, title }: Readonly<SelectOptionBodyProps>) {
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="flex min-w-0 items-center gap-2">
@@ -300,7 +302,9 @@ function SelectOptionBody({
   )
 }
 
-function DatasetOptionBody({ dataset }: Readonly<{ dataset: Dataset }>) {
+type DatasetOptionBodyProps = { dataset: Dataset }
+
+function DatasetOptionBody({ dataset }: Readonly<DatasetOptionBodyProps>) {
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       <span className="truncate text-[13px] font-semibold leading-4 text-foreground">{dataset.name}</span>
@@ -433,11 +437,15 @@ function apiPayloadFileType(filename: string) {
 
 export default function KnowledgeIngestionOperationPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const routeDatasetId = searchParams.get('datasetId') || ''
   const inputRef = useRef<HTMLInputElement | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const previousDatasetIdRef = useRef<string | null>(null)
+  const observedRouteDatasetIdRef = useRef(routeDatasetId)
+  const appliedRouteDatasetIdRef = useRef<string | null>(null)
+  const submissionRef = useRef<{ authRevision: number } | null>(null)
   const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT)
   const [datasetIngestContextById, setDatasetIngestContextById] = useState<Record<string, DatasetIngestContext>>({})
   const [source, setSource] = useState<UploadSource>('local')
@@ -481,10 +489,16 @@ export default function KnowledgeIngestionOperationPage() {
   const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
 
   useEffect(() => {
+    if (observedRouteDatasetIdRef.current !== routeDatasetId) {
+      observedRouteDatasetIdRef.current = routeDatasetId
+      appliedRouteDatasetIdRef.current = null
+    }
     const routeDatasetExists = routeDatasetId && datasets.some((dataset) => dataset.id === routeDatasetId)
     const fallbackDatasetId = datasets[0]?.id
+    const applyRoute = routeDatasetExists && appliedRouteDatasetIdRef.current !== routeDatasetId
+    if (!routeDatasetId || applyRoute) appliedRouteDatasetIdRef.current = routeDatasetId
     setDraft((current) => {
-      if (routeDatasetExists && current.datasetId !== routeDatasetId) return { ...current, datasetId: routeDatasetId }
+      if (applyRoute && current.datasetId !== routeDatasetId) return { ...current, datasetId: routeDatasetId }
       if (current.datasetId || !fallbackDatasetId) return current
       return { ...current, datasetId: fallbackDatasetId }
     })
@@ -496,6 +510,12 @@ export default function KnowledgeIngestionOperationPage() {
   )
   const activeFileBucketKey = draft.datasetId || NO_DATASET_FILE_BUCKET
   const files = filesByDatasetId[activeFileBucketKey] ?? EMPTY_FILES
+
+  useEffect(() => {
+    return () => {
+      submissionRef.current = null
+    }
+  }, [draft.datasetId])
 
   useEffect(() => {
     if (previousDatasetIdRef.current === null) {
@@ -564,6 +584,20 @@ export default function KnowledgeIngestionOperationPage() {
   })
 
   const urlIngestEnabled = Boolean(settingsQuery.data?.url_ingest?.enabled)
+
+  const refreshDataset = useCallback(
+    (datasetId: string, includeDocuments = true) =>
+      Promise.all(
+        [
+          ...(includeDocuments ? ['knowledge-ingestion-operation-documents'] : []),
+          'knowledge-ingestion-operation-folders',
+          'knowledge-ingestion-operation-stats',
+        ].map((prefix) =>
+          queryClient.invalidateQueries({ queryKey: [prefix, datasetId], exact: true, refetchType: 'all' }),
+        ),
+      ),
+    [queryClient],
+  )
 
   const selectedTotalBytes = useMemo(() => files.reduce((sum, file) => sum + file.size, 0), [files])
 
@@ -661,6 +695,7 @@ export default function KnowledgeIngestionOperationPage() {
   )
 
   const submitConnectorRun = useCallback(async () => {
+    if (submissionRef.current) return
     if (!draft.datasetId) {
       toast.error('请先选择目标数据集')
       return
@@ -669,6 +704,10 @@ export default function KnowledgeIngestionOperationPage() {
       toast.error('URL 导入未启用：请先在系统设置中开启 URL_INGEST_ENABLED')
       return
     }
+    const submission = { authRevision: getAuthSessionRevision() }
+    submissionRef.current = submission
+    const ownsSubmission = () =>
+      submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
     setStatus('uploading')
     setUploadResponse(null)
     try {
@@ -699,41 +738,65 @@ export default function KnowledgeIngestionOperationPage() {
                 ...sharedConfig,
               },
             })
-      setStatus(run.status === 'failed' ? 'failed' : run.status === 'completed' ? 'completed' : 'uploading')
-      await Promise.all([foldersQuery.refetch(), ingestionStatsQuery.refetch()])
+      if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId, false)
+      if (!ownsSubmission()) return
+      setStatus(run.status === 'failed' || run.status === 'cancelled' ? 'failed' : 'completed')
       toast.success(`连接器任务已创建：${String(run.id).slice(0, 8)}`)
       if (run.status !== 'failed' && shouldOpenExecutionMonitor(draft, 'ingest')) {
         router.push('/knowledge/ingestion?mode=execution-monitor')
       }
     } catch (error) {
+      if (!ownsSubmission()) return
       setStatus('failed')
       toast.error(formatApiError(error, '连接器任务创建失败'))
+    } finally {
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        if (submission.authRevision !== getAuthSessionRevision()) setStatus('idle')
+      }
     }
   }, [
     draft,
-    foldersQuery,
-    ingestionStatsQuery,
     objectBucket,
     objectMaxObjects,
     objectPrefix,
     parsedObjectExtensions,
     parsedUrls,
     router,
+    refreshDataset,
     source,
     urlIngestEnabled,
     urlFilename,
   ])
 
   const handleSyncDatasets = useCallback(async () => {
-    await datasetsQuery.refetch()
-    if (draft.datasetId) {
-      await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
+    const authRevision = getAuthSessionRevision()
+    try {
+      await datasetsQuery.refetch({ throwOnError: true })
+      if (authRevision !== getAuthSessionRevision()) return
+      if (draft.datasetId) {
+        await Promise.all(
+          [
+            'knowledge-ingestion-operation-documents',
+            'knowledge-ingestion-operation-folders',
+            'knowledge-ingestion-operation-stats',
+          ].map((prefix) =>
+            queryClient.refetchQueries(
+              { queryKey: [prefix, draft.datasetId], exact: true, type: 'all' },
+              { throwOnError: true },
+            ),
+          ),
+        )
+      }
+      if (authRevision === getAuthSessionRevision()) toast.success('数据集状态已同步')
+    } catch (error) {
+      if (authRevision === getAuthSessionRevision()) toast.error(formatApiError(error, '数据集状态同步失败'))
     }
-    toast.success('数据集状态已同步')
-  }, [datasetsQuery, documentsQuery, draft.datasetId, foldersQuery, ingestionStatsQuery])
+  }, [datasetsQuery, draft.datasetId, queryClient])
 
   const uploadFiles = useCallback(
     async (mode: 'upload_only' | 'ingest') => {
+      if (submissionRef.current) return
       if (!draft.datasetId) {
         toast.error('请先选择目标数据集')
         return
@@ -763,6 +826,10 @@ export default function KnowledgeIngestionOperationPage() {
         return
       }
       const uploadTargets = files
+      const submission = { authRevision: getAuthSessionRevision() }
+      submissionRef.current = submission
+      const ownsSubmission = () =>
+        submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
       setStatus('uploading')
       setUploadResponse(null)
       try {
@@ -796,6 +863,8 @@ export default function KnowledgeIngestionOperationPage() {
               },
             ],
           })
+          if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId)
+          if (!ownsSubmission()) return
           setUploadResponse({
             total: 1,
             successful_count: 1,
@@ -810,7 +879,6 @@ export default function KnowledgeIngestionOperationPage() {
             failed: [],
           })
           setStatus('completed')
-          await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
           toast.success(`API 导入已写入：${filename}`)
           return
         }
@@ -837,9 +905,10 @@ export default function KnowledgeIngestionOperationPage() {
           ),
         }
         const response = await documentApi.uploadBatch(files, uploadOptions)
+        if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId)
+        if (!ownsSubmission()) return
         setUploadResponse(response)
         setStatus(response.failed_count > 0 ? 'failed' : 'completed')
-        await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
         toast.success(
           mode === 'upload_only'
             ? `已登记到知识库：成功 ${response.successful_count} / 失败 ${response.failed_count}`
@@ -849,23 +918,17 @@ export default function KnowledgeIngestionOperationPage() {
           router.push('/knowledge/ingestion?mode=execution-monitor')
         }
       } catch (error) {
+        if (!ownsSubmission()) return
         setStatus('failed')
         toast.error(formatApiError(error, '入库任务提交失败'))
+      } finally {
+        if (submissionRef.current === submission) {
+          submissionRef.current = null
+          if (submission.authRevision !== getAuthSessionRevision()) setStatus('idle')
+        }
       }
     },
-    [
-      apiContent,
-      apiFilename,
-      documentsQuery,
-      draft,
-      files,
-      foldersQuery,
-      ingestionStatsQuery,
-      parsedUrls.length,
-      router,
-      source,
-      submitConnectorRun,
-    ],
+    [apiContent, apiFilename, draft, files, parsedUrls.length, router, refreshDataset, source, submitConnectorRun],
   )
 
   const sourceConfigurationProps = {
@@ -1227,15 +1290,13 @@ export default function KnowledgeIngestionOperationPage() {
   )
 }
 
-function FieldBlock({
-  label,
-  required,
-  children,
-}: Readonly<{
+type FieldBlockProps = {
   label: string
   required?: boolean
   children: ReactNode
-}>) {
+}
+
+function FieldBlock({ label, required, children }: Readonly<FieldBlockProps>) {
   return (
     <label className="block">
       <div className="mb-1.5 flex items-center gap-1 text-[11px] font-medium leading-none text-muted-foreground/74">
@@ -1247,17 +1308,14 @@ function FieldBlock({
   )
 }
 
-function UploadDropArea({
-  dragging,
-  onDragState,
-  onClick,
-  onFiles,
-}: Readonly<{
+type UploadDropAreaProps = {
   dragging: boolean
   onDragState: (dragging: boolean) => void
   onClick: () => void
   onFiles: (files: File[]) => void
-}>) {
+}
+
+function UploadDropArea({ dragging, onDragState, onClick, onFiles }: Readonly<UploadDropAreaProps>) {
   return (
     <button
       type="button"
@@ -1294,6 +1352,31 @@ function UploadDropArea({
   )
 }
 
+type SourceConfigurationProps = {
+  source: Exclude<UploadSource, 'local'>
+  folderInputRef: RefObject<HTMLInputElement | null>
+  onFiles: (files: File[]) => void
+  urlList: string
+  setUrlList: (value: string) => void
+  urlFilename: string
+  setUrlFilename: (value: string) => void
+  parsedUrls: string[]
+  objectBucket: string
+  setObjectBucket: (value: string) => void
+  objectPrefix: string
+  setObjectPrefix: (value: string) => void
+  objectExtensions: string
+  setObjectExtensions: (value: string) => void
+  objectMaxObjects: number
+  setObjectMaxObjects: (value: number) => void
+  parsedObjectExtensions: string[]
+  urlIngestEnabled: boolean
+  apiFilename: string
+  setApiFilename: (value: string) => void
+  apiContent: string
+  setApiContent: (value: string) => void
+}
+
 function SourceConfiguration({
   source,
   folderInputRef,
@@ -1317,30 +1400,7 @@ function SourceConfiguration({
   setApiFilename,
   apiContent,
   setApiContent,
-}: Readonly<{
-  source: Exclude<UploadSource, 'local'>
-  folderInputRef: RefObject<HTMLInputElement | null>
-  onFiles: (files: File[]) => void
-  urlList: string
-  setUrlList: (value: string) => void
-  urlFilename: string
-  setUrlFilename: (value: string) => void
-  parsedUrls: string[]
-  objectBucket: string
-  setObjectBucket: (value: string) => void
-  objectPrefix: string
-  setObjectPrefix: (value: string) => void
-  objectExtensions: string
-  setObjectExtensions: (value: string) => void
-  objectMaxObjects: number
-  setObjectMaxObjects: (value: number) => void
-  parsedObjectExtensions: string[]
-  urlIngestEnabled: boolean
-  apiFilename: string
-  setApiFilename: (value: string) => void
-  apiContent: string
-  setApiContent: (value: string) => void
-}>) {
+}: Readonly<SourceConfigurationProps>) {
   if (source === 'folder') {
     return (
       <div className={cn(CONFIG_BOX_CLASS, 'border-dashed px-3 py-2')}>
@@ -1482,6 +1542,18 @@ function SourceConfiguration({
   )
 }
 
+type SelectedFilesTableProps = {
+  rows: Array<{ file: File; Icon: LucideIcon; key: string }>
+  totalBytes: number
+  sourceName: string
+  dragging: boolean
+  onDragState: (dragging: boolean) => void
+  onFiles: (files: File[]) => void
+  onChoose: () => void
+  onClear: () => void
+  onRemove: (key: string) => void
+}
+
 function SelectedFilesTable({
   rows,
   totalBytes,
@@ -1492,17 +1564,7 @@ function SelectedFilesTable({
   onChoose,
   onClear,
   onRemove,
-}: Readonly<{
-  rows: Array<{ file: File; Icon: LucideIcon; key: string }>
-  totalBytes: number
-  sourceName: string
-  dragging: boolean
-  onDragState: (dragging: boolean) => void
-  onFiles: (files: File[]) => void
-  onChoose: () => void
-  onClear: () => void
-  onRemove: (key: string) => void
-}>) {
+}: Readonly<SelectedFilesTableProps>) {
   const hasRows = rows.length > 0
 
   return (
@@ -1626,17 +1688,19 @@ function SelectedFilesTable({
   )
 }
 
+type AdvancedIngestSettingsProps = {
+  draft: DraftState
+  updateDraft: <K extends keyof DraftState>(key: K, value: DraftState[K]) => void
+  tagOptions: string[]
+  collectionOptions: string[]
+}
+
 function AdvancedIngestSettings({
   draft,
   updateDraft,
   tagOptions,
   collectionOptions,
-}: Readonly<{
-  draft: DraftState
-  updateDraft: <K extends keyof DraftState>(key: K, value: DraftState[K]) => void
-  tagOptions: string[]
-  collectionOptions: string[]
-}>) {
+}: Readonly<AdvancedIngestSettingsProps>) {
   const tagListId = 'knowledge-ingestion-tag-options'
   const collectionListId = 'knowledge-ingestion-collection-options'
 

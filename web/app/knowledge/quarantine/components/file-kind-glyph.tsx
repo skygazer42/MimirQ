@@ -1,12 +1,11 @@
 'use client'
 
-import { getDocumentKind } from '@/components/ingestion/monitor-utils'
+import type { getDocumentKind } from '@/components/ingestion/monitor-utils'
 import { cn } from '@/lib/utils'
 
-export function FileKindGlyph({
-  kind,
-  className,
-}: Readonly<{ kind: ReturnType<typeof getDocumentKind>; className?: string }>) {
+type FileKindGlyphProps = { kind: ReturnType<typeof getDocumentKind>; className?: string }
+
+export function FileKindGlyph({ kind, className }: Readonly<FileKindGlyphProps>) {
   if (kind === 'pdf') {
     return (
       <svg viewBox="0 0 24 24" className={cn('h-4 w-4', className)} aria-hidden="true">

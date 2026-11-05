@@ -1,7 +1,7 @@
 'use client'
 
 import type { Dataset } from '@/types'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 
 type KnowledgeUrlImportDialogProps = {
   open: boolean
@@ -48,6 +49,14 @@ export function KnowledgeUrlImportDialog({
   const [filename, setFilename] = useState('')
   const [datasetId, setDatasetId] = useState<string>(datasetDefaultValue)
   const [submitting, setSubmitting] = useState(false)
+  const submissionRef = useRef<{ authRevision: number } | null>(null)
+
+  useEffect(() => {
+    setSubmitting(false)
+    return () => {
+      submissionRef.current = null
+    }
+  }, [open, selectedDatasetId])
 
   useEffect(() => {
     if (!open) return
@@ -56,6 +65,7 @@ export function KnowledgeUrlImportDialog({
   }, [open, selectedDatasetId, datasetDefaultValue])
 
   const handleImport = useCallback(async () => {
+    if (!open || submissionRef.current) return
     const nextUrl = url.trim()
     if (!nextUrl) {
       setUrlError('请输入 URL')
@@ -72,6 +82,10 @@ export function KnowledgeUrlImportDialog({
       return
     }
 
+    const submission = { authRevision: getAuthSessionRevision() }
+    submissionRef.current = submission
+    const ownsSubmission = () =>
+      submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
     setSubmitting(true)
     try {
       await uploadDocumentFromUrl({
@@ -80,20 +94,26 @@ export function KnowledgeUrlImportDialog({
         dataset_id: datasetId === datasetDefaultValue ? undefined : datasetId,
       })
 
+      if (submission.authRevision !== getAuthSessionRevision()) return
+      Promise.resolve(onAfterImport?.()).catch(() => {
+        // Best-effort refresh.
+      })
+      if (!ownsSubmission()) return
       toast.success('已提交 URL 导入任务（后台拉取并入库）')
       onOpenChange(false)
       setUrl('')
       setUrlError(null)
       setFilename('')
-      Promise.resolve(onAfterImport?.()).catch(() => {
-        // Best-effort refresh.
-      })
     } catch (err: unknown) {
+      if (!ownsSubmission()) return
       toast.error(formatApiError(err, 'URL 导入失败'))
     } finally {
-      setSubmitting(false)
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        setSubmitting(false)
+      }
     }
-  }, [datasetDefaultValue, datasetId, filename, onAfterImport, onOpenChange, uploadDocumentFromUrl, url])
+  }, [datasetDefaultValue, datasetId, filename, onAfterImport, onOpenChange, open, uploadDocumentFromUrl, url])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

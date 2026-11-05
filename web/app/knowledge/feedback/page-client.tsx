@@ -1,8 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowUpRight,
   CheckCheck,
@@ -38,10 +38,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { usePathname, useRouter } from '@/i18n/navigation'
-import { feedbackApi } from '@/lib/api'
+import { feedbackApi } from '@/lib/api/feedback'
 import { cn, formatDate } from '@/lib/utils'
 import type { FeedbackLoopCandidatesResponse, MessageFeedbackEnriched } from '@/types/feedback'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { Badge } from '@/components/ui/badge'
 
 type RatingFilter = 'all' | '1' | '2' | '3' | '4' | '5'
@@ -427,19 +428,15 @@ function buildFeedbackDelta(
   }
 }
 
-function FeedbackSummaryCard({
-  label,
-  value,
-  delta,
-  icon: Icon,
-  tone,
-}: Readonly<{
+type FeedbackSummaryCardProps = {
   label: string
   value: number
   delta: FeedbackDelta
   icon: typeof ThumbsUp
   tone: FeedbackSummaryTone
-}>) {
+}
+
+function FeedbackSummaryCard({ label, value, delta, icon: Icon, tone }: Readonly<FeedbackSummaryCardProps>) {
   const iconClassName = SUMMARY_ICON_CLASSES[tone]
   const valueClassName = SUMMARY_VALUE_CLASSES[tone]
   const deltaTone = DELTA_TONE_CLASSES[delta.tone]
@@ -469,19 +466,15 @@ function FeedbackSummaryCard({
   )
 }
 
-function FeedbackDonutCard({
-  title,
-  items,
-  colors,
-  actionLabel,
-  onAction,
-}: Readonly<{
+type FeedbackDonutCardProps = {
   title: string
   items: Array<{ label: string; value: number }>
   colors: string[]
   actionLabel?: string
   onAction?: () => void
-}>) {
+}
+
+function FeedbackDonutCard({ title, items, colors, actionLabel, onAction }: Readonly<FeedbackDonutCardProps>) {
   const values = items.map((item) => item.value)
   const total = values.reduce((sum, value) => sum + value, 0)
   const gradient = buildConicGradient(values, colors)
@@ -537,19 +530,15 @@ function FeedbackDonutCard({
   )
 }
 
-function FeedbackTrendCard({
-  title,
-  labels,
-  series,
-  actionLabel,
-  onAction,
-}: Readonly<{
+type FeedbackTrendCardProps = {
   title: string
   labels: string[]
   series: Array<{ label: string; values: number[]; color: string }>
   actionLabel?: string
   onAction?: () => void
-}>) {
+}
+
+function FeedbackTrendCard({ title, labels, series, actionLabel, onAction }: Readonly<FeedbackTrendCardProps>) {
   const allValues = series.flatMap((item) => item.values)
   const hasTrendData = allValues.some((value) => value > 0)
   const max = Math.max(1, ...allValues)
@@ -639,13 +628,12 @@ function FeedbackTrendCard({
   )
 }
 
-function FeedbackStatusBadge({
-  label,
-  tone,
-}: Readonly<{
+type FeedbackStatusBadgeProps = {
   label: string
   tone: 'positive' | 'negative' | 'neutral' | 'priority'
-}>) {
+}
+
+function FeedbackStatusBadge({ label, tone }: Readonly<FeedbackStatusBadgeProps>) {
   return (
     <span
       className={cn(
@@ -778,6 +766,7 @@ export default function FeedbackTriagePage() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const demoMode = /(^|\/)demo(\/|$)/.test(pathname) && searchParams.get('demo') === '1'
   const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all')
   const [filterType, setFilterType] = useState<FeedbackTypeFilter>('all')
@@ -787,13 +776,22 @@ export default function FeedbackTriagePage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [detail, setDetail] = useState<MessageFeedbackEnriched | null>(null)
   const [creatingCase, setCreatingCase] = useState(false)
-  const [createdCaseId, setCreatedCaseId] = useState<string | null>(null)
+  const [createdCase, setCreatedCase] = useState<{ feedbackId: string; caseId: string } | null>(null)
+  const createdCaseId = createdCase?.feedbackId === detail?.id ? createdCase?.caseId : null
+  const caseSubmissionRef = useRef<object | null>(null)
+  const archiveRequestsRef = useRef(new Set<string>())
+  const mountedRef = useRef(false)
   const [archivingId, setArchivingId] = useState<string | null>(null)
   const [timeReady, setTimeReady] = useState(false)
   const [page, setPage] = useState(1)
 
   useEffect(() => {
+    mountedRef.current = true
     setTimeReady(true)
+    return () => {
+      mountedRef.current = false
+      caseSubmissionRef.current = null
+    }
   }, [])
 
   const params = useMemo(() => {
@@ -806,7 +804,12 @@ export default function FeedbackTriagePage() {
     return p
   }, [ratingFilter])
 
-  const { data, isFetching, refetch } = useQuery({
+  const {
+    data,
+    error: feedbackError,
+    isFetching,
+    refetch,
+  } = useQuery({
     queryKey: ['feedback-enriched', params],
     queryFn: ({ signal }) => feedbackApi.listEnriched({ limit: 100, ...params }, { signal }),
     enabled: !demoMode,
@@ -992,37 +995,55 @@ export default function FeedbackTriagePage() {
         return
       }
       const nextArchived = !isArchivedFeedback(item)
+      if (archiveRequestsRef.current.has(item.id)) return
+      archiveRequestsRef.current.add(item.id)
+      const authRevision = getAuthSessionRevision()
+      const queryKey = ['feedback-enriched', params]
       setArchivingId(item.id)
       try {
         await feedbackApi.update(item.id, { archived: nextArchived })
+        if (authRevision !== getAuthSessionRevision()) return
+        await queryClient.invalidateQueries({ queryKey, exact: true, refetchType: 'all' })
+        if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
         toast.success(nextArchived ? '已归档反馈' : '已取消归档')
-        await refetch()
       } catch (err: unknown) {
+        if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
         toast.error(formatApiError(err, nextArchived ? '归档失败' : '取消归档失败'))
       } finally {
-        setArchivingId(null)
+        archiveRequestsRef.current.delete(item.id)
+        if (mountedRef.current) setArchivingId((current) => (current === item.id ? null : current))
       }
     },
-    [demoMode, refetch],
+    [demoMode, params, queryClient],
   )
 
   const createRegressionCase = useCallback(
     async (item: MessageFeedbackEnriched) => {
+      if (caseSubmissionRef.current) return
       if (demoMode) {
         toast.success('Demo 模式仅用于预览反馈分析布局，不写入真实回归用例')
         return
       }
+      const submission = {}
+      const authRevision = getAuthSessionRevision()
+      caseSubmissionRef.current = submission
+      const ownsSubmission = () => caseSubmissionRef.current === submission && authRevision === getAuthSessionRevision()
       setCreatingCase(true)
       try {
         const rc = await feedbackApi.toRegressionCase(item.id, {
           include_document_scope: true,
         })
-        setCreatedCaseId(rc.id)
+        if (!ownsSubmission()) return
+        setCreatedCase({ feedbackId: item.id, caseId: rc.id })
         toast.success('已创建回归用例')
       } catch (err: unknown) {
+        if (!ownsSubmission()) return
         toast.error(formatApiError(err, '创建回归用例失败'))
       } finally {
-        setCreatingCase(false)
+        if (caseSubmissionRef.current === submission) {
+          caseSubmissionRef.current = null
+          setCreatingCase(false)
+        }
       }
     },
     [demoMode],
@@ -1037,9 +1058,12 @@ export default function FeedbackTriagePage() {
 
   // Reset per-detail UI state.
   useEffect(() => {
-    setCreatedCaseId(null)
+    setCreatedCase(null)
     setCreatingCase(false)
-  }, [detail?.id])
+    return () => {
+      caseSubmissionRef.current = null
+    }
+  }, [detail?.id, demoMode])
 
   const hasActiveFilters = searchTerm.trim().length > 0 || filterType !== 'all' || ratingFilter !== 'all'
   const hasExtendedFilters = hasActiveFilters || sourceFilter !== 'all' || timeRange !== 'all' || boardTab !== 'all'
@@ -1218,6 +1242,14 @@ export default function FeedbackTriagePage() {
               data-feedback-list-board="true"
               className="overflow-hidden rounded-2xl border border-border/60 bg-background shadow-soft xl:flex xl:min-h-0 xl:flex-1 xl:flex-col"
             >
+              {!demoMode && feedbackError ? (
+                <div
+                  role="alert"
+                  className="border-b border-destructive/20 bg-destructive/5 px-5 py-3 text-sm text-destructive"
+                >
+                  {formatApiError(feedbackError, '反馈加载失败')}
+                </div>
+              ) : null}
               <div className="border-b border-border/60 px-5 py-3.5">
                 <div className="space-y-3">
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1876,21 +1908,7 @@ export default function FeedbackTriagePage() {
                 <Button
                   variant="outline"
                   disabled={!detail?.id || creatingCase}
-                  onClick={async () => {
-                    if (!detail?.id) return
-                    setCreatingCase(true)
-                    try {
-                      const rc = await feedbackApi.toRegressionCase(detail.id, {
-                        include_document_scope: true,
-                      })
-                      setCreatedCaseId(rc.id)
-                      toast.success('已创建回归用例')
-                    } catch (err: unknown) {
-                      toast.error(formatApiError(err, '创建回归用例失败'))
-                    } finally {
-                      setCreatingCase(false)
-                    }
-                  }}
+                  onClick={() => createRegressionCase(detail)}
                   className="rounded-full border-indigo/25 bg-indigo/[0.06] text-indigo gap-2 hover:border-indigo/35 hover:bg-indigo/[0.10] hover:text-indigo"
                 >
                   {creatingCase ? (

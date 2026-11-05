@@ -5,17 +5,14 @@ import { BarChart3, Search, Shapes, Sparkles, ShieldCheck, UploadCloud } from 'l
 
 import { Button } from '@/components/ui/button'
 
-export function EmptyState({
-  mode,
-  onClearFilters,
-  onUploadSample,
-  onUploadIngest,
-}: Readonly<{
+type EmptyStateProps = {
   mode: 'truly-empty' | 'filter-empty'
   onClearFilters?: () => void
   onUploadSample?: () => void
   onUploadIngest?: () => void
-}>) {
+}
+
+export function EmptyState({ mode, onClearFilters, onUploadSample, onUploadIngest }: Readonly<EmptyStateProps>) {
   if (mode === 'filter-empty') {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-background/75 px-6 py-16 text-center dark:bg-background/30">

@@ -15,6 +15,19 @@ import {
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
+type BulkActionBarProps = {
+  selectionCount: number
+  canRetry: boolean
+  canCancel: boolean
+  canDelete: boolean
+  canExport: boolean
+  onClear: () => void
+  onRetry: () => void
+  onCancel: () => void
+  onDelete: () => Promise<void> | void
+  onExport: () => void
+}
+
 export function BulkActionBar({
   selectionCount,
   canRetry,
@@ -26,18 +39,7 @@ export function BulkActionBar({
   onCancel,
   onDelete,
   onExport,
-}: Readonly<{
-  selectionCount: number
-  canRetry: boolean
-  canCancel: boolean
-  canDelete: boolean
-  canExport: boolean
-  onClear: () => void
-  onRetry: () => void
-  onCancel: () => void
-  onDelete: () => Promise<void> | void
-  onExport: () => void
-}>) {
+}: Readonly<BulkActionBarProps>) {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteConfirmValue, setDeleteConfirmValue] = useState('')
   const deleteEnabled = useMemo(
@@ -124,19 +126,15 @@ export function BulkActionBar({
   )
 }
 
-function ActionTile({
-  icon: Icon,
-  label,
-  tone,
-  disabled,
-  onClick,
-}: Readonly<{
+type ActionTileProps = {
   icon: typeof RotateCcw
   label: string
   tone: 'sky' | 'amber' | 'rose' | 'emerald'
   disabled: boolean
   onClick: () => void
-}>) {
+}
+
+function ActionTile({ icon: Icon, label, tone, disabled, onClick }: Readonly<ActionTileProps>) {
   const toneClass = {
     sky: 'border-info/18 bg-info/[0.07] text-info hover:border-info/28 hover:bg-info/[0.12]',
     amber:

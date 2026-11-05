@@ -1,7 +1,7 @@
 'use client'
 
 import type { ConnectorRunOut, Dataset, DocumentAccessMode } from '@/types'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -18,45 +18,11 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
-import { connectorApi } from '@/lib/api'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { connectorApi } from '@/lib/api/connectors'
 import { detachPromise } from '@/lib/utils'
-
-function parseUrlBatchUrls(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (!/^https?:\/\//i.test(p)) continue
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 50) break
-  }
-
-  return out
-}
-
-function parseAccessMembers(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 200) break
-  }
-
-  return out
-}
+import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
+import { parseAccessMembers, parseHttpUrls } from './knowledge-import-parsers'
 
 type KnowledgeUrlBatchDialogProps = {
   open: boolean
@@ -68,7 +34,7 @@ type KnowledgeUrlBatchDialogProps = {
   datasetDefaultValue: string
 
   loadDocuments: () => void | Promise<void>
-  loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  loadConnectorRuns: LoadConnectorRuns
   onRunCreated?: (run: ConnectorRunOut) => void
 }
 
@@ -94,20 +60,33 @@ export function KnowledgeUrlBatchDialog({
   const [accessMembers, setAccessMembers] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const submissionRef = useRef<{ authRevision: number } | null>(null)
+
+  useEffect(() => {
+    setSubmitting(false)
+    return () => {
+      submissionRef.current = null
+    }
+  }, [open, selectedDatasetId])
 
   useEffect(() => {
     if (!open) return
     setDatasetId(selectedDatasetId || datasetDefaultValue)
   }, [datasetDefaultValue, open, selectedDatasetId])
 
-  const parsedUrls = useMemo(() => parseUrlBatchUrls(urls), [urls])
+  const parsedUrls = useMemo(() => parseHttpUrls(urls, 50), [urls])
 
   const handleSubmit = useCallback(async () => {
+    if (!open || submissionRef.current) return
     if (!parsedUrls.length) {
       toast.error('请输入至少 1 个 http(s) URL（每行一个）')
       return
     }
 
+    const submission = { authRevision: getAuthSessionRevision() }
+    submissionRef.current = submission
+    const ownsSubmission = () =>
+      submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
     setSubmitting(true)
     try {
       const access =
@@ -132,11 +111,17 @@ export function KnowledgeUrlBatchDialog({
         },
       })
 
+      if (submission.authRevision !== getAuthSessionRevision()) return
+      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }, { selectScope: false }))
+      detachPromise(loadDocuments())
+      if (!ownsSubmission()) return
       toast.success(`已创建批量导入任务：${run.id.slice(0, 8)}`, {
         action: onRunCreated
           ? {
               label: '查看任务',
-              onClick: () => onRunCreated(run),
+              onClick: () => {
+                if (submission.authRevision === getAuthSessionRevision()) onRunCreated(run)
+              },
             }
           : undefined,
       })
@@ -146,12 +131,14 @@ export function KnowledgeUrlBatchDialog({
       setAccessMode('inherit')
       setAccessMembers('')
       setAccessGroupIds([])
-      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
-      detachPromise(loadDocuments())
     } catch (err: unknown) {
+      if (!ownsSubmission()) return
       toast.error(formatApiError(err, '创建 URL 批量导入失败'))
     } finally {
-      setSubmitting(false)
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        setSubmitting(false)
+      }
     }
   }, [
     accessMembers,
@@ -164,6 +151,7 @@ export function KnowledgeUrlBatchDialog({
     loadConnectorRuns,
     loadDocuments,
     onOpenChange,
+    open,
     parsedUrls,
     parserBackend,
     pipelineOptions,

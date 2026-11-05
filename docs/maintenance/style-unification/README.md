@@ -6,7 +6,7 @@
 本目录记录全项目迁移。**当前仍在实施，不代表全仓语义审核已完成。**
 
 - [实施计划](../../superpowers/plans/2026-11-02-style-unification.md)：统一约定、Skill 分工、业务批次与验收；数据集、权限配额、SCIM、配置、通用 API 及身份令牌类别已完成本轮静态核对，基础后端与后续业务链继续按清单推进。
-- `coverage.csv`：当前 3,857 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
+- `coverage.csv`：当前 3,865 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
 - `baseline-python-failures.txt`：原始 Python 基线失败和收集错误的用例名称。
 - `verification.md`：基线及各批真实检查结果；历史结果不代表当前版本通过。
 
@@ -29,3 +29,11 @@
 - 完成剩余 11 个文件的检查：3 个调整，8 个保持原字节。首页局部参数使用明确名称，模板和文档对话用例采用显式类型导入；Next 默认导出、全局 CSS、品牌配置、页面结构及用例动作保持。
 - 完整 TypeScript、10 个 TS/TSX 文件的 ESLint、11 文件 Prettier 与源码比较通过。Playwright 成功发现 5 个脚本／31 个用例，包含 live-stack；本批只做发现与静态检查，未启动浏览器或服务、未执行这些用例。
 - 证据：`entry-global-browser11-20261106/category-report.json`、`source-proof.json`、`checks.json`。清单 3,857 项，待处理／合入 286 项。
+
+## 知识子页面、导入与入库操作
+
+- 完成 62 个原文件：29 个调整，33 个保留现有形式。组件使用明确的 Props 和实际类型所有者；导入功能内复用两个现有规则解析函数，移除六份重复实现，不增加全局工具层。
+- 异步结果绑定实际访问和会话。补充独立修复使 URL 经过暂缺目标后仍能重新应用；隔离操作按文档分别显示与结束忙状态；上传按真实 File 批次复用待完成 Promise，不阻塞无关文档、批次或新访问。每批上传并发仍为四。
+- 合入当前主线后的 14 个测试文件共 123 项全部通过；完整 TypeScript、69 文件 ESLint、72 文件 Prettier 和 102 条笔记门禁通过。此前两条冻结复现用例也各自通过；旧失败和旧 110 项记录保持原样。只验证受控 DOM 与源码，未运行浏览器、后端或 Python。
+- 本批反馈测试改名为 `page-client.request-lifecycle.test.tsx`，正文与固定 Git 候选相同，保留原工作区重名的未跟踪文件。新增五个代码／测试文件及三条决定记录后，清单为 3,865 项／224 项待处理或待合入。两处必要调用方迁移不另计完整文件审核。
+- 证据：`knowledge-import-ingestion62-20261105/knowledge62-root-final-review.json`，以及 `independent-root/followup-5b/`、`independent-root/current-context-2ee/` 的固定源码与检查记录。

@@ -6,6 +6,15 @@ import { cn } from '@/lib/utils'
 
 import { buildConicGradient } from '../quarantine-signals'
 
+type SummaryStatCardProps = {
+  label: string
+  value: string | number
+  hint: string
+  icon: LucideIcon
+  delta?: { value: string; tone: 'up' | 'down' | 'neutral' }
+  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info'
+}
+
 export function SummaryStatCard({
   label,
   value,
@@ -13,14 +22,7 @@ export function SummaryStatCard({
   icon: Icon,
   delta,
   tone = 'neutral',
-}: Readonly<{
-  label: string
-  value: string | number
-  hint: string
-  icon: LucideIcon
-  delta?: { value: string; tone: 'up' | 'down' | 'neutral' }
-  tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info'
-}>) {
+}: Readonly<SummaryStatCardProps>) {
   return (
     <div
       className={cn(
@@ -90,17 +92,14 @@ export function SummaryStatCard({
   )
 }
 
-export function DonutSummaryCard({
-  title,
-  subtitle,
-  items,
-  colors,
-}: Readonly<{
+type DonutSummaryCardProps = {
   title: string
   subtitle?: string
   items: Array<{ label: string; value: number; hint?: string }>
   colors: string[]
-}>) {
+}
+
+export function DonutSummaryCard({ title, subtitle, items, colors }: Readonly<DonutSummaryCardProps>) {
   const values = items.map((item) => item.value)
   const gradient = buildConicGradient(values, colors)
   const total = values.reduce((sum, value) => sum + value, 0)
@@ -155,17 +154,14 @@ export function DonutSummaryCard({
   )
 }
 
-export function QuickActionCard({
-  title,
-  description,
-  icon: Icon,
-  onClick,
-}: Readonly<{
+type QuickActionCardProps = {
   title: string
   description: string
   icon: LucideIcon
   onClick: () => void
-}>) {
+}
+
+export function QuickActionCard({ title, description, icon: Icon, onClick }: Readonly<QuickActionCardProps>) {
   return (
     <button
       type="button"

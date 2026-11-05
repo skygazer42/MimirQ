@@ -2,15 +2,13 @@
 
 import { cn } from '@/lib/utils'
 
-export function ErrorTreemap({
-  data,
-  selectedReason,
-  onReasonSelect,
-}: Readonly<{
+type ErrorTreemapProps = {
   data: Array<{ name: string; count: number; fill: string; formatLabel: string; timeLabel: string }>
   selectedReason: string | null
   onReasonSelect: (reason: string) => void
-}>) {
+}
+
+export function ErrorTreemap({ data, selectedReason, onReasonSelect }: Readonly<ErrorTreemapProps>) {
   return (
     <div aria-label="风险重灾区热力图" role="grid" className="grid auto-rows-fr gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {data.map((payload) => {

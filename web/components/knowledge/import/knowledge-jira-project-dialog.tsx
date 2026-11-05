@@ -1,7 +1,7 @@
 'use client'
 
 import type { ConnectorRunOut, Dataset, DocumentAccessMode, WebCrawlAuthConfig } from '@/types'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -19,7 +19,9 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
-import { connectorApi } from '@/lib/api'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
+import { connectorApi } from '@/lib/api/connectors'
 import { coerceOneOf } from '@/lib/one-of'
 import { buildJiraProjectRunPayload } from './knowledge-jira-project-dialog.payload'
 import { detachPromise, trimTrailingSlashes } from '@/lib/utils'
@@ -34,7 +36,7 @@ type KnowledgeJiraProjectDialogProps = {
   datasetDefaultValue: string
 
   loadDocuments: () => void | Promise<void>
-  loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  loadConnectorRuns: LoadConnectorRuns
   onRunCreated?: (run: ConnectorRunOut) => void
 }
 
@@ -79,6 +81,14 @@ export function KnowledgeJiraProjectDialog({
   const [sourceAclEnabled, setSourceAclEnabled] = useState(false)
   const [sourceAclFallbackMode, setSourceAclFallbackMode] = useState<'only_me' | 'partial_members'>('partial_members')
   const [submitting, setSubmitting] = useState(false)
+  const submissionRef = useRef<{ authRevision: number } | null>(null)
+
+  useEffect(() => {
+    setSubmitting(false)
+    return () => {
+      submissionRef.current = null
+    }
+  }, [open, selectedDatasetId])
 
   useEffect(() => {
     if (!open) return
@@ -89,6 +99,7 @@ export function KnowledgeJiraProjectDialog({
   const hasManualAccessOverride = accessMode !== 'inherit'
 
   const handleSubmit = useCallback(async () => {
+    if (!open || submissionRef.current) return
     const trimmedBaseUrl = trimTrailingSlashes(baseUrl)
     const trimmedProjectKey = projectKey.trim().toUpperCase()
 
@@ -126,6 +137,10 @@ export function KnowledgeJiraProjectDialog({
       auth = { type: 'basic', username, password }
     }
 
+    const submission = { authRevision: getAuthSessionRevision() }
+    submissionRef.current = submission
+    const ownsSubmission = () =>
+      submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
     setSubmitting(true)
     try {
       const run = await connectorApi.createRun(
@@ -153,11 +168,17 @@ export function KnowledgeJiraProjectDialog({
         }),
       )
 
+      if (submission.authRevision !== getAuthSessionRevision()) return
+      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }, { selectScope: false }))
+      detachPromise(loadDocuments())
+      if (!ownsSubmission()) return
       toast.success(`已创建 Jira 导入任务：${run.id.slice(0, 8)}`, {
         action: onRunCreated
           ? {
               label: '查看任务',
-              onClick: () => onRunCreated(run),
+              onClick: () => {
+                if (submission.authRevision === getAuthSessionRevision()) onRunCreated(run)
+              },
             }
           : undefined,
       })
@@ -180,12 +201,14 @@ export function KnowledgeJiraProjectDialog({
       setAccessGroupIds([])
       setSourceAclEnabled(false)
       setSourceAclFallbackMode('partial_members')
-      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
-      detachPromise(loadDocuments())
     } catch (err: unknown) {
+      if (!ownsSubmission()) return
       toast.error(formatApiError(err, '创建 Jira 导入任务失败'))
     } finally {
-      setSubmitting(false)
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        setSubmitting(false)
+      }
     }
   }, [
     accessMembers,
@@ -207,6 +230,7 @@ export function KnowledgeJiraProjectDialog({
     maxCommentsPerIssue,
     maxIssues,
     onOpenChange,
+    open,
     onRunCreated,
     pageSize,
     parserBackend,

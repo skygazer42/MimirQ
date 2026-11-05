@@ -5,19 +5,21 @@ import { RefreshCw, RotateCcw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
+type QuarantineEmptyStateProps = {
+  hasActiveFilters: boolean
+  autoRefresh: boolean
+  isFetching: boolean
+  onResetFilters: () => void
+  onRefresh: () => void
+}
+
 export function QuarantineEmptyState({
   hasActiveFilters,
   autoRefresh,
   isFetching,
   onResetFilters,
   onRefresh,
-}: Readonly<{
-  hasActiveFilters: boolean
-  autoRefresh: boolean
-  isFetching: boolean
-  onResetFilters: () => void
-  onRefresh: () => void
-}>) {
+}: Readonly<QuarantineEmptyStateProps>) {
   return (
     <div className="flex min-h-[10.5rem] flex-col items-center justify-center px-6 py-3.5 text-center">
       <div className="mb-2 flex size-11 items-center justify-center rounded-lg border border-foreground/10 bg-background/70">

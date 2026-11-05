@@ -5,7 +5,9 @@ import type { Document } from '@/types'
 
 import { STATUS_LABELS } from '../constants'
 
-export function StatusPill({ status }: Readonly<{ status: Document['status'] }>) {
+type StatusPillProps = { status: Document['status'] }
+
+export function StatusPill({ status }: Readonly<StatusPillProps>) {
   const label = STATUS_LABELS[status] ?? STATUS_LABELS.cancelled
 
   return (

@@ -95,13 +95,12 @@ type ExecutionMonitorPanelProps = {
   onScopeAllProjects: () => void
 }
 
-function CompactEmptyVisual({
-  message,
-  className,
-}: Readonly<{
+type CompactEmptyVisualProps = {
   message: string
   className?: string
-}>) {
+}
+
+function CompactEmptyVisual({ message, className }: Readonly<CompactEmptyVisualProps>) {
   return (
     <div
       data-execution-empty-visual="true"

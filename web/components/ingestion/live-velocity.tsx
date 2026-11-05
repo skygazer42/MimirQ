@@ -25,17 +25,14 @@ function formatValue(value: number | null, unit: VelocityUnit): string {
   return unit === 'docs' ? `${value.toFixed(1)} docs/min` : `${value.toFixed(2)} MB/s`
 }
 
-export function LiveVelocity({
-  unit,
-  docsPerMinute,
-  megabytesPerSecond,
-  onToggle,
-}: Readonly<{
+type LiveVelocityProps = {
   unit: VelocityUnit
   docsPerMinute: number | null
   megabytesPerSecond: number | null
   onToggle: () => void
-}>) {
+}
+
+export function LiveVelocity({ unit, docsPerMinute, megabytesPerSecond, onToggle }: Readonly<LiveVelocityProps>) {
   const displayValue = unit === 'docs' ? docsPerMinute : megabytesPerSecond
 
   return (

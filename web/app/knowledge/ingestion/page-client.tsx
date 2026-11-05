@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle2,
   CircleDashed,
@@ -21,7 +21,11 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { EChartsOption } from 'echarts'
 import { toast } from 'sonner'
 
-import { datasetApi, documentApi, observabilityApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { documentApi } from '@/lib/api/documents'
+import { observabilityApi } from '@/lib/api/observability'
+import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { globalEventBus } from '@/lib/event-bus'
 import { normalizePrecheckEmbeddingAdvisories } from '@/lib/precheck-embedding-advisories'
 import type {
@@ -44,7 +48,7 @@ import { IngestionDetailSurface } from '@/components/knowledge/ingestion/ingesti
 import { IngestionHeroPanel } from '@/components/knowledge/ingestion/ingestion-hero-panel'
 import { PrecheckSignalsPanel } from '@/components/knowledge/ingestion/precheck-signals-panel'
 import { SalesAuditSummaryPanel } from '@/components/knowledge/ingestion/sales-audit-summary-panel'
-import { AuditDispositionFilter, DesktopAuditRail } from '@/components/knowledge/ingestion/desktop-audit-rail'
+import { type AuditDispositionFilter, DesktopAuditRail } from '@/components/knowledge/ingestion/desktop-audit-rail'
 import {
   buildEvidenceSlotReason,
   buildEvidenceSlotTags,
@@ -69,7 +73,6 @@ import {
 } from './demo-precheck'
 import {
   collectSalesAuditSampleFiles,
-  downloadTextFile,
   estimatePdfPageCountFromSignals,
   formatClockLabel,
   formatClockSecondsLabel,
@@ -80,6 +83,7 @@ import {
   getPersistedSampleDisposition,
   isExecutionMonitorDocument,
   safeNumber,
+  downloadTextFile,
 } from './document-signals'
 import {
   SALES_PANEL_CLASS,
@@ -146,6 +150,7 @@ export default function KnowledgeIngestionPageClient() {
   const searchParams = useSearchParams()
   const pathname = usePathname()
   const router = useRouter()
+  const queryClient = useQueryClient()
   const reduceMotion = useReducedMotion()
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const dropZoneRef = useRef<DropZoneHandle>(null)
@@ -159,6 +164,7 @@ export default function KnowledgeIngestionPageClient() {
   const [auditDispositionFilter, setAuditDispositionFilter] = useState<AuditDispositionFilter>('all')
   const [selectedAuditIds, setSelectedAuditIds] = useState<string[]>([])
   const [sampleDispositions, setSampleDispositions] = useState<Record<string, SampleDisposition>>({})
+  const dispositionRequestsRef = useRef(new Map<string, { disposition: SampleDisposition }>())
   const [activeDetailId, setActiveDetailId] = useState<string | null>(null)
   const [selectedEvidenceFile, setSelectedEvidenceFile] = useState<DatasetPrecheckFileOut | null>(null)
   const [successPulseVisible, setSuccessPulseVisible] = useState(false)
@@ -233,6 +239,15 @@ export default function KnowledgeIngestionPageClient() {
       null,
     [precheckRunsQuery.data],
   )
+
+  const dispositionRunId = mode === 'sales-audit' ? latestPrecheckRun?.id : null
+  useEffect(() => {
+    setSampleDispositions({})
+    const requests = dispositionRequestsRef.current
+    return () => {
+      requests.clear()
+    }
+  }, [demoMode, dispositionRunId, mode, selectedDatasetId])
 
   const precheckSummaryQuery = useQuery<DatasetPrecheckSummary | null>({
     queryKey: ['knowledge-ingestion-precheck-summary', selectedDatasetId, latestPrecheckRun?.id],
@@ -1575,19 +1590,38 @@ export default function KnowledgeIngestionPageClient() {
     async (documentId: string, disposition: SampleDisposition) => {
       const previousDisposition = resolvedSampleDispositions[documentId]
       const reviewedAt = new Date().toISOString()
+      const request = { disposition }
+      const authRevision = getAuthSessionRevision()
+      const queryKey = ['knowledge-ingestion-documents', selectedDatasetId]
+      const submittedDocument = documentsQuery.data?.find((document) => document.id === documentId)
+      dispositionRequestsRef.current.set(documentId, request)
+      const ownsRequest = () =>
+        dispositionRequestsRef.current.get(documentId) === request && authRevision === getAuthSessionRevision()
 
       try {
-        await documentApi.patchUserMetadata(documentId, {
+        const updatedDocument = await documentApi.patchUserMetadata(documentId, {
           patch: {
             precheck_disposition: disposition,
             precheck_reviewed_at: reviewedAt,
           },
           replace: false,
         })
-        await documentsQuery.refetch()
+        if (authRevision !== getAuthSessionRevision()) return
+        await queryClient.invalidateQueries({ queryKey, exact: true, refetchType: 'all' })
+        if (authRevision !== getAuthSessionRevision()) return
+        queryClient.setQueryData<Document[]>(queryKey, (current) =>
+          current?.map((document) => (document === submittedDocument ? updatedDocument : document)),
+        )
+        if (!ownsRequest()) return
+        setSampleDispositions((previous) => {
+          const next = { ...previous }
+          delete next[documentId]
+          return next
+        })
         if (disposition === 'approved') setSuccessPulseVisible(true)
         toast.success('已同步预检处置结论')
       } catch {
+        if (!ownsRequest()) return
         setSampleDispositions((previous) => {
           const next = { ...previous }
           if (previousDisposition) next[documentId] = previousDisposition
@@ -1595,14 +1629,22 @@ export default function KnowledgeIngestionPageClient() {
           return next
         })
         toast.error('同步预检处置失败，请稍后重试')
+      } finally {
+        if (dispositionRequestsRef.current.get(documentId) === request)
+          dispositionRequestsRef.current.delete(documentId)
       }
     },
-    [documentsQuery, resolvedSampleDispositions],
+    [documentsQuery.data, queryClient, resolvedSampleDispositions, selectedDatasetId],
   )
 
   const persistSalesAuditDisposition = useCallback(
     async (fileName: string, disposition: SampleDisposition) => {
       const previousDisposition = resolvedSampleDispositions[fileName]
+      const request = { disposition }
+      const authRevision = getAuthSessionRevision()
+      dispositionRequestsRef.current.set(fileName, request)
+      const ownsRequest = () =>
+        dispositionRequestsRef.current.get(fileName) === request && authRevision === getAuthSessionRevision()
 
       if (!selectedDatasetId || !latestPrecheckRun?.id) {
         setSampleDispositions((previous) => {
@@ -1612,6 +1654,7 @@ export default function KnowledgeIngestionPageClient() {
           return next
         })
         toast.error('当前预检运行不存在，无法同步入库处置')
+        dispositionRequestsRef.current.delete(fileName)
         return
       }
 
@@ -1620,10 +1663,22 @@ export default function KnowledgeIngestionPageClient() {
           file_name: fileName,
           disposition,
         })
-        await precheckSamplesQuery.refetch()
+        if (authRevision !== getAuthSessionRevision()) return
+        await queryClient.invalidateQueries({
+          queryKey: ['knowledge-ingestion-precheck-samples', selectedDatasetId, latestPrecheckRun.id],
+          exact: true,
+          refetchType: 'all',
+        })
+        if (!ownsRequest()) return
+        setSampleDispositions((previous) => {
+          const next = { ...previous }
+          delete next[fileName]
+          return next
+        })
         if (disposition === 'approved') setSuccessPulseVisible(true)
         toast.success('已同步入库处置结论')
       } catch {
+        if (!ownsRequest()) return
         setSampleDispositions((previous) => {
           const next = { ...previous }
           if (previousDisposition) next[fileName] = previousDisposition
@@ -1631,13 +1686,16 @@ export default function KnowledgeIngestionPageClient() {
           return next
         })
         toast.error('同步入库处置失败，请稍后重试')
+      } finally {
+        if (dispositionRequestsRef.current.get(fileName) === request) dispositionRequestsRef.current.delete(fileName)
       }
     },
-    [latestPrecheckRun?.id, precheckSamplesQuery, resolvedSampleDispositions, selectedDatasetId],
+    [latestPrecheckRun?.id, queryClient, resolvedSampleDispositions, selectedDatasetId],
   )
 
   const handleSampleDisposition = useCallback(
     (documentId: string, disposition: SampleDisposition) => {
+      if (dispositionRequestsRef.current.get(documentId)?.disposition === disposition) return
       setSampleDispositions((previous) => ({
         ...previous,
         [documentId]: disposition,
@@ -1837,12 +1895,25 @@ export default function KnowledgeIngestionPageClient() {
         datasetId={selectedDatasetId}
         precheckOnly
         onUploadComplete={() => {
-          documentsQuery.refetch()
-          summaryQuery.refetch()
-          taskQueueQuery.refetch()
-          precheckRunsQuery.refetch()
+          for (const queryKey of [
+            ['knowledge-ingestion-documents', selectedDatasetId],
+            ['knowledge-ingestion-summary', selectedDatasetId],
+            ['knowledge-ingestion-task-queue'],
+            ['knowledge-ingestion-precheck-runs', selectedDatasetId],
+          ]) {
+            void queryClient.invalidateQueries({ queryKey, exact: true, refetchType: 'all' })
+          }
         }}
       />
+
+      {!demoMode && documentsQuery.error ? (
+        <div
+          role="alert"
+          className="mx-3 mt-3 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          {formatApiError(documentsQuery.error, '入库文档加载失败')}
+        </div>
+      ) : null}
 
       <div
         className={cn(

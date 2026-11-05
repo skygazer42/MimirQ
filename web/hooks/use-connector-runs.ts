@@ -19,6 +19,8 @@ export type ConnectorRunsListParams = {
   limit?: number
 }
 
+export type LoadConnectorRuns = (params?: ConnectorRunsListParams, options?: { selectScope?: boolean }) => Promise<void>
+
 type UseConnectorRunsOptions = {
   selectedDatasetId?: string
   limit?: number
@@ -79,14 +81,16 @@ export function useConnectorRuns({ selectedDatasetId, limit = 20, loadDocuments 
     [queryClient],
   )
 
-  const loadConnectorRuns = useCallback(
-    async (params?: ConnectorRunsListParams) => {
+  const loadConnectorRuns = useCallback<LoadConnectorRuns>(
+    async (params, options) => {
       const nextScope = {
         datasetId: params?.datasetId ?? selectedDatasetId,
         limit: params?.limit ?? limit,
       }
-      setScope(nextScope)
-      setEnabled(true)
+      if (options?.selectScope !== false) {
+        setScope(nextScope)
+        setEnabled(true)
+      }
       await fetchRunsForScope(nextScope)
     },
     [fetchRunsForScope, limit, selectedDatasetId],

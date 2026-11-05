@@ -3,7 +3,7 @@ import {
   CircleDashed,
   FileDigit,
   FileSearch,
-  LucideIcon,
+  type LucideIcon,
   ShieldAlert,
   TableProperties,
   Workflow,

@@ -1,12 +1,12 @@
 'use client'
 
-import { useMemo, useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMemo, useRef, useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import type { Document, DocumentVersionDiff, DocumentVersionList } from '@/types'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { useDocumentView } from '@/store/document-view'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 const STAGE_KEYS = ['queued', 'parsing', 'chunking', 'embedding', 'completed'] as const
@@ -42,23 +43,36 @@ function statusBadgeVariant(status: Document['status']): 'default' | 'secondary'
   return 'secondary'
 }
 
-export function IngestionDetailDialog({
-  open,
-  onOpenChange,
-  documentId,
-}: Readonly<{
+type IngestionDetailDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   documentId: string | null
-}>) {
+}
+
+export function IngestionDetailDialog(props: Readonly<IngestionDetailDialogProps>) {
+  return <IngestionDetailContent key={`${props.open}:${props.documentId}`} {...props} />
+}
+
+function IngestionDetailContent({ open, onOpenChange, documentId }: Readonly<IngestionDetailDialogProps>) {
   const t = useTranslations('IngestionDetailDialog')
+  const queryClient = useQueryClient()
   const { openDocument } = useDocumentView()
+  const mountedRef = useRef(false)
+  const diffRequestRef = useRef<object | null>(null)
+  const actionRef = useRef<object | null>(null)
   const [isActing, setIsActing] = useState(false)
   const [diffFrom, setDiffFrom] = useState<string | null>(null)
   const [diffTo, setDiffTo] = useState<string | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
   const [diff, setDiff] = useState<DocumentVersionDiff | null>(null)
   const [diffError, setDiffError] = useState<string | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const {
     data: doc,
@@ -153,7 +167,12 @@ export function IngestionDetailDialog({
   const canForceRetry = Boolean(doc?.status === 'completed')
 
   const handleDiff = async () => {
-    if (!doc || !diffFrom || !diffTo || diffLoading) return
+    if (!doc || !diffFrom || !diffTo || diffRequestRef.current) return
+    const request = {}
+    const authRevision = getAuthSessionRevision()
+    diffRequestRef.current = request
+    const ownsRequest = () =>
+      mountedRef.current && diffRequestRef.current === request && authRevision === getAuthSessionRevision()
     setDiffLoading(true)
     setDiffError(null)
     try {
@@ -163,40 +182,70 @@ export function IngestionDetailDialog({
         to: diffTo,
         sample_limit: 50,
       })
-      setDiff(data)
+      if (ownsRequest()) setDiff(data)
     } catch (err: unknown) {
+      if (!ownsRequest()) return
       setDiffError(formatApiError(err, t('errors.diffFailed')))
       setDiff(null)
     } finally {
-      setDiffLoading(false)
+      if (diffRequestRef.current === request) {
+        diffRequestRef.current = null
+        if (mountedRef.current) setDiffLoading(false)
+      }
     }
   }
 
   const handleCancel = async () => {
-    if (!doc || isActing) return
+    if (!doc || actionRef.current) return
+    const action = {}
+    const authRevision = getAuthSessionRevision()
+    actionRef.current = action
     setIsActing(true)
     try {
       await documentApi.cancel(doc.id)
+      if (authRevision !== getAuthSessionRevision()) return
+      await queryClient.invalidateQueries({
+        queryKey: ['ingestion-doc-detail', doc.id],
+        exact: true,
+        refetchType: 'all',
+      })
+      if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
       toast.success(t('toasts.cancelSuccess'))
-      await refetch()
     } catch (err: unknown) {
+      if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
       toast.error(formatApiError(err, t('errors.cancelFailed')))
     } finally {
-      setIsActing(false)
+      if (actionRef.current === action) {
+        actionRef.current = null
+        if (mountedRef.current) setIsActing(false)
+      }
     }
   }
 
   const handleRetry = async (force: boolean) => {
-    if (!doc || isActing) return
+    if (!doc || actionRef.current) return
+    const action = {}
+    const authRevision = getAuthSessionRevision()
+    actionRef.current = action
     setIsActing(true)
     try {
       await documentApi.retry(doc.id, force ? { force: true } : undefined)
+      if (authRevision !== getAuthSessionRevision()) return
+      await queryClient.invalidateQueries({
+        queryKey: ['ingestion-doc-detail', doc.id],
+        exact: true,
+        refetchType: 'all',
+      })
+      if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
       toast.success(force ? t('toasts.retryForced') : t('toasts.retry'))
-      await refetch()
     } catch (err: unknown) {
+      if (!mountedRef.current || authRevision !== getAuthSessionRevision()) return
       toast.error(formatApiError(err, t('errors.retryFailed')))
     } finally {
-      setIsActing(false)
+      if (actionRef.current === action) {
+        actionRef.current = null
+        if (mountedRef.current) setIsActing(false)
+      }
     }
   }
 

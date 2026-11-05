@@ -48,7 +48,7 @@ export function QuarantineTuneDialog({
   onResetRecommended,
   onSave,
 }: Readonly<QuarantineTuneDialogProps>) {
-  const tuneBusy = acting?.action === 'tune'
+  const tuneBusy = Boolean(acting && acting.id === target?.id)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -1,5 +1,7 @@
 'use client'
 
+import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
+
 import type { ConnectorRunOut, Dataset } from '@/types'
 import type { ChangeEvent } from 'react'
 import { useCallback, useRef, useState } from 'react'
@@ -25,7 +27,7 @@ type KnowledgeWorkbenchActionsProps = {
   handleFileUpload: (event: ChangeEvent<HTMLInputElement>) => void
   uploadDocumentFromUrl: (params: { url: string; filename?: string; dataset_id?: string }) => Promise<unknown>
   loadDocuments: () => void | Promise<void>
-  loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  loadConnectorRuns: LoadConnectorRuns
   onConnectorRunCreated?: (run: ConnectorRunOut) => void
   className?: string
 }

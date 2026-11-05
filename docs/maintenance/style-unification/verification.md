@@ -1827,3 +1827,11 @@
 ## 2026-11-06：框架入口、共享样式与浏览器脚本
 
 11 文件全文检查，3 个局部类型／命名调整、8 个原字节保留；完整 TypeScript、10 文件 ESLint（零警告）、11 文件 Prettier 和完整运行时 AST／原文比较均通过。Playwright `test --list` 成功发现 5 个脚本／31 个用例，未执行浏览器用例、未启动服务、未运行 Python。检查前后源码哈希相同。清单 3,857 项／286 项待处理或待合入；证据 `entry-global-browser11-20261106/category-report.json`、`source-proof.json`、`checks.json`。
+
+## 2026-11-06：知识导入、入库与隔离操作类别
+
+固定 5b2d570 的独立增量复核：8 个 Git 路径、117 项新证据与原 170 项证据核对；相关 49 项检查、两条原始冻结复现用例各 1 项、完整 TypeScript、7 文件 lint/format 和 97 条笔记检查通过。旧 028dd 阶段的两处独立回归与补充上传复现已修复，不将旧候选的通过结果当作最终结果。
+
+当前 2ee6a191a 主线上组合候选保留 72 个最终源码／笔记身份，仅将本批反馈测试换为同目录的新文件名以保留原工作区未跟踪文件。14 个测试文件／123 项全部通过、无跳过；完整非增量 TypeScript、69 文件 ESLint（零警告）、72 文件 Prettier、102 条笔记门禁通过；检查前后源码与用户原文件哈希一致。62 个原文件闭合为 29 调整／33 符合；加入 8 个新路径后，清单 3,865 项／224 项待处理或待合入。未运行浏览器、服务、真实 HTTP 或 Python。
+
+证据：`knowledge-import-ingestion62-20261105/knowledge62-root-final-review.json`、`independent-root/current-context-2ee/source-inputs.json` 和 `checks.json`。

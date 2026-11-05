@@ -6,6 +6,7 @@ import type {
   WebCrawlAuthConfig,
 } from '@/types'
 import { trimTrailingSlashes } from '@/lib/utils'
+import { parseAccessMembers } from './knowledge-import-parsers'
 
 type JiraSyncMode = 'auto' | 'full' | 'incremental'
 type JiraSourceAclFallbackMode = 'only_me' | 'partial_members'
@@ -31,24 +32,6 @@ export type JiraProjectRunPayloadInput = {
   accessGroupIds: string[]
   sourceAclEnabled: boolean
   sourceAclFallbackMode: JiraSourceAclFallbackMode
-}
-
-function parseAccessMembers(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 200) break
-  }
-
-  return out
 }
 
 export function buildJiraProjectRunPayload(

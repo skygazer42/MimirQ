@@ -6,6 +6,22 @@ import { cn } from '@/lib/utils'
 
 import { buildSparklinePath, buildSparklinePlaceholderPath } from './monitor-utils'
 
+type StatCardProps = {
+  label: string
+  value: string | number
+  icon: LucideIcon
+  color: string
+  iconSurface: string
+  border: string
+  delta?: number | null
+  deltaInverted?: boolean
+  pulse?: boolean
+  ringColor?: string
+  sparklineMode: 'real' | 'placeholder'
+  sparklineValues?: number[]
+  sparklineColor?: string
+}
+
 export function StatCard({
   label,
   value,
@@ -20,21 +36,7 @@ export function StatCard({
   sparklineMode,
   sparklineValues = [],
   sparklineColor,
-}: Readonly<{
-  label: string
-  value: string | number
-  icon: LucideIcon
-  color: string
-  iconSurface: string
-  border: string
-  delta?: number | null
-  deltaInverted?: boolean
-  pulse?: boolean
-  ringColor?: string
-  sparklineMode: 'real' | 'placeholder'
-  sparklineValues?: number[]
-  sparklineColor?: string
-}>) {
+}: Readonly<StatCardProps>) {
   const deltaBad = deltaInverted ? delta !== null && delta > 0 : delta !== null && delta < 0
   const deltaGood = delta !== null && !deltaBad && delta !== 0
   const pulseActive = pulse && Number(value) > 0

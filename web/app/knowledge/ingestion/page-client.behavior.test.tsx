@@ -4,6 +4,7 @@ import React, { act } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Document } from '@/types'
 
 const routeState = vi.hoisted(() => ({
   pathname: '/knowledge/ingestion',
@@ -21,6 +22,7 @@ const datasetsState = vi.hoisted(() => ({
 
 const documentApiMock = vi.hoisted(() => ({
   list: vi.fn(),
+  patchUserMetadata: vi.fn(),
 }))
 
 const datasetApiMock = vi.hoisted(() => ({
@@ -36,9 +38,13 @@ const observabilityApiMock = vi.hoisted(() => ({
 }))
 
 const triggerFilePickerMock = vi.hoisted(() => vi.fn())
+const uploadCompletions = vi.hoisted(() => ({ callbacks: [] as Array<() => void> }))
 
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(routeState.search),
+  useSearchParams: () => {
+    const search = routeState.search
+    return React.useMemo(() => new URLSearchParams(search), [search])
+  },
 }))
 
 vi.mock('@/i18n/navigation', () => ({
@@ -55,6 +61,9 @@ vi.mock('@/lib/api', () => ({
   datasetApi: datasetApiMock,
   observabilityApi: observabilityApiMock,
 }))
+vi.mock('@/lib/api/documents', () => ({ documentApi: documentApiMock }))
+vi.mock('@/lib/api/datasets', () => ({ datasetApi: datasetApiMock }))
+vi.mock('@/lib/api/observability', () => ({ observabilityApi: observabilityApiMock }))
 
 vi.mock('@/lib/event-bus', () => ({
   globalEventBus: {
@@ -104,15 +113,29 @@ vi.mock('@/components/ui/button', () => ({
     React.createElement('button', props, children),
 }))
 
-vi.mock('@/components/ui/select', () => ({
-  Select: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
-  SelectContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
-  SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) =>
-    React.createElement('div', { 'data-value': value }, children),
-  SelectTrigger: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) =>
-    React.createElement('div', props, children),
-  SelectValue: () => null,
-}))
+vi.mock('@/components/ui/select', async () => {
+  const React = await import('react')
+  const Context = React.createContext<((value: string) => void) | undefined>(undefined)
+  return {
+    Select: ({ children, onValueChange }: { children: React.ReactNode; onValueChange: (value: string) => void }) => (
+      <Context.Provider value={onValueChange}>
+        <div>{children}</div>
+      </Context.Provider>
+    ),
+    SelectContent: ({ children }: { children: React.ReactNode }) => React.createElement('div', null, children),
+    SelectItem: ({ children, value }: { children: React.ReactNode; value: string }) => {
+      const change = React.useContext(Context)
+      return (
+        <button data-value={value} onClick={() => change?.(value)}>
+          {children}
+        </button>
+      )
+    },
+    SelectTrigger: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) =>
+      React.createElement('div', props, children),
+    SelectValue: () => null,
+  }
+})
 
 vi.mock('@/components/ui/sheet', () => ({
   Sheet: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
@@ -134,12 +157,13 @@ vi.mock('@/components/ingestion/drop-zone', async () => {
   const React = await import('react')
   return {
     DropZone: React.forwardRef(function DropZone(
-      _props: Record<string, unknown>,
+      props: { onUploadComplete: () => void },
       ref: React.ForwardedRef<{ triggerFilePicker: (args?: unknown) => void }>,
     ) {
       React.useImperativeHandle(ref, () => ({
         triggerFilePicker: triggerFilePickerMock,
       }))
+      uploadCompletions.callbacks.push(props.onUploadComplete)
       return React.createElement('div', { 'data-drop-zone': 'true' })
     }),
   }
@@ -229,20 +253,22 @@ function createWrapper() {
     return React.createElement(QueryClientProvider, { client: queryClient }, children)
   }
 
-  return Wrapper
+  return { Wrapper, queryClient }
 }
 
 function renderPage() {
   const container = document.createElement('div')
   document.body.appendChild(container)
   const root = createRoot(container)
-  const Wrapper = createWrapper()
+  const { Wrapper, queryClient } = createWrapper()
 
   act(() => {
     root.render(React.createElement(Wrapper, null, React.createElement(KnowledgeIngestionPageClient)))
   })
 
-  return { container, root }
+  const rerender = () =>
+    act(() => root.render(React.createElement(Wrapper, null, React.createElement(KnowledgeIngestionPageClient))))
+  return { container, root, queryClient, rerender }
 }
 
 beforeEach(() => {
@@ -252,6 +278,7 @@ beforeEach(() => {
   routerMock.push.mockReset()
   routerMock.replace.mockReset()
   triggerFilePickerMock.mockReset()
+  uploadCompletions.callbacks = []
 
   documentApiMock.list.mockResolvedValue({
     items: [createExecutionDocument(1)],
@@ -323,6 +350,116 @@ afterEach(() => {
 })
 
 describe('knowledge ingestion page behavior', () => {
+  function actualDocument(id: number, disposition?: 'approved' | 'manual'): Document {
+    return {
+      ...createExecutionDocument(id),
+      status: 'processing',
+      processing_progress: 50,
+      processing_attempts: 1,
+      chunk_count: 2,
+      total_characters: 30,
+      publication_status: 'published',
+      created_at: '2026-08-16T00:00:00Z',
+      updated_at: '2026-08-16T01:00:00Z',
+      metadata: disposition ? { user: { precheck_disposition: disposition } } : {},
+    }
+  }
+  function railButton(container: HTMLElement, text: string) {
+    const button = Array.from(container.querySelectorAll<HTMLButtonElement>('aside button')).find(
+      (node) => node.textContent?.trim() === text,
+    )
+    if (!button) throw new Error(`rail button missing: ${text}`)
+    return button
+  }
+  async function openRail(container: HTMLElement) {
+    await act(async () => {
+      await vi.waitFor(() => expect(container.textContent).toContain('Run 1.pdf'))
+      container.querySelector<HTMLButtonElement>('[data-monitor-scope-control]')!.click()
+    })
+    expect(container.querySelector('aside')?.className).toContain('opacity-100')
+  }
+  it('shows a primary document query failure', async () => {
+    routeState.search = 'datasetId=ds-1&mode=execution-monitor'
+    documentApiMock.list.mockRejectedValueOnce(new Error('documents unavailable'))
+    const { container, root } = renderPage()
+    try {
+      await act(async () => {
+        await vi.waitFor(() =>
+          expect(container.querySelector('[role="alert"]')?.textContent ?? '').toContain('documents unavailable'),
+        )
+      })
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+  it('keeps accepted upload refreshes on their original dataset keys', async () => {
+    routeState.search = 'datasetId=ds-1&mode=execution-monitor'
+    const { container, root } = renderPage()
+    try {
+      await openRail(container)
+      const complete = uploadCompletions.callbacks.at(-1)!
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>('aside [data-value="__all__"]')!.click()
+        await vi.waitFor(() =>
+          expect(documentApiMock.list.mock.calls.some(([params]) => params.dataset_id === undefined)).toBe(true),
+        )
+      })
+      const before = documentApiMock.list.mock.calls.filter(([params]) => params.dataset_id === 'ds-1').length
+      const other = documentApiMock.list.mock.calls.filter(([params]) => params.dataset_id === undefined).length
+      await act(async () => {
+        complete()
+        await vi.waitFor(() =>
+          expect(documentApiMock.list.mock.calls.filter(([params]) => params.dataset_id === 'ds-1')).toHaveLength(
+            before + 1,
+          ),
+        )
+      })
+      expect(documentApiMock.list.mock.calls.filter(([params]) => params.dataset_id === undefined)).toHaveLength(other)
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+  it('does not restore an optimistic disposition after an authoritative metadata refresh', async () => {
+    routeState.search = 'datasetId=ds-1&mode=execution-monitor'
+    documentApiMock.list.mockResolvedValue({ items: [actualDocument(1)] })
+    documentApiMock.patchUserMetadata.mockResolvedValueOnce(actualDocument(1, 'approved'))
+    const { container, root, queryClient } = renderPage()
+    try {
+      await openRail(container)
+      await act(async () => railButton(container, '确认').click())
+      await act(async () => {
+        queryClient.setQueryData(['knowledge-ingestion-documents', 'ds-1'], [actualDocument(1, 'manual')])
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+      expect(container.querySelector('aside')!.textContent).toContain('人工处理1')
+      expect(container.querySelector('aside')!.textContent).toContain('已确认0')
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+  it('does not roll back a newer decision when an older metadata write fails', async () => {
+    routeState.search = 'datasetId=ds-1&mode=execution-monitor'
+    let fail!: (error: Error) => void
+    documentApiMock.list.mockResolvedValue({ items: [actualDocument(1)] })
+    documentApiMock.patchUserMetadata
+      .mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          fail = reject
+        }),
+      )
+      .mockResolvedValueOnce(actualDocument(1, 'manual'))
+    const { container, root } = renderPage()
+    try {
+      await openRail(container)
+      await act(async () => railButton(container, '确认').click())
+      await act(async () => railButton(container, '转人工').click())
+      await act(async () => fail(new Error('old write failed')))
+      expect(container.querySelector('aside')!.textContent).toContain('人工处理1')
+    } finally {
+      act(() => root.unmount())
+    }
+  })
+
   it('renders precheck embedding advisories as warnings without implying an automatic model switch', async () => {
     datasetApiMock.getPrecheckSummary.mockResolvedValueOnce({
       dataset_id: 'ds-1',
