@@ -1,11 +1,14 @@
 import json
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from app.core.config import settings
 from app.core.redis_client import LazyRedisClient
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 logger = get_logger(__name__)
 
@@ -41,7 +44,7 @@ def _iso_now() -> str:
     return _utc_now().isoformat()
 
 
-def _get_client() -> Any:
+def _get_client() -> "Redis":
     client = _get_redis_client()
     if client is None:
         raise RuntimeError("Redis client unavailable for dataset-analysis PNG task state")
@@ -49,24 +52,24 @@ def _get_client() -> Any:
 
 
 def _prefix() -> str:
-    return str(getattr(settings, "DATASET_ANALYSIS_PNG_REDIS_PREFIX", "dataset-analysis-png") or "dataset-analysis-png")
+    return str(settings.DATASET_ANALYSIS_PNG_REDIS_PREFIX or "dataset-analysis-png")
 
 
 def _active_ttl_sec() -> int:
-    stale_after = max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 60) or 60))
+    stale_after = max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC or 60))
     return max(300, stale_after * 4)
 
 
 def _terminal_ttl_sec() -> int:
-    return max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC", 600) or 600))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC or 600))
 
 
 def _stale_after_sec() -> int:
-    return max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_STALE_AFTER_SEC", 60) or 60))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC or 60))
 
 
 def _result_max_bytes() -> int:
-    return max(1, int(getattr(settings, "DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES", 5_000_000) or 5_000_000))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES or 5_000_000))
 
 
 def get_png_export_task_heartbeat_interval_sec() -> float:
@@ -107,7 +110,7 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _read_task(client: Any, task_id: str) -> tuple[bytes, dict[str, Any]]:
+def _read_task(client: "Redis", task_id: str) -> tuple[bytes, dict[str, Any]]:
     try:
         raw = client.get(_task_key(task_id))
     except Exception as exc:  # noqa: BLE001
@@ -119,14 +122,14 @@ def _read_task(client: Any, task_id: str) -> tuple[bytes, dict[str, Any]]:
     return current_raw, _deserialize_task(raw)
 
 
-def _delete_result_best_effort(client: Any, task_id: str) -> None:
+def _delete_result_best_effort(client: "Redis", task_id: str) -> None:
     try:
         client.delete(_result_key(task_id))
     except Exception:  # noqa: BLE001
         _invalidate_redis_client()
 
 
-def _cas_task(client: Any, task_id: str, current_raw: bytes, next_task: dict[str, Any], *, ttl_sec: int) -> bool:
+def _cas_task(client: "Redis", task_id: str, current_raw: bytes, next_task: dict[str, Any], *, ttl_sec: int) -> bool:
     try:
         return bool(
             client.eval(
@@ -188,7 +191,7 @@ def _is_stale(task: dict[str, Any]) -> bool:
     return False
 
 
-def _transition_to_worker_lost(client: Any, task_id: str, *, tenant_id: str, dataset_id: str) -> dict[str, Any]:
+def _transition_to_worker_lost(client: "Redis", task_id: str, *, tenant_id: str, dataset_id: str) -> dict[str, Any]:
     for _attempt in range(4):
         current_raw, current = _read_task(client, task_id)
         if not _scope_matches(current, tenant_id=tenant_id, dataset_id=dataset_id):

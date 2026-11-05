@@ -55,7 +55,7 @@ def _draw_heatmap(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
     draw.text((cell_x + bar_width + 80, y - 22), "negative", fill=(107, 114, 128))
 
     max_retrieval = max([int(row.get("retrieval_hit_count") or 0) for row in heatmap_rows] or [1])
-    max_negative = max([int(row.get("negative_feedback_count") or 0) for row in heatmap_rows] or [1])
+    max_negative = max(1, max([int(row.get("negative_feedback_count") or 0) for row in heatmap_rows] or [1]))
     for row in heatmap_rows[:12]:
         filename = str(row.get("filename") or "")
         retrieval = int(row.get("retrieval_hit_count") or 0)
