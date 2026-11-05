@@ -1,6 +1,7 @@
 'use client'
 
 import type { LucideIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import { IconButton } from '@/components/ui/icon-button'
@@ -10,12 +11,12 @@ type WorkbenchPanelDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  children: React.ReactNode
+  children: ReactNode
 
   /**
    * Optional trigger. If omitted, provide `triggerIcon` + `triggerLabel`.
    */
-  trigger?: React.ReactNode
+  trigger?: ReactNode
   triggerIcon?: LucideIcon
   triggerLabel?: string
 

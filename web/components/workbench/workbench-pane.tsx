@@ -1,9 +1,11 @@
+import type { ReactNode } from 'react'
+
 import { cn } from '@/lib/utils'
 import { Panel } from '@/components/ui/panel'
 
 type WorkbenchPaneProps = {
-  header?: React.ReactNode
-  children: React.ReactNode
+  header?: ReactNode
+  children: ReactNode
   className?: string
   headerClassName?: string
   bodyClassName?: string

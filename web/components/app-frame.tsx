@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import type { ReactNode } from 'react'
 import { useTranslations } from 'next-intl'
 
 import { Navbar } from '@/components/navbar'
@@ -9,10 +10,10 @@ import { cn } from '@/lib/utils'
 import { useDocumentView } from '@/store/document-view'
 
 type AppFrameProps = {
-  children: React.ReactNode
+  children: ReactNode
   className?: string
   mainClassName?: string
-  rightPanel?: React.ReactNode
+  rightPanel?: ReactNode
   showBackground?: boolean
   showNavbar?: boolean
   withDocumentViewerPadding?: boolean

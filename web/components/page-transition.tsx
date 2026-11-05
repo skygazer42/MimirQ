@@ -2,8 +2,13 @@
 
 import { motion, useReducedMotion } from 'framer-motion'
 import { usePathname } from 'next/navigation'
+import type { ReactNode } from 'react'
 
-export function PageTransition({ children }: Readonly<{ children: React.ReactNode }>) {
+type PageTransitionProps = {
+  children: ReactNode
+}
+
+export function PageTransition({ children }: Readonly<PageTransitionProps>) {
   const pathname = usePathname()
   const shouldReduceMotion = useReducedMotion()
 

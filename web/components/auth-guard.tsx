@@ -1,12 +1,17 @@
 'use client'
 
 import { Fragment, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { AUTH_SCOPE_CHANGED_EVENT, getAccessToken } from '@/lib/auth-storage'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 
-export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>) {
+type AuthGuardProps = {
+  children: ReactNode
+}
+
+export function AuthGuard({ children }: Readonly<AuthGuardProps>) {
   const router = useRouter()
   const pathname = usePathname()
   const { data: meta, isPending, isError } = useBackendMeta()

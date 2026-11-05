@@ -4,6 +4,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentType, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import Image from 'next/image'
 import { useTranslations } from 'next-intl'
 import {
@@ -59,7 +60,7 @@ import {
 type SectionId = 'core' | 'ingestion' | 'knowledge' | 'analysis' | 'system'
 
 type MenuItem = {
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   labelKey: string
   href: string
   requiredPermission?: TenantPermission
@@ -241,13 +242,12 @@ function loadOpenSections(): Record<SectionId, boolean> {
   }
 }
 
-export function Navbar({
-  isSidebarOpen: externalIsOpen,
-  setSidebarOpen: externalSetOpen,
-}: Readonly<{
+type NavbarProps = {
   isSidebarOpen?: boolean
   setSidebarOpen?: (isOpen: boolean) => void
-}> = {}) {
+}
+
+export function Navbar({ isSidebarOpen: externalIsOpen, setSidebarOpen: externalSetOpen }: Readonly<NavbarProps> = {}) {
   const navRef = useRef<HTMLElement | null>(null)
   const toggleButtonRef = useRef<HTMLButtonElement | null>(null)
   const firstActionRef = useRef<HTMLButtonElement | null>(null)
@@ -323,7 +323,7 @@ export function Navbar({
   const handleSidebarTogglePointerDown = useCallback(() => {
     restoreToggleFocusOnCloseRef.current = false
   }, [])
-  const handleSidebarToggleKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>) => {
+  const handleSidebarToggleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
       restoreToggleFocusOnCloseRef.current = true
     }

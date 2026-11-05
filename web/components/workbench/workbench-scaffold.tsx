@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import type { ComponentProps } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 import { PageContainer } from '@/components/ui/page-container'
@@ -9,24 +9,24 @@ import type { PageTitleIconName } from '@/components/ui/page-title-icon'
 import { WorkbenchPane } from './workbench-pane'
 
 type WorkbenchScaffoldProps = {
-  title: React.ReactNode
-  description?: React.ReactNode
+  title: ReactNode
+  description?: ReactNode
   icon?: LucideIcon
   iconImage?: PageTitleIconName
   iconColor?: string
   badge?: string
-  actions?: React.ReactNode
-  header?: React.ReactNode
+  actions?: ReactNode
+  header?: ReactNode
 
-  top?: React.ReactNode
-  pipelineRail?: React.ReactNode
-  toolbar?: React.ReactNode
+  top?: ReactNode
+  pipelineRail?: ReactNode
+  toolbar?: ReactNode
 
-  leftPanel?: React.ReactNode
-  rightPanel?: React.ReactNode
+  leftPanel?: ReactNode
+  rightPanel?: ReactNode
 
-  mainPanel?: React.ReactNode
-  children?: React.ReactNode
+  mainPanel?: ReactNode
+  children?: ReactNode
 
   size?: ComponentProps<typeof PageContainer>['size']
   compactHeader?: boolean

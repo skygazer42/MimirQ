@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { MouseEvent, ReactElement } from 'react'
 import { motion, useMotionValue, useReducedMotion, useSpring } from 'framer-motion'
 
 type MagneticProps = {
-  children: React.ReactElement
+  children: ReactElement
   strength?: number
 }
 
@@ -34,7 +35,7 @@ export function Magnetic({ children, strength = 0.5 }: Readonly<MagneticProps>) 
     return () => mq.removeEventListener('change', update)
   }, [])
 
-  const handleMouseMove = (e: React.MouseEvent) => {
+  const handleMouseMove = (e: MouseEvent) => {
     if (!enabled) return
     if (!ref.current) return
 

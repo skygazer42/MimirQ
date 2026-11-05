@@ -7,11 +7,7 @@ import { cn } from '@/lib/utils'
 
 export type EChartEventHandler = (params: unknown) => void
 
-export function EChart({
-  option,
-  className,
-  onEvents,
-}: Readonly<{
+type EChartProps = {
   option: EChartsOption
   className?: string
   /**
@@ -19,7 +15,9 @@ export function EChart({
    * Pass a stable (memoized) object: the chart re-initializes when it changes.
    */
   onEvents?: Readonly<Record<string, EChartEventHandler>>
-}>) {
+}
+
+export function EChart({ option, className, onEvents }: Readonly<EChartProps>) {
   const hostRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {

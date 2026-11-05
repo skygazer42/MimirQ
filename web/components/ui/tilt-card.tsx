@@ -1,17 +1,18 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { FocusEventHandler, PointerEvent, ReactNode } from 'react'
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'framer-motion'
 import { cn } from '@/lib/utils'
 
 type TiltCardProps = {
-  children: React.ReactNode
+  children: ReactNode
   className?: string
   onClick?: () => void
   onMouseEnter?: () => void
   onMouseLeave?: () => void
-  onFocus?: React.FocusEventHandler<HTMLButtonElement>
-  onBlur?: React.FocusEventHandler<HTMLButtonElement>
+  onFocus?: FocusEventHandler<HTMLButtonElement>
+  onBlur?: FocusEventHandler<HTMLButtonElement>
   selected?: boolean
   ariaLabel?: string
 }
@@ -57,7 +58,7 @@ export function TiltCard({
     return () => mq.removeEventListener('change', update)
   }, [])
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handlePointerMove = (e: PointerEvent<HTMLButtonElement>) => {
     if (!enabled) return
     if (!ref.current) return
 

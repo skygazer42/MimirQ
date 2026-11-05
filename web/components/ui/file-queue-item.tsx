@@ -1,5 +1,6 @@
 'use client'
 
+import type { DragEvent, ReactNode } from 'react'
 import { cn, formatFileSize } from '@/lib/utils'
 import {
   FileText,
@@ -82,7 +83,7 @@ type FileQueueItemProps = {
   isSelected?: boolean
   isSelectable?: boolean
   draggable?: boolean
-  onDragStart?: (e: React.DragEvent<HTMLElement>) => void
+  onDragStart?: (e: DragEvent<HTMLElement>) => void
   onClick?: () => void
   onToggleSelected?: () => void
   onRemove?: () => void
@@ -103,7 +104,7 @@ export function FileQueueItem({
 }: Readonly<FileQueueItemProps>) {
   const t = useTranslations('CommonUi')
   const ext = file.name.split('.').pop()?.toLowerCase() || 'txt'
-  const config = FILE_TYPE_CONFIG[ext] || FILE_TYPE_CONFIG.txt
+  const config = Object.hasOwn(FILE_TYPE_CONFIG, ext) ? FILE_TYPE_CONFIG[ext] : FILE_TYPE_CONFIG.txt
   const Icon = config.icon
   const progressPct =
     file.progress == null || !Number.isFinite(Number(file.progress))
@@ -111,7 +112,7 @@ export function FileQueueItem({
       : Math.max(0, Math.min(100, Number(file.progress)))
   const parsedSummary = [file.parser, file.chunkStrategyLabel].filter(Boolean).join(' · ')
   const governanceStatusLabel = getFileQueueGovernanceStatusLabel(file.governanceStatus)
-  let selectionButton: React.ReactNode = null
+  let selectionButton: ReactNode = null
   if (isSelectable) {
     selectionButton = (
       <button

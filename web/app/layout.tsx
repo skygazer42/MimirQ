@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { cookies, headers } from 'next/headers'
 import { connection } from 'next/server'
 import { NextIntlClientProvider } from 'next-intl'
@@ -39,11 +39,11 @@ export const metadata: Metadata = {
   },
 }
 
-export default async function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+type RootLayoutProps = {
+  children: ReactNode
+}
+
+export default async function RootLayout({ children }: Readonly<RootLayoutProps>) {
   await connection()
 
   const enableFluidCursor = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === '1'
