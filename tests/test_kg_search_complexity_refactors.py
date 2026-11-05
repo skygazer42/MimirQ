@@ -720,12 +720,12 @@ async def test_recall_search_uses_lexical_first_branch_and_preserves_exact_schem
         }
     ]
 
-    async def _unexpected_embedding(_self: object, _query: str) -> list[float]:
+    async def _unexpected_embedding(_query: str) -> list[float]:
         raise AssertionError("embedding should be skipped when lexical-first results exist")
 
     monkeypatch.setattr(recall_mod, "get_session", lambda: _Session(), raising=True)
     monkeypatch.setattr(
-        recall_mod.DocumentProcessor,
+        recall_mod,
         "generate_embedding",
         _unexpected_embedding,
         raising=True,
@@ -834,13 +834,13 @@ async def test_recall_search_expands_alias_query_and_falls_back_to_lexical_conte
     ]
     captured_queries: list[str] = []
 
-    async def _failing_embedding(_self: object, query: str) -> list[float]:
+    async def _failing_embedding(query: str) -> list[float]:
         captured_queries.append(query)
         raise RuntimeError("embedding offline")
 
     monkeypatch.setattr(recall_mod, "get_session", lambda: _Session(), raising=True)
     monkeypatch.setattr(
-        recall_mod.DocumentProcessor,
+        recall_mod,
         "generate_embedding",
         _failing_embedding,
         raising=True,
@@ -1018,13 +1018,13 @@ async def test_recall_search_requires_account_id_for_dataset_scoped_filtering(
     calls: list[tuple[str, object]] = []
     embedding_queries: list[str] = []
 
-    async def _embedding(_self: object, query: str) -> list[float]:
+    async def _embedding(query: str) -> list[float]:
         embedding_queries.append(query)
         return [0.1]
 
     monkeypatch.setattr(recall_mod, "get_session", lambda: _Session(), raising=True)
     monkeypatch.setattr(
-        recall_mod.DocumentProcessor,
+        recall_mod,
         "generate_embedding",
         _embedding,
         raising=True,

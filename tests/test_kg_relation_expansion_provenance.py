@@ -11,7 +11,7 @@ _SEED_EVENT_ID = UUID(int=100)
 _NEIGHBOR_EVENT_ID = UUID(int=101)
 
 
-async def _fake_generate_embedding(_self: object, _text: str) -> list[float]:
+async def _fake_generate_embedding(_text: str) -> list[float]:
     await yield_control()
     return [0.0]
 
@@ -236,7 +236,7 @@ async def test_kg_recall_relation_expansion_clues_include_provenance_and_confide
 
     _patch_recall_relation_settings(monkeypatch, recall_mod.settings)
     monkeypatch.setattr(recall_mod, "get_session", lambda: _FakeKGSession(), raising=True)
-    monkeypatch.setattr(recall_mod.DocumentProcessor, "generate_embedding", _fake_generate_embedding, raising=True)
+    monkeypatch.setattr(recall_mod, "generate_embedding", _fake_generate_embedding, raising=True)
     monkeypatch.setattr(recall_mod, "EntityRepository", lambda _session: _RecallEntityRepository(), raising=True)
     monkeypatch.setattr(recall_mod, "EventRepository", lambda _session: _RecallEventRepository(), raising=True)
 

@@ -5,7 +5,7 @@ Reciprocal Rank Fusion reranker combining recall score and query similarity.
 from typing import Any
 
 from app.core.config import settings
-from app.rag.kg.loading.processor import DocumentProcessor
+from app.rag.kg.loading.processor import generate_embedding
 from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.ranking.features import (
@@ -136,8 +136,7 @@ def _build_extras(
 
 
 class RerankRRFSearcher:
-    def __init__(self, *args, **kwargs):
-        self.processor = DocumentProcessor()
+    def __init__(self, *args, **kwargs): ...
 
     def _load_document_labels(self, session: Any, events: list[Any]) -> dict[str, str]:
         doc_ids = _event_document_ids(events)
@@ -179,9 +178,7 @@ class RerankRRFSearcher:
             if not events:
                 return {"events": [], "clues": [], "stats": {}}
 
-            query_vec = (
-                query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
-            )
+            query_vec = query_vector if query_vector is not None else await generate_embedding(config.query)
             input_order = {str(item_id): idx for idx, item_id in enumerate(event_ids)}
             recall_scores = {
                 str(item_id): float(event_scores.get(str(item_id), 0.0) or 0.0) for item_id in event_ids if item_id

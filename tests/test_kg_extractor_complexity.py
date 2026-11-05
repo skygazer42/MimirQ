@@ -202,7 +202,6 @@ def _make_extract_state(
         budget_stats_by_doc={},
         budget_skipped_chunk_ids=set(budget_skipped_chunk_ids or set()),
         processor=object(),
-        embedder=_FakeEmbedder(),
         backend_selection=SimpleNamespace(backend="llm", processor=object(), fallback_reason=None),
         backend_reason=None,
         prompt_template_content=None,
@@ -298,7 +297,7 @@ async def test_extract_preserves_budget_section_order_and_retry_tracking(monkeyp
 
     session = _FakeSession()
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "Indexer", _IndexerFactory)
     monkeypatch.setattr(extractor_module, "RelationRepository", _NoOpRelationRepository)
     monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(object()))
@@ -341,9 +340,9 @@ async def test_extract_preserves_budget_section_order_and_retry_tracking(monkeyp
         lambda **_kwargs: SimpleNamespace(backend="llm", processor=processor, fallback_reason=None),
     )
     monkeypatch.setattr(
-        extractor_module.EventExtractor,
+        extractor_module,
         "_writeback_document_metadata",
-        lambda self, **kwargs: writeback.update(kwargs),
+        lambda **kwargs: writeback.update(kwargs),
     )
     monkeypatch.setattr(extractor_module, "log_metrics", lambda payload: metrics.append(dict(payload)))
 
@@ -377,7 +376,7 @@ async def test_extract_raises_when_every_attempted_chunk_fails(monkeypatch: pyte
 
     session = _FakeSession()
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(object()))
 
     class _FailingProcessor:
@@ -415,7 +414,7 @@ async def test_extract_timeout_does_not_return_existing_events_without_replace(
     existing_event = SimpleNamespace(chunk_id="chunk-timeout")
     session = _FakeSession(query_rows=[existing_event])
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "create_llm_client", lambda **_kwargs: _async_value(object()))
 
     class _SlowProcessor:
@@ -438,9 +437,9 @@ async def test_extract_timeout_does_not_return_existing_events_without_replace(
     )
     writeback: dict[str, object] = {}
     monkeypatch.setattr(
-        extractor_module.EventExtractor,
+        extractor_module,
         "_writeback_document_metadata",
-        lambda self, **kwargs: writeback.update(kwargs),
+        lambda **kwargs: writeback.update(kwargs),
     )
     monkeypatch.setattr(extractor_module, "log_metrics", lambda _payload: None)
 
@@ -470,7 +469,7 @@ async def test_extract_relation_verifier_fails_open_to_original_relations(monkey
 
     session = _FakeSession()
     monkeypatch.setattr(extractor_module, "SessionLocal", lambda: session)
-    monkeypatch.setattr(extractor_module, "DocumentProcessor", _FakeEmbedder)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "Indexer", _RelationIndexer)
     monkeypatch.setattr(extractor_module, "RelationRepository", _NoOpRelationRepository)
     monkeypatch.setattr(extractor_module, "KgRelation", _FakeRelation)
@@ -546,9 +545,9 @@ async def test_extract_relation_verifier_fails_open_to_original_relations(monkey
     monkeypatch.setattr(extractor_module, "RelationVerifier", _FakeRelationVerifier)
     monkeypatch.setattr(extractor_module, "log_metrics", lambda payload: None)
     monkeypatch.setattr(
-        extractor_module.EventExtractor,
+        extractor_module,
         "_writeback_document_metadata",
-        lambda self, **kwargs: None,
+        lambda **kwargs: None,
     )
 
     chunk = _make_chunk("chunk-rel", document_id="doc-rel", chunk_index=0, content="Alice works for Acme.")
@@ -645,7 +644,7 @@ async def test_relation_post_index_pass_replaces_processed_and_budget_skipped_ch
         result=SimpleNamespace(entities=[SimpleNamespace(id="entity-alice", normalized_name="alice", type="Person")]),
         cleanup_chunk_ids=["chunk-keep"],
         llm_client=object(),
-        alias_diag=extractor_module.EventExtractor._new_alias_diag(),
+        alias_diag=extractor_module._new_alias_diag(),
         alias_stats_by_doc={},
         llm_aliases_by_chunk={},
         relation_verify_enabled=False,
@@ -653,7 +652,7 @@ async def test_relation_post_index_pass_replaces_processed_and_budget_skipped_ch
         evidence_required=False,
     )
 
-    stats = await extractor_module.EventExtractor()._run_relation_post_index_pass(context)
+    stats = await extractor_module._run_relation_post_index_pass(context)
 
     repo = _TrackingRelationRepository.last_instance
     assert stats == {
@@ -710,6 +709,7 @@ async def test_skill_post_index_pass_links_upserted_skills_to_new_events(
         return [SimpleNamespace(id="skill-1", normalized_name="python automation", type="Skill")]
 
     monkeypatch.setattr(extractor_module, "SkillProcessor", _FakeSkillProcessor)
+    monkeypatch.setattr(extractor_module, "generate_batch", _FakeEmbedder().generate_batch)
     monkeypatch.setattr(extractor_module, "KgEventEntity", _FakeEventEntity)
     monkeypatch.setattr(indexer, "upsert_entities", _upsert_entities)
 
@@ -726,7 +726,7 @@ async def test_skill_post_index_pass_links_upserted_skills_to_new_events(
         new_events=[SimpleNamespace(id="event-1", chunk_id=chunk_id, document_id=document_id)],
     )
 
-    stats = await extractor_module.EventExtractor()._run_skill_post_index_pass(context)
+    stats = await extractor_module._run_skill_post_index_pass(context)
 
     skill_links = [row for row in session.added if isinstance(row, _FakeEventEntity)]
     assert stats["total_raw"] == 1

@@ -41,7 +41,7 @@ class HybridExtractor:
                 max_entities_per_event=max_entities_per_event,
             )
 
-        threshold = float(getattr(settings, "KG_HYBRID_LLM_THRESHOLD", 0.7) or 0.7)
+        threshold = float(settings.KG_HYBRID_LLM_THRESHOLD or 0.7)
         entities = gliner_events[0].get("entities") if isinstance(gliner_events[0], dict) else None
         has_low_confidence = False
         if isinstance(entities, list):

@@ -167,13 +167,12 @@ def _alias_candidate_surfaces(text: str, tokens: list[str], *, max_ngrams: int) 
 
 
 def _normalize_alias_surfaces(surfaces: list[str], *, max_ngrams: int) -> list[str]:
-    from app.rag.kg.extraction.parser import EntityValueParser  # noqa: WPS433
+    from app.rag.kg.extraction.parser import normalize_entity_name  # noqa: WPS433
 
-    parser = EntityValueParser()
     out: list[str] = []
     seen: set[str] = set()
     for surface in surfaces:
-        norm = parser.normalize_name(surface)
+        norm = normalize_entity_name(surface)
         if norm and len(norm) <= 500 and norm not in seen:
             seen.add(norm)
             out.append(norm)

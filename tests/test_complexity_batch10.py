@@ -39,7 +39,7 @@ class _Field:
         return ("in", self.name, values)
 
 
-def test_event_processor_template_fallback_and_entity_merge() -> None:
+def test_event_processor_template_fallback_and_entity_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.rag.kg.extraction.processor import EventProcessor
 
     prompts: list[str] = []
@@ -80,9 +80,11 @@ def test_event_processor_template_fallback_and_entity_merge() -> None:
             }
 
     processor = EventProcessor(_LLM(), prompt_template="Use template {missing_key}")
-    processor.parser = SimpleNamespace(
-        normalize_name=lambda value: str(value).strip().lower(),
-        normalize_type=lambda value: str(value).strip().lower(),
+    monkeypatch.setattr(
+        "app.rag.kg.extraction.processor.normalize_entity_name", lambda value: str(value).strip().lower()
+    )
+    monkeypatch.setattr(
+        "app.rag.kg.extraction.processor.normalize_entity_type", lambda value: str(value).strip().lower()
     )
     sections = [
         SimpleNamespace(id=uuid4(), content="Primary chunk", page_number=3),

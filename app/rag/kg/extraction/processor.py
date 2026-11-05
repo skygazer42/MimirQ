@@ -7,7 +7,7 @@ from typing import Any
 
 from app.core.config import settings
 from app.models.document import DocumentChunk
-from app.rag.kg.extraction.parser import EntityValueParser
+from app.rag.kg.extraction.parser import normalize_entity_name, normalize_entity_type
 from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
@@ -24,7 +24,7 @@ def _build_context(sections: list[DocumentChunk]) -> str:
             prefix += f" p{page}"
         prefix += "]"
         context_parts.append(f"{prefix} {chunk.content}")
-    max_chars = int(getattr(settings, "KG_EXTRACT_CONTEXT_MAX_CHARS", 8000) or 8000)
+    max_chars = int(settings.KG_EXTRACT_CONTEXT_MAX_CHARS or 8000)
     max_chars = max(1000, min(max_chars, 200_000))
     return "\n\n".join(context_parts)[:max_chars]
 
@@ -127,7 +127,6 @@ def _coerce_entity_input(ent: Any) -> tuple[str, str, str, Any, Any, str, dict[s
 
 
 def _build_entity_payload(
-    processor: "EventProcessor",
     *,
     name: str,
     entity_type: str,
@@ -139,8 +138,8 @@ def _build_entity_payload(
 ) -> tuple[tuple[str, str], dict[str, Any]] | None:
     if not name:
         return None
-    normalized_name = processor.parser.normalize_name(name)
-    normalized_type = processor.parser.normalize_type(entity_type)
+    normalized_name = normalize_entity_name(name)
+    normalized_type = normalize_entity_type(entity_type)
     return (
         (normalized_type, normalized_name),
         {
@@ -170,12 +169,11 @@ def _merge_entity_payload(existing: dict[str, Any], *, description: str, role: A
         existing["role"] = str(role or "").strip() or None
 
 
-def _collect_event_entities(processor: "EventProcessor", entities_raw: Any) -> list[dict[str, Any]]:
+def _collect_event_entities(entities_raw: Any) -> list[dict[str, Any]]:
     entity_map: dict[tuple[str, str], dict[str, Any]] = {}
     for ent in entities_raw or []:
         name, entity_type, description, role, weight, evidence_quote, source_span = _coerce_entity_input(ent)
         built = _build_entity_payload(
-            processor,
             name=name,
             entity_type=entity_type,
             description=description,
@@ -195,7 +193,7 @@ def _collect_event_entities(processor: "EventProcessor", entities_raw: Any) -> l
     return list(entity_map.values())
 
 
-def _build_event_payload(processor: "EventProcessor", raw: dict[str, Any], *, chunk_id: str) -> dict[str, Any]:
+def _build_event_payload(raw: dict[str, Any], *, chunk_id: str) -> dict[str, Any]:
     title = (raw.get("title") or "").strip()
     summary = (raw.get("summary") or "").strip()
     if not title:
@@ -206,7 +204,7 @@ def _build_event_payload(processor: "EventProcessor", raw: dict[str, Any], *, ch
         "content": summary or title,
         "schema_version": str(raw.get("schema_version") or "").strip() or None,
         "event_schema": str(raw.get("event_schema") or "").strip() or None,
-        "entities": _collect_event_entities(processor, raw.get("entities") or []),
+        "entities": _collect_event_entities(raw.get("entities") or []),
         "chunk_id": chunk_id,
     }
 
@@ -216,7 +214,6 @@ class EventProcessor:
 
     def __init__(self, llm_client: BaseLLMClient, *, prompt_template: str | None = None):
         self.llm_client = llm_client
-        self.parser = EntityValueParser()
         self.prompt_template = (prompt_template or "").strip() or None
 
     async def extract_from_sections(
@@ -255,7 +252,7 @@ class EventProcessor:
         for raw in events_data:
             if not isinstance(raw, dict):
                 continue
-            events.append(_build_event_payload(self, raw, chunk_id=chunk_id))
+            events.append(_build_event_payload(raw, chunk_id=chunk_id))
 
         logger.info("Batch %s extracted %s events", batch_index, len(events))
         return events

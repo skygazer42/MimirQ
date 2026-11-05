@@ -8,7 +8,7 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.rag.core.logging import get_logger
-from app.rag.kg.loading.processor import DocumentProcessor
+from app.rag.kg.loading.processor import generate_embedding
 from app.rag.kg.repository import AliasRepository, EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search import graph_embeddings as graph_embeddings_mod
 from app.rag.kg.search.config import SearchConfig
@@ -315,9 +315,9 @@ def _lexical_first_event_results(
         return []
 
 
-async def _query_embedding(processor: DocumentProcessor, expanded_query: str) -> list[float]:
+async def _query_embedding(expanded_query: str) -> list[float]:
     try:
-        return await processor.generate_embedding(expanded_query)
+        return await generate_embedding(expanded_query)
     except Exception:
         return []
 
@@ -1212,8 +1212,7 @@ def _serving_layer_debug(
 
 
 class RecallSearcher:
-    def __init__(self):
-        self.processor = DocumentProcessor()
+    def __init__(self): ...
 
     async def search(self, config: SearchConfig) -> RecallResult:
         tracker = Tracker()
@@ -1243,7 +1242,7 @@ class RecallSearcher:
             query_vec: list[float] = []
             raw_entities: list[dict[str, Any]] = []
             if limits.vector_recall_enabled and not (limits.prefer_lexical_first and lexical_first_event_results):
-                query_vec = await _query_embedding(self.processor, expanded_query)
+                query_vec = await _query_embedding(expanded_query)
                 raw_entities = _vector_entity_hits(
                     entity_repo,
                     query_vec=query_vec,

@@ -6,7 +6,7 @@ import math
 from typing import Any
 
 from app.core.config import settings
-from app.rag.kg.loading.processor import DocumentProcessor
+from app.rag.kg.loading.processor import generate_embedding
 from app.rag.kg.repository import EventRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.ranking.features import (
@@ -159,8 +159,7 @@ def _pagerank_iteration(
 
 
 class RerankPageRankSearcher:
-    def __init__(self):
-        self.processor = DocumentProcessor()
+    def __init__(self): ...
 
     async def rerank(
         self,
@@ -185,9 +184,7 @@ class RerankPageRankSearcher:
             if not events:
                 return {"events": [], "clues": [], "stats": {}}
 
-            query_vec = (
-                query_vector if query_vector is not None else await self.processor.generate_embedding(config.query)
-            )
+            query_vec = query_vector if query_vector is not None else await generate_embedding(config.query)
             key_weights = _key_weight_map(key_final)
             key_entity_ids = _key_entity_ids(key_final)
             assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)

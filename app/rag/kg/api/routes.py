@@ -1554,7 +1554,7 @@ def create_kg_entity_alias(
     from datetime import datetime
 
     from app.models.audit_log import AuditLog
-    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.extraction.parser import normalize_entity_name
     from app.rag.kg.models import KgEntity, KgEntityAlias
 
     resolved_id = _resolve_entity_id_via_redirects(db=db, tenant_id=tenant_id, entity_id=entity_id)
@@ -1566,8 +1566,7 @@ def create_kg_entity_alias(
     if not alias_text:
         raise HTTPException(status_code=400, detail="alias is required")
 
-    parser = EntityValueParser()
-    norm = parser.normalize_name(alias_text)
+    norm = normalize_entity_name(alias_text)
     if not norm:
         raise HTTPException(status_code=400, detail="alias normalizes to empty")
 
@@ -2240,7 +2239,7 @@ def split_kg_entity(
     _ensure_enabled()
 
     from app.models.audit_log import AuditLog
-    from app.rag.kg.extraction.parser import EntityValueParser
+    from app.rag.kg.extraction.parser import normalize_entity_name
     from app.rag.kg.models import KgEntity, KgEntityResolutionAction, KgEventEntity, KgRelation
 
     original_raw = payload.entity_id
@@ -2253,8 +2252,7 @@ def split_kg_entity(
     event_ids = _validated_split_event_ids(payload)
     event_id_set = set(event_ids)
     new_name = _split_new_entity_name(payload)
-    parser = EntityValueParser()
-    new_norm = parser.normalize_name(new_name)
+    new_norm = normalize_entity_name(new_name)
     new_entity_id, new_ent = _create_split_entity(
         KgEntity,
         tenant_id=tenant_id,
