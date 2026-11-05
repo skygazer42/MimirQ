@@ -10,6 +10,8 @@ Status: implemented
 
 回放入口直接导入采集入口现有的 `_load_json`、`_headers` 和 `coerce_case_bundle`。三份原实现的完整参数、默认、异常和函数体相同，仅 case helper 的说明文字有差别。回放在导入前明确加入自身仓库根路径，与现有独立 CLI 入口采用同一启动形式，支持脚本和模块两种入口；新导入模块没有执行探针的顶层调用，不新增公共工具模块或转发函数。
 
+[离线检索与 LTR 工具](2026-11-05-offline-retrieval-ltr-owned-rules.md)另以现有 ablation 入口持有相同 HTTP 规则，避免给原本不加载应用的工具增加 evaluation 包初始化；trace miner 和 UUID case 规则保留各自边界。本篇继续持有采集与回放的规则归属。
+
 case loader 的所有成功路径都生成字符串 dataset ID 和字典列表，采集循环与回放 lookup 直接使用。文件文本流迭代已经产生字符串，行处理直接 strip。长度、比较、计数器以及 monotonic 差值直接进入原报告；原始 JSON、HTTP 响应、选项、错误、PII 脱敏与输出字段保持。
 
 检索债务报告的五种内部统计记录在每个返回分支构造所需整数字段，摘要和行动队列直接读取。UTC 使用 Python 3.11 的同一时区对象。源码扫描的现有表达式和启发式保持，不执行扫描器或业务正则来验证。

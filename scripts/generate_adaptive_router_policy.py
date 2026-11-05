@@ -3,35 +3,18 @@
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.export_intent_router_training import _resolve_path_under_cwd  # noqa: E402
+from scripts.generate_channel_budget_policy import _safe_float  # noqa: E402
+
 _POLICY_SCHEMA = "mimirq.adaptive_router_policy.v1"
-
-
-def _resolve_path_under_cwd(raw_path: str, *, must_exist: bool) -> Path:
-    raw = str(raw_path or "").strip()
-    if not raw:
-        raise SystemExit("path_required")
-
-    base = Path.cwd().resolve(strict=False)
-    candidate = Path(raw).expanduser()
-    resolved = candidate.resolve(strict=False) if candidate.is_absolute() else (base / candidate).resolve(strict=False)
-    try:
-        resolved.relative_to(base)
-    except Exception as exc:
-        raise SystemExit(f"path_outside_cwd_not_allowed: {raw}") from exc
-
-    if must_exist and not resolved.exists():
-        raise SystemExit(f"path_not_found: {resolved}")
-    return resolved
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except Exception:
-        return float(default)
 
 
 def _stable_hash_text(text: str) -> str:
@@ -110,10 +93,10 @@ def build_policy_from_benchmark_report(report: dict[str, Any]) -> dict[str, Any]
             "report_hash": _stable_hash_text(json.dumps(report, ensure_ascii=False, sort_keys=True)),
         },
         "summary_snapshot": {
-            "hit_at_k": round(float(hit_at_k), 6),
-            "mrr": round(float(mrr), 6),
-            "avg_latency_ms": round(float(avg_latency_ms), 3),
-            "p95_latency_ms": round(float(p95_latency_ms), 3),
+            "hit_at_k": round(hit_at_k, 6),
+            "mrr": round(mrr, 6),
+            "avg_latency_ms": round(avg_latency_ms, 3),
+            "p95_latency_ms": round(p95_latency_ms, 3),
         },
         "triggers": triggers,
         "rules": rules,
@@ -140,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(policy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[adaptive-router-policy] wrote {out_path}")
-    print(f"[adaptive-router-policy] rules={len(list(policy.get('rules') or []))}")
+    print(f"[adaptive-router-policy] rules={len(policy['rules'])}")
     return 0
 
 

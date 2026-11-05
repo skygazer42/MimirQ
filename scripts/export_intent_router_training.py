@@ -138,7 +138,7 @@ def export_training_rows(
 
     return {
         "schema": "mimirq.intent_router_training.v1",
-        "items_total": int(len(rows)),
+        "items_total": len(rows),
         "items": rows,
     }
 
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"items_total": payload.get("items_total", 0)}, ensure_ascii=False))
+    print(json.dumps({"items_total": payload["items_total"]}, ensure_ascii=False))
     return 0
 
 

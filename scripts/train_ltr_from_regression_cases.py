@@ -26,19 +26,20 @@ from typing import Any
 
 import httpx
 
-from app.rag.core.hashing import stable_hash
-from app.rag.reranker.ltr import (
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from app.rag.core.hashing import stable_hash  # noqa: E402
+from app.rag.reranker.ltr import (  # noqa: E402
     LTRFeatureSpec,
     build_ltr_feature_spec_fingerprint,
     extract_ltr_features,
     train_ltr_xgboost_model,
 )
-from app.rag.reranker.types import RerankCandidate
-
-
-def _load_json(path: Path) -> Any:
-    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
-    return json.loads(path.read_text(encoding="utf-8-sig"))
+from app.rag.reranker.types import RerankCandidate  # noqa: E402
+from scripts.eval_ltr_offline import _as_float, _extract_pipeline_hashes, _extract_reference_chunk_ids  # noqa: E402
+from scripts.retrieval_ablation import _headers, _load_json, _write_json, coerce_case_bundle  # noqa: E402
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -46,11 +47,6 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
-def _write_json(path: Path, obj: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _training_data_hash(rows: list[dict[str, Any]]) -> str:
@@ -78,114 +74,12 @@ def _training_data_hash(rows: list[dict[str, Any]]) -> str:
     return stable_hash(payload, length=32)
 
 
-def _headers(args: argparse.Namespace) -> dict[str, str]:
-    h: dict[str, str] = {"Content-Type": "application/json"}
-    if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
-    if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
-    if args.bearer:
-        h["Authorization"] = f"Bearer {args.bearer}"
-    return h
-
-
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Normalize case bundle payloads into: (dataset_id, items[]).
-
-    Supported shapes:
-    - Export bundle v1: {"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}
-    - Minimal bundle: {"dataset_id":"...","items":[...]}
-    - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
-    """
-    if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        ds = str(obj.get("dataset_id") or "").strip()
-        if ds:
-            items = [x for x in obj.get("items") if isinstance(x, dict)]
-            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-            return ds, cleaned
-        return coerce_case_bundle(list(obj.get("items") or []))
-
-    if isinstance(obj, list):
-        items = [x for x in obj if isinstance(x, dict)]
-        dsids: list[str] = []
-        for it in items:
-            ds = str(it.get("dataset_id") or "").strip()
-            if ds and ds not in dsids:
-                dsids.append(ds)
-        if not dsids:
-            raise ValueError("dataset_id is required in cases bundle")
-        if len(dsids) > 1:
-            raise ValueError("mixed dataset_id in cases bundle")
-        dsid = dsids[0]
-        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-        return dsid, cleaned
-
-    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
-
-
 def _coerce_nonneg_int(value: Any) -> int:
     try:
         iv = int(value) if value is not None else 0
     except Exception:
         return 0
     return iv if iv >= 0 else 0
-
-
-def _as_float(value: Any) -> float:
-    try:
-        if value is None:
-            return 0.0
-        return float(value)
-    except Exception:
-        return 0.0
-
-
-def _extract_reference_chunk_ids(item: dict[str, Any]) -> set[str]:
-    refs = item.get("reference_sources") or []
-    if not isinstance(refs, list):
-        return set()
-    out: set[str] = set()
-    for src in refs:
-        if not isinstance(src, dict):
-            continue
-        cid = str(src.get("chunk_id") or "").strip()
-        if cid:
-            out.add(cid)
-    return out
-
-
-def _extract_pipeline_hashes(items: list[dict[str, Any]], *, max_items: int = 20) -> list[str]:
-    """
-    Best-effort index/pipeline version hints from regression case bundles.
-
-    This is PII-safe by construction (hash identifiers only) and bounded.
-    """
-    cap = max(0, int(max_items or 0))
-    if cap <= 0:
-        return []
-    out: list[str] = []
-    seen: set[str] = set()
-    for it in items or []:
-        if not isinstance(it, dict):
-            continue
-        refs = it.get("reference_sources") or []
-        if not isinstance(refs, list):
-            continue
-        for src in refs:
-            if not isinstance(src, dict):
-                continue
-            ph = str(src.get("pipeline_hash") or "").strip()
-            if not ph:
-                continue
-            ph = ph[:64]
-            if ph in seen:
-                continue
-            seen.add(ph)
-            out.append(ph)
-            if len(out) >= cap:
-                return out
-    return out
 
 
 def build_ltr_feature_map(*, citation: dict[str, Any], query: str, spec: LTRFeatureSpec) -> dict[str, float]:
@@ -307,8 +201,8 @@ def build_ltr_manifest(
         "model_file": model_file_clean,
         "model_sha256": model_sha256,
         "feature_schema": str(getattr(spec, "schema", "") or ""),
-        "feature_names": list(feature_names),
-        "feature_spec_version": int(v),
+        "feature_names": feature_names,
+        "feature_spec_version": v,
         "feature_spec": build_ltr_feature_spec_fingerprint(spec=spec, version=v),
         "objective": _safe_str(objective, max_len=80) or "",
         "num_boost_round": int(num_boost_round or 0),
@@ -491,7 +385,7 @@ def _load_cases_bundle_inputs(
 
 def _apply_case_limit(items: list[dict[str, Any]], max_cases: Any) -> list[dict[str, Any]]:
     if max_cases and int(max_cases) > 0:
-        return list(items)[: _coerce_nonneg_int(max_cases)]
+        return items[: _coerce_nonneg_int(max_cases)]
     return list(items)
 
 
@@ -533,7 +427,7 @@ def _build_retrieval_body(
     return {
         "query": question,
         "history": [],
-        "dataset_id": str(dataset_id),
+        "dataset_id": dataset_id,
         "document_ids": [],
         "rag_config": {
             "retrieval_profile": str(args.retrieval_profile),
@@ -599,8 +493,8 @@ def _build_case_rows(
         rows_this_case.append(
             {
                 "features": build_ltr_feature_map(citation=citation, query=question, spec=spec),
-                "label": int(label),
-                "rank": int(idx),
+                "label": label,
+                "rank": idx,
                 "case_question": question,
                 "chunk_id": chunk_id,
                 "retrieval_role": citation.get("retrieval_role"),
@@ -711,11 +605,11 @@ def _select_case_rows(
         hard_max=hard_negatives_per_case,
     )
     if max_negatives_per_case:
-        remaining = max(0, int(max_negatives_per_case) - int(len(hard_selected)))
+        remaining = max(0, int(max_negatives_per_case) - len(hard_selected))
         easy_selected = [i for i in easy_idx if i not in hard_selected][:remaining]
     else:
         easy_selected = [i for i in easy_idx if i not in hard_selected]
-    keep_idx = sorted(set(pos_idx + list(hard_selected) + list(easy_selected)))
+    keep_idx = sorted(set(pos_idx + hard_selected + easy_selected))
     hard_set = set(hard_selected)
     rows_hard_neg = 0
     for i in keep_idx:
@@ -789,7 +683,7 @@ def _process_case_item(
         return CaseProcessingResult([], 0, False, True, retrieval_config, rows_hard_neg)
     return CaseProcessingResult(
         rows=kept_rows,
-        group_size=int(len(kept_rows)) if objective.startswith("rank:") else 0,
+        group_size=len(kept_rows) if objective.startswith("rank:") else 0,
         used=_has_positive(kept_rows),
         missed=missed,
         retrieval_config=retrieval_config,
@@ -815,14 +709,14 @@ def _build_training_meta(
     objective: str,
 ) -> dict[str, Any]:
     return {
-        "cases_total": int(stats.get("cases_total") or 0),
-        "cases_used": int(stats.get("cases_used") or 0),
-        "cases_missed": int(stats.get("cases_missed") or 0),
-        "rows_total": int(stats.get("rows_total") or 0),
-        "rows_pos": int(stats.get("rows_pos") or 0),
-        "rows_neg": int(stats.get("rows_neg") or 0),
-        "rows_hard_neg": int(stats.get("rows_hard_neg") or 0),
-        "group_count": int(len(group_sizes) if objective.startswith("rank:") else 0),
+        "cases_total": stats["cases_total"],
+        "cases_used": stats["cases_used"],
+        "cases_missed": stats["cases_missed"],
+        "rows_total": stats["rows_total"],
+        "rows_pos": stats["rows_pos"],
+        "rows_neg": stats["rows_neg"],
+        "rows_hard_neg": stats["rows_hard_neg"],
+        "group_count": len(group_sizes) if objective.startswith("rank:") else 0,
         "data_hash": _training_data_hash(training_rows),
     }
 
@@ -867,7 +761,7 @@ def _write_manifest(
                 group_sizes=group_sizes,
                 objective=objective,
             ),
-            dataset_id=str(dataset_id),
+            dataset_id=dataset_id,
             cases_sha256=cases_sha256,
             cases_schema=cases_schema,
             pipeline_hashes=pipeline_hashes,
@@ -904,8 +798,6 @@ def main(argv: list[str] | None = None) -> int:
     headers = _headers(args)
     with httpx.Client(timeout=timeout) as client:
         for item in items:
-            if not isinstance(item, dict):
-                continue
             result = _process_case_item(
                 item=item,
                 client=client,
@@ -920,7 +812,7 @@ def main(argv: list[str] | None = None) -> int:
             if retrieval_config is None and result.retrieval_config is not None:
                 retrieval_config = result.retrieval_config
             stats["cases_missed"] += int(result.missed)
-            stats["rows_hard_neg"] += int(result.rows_hard_neg)
+            stats["rows_hard_neg"] += result.rows_hard_neg
             if result.used:
                 stats["cases_used"] += 1
             training_rows.extend(result.rows)
@@ -967,7 +859,7 @@ def main(argv: list[str] | None = None) -> int:
         f" rows_total={stats['rows_total']}"
         f" rows_pos={stats['rows_pos']}"
         f" rows_neg={stats['rows_neg']}"
-        f" rows_hard_neg={stats.get('rows_hard_neg', 0)}"
+        f" rows_hard_neg={stats['rows_hard_neg']}"
         f" objective={objective}"
         f" spec={getattr(spec, 'schema', '')}"
         f" groups={len(group_sizes) if objective.startswith('rank:') else 0}"
