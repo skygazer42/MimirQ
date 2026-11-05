@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Edit, Plus, RefreshCw, Save, Trash2 } from 'lucide-react'
 
-import { kgApi, settingsApi } from '@/lib/api'
+import { kgApi } from '@/lib/api/graph'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError, toApiErrorInfo } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
@@ -13,7 +14,7 @@ import type {
   KGPredicateOntologyCreateRequest,
   KGPredicateOntologyItem,
   KGPredicateOntologyUpdateRequest,
-} from '@/types'
+} from '@/types/knowledge-graph'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'

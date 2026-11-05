@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
 import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
-import { observabilityApi } from '@/lib/api'
+import { observabilityApi } from '@/lib/api/observability'
 import { formatApiError } from '@/lib/api-errors'
 import { detachPromise } from '@/lib/utils'
 

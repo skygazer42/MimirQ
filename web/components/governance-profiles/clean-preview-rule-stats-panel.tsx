@@ -1,17 +1,14 @@
-import React from 'react'
-
-import type { CleanPreviewRuleStat } from '@/types'
+import type { CleanPreviewRuleStat } from '@/types/processing'
 
 import { Panel } from '@/components/ui/panel'
 import { cn } from '@/lib/utils'
 
-export function CleanPreviewRuleStatsPanel({
-  ruleStats,
-  className,
-}: Readonly<{
+type CleanPreviewRuleStatsPanelProps = {
   ruleStats: CleanPreviewRuleStat[] | null | undefined
   className?: string
-}>) {
+}
+
+export function CleanPreviewRuleStatsPanel({ ruleStats, className }: Readonly<CleanPreviewRuleStatsPanelProps>) {
   const stats = Array.isArray(ruleStats) ? ruleStats : []
   const hitsOnly = stats.filter((it) => (Number(it.hits) || 0) > 0)
   const totalHits = hitsOnly.reduce((acc, it) => acc + (Number(it.hits) || 0), 0)

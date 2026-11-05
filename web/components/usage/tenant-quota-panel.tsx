@@ -7,11 +7,11 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Panel } from '@/components/ui/panel'
-import { usageApi } from '@/lib/api'
+import { usageApi } from '@/lib/api/usage'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
-import type { TenantQuotaSummary } from '@/types'
+import type { TenantQuotaSummary } from '@/types/chat'
 
 const TENANT_QUOTA_PANEL_CLASS = 'overflow-hidden rounded-xl border border-info/20 bg-background/72 shadow-none'
 const QUOTA_CARD_CLASS =

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
-import { auditApi } from '@/lib/api'
+import { auditApi } from '@/lib/api/audit'
 import { formatApiError } from '@/lib/api-errors'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
 import { TENANT_PERMISSIONS, tenantAccessAllows } from '@/lib/tenant-permissions'
@@ -24,6 +24,13 @@ export type AuditOperationFilters = {
   request_id?: string
   since?: string
   until?: string
+}
+
+type AuditRetentionPanelProps = {
+  filters?: AuditOperationFilters
+  activeFilterCount?: number
+  total?: number
+  onAfterPurge?: () => void
 }
 
 type PurgeScope = 'retention' | 'filtered'
@@ -81,12 +88,7 @@ export function AuditRetentionPanel({
   activeFilterCount = 0,
   total,
   onAfterPurge,
-}: Readonly<{
-  filters?: AuditOperationFilters
-  activeFilterCount?: number
-  total?: number
-  onAfterPurge?: () => void
-}>) {
+}: Readonly<AuditRetentionPanelProps>) {
   const t = useTranslations('AuditPage.retention')
   const [retentionDays, setRetentionDays] = useState(90)
   const [maxDelete, setMaxDelete] = useState(1000)

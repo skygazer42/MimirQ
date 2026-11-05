@@ -43,8 +43,8 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 
-import { datasetApi, pipelineApi } from '@/lib/api'
-import type { BuiltinProcessingScript } from '@/lib/api/pipeline'
+import { datasetApi } from '@/lib/api/datasets'
+import { pipelineApi, type BuiltinProcessingScript } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
@@ -56,7 +56,7 @@ import type {
   GovernanceProfileSummary,
   GovernanceProcessingScript,
   RegexRuleModel,
-} from '@/types'
+} from '@/types/processing'
 
 function escapeRegex(text: string): string {
   return text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
@@ -127,6 +127,13 @@ function detectScriptLanguage(filename: string): GovernanceProcessingScript['lan
   if (ext === 'py') return 'python'
   if (ext === 'rs') return 'rust'
   return null
+}
+
+function mergeProcessingScripts(existing: GovernanceProcessingScript[], drafts: GovernanceProcessingScript[]) {
+  const byKey = new Map<string, GovernanceProcessingScript>()
+  for (const item of existing) byKey.set(`${item.language}:${item.name}`, item)
+  for (const item of drafts) byKey.set(`${item.language}:${item.name}`, item)
+  return Array.from(byKey.values())
 }
 
 async function listWritableCommonLineProfiles(): Promise<GovernanceProfileSummary[]> {
@@ -318,11 +325,7 @@ export function GovernanceCommonLinesPage() {
           return
         }
 
-        const existing = prof.payload.processing_scripts ?? []
-        const byKey = new Map<string, GovernanceProcessingScript>()
-        for (const item of existing) byKey.set(`${item.language}:${item.name}`, item)
-        for (const item of drafts) byKey.set(`${item.language}:${item.name}`, item)
-        const nextScripts = Array.from(byKey.values())
+        const nextScripts = mergeProcessingScripts(prof.payload.processing_scripts ?? [], drafts)
         if (nextScripts.length > 10) {
           toast.error('处理脚本最多保留 10 个，请先在治理配置中清理旧脚本')
           return
@@ -374,11 +377,7 @@ export function GovernanceCommonLinesPage() {
           created_at: new Date().toISOString(),
         }))
 
-        const existing = prof.payload.processing_scripts ?? []
-        const byKey = new Map<string, GovernanceProcessingScript>()
-        for (const item of existing) byKey.set(`${item.language}:${item.name}`, item)
-        for (const item of drafts) byKey.set(`${item.language}:${item.name}`, item)
-        const nextScripts = Array.from(byKey.values())
+        const nextScripts = mergeProcessingScripts(prof.payload.processing_scripts ?? [], drafts)
         if (nextScripts.length > 10) {
           toast.error('处理脚本最多保留 10 个，请先在治理配置中清理旧脚本')
           return

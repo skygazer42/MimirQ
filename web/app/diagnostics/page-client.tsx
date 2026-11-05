@@ -40,21 +40,20 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useBackendHealth } from '@/hooks/use-backend-health'
 import { useBackendMetaDetails } from '@/hooks/use-backend-meta'
 import { formatApiError } from '@/lib/api-errors'
-import { datasetApi, documentApi, observabilityApi, ragApi, retrievalApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { documentApi } from '@/lib/api/documents'
+import { observabilityApi } from '@/lib/api/observability'
+import { ragApi, retrievalApi } from '@/lib/api/rag'
 import { buildRetrievalConfigHashRequest, hasDatasetRagContract } from '@/lib/dataset-rag-contract'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { queryKeys } from '@/lib/query-keys'
 import { buildRagPreviewDiagnosticsSummary } from '@/lib/rag-preview-diagnostics'
 import { cn } from '@/lib/utils'
-import type {
-  Dataset,
-  DepsDiagnosticsResponse,
-  Document as KnowledgeDocument,
-  DocumentList,
-  JsonObject,
-  OnlineQualitySummaryResponse,
-  PromptPreviewResponse,
-} from '@/types'
+import type { JsonObject } from '@/types/common'
+import type { Dataset } from '@/types/datasets'
+import type { Document as KnowledgeDocument, DocumentList } from '@/types/documents'
+import type { PromptPreviewResponse } from '@/types/knowledge-graph'
+import type { DepsDiagnosticsResponse, OnlineQualitySummaryResponse } from '@/types/observability'
 
 // --- Constants & Styles ---
 
@@ -120,6 +119,7 @@ const DIAGNOSTIC_DIMENSIONS = [
 
 type DiagnosticDimensionId = (typeof DIAGNOSTIC_DIMENSIONS)[number]['id']
 type MetricTone = 'slate' | 'green' | 'amber' | 'red' | 'blue' | 'purple'
+type MainMetricTone = Exclude<MetricTone, 'blue' | 'purple'>
 type BinaryStatusTone = Exclude<MetricTone, 'purple'>
 
 // --- Helper Functions ---
@@ -215,7 +215,7 @@ function fmtDateTime(value?: string | null) {
     .replaceAll('/', '-')
 }
 
-function metricTone(v: number | null): MetricTone {
+function metricTone(v: number | null): MainMetricTone {
   if (v === null) return 'slate'
   if (v >= 0.8) return 'green'
   if (v >= 0.6) return 'amber'
@@ -292,7 +292,7 @@ function perfGateResultStatus(result: JsonObject | null) {
   return diagnosticRecordString(result, ['status', 'gate_status', 'result']) || '已运行'
 }
 
-function perfGateResultTone(result: JsonObject | null, status: string): MetricTone {
+function perfGateResultTone(result: JsonObject | null, status: string): MainMetricTone {
   if (/pass|passed|ok|success|通过|已运行/i.test(status)) return 'green'
   if (result) return 'amber'
   return 'slate'
@@ -324,7 +324,7 @@ function selectedDocumentScopeLabel(selectedCount: number, loading: boolean, has
   return '请先选择数据集'
 }
 
-function citationTone(count: number | null): MetricTone {
+function citationTone(count: number | null): MainMetricTone {
   if (count === null) return 'slate'
   if (count > 0) return 'green'
   return 'amber'
@@ -488,16 +488,7 @@ async function copyToClipboard(text = ''): Promise<void> {
 
 // --- Reusable UI Parts ---
 
-const TOP_HUD_TONE_CLASSES = {
-  slate: 'border-border/70 bg-muted/55 text-muted-foreground',
-  green: 'border-success/25 bg-success/10 text-success',
-  amber: 'border-warning/25 bg-warning/10 text-warning',
-  red: 'border-destructive/25 bg-destructive/10 text-destructive',
-  blue: 'border-info/25 bg-info/10 text-info',
-  purple: 'border-accent/25 bg-accent/10 text-accent',
-} as const
-
-const STATUS_PILL_TONE_CLASSES = {
+const DIAGNOSTIC_TONE_CLASSES = {
   slate: 'border-border/70 bg-muted/55 text-muted-foreground',
   green: 'border-success/25 bg-success/10 text-success',
   amber: 'border-warning/25 bg-warning/10 text-warning',
@@ -538,7 +529,7 @@ function DiagnosticStatusPill({
     <span
       className={cn(
         'inline-flex h-6 max-w-full items-center justify-center truncate rounded-full border px-2 text-center text-[11px] font-semibold tracking-[-0.01em] tabular-nums',
-        STATUS_PILL_TONE_CLASSES[resolvedTone],
+        DIAGNOSTIC_TONE_CLASSES[resolvedTone],
         className,
       )}
       title={value}
@@ -559,9 +550,9 @@ function TopHUDTile({
   label: string
   value: string
   detail: string
-  tone?: keyof typeof TOP_HUD_TONE_CLASSES
+  tone?: keyof typeof DIAGNOSTIC_TONE_CLASSES
 }>) {
-  const toneClasses = TOP_HUD_TONE_CLASSES[tone] || TOP_HUD_TONE_CLASSES.slate
+  const toneClasses = DIAGNOSTIC_TONE_CLASSES[tone] || DIAGNOSTIC_TONE_CLASSES.slate
   const valueTone = statusPillTone(value, tone)
 
   return (
@@ -676,7 +667,7 @@ function MainMetricCard({
   value: string
   help?: ReactNode
   loading?: boolean
-  tone?: string
+  tone?: MainMetricTone
 }>) {
   const isWait = isPendingMetricLabel(value)
   const toneClass =
@@ -708,7 +699,7 @@ function MainMetricCard({
           ) : (
             <DiagnosticStatusPill
               value={value}
-              tone={isWait ? 'slate' : (tone as MetricTone)}
+              tone={isWait ? 'slate' : tone}
               className="h-5 max-w-[76px] px-1.5 text-[10px]"
             />
           )}

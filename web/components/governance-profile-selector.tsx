@@ -6,14 +6,14 @@ import { Download, FileUp, RefreshCw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { pipelineApi } from '@/lib/api'
-import type { DocumentPipelineOptions } from '@/types'
+import { pipelineApi } from '@/lib/api/pipeline'
+import type { DocumentPipelineOptions } from '@/types/processing'
 import { toast } from 'sonner'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 
-type Props = {
+type GovernanceProfileSelectorProps = {
   className?: string
   compact?: boolean
   onApplyPatch: (patch: Partial<DocumentPipelineOptions>) => void
@@ -32,7 +32,11 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-export function GovernanceProfileSelector({ className, compact, onApplyPatch }: Readonly<Props>) {
+export function GovernanceProfileSelector({
+  className,
+  compact,
+  onApplyPatch,
+}: Readonly<GovernanceProfileSelectorProps>) {
   const queryClient = useQueryClient()
   const [selectedRef, setSelectedRef] = useState<string>(SELECT_NONE)
   const fileInputRef = useRef<HTMLInputElement | null>(null)

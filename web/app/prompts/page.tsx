@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { promptTemplateApi, PromptTemplate, PromptTemplateCreate } from '@/lib/api'
+import { promptTemplateApi, type PromptTemplate, type PromptTemplateCreate } from '@/lib/api/prompts'
 import {
   Plus,
   Edit,

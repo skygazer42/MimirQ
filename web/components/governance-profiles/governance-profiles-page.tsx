@@ -48,11 +48,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { pipelineApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 import { queryKeys } from '@/lib/query-keys'
-import type { GovernanceProfileCreate, GovernanceProfileSummary } from '@/types'
+import type { GovernanceProfileCreate, GovernanceProfileSummary } from '@/types/processing'
 import { ProfileEditorDrawer } from '@/components/governance-profiles/profile-editor-drawer'
 import {
   buildGovernanceProfileCreateFromExisting,

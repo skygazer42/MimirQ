@@ -9,10 +9,16 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
-import type { Dataset } from '@/types'
+import type { Dataset } from '@/types/datasets'
+
+type DocumentOperationsPanelProps = {
+  selectedDocumentIds: string[]
+  datasetId?: string | null
+  datasets?: Dataset[]
+}
 
 const NO_TARGET_DATASET = '__none__'
 
@@ -58,11 +64,7 @@ export function DocumentOperationsPanel({
   selectedDocumentIds,
   datasetId,
   datasets = [],
-}: Readonly<{
-  selectedDocumentIds: string[]
-  datasetId?: string | null
-  datasets?: Dataset[]
-}>) {
+}: Readonly<DocumentOperationsPanelProps>) {
   const [targetDatasetId, setTargetDatasetId] = useState('')
   const [resultDetailsOpen, setResultDetailsOpen] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
