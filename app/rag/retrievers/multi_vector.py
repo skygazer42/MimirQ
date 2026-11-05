@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
@@ -89,7 +89,7 @@ class BaseDocStore(ABC):
 class InMemoryDocStore(BaseDocStore):
     """In-memory document store."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._docs: dict[str, Document] = {}
 
     def add(self, docs: dict[str, Document]) -> None:
@@ -153,8 +153,8 @@ class MultiVectorRetriever(BaseRetriever):
         id_key: str = "doc_id",
         search_type: str = "similarity",
         search_kwargs: dict[str, Any] | None = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the multi-vector retriever.
 
@@ -404,7 +404,7 @@ class MultiVectorRetriever(BaseRetriever):
         self,
         query: str,
         *,
-        run_manager,
+        run_manager: AsyncCallbackManagerForRetrieverRun,
     ) -> list[Document]:
         """Async version of _get_relevant_documents."""
         # For now, just call sync version
@@ -415,7 +415,7 @@ def create_summary_retriever(
     vectorstore: Any,
     llm: Any,
     documents: list[Document],
-    **kwargs,
+    **kwargs: Any,
 ) -> MultiVectorRetriever:
     """
     Create a multi-vector retriever that indexes summaries.
@@ -457,7 +457,7 @@ def create_hypothetical_question_retriever(
     llm: Any,
     documents: list[Document],
     questions_per_doc: int = 3,
-    **kwargs,
+    **kwargs: Any,
 ) -> MultiVectorRetriever:
     """
     Create a multi-vector retriever using HyDE (Hypothetical Document Embeddings).
@@ -510,7 +510,7 @@ def create_parent_child_retriever(
     vectorstore: Any,
     parent_documents: list[Document],
     child_splitter: Any,
-    **kwargs,
+    **kwargs: Any,
 ) -> MultiVectorRetriever:
     """
     Create a parent-child multi-vector retriever.
