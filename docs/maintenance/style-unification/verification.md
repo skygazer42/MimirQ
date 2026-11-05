@@ -1823,3 +1823,7 @@
 当前类别的 42 文件源码证明、42 文件 ESLint（零警告）、42 文件 Prettier、完整非增量 TypeScript 及 9 文件／36 项现有前端测试全部通过，检查前后源码哈希一致。7 文件调整，35 文件原字节保留；覆盖清单 3,857 项／297 项待处理。主 Agent 完成本类实现与自查，未声称独立评审或真实浏览器验证；未运行 Python 测试或业务代码。源码证明工具的初始记账错误及首次 ESLint 缺少既有 NODE_PATH 的环境失败保留在本地证据中，不作为产品失败或通过结果。
 
 证据：`retrieval-evidence-history42-20261106/category-report.json`、`final-style-proof.json`、`final-checks.json`。
+
+## 2026-11-06：框架入口、共享样式与浏览器脚本
+
+11 文件全文检查，3 个局部类型／命名调整、8 个原字节保留；完整 TypeScript、10 文件 ESLint（零警告）、11 文件 Prettier 和完整运行时 AST／原文比较均通过。Playwright `test --list` 成功发现 5 个脚本／31 个用例，未执行浏览器用例、未启动服务、未运行 Python。检查前后源码哈希相同。清单 3,857 项／286 项待处理或待合入；证据 `entry-global-browser11-20261106/category-report.json`、`source-proof.json`、`checks.json`。

@@ -2,7 +2,7 @@ import path from 'node:path'
 import { expect, test } from '@playwright/test'
 
 import {
-  EnterpriseTelemetryMockState,
+  type EnterpriseTelemetryMockState,
   installCommonApiMocks,
   PARSED_MARKDOWN,
   UPLOADED_DOCUMENT_FILENAME,

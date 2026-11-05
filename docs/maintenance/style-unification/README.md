@@ -23,3 +23,9 @@
 - 相似度页面的三个无状态辅助函数移到同一模块内；引用预览保留原记录过滤，只去掉用于类型断言的重复遍历。原有 JSON/API 校验、请求参数、状态生命周期、矩阵算法及页面结构保持。
 - 42 个文件的源码比较、ESLint 和 Prettier，以及完整 TypeScript 检查通过；相关 9 个测试文件共 36 项通过。未运行 Python 测试、浏览器或生产服务。本类不改原工作区的未提交内容。
 - 证据：`retrieval-evidence-history42-20261106/category-report.json`、`final-style-proof.json`、`final-checks.json`。覆盖清单仍为 3,857 项，待处理项从 339 减至 297；此前因原工作区修改而单独保留的批次继续登记为待合入。
+
+## 框架入口、全局样式与浏览器检查
+
+- 完成剩余 11 个文件的检查：3 个调整，8 个保持原字节。首页局部参数使用明确名称，模板和文档对话用例采用显式类型导入；Next 默认导出、全局 CSS、品牌配置、页面结构及用例动作保持。
+- 完整 TypeScript、10 个 TS/TSX 文件的 ESLint、11 文件 Prettier 与源码比较通过。Playwright 成功发现 5 个脚本／31 个用例，包含 live-stack；本批只做发现与静态检查，未启动浏览器或服务、未执行这些用例。
+- 证据：`entry-global-browser11-20261106/category-report.json`、`source-proof.json`、`checks.json`。清单 3,857 项，待处理／合入 286 项。
