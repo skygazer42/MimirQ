@@ -45,4 +45,4 @@
 - [x] Rewrite installation guidance and complete the Agent Note.
 - [x] Resolve the complete core graph for Linux 3.11 and Windows 3.12; verify excluded packages stay absent.
 - [x] Run relevant contract/static/note/Compose checks, inspect the final diff, and request one fresh code review.
-- [ ] Transfer only reviewed task files into the original checkout, preserving concurrent work.
+- [x] Transfer only reviewed task files into the original checkout, preserving concurrent work.
