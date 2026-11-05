@@ -355,4 +355,42 @@ describe('graph data loading through React DOM file inputs', () => {
     expect(controlled.toast.error).toHaveBeenCalledOnce()
     expect(surface().isLoading).toBe(false)
   })
+
+  it('imports an entity from a single-line JSONL file', async () => {
+    await mount()
+    const entity = { kind: 'entity', key: 'alice', name: 'Alice', type: 'person' }
+    await selectFile('KG file', 'single-entity.jsonl', JSON.stringify(entity) + '\n')
+    const expected = { name: 'single-entity', entities: [entity], relations: [] }
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected)
+    expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(expected)
+  })
+
+  it('imports a relation from a single-line JSONL file', async () => {
+    await mount()
+    const relation = { kind: 'relation', subject: 'alice', predicate: 'knows', object: 'bob' }
+    await selectFile('KG file', 'single-relation.JSONL', JSON.stringify(relation) + '\n')
+    const expected = { name: 'single-relation', entities: [], relations: [relation] }
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(expected)
+    expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(expected)
+  })
+
+  it('preserves complete JSON bundle options in a JSONL-named file', async () => {
+    await mount()
+    const payload: KGManualImportRequest = {
+      name: 'Explicit bundle',
+      import_id: 'import-id',
+      dataset_id: 'dataset-id',
+      dataset_name: 'Dataset',
+      pipeline_hash: 'pipeline',
+      replace_existing: false,
+      upsert_entities: false,
+      allow_label_truncation: true,
+      index_vectors: false,
+      entities: [{ name: 'Alice', type: 'person' }],
+      relations: [],
+    }
+    await selectFile('KG file', 'bundle.jsonl', JSON.stringify(payload))
+    expect(controlled.kg.previewManualImport).toHaveBeenCalledExactlyOnceWith(payload)
+    expect(controlled.kg.importManualGraph).toHaveBeenCalledExactlyOnceWith(payload)
+  })
 })

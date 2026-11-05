@@ -68,7 +68,7 @@ function parseManualKgPayload(text: string, fileName: string): KGManualImportReq
   }
 
   const firstString = (...values: unknown[]) => values.find((value): value is string => typeof value === 'string') ?? ''
-  const coerceRows = (rows: unknown[]): KGManualImportRequest => {
+  const coerceRows = (rows: unknown[]) => {
     const entities: KGManualEntityInput[] = []
     const relations: KGManualRelationInput[] = []
     for (const row of rows) {
@@ -99,6 +99,11 @@ function parseManualKgPayload(text: string, fileName: string): KGManualImportReq
     }
     if (Array.isArray(parsed)) return coerceRows(parsed)
     if (parsed && typeof parsed === 'object') {
+      // One JSONL row is also valid JSON; explicit bundles keep their options path.
+      if (fileName.toLowerCase().endsWith('.jsonl') && !('entities' in parsed) && !('relations' in parsed)) {
+        const rows = coerceRows([parsed])
+        if (rows.entities.length || rows.relations.length) return rows
+      }
       const payload = parsed as KGManualImportRequest
       return {
         name: payload.name || fileName.replace(/\.(jsonl|json)$/i, '') || '手动知识图谱导入',
