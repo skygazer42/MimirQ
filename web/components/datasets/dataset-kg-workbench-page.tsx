@@ -29,7 +29,7 @@ import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
-import { GraphService } from '@/lib/graph-service'
+import { fetchInitialGraph } from '@/lib/graph-service'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
 import type { Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
@@ -513,7 +513,7 @@ export default function DatasetKGWorkbenchPage() {
     setSelectedGraphNodeId(null)
     try {
       const [graph, stats] = await Promise.all([
-        GraphService.fetchInitialGraph({
+        fetchInitialGraph({
           includeEntityLinks,
           includeRelationLinks,
           minSharedEvents: includeRelationLinks ? minSharedEvents : undefined,

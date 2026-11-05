@@ -93,18 +93,6 @@ function txStorageKey(state: string): string {
   return `${TX_KEY_PREFIX}${state}`
 }
 
-function sessionSet(key: string, value: string) {
-  writeClientStorage(key, value, 'session')
-}
-
-function sessionGet(key: string): string | null {
-  return readClientStorage(key, 'session')
-}
-
-function sessionDel(key: string) {
-  removeClientStorage(key, 'session')
-}
-
 let cachedDiscovery: { issuer: string; value: OidcDiscovery } | null = null
 
 async function discover(issuer: string): Promise<OidcDiscovery> {
@@ -209,7 +197,7 @@ export async function startOidcLogin(params: { providerId?: string; returnTo?: s
     code_verifier: codeVerifier,
     return_to: String(params.returnTo || '/').trim() || '/',
   }
-  sessionSet(txStorageKey(state), JSON.stringify(tx))
+  writeClientStorage(txStorageKey(state), JSON.stringify(tx), 'session')
 
   const url = new URL(discovery.authorization_endpoint)
   url.searchParams.set('response_type', 'code')
@@ -248,8 +236,8 @@ export async function completeOidcLogin(params: {
   }
 
   const key = txStorageKey(state)
-  const raw = sessionGet(key)
-  sessionDel(key)
+  const raw = readClientStorage(key, 'session')
+  removeClientStorage(key, 'session')
   if (!raw) {
     throw new Error('missing_oidc_transaction')
   }

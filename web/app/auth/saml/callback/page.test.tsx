@@ -13,12 +13,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => ({ replace: mocks.replace }),
 }))
-vi.mock('@/lib/saml-session', () => ({
+vi.mock('@/lib/saml-session', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/saml-session')>()),
   consumeSamlBridgeState: mocks.consume,
-  getSamlCallbackErrorMessage: (code: string) =>
-    code === 'saml_invalid_response'
-      ? 'The identity provider returned an invalid SAML response.'
-      : 'SAML sign-in failed. Please try again.',
 }))
 vi.mock('@/lib/auth-storage', () => ({
   setAuthSession: mocks.setAuthSession,
@@ -110,5 +107,23 @@ describe('SAML callback page', () => {
     expect(container.textContent).toContain('SAML sign-in failed. Please try again.')
     expect(container.textContent).not.toContain('debug stack trace')
     act(() => root.unmount())
+  })
+
+  it.each(['toString', 'constructor', '__proto__'])('renders a safe error for the routed code %s', async (code) => {
+    window.history.replaceState({}, '', `/auth/saml/callback?error=${code}`)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const root = createRoot(container)
+
+    try {
+      await act(async () => root.render(<SamlCallbackPage />))
+
+      expect(container.textContent).toContain('SAML sign-in failed. Please try again.')
+      expect(mocks.consume).not.toHaveBeenCalled()
+      expect(mocks.setAuthSession).not.toHaveBeenCalled()
+      expect(mocks.replace).not.toHaveBeenCalled()
+    } finally {
+      act(() => root.unmount())
+    }
   })
 })

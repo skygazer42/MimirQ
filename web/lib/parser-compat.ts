@@ -49,86 +49,37 @@ const PDF_BACKENDS = new Set([
   'magicpdf',
 ])
 
+const CONVERTER_BACKENDS = new Set(['auto', 'markitdown', 'pandoc', 'textin'])
+const TEXT_BACKENDS = new Set(['auto'])
+const FORMAT_RULES: Record<string, { format: string; backends: ReadonlySet<string> }> = {
+  '.pdf': { format: 'pdf', backends: PDF_BACKENDS },
+  '.docx': {
+    format: 'docx',
+    backends: new Set(['auto', 'markitdown', 'pandoc', 'docx', 'docling', 'deepdoc', 'textin']),
+  },
+  '.doc': { format: 'doc', backends: CONVERTER_BACKENDS },
+  '.pptx': { format: 'pptx', backends: CONVERTER_BACKENDS },
+  '.ppt': { format: 'ppt', backends: CONVERTER_BACKENDS },
+  '.xlsx': { format: 'excel', backends: new Set(['auto', 'markitdown', 'pandoc', 'excel', 'textin']) },
+  '.xls': { format: 'excel', backends: new Set(['auto', 'markitdown', 'pandoc', 'excel', 'textin']) },
+  '.csv': { format: 'csv', backends: new Set(['auto', 'markitdown', 'pandoc', 'csv', 'textin']) },
+  '.html': { format: 'html', backends: new Set(['auto', 'markitdown', 'pandoc', 'html', 'textin']) },
+  '.htm': { format: 'html', backends: new Set(['auto', 'markitdown', 'pandoc', 'html', 'textin']) },
+  '.json': { format: 'json', backends: new Set(['auto', 'markitdown', 'pandoc', 'json', 'textin']) },
+  '.md': { format: 'markdown', backends: TEXT_BACKENDS },
+  '.txt': { format: 'text', backends: TEXT_BACKENDS },
+}
+
 export function resolveParserBackendForFilename(filename: string, requestedBackend?: string): ParserResolveResult {
   const backend = normalizeParserBackendName(requestedBackend)
-  const ext = fileExt(filename)
-
-  if (ext === '.pdf') {
-    if (PDF_BACKENDS.has(backend)) return { backend, changed: false }
-    return {
-      backend: 'auto',
-      changed: backend !== 'auto',
-      reason: `backend '${backend}' is not supported for pdf`,
-    }
+  const rule = FORMAT_RULES[fileExt(filename)]
+  // Unknown formats remain permissive because the backend owns their parser selection.
+  if (!rule || rule.backends.has(backend)) return { backend, changed: false }
+  return {
+    backend: 'auto',
+    changed: backend !== 'auto',
+    reason: `backend '${backend}' is not supported for ${rule.format}`,
   }
-
-  if (ext === '.docx') {
-    // Docx supports general converters and some "advanced" parsers (when enabled server-side).
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'docx', 'docling', 'deepdoc', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for docx` }
-  }
-
-  if (ext === '.doc') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for doc` }
-  }
-
-  if (ext === '.pptx') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for pptx` }
-  }
-
-  if (ext === '.ppt') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for ppt` }
-  }
-
-  if (ext === '.xlsx' || ext === '.xls') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'excel', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for excel` }
-  }
-
-  if (ext === '.csv') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'csv', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for csv` }
-  }
-
-  if (ext === '.html' || ext === '.htm') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'html', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for html` }
-  }
-
-  if (ext === '.json') {
-    const allowed = new Set(['auto', 'markitdown', 'pandoc', 'json', 'textin'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for json` }
-  }
-
-  if (ext === '.md') {
-    const allowed = new Set(['auto'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return {
-      backend: 'auto',
-      changed: backend !== 'auto',
-      reason: `backend '${backend}' is not supported for markdown`,
-    }
-  }
-
-  if (ext === '.txt') {
-    const allowed = new Set(['auto'])
-    if (allowed.has(backend)) return { backend, changed: false }
-    return { backend: 'auto', changed: backend !== 'auto', reason: `backend '${backend}' is not supported for text` }
-  }
-
-  // Text-like/unknown formats: backend is ignored or auto-selected server-side; keep it permissive.
-  return { backend, changed: false }
 }
 
 export function resolveParserBackendForFiles(files: File[], requestedBackend?: string): ParserResolveResult {

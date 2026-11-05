@@ -17,13 +17,10 @@ export const SAML_CALLBACK_ERROR_MESSAGES = {
 
 export function getSamlCallbackErrorMessage(raw: string | null | undefined): string {
   const value = String(raw || '').trim()
-  if (!value) {
-    return SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
+  if (Object.hasOwn(SAML_CALLBACK_ERROR_MESSAGES, value)) {
+    return SAML_CALLBACK_ERROR_MESSAGES[value as keyof typeof SAML_CALLBACK_ERROR_MESSAGES]
   }
-  return (
-    SAML_CALLBACK_ERROR_MESSAGES[value as keyof typeof SAML_CALLBACK_ERROR_MESSAGES] ||
-    SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
-  )
+  return SAML_CALLBACK_ERROR_MESSAGES[SAML_CALLBACK_ERROR_FALLBACK]
 }
 
 export type SamlBridgeState =

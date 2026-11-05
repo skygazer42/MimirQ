@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 
 import { metaApi } from '@/lib/api'
 import { kgApi } from '@/lib/api/graph'
-import { GraphService } from '@/lib/graph-service'
+import { fetchInitialGraph } from '@/lib/graph-service'
 import { reportClientError } from '@/lib/client-logging'
 import type { GraphData } from '@/lib/graph-parser'
 import { detachPromise } from '@/lib/utils'
@@ -138,7 +138,7 @@ export function useGraphDataLoading({
         const includeRels = opts?.includeRelationLinks ?? includeRelationLinks
         const sharedThreshold = opts?.minSharedEvents ?? minSharedEvents
 
-        const data = await GraphService.fetchInitialGraph({
+        const data = await fetchInitialGraph({
           includeEntityLinks: includeLinks,
           includeRelationLinks: includeRels,
           minSharedEvents: sharedThreshold,

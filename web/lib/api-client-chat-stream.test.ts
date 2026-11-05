@@ -47,4 +47,29 @@ describe('chatApi.streamChat', () => {
       conversationId: 'conv-stream-1',
     })
   })
+
+  it.each([
+    { name: 'LF', lineEnding: '\n' },
+    { name: 'CRLF', lineEnding: '\r\n' },
+  ])('delivers $name events when UTF-8 bytes and line endings cross network chunks', async ({ lineEnding }) => {
+    const events = [
+      JSON.stringify({ type: 'token', data: { content: '你好' } }),
+      JSON.stringify({ type: 'done', data: {} }),
+    ]
+    const bytes = new TextEncoder().encode(events.map((event) => `data: ${event}${lineEnding}${lineEnding}`).join(''))
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const byte of bytes) controller.enqueue(Uint8Array.of(byte))
+        controller.close()
+      },
+    })
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })) as typeof fetch
+    const received: string[] = []
+
+    await chatApi.streamChat({ message: 'hello', stream: true }, (json) => received.push(json))
+
+    expect(received).toEqual(events)
+  })
 })

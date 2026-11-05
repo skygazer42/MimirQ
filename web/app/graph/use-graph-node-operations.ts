@@ -5,7 +5,7 @@ import { useCallback, useEffect } from 'react'
 
 import { kgApi } from '@/lib/api/graph'
 import type { GraphData } from '@/lib/graph-parser'
-import { GraphService } from '@/lib/graph-service'
+import { expandGraphNode } from '@/lib/graph-service'
 import { detachPromise } from '@/lib/utils'
 import type { KGEntityDetailResponse, KGEventDetailResponse } from '@/types'
 
@@ -113,7 +113,7 @@ export function useGraphNodeOperations({
 
       setIsLoading(true)
       try {
-        const newData = await GraphService.expandNode(id, {
+        const newData = await expandGraphNode(id, {
           includeEntityLinks: includeEntityLinks && dataSource === 'live',
           includeRelationLinks: includeRelationLinks && dataSource === 'live',
           minSharedEvents,

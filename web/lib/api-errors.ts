@@ -145,11 +145,7 @@ export type ApiErrorInfo = {
 function extractHeaderRequestId(headers: unknown): string | undefined {
   if (!headers) return undefined
   const record = headers as HeaderLike
-  const raw =
-    record['x-request-id'] ??
-    record['X-Request-ID'] ??
-    record['x-request-id'.toLowerCase()] ??
-    record['X-Request-ID'.toLowerCase()]
+  const raw = record['x-request-id'] ?? record['X-Request-ID']
   if (raw == null) return undefined
   return toTrimmedPrimitiveString(raw) || undefined
 }
@@ -157,11 +153,7 @@ function extractHeaderRequestId(headers: unknown): string | undefined {
 function extractHeaderRetryAfterSec(headers: unknown): number | undefined {
   if (!headers) return undefined
   const record = headers as HeaderLike
-  const raw =
-    record['retry-after'] ??
-    record['Retry-After'] ??
-    record['retry-after'.toLowerCase()] ??
-    record['Retry-After'.toLowerCase()]
+  const raw = record['retry-after'] ?? record['Retry-After']
   if (raw == null) return undefined
   const parsed = asFiniteNumber(raw)
   if (parsed == null) return undefined

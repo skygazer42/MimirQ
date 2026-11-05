@@ -3,9 +3,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { consumeSamlBridgeState, getSamlCallbackErrorMessage } from './saml-session'
 
 describe('getSamlCallbackErrorMessage', () => {
-  it('falls back for unknown error values', () => {
-    expect(getSamlCallbackErrorMessage('debug stack trace')).toBe('SAML sign-in failed. Please try again.')
-  })
+  it.each(['debug stack trace', 'toString', 'constructor', '__proto__'])(
+    'falls back for the unknown error %s',
+    (error) => {
+      expect(getSamlCallbackErrorMessage(error)).toBe('SAML sign-in failed. Please try again.')
+    },
+  )
 })
 
 describe('consumeSamlBridgeState', () => {

@@ -44,26 +44,7 @@ export function normalizeTags(raw: unknown, opts: { maxTags?: number; maxLen?: n
 }
 
 export function parseTagsText(text: string, opts: { maxTags?: number; maxLen?: number } = {}): string[] {
-  const maxTags = Math.max(0, Math.min(200, Number(opts.maxTags ?? DEFAULT_MAX_TAGS)))
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  const parts = String(text || '')
-    .split(/[\n,;，；、]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-
-  for (const part of parts) {
-    const tag = normalizeTag(part, { maxLen: opts.maxLen })
-    if (!tag) continue
-    const key = stableKey(tag)
-    if (seen.has(key)) continue
-    seen.add(key)
-    out.push(tag)
-    if (maxTags && out.length >= maxTags) break
-  }
-
-  return out
+  return normalizeTags(String(text || '').split(/[\n,;，；、]+/g), opts)
 }
 
 export function mergeTags(current: unknown, mode: TagOpMode, tags: string[]): string[] {

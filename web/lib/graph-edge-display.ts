@@ -38,25 +38,11 @@ function endpointId(value: EndpointLike): string {
   return ''
 }
 
-function stableLinkKind(link: LinkDisplayDatum): string {
-  return toTrimmedPrimitiveString(link.meta?.kind ?? link.kind)
-}
-
-function stableLinkPredicate(link: LinkDisplayDatum): string {
-  // Prefer KG triple predicate if present; otherwise fall back to label.
-  return toTrimmedPrimitiveString(link.meta?.predicate ?? link.predicate ?? link.label)
-}
-
-function stableLinkConfidence(link: LinkDisplayDatum): string {
-  // Keep as string to avoid floating point surprises in sort keys.
-  return toTrimmedPrimitiveString(link.meta?.confidence ?? link.confidence)
-}
-
 function linkSortKey(link: LinkDisplayDatum): string {
   // Keep this intentionally compact and deterministic; do not use JSON.stringify(link).
-  const kind = stableLinkKind(link)
-  const pred = stableLinkPredicate(link)
-  const conf = stableLinkConfidence(link)
+  const kind = toTrimmedPrimitiveString(link.meta?.kind ?? link.kind)
+  const pred = toTrimmedPrimitiveString(link.meta?.predicate ?? link.predicate ?? link.label)
+  const conf = toTrimmedPrimitiveString(link.meta?.confidence ?? link.confidence)
   return `${kind}::${pred}::${conf}`
 }
 

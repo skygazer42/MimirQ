@@ -88,11 +88,6 @@ export const parseGraphML = (xmlContent: string): GraphData => {
     // Default label if missing
     if (!nodeData.label) nodeData.label = id
 
-    // Random color assignment if not present (can be improved)
-    if (!nodeData.color) {
-      // nodeData.color = ...
-    }
-
     nodes.push(nodeData)
   })
 

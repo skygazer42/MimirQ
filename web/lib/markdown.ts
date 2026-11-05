@@ -138,63 +138,25 @@ type InlineMarkdownToken = {
   nextIndex: number
 }
 
-function readImageToken(text: string, startIndex: number): InlineMarkdownToken | null {
-  if (!text.startsWith('![', startIndex)) return null
-
-  const image = readMarkdownLink(text, startIndex, { image: true })
-  if (!image) return null
-
-  return {
-    content: stripInlineMarkdown(image.label),
-    nextIndex: image.nextIndex,
+function readInlineMarkdownToken(text: string, startIndex: number): InlineMarkdownToken | null {
+  const link = readMarkdownLink(text, startIndex, { image: text.startsWith('![', startIndex) })
+  if (link) {
+    return {
+      content: stripInlineMarkdown(link.label),
+      nextIndex: link.nextIndex,
+    }
   }
-}
 
-function readLinkToken(text: string, startIndex: number): InlineMarkdownToken | null {
-  if (text[startIndex] !== '[') return null
-
-  const link = readMarkdownLink(text, startIndex)
-  if (!link) return null
-
-  return {
-    content: stripInlineMarkdown(link.label),
-    nextIndex: link.nextIndex,
-  }
-}
-
-function readCodeToken(text: string, startIndex: number): InlineMarkdownToken | null {
   const codeSpan = readInlineCodeSpan(text, startIndex)
-  if (!codeSpan) return null
+  if (codeSpan) return codeSpan
 
-  return {
-    content: codeSpan.content,
-    nextIndex: codeSpan.nextIndex,
-  }
-}
-
-function readHtmlTagToken(text: string, startIndex: number): InlineMarkdownToken | null {
   if (text[startIndex] !== '<') return null
-
   const closeIndex = text.indexOf('>', startIndex + 1)
   if (closeIndex === -1) return null
-
   return {
     content: '',
     nextIndex: closeIndex + 1,
   }
-}
-
-function readInlineMarkdownToken(text: string, startIndex: number): InlineMarkdownToken | null {
-  return (
-    readImageToken(text, startIndex) ||
-    readLinkToken(text, startIndex) ||
-    readCodeToken(text, startIndex) ||
-    readHtmlTagToken(text, startIndex)
-  )
-}
-
-function isInlineFormattingMarker(char: string): boolean {
-  return char === '*' || char === '_'
 }
 
 function stripInlineMarkdown(text = ''): string {
@@ -211,7 +173,7 @@ function stripInlineMarkdown(text = ''): string {
     }
 
     const char = text[index]
-    if (isInlineFormattingMarker(char)) {
+    if (char === '*' || char === '_') {
       index += 1
       continue
     }
@@ -283,21 +245,12 @@ export function slugifyHeading(text: string): string {
   const raw = stripInlineMarkdown(text)
   if (!raw) return ''
 
-  try {
-    const slug = raw
-      .toLowerCase()
-      .normalize('NFKD')
-      .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
-      .replaceAll(/-{2,}/g, '-')
-    return trimEdgeChar(slug, '-')
-  } catch {
-    // Fallback for environments without unicode property escapes (very unlikely in modern browsers)
-    const slug = raw
-      .toLowerCase()
-      .replaceAll(/[^a-z0-9]+/g, '-')
-      .replaceAll(/-{2,}/g, '-')
-    return trimEdgeChar(slug, '-')
-  }
+  const slug = raw
+    .toLowerCase()
+    .normalize('NFKD')
+    .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
+    .replaceAll(/-{2,}/g, '-')
+  return trimEdgeChar(slug, '-')
 }
 
 export function extractMarkdownHeadings(markdown: string, options: { maxDepth?: number } = {}): MarkdownHeading[] {
