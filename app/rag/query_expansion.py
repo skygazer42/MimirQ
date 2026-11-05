@@ -60,16 +60,12 @@ def coerce_query_aliases(raw: Any) -> dict[str, list[str]]:
 
 
 def _query_contains_alias(base: str, base_fold: str, source: str) -> bool:
-    if not source:
-        return False
     if source.isascii():
         return source.casefold() in base_fold
     return source in base
 
 
 def _replace_alias(base: str, source: str, target: str) -> str:
-    if not source:
-        return base
     if source.isascii():
         return re.sub(re.escape(source), target, base, flags=re.IGNORECASE)
     return base.replace(source, target)
@@ -79,8 +75,6 @@ def _symmetric_alias_pairs(rules: dict[str, list[str]]) -> list[tuple[str, str]]
     pairs: list[tuple[str, str]] = []
     for key, aliases in rules.items():
         for alias in aliases:
-            if not alias or alias == key:
-                continue
             pairs.append((key, alias))
             pairs.append((alias, key))
     seen: set[tuple[str, str]] = set()
