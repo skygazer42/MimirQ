@@ -34,7 +34,7 @@ def _read_latest_match(path: Path, args: argparse.Namespace, *, request_id: str)
     best_ts = -1
     with path.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            line = (line or "").strip()
+            line = line.strip()
             if not line:
                 continue
             try:
@@ -100,7 +100,7 @@ def main() -> int:
     trace_b = normalize_rag_trace_record(rec_b)
     diff = diff_rag_traces(trace_a, trace_b)
 
-    if bool(args.compact):
+    if args.compact:
         print(json.dumps(diff, ensure_ascii=False))
     else:
         print(json.dumps(diff, ensure_ascii=False, indent=2))

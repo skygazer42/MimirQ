@@ -69,11 +69,11 @@ def main() -> int:
         print(f"[rag_trace_tail] ERROR: file not found: {path}", file=sys.stderr)
         return 2
 
-    out = deque(maxlen=limit)
+    out: deque[dict[str, Any]] = deque(maxlen=limit)
 
     with path.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            line = (line or "").strip()
+            line = line.strip()
             if not line:
                 continue
             try:
@@ -86,7 +86,7 @@ def main() -> int:
                 out.append(obj)
 
     for rec in out:
-        payload = rec if bool(args.include_text) else _strip_text_fields(rec)
+        payload = rec if args.include_text else _strip_text_fields(rec)
         if args.compact:
             print(json.dumps(payload, ensure_ascii=False))
         else:
