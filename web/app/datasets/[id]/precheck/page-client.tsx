@@ -499,13 +499,20 @@ export default function DatasetPrecheckPage() {
     stopPolling()
     stopSse()
     if (st === 'completed') {
+      let cancelled = false
       detachPromise(
         datasetApi
           .getPrecheckSummary(datasetId, selectedRun.id)
-          .then(setSummary)
-          .catch(() => setSummary(null)),
+          .then((next) => {
+            if (!cancelled) setSummary(next)
+          })
+          .catch(() => {
+            if (!cancelled) setSummary(null)
+          }),
       )
-      return
+      return () => {
+        cancelled = true
+      }
     }
     setSummary(null)
   }, [datasetId, selectedRun, startSse, stopPolling, stopSse])

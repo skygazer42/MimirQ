@@ -642,8 +642,10 @@ export default function DatasetProfilePage() {
 
   const pollScanRun = useCallback(
     async (datasetIdValue: string, runId: string) => {
+      const timer = pollTimerRef.current
       try {
         const next = await datasetApi.getProfileScanRun(datasetIdValue, runId)
+        if (pollTimerRef.current !== timer) return
         setScanRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
@@ -657,6 +659,7 @@ export default function DatasetProfilePage() {
         stopPolling()
         detachPromise(refreshProfileOverview())
       } catch (e) {
+        if (pollTimerRef.current !== timer) return
         reportClientError('Failed to poll dataset profile scan run', e)
         setScanRunning(false)
         stopPolling()
