@@ -143,7 +143,7 @@ def _resolve_case_ids_from_questions(
     return [by_question[q] for q in questions]
 
 
-def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
+def _default_ablations(*, reranker_top_n: int = 20) -> list[dict[str, Any]]:
     """
     Small, industrial default ablation set (retrieval-only friendly).
 
@@ -191,7 +191,7 @@ def _default_ablations(*, reranker_top_n: int = 20) -> list[dict]:
         rp = dict(base_rag_params)
         if overrides:
             rp.update(overrides)
-        return {"ablation_key": str(ablation_key), "rag_params": rp}
+        return {"ablation_key": ablation_key, "rag_params": rp}
 
     return [
         _ablation("baseline"),
@@ -308,7 +308,7 @@ def _resolve_case_selection(args: argparse.Namespace) -> tuple[Path | None, list
     raw_cases = str(args.cases or "").strip()
     if not raw_cases:
         return None, []
-    if bool(args.all_datasets):
+    if args.all_datasets:
         raise _CliError({"ok": False, "error": "--cases is only supported with --dataset-id"})
 
     cases_path = Path(raw_cases).expanduser()
@@ -343,7 +343,7 @@ def _resolve_dataset_ids(
 ) -> list[UUID]:
     if args.dataset_id is not None:
         return [args.dataset_id]
-    if not bool(args.all_datasets):
+    if not args.all_datasets:
         return []
 
     db = runtime.session_factory()
@@ -354,7 +354,7 @@ def _resolve_dataset_ids(
             .order_by(runtime.dataset_model.created_at.asc())
         )
         rows = query.limit(max(1, int(args.max_datasets or 0))).all()
-        return [row[0] for row in rows if isinstance(row, tuple) and row and isinstance(row[0], UUID)]
+        return [dataset_id for (dataset_id,) in rows if isinstance(dataset_id, UUID)]
     finally:
         db.close()
 
@@ -568,7 +568,7 @@ def _process_dataset(
         for ablation in ablations:
             key = str(ablation.get("ablation_key") or "").strip() or "ablation"
             rag_params = dict(ablation.get("rag_params") or {})
-            if not bool(args.execute):
+            if not args.execute:
                 _append_planned_ablation(
                     planned=planned,
                     args=args,
@@ -640,7 +640,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ok": True,
                 "tenant_id": str(tenant_id),
                 "job_run_id": job_run_id,
-                "dry_run": not bool(args.execute),
+                "dry_run": not args.execute,
                 "planned": planned,
                 "executed": executed,
             },

@@ -28,6 +28,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 if __package__ in {None, ""}:
@@ -94,12 +95,7 @@ def main(argv: list[str] | None = None) -> int:
 
     args = p.parse_args(argv)
 
-    if (
-        (not bool(args.index_audit))
-        and (not bool(args.evidence_drift_audit))
-        and (not bool(args.access_review))
-        and (not bool(args.embedding_drift))
-    ):
+    if not (args.index_audit or args.evidence_drift_audit or args.access_review or args.embedding_drift):
         print(
             "No job selected. Use --index-audit and/or --evidence-drift-audit "
             "and/or --access-review and/or --embedding-drift.",
@@ -118,11 +114,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     execute = bool(args.execute)
-    if not bool(args.dry_run) and not bool(args.execute):
+    if not args.dry_run and not args.execute:
         execute = False  # default dry-run
 
     tenant_ids: list[UUID] = []
-    if bool(args.all_tenants):
+    if args.all_tenants:
         db = SessionLocal()
         try:
             rows = db.query(Tenant.id).all()
@@ -135,26 +131,26 @@ def main(argv: list[str] | None = None) -> int:
         tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
 
     ran_at = datetime.now(UTC)
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     ok = True
 
     for tid in tenant_ids:
         db = SessionLocal()
         try:
-            if bool(args.access_review):
+            if args.access_review:
                 res = run_daily_access_review_summary(
                     db,
                     tenant_id=tid,
-                    execute=bool(execute),
+                    execute=execute,
                     force=bool(args.force),
                     actor_id="system:periodic_audit",
                     now=ran_at,
                 )
                 res["job"] = "access_review_summary"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res.get("ok") is True
 
-            if bool(args.index_audit):
+            if args.index_audit:
                 res = run_daily_index_audit_report(
                     db,
                     tenant_id=tid,
@@ -162,16 +158,16 @@ def main(argv: list[str] | None = None) -> int:
                     max_check_ids=int(args.max_check_ids or 0),
                     milvus_list_limit=int(args.milvus_list_limit or 0),
                     sample_limit=int(args.sample_limit or 0),
-                    execute=bool(execute),
+                    execute=execute,
                     force=bool(args.force),
                     actor_id="system:periodic_audit",
                     now=ran_at,
                 )
                 res["job"] = "index_audit"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res.get("ok") is True
 
-            if bool(args.evidence_drift_audit):
+            if args.evidence_drift_audit:
                 res = run_daily_evidence_drift_audit_report(
                     db,
                     tenant_id=tid,
@@ -180,20 +176,20 @@ def main(argv: list[str] | None = None) -> int:
                     include_details=bool(args.include_details),
                     details_limit=int(args.details_limit or 0),
                     slice_top_n=int(args.slice_top_n or 0),
-                    execute=bool(execute),
+                    execute=execute,
                     force=bool(args.force),
                     actor_id="system:periodic_audit",
                     now=ran_at,
                 )
                 res["job"] = "evidence_drift_audit"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res.get("ok") is True
 
-            if bool(args.embedding_drift):
+            if args.embedding_drift:
                 res = run_daily_embedding_drift_report(
                     db,
                     tenant_id=tid,
-                    execute=bool(execute),
+                    execute=execute,
                     force=bool(args.force),
                     sample_n=int(args.drift_sample_n or 0),
                     drift_threshold=float(args.drift_threshold),
@@ -202,11 +198,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 res["job"] = "embedding_drift"
                 results.append(res)
-                ok = ok and bool(res.get("ok") is True)
+                ok = ok and res.get("ok") is True
         finally:
             db.close()
 
-    print(json.dumps({"ok": bool(ok), "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
+    print(json.dumps({"ok": ok, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 0 if ok else 1
 
 

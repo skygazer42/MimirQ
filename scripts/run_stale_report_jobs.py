@@ -20,6 +20,7 @@ Examples:
 import argparse
 import json
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from app.core.config import settings
@@ -55,11 +56,11 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     tenant_ids: list[UUID] = []
-    if bool(args.all_tenants):
+    if args.all_tenants:
         db = SessionLocal()
         try:
             rows = db.query(Tenant.id).all()
-            tenant_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
+            tenant_ids = [tenant_id for (tenant_id,) in rows if isinstance(tenant_id, UUID)]
         finally:
             db.close()
     elif args.tenant_id is not None:
@@ -68,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         tenant_ids = [UUID(str(settings.DEFAULT_TENANT_ID))]
 
     ran_at = datetime.now(UTC)
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     ok = True
 
     for tid in tenant_ids:
@@ -85,11 +86,11 @@ def main(argv: list[str] | None = None) -> int:
                 now=ran_at,
             )
             results.append(res)
-            ok = ok and bool(res.get("ok") is True)
+            ok = ok and res.get("ok") is True
         finally:
             db.close()
 
-    print(json.dumps({"ok": bool(ok), "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
+    print(json.dumps({"ok": ok, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 0 if ok else 1
 
 
