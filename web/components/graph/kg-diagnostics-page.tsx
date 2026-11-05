@@ -1212,12 +1212,7 @@ export function KGDiagnosticsPage() {
         }
       })
       .filter(Boolean)
-      .slice(0, 12) as Array<{
-      case_id: string
-      question: string
-      recall: number
-      mrr: number
-    }>
+      .slice(0, 12) as DiagnosticsFailureCase[]
   }, [runItems])
   const diffSummaryEntries = useMemo(() => Object.entries(diff?.summary_delta || {}), [diff])
 

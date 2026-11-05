@@ -22,26 +22,13 @@ import type {
 } from '@/types'
 
 import { buildGraphFromTrace, extractTraceFromPayload, type GraphNodeLike } from './graph-page-utils'
-
-type GraphScope = Readonly<{
-  hasScope: boolean
-  directDocIds: string[]
-  datasetId: string | null
-  pipelineHash: string | null
-  docLimit: number
-}>
-
-type GraphScopeParams = Readonly<{
-  document_ids?: string[]
-  dataset_id?: string
-  pipeline_hash?: string
-}> | null
+import type { UseGraphPageStateResult } from './use-graph-page-state'
 
 type UseGraphDataLoadingParams = Readonly<{
-  scope: GraphScope
+  scope: UseGraphPageStateResult['scope']
   scopedDocumentIds: string[] | null
   scopedDatasetDocIdsLoading: boolean
-  scopeParams: GraphScopeParams
+  scopeParams: UseGraphPageStateResult['scopeParams']
   includeEntityLinks: boolean
   includeRelationLinks: boolean
   minSharedEvents: number
@@ -74,6 +61,74 @@ type UseGraphDataLoadingResult = Readonly<{
   triggerManualKgUpload: () => void
 }>
 
+function parseManualKgPayload(text: string, fileName: string): KGManualImportRequest {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    throw new Error('empty manual KG file')
+  }
+
+  const firstString = (...values: unknown[]) => values.find((value): value is string => typeof value === 'string') ?? ''
+  const coerceRows = (rows: unknown[]) => {
+    const entities: KGManualEntityInput[] = []
+    const relations: KGManualRelationInput[] = []
+    for (const row of rows) {
+      if (!row || typeof row !== 'object') continue
+      const item = row as Record<string, unknown>
+      const kind = firstString(item.kind, item.row_type, item.type_hint).toLowerCase()
+      if (kind === 'relation' || ('subject' in item && 'object' in item && 'predicate' in item)) {
+        relations.push(item as unknown as KGManualRelationInput)
+        continue
+      }
+      if (kind === 'entity' || ('name' in item && 'type' in item)) {
+        entities.push(item as unknown as KGManualEntityInput)
+      }
+    }
+    return {
+      name: fileName.replace(/\.(jsonl|json)$/i, '') || '手动知识图谱导入',
+      entities,
+      relations,
+    }
+  }
+
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(trimmed)
+    } catch (error) {
+      if (!fileName.toLowerCase().endsWith('.jsonl')) throw error
+    }
+    if (Array.isArray(parsed)) return coerceRows(parsed)
+    if (parsed && typeof parsed === 'object') {
+      // One JSONL row is also valid JSON; explicit bundles keep their options path.
+      if (fileName.toLowerCase().endsWith('.jsonl') && !('entities' in parsed) && !('relations' in parsed)) {
+        const rows = coerceRows([parsed])
+        if (rows.entities.length || rows.relations.length) return rows
+      }
+      const payload = parsed as KGManualImportRequest
+      return {
+        name: payload.name || fileName.replace(/\.(jsonl|json)$/i, '') || '手动知识图谱导入',
+        entities: Array.isArray(payload.entities) ? payload.entities : [],
+        relations: Array.isArray(payload.relations) ? payload.relations : [],
+        import_id: payload.import_id,
+        dataset_id: payload.dataset_id,
+        dataset_name: payload.dataset_name,
+        pipeline_hash: payload.pipeline_hash,
+        replace_existing: payload.replace_existing,
+        upsert_entities: payload.upsert_entities,
+        allow_label_truncation: payload.allow_label_truncation,
+        index_vectors: payload.index_vectors,
+      }
+    }
+  }
+
+  const rows = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+  return coerceRows(rows)
+}
+
 export function useGraphDataLoading({
   scope,
   scopedDocumentIds,
@@ -100,8 +155,8 @@ export function useGraphDataLoading({
   resetExplainMode,
 }: UseGraphDataLoadingParams): UseGraphDataLoadingResult {
   const [autoLoadedGraphKey, setAutoLoadedGraphKey] = useState<string | null>(null)
-  // Monotonic token to discard stale initial-load responses: when the scope
-  // changes quickly, an earlier (slower) fetch must not overwrite a later one.
+  // Live loads and Trace selections share one owner so an earlier operation
+  // cannot overwrite a newer graph or clear its loading state.
   const loadTokenRef = useRef(0)
 
   const resetGraphSurface = useCallback(() => {
@@ -223,10 +278,12 @@ export function useGraphDataLoading({
       const file = event.target.files?.[0]
       if (!file) return
 
+      const requestToken = (loadTokenRef.current += 1)
       setIsLoading(true)
       setFileName(file.name)
       try {
         const text = await file.text()
+        if (requestToken !== loadTokenRef.current) return
         const payload = JSON.parse(text)
         const trace = extractTraceFromPayload(payload)
         if (!trace) {
@@ -242,11 +299,13 @@ export function useGraphDataLoading({
         setViewMode('2d')
         toast.success('Trace 已导入（可点击右下角 Play 回放）')
       } catch (error) {
-        reportClientError('Failed to import trace JSON', error)
-        setTraceReplay(null)
-        toast.error('导入 Trace 失败：请检查 JSON 格式或粘贴/导出内容是否完整')
+        if (requestToken === loadTokenRef.current) {
+          reportClientError('Failed to import trace JSON', error)
+          setTraceReplay(null)
+          toast.error('导入 Trace 失败：请检查 JSON 格式或粘贴/导出内容是否完整')
+        }
       } finally {
-        setIsLoading(false)
+        if (requestToken === loadTokenRef.current) setIsLoading(false)
         event.target.value = ''
       }
     },
@@ -265,65 +324,6 @@ export function useGraphDataLoading({
   const triggerTraceUpload = useCallback(() => {
     traceFileInputRef.current?.click()
   }, [traceFileInputRef])
-
-  const parseManualKgPayload = useCallback((text: string, fileName: string): KGManualImportRequest => {
-    const trimmed = text.trim()
-    if (!trimmed) {
-      throw new Error('empty manual KG file')
-    }
-
-    const firstString = (...values: unknown[]) =>
-      values.find((value): value is string => typeof value === 'string') ?? ''
-    const coerceRows = (rows: unknown[]): KGManualImportRequest => {
-      const entities: KGManualEntityInput[] = []
-      const relations: KGManualRelationInput[] = []
-      for (const row of rows) {
-        if (!row || typeof row !== 'object') continue
-        const item = row as Record<string, unknown>
-        const kind = firstString(item.kind, item.row_type, item.type_hint).toLowerCase()
-        if (kind === 'relation' || ('subject' in item && 'object' in item && 'predicate' in item)) {
-          relations.push(item as unknown as KGManualRelationInput)
-          continue
-        }
-        if (kind === 'entity' || ('name' in item && 'type' in item)) {
-          entities.push(item as unknown as KGManualEntityInput)
-        }
-      }
-      return {
-        name: fileName.replace(/\.(jsonl|json)$/i, '') || '手动知识图谱导入',
-        entities,
-        relations,
-      }
-    }
-
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      const parsed = JSON.parse(trimmed)
-      if (Array.isArray(parsed)) return coerceRows(parsed)
-      if (parsed && typeof parsed === 'object') {
-        const payload = parsed as KGManualImportRequest
-        return {
-          name: payload.name || fileName.replace(/\.(jsonl|json)$/i, '') || '手动知识图谱导入',
-          entities: Array.isArray(payload.entities) ? payload.entities : [],
-          relations: Array.isArray(payload.relations) ? payload.relations : [],
-          import_id: payload.import_id,
-          dataset_id: payload.dataset_id,
-          dataset_name: payload.dataset_name,
-          pipeline_hash: payload.pipeline_hash,
-          replace_existing: payload.replace_existing,
-          upsert_entities: payload.upsert_entities,
-          allow_label_truncation: payload.allow_label_truncation,
-          index_vectors: payload.index_vectors,
-        }
-      }
-    }
-
-    const rows = trimmed
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => JSON.parse(line))
-    return coerceRows(rows)
-  }, [])
 
   const handleManualKgFileUpload = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -355,7 +355,7 @@ export function useGraphDataLoading({
         event.target.value = ''
       }
     },
-    [loadInitialData, parseManualKgPayload, setIsLoading],
+    [loadInitialData, setIsLoading],
   )
 
   const triggerManualKgUpload = useCallback(() => {

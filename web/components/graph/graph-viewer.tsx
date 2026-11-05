@@ -877,636 +877,622 @@ class GraphRenderBoundary extends Component<GraphRenderBoundaryProps, GraphRende
   }
 }
 
-export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(
-  (
-    {
-      data,
-      onNodeClick,
-      onNodeRightClick,
-      onLinkClick,
-      onLinkRightClick,
-      onBackgroundClick,
-      onBackgroundRightClick,
-      highlightedNodeIds = new Set(),
-      highlightedLinkIds = new Set(),
-      selectedNodeId = null,
-      showEdgeLabels = true,
-      layoutMode = 'force',
-      showMinimap = true,
-    },
-    ref,
-  ) => {
-    const containerRef = useRef<HTMLDivElement>(null)
-    const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
-    const { width, height } = useResizeObserver(containerRef)
-    const [mounted, setMounted] = useState(false)
-    const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
-    const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
-    const [isCanvasPanning, setIsCanvasPanning] = useState(false)
-    const [viewportLod, setViewportLod] = useState<GraphViewportLod | null>(null)
-    const viewportLodFrameRef = useRef<number | null>(null)
-    const viewportLodTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-    const pendingViewportLodRef = useRef<GraphViewportLod | null>(null)
-    const { resolvedTheme } = useTheme()
-    const isDark = resolvedTheme === 'dark'
-    const canvasColors = useMemo(() => {
-      const fg = getCssHslColor('--foreground', isDark ? '#e2e8f0' : '#1e293b')
-      const muted = getCssHslColor('--muted-foreground', isDark ? '#94a3b8' : '#475569')
-      const bgStroke = getCssHslaColor(
-        '--background',
-        isDark ? 0.86 : 0.94,
-        isDark ? 'rgba(2, 6, 23, 0.86)' : 'rgba(255, 255, 255, 0.94)',
-      )
-      const edgeLabelBg = getCssHslaColor(
-        '--background',
-        isDark ? 0.82 : 0.95,
-        isDark ? 'rgba(15, 23, 42, 0.86)' : 'rgba(255, 255, 255, 0.95)',
-      )
-      return {
-        nodeDim: isDark ? '#334155' : '#cbd5e1',
-        linkDim: isDark ? 'rgba(148, 163, 184, 0.18)' : '#e2e8f0',
-        linkMid: isDark ? '#64748b' : '#94a3b8',
-        labelStroke: bgStroke,
-        labelFill: fg,
-        labelDim: muted,
-        edgeLabelBg,
-        edgeLabelText: isDark ? fg : '#475569',
-        edgeLabelHoverText: isDark ? fg : '#0c4a6e',
-      }
-    }, [isDark])
-
-    const neighborSet = useMemo(() => {
-      if (!selectedNodeId) return null
-      const set = new Set<string>()
-      set.add(selectedNodeId)
-      for (const link of data.links) {
-        const src = typeof link.source === 'object' ? link.source?.id : link.source
-        const tgt = typeof link.target === 'object' ? link.target?.id : link.target
-        if (src === selectedNodeId) set.add(String(tgt))
-        if (tgt === selectedNodeId) set.add(String(src))
-      }
-      return set
-    }, [selectedNodeId, data.links])
-
-    const nodeDegreeMap = useMemo(() => {
-      const map = new Map<string, number>()
-      for (const link of data.links) {
-        const src = typeof link.source === 'object' ? link.source?.id : link.source
-        const tgt = typeof link.target === 'object' ? link.target?.id : link.target
-        map.set(String(src), (map.get(String(src)) || 0) + 1)
-        map.set(String(tgt), (map.get(String(tgt)) || 0) + 1)
-      }
-      return map
-    }, [data.links])
-
-    const typeColorMap = useMemo(() => buildTypeColorMap(data.nodes), [data.nodes])
-
-    // Sanitize data to ensure fresh 2D simulation
-    // 1. Clone nodes/links to break references (especially when switching from 3D)
-    // 2. Convert link source/target objects back to IDs so d3 re-resolves them against the new node array
-    // 3. Clear 3D-specific props or fixed positions
-    const sanitizedData = useMemo(() => {
-      const nodes = data.nodes.map((node) => {
-        // Destructure to remove 3D specific or fixed position props
-        const { fx, fy, fz, vz, vy, vx, z, ...rest } = node
-        return { ...rest }
-      })
-
-      const links = data.links.map((link, index) => ({
-        ...link,
-        id: link.id ?? getStableLinkId(link, index),
-        // Reset source/target to IDs if they are objects (from previous d3 simulation)
-        source:
-          typeof link.source === 'object' && link.source !== null && 'id' in link.source ? link.source.id : link.source,
-        target:
-          typeof link.target === 'object' && link.target !== null && 'id' in link.target ? link.target.id : link.target,
-      }))
-
-      // Spread parallel links and draw self-loops deterministically.
-      decorateLinksForDisplay(links as Array<GraphLinkDatum & Record<string, unknown>>)
-
-      return { nodes, links }
-    }, [data])
-    const isLargeGraph = useMemo(
-      () =>
-        sanitizedData.nodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
-        sanitizedData.links.length > LARGE_GRAPH_LINK_THRESHOLD,
-      [sanitizedData.links.length, sanitizedData.nodes.length],
+export const GraphViewer = forwardRef<GraphViewerRef, GraphViewerProps>(function GraphViewer(
+  {
+    data,
+    onNodeClick,
+    onNodeRightClick,
+    onLinkClick,
+    onLinkRightClick,
+    onBackgroundClick,
+    onBackgroundRightClick,
+    highlightedNodeIds = new Set(),
+    highlightedLinkIds = new Set(),
+    selectedNodeId = null,
+    showEdgeLabels = true,
+    layoutMode = 'force',
+    showMinimap = true,
+  },
+  ref,
+) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const fgRef = useRef<ForceGraphMethods | undefined>(undefined)
+  const { width, height } = useResizeObserver(containerRef)
+  const [mounted, setMounted] = useState(false)
+  const [hoveredLinkId, setHoveredLinkId] = useState<string | null>(null)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [isCanvasPanning, setIsCanvasPanning] = useState(false)
+  const [viewportLod, setViewportLod] = useState<GraphViewportLod | null>(null)
+  const viewportLodFrameRef = useRef<number | null>(null)
+  const viewportLodTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pendingViewportLodRef = useRef<GraphViewportLod | null>(null)
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === 'dark'
+  const canvasColors = useMemo(() => {
+    const fg = getCssHslColor('--foreground', isDark ? '#e2e8f0' : '#1e293b')
+    const muted = getCssHslColor('--muted-foreground', isDark ? '#94a3b8' : '#475569')
+    const bgStroke = getCssHslaColor(
+      '--background',
+      isDark ? 0.86 : 0.94,
+      isDark ? 'rgba(2, 6, 23, 0.86)' : 'rgba(255, 255, 255, 0.94)',
     )
-    const allowEdgeLabels = showEdgeLabels && !isLargeGraph
-    const edgeLabelScale = isLargeGraph ? 2.5 : 2
-    const nodeRelSize = isLargeGraph ? 4 : 6
-    const arrowLength = isLargeGraph ? 0 : 3.5
-    const cooldownTicks = isLargeGraph ? 50 : 100
-    const cooldownTime = isLargeGraph ? 4000 : 8000
-    const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
-    const graphCursor = graphCursorStyle(isCanvasPanning, hoveredNodeId, hoveredLinkId)
-    const viewportPinnedNodeIds = useMemo(() => {
-      const pinned = new Set<string>(highlightedNodeIds)
-      if (selectedNodeId) pinned.add(selectedNodeId)
-      return pinned
-    }, [highlightedNodeIds, selectedNodeId])
-    const viewportLodTier = viewportLod?.tier ?? 'detail'
-
-    const flushViewportLodUpdate = useCallback(() => {
-      viewportLodFrameRef.current = null
-      viewportLodTimeoutRef.current = null
-      const pending = pendingViewportLodRef.current
-      setViewportLod((current) => (areViewportLodsEqual(current, pending) ? current : pending))
-    }, [])
-
-    const scheduleViewportLodUpdate = useCallback(
-      (next: GraphViewportLod | null) => {
-        pendingViewportLodRef.current = next
-
-        if (viewportLodFrameRef.current !== null || viewportLodTimeoutRef.current !== null) return
-
-        if (globalThis.window !== undefined && typeof globalThis.window.requestAnimationFrame === 'function') {
-          viewportLodFrameRef.current = globalThis.window.requestAnimationFrame(() => {
-            flushViewportLodUpdate()
-          })
-          return
-        }
-
-        viewportLodTimeoutRef.current = setTimeout(() => {
-          flushViewportLodUpdate()
-        }, 0)
-      },
-      [flushViewportLodUpdate],
+    const edgeLabelBg = getCssHslaColor(
+      '--background',
+      isDark ? 0.82 : 0.95,
+      isDark ? 'rgba(15, 23, 42, 0.86)' : 'rgba(255, 255, 255, 0.95)',
     )
+    return {
+      nodeDim: isDark ? '#334155' : '#cbd5e1',
+      linkDim: isDark ? 'rgba(148, 163, 184, 0.18)' : '#e2e8f0',
+      linkMid: isDark ? '#64748b' : '#94a3b8',
+      labelStroke: bgStroke,
+      labelFill: fg,
+      labelDim: muted,
+      edgeLabelBg,
+      edgeLabelText: isDark ? fg : '#475569',
+      edgeLabelHoverText: isDark ? fg : '#0c4a6e',
+    }
+  }, [isDark])
 
-    const updateViewportLod = useCallback(
-      (transform?: { k?: number }) => {
-        const graph = fgRef.current
-        if (!isLargeGraph || !graph || width <= 0 || height <= 0) {
-          scheduleViewportLodUpdate(null)
-          return
-        }
+  const neighborSet = useMemo(() => {
+    if (!selectedNodeId) return null
+    const set = new Set<string>()
+    set.add(selectedNodeId)
+    for (const link of data.links) {
+      const src = typeof link.source === 'object' ? link.source?.id : link.source
+      const tgt = typeof link.target === 'object' ? link.target?.id : link.target
+      if (src === selectedNodeId) set.add(String(tgt))
+      if (tgt === selectedNodeId) set.add(String(src))
+    }
+    return set
+  }, [selectedNodeId, data.links])
 
-        const topLeft = graph.screen2GraphCoords?.(0, 0)
-        const bottomRight = graph.screen2GraphCoords?.(width, height)
-        if (!topLeft || !bottomRight) return
+  const nodeDegreeMap = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const link of data.links) {
+      const src = typeof link.source === 'object' ? link.source?.id : link.source
+      const tgt = typeof link.target === 'object' ? link.target?.id : link.target
+      map.set(String(src), (map.get(String(src)) || 0) + 1)
+      map.set(String(tgt), (map.get(String(tgt)) || 0) + 1)
+    }
+    return map
+  }, [data.links])
 
-        const viewport: GraphViewportRect = {
-          minX: Math.min(Number(topLeft.x), Number(bottomRight.x)),
-          minY: Math.min(Number(topLeft.y), Number(bottomRight.y)),
-          maxX: Math.max(Number(topLeft.x), Number(bottomRight.x)),
-          maxY: Math.max(Number(topLeft.y), Number(bottomRight.y)),
-        }
-        if (!Object.values(viewport).every(Number.isFinite)) return
+  const typeColorMap = useMemo(() => buildTypeColorMap(data.nodes), [data.nodes])
 
-        const zoom = Number(transform?.k ?? graph.zoom?.() ?? 1)
-        const next = buildGraphViewportLod({
-          nodes: sanitizedData.nodes,
-          links: sanitizedData.links,
-          viewport,
-          globalScale: Number.isFinite(zoom) ? zoom : 1,
-          totalNodeCount: sanitizedData.nodes.length,
-          selectedNodeIds: viewportPinnedNodeIds,
-        })
+  // Sanitize data to ensure fresh 2D simulation
+  // 1. Clone nodes/links to break references (especially when switching from 3D)
+  // 2. Convert link source/target objects back to IDs so d3 re-resolves them against the new node array
+  // 3. Clear 3D-specific props or fixed positions
+  const sanitizedData = useMemo(() => {
+    const nodes = data.nodes.map((node) => {
+      // Destructure to remove 3D specific or fixed position props
+      const { fx, fy, fz, vz, vy, vx, z, ...rest } = node
+      return { ...rest }
+    })
 
-        scheduleViewportLodUpdate(next)
-      },
-      [
-        height,
-        isLargeGraph,
-        sanitizedData.links,
-        sanitizedData.nodes,
-        scheduleViewportLodUpdate,
-        viewportPinnedNodeIds,
-        width,
-      ],
-    )
-
-    useEffect(() => {
-      setMounted(true)
-    }, [])
-
-    useEffect(() => {
-      return () => {
-        if (viewportLodFrameRef.current !== null && globalThis.window !== undefined) {
-          globalThis.window.cancelAnimationFrame(viewportLodFrameRef.current)
-          viewportLodFrameRef.current = null
-        }
-        if (viewportLodTimeoutRef.current !== null) {
-          clearTimeout(viewportLodTimeoutRef.current)
-          viewportLodTimeoutRef.current = null
-        }
-      }
-    }, [])
-
-    useEffect(() => {
-      if (typeof document === 'undefined') return
-
-      const handleVisibility = () => {
-        const isHidden = document.visibilityState === 'hidden'
-        const graph = fgRef.current
-        if (!graph) return
-        if (isHidden) {
-          graph.pauseAnimation?.()
-        } else {
-          graph.resumeAnimation?.()
-        }
-      }
-
-      handleVisibility()
-      document.addEventListener('visibilitychange', handleVisibility)
-      return () => {
-        document.removeEventListener('visibilitychange', handleVisibility)
-      }
-    }, [])
-
-    useEffect(() => {
-      if (!mounted) return
-
-      const root = containerRef.current
-      if (!root) return
-
-      const resetPanning = () => setIsCanvasPanning(false)
-      const handleMouseDown = (event: MouseEvent) => {
-        if (!(event.target instanceof HTMLCanvasElement)) return
-        if (event.button === 1 || event.button === 2) {
-          setIsCanvasPanning(true)
-        }
-      }
-
-      root.addEventListener('mousedown', handleMouseDown)
-      globalThis.window.addEventListener('mouseup', resetPanning)
-      globalThis.window.addEventListener('blur', resetPanning)
-      globalThis.window.addEventListener('contextmenu', resetPanning)
-
-      return () => {
-        root.removeEventListener('mousedown', handleMouseDown)
-        globalThis.window.removeEventListener('mouseup', resetPanning)
-        globalThis.window.removeEventListener('blur', resetPanning)
-        globalThis.window.removeEventListener('contextmenu', resetPanning)
-      }
-    }, [mounted])
-
-    useEffect(() => {
-      const root = containerRef.current
-      const primaryCanvas = getPrimaryCanvas(root)
-      if (root) {
-        root.style.cursor = graphCursor
-      }
-      if (primaryCanvas) {
-        primaryCanvas.style.cursor = graphCursor
-      }
-    }, [graphCursor, height, mounted, showMinimap, width, sanitizedData.links.length, sanitizedData.nodes.length])
-
-    // Expose methods to parent
-    useImperativeHandle(ref, () => ({
-      zoomIn: () => {
-        if (fgRef.current) {
-          const currentZoom = fgRef.current.zoom()
-          fgRef.current.zoom(currentZoom * 1.2, 400)
-        }
-      },
-      zoomOut: () => {
-        if (fgRef.current) {
-          const currentZoom = fgRef.current.zoom()
-          fgRef.current.zoom(currentZoom / 1.2, 400)
-        }
-      },
-      zoomToFit: () => {
-        if (fgRef.current) {
-          fgRef.current.zoomToFit(400, 20)
-        }
-      },
-      focusNode: (nodeId: string) => {
-        // Use sanitizedData because that's what d3 is updating with x,y coords
-        const node = sanitizedData.nodes.find((n) => n.id === nodeId)
-        if (node && fgRef.current) {
-          fgRef.current.centerAt(node.x, node.y, 1000)
-          fgRef.current.zoom(3, 1000)
-        }
-      },
-      exportPngDataUrl: () => {
-        const host = containerRef.current
-        if (!host) return null
-        const canvases = Array.from(host.querySelectorAll('canvas')) as HTMLCanvasElement[]
-        if (!canvases.length) return null
-        const main = canvases
-          .filter((c) => c && Number.isFinite(c.width) && Number.isFinite(c.height))
-          .sort((a, b) => b.width * b.height - a.width * a.height)[0]
-        if (!main) return null
-        try {
-          return main.toDataURL('image/png')
-        } catch {
-          return null
-        }
-      },
-      exportSvgString: () => {
-        const host = containerRef.current
-        if (!host) return null
-        const canvases = Array.from(host.querySelectorAll('canvas')) as HTMLCanvasElement[]
-        if (!canvases.length) return null
-        const main = canvases
-          .filter((c) => c && Number.isFinite(c.width) && Number.isFinite(c.height))
-          .sort((a, b) => b.width * b.height - a.width * a.height)[0]
-        if (!main) return null
-        let pngDataUrl = ''
-        try {
-          pngDataUrl = main.toDataURL('image/png')
-        } catch {
-          return null
-        }
-        if (!pngDataUrl) return null
-        const w = Math.max(1, main.width || 1)
-        const h = Math.max(1, main.height || 1)
-        return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n  <image href="${pngDataUrl}" width="${w}" height="${h}" />\n</svg>\n`
-      },
+    const links = data.links.map((link, index) => ({
+      ...link,
+      id: link.id ?? getStableLinkId(link, index),
+      // Reset source/target to IDs if they are objects (from previous d3 simulation)
+      source:
+        typeof link.source === 'object' && link.source !== null && 'id' in link.source ? link.source.id : link.source,
+      target:
+        typeof link.target === 'object' && link.target !== null && 'id' in link.target ? link.target.id : link.target,
     }))
 
-    // Auto zoom fit on data change
-    useEffect(() => {
-      let attempts = 0
-      const maxAttempts = 10
-      let timeoutId: number | null = null
+    // Spread parallel links and draw self-loops deterministically.
+    decorateLinksForDisplay(links as Array<GraphLinkDatum & Record<string, unknown>>)
 
-      const tryZoom = () => {
-        if (fgRef.current && sanitizedData.nodes.length > 0) {
-          fgRef.current.zoomToFit(400, 20)
-        } else if (attempts < maxAttempts) {
-          attempts++
-          timeoutId = globalThis.window.setTimeout(tryZoom, 200)
-        }
+    return { nodes, links }
+  }, [data])
+  const isLargeGraph = useMemo(
+    () =>
+      sanitizedData.nodes.length > LARGE_GRAPH_NODE_THRESHOLD ||
+      sanitizedData.links.length > LARGE_GRAPH_LINK_THRESHOLD,
+    [sanitizedData.links.length, sanitizedData.nodes.length],
+  )
+  const allowEdgeLabels = showEdgeLabels && !isLargeGraph
+  const edgeLabelScale = isLargeGraph ? 2.5 : 2
+  const nodeRelSize = isLargeGraph ? 4 : 6
+  const arrowLength = isLargeGraph ? 0 : 3.5
+  const cooldownTicks = isLargeGraph ? 50 : 100
+  const cooldownTime = isLargeGraph ? 4000 : 8000
+  const graphRenderResetKey = `${sanitizedData.nodes.length}:${sanitizedData.links.length}:${layoutMode}`
+  const graphCursor = graphCursorStyle(isCanvasPanning, hoveredNodeId, hoveredLinkId)
+  const viewportPinnedNodeIds = useMemo(() => {
+    const pinned = new Set<string>(highlightedNodeIds)
+    if (selectedNodeId) pinned.add(selectedNodeId)
+    return pinned
+  }, [highlightedNodeIds, selectedNodeId])
+  const viewportLodTier = viewportLod?.tier ?? 'detail'
+
+  const flushViewportLodUpdate = useCallback(() => {
+    viewportLodFrameRef.current = null
+    viewportLodTimeoutRef.current = null
+    const pending = pendingViewportLodRef.current
+    setViewportLod((current) => (areViewportLodsEqual(current, pending) ? current : pending))
+  }, [])
+
+  const scheduleViewportLodUpdate = useCallback(
+    (next: GraphViewportLod | null) => {
+      pendingViewportLodRef.current = next
+
+      if (viewportLodFrameRef.current !== null || viewportLodTimeoutRef.current !== null) return
+
+      if (globalThis.window !== undefined && typeof globalThis.window.requestAnimationFrame === 'function') {
+        viewportLodFrameRef.current = globalThis.window.requestAnimationFrame(() => {
+          flushViewportLodUpdate()
+        })
+        return
       }
 
-      // Initial delay to allow render
-      timeoutId = globalThis.window.setTimeout(tryZoom, 300)
-      return () => {
-        if (timeoutId != null) {
-          clearTimeout(timeoutId)
-        }
+      viewportLodTimeoutRef.current = setTimeout(() => {
+        flushViewportLodUpdate()
+      }, 0)
+    },
+    [flushViewportLodUpdate],
+  )
+
+  const updateViewportLod = useCallback(
+    (transform?: { k?: number }) => {
+      const graph = fgRef.current
+      if (!isLargeGraph || !graph || width <= 0 || height <= 0) {
+        scheduleViewportLodUpdate(null)
+        return
       }
-    }, [sanitizedData])
 
-    // Layout transitions (U9): reheat the simulation so layout changes animate smoothly.
-    useEffect(() => {
-      if (fgRef.current) {
-        fgRef.current.d3ReheatSimulation?.()
+      const topLeft = graph.screen2GraphCoords?.(0, 0)
+      const bottomRight = graph.screen2GraphCoords?.(width, height)
+      if (!topLeft || !bottomRight) return
+
+      const viewport: GraphViewportRect = {
+        minX: Math.min(Number(topLeft.x), Number(bottomRight.x)),
+        minY: Math.min(Number(topLeft.y), Number(bottomRight.y)),
+        maxX: Math.max(Number(topLeft.x), Number(bottomRight.x)),
+        maxY: Math.max(Number(topLeft.y), Number(bottomRight.y)),
       }
-    }, [layoutMode])
+      if (!Object.values(viewport).every(Number.isFinite)) return
 
-    useEffect(() => {
-      if (!mounted) return
-      updateViewportLod()
-    }, [mounted, updateViewportLod])
+      const zoom = Number(transform?.k ?? graph.zoom?.() ?? 1)
+      const next = buildGraphViewportLod({
+        nodes: sanitizedData.nodes,
+        links: sanitizedData.links,
+        viewport,
+        globalScale: Number.isFinite(zoom) ? zoom : 1,
+        totalNodeCount: sanitizedData.nodes.length,
+        selectedNodeIds: viewportPinnedNodeIds,
+      })
 
-    const handleNodeClick = useCallback(
-      (node: GraphNodeDatum) => {
-        if (fgRef.current) {
-          fgRef.current.centerAt(node.x, node.y, 400)
-          fgRef.current.zoom(2.5, 400)
-        }
-        if (onNodeClick) {
-          onNodeClick(node)
-        }
-      },
-      [onNodeClick],
-    )
+      scheduleViewportLodUpdate(next)
+    },
+    [
+      height,
+      isLargeGraph,
+      sanitizedData.links,
+      sanitizedData.nodes,
+      scheduleViewportLodUpdate,
+      viewportPinnedNodeIds,
+      width,
+    ],
+  )
 
-    const getNodeColor = useCallback(
-      (node: GraphNodeDatum) => {
-        const hasHighlights = highlightedNodeIds.size > 0
-        if (hasHighlights && !highlightedNodeIds.has(node.id)) {
-          return canvasColors.nodeDim
-        }
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
-        if (node.color) return node.color
+  useEffect(() => {
+    return () => {
+      if (viewportLodFrameRef.current !== null && globalThis.window !== undefined) {
+        globalThis.window.cancelAnimationFrame(viewportLodFrameRef.current)
+        viewportLodFrameRef.current = null
+      }
+      if (viewportLodTimeoutRef.current !== null) {
+        clearTimeout(viewportLodTimeoutRef.current)
+        viewportLodTimeoutRef.current = null
+      }
+    }
+  }, [])
 
-        const kind = graphNodeKind(node)
-        if (kind === 'event') return EVENT_COLOR
+  useEffect(() => {
+    if (typeof document === 'undefined') return
 
-        const type = graphNodeType(node)
-        if (type && typeColorMap.has(type)) return typeColorMap.get(type)!
-
-        if (typeof node.group === 'number' && node.group > 0) {
-          return NODE_COLOR_PALETTE[(node.group - 1) % NODE_COLOR_PALETTE.length]
-        }
-
-        return NODE_COLOR_PALETTE[hashTypeToIndex(node.id || '')]
-      },
-      [highlightedNodeIds, typeColorMap, canvasColors.nodeDim],
-    )
-
-    const isNodeVisibleForViewport = useCallback(
-      (node: GraphNodeDatum) => {
-        if (!isLargeGraph || !viewportLod) return true
-        const nodeId = String(node?.id ?? '')
-        if (!nodeId) return false
-        return viewportLod.visibleNodeIds.has(nodeId) || viewportPinnedNodeIds.has(nodeId)
-      },
-      [isLargeGraph, viewportLod, viewportPinnedNodeIds],
-    )
-
-    const isLinkVisibleForViewport = useCallback(
-      (link: GraphLinkDatum) => {
-        if (!isLargeGraph || !viewportLod) return true
-        const linkId = getStableLinkId(link)
-        if (linkId && highlightedLinkIds.has(linkId)) return true
-        return Boolean(linkId && viewportLod.visibleLinkIds.has(linkId))
-      },
-      [highlightedLinkIds, isLargeGraph, viewportLod],
-    )
-
-    // Determine DAG mode based on layoutMode
-    const getDagMode = () => {
-      switch (layoutMode) {
-        case 'tree':
-          return 'td' // Top-Down
-        case 'radial':
-          return 'radialout'
-        default:
-          return undefined // Force Directed
+    const handleVisibility = () => {
+      const isHidden = document.visibilityState === 'hidden'
+      const graph = fgRef.current
+      if (!graph) return
+      if (isHidden) {
+        graph.pauseAnimation?.()
+      } else {
+        graph.resumeAnimation?.()
       }
     }
 
-    return (
-      <div ref={containerRef} className="relative h-full w-full bg-transparent">
-        {!mounted || width === 0 || height === 0 ? (
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-            {mounted ? (
-              <div className="flex flex-col items-center gap-2">
-                <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-primary" />
-                <span className="text-xs">
-                  Initializing Layout... ({Math.round(width)}x{Math.round(height)})
-                </span>
+    handleVisibility()
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
+
+    const root = containerRef.current
+    if (!root) return
+
+    const resetPanning = () => setIsCanvasPanning(false)
+    const handleMouseDown = (event: MouseEvent) => {
+      if (!(event.target instanceof HTMLCanvasElement)) return
+      if (event.button === 1 || event.button === 2) {
+        setIsCanvasPanning(true)
+      }
+    }
+
+    root.addEventListener('mousedown', handleMouseDown)
+    globalThis.window.addEventListener('mouseup', resetPanning)
+    globalThis.window.addEventListener('blur', resetPanning)
+    globalThis.window.addEventListener('contextmenu', resetPanning)
+
+    return () => {
+      root.removeEventListener('mousedown', handleMouseDown)
+      globalThis.window.removeEventListener('mouseup', resetPanning)
+      globalThis.window.removeEventListener('blur', resetPanning)
+      globalThis.window.removeEventListener('contextmenu', resetPanning)
+    }
+  }, [mounted])
+
+  useEffect(() => {
+    const root = containerRef.current
+    const primaryCanvas = getPrimaryCanvas(root)
+    if (root) {
+      root.style.cursor = graphCursor
+    }
+    if (primaryCanvas) {
+      primaryCanvas.style.cursor = graphCursor
+    }
+  }, [graphCursor, height, mounted, showMinimap, width, sanitizedData.links.length, sanitizedData.nodes.length])
+
+  // Expose methods to parent
+  useImperativeHandle(ref, () => ({
+    zoomIn: () => {
+      if (fgRef.current) {
+        const currentZoom = fgRef.current.zoom()
+        fgRef.current.zoom(currentZoom * 1.2, 400)
+      }
+    },
+    zoomOut: () => {
+      if (fgRef.current) {
+        const currentZoom = fgRef.current.zoom()
+        fgRef.current.zoom(currentZoom / 1.2, 400)
+      }
+    },
+    zoomToFit: () => {
+      if (fgRef.current) {
+        fgRef.current.zoomToFit(400, 20)
+      }
+    },
+    focusNode: (nodeId: string) => {
+      // Use sanitizedData because that's what d3 is updating with x,y coords
+      const node = sanitizedData.nodes.find((n) => n.id === nodeId)
+      if (node && fgRef.current) {
+        fgRef.current.centerAt(node.x, node.y, 1000)
+        fgRef.current.zoom(3, 1000)
+      }
+    },
+    exportPngDataUrl: () => {
+      const main = getPrimaryCanvas(containerRef.current)
+      if (!main) return null
+      try {
+        return main.toDataURL('image/png')
+      } catch {
+        return null
+      }
+    },
+    exportSvgString: () => {
+      const main = getPrimaryCanvas(containerRef.current)
+      if (!main) return null
+      let pngDataUrl = ''
+      try {
+        pngDataUrl = main.toDataURL('image/png')
+      } catch {
+        return null
+      }
+      if (!pngDataUrl) return null
+      const w = Math.max(1, main.width || 1)
+      const h = Math.max(1, main.height || 1)
+      return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">\n  <image href="${pngDataUrl}" width="${w}" height="${h}" />\n</svg>\n`
+    },
+  }))
+
+  // Auto zoom fit on data change
+  useEffect(() => {
+    let attempts = 0
+    const maxAttempts = 10
+    let timeoutId: number | null = null
+
+    const tryZoom = () => {
+      if (fgRef.current && sanitizedData.nodes.length > 0) {
+        fgRef.current.zoomToFit(400, 20)
+      } else if (attempts < maxAttempts) {
+        attempts++
+        timeoutId = globalThis.window.setTimeout(tryZoom, 200)
+      }
+    }
+
+    // Initial delay to allow render
+    timeoutId = globalThis.window.setTimeout(tryZoom, 300)
+    return () => {
+      if (timeoutId != null) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }, [sanitizedData])
+
+  // Layout transitions (U9): reheat the simulation so layout changes animate smoothly.
+  useEffect(() => {
+    if (fgRef.current) {
+      fgRef.current.d3ReheatSimulation?.()
+    }
+  }, [layoutMode])
+
+  useEffect(() => {
+    if (!mounted) return
+    updateViewportLod()
+  }, [mounted, updateViewportLod])
+
+  const handleNodeClick = useCallback(
+    (node: GraphNodeDatum) => {
+      if (fgRef.current) {
+        fgRef.current.centerAt(node.x, node.y, 400)
+        fgRef.current.zoom(2.5, 400)
+      }
+      if (onNodeClick) {
+        onNodeClick(node)
+      }
+    },
+    [onNodeClick],
+  )
+
+  const getNodeColor = useCallback(
+    (node: GraphNodeDatum) => {
+      const hasHighlights = highlightedNodeIds.size > 0
+      if (hasHighlights && !highlightedNodeIds.has(node.id)) {
+        return canvasColors.nodeDim
+      }
+
+      if (node.color) return node.color
+
+      const kind = graphNodeKind(node)
+      if (kind === 'event') return EVENT_COLOR
+
+      const type = graphNodeType(node)
+      if (type && typeColorMap.has(type)) return typeColorMap.get(type)!
+
+      if (typeof node.group === 'number' && node.group > 0) {
+        return NODE_COLOR_PALETTE[(node.group - 1) % NODE_COLOR_PALETTE.length]
+      }
+
+      return NODE_COLOR_PALETTE[hashTypeToIndex(node.id || '')]
+    },
+    [highlightedNodeIds, typeColorMap, canvasColors.nodeDim],
+  )
+
+  const isNodeVisibleForViewport = useCallback(
+    (node: GraphNodeDatum) => {
+      if (!isLargeGraph || !viewportLod) return true
+      const nodeId = String(node?.id ?? '')
+      if (!nodeId) return false
+      return viewportLod.visibleNodeIds.has(nodeId) || viewportPinnedNodeIds.has(nodeId)
+    },
+    [isLargeGraph, viewportLod, viewportPinnedNodeIds],
+  )
+
+  const isLinkVisibleForViewport = useCallback(
+    (link: GraphLinkDatum) => {
+      if (!isLargeGraph || !viewportLod) return true
+      const linkId = getStableLinkId(link)
+      if (linkId && highlightedLinkIds.has(linkId)) return true
+      return Boolean(linkId && viewportLod.visibleLinkIds.has(linkId))
+    },
+    [highlightedLinkIds, isLargeGraph, viewportLod],
+  )
+
+  // Determine DAG mode based on layoutMode
+  const getDagMode = () => {
+    switch (layoutMode) {
+      case 'tree':
+        return 'td' // Top-Down
+      case 'radial':
+        return 'radialout'
+      default:
+        return undefined // Force Directed
+    }
+  }
+
+  return (
+    <div ref={containerRef} className="relative h-full w-full bg-transparent">
+      {!mounted || width === 0 || height === 0 ? (
+        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+          {mounted ? (
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-primary" />
+              <span className="text-xs">
+                Initializing Layout... ({Math.round(width)}x{Math.round(height)})
+              </span>
+            </div>
+          ) : (
+            <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none" />
+          )}
+        </div>
+      ) : (
+        <GraphRenderBoundary resetKey={graphRenderResetKey}>
+          <>
+            <ForceGraph2DNoSSR
+              graphRef={fgRef}
+              width={width}
+              height={height}
+              graphData={sanitizedData}
+              backgroundColor="rgba(0,0,0,0)"
+              showPointerCursor={false}
+              nodeLabel="label"
+              nodeVisibility={isNodeVisibleForViewport}
+              nodeColor={getNodeColor}
+              nodeRelSize={nodeRelSize}
+              // Layout Config
+              dagMode={getDagMode()}
+              dagLevelDistance={50}
+
+              // Link styling
+              linkCurvature={(link: GraphLinkDatum) => {
+                const v = link?.curvature
+                return typeof v === 'number' && Number.isFinite(v) ? v : 0
+              }}
+              linkCurveRotation={(link: GraphLinkDatum) => {
+                const v = link?.curveRotation
+                return typeof v === 'number' && Number.isFinite(v) ? v : 0
+              }}
+              linkColor={(link: GraphLinkDatum) => {
+                const linkId = getStableLinkId(link)
+                const linkKind = getLinkKind(link)
+                const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
+                const baseLineColor = withAlpha(baseColor, isLargeGraph ? 0.22 : 0.32)
+                const activeLineColor = withAlpha(baseColor, isLargeGraph ? 0.44 : 0.58)
+                if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                  return '#f59e0b'
+                }
+                if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
+                  return '#38bdf8'
+                }
+                if (highlightedNodeIds.size > 0) {
+                  if (endpointsAreHighlighted(link, highlightedNodeIds)) {
+                    return activeLineColor
+                  }
+                  return canvasColors.linkDim
+                }
+                if (selectedNodeId && !isLargeGraph) {
+                  if (endpointMatchesSelected(link, selectedNodeId)) {
+                    return activeLineColor
+                  }
+                  return canvasColors.linkDim
+                }
+
+                return baseLineColor
+              }}
+              linkWidth={(link: GraphLinkDatum) => {
+                const linkId = getStableLinkId(link)
+                const confidence = getLinkConfidence(link)
+                const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
+                if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
+                  return 4
+                }
+                if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
+                  return 3
+                }
+                if (highlightedNodeIds.size > 0) return 1
+                if (selectedNodeId && !isLargeGraph) {
+                  if (endpointMatchesSelected(link, selectedNodeId)) return Math.max(2.5, baseWidth + 0.6)
+                  return 0.5
+                }
+                return Math.min(3.2, Math.max(isLargeGraph ? 0.45 : 0.8, baseWidth * 0.82))
+              }}
+              linkDirectionalArrowLength={(link: GraphLinkDatum) => (link?.isSelfLoop ? 0 : arrowLength)}
+              linkDirectionalArrowRelPos={1}
+              linkLabel={(link: GraphLinkDatum) => buildGraphLinkProvenanceTooltipHtml(link)}
+              linkVisibility={isLinkVisibleForViewport}
+              cooldownTicks={cooldownTicks}
+              cooldownTime={cooldownTime}
+              onZoomEnd={updateViewportLod}
+              onEngineStop={updateViewportLod}
+              onNodeClick={handleNodeClick}
+              onNodeRightClick={(node: GraphNodeDatum, event: MouseEvent) => {
+                onNodeRightClick?.(node, event)
+              }}
+              onLinkClick={(link: GraphLinkDatum) => {
+                onLinkClick?.(link)
+              }}
+              onLinkRightClick={(link: GraphLinkDatum, event: MouseEvent) => {
+                onLinkRightClick?.(link, event)
+              }}
+              onBackgroundClick={onBackgroundClick}
+              onBackgroundRightClick={(event: MouseEvent) => {
+                onBackgroundRightClick?.(event)
+              }}
+              onNodeHover={(node: GraphNodeDatum | null) => {
+                if (isLargeGraph) return
+                const id = node?.id ?? null
+                setHoveredNodeId((prev) => (prev === id ? prev : id))
+              }}
+              onLinkHover={(link: GraphLinkDatum | null) => {
+                const linkId = getStableLinkId(link)
+                setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
+              }}
+              onNodeDragEnd={(node: GraphNodeDatum) => {
+                node.fx = node.x
+                node.fy = node.y
+              }}
+
+              // Custom Node Painting
+              nodeCanvasObject={(node: GraphNodeDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
+                const degree = nodeDegreeMap.get(String(node.id)) || 0
+                const state = createNodeRenderState({
+                  node,
+                  globalScale,
+                  highlightedNodeIds,
+                  highlightedLinkIds,
+                  selectedNodeId,
+                  neighborSet,
+                  hoveredNodeId,
+                  isLargeGraph,
+                  isDark,
+                  color: getNodeColor(node),
+                  degree,
+                })
+                drawGraphNode({
+                  ctx,
+                  state,
+                  canvasColors,
+                  viewportLodTier,
+                  isLargeGraph,
+                })
+              }}
+
+              // Custom Link Label Painting
+              linkCanvasObjectMode={() => 'after'}
+              linkCanvasObject={(link: GraphLinkDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
+                drawGraphLinkLabel({
+                  link,
+                  ctx,
+                  globalScale,
+                  allowEdgeLabels,
+                  edgeLabelScale,
+                  highlightedLinkIds,
+                  hoveredLinkId,
+                  canvasColors,
+                })
+              }}
+            />
+            {isLargeGraph && viewportLod ? (
+              <div className="pointer-events-none absolute left-5 top-5 z-10 rounded-full border border-border/70 bg-card/82 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft backdrop-blur-md">
+                LOD {viewportLod.tier} · 隐藏 {viewportLod.hiddenNodeCount} 节点 / {viewportLod.hiddenLinkCount} 连线
               </div>
-            ) : (
-              <Loader2 className="w-8 h-8 animate-spin motion-reduce:animate-none" />
+            ) : null}
+            {showMinimap && !isLargeGraph && sanitizedData.nodes.length > 0 && (
+              <div className="absolute bottom-24 right-6 z-10">
+                <GraphMinimap
+                  graphRef={fgRef}
+                  data={sanitizedData}
+                  graphWidth={width}
+                  graphHeight={height}
+                  isDark={isDark}
+                />
+              </div>
             )}
-          </div>
-        ) : (
-          <GraphRenderBoundary resetKey={graphRenderResetKey}>
-            <>
-              <ForceGraph2DNoSSR
-                graphRef={fgRef}
-                width={width}
-                height={height}
-                graphData={sanitizedData}
-                backgroundColor="rgba(0,0,0,0)"
-                showPointerCursor={false}
-                nodeLabel="label"
-                nodeVisibility={isNodeVisibleForViewport}
-                nodeColor={getNodeColor}
-                nodeRelSize={nodeRelSize}
-                // Layout Config
-                dagMode={getDagMode()}
-                dagLevelDistance={50}
-
-                // Link styling
-                linkCurvature={(link: GraphLinkDatum) => {
-                  const v = link?.curvature
-                  return typeof v === 'number' && Number.isFinite(v) ? v : 0
-                }}
-                linkCurveRotation={(link: GraphLinkDatum) => {
-                  const v = link?.curveRotation
-                  return typeof v === 'number' && Number.isFinite(v) ? v : 0
-                }}
-                linkColor={(link: GraphLinkDatum) => {
-                  const linkId = getStableLinkId(link)
-                  const linkKind = getLinkKind(link)
-                  const baseColor = EDGE_KIND_COLORS[linkKind] || canvasColors.nodeDim
-                  const baseLineColor = withAlpha(baseColor, isLargeGraph ? 0.22 : 0.32)
-                  const activeLineColor = withAlpha(baseColor, isLargeGraph ? 0.44 : 0.58)
-                  if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
-                    return '#f59e0b'
-                  }
-                  if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
-                    return '#38bdf8'
-                  }
-                  if (highlightedNodeIds.size > 0) {
-                    if (endpointsAreHighlighted(link, highlightedNodeIds)) {
-                      return activeLineColor
-                    }
-                    return canvasColors.linkDim
-                  }
-                  if (selectedNodeId && !isLargeGraph) {
-                    if (endpointMatchesSelected(link, selectedNodeId)) {
-                      return activeLineColor
-                    }
-                    return canvasColors.linkDim
-                  }
-
-                  return baseLineColor
-                }}
-                linkWidth={(link: GraphLinkDatum) => {
-                  const linkId = getStableLinkId(link)
-                  const confidence = getLinkConfidence(link)
-                  const baseWidth = confidenceToWidth(confidence, { isLargeGraph })
-                  if (highlightedLinkIds.size > 0 && linkId && highlightedLinkIds.has(linkId)) {
-                    return 4
-                  }
-                  if (hoveredLinkId && linkId && hoveredLinkId === linkId) {
-                    return 3
-                  }
-                  if (highlightedNodeIds.size > 0) return 1
-                  if (selectedNodeId && !isLargeGraph) {
-                    if (endpointMatchesSelected(link, selectedNodeId)) return Math.max(2.5, baseWidth + 0.6)
-                    return 0.5
-                  }
-                  return Math.min(3.2, Math.max(isLargeGraph ? 0.45 : 0.8, baseWidth * 0.82))
-                }}
-                linkDirectionalArrowLength={(link: GraphLinkDatum) => (link?.isSelfLoop ? 0 : arrowLength)}
-                linkDirectionalArrowRelPos={1}
-                linkLabel={(link: GraphLinkDatum) => buildGraphLinkProvenanceTooltipHtml(link)}
-                linkVisibility={isLinkVisibleForViewport}
-                cooldownTicks={cooldownTicks}
-                cooldownTime={cooldownTime}
-                onZoomEnd={updateViewportLod}
-                onEngineStop={updateViewportLod}
-                onNodeClick={handleNodeClick}
-                onNodeRightClick={(node: GraphNodeDatum, event: MouseEvent) => {
-                  onNodeRightClick?.(node, event)
-                }}
-                onLinkClick={(link: GraphLinkDatum) => {
-                  onLinkClick?.(link)
-                }}
-                onLinkRightClick={(link: GraphLinkDatum, event: MouseEvent) => {
-                  onLinkRightClick?.(link, event)
-                }}
-                onBackgroundClick={onBackgroundClick}
-                onBackgroundRightClick={(event: MouseEvent) => {
-                  onBackgroundRightClick?.(event)
-                }}
-                onNodeHover={(node: GraphNodeDatum | null) => {
-                  if (isLargeGraph) return
-                  const id = node?.id ?? null
-                  setHoveredNodeId((prev) => (prev === id ? prev : id))
-                }}
-                onLinkHover={(link: GraphLinkDatum | null) => {
-                  const linkId = getStableLinkId(link)
-                  setHoveredLinkId((prev) => (prev === linkId ? prev : linkId))
-                }}
-                onNodeDragEnd={(node: GraphNodeDatum) => {
-                  node.fx = node.x
-                  node.fy = node.y
-                }}
-
-                // Custom Node Painting
-                nodeCanvasObject={(node: GraphNodeDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
-                  const degree = nodeDegreeMap.get(String(node.id)) || 0
-                  const state = createNodeRenderState({
-                    node,
-                    globalScale,
-                    highlightedNodeIds,
-                    highlightedLinkIds,
-                    selectedNodeId,
-                    neighborSet,
-                    hoveredNodeId,
-                    isLargeGraph,
-                    isDark,
-                    color: getNodeColor(node),
-                    degree,
-                  })
-                  drawGraphNode({
-                    ctx,
-                    state,
-                    canvasColors,
-                    viewportLodTier,
-                    isLargeGraph,
-                  })
-                }}
-
-                // Custom Link Label Painting
-                linkCanvasObjectMode={() => 'after'}
-                linkCanvasObject={(link: GraphLinkDatum, ctx: CanvasRenderingContext2D, globalScale: number) => {
-                  drawGraphLinkLabel({
-                    link,
-                    ctx,
-                    globalScale,
-                    allowEdgeLabels,
-                    edgeLabelScale,
-                    highlightedLinkIds,
-                    hoveredLinkId,
-                    canvasColors,
-                  })
-                }}
-              />
-              {isLargeGraph && viewportLod ? (
-                <div className="pointer-events-none absolute left-5 top-5 z-10 rounded-full border border-border/70 bg-card/82 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-soft backdrop-blur-md">
-                  LOD {viewportLod.tier} · 隐藏 {viewportLod.hiddenNodeCount} 节点 / {viewportLod.hiddenLinkCount} 连线
-                </div>
-              ) : null}
-              {showMinimap && !isLargeGraph && sanitizedData.nodes.length > 0 && (
-                <div className="absolute bottom-24 right-6 z-10">
-                  <GraphMinimap
-                    graphRef={fgRef}
-                    data={sanitizedData}
-                    graphWidth={width}
-                    graphHeight={height}
-                    isDark={isDark}
-                  />
-                </div>
-              )}
-            </>
-          </GraphRenderBoundary>
-        )}
-      </div>
-    )
-  },
-)
+          </>
+        </GraphRenderBoundary>
+      )}
+    </div>
+  )
+})
 
 GraphViewer.displayName = 'GraphViewer'

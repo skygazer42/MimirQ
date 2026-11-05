@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 import { INLINE_STAT_TONE_CLASSES, INLINE_STAT_VALUE_TONE_CLASSES } from '../constants'
+import type { SnapshotInlineStatTone } from '../types'
 
 export function getHashPairIcon(hasA: boolean, hasB: boolean): ReactNode {
   if (hasA && hasB) return <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -24,7 +25,7 @@ export function SnapshotInlineStat({
   icon?: ReactNode
   label: string
   value: ReactNode
-  tone?: 'muted' | 'neutral' | 'positive' | 'negative' | 'warning'
+  tone?: SnapshotInlineStatTone
   valueTitle?: string
   valueClassName?: string
 }>) {
