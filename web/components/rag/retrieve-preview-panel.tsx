@@ -82,9 +82,7 @@ export function buildRetrieveDatasetScope(
 }
 
 function normalizeCitations(response: EvidenceRetrieveResponse): RetrievePreviewCitation[] {
-  return Array.isArray(response.citations)
-    ? response.citations.filter(isRecord).map((citation) => citation as RetrievePreviewCitation)
-    : []
+  return Array.isArray(response.citations) ? (response.citations.filter(isRecord) as RetrievePreviewCitation[]) : []
 }
 
 function formatRelativeNow(): string {

@@ -126,9 +126,8 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
 
   const filteredSuites = useMemo(() => {
     const query = suiteQuery.trim().toLowerCase()
-    const base = suites || []
-    if (!query) return base
-    return base.filter((suite) => {
+    if (!query) return suites
+    return suites.filter((suite) => {
       const haystack = `${suite.name || ''} ${suite.description || ''} ${(suite.tags || []).join(' ')}`.toLowerCase()
       return haystack.includes(query)
     })
@@ -137,7 +136,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const filteredItems = useMemo(() => {
     const query = itemQuery.trim().toLowerCase()
     const filter = statusFilter
-    return (items || [])
+    return items
       .filter((item) => (filter === '__all__' ? true : String(item.status || '').toLowerCase() === filter))
       .filter((item) => {
         if (!query) return true
@@ -340,12 +339,12 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
         dataset_id: datasetId,
         name,
         description: suiteDesc.trim() || null,
-        tags: suiteTags || [],
+        tags: suiteTags,
         config: {},
       })
       toast.success('已创建 Evidence Suite')
       setCreateSuiteOpen(false)
-      setSuites((prev) => [suite, ...(prev || [])])
+      setSuites((prev) => [suite, ...prev])
       setSelectedSuiteId(String(suite.id))
     } catch (error: unknown) {
       toast.error(formatApiError(error, '创建 Suite 失败'))
@@ -413,7 +412,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     if (!chunkId) return
     if (mode === 'retrieve') {
       setSelectedChunkIds((prev) => {
-        const next = new Set(prev || [])
+        const next = new Set(prev)
         if (next.has(chunkId)) next.delete(chunkId)
         else next.add(chunkId)
         return Array.from(next)
@@ -421,7 +420,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       return
     }
     setImportSelectedChunkIds((prev) => {
-      const next = new Set(prev || [])
+      const next = new Set(prev)
       if (next.has(chunkId)) next.delete(chunkId)
       else next.add(chunkId)
       return Array.from(next)
@@ -464,7 +463,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
 
     if (createItemTab === 'retrieve') {
       citations = retrieveRes?.citations || []
-      selected = selectedChunkIds || []
+      selected = selectedChunkIds
       retrievalSnapshot = retrieveRes
         ? {
             ...retrieveRes,
@@ -478,7 +477,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       ragSnapshot = { retrieval_profile: profile, created_from: 'retrieve' }
     } else {
       citations = importPack?.citations || []
-      selected = importSelectedChunkIds || []
+      selected = importSelectedChunkIds
       retrievalSnapshot = {
         ...importPack,
         selected_chunk_ids: selected,
@@ -512,7 +511,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       const created = await evidenceApi.createItem(String(suite.id), body)
       toast.success('已创建 Evidence Item（draft）')
       setCreateItemOpen(false)
-      setItems((prev) => [created, ...(prev || [])])
+      setItems((prev) => [created, ...prev])
       setSelectedItemId(String(created.id))
       detachPromise(loadSuites())
     } catch (error: unknown) {
@@ -617,7 +616,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       if (!itemId) return
       try {
         const updated = await evidenceApi.archiveItem(itemId)
-        setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
+        setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
         toast.success('已归档')
         detachPromise(loadSuites())
       } catch (error: unknown) {
@@ -632,7 +631,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       if (!itemId) return
       try {
         const updated = await evidenceApi.reviewItem(itemId)
-        setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
+        setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
         toast.success('已提交 Review')
         detachPromise(loadSuites())
       } catch (error: unknown) {
@@ -647,7 +646,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       if (!itemId) return
       try {
         const updated = await evidenceApi.approveItem(itemId)
-        setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
+        setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
         toast.success('已批准（approved）')
         detachPromise(loadSuites())
       } catch (error: unknown) {
@@ -679,7 +678,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   )
   const suggestedRetrieveChunkIds = useMemo(() => {
     const out: string[] = []
-    for (const ranked of retrieveRanked || []) {
+    for (const ranked of retrieveRanked) {
       if (ranked.score <= 0) continue
       const chunkId = String(ranked.citation.chunk_id || '')
       if (!chunkId) continue
@@ -692,7 +691,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const applyRetrieveSuggestions = useCallback(() => {
     if (!suggestedRetrieveChunkIds.length) return
     setSelectedChunkIds((prev) => {
-      const next = new Set(prev || [])
+      const next = new Set(prev)
       for (const chunkId of suggestedRetrieveChunkIds) next.add(chunkId)
       return Array.from(next)
     })

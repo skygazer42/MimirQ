@@ -14,9 +14,7 @@ import { Panel } from '@/components/ui/panel'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
-
-type RetrievalProfile = (typeof RETRIEVAL_PROFILE_VALUES)[number]
+import { RETRIEVAL_PROFILE_VALUES, type RetrievalProfile } from './evidence-suite-workbench-utils'
 
 type WhyMissedDialogProps = {
   open: boolean

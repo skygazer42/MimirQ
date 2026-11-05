@@ -68,6 +68,14 @@ type HistoryPageContentProps = {
   initialConversationsLoaded: boolean
 }
 
+type ConversationGroupLabels = {
+  earlier: string
+  last30Days: string
+  last7Days: string
+  today: string
+  yesterday: string
+}
+
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
 const CONVERSATION_PAGE_SIZE = 100
@@ -209,7 +217,7 @@ function HistoryPageContent({
     getNextPageParam: (lastPage, allPages) => {
       if (!lastPage.has_more) return undefined
       if (typeof lastPage.next_skip === 'number') return lastPage.next_skip
-      return allPages.reduce((sum, page) => sum + Number(page.returned ?? page.items?.length ?? 0), 0)
+      return allPages.reduce((sum, page) => sum + page.returned, 0)
     },
     initialData:
       initialConversationsLoaded && !conversationSearchTerm
@@ -231,7 +239,7 @@ function HistoryPageContent({
     const seen = new Set<string>()
     const merged: Conversation[] = []
     for (const page of conversationsQuery.data?.pages || []) {
-      for (const conversation of page.items || []) {
+      for (const conversation of page.items) {
         if (seen.has(conversation.id)) continue
         seen.add(conversation.id)
         merged.push(conversation)
@@ -277,7 +285,7 @@ function HistoryPageContent({
         : undefined,
   })
   const messages = useMemo(
-    () => messagesQuery.data?.pages.flatMap((page) => page.messages || []) ?? EMPTY_MESSAGES,
+    () => messagesQuery.data?.pages.flatMap((page) => page.messages) ?? EMPTY_MESSAGES,
     [messagesQuery.data],
   )
   const displayConversation = useMemo<Conversation | null>(() => {
@@ -1172,64 +1180,13 @@ function hasAnswerLineageEvidence(message: Message): boolean {
   return typeof docsReturned === 'number' && Number.isFinite(docsReturned) && docsReturned > 0
 }
 
-function HistoryMessageRoleBadge({
-  role,
-}: Readonly<{
-  role: Message['role']
-}>) {
-  const t = useTranslations('History')
-  const isUser = role === 'user'
-
-  return (
-    <div
-      className={cn(
-        'inline-flex items-center gap-2 rounded-md border px-2.5 py-1 text-[11px] font-semibold',
-        isUser
-          ? 'border-primary/15 bg-primary/10 text-primary'
-          : 'border-foreground/10 bg-background text-foreground/80',
-      )}
-    >
-      <span className={cn('h-1.5 w-1.5 rounded-sm', isUser ? 'bg-primary' : 'bg-info')} />
-      <span>{isUser ? t('speakerQuestion') : t('speakerAnswer')}</span>
-    </div>
-  )
-}
-
-function getConversationGroupTone(
-  group: string,
-  labels: Readonly<{
-    earlier: string
-    last30Days: string
-    last7Days: string
-    today: string
-    yesterday: string
-  }>,
-) {
-  if (group === labels.today) {
-    return {
-      chipClass: 'border-foreground/10 bg-background text-foreground/80',
-      countClass: 'border border-foreground/10 bg-background text-muted-foreground',
-      lineClass: 'bg-foreground/10',
-    }
-  }
-
-  if (group === labels.yesterday) {
-    return {
-      chipClass: 'border-foreground/10 bg-background text-foreground/80',
-      countClass: 'border border-foreground/10 bg-background text-muted-foreground',
-      lineClass: 'bg-foreground/10',
-    }
-  }
-
-  if (group === labels.last7Days) {
-    return {
-      chipClass: 'border-foreground/10 bg-background text-foreground/80',
-      countClass: 'border border-foreground/10 bg-background text-muted-foreground',
-      lineClass: 'bg-foreground/10',
-    }
-  }
-
-  if (group === labels.last30Days) {
+function getConversationGroupTone(group: string, labels: Readonly<ConversationGroupLabels>) {
+  if (
+    group === labels.today ||
+    group === labels.yesterday ||
+    group === labels.last7Days ||
+    group === labels.last30Days
+  ) {
     return {
       chipClass: 'border-foreground/10 bg-background text-foreground/80',
       countClass: 'border border-foreground/10 bg-background text-muted-foreground',
@@ -1259,16 +1216,7 @@ function utcDayStartMs(dateLike: Date | string) {
 }
 
 // 辅助函数：按日期分组
-function groupConversationsByDate(
-  conversations: Conversation[],
-  labels: Readonly<{
-    earlier: string
-    last30Days: string
-    last7Days: string
-    today: string
-    yesterday: string
-  }>,
-) {
+function groupConversationsByDate(conversations: Conversation[], labels: Readonly<ConversationGroupLabels>) {
   const groups: Record<string, Conversation[]> = {}
   const now = new Date()
   const today = utcDayStartMs(now)
@@ -1375,13 +1323,6 @@ function formatMessageGroupLabel(
   }).format(date)
 }
 
-function formatMessageTime(dateString: string, locale: string) {
-  return new Intl.DateTimeFormat(locale, {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(dateString))
-}
-
 // 辅助函数：格式化日期
 function formatDate(dateString: string, locale: string) {
   return new Intl.DateTimeFormat(locale, {
@@ -1391,10 +1332,4 @@ function formatDate(dateString: string, locale: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(dateString))
-}
-
-function buildConversationPreview(content: string | null | undefined, maxChars = 100) {
-  const text = String(content || '').trim()
-  if (!text) return ''
-  return text.length > maxChars ? `${text.slice(0, maxChars)}...` : text
 }

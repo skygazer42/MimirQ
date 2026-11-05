@@ -26,10 +26,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
-const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
-const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
+import { RETRIEVAL_PROFILE_VALUES, type RetrievalProfile } from './evidence-suite-workbench-utils'
 
-type RetrievalProfile = (typeof RETRIEVAL_PROFILE_VALUES)[number]
+const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
 type CreateItemTab = (typeof CREATE_ITEM_TAB_VALUES)[number]
 
 type CreateItemDialogProps = {
@@ -131,7 +130,7 @@ export function CreateItemDialog({
         {retrieveRanked.map((ranked) => {
           const citation = ranked.citation
           const assistScore = ranked.score
-          const hits = ranked.hits || []
+          const hits = ranked.hits
           const chunkId = String(citation.chunk_id || '')
           const checked = !!chunkId && selectedChunkIds.includes(chunkId)
           return (

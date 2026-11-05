@@ -41,13 +41,13 @@ type HardcaseCandidatesDialogProps = {
 type ErrBadgeEntry = [string, number]
 
 function compareErrBadgeEntry(a: ErrBadgeEntry, b: ErrBadgeEntry): number {
-  return Number(b[1]) - Number(a[1]) || String(a[0]).localeCompare(String(b[0]))
+  return b[1] - a[1] || a[0].localeCompare(b[0])
 }
 
 function buildErrBadges(errKinds: Record<string, number>): ErrBadgeEntry[] {
   const entries: ErrBadgeEntry[] = []
   for (const [keyRaw, valueRaw] of Object.entries(errKinds || {})) {
-    const key = String(keyRaw || '').trim()
+    const key = keyRaw.trim()
     const value = Number(valueRaw) || 0
     if (!key || value <= 0) continue
     entries.push([key, value])

@@ -312,34 +312,6 @@ export function RagvizSimilarityWorkbench() {
     downloadJson(`matrices_all.json`, payload)
   }
 
-  const parseImportedPayload = (raw: unknown): SimilarityMatrixEntry[] => {
-    const entries = importedPayloadEntries(raw)
-    const out: SimilarityMatrixEntry[] = []
-    for (const entry of entries) {
-      if (!isRecord(entry)) continue
-      const result = entry.result
-      if (!isSimilarityMatrixResult(result)) continue
-      const metadata = isRecord(result.metadata) ? result.metadata : null
-      const xCollectionId = firstSimilarityDisplayString(entry.xCollectionId, entry.xCollection, metadata?.x_collection)
-      const yCollectionId = firstSimilarityDisplayString(entry.yCollectionId, entry.yCollection, metadata?.y_collection)
-      const xCollectionLabel = collectionLabel(entry.xCollectionLabel, xCollectionId, 'X')
-      const yCollectionLabel = collectionLabel(entry.yCollectionLabel, yCollectionId, 'Y')
-      const visualConfig: VisualConfig = isVisualConfig(entry.visualConfig)
-        ? entry.visualConfig
-        : createDefaultVisualConfig(result.x_available_fields || [], result.y_available_fields || [])
-
-      out.push({
-        xCollectionId,
-        yCollectionId,
-        xCollectionLabel,
-        yCollectionLabel,
-        result,
-        visualConfig,
-      })
-    }
-    return out
-  }
-
   const importFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
     const imported: SimilarityMatrixEntry[] = []
@@ -704,19 +676,6 @@ export function RagvizSimilarityWorkbench() {
       return
     }
     setTempTopK(clamped)
-  }
-
-  const matrixShape = (entry: SimilarityMatrixEntry | null) => {
-    const m = entry?.result?.matrix || []
-    const rows = m.length
-    const cols = rows > 0 ? m[0]?.length || 0 : 0
-    return { rows, cols }
-  }
-
-  const sameShape = (a: SimilarityMatrixEntry | null, b: SimilarityMatrixEntry | null) => {
-    const sa = matrixShape(a)
-    const sb = matrixShape(b)
-    return sa.rows === sb.rows && sa.cols === sb.cols
   }
 
   const enterExclusiveMode = (index: number) => {
@@ -1863,4 +1822,45 @@ export function RagvizSimilarityWorkbench() {
       </div>
     </div>
   )
+}
+
+function parseImportedPayload(raw: unknown): SimilarityMatrixEntry[] {
+  const entries = importedPayloadEntries(raw)
+  const out: SimilarityMatrixEntry[] = []
+  for (const entry of entries) {
+    if (!isRecord(entry)) continue
+    const result = entry.result
+    if (!isSimilarityMatrixResult(result)) continue
+    const metadata = isRecord(result.metadata) ? result.metadata : null
+    const xCollectionId = firstSimilarityDisplayString(entry.xCollectionId, entry.xCollection, metadata?.x_collection)
+    const yCollectionId = firstSimilarityDisplayString(entry.yCollectionId, entry.yCollection, metadata?.y_collection)
+    const xCollectionLabel = collectionLabel(entry.xCollectionLabel, xCollectionId, 'X')
+    const yCollectionLabel = collectionLabel(entry.yCollectionLabel, yCollectionId, 'Y')
+    const visualConfig: VisualConfig = isVisualConfig(entry.visualConfig)
+      ? entry.visualConfig
+      : createDefaultVisualConfig(result.x_available_fields || [], result.y_available_fields || [])
+
+    out.push({
+      xCollectionId,
+      yCollectionId,
+      xCollectionLabel,
+      yCollectionLabel,
+      result,
+      visualConfig,
+    })
+  }
+  return out
+}
+
+function matrixShape(entry: SimilarityMatrixEntry | null) {
+  const m = entry?.result?.matrix || []
+  const rows = m.length
+  const cols = rows > 0 ? m[0]?.length || 0 : 0
+  return { rows, cols }
+}
+
+function sameShape(a: SimilarityMatrixEntry | null, b: SimilarityMatrixEntry | null) {
+  const sa = matrixShape(a)
+  const sb = matrixShape(b)
+  return sa.rows === sb.rows && sa.cols === sb.cols
 }
