@@ -53,9 +53,9 @@ def _runtime_baseline() -> dict[str, Any]:
     }
 
 
-def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[str, Any]:
-    applied = apply_retrieval_profile_overrides(
-        profile=name,
+def _effective_profile(profile: str | None, *, baseline: dict[str, Any]) -> dict[str, Any]:
+    return apply_retrieval_profile_overrides(
+        profile=profile,
         top_k=int(baseline.get("top_k") or 0),
         score_threshold=float(baseline.get("score_threshold") or 0.0),
         retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
@@ -66,9 +66,13 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
         retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
         visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
     )
+
+
+def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[str, Any]:
+    applied = _effective_profile(name, baseline=baseline)
     return {
         "name": str(applied.get("retrieval_profile") or name),
-        "is_recall_first": bool(name in RECALL_FIRST_RETRIEVAL_PROFILES),
+        "is_recall_first": name in RECALL_FIRST_RETRIEVAL_PROFILES,
         "retrieval_mode": str(applied.get("retrieval_mode") or baseline.get("retrieval_mode") or "hybrid"),
         "top_k": int(applied.get("top_k") or 0),
         "score_threshold": float(applied.get("score_threshold") or 0.0),
@@ -96,42 +100,9 @@ def _public_profile_definition(name: str, *, baseline: dict[str, Any]) -> dict[s
 def get_retrieval_profiles() -> dict[str, Any]:
     baseline = _runtime_baseline()
     chat_default_profile = str(settings.CHAT_DEFAULT_RETRIEVAL_PROFILE or "").strip().lower() or None
-    request_defaults = apply_retrieval_profile_overrides(
-        profile=None,
-        top_k=int(baseline.get("top_k") or 0),
-        score_threshold=float(baseline.get("score_threshold") or 0.0),
-        retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
-        enable_reranker=bool(baseline.get("enable_reranker")),
-        reranker_provider=str(baseline.get("reranker_provider") or ""),
-        reranker_top_n=int(baseline.get("reranker_top_n") or 0),
-        enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
-        visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
-    )
-    chat_default_effective = apply_retrieval_profile_overrides(
-        profile=chat_default_profile,
-        top_k=int(baseline.get("top_k") or 0),
-        score_threshold=float(baseline.get("score_threshold") or 0.0),
-        retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
-        enable_reranker=bool(baseline.get("enable_reranker")),
-        reranker_provider=str(baseline.get("reranker_provider") or ""),
-        reranker_top_n=int(baseline.get("reranker_top_n") or 0),
-        enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
-        visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
-    )
-    production_effective = apply_retrieval_profile_overrides(
-        profile=PRODUCTION_RETRIEVAL_PROFILE,
-        top_k=int(baseline.get("top_k") or 0),
-        score_threshold=float(baseline.get("score_threshold") or 0.0),
-        retrieval_mode=str(baseline.get("retrieval_mode") or "hybrid"),
-        enable_reranker=bool(baseline.get("enable_reranker")),
-        reranker_provider=str(baseline.get("reranker_provider") or ""),
-        reranker_top_n=int(baseline.get("reranker_top_n") or 0),
-        enable_weight_rerank=bool(baseline.get("enable_weight_rerank", True)),
-        retrieval_contract_mode=(str(baseline.get("retrieval_contract_mode") or "").strip().lower() or None),
-        visible_evidence_only=bool(baseline.get("visible_evidence_only", False)),
-    )
+    request_defaults = _effective_profile(None, baseline=baseline)
+    chat_default_effective = _effective_profile(chat_default_profile, baseline=baseline)
+    production_effective = _effective_profile(PRODUCTION_RETRIEVAL_PROFILE, baseline=baseline)
 
     ordered_profiles = sorted({str(p) for p in SUPPORTED_RETRIEVAL_PROFILES})
     profiles = [_public_profile_definition(name, baseline=baseline) for name in ordered_profiles]

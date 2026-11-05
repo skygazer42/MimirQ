@@ -407,7 +407,7 @@ def _find_dify_trace_conversation(
 def _conversation_owner_matches_account(conversation: Conversation | None, *, account_id: str) -> bool:
     if conversation is None:
         return False
-    owner_account_id = str(getattr(conversation, "owner_account_id", "") or "").strip()
+    owner_account_id = str(conversation.owner_account_id or "").strip()
     return bool(owner_account_id) and owner_account_id == str(account_id or "").strip()
 
 

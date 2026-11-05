@@ -96,7 +96,7 @@ def sync_builtin_prompt_templates(
             )
             .first()
         )
-        if existing is not None and not bool(getattr(existing, "is_system", False)):
+        if existing is not None and not bool(existing.is_system):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Prompt template key already exists as a user template: {builtin.template_key}",

@@ -70,6 +70,9 @@ from app.models.evaluation import (
 from app.rag.core.logging import get_logger
 from app.rag.evaluation.ragas import run_conversation_ragas_evaluation, run_regression_ragas_evaluation
 from app.rag.evaluation.test_generator import (
+    GeneratedQuestion as _GeneratedTestQuestion,
+)
+from app.rag.evaluation.test_generator import (
     generate_questions_from_conversations,
     generate_questions_from_documents,
 )
@@ -527,8 +530,8 @@ def _merge_regression_case_extra(
     return extra
 
 
-def _attach_reasoning_fields(case_row: Any) -> Any:
-    extra = getattr(case_row, "extra", None)
+def _attach_reasoning_fields(case_row: RagasRegressionCase) -> RagasRegressionCase:
+    extra = case_row.extra
     extra = extra if isinstance(extra, dict) else {}
     case_row.reasoning_hops = _normalize_reasoning_hops(extra.get("reasoning_hops"))
     case_row.evidence_chain = _normalize_evidence_chain(extra.get("evidence_chain"))
@@ -790,13 +793,13 @@ def patch_ragas_regression_case(
     if not row:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    ds_id = getattr(row, "dataset_id", None)
+    ds_id = row.dataset_id
     if ds_id is not None:
         ds = dataset_service.get_dataset(db, tenant_id, ds_id)
         # Governance: patching cases can alter golden suites and should be gated as a write action.
         dataset_service.assert_dataset_writable(db, ds, account_id)
 
-    fields = set(getattr(request, "model_fields_set", set()) or set())
+    fields = set(request.model_fields_set or set())
     _apply_regression_case_scalar_patch(row, request, fields)
     _apply_regression_case_extra_patch(row, request, fields)
     _apply_regression_case_document_patch(
@@ -973,7 +976,7 @@ def import_ragas_regression_cases(
         )
         .all()
     )
-    by_question = {str(getattr(r, "question", "") or "").strip(): r for r in existing if getattr(r, "question", None)}
+    by_question = {str(row.question or "").strip(): row for row in existing if row.question}
 
     plan = plan_case_import(
         dataset_id=payload.dataset_id,
@@ -1079,7 +1082,7 @@ def _import_existing_regression_cases(
     tenant_id: UUID,
     account_id: str,
     dataset_id: UUID,
-    by_question: dict[str, Any],
+    by_question: dict[str, RagasRegressionCase],
     items: list[dict[str, Any]],
 ) -> tuple[list[UUID], int, list[dict[str, Any]]]:
     updated_case_ids: list[UUID] = []
@@ -1335,7 +1338,7 @@ def _generate_hardcases_for_base_case(
     existing_keys: set[str],
     created_ids: list[UUID],
 ) -> tuple[int, int, int]:
-    question = str(getattr(case, "question", "") or "").strip()
+    question = str(case.question or "").strip()
     if not question:
         return 0, 0, 0
 
@@ -1345,7 +1348,7 @@ def _generate_hardcases_for_base_case(
         _resolve_ground_truth_event_ids,
     )
 
-    reference_sources = getattr(case, "reference_sources", None) or []
+    reference_sources = case.reference_sources or []
     event_ids = _resolve_ground_truth_event_ids(
         db,
         tenant_id=tenant_id,
@@ -1448,9 +1451,9 @@ def _build_synthetic_regression_case(
     return RagasRegressionCase(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        document_ids=list(getattr(base_case, "document_ids", None) or []),
+        document_ids=list(base_case.document_ids or []),
         question=question,
-        expected_answer=getattr(base_case, "expected_answer", None),
+        expected_answer=base_case.expected_answer,
         reference_sources=list(reference_sources) if isinstance(reference_sources, list) else [],
         tags=tags,
         extra=extra,
@@ -1460,7 +1463,7 @@ def _build_synthetic_regression_case(
 
 def _synthetic_case_tags(base_case: RagasRegressionCase, hardcase: Any, tag: str) -> list[str]:
     tags = [
-        *list(getattr(base_case, "tags", None) or []),
+        *list(base_case.tags or []),
         tag,
         f"hardcase:{getattr(hardcase, 'kind', 'unknown')}",
     ]
@@ -1476,9 +1479,9 @@ def _synthetic_case_tags(base_case: RagasRegressionCase, hardcase: Any, tag: str
 
 
 def _synthetic_case_extra(base_case: RagasRegressionCase, hardcase: Any) -> dict[str, Any]:
-    base_extra = getattr(base_case, "extra", None)
+    base_extra = base_case.extra
     extra = dict(base_extra or {}) if isinstance(base_extra, dict) else {}
-    extra.setdefault("synthetic_from_case_id", str(getattr(base_case, "id", "") or ""))
+    extra.setdefault("synthetic_from_case_id", str(base_case.id or ""))
     extra["hardcase_kind"] = str(getattr(hardcase, "kind", "") or "")
     rationale = getattr(hardcase, "rationale", None)
     if rationale:
@@ -1505,7 +1508,7 @@ def delete_ragas_regression_case(
     if not row:
         raise HTTPException(status_code=404, detail="Case not found")
 
-    ds_id = getattr(row, "dataset_id", None)
+    ds_id = row.dataset_id
     if ds_id is None:
         raise HTTPException(status_code=400, detail="Cannot delete case without dataset_id")
     ds = dataset_service.get_dataset(db, tenant_id, UUID(str(ds_id)))
@@ -1642,9 +1645,9 @@ def create_ragas_regression_ablation_batch(
             account_id=account_id,
             db=db,
         )
-        params = dict(getattr(run, "params", None) or {})
+        params = dict(run.params or {})
         params["ablation_id"] = str(ablation_id)
-        params["ablation_variant_index"] = int(index)
+        params["ablation_variant_index"] = index
         params["ablation_variant"] = dict(variant)
         if request.ablation_label_prefix:
             params["ablation_label"] = f"{request.ablation_label_prefix}-{index + 1}"
@@ -1801,7 +1804,7 @@ def export_ragas_regression_run_bundle_api(
     if not run:
         raise HTTPException(status_code=404, detail=_DETAIL_RUN_NOT_FOUND)
 
-    ds_id = getattr(run, "dataset_id", None)
+    ds_id = run.dataset_id
     if ds_id is not None:
         ds = dataset_service.get_dataset(db, tenant_id, UUID(str(ds_id)))
         dataset_service.assert_dataset_readable(db, ds, account_id)
@@ -1962,9 +1965,9 @@ def diff_ragas_regression_runs(
     if target is None:
         raise HTTPException(status_code=404, detail="Target run not found")
 
-    base_summary = getattr(base, "summary", None)
+    base_summary = base.summary
     base_summary = base_summary if isinstance(base_summary, dict) else {}
-    target_summary = getattr(target, "summary", None)
+    target_summary = target.summary
     target_summary = target_summary if isinstance(target_summary, dict) else {}
     if not base_summary or not target_summary:
         raise HTTPException(status_code=404, detail="Summary not available")
@@ -2000,8 +2003,8 @@ def diff_ragas_regression_runs(
             diff["significance_summary"] = comparison.get("summary") or {}
         if include_per_case:
             diff["case_diffs"] = comparison.get("case_diffs") or []
-    diff["base_params"] = dict(getattr(base, "params", None) or {})
-    diff["target_params"] = dict(getattr(target, "params", None) or {})
+    diff["base_params"] = dict(base.params or {})
+    diff["target_params"] = dict(target.params or {})
     return RagasRegressionRunDiffResponse(**diff)
 
 
@@ -2018,7 +2021,7 @@ async def export_ragas_regression_run_diff_html(
     dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Reuse the JSON diff logic (single source of truth).
-    payload = await diff_ragas_regression_runs(
+    payload = diff_ragas_regression_runs(
         run_id=run_id,
         base_run_id=base_run_id,
         tenant_id=tenant_id,
@@ -2099,7 +2102,7 @@ def generate_test_cases_from_documents(
 def _auto_save_generated_document_questions(
     *,
     db: Session,
-    questions: list[Any],
+    questions: list[_GeneratedTestQuestion],
     requested_dataset_id: UUID | None,
     tenant_id: UUID,
     account_id: str,
@@ -2127,7 +2130,7 @@ def _document_dataset_map(
     db: Session,
     *,
     tenant_id: UUID,
-    questions: list[Any],
+    questions: list[_GeneratedTestQuestion],
 ) -> dict[str, UUID | None]:
     from app.models.document import Document as DBDocument
 
@@ -2142,7 +2145,7 @@ def _document_dataset_map(
     return {str(document_id): (dataset_id if dataset_id is not None else None) for document_id, dataset_id in rows}
 
 
-def _generated_question_document_ids(questions: list[Any]) -> list[UUID]:
+def _generated_question_document_ids(questions: list[_GeneratedTestQuestion]) -> list[UUID]:
     document_ids: list[UUID] = []
     for question in questions:
         raw_document_id = str((question.metadata or {}).get("source_id") or "").strip()
@@ -2158,7 +2161,7 @@ def _generated_question_document_ids(questions: list[Any]) -> list[UUID]:
 def _auto_save_generated_document_question(
     *,
     db: Session,
-    question: Any,
+    question: _GeneratedTestQuestion,
     requested_dataset_id: UUID | None,
     document_to_dataset: dict[str, UUID | None],
     dataset_cache: dict[UUID, Any],
@@ -2228,7 +2231,7 @@ def _ensure_generated_case_dataset_writable(
     dataset_cache: dict[UUID, Any],
     tenant_id: UUID,
     account_id: str,
-    question: Any,
+    question: _GeneratedTestQuestion,
     metadata: dict[str, Any],
 ) -> bool:
     if dataset_id in dataset_cache:
@@ -2243,7 +2246,7 @@ def _ensure_generated_case_dataset_writable(
         return False
 
 
-def _mark_generated_question_unsaved(question: Any, metadata: dict[str, Any], reason: str) -> None:
+def _mark_generated_question_unsaved(question: _GeneratedTestQuestion, metadata: dict[str, Any], reason: str) -> None:
     metadata["auto_save"] = {"saved": False, "reason": reason}
     question.metadata = metadata
 
@@ -2263,7 +2266,7 @@ def _generated_question_reference_payloads(
 
 def _record_generated_question_reference_validation(
     *,
-    question: Any,
+    question: _GeneratedTestQuestion,
     metadata: dict[str, Any],
     reference_payloads: list[dict[str, Any]],
     dataset_id: UUID,
@@ -2315,9 +2318,9 @@ def _validate_generated_reference_chunk_hit(
         for index, document in enumerate(docs or []):
             metadata = getattr(document, "metadata", None) or {}
             if str(metadata.get("chunk_id") or "").strip() == str(chunk_id):
-                rank = int(index + 1)
+                rank = index + 1
                 break
-        return {"mode": "vector_topk", "top_k": top_k, "hit": bool(rank is not None), "rank": rank}
+        return {"mode": "vector_topk", "top_k": top_k, "hit": rank is not None, "rank": rank}
     except Exception as exc:  # noqa: BLE001
         return {
             "mode": "vector_topk",
@@ -2327,7 +2330,7 @@ def _validate_generated_reference_chunk_hit(
         }
 
 
-def _document_questions_response(questions: list[Any]) -> list[GeneratedQuestion]:
+def _document_questions_response(questions: list[_GeneratedTestQuestion]) -> list[GeneratedQuestion]:
     return [
         GeneratedQuestion(
             question=question.question,
@@ -2531,7 +2534,7 @@ def get_kg_search_diagnostics_run(
     ds = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
     dataset_service.assert_dataset_readable(db, ds, account_id)
 
-    items = list(run.items or []) if isinstance(getattr(run, "items", None), list) else []
+    items = list(run.items or []) if isinstance(run.items, list) else []
     return KGSearchDiagnosticsRunDetail(run=run, items=items)
 
 
@@ -2588,8 +2591,8 @@ def get_kg_quality_report(
     # Include scope counts for UI diagnostics (no raw ids).
     scope = {
         "dataset_id": str(dataset_id),
-        "documents_sampled": int(len(doc_ids)),
-        "documents_allowed": int(len(allowed_doc_ids or [])),
+        "documents_sampled": len(doc_ids),
+        "documents_allowed": len(allowed_doc_ids or []),
     }
     report.setdefault("scope", scope)
     return report

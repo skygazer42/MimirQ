@@ -56,7 +56,7 @@ def get_similarity_collections(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> SimilarityCollectionsResponse:
     collections = list_similarity_collections(db, tenant_id, account_id)
     out = [
         SimilarityCollectionOut(
@@ -98,7 +98,7 @@ def similarity_calculate(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> SimilarityCalculateResponse:
     x_collection = request.x_collection
     y_collection = request.y_collection
 

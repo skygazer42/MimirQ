@@ -73,7 +73,7 @@ def list_ltr_models(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> LTRModelListResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -114,7 +114,7 @@ async def register_ltr_model(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> LTRModelRegisterResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -183,7 +183,7 @@ def activate_ltr_model(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> LTRModelActivateResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -227,7 +227,7 @@ def rollback_ltr_model(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> LTRModelActivateResponse:
     ensure_tenant_permission(
         db,
         tenant_id,

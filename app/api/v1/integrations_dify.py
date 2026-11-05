@@ -101,7 +101,7 @@ from app.rag.pipeline_plugins.contracts import (
     INDEXED_METADATA_KEY as INDEXED_METADATA_KEY,
 )
 from app.rag.reranker.factory import get_reranker
-from app.rag.reranker.types import RerankCandidate
+from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.rag.retrieval.planner import (
     DatasetRouteHint,
     DatasetScopePlan,
@@ -739,9 +739,7 @@ def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
 
 def _resolve_mixed_intent_subquery_top_k(*, response_top_k: int, candidate_top_k: int) -> int:
     try:
-        configured = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", response_top_k) or response_top_k
-        )
+        configured = int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K or response_top_k)
     except (TypeError, ValueError):
         configured = int(response_top_k or 1)
     return max(1, min(max(1, int(candidate_top_k or 1)), max(1, configured)))
@@ -3333,7 +3331,7 @@ def _final_rerank_provider(records: list[dict[str, Any]]) -> str | None:
 
 def _final_rerank_candidate_count(record_count: int, top_k: int) -> int:
     try:
-        configured_top_n = int(getattr(settings, "RERANKER_TOP_N", top_k) or top_k)
+        configured_top_n = int(settings.RERANKER_TOP_N or top_k)
     except (TypeError, ValueError):
         configured_top_n = int(top_k or 1)
     return min(record_count, max(1, int(top_k or 1), configured_top_n))
@@ -3367,7 +3365,7 @@ def _ordered_final_rerank_records(
     *,
     id_to_record: dict[str, dict[str, Any]],
     provider: str,
-    result: Any,
+    result: RerankResult,
     elapsed_sec: float,
 ) -> list[dict[str, Any]]:
     ordered: list[dict[str, Any]] = []
@@ -3401,7 +3399,7 @@ def _final_rerank_record_with_metadata(
     *,
     candidate_id: str,
     rerank_provider: str,
-    result: Any,
+    result: RerankResult,
     elapsed_sec: float,
 ) -> dict[str, Any]:
     next_record = dict(record)
@@ -6042,7 +6040,7 @@ async def _retrieve_dataset_citations(
     reranker_enabled = _dify_external_reranker_enabled() if enable_reranker is None else bool(enable_reranker)
     reranker_top_n = max(
         1,
-        int(getattr(settings, "RERANKER_TOP_N", evidence_top_k) or evidence_top_k),
+        int(settings.RERANKER_TOP_N or evidence_top_k),
         int(evidence_top_k or 1),
     )
     rag_config = ChatRAGConfig(
@@ -6082,18 +6080,15 @@ async def _retrieve_dataset_citations(
     )
 
     scoped_dataset_ids = _dedupe_dataset_ids(list(dataset_ids or []))
-    evidence_request_kwargs: dict[str, Any] = {"query": query, "rag_config": rag_config}
-    evidence_request_kwargs["dataset_ids"] = scoped_dataset_ids
-
     response = await retrieve_evidence(
-        body=EvidenceRetrieveRequest(**evidence_request_kwargs),
+        body=EvidenceRetrieveRequest(query=query, rag_config=rag_config, dataset_ids=scoped_dataset_ids),
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    response_metrics = getattr(response, "metrics", None)
-    response_trace = getattr(response, "retrieval_trace", None)
+    response_metrics = response.metrics
+    response_trace = response.retrieval_trace
     metrics = response_metrics if isinstance(response_metrics, dict) else {}
     trace = response_trace if isinstance(response_trace, dict) else {}
     logger.info(
@@ -6104,7 +6099,7 @@ async def _retrieve_dataset_citations(
         len(scoped_dataset_ids),
         evidence_top_k,
         requested_top_k,
-        len(getattr(response, "citations", None) or []),
+        len(response.citations or []),
         elapsed_ms,
         metrics.get("retrieval_elapsed_sec"),
         metrics.get("vector_backend"),
@@ -6113,7 +6108,7 @@ async def _retrieve_dataset_citations(
         metrics.get("hard_fallback_elapsed_sec"),
         len(trace.get("passes") or []) if isinstance(trace, dict) else 0,
     )
-    return list(getattr(response, "citations", None) or [])
+    return list(response.citations or [])
 
 
 def _resolve_dify_warmup_tenant_id() -> UUID | None:

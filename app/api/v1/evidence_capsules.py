@@ -222,7 +222,7 @@ def persist_evidence_capsule(
     strict_validation = bool(settings.EVIDENCE_CAPSULE_STRICT_VALIDATION_ENABLED)
     verify_signature = bool(settings.EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST)
     verify_hash_on_persist = bool(settings.EVIDENCE_CAPSULE_VERIFY_HASH_ON_PERSIST)
-    strict = bool(strict_validation or verify_hash_on_persist)
+    strict = strict_validation or verify_hash_on_persist
     ok, reason = validate_evidence_capsule(
         body.capsule,
         strict=strict,
@@ -275,7 +275,7 @@ def persist_evidence_capsule(
         capsule_id=capsule_id,
         capsule_hash=capsule_hash,
         path=str(path),
-        overwritten=bool(existed),
+        overwritten=existed,
     )
 
 

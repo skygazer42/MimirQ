@@ -212,12 +212,12 @@ def list_conversation_checkpoints(
         item = {
             "checkpoint_id": cfg.get("checkpoint_id"),
             "checkpoint_ns": cfg.get("checkpoint_ns", ""),
-            "created_at": getattr(snap, "created_at", None),
-            "next": getattr(snap, "next", None),
-            "metadata": getattr(snap, "metadata", None),
+            "created_at": snap.created_at,
+            "next": snap.next,
+            "metadata": snap.metadata,
         }
         if include_values:
-            item["values"] = _checkpoint_values_to_json(getattr(snap, "values", None))
+            item["values"] = _checkpoint_values_to_json(snap.values)
         items.append(jsonable_encoder(item))
 
     return {"thread_id": thread_id, "items": items}
@@ -251,7 +251,7 @@ def get_conversation_checkpoint(
     thread_id = str(conversation_id)
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": "", "checkpoint_id": checkpoint_id}}
     snap = graph.get_state(config)
-    if not snap or getattr(snap, "created_at", None) is None:
+    if not snap or snap.created_at is None:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
     cfg = (snap.config or {}).get("configurable") or {}
@@ -259,12 +259,12 @@ def get_conversation_checkpoint(
         "thread_id": thread_id,
         "checkpoint_id": cfg.get("checkpoint_id"),
         "checkpoint_ns": cfg.get("checkpoint_ns", ""),
-        "created_at": getattr(snap, "created_at", None),
-        "next": getattr(snap, "next", None),
-        "metadata": getattr(snap, "metadata", None),
+        "created_at": snap.created_at,
+        "next": snap.next,
+        "metadata": snap.metadata,
     }
     if include_values:
-        payload["values"] = _checkpoint_values_to_json(getattr(snap, "values", None))
+        payload["values"] = _checkpoint_values_to_json(snap.values)
     return jsonable_encoder(payload)
 
 

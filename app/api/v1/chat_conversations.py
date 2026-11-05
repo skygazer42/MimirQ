@@ -89,11 +89,11 @@ def _get_latest_messages_by_conversation_id(
 
 
 def _apply_conversation_search(
-    query: ORMQuery,
+    query: ORMQuery[Conversation],
     *,
     tenant_id: UUID,
     search_term: str,
-) -> ORMQuery:
+) -> ORMQuery[Conversation]:
     latest_message_content = (
         select(Message.content)
         .where(
@@ -125,7 +125,7 @@ def _conversation_doc_ids_index(batch: list[Conversation]) -> tuple[dict[UUID, l
     doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
     all_doc_ids: set[UUID] = set()
     for conv in batch:
-        doc_ids = list(getattr(conv, "document_ids", None) or [])
+        doc_ids = list(conv.document_ids or [])
         doc_ids_by_conversation_id[conv.id] = doc_ids
         all_doc_ids.update(doc_ids)
     return doc_ids_by_conversation_id, all_doc_ids
@@ -157,7 +157,7 @@ def _dataset_scope_accessible(
     conv: Conversation,
     dataset_access: dict[UUID, bool],
 ) -> bool:
-    dataset_id = getattr(conv, "dataset_id", None)
+    dataset_id = conv.dataset_id
     if dataset_id is None:
         return True
     if dataset_id not in dataset_access:
@@ -208,7 +208,7 @@ def _build_conversation_list_item(
 
 
 def _collect_accessible_conversations(
-    ordered_query: ORMQuery,
+    ordered_query: ORMQuery[Conversation],
     *,
     db: Session,
     tenant_id: UUID,
@@ -346,7 +346,7 @@ def update_conversation(
     ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     changed = False
-    if "title" in getattr(payload, "model_fields_set", set()):
+    if "title" in payload.model_fields_set:
         title = (payload.title or "").strip()
         if title:
             conversation.title = title
@@ -518,7 +518,7 @@ def export_conversation(
             parts.append(str(m.content or ""))
             parts.append("")
 
-            if include_citations and role == "assistant" and isinstance(getattr(m, "citations", None), list):
+            if include_citations and role == "assistant" and isinstance(m.citations, list):
                 cites = m.citations or []
                 if cites:
                     parts.append("### citations")

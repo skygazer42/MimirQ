@@ -7,7 +7,7 @@ For debugging and validating:
 """
 
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -51,6 +51,19 @@ NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL = "No accessible documents for retrieval
 DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL = "dataset_id and dataset_ids are mutually exclusive"
 RETRIEVAL_SCOPE_MAX_DATASET_IDS = 80
 RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS = 200
+
+
+class _IterativeRetrievalResult(TypedDict):
+    citations: list[dict[str, Any]]
+    metrics: dict[str, Any]
+    query_for_retrieval: str
+    query_debug: dict[str, Any] | None
+    abstain_triggered: bool
+    abstain_reason: Any
+    has_evidence: bool
+    selected_pass: str
+    fallback: dict[str, Any] | None
+    iterative_summary: dict[str, Any] | None
 
 
 def _unique_dataset_ids(dataset_ids: list[UUID] | None) -> list[UUID]:
@@ -304,7 +317,7 @@ def _resolve_dataset_defaults_rag_config(
 ) -> tuple[ChatRAGConfig, list[str], dict[str, Any] | None, set[str]]:
     rag_config_provided = "rag_config" in request_fields_set
     effective_rag_config = rag_config
-    rag_fields_set = set(getattr(rag_config, "model_fields_set", set()) or set())
+    rag_fields_set = set(rag_config.model_fields_set or set())
     if default_profile and not rag_config_provided:
         effective_rag_config = ChatRAGConfig(retrieval_profile=default_profile)
         rag_fields_set = set()
@@ -337,7 +350,7 @@ def _resolve_preview_rag_template_meta(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    body: Any,
+    body: "RetrievePreviewRequest",
     request_fields_set: set[str],
     dataset_defaults_meta: dict[str, Any] | None,
     effective_rag_config: ChatRAGConfig,
@@ -468,7 +481,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
     query_debug: dict[str, Any] | None,
     abstain_triggered: bool,
     has_evidence: bool,
-) -> dict[str, Any]:
+) -> _IterativeRetrievalResult:
     try:
         iterative_enabled = bool(settings.EVIDENCE_ITERATIVE_RETRIEVE_ENABLED)
         max_passes = max(1, int(settings.EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES or 2))
@@ -476,7 +489,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
         iterative_enabled = False
         max_passes = 1
 
-    result = {
+    result: _IterativeRetrievalResult = {
         "citations": citations,
         "metrics": metrics,
         "query_for_retrieval": query_for_retrieval,
@@ -538,7 +551,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
 
     iterative_summary = {
         "enabled": True,
-        "max_passes": int(max_passes),
+        "max_passes": max_passes,
         "selected_pass": "fallback" if use_fallback else "primary",
         "passes": [
             {
@@ -548,8 +561,8 @@ async def _maybe_apply_iterative_retrieval_fallback(
                 "empty_retrieval": metrics.get("empty_retrieval")
                 if isinstance(metrics.get("empty_retrieval"), dict)
                 else None,
-                "citations": int(p_n),
-                "top_relevance_score": round(float(p_top), 3),
+                "citations": p_n,
+                "top_relevance_score": round(p_top, 3),
                 "abstain_triggered": bool(abstain_triggered),
                 "has_evidence": bool(has_evidence),
                 "retrieval_elapsed_sec": float(metrics.get("retrieval_elapsed_sec") or 0.0),
@@ -557,14 +570,14 @@ async def _maybe_apply_iterative_retrieval_fallback(
             {
                 "pass": "fallback",
                 "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
-                "retrieval_profile": str(fallback_profile),
+                "retrieval_profile": fallback_profile,
                 "empty_retrieval": f_metrics.get("empty_retrieval")
                 if isinstance(f_metrics.get("empty_retrieval"), dict)
                 else None,
-                "citations": int(f_n),
-                "top_relevance_score": round(float(f_top), 3),
-                "abstain_triggered": bool(f_abstain),
-                "has_evidence": bool(f_has_evidence),
+                "citations": f_n,
+                "top_relevance_score": round(f_top, 3),
+                "abstain_triggered": f_abstain,
+                "has_evidence": f_has_evidence,
                 "retrieval_elapsed_sec": float(f_metrics.get("retrieval_elapsed_sec") or 0.0),
             },
         ],
@@ -579,9 +592,9 @@ async def _maybe_apply_iterative_retrieval_fallback(
     result["query_for_retrieval"] = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()
     qd = fallback.get("query_debug")
     result["query_debug"] = qd if isinstance(qd, dict) else query_debug
-    result["abstain_triggered"] = bool(f_abstain)
+    result["abstain_triggered"] = f_abstain
     result["abstain_reason"] = fallback.get("abstain_reason") or f_metrics.get("abstain_reason") or None
-    result["has_evidence"] = bool(f_has_evidence)
+    result["has_evidence"] = f_has_evidence
     result["selected_pass"] = "fallback"
     return result
 
@@ -811,7 +824,7 @@ def _build_document_structure_trace(
         )
         return {
             "schema": "mimirq.document_structure_trace.v1",
-            "document_count": int(len(structures)),
+            "document_count": len(structures),
             "documents": list(structures.values()),
             "selected_sections": selected_sections,
         }
@@ -941,7 +954,7 @@ async def retrieve_preview(
     #
     # For this debug endpoint, we default to a recall-first profile when the caller omits rag_config,
     # so retrieval tuning starts from a "must-recall" baseline.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
         dataset_rag_defaults_applied_fields,
@@ -1290,7 +1303,7 @@ async def image_search_preview(
         hits=hits,
         max_items=int(body.top_k or 0),
     )
-    metrics: dict[str, Any] = {"hits": int(len(citations)), "indexed": indexed, "tenant_qps_quota": tenant_qps_meta}
+    metrics: dict[str, Any] = {"hits": len(citations), "indexed": indexed, "tenant_qps_quota": tenant_qps_meta}
     return ImageSearchResponse(citations=citations, metrics=metrics)
 
 
@@ -1385,7 +1398,7 @@ async def retrieve_evidence(
     from app.rag.retrieval.orchestrator import run_retrieval
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
         dataset_rag_defaults_applied_fields,
@@ -1541,14 +1554,14 @@ async def retrieve_evidence(
     metrics = iterative_result["metrics"]
     query_for_retrieval = iterative_result["query_for_retrieval"]
     query_debug = iterative_result["query_debug"]
-    abstain_triggered = bool(iterative_result["abstain_triggered"])
+    abstain_triggered = iterative_result["abstain_triggered"]
     abstain_reason = iterative_result["abstain_reason"]
     has_evidence = _apply_min_top_relevance_gate(
         citations=[c for c in citations if isinstance(c, dict)],
         metrics=metrics,
-        has_evidence=bool(iterative_result["has_evidence"]),
+        has_evidence=iterative_result["has_evidence"],
     )
-    selected_pass = str(iterative_result["selected_pass"])
+    selected_pass = iterative_result["selected_pass"]
     fallback = iterative_result["fallback"]
     iterative_summary = iterative_result["iterative_summary"]
     if iterative_summary and isinstance(iterative_summary, dict):
@@ -1665,7 +1678,7 @@ async def prompt_preview(
     )
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
         dataset_rag_defaults_applied_fields,

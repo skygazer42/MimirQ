@@ -136,7 +136,7 @@ async def explain_retrieval(
         scope_dataset_id=scope_dataset_id,
     )
 
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    request_fields_set = set(body.model_fields_set or set())
     rag_config_provided = "rag_config" in request_fields_set
     effective_rag_config = body.rag_config if rag_config_provided else ChatRAGConfig()
 
@@ -179,8 +179,8 @@ async def explain_retrieval(
         query_rewrite_strategy=getattr(effective_rag_config, "query_rewrite_strategy", None),
         query_rewrite_temperature=getattr(effective_rag_config, "query_rewrite_temperature", None),
         query_rewrite_max_chars=getattr(effective_rag_config, "query_rewrite_max_chars", None),
-        sparse_retrieval_enabled=getattr(effective_rag_config, "sparse_retrieval_enabled", None),
-        sparse_retrieval_provider=getattr(effective_rag_config, "sparse_retrieval_provider", None),
+        sparse_retrieval_enabled=effective_rag_config.sparse_retrieval_enabled,
+        sparse_retrieval_provider=effective_rag_config.sparse_retrieval_provider,
         alpha=effective_rag_config.alpha,
         fusion_strategy=effective_rag_config.fusion_strategy,
         fusion_budgets=effective_rag_config.fusion_budgets,
