@@ -10,7 +10,7 @@ from app.models.document import DocumentChunk
 from app.rag.kg.extraction.config import ExtractConfig
 from app.rag.kg.extraction.extractor import EventExtractor
 from app.rag.kg.search.config import SearchConfig
-from app.rag.kg.search.searcher import KGSearcher
+from app.rag.kg.search.searcher import search as search_kg
 from app.rag.kg.utils import get_logger
 from app.types.indexing import IndexingOptions
 
@@ -20,7 +20,6 @@ logger = get_logger("kg.engine")
 class KGEngine:
     def __init__(self, model_config: dict | None = None):
         self.extractor = EventExtractor(model_config=model_config)
-        self.searcher = KGSearcher()
 
     async def extract(
         self,
@@ -88,4 +87,4 @@ class KGEngine:
             query_mode_reason_codes=[str(x) for x in (query_mode_reason_codes or []) if str(x).strip()][:8],
             query_mode_confidence=(str(query_mode_confidence or "").strip() or None),
         )
-        return await self.searcher.search(config)
+        return await search_kg(config)

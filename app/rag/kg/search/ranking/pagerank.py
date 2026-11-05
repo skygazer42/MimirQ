@@ -158,92 +158,88 @@ def _pagerank_iteration(
     return new_scores
 
 
-class RerankPageRankSearcher:
-    def __init__(self): ...
+async def rerank(
+    config: SearchConfig,
+    event_ids: list[str],
+    key_final: list[dict[str, Any]],
+    event_scores: dict[str, float],
+    *,
+    query_vector: list[float] | None = None,
+    event_hops: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    session = get_session()
+    try:
+        repo = EventRepository(session)
+        events = repo.get_events_by_ids(
+            event_ids,
+            tenant_id=config.tenant_id,
+            document_ids=config.document_ids,
+            dataset_id=config.dataset_id,
+            account_id=config.account_id,
+        )
+        if not events:
+            return {"events": [], "clues": [], "stats": {}}
 
-    async def rerank(
-        self,
-        config: SearchConfig,
-        event_ids: list[str],
-        key_final: list[dict[str, Any]],
-        event_scores: dict[str, float],
-        *,
-        query_vector: list[float] | None = None,
-        event_hops: dict[str, int] | None = None,
-    ) -> dict[str, Any]:
-        session = get_session()
-        try:
-            repo = EventRepository(session)
-            events = repo.get_events_by_ids(
-                event_ids,
-                tenant_id=config.tenant_id,
-                document_ids=config.document_ids,
-                dataset_id=config.dataset_id,
-                account_id=config.account_id,
-            )
-            if not events:
-                return {"events": [], "clues": [], "stats": {}}
+        query_vec = query_vector if query_vector is not None else await generate_embedding(config.query)
+        key_weights = _key_weight_map(key_final)
+        key_entity_ids = _key_entity_ids(key_final)
+        assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
+        phrase_boost_weight = max(0.0, float(settings.KG_SEARCH_EXACT_PHRASE_RERANK_BOOST or 0.0))
+        base_scores = _base_scores(
+            events=events,
+            event_scores=event_scores,
+            query_vec=query_vec,
+            assoc_map=assoc_map,
+            key_weights=key_weights,
+            query=config.query,
+            phrase_boost_weight=phrase_boost_weight,
+        )
+        graph = _build_shared_entity_graph(events=events, assoc_map=assoc_map, key_weights=key_weights)
+        scores = _pagerank(
+            graph,
+            damping=config.rerank.pagerank_damping_factor,
+            max_iter=config.rerank.pagerank_max_iterations,
+            base_scores=base_scores,
+        )
+        extras = _extras_by_event(
+            events=events,
+            assoc_map=assoc_map,
+            key_entity_ids=key_entity_ids,
+            event_hops=event_hops,
+            query=config.query,
+        )
 
-            query_vec = query_vector if query_vector is not None else await generate_embedding(config.query)
-            key_weights = _key_weight_map(key_final)
-            key_entity_ids = _key_entity_ids(key_final)
-            assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
-            phrase_boost_weight = max(0.0, float(getattr(settings, "KG_SEARCH_EXACT_PHRASE_RERANK_BOOST", 0.25) or 0.0))
-            base_scores = _base_scores(
-                events=events,
-                event_scores=event_scores,
-                query_vec=query_vec,
-                assoc_map=assoc_map,
-                key_weights=key_weights,
-                query=config.query,
-                phrase_boost_weight=phrase_boost_weight,
-            )
-            graph = _build_shared_entity_graph(events=events, assoc_map=assoc_map, key_weights=key_weights)
-            scores = self._pagerank(
-                graph,
-                damping=config.rerank.pagerank_damping_factor,
-                max_iter=config.rerank.pagerank_max_iterations,
-                base_scores=base_scores,
-            )
-            extras = _extras_by_event(
-                events=events,
-                assoc_map=assoc_map,
-                key_entity_ids=key_entity_ids,
-                event_hops=event_hops,
-                query=config.query,
-            )
+        results = format_events(events, scores, config.rerank.max_results, extra_by_event_id=extras)
 
-            results = format_events(events, scores, config.rerank.max_results, extra_by_event_id=extras)
+        return {
+            "events": results,
+            "clues": [],
+            "stats": {"total_candidates": len(events), "returned": len(results)},
+        }
+    finally:
+        session.close()
 
-            return {
-                "events": results,
-                "clues": [],
-                "stats": {"total_candidates": len(events), "returned": len(results)},
-            }
-        finally:
-            session.close()
 
-    def _pagerank(
-        self,
-        graph: dict[str, dict[str, float]],
-        damping: float,
-        max_iter: int,
-        base_scores: dict[str, float],
-    ) -> dict[str, float]:
-        nodes = list(graph.keys())
-        if not nodes:
-            return {}
-        scores = dict.fromkeys(nodes, 1.0)
-        out_sum = _outbound_weight_sums(graph, nodes)
-        teleport = _teleport_scores(damping, base_scores, nodes)
+def _pagerank(
+    graph: dict[str, dict[str, float]],
+    damping: float,
+    max_iter: int,
+    base_scores: dict[str, float],
+) -> dict[str, float]:
+    nodes = list(graph.keys())
+    if not nodes:
+        return {}
+    scores = dict.fromkeys(nodes, 1.0)
+    out_sum = _outbound_weight_sums(graph, nodes)
+    teleport = _teleport_scores(damping, base_scores, nodes)
 
-        for _ in range(int(max_iter)):
-            scores = _pagerank_iteration(
-                nodes=nodes,
-                graph=graph,
-                scores=scores,
-                out_sum=out_sum,
-                teleport=teleport,
-                damping=damping,
-            )
-        return scores
+    for _ in range(int(max_iter)):
+        scores = _pagerank_iteration(
+            nodes=nodes,
+            graph=graph,
+            scores=scores,
+            out_sum=out_sum,
+            teleport=teleport,
+            damping=damping,
+        )
+    return scores

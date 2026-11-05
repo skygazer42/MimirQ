@@ -55,7 +55,7 @@ def build_kg_search_cache_key(
         "account_id": str(account_id or ""),
         "dataset_id": str(dataset_id or "") or None,
         "doc_scope": _hash_doc_scope(doc_ids),
-        "doc_count": int(len(doc_ids)),
+        "doc_count": len(doc_ids),
         # Hash of doc_id -> active_pipeline_hash (or pipeline_hash fallback) pairs.
         # This avoids serving stale results when a document switches its active pipeline version.
         "pipeline_fp": pipeline_fp,
@@ -85,7 +85,7 @@ class KGSearchCache:
             return
         expired: list[str] = []
         for key, entry in self._entries.items():
-            if now - float(entry.created_at_monotonic) > float(ttl_sec):
+            if now - entry.created_at_monotonic > float(ttl_sec):
                 expired.append(key)
         for key in expired:
             self._entries.pop(key, None)
@@ -103,7 +103,7 @@ class KGSearchCache:
                 return None, None
             # LRU bump
             self._entries.move_to_end(key, last=True)
-            age_ms = int(max(0.0, (now - float(entry.created_at_monotonic)) * 1000.0))
+            age_ms = int(max(0.0, (now - entry.created_at_monotonic) * 1000.0))
             return dict(entry.value), age_ms
 
     def set(self, key: str, value: dict[str, Any], *, ttl_sec: int, max_entries: int) -> None:
@@ -129,7 +129,7 @@ class KGSearchCache:
 
     def size(self) -> int:
         with self._lock:
-            return int(len(self._entries))
+            return len(self._entries)
 
 
 kg_search_cache = KGSearchCache()
@@ -168,7 +168,7 @@ def build_kg_community_summary_cache_key(
         "tenant_id": str(tenant_id or "").strip(),
         "dataset_id": str(dataset_id or "").strip() or None,
         "doc_scope": _hash_doc_scope(doc_ids),
-        "doc_count": int(len(doc_ids)),
+        "doc_count": len(doc_ids),
         "community_id": str(community_id or "").strip(),
         "query": str(query or "").strip(),
         "report_fp": _community_report_fingerprint(report_payload),
@@ -187,7 +187,7 @@ class KGCommunitySummaryCache:
             return
         expired: list[str] = []
         for key, (_value, created_at) in self._entries.items():
-            if now - float(created_at) > float(ttl_sec):
+            if now - created_at > float(ttl_sec):
                 expired.append(key)
         for key in expired:
             self._entries.pop(key, None)
@@ -203,8 +203,8 @@ class KGCommunitySummaryCache:
                 return None, None
             value, created_at = entry
             self._entries.move_to_end(key, last=True)
-            age_ms = int(max(0.0, (now - float(created_at)) * 1000.0))
-            return str(value), age_ms
+            age_ms = int(max(0.0, (now - created_at) * 1000.0))
+            return value, age_ms
 
     def set(self, key: str, value: str, *, ttl_sec: int, max_entries: int) -> None:
         if not key or not str(value or "").strip():
@@ -228,7 +228,7 @@ class KGCommunitySummaryCache:
 
     def size(self) -> int:
         with self._lock:
-            return int(len(self._entries))
+            return len(self._entries)
 
 
 kg_community_summary_cache = KGCommunitySummaryCache()
