@@ -3,6 +3,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
+vi.mock('server-only', () => ({}))
+
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
 }))

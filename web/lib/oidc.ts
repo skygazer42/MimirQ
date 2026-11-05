@@ -1,7 +1,6 @@
 'use client'
 
 import type { AuthResponse, AuthToken, UserProfile } from '@/types'
-import { setAuthSession } from '@/lib/auth-storage'
 import { readClientStorage, removeClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import {
@@ -323,6 +322,5 @@ export async function completeOidcLogin(params: {
   const user: UserProfile = buildUserFromClaims(claims)
   const session: AuthResponse = { user, token }
 
-  setAuthSession(session)
   return { session, returnTo: String(tx.return_to || '/').trim() || '/' }
 }

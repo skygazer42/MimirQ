@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import React, { act } from 'react'
+import React, { act, type ComponentProps } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -20,7 +20,7 @@ vi.mock('next/image', () => ({
     priority: _priority,
     unoptimized: _unoptimized,
     ...props
-  }: React.ComponentProps<'img'> & { priority?: boolean; unoptimized?: boolean }) => React.createElement('img', props),
+  }: ComponentProps<'img'> & { priority?: boolean; unoptimized?: boolean }) => React.createElement('img', props),
 }))
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => routerMock,
@@ -28,7 +28,11 @@ vi.mock('@/i18n/navigation', () => ({
 vi.mock('@/lib/api', () => ({
   authApi: authApiMock,
 }))
-vi.mock('@/lib/auth-storage', () => ({
+vi.mock('@/lib/api/auth', () => ({
+  authApi: authApiMock,
+}))
+vi.mock('@/lib/auth-storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   setAuthSession: sessionMock.setAuthSession,
 }))
 vi.mock('@/lib/oidc', () => ({

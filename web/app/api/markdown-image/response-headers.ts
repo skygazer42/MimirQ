@@ -1,6 +1,6 @@
 import type { IncomingHttpHeaders } from 'node:http'
 
-function headerValue(headers: IncomingHttpHeaders, name: string): string {
+export function readMarkdownImageHeader(headers: IncomingHttpHeaders, name: string): string {
   const value = headers[name]
   return String(Array.isArray(value) ? value[0] || '' : value || '').trim()
 }
@@ -12,9 +12,9 @@ export function buildMarkdownImageResponseHeaders(contentType: string, upstreamH
   headers.set('Pragma', 'no-cache')
   headers.set('X-Content-Type-Options', 'nosniff')
 
-  const etag = headerValue(upstreamHeaders, 'etag')
+  const etag = readMarkdownImageHeader(upstreamHeaders, 'etag')
   if (etag) headers.set('ETag', etag)
-  const lastModified = headerValue(upstreamHeaders, 'last-modified')
+  const lastModified = readMarkdownImageHeader(upstreamHeaders, 'last-modified')
   if (lastModified) headers.set('Last-Modified', lastModified)
 
   return headers

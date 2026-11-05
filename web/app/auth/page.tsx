@@ -1,16 +1,16 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode, type SyntheticEvent } from 'react'
 import Image from 'next/image'
 import { User, Mail, Lock, ArrowRight, Loader2, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useRouter } from '@/i18n/navigation'
-import { authApi } from '@/lib/api'
-import { setAuthSession } from '@/lib/auth-storage'
+import { authApi } from '@/lib/api/auth'
+import { getAuthSessionRevision, setAuthSession } from '@/lib/auth-storage'
 import { startOidcLogin } from '@/lib/oidc'
-import { getOidcPublicProvidersFromEnv } from '@/lib/oidc-providers'
+import { getOidcPublicProvidersFromEnv, type OidcProviderPublic } from '@/lib/oidc-providers'
 import { formatRequestId, toApiErrorInfo, type ApiErrorInfo } from '@/lib/api-errors'
 import { MIMIRQ_MARK_PATH } from '@/lib/brand'
 import { FullScreenFrame } from '@/components/full-screen-frame'
@@ -33,7 +33,7 @@ function getAdminContactHref(): string {
   }
 }
 
-function getAuthSsoProviderLabel(provider?: { id?: string; name?: string }): string {
+function getAuthSsoProviderLabel(provider?: Pick<OidcProviderPublic, 'id' | 'name'>): string {
   if (provider?.name) return `Continue with ${provider.name}`
   if (provider?.id) return `Continue with ${provider.id}`
   return 'Continue with SSO'
@@ -93,7 +93,17 @@ export default function AuthPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [ssoProviderWorkingId, setSsoProviderWorkingId] = useState<string | null>(null)
   const [error, setError] = useState<ApiErrorInfo | null>(null)
+  const authVisit = useMemo(() => ({ mode }), [mode])
+  const authVisitRef = useRef<typeof authVisit | null>(null)
+  const submitRequestRef = useRef<object | null>(null)
   const contactAdminHref = getAdminContactHref()
+
+  useEffect(() => {
+    authVisitRef.current = authVisit
+    return () => {
+      authVisitRef.current = null
+    }
+  }, [authVisit])
 
   const isSsoSubmitting = ssoProviderWorkingId !== null
 
@@ -114,8 +124,9 @@ export default function AuthPage() {
     }
   }
 
-  const handleSubmit = async (event: React.SyntheticEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: SyntheticEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (submitRequestRef.current) return
     setError(null)
 
     if (mode === 'register' && password !== confirmPassword) {
@@ -123,6 +134,13 @@ export default function AuthPage() {
       return
     }
 
+    const request = {}
+    const sessionRevision = getAuthSessionRevision()
+    submitRequestRef.current = request
+    const canPublish = () =>
+      submitRequestRef.current === request &&
+      authVisitRef.current === authVisit &&
+      getAuthSessionRevision() === sessionRevision
     setIsSubmitting(true)
     try {
       const response =
@@ -134,12 +152,16 @@ export default function AuthPage() {
               password,
               bootstrapToken: bootstrapToken.trim() || undefined,
             })
+      if (!canPublish()) return
       setAuthSession({ token: response.token, user: response.user })
       router.push('/')
     } catch (err: unknown) {
-      setError(toAuthPageError(err, mode))
+      if (canPublish()) setError(toAuthPageError(err, mode))
     } finally {
-      setIsSubmitting(false)
+      if (submitRequestRef.current === request) {
+        submitRequestRef.current = null
+        if (authVisitRef.current) setIsSubmitting(false)
+      }
     }
   }
 

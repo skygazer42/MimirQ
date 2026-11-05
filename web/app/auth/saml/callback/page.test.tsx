@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import React, { act } from 'react'
+import { act, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -17,18 +17,17 @@ vi.mock('@/lib/saml-session', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/saml-session')>()),
   consumeSamlBridgeState: mocks.consume,
 }))
-vi.mock('@/lib/auth-storage', () => ({
+vi.mock('@/lib/auth-storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   setAuthSession: mocks.setAuthSession,
 }))
 vi.mock('@/components/full-screen-frame', () => ({
-  FullScreenFrame: ({ children, className }: { children: React.ReactNode; className?: string }) => (
+  FullScreenFrame: ({ children, className }: { children: ReactNode; className?: string }) => (
     <div className={className}>{children}</div>
   ),
 }))
 vi.mock('@/components/ui/button', () => ({
-  Button: ({ children, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) => (
-    <button {...props}>{children}</button>
-  ),
+  Button: ({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props}>{children}</button>,
 }))
 
 import SamlCallbackPage from './page'

@@ -6,15 +6,23 @@ import { Loader2, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { FullScreenFrame } from '@/components/full-screen-frame'
 import { useRouter } from '@/i18n/navigation'
-import { setAuthSession } from '@/lib/auth-storage'
+import { getAuthSessionRevision, setAuthSession } from '@/lib/auth-storage'
 import { consumeSamlBridgeState, getSamlCallbackErrorMessage } from '@/lib/saml-session'
 
 export default function SamlCallbackPage() {
   const router = useRouter()
   const ranRef = useRef(false)
+  const mountedRef = useRef(false)
 
   const [status, setStatus] = useState<'working' | 'success' | 'error'>('working')
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     if (ranRef.current) return
@@ -27,8 +35,10 @@ export default function SamlCallbackPage() {
       return
     }
 
+    const sessionRevision = getAuthSessionRevision()
     void (async () => {
       const bridgeState = await consumeSamlBridgeState()
+      if (!mountedRef.current || getAuthSessionRevision() !== sessionRevision) return
       if (!bridgeState) {
         setStatus('error')
         setError('Missing SAML sign-in session.')
