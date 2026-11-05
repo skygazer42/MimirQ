@@ -66,11 +66,7 @@ export function PipelineCapabilitiesProvider({ children }: Readonly<{ children: 
       loading,
       error,
       refresh,
-      parserBackendAvailable: (name) => {
-        const key = normalizeParserBackendName(name)
-        if (!key) return undefined
-        return parserBackendMap.get(key)
-      },
+      parserBackendAvailable: (name) => parserBackendMap.get(normalizeParserBackendName(name)),
       chunkStrategyAvailable: (name) => {
         const key = normalizeChunkStrategyName(name)
         if (!key) return undefined

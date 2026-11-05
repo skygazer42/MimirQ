@@ -42,21 +42,25 @@ export function PipelineOptionsProvider({ children }: Readonly<{ children: React
     enabled: false,
     options: { ...DEFAULT_DOCUMENT_PIPELINE_OPTIONS },
   })
+  const [storageLoaded, setStorageLoaded] = useState(false)
 
   useEffect(() => {
     const stored = readClientStorage(STORAGE_KEY)
-    if (!stored) return
-    try {
-      const parsed = JSON.parse(stored)
-      setState(normalizeState(parsed))
-    } catch {
-      // ignore corrupted storage
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        setState(normalizeState(parsed))
+      } catch {
+        // ignore corrupted storage
+      }
     }
+    setStorageLoaded(true)
   }, [])
 
   useEffect(() => {
+    if (!storageLoaded) return
     writeClientStorage(STORAGE_KEY, JSON.stringify(state))
-  }, [state])
+  }, [state, storageLoaded])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
