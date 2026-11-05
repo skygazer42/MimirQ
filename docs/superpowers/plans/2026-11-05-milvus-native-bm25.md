@@ -55,5 +55,5 @@
 - [x] Write failing database memory tests for tenant/conversation isolation, caps, Chinese, wildcard literals and no-match; write backfill dry-run/no-Embedding tests.
 - [x] Implement PostgreSQL keyword ranking and remove all production BM25Retriever imports and rank-bm25 declarations.
 - [x] Provide explicit backfill with dry-run/apply and migration limitations; synchronize decision note and generated contracts when needed.
-- [ ] Run selected backend/static/frontend contract checks, perform one independent whole-change review and one focused fix pass.
-- [ ] Commit only task paths, transfer the task patch to E:/MimirQ while preserving concurrent edits, and verify the integrated tree.
+- [x] Run selected backend/static/frontend contract checks, perform one independent whole-change review and one focused fix pass.
+- [x] Commit only task paths, transfer the task patch to E:/MimirQ while preserving concurrent edits, and verify the integrated tree.
