@@ -17,7 +17,7 @@ import queue
 import socket
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -284,7 +284,9 @@ def _sanitize_kg_path_edge(raw: Any) -> dict[str, Any] | None:
     return edge or None
 
 
-def _sanitize_kg_path_items(raw_items: Any, *, sanitizer) -> list[dict[str, Any]] | None:
+def _sanitize_kg_path_items(
+    raw_items: Any, *, sanitizer: Callable[[Any], dict[str, Any] | None]
+) -> list[dict[str, Any]] | None:
     if not isinstance(raw_items, list) or not raw_items:
         return None
     items: list[dict[str, Any]] = []
@@ -404,7 +406,7 @@ def _build_record(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 class _MetricsWriter:
     def __init__(self, *, max_queue_size: int = 2000, flush_interval_sec: float = 0.5) -> None:
-        self._queue: queue.Queue[Any] = queue.Queue(maxsize=max_queue_size)
+        self._queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=max_queue_size)
         self._flush_interval_sec = float(flush_interval_sec)
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="mimirq-metrics-writer", daemon=True)
@@ -482,7 +484,7 @@ class _MetricsWriter:
     def _flush(self, batch: list[dict[str, Any]]) -> None:
         try:
             to_write: list[str] = []
-            dropped = int(self._dropped or 0)
+            dropped = self._dropped
             if dropped:
                 self._dropped = 0
                 to_write.append(

@@ -89,7 +89,7 @@ def get_rag_runtime_warmup_status() -> dict[str, Any]:
 
 
 def rag_runtime_warmup_ready() -> bool:
-    if not bool(settings.RAG_RUNTIME_WARMUP_ENABLED):
+    if not settings.RAG_RUNTIME_WARMUP_ENABLED:
         return True
     return bool(get_rag_runtime_warmup_status().get("ready"))
 
@@ -230,7 +230,7 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
         top_n=1,
         max_chars=128,
     )
-    ordered_ids = list(getattr(result, "ordered_ids", []) or [])
+    ordered_ids = list(result.ordered_ids or [])
     if configured_provider not in {"parent_child", "pc"} and not ordered_ids:
         raise RuntimeError("reranker_probe_returned_no_results")
 
@@ -245,7 +245,7 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
         }
     )
-    if getattr(result, "model_used", None):
+    if result.model_used:
         probe["model"] = str(result.model_used)
     return probe
 
@@ -288,7 +288,7 @@ async def _probe_reranker_runtime(timeout_sec: float) -> dict[str, Any]:
 
 async def warmup_rag_runtime() -> dict[str, Any]:
     required_for_ready = bool(settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY)
-    if not bool(settings.RAG_RUNTIME_WARMUP_ENABLED):
+    if not settings.RAG_RUNTIME_WARMUP_ENABLED:
         embedding = _new_probe_state("embedding")
         reranker = _new_probe_state("reranker")
         embedding.update({"status": "skipped", "ready": True, "reason": "warmup_disabled", "elapsed_ms": 0.0})
@@ -326,7 +326,7 @@ async def warmup_rag_runtime() -> dict[str, Any]:
         _probe_reranker_runtime(timeout_sec),
     )
     probes = [embedding, reranker]
-    failed = sum(1 for probe in probes if not bool(probe.get("ready")))
+    failed = sum(1 for probe in probes if not probe.get("ready"))
     completed = sum(1 for probe in probes if str(probe.get("status") or "") in {"completed", "skipped"})
     ready = failed == 0
     status = "completed" if ready else "failed"
@@ -370,7 +370,7 @@ def _log_runtime_warmup_task_result(task: Any) -> None:
 
 def start_rag_runtime_warmup(*, create_task: Any | None = None) -> Any | None:
     required_for_ready = bool(settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY)
-    if not bool(settings.RAG_RUNTIME_WARMUP_ENABLED):
+    if not settings.RAG_RUNTIME_WARMUP_ENABLED:
         _set_rag_runtime_warmup_status(
             enabled=False,
             required_for_ready=required_for_ready,

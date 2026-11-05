@@ -82,7 +82,7 @@ async def _prom_query(client: httpx.AsyncClient, *, base_url: str, promql: str) 
         return None
     if len(values) == 1:
         return values[0]
-    return float(sum(values))
+    return sum(values)
 
 
 @dataclass(frozen=True)
@@ -148,9 +148,9 @@ def _build_window_from_metrics_jsonl(*, tenant_id: str | None, window_minutes: i
     error_rate = (float(error_count) / float(summary.rag_trace_count)) if summary.rag_trace_count else None
 
     return SloWindowSnapshot(
-        window_minutes=int(summary.window_minutes),
+        window_minutes=summary.window_minutes,
         source="metrics_jsonl",
-        rag_trace_count=int(summary.rag_trace_count),
+        rag_trace_count=summary.rag_trace_count,
         retrieval_p95_elapsed_sec=summary.retrieval_p95_elapsed_sec,
         retrieval_p99_elapsed_sec=summary.retrieval_p99_elapsed_sec,
         zero_hit_rate=summary.zero_hit_rate,
