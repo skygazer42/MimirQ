@@ -38,6 +38,8 @@ EMBEDDING_MODEL=BAAI/bge-m3
 
 同时按 `.env.example` 配置实际的 `EMBEDDING_API_BASE` 和 `EMBEDDING_API_KEY`。官方 OpenAI 服务应使用其提供的模型名，例如 `text-embedding-3-small`。Embedding 与 Rerank 服务可以部署在内网，API 调用方式不要求使用外部公有云。
 
+Ollama 原生向量服务使用 `provider=ollama`，当前客户端需要完整的 `/api/embed` 地址，例如 `http://localhost:11434/api/embed`。设置页保留独立服务入口，保存时不会将其转换为 OpenAI 协议。
+
 ## 旧本地配置迁移
 
 `requirements-local-models.txt` 已删除，API 与 CI 不再提供 Torch wheel 安装步骤。安装旧模型包不会恢复已退出的实现。

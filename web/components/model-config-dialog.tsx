@@ -36,7 +36,7 @@ function getDefaultApiBase(providerId: string): string {
     'qwen-embedding': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     moonshot: 'https://api.moonshot.cn/v1',
     ollama: 'http://localhost:11434/v1',
-    'ollama-embedding': 'http://localhost:11434',
+    'ollama-embedding': 'http://localhost:11434/api/embed',
     ark: 'https://ark.cn-beijing.volces.com/api/v3',
     lingyiwanwu: 'https://api.lingyiwanwu.com/v1',
     qianfan: 'https://qianfan.baidubce.com/v2',
