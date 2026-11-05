@@ -320,12 +320,12 @@ def _replay_vector_delete(*, item: IndexDriftItem) -> None:
 
 
 def _replay_bm25_delete(*, item: IndexDriftItem) -> None:
-    from app.rag.retriever import hybrid_retriever
+    from app.rag.retrieval.corpus_index import get_corpus_index
 
     if item.chunk_id is None:
         raise ValueError("bm25 delete replay requires chunk_id")
 
-    hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+    get_corpus_index().remove(
         tenant_id=item.tenant_id,
         metadata_filter={"chunk_id": {"$eq": str(item.chunk_id)}},
     )

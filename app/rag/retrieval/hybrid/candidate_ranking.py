@@ -127,7 +127,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             document_ids=list(resolved.scope.document_ids),
             vector_filter=resolved.vector_filter,
             runtime_shards_present=bool(resolved.runtime_shards),
-            chunk_id_lookup=corpus_index.chunk_id_lookup(request.corpus_scope),
+            chunk_id_lookup=corpus_index.chunk_id_lookup(request.corpus_scope, candidates=raw.vector_results),
             match_metadata_filter=match_metadata_filter,
             metadata_exact_pre_fusion_enabled=settings.RETRIEVAL_METADATA_EXACT_PRE_FUSION_ENABLED,
             phrase_boost_weight=max(0.0, settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST),

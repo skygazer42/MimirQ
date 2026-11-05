@@ -27,7 +27,7 @@ from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
 from app.rag.core.logging import get_logger
-from app.rag.retriever import hybrid_retriever
+from app.rag.retrieval.corpus_index import get_corpus_index
 from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.document_access_service import assert_document_writable_for_lifecycle
@@ -559,7 +559,7 @@ def _delete_qa_bm25(*, tenant_id: UUID, qa_ids: list[UUID]) -> tuple[int, str | 
     first_error: str | None = None
     for chunk_id in qa_ids:
         try:
-            hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+            get_corpus_index().remove(
                 tenant_id=tenant_id,
                 metadata_filter={"chunk_id": {"$eq": str(chunk_id)}},
             )

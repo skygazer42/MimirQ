@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     MILVUS_COLLECTION_NAME: str = "documents"
+    MILVUS_BM25_COLLECTION_NAME: str = "document_bm25"
+    MILVUS_BM25_TIMEOUT_SEC: float = Field(default=10.0, gt=0)
+    MILVUS_BM25_MAX_CANDIDATES: int = Field(default=2048, ge=1, le=16384)
     # Optional "shadow" Milvus collection for embedding blue-green migrations (Gap5).
     # When configured alongside EMBEDDING_SHADOW_* and enabled, ingestion can dual-write
     # vectors into both the primary and shadow collections.
@@ -1510,26 +1513,11 @@ class Settings(BaseSettings):
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
-    # BM25 cold-start mitigation (build on first query when index missing).
-    BM25_LAZY_BUILD_ENABLED: bool = True
-    # When true and document_ids not provided, build BM25 for the whole tenant (can be expensive).
-    BM25_LAZY_BUILD_FULL_TENANT: bool = False
-    # Upper bound for lazy-built chunks (0 disables the cap).
-    BM25_LAZY_BUILD_MAX_CHUNKS: int = 8000
-    # Above this scope size, ingestion defers BM25 retriever rebuild to first query (0 disables the cap).
-    BM25_EAGER_UPSERT_MAX_CHUNKS: int = 8000
-    # Startup BM25 bootstrap (can be expensive; prefer lazy-build for large deployments).
-    BM25_STARTUP_BUILD_ENABLED: bool = False
-    # Upper bound for startup-built chunks across the whole instance (0 disables the cap).
-    BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
     # Hard cap for operator-triggered retrieval rebuilds across BM25/sparse/ColBERT.
     # 0 disables the cap (not recommended in production).
     RETRIEVAL_REBUILD_MAX_CHUNKS: int = 8000
-    # Max cached BM25 indices kept in memory (0 = unlimited). Useful for multi-tenant deployments.
-    BM25_CACHE_MAX_TENANTS: int = 32
-    # BM25 tokenization knobs (recall tuning).
-    # These defaults are intentionally "recall-friendly" but still avoid full CJK char-ngram indexing
-    # (which can explode index size in pure-Python BM25 implementations).
+    # Lightweight tokenization for query matching, fusion and conversation memory.
+    # Native Milvus BM25 uses its collection-owned analyzer.
     BM25_TOKENIZE_ASCII_EXPAND_ENABLED: bool = True
     BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED: bool = True
     BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED: bool = True
@@ -2265,7 +2253,7 @@ class Settings(BaseSettings):
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
-    LONG_TERM_MEMORY_MAX_MESSAGES: int = 200
+    LONG_TERM_MEMORY_MAX_MESSAGES: int = Field(default=200, ge=1)
     MEMORY_STORE_TYPE: str = "memory"  # memory | sqlite
     MEMORY_SQLITE_PATH: str = "./data/memory.db"
     # Structured memory (entity memory + lightweight fact memory), stored per assistant turn in

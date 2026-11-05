@@ -73,8 +73,7 @@ tencentcloud-sdk-python==3.1.72
 html-text==0.7.1
 readability-lxml==0.8.4.1
 
-# BM25 and Text Processing
-rank-bm25==0.2.2
+# Lightweight Text Processing (BM25 runs inside Milvus)
 jieba==0.42.1
 word2number==1.1
 cn2an==0.5.23

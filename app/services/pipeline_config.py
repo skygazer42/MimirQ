@@ -1182,7 +1182,10 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         embedding_contextual_retrieval_lazy_mode=bool(embedding_contextual_retrieval_lazy_mode),
         embedding_field_aware_enabled=bool(embedding_field_aware_enabled),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
-        bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
+        bm25_index_enabled=(
+            settings.VECTOR_BACKEND.strip().lower() == "milvus"
+            and _resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled)
+        ),
         kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
         kg_python_plugin=str(kg_python_plugin or ""),
         kg_python_params=dict(kg_python_params),

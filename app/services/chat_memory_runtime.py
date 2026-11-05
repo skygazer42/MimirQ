@@ -2,8 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from langchain_community.retrievers.bm25 import BM25Retriever
-from langchain_core.documents import Document
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -21,63 +20,36 @@ def _retrieve_long_term_messages(
     query: str,
     top_k: int = 3,
 ) -> list[dict]:
-    """
-    Simple long-term memory recall using BM25 over past messages.
-    Used to enrich history context only; it does not modify storage.
-    """
+    """Rank matching recent conversation messages in the database without a local index."""
+    if not query.strip() or top_k <= 0:
+        return []
+    terms = list(dict.fromkeys(token.lower() for token in tokenize_for_bm25(query) if token))[:32]
+    if not terms:
+        return []
     max_messages = settings.LONG_TERM_MEMORY_MAX_MESSAGES
+    if max_messages <= 0:
+        raise ValueError("LONG_TERM_MEMORY_MAX_MESSAGES must be positive for bounded memory retrieval")
     query_builder = (
-        db.query(Message.content, Message.role, Message.created_at)
+        db.query(Message.id, Message.content, Message.role, Message.created_at)
         .filter(
             Message.conversation_id == conversation_id,
             Message.tenant_id == tenant_id,
         )
-        .order_by(Message.created_at.desc())
+        .order_by(Message.created_at.desc(), Message.id.desc())
     )
-    if max_messages > 0:
-        query_builder = query_builder.limit(max_messages)
-
-    rows = query_builder.all()
-    if not rows:
-        return []
-
-    rows = list(reversed(rows))
-
-    docs: list[Document] = []
-    for content, role, created_at in rows:
-        if not content or len(content.strip()) < settings.LONG_TERM_MEMORY_MIN_LEN:
-            continue
-        docs.append(
-            Document(
-                page_content=content,
-                metadata={
-                    "role": role,
-                    "created_at": created_at.isoformat() if created_at else None,
-                },
-            )
-        )
-
-    if not docs:
-        return []
-
-    retriever = BM25Retriever.from_documents(
-        docs,
-        preprocess_func=tokenize_for_bm25,
-        k=top_k,
+    recent = query_builder.limit(max_messages).subquery()
+    score = sum(case((recent.c.content.icontains(term, autoescape=True), 1), else_=0) for term in terms)
+    rows = (
+        db.query(recent.c.content, recent.c.role, recent.c.created_at)
+        .filter(score > 0, func.length(func.trim(recent.c.content)) >= settings.LONG_TERM_MEMORY_MIN_LEN)
+        .order_by(score.desc(), recent.c.created_at.desc(), recent.c.id.desc())
+        .limit(top_k)
+        .all()
     )
-    selected = retriever.invoke(query)
-
-    enriched_history = []
-    for doc in selected:
-        enriched_history.append(
-            {
-                "role": doc.metadata.get("role", "assistant"),
-                "content": doc.page_content,
-                "from_long_term": True,
-                "ts": doc.metadata.get("created_at"),
-            }
-        )
-    return enriched_history
+    return [
+        {"role": role, "content": content, "from_long_term": True, "ts": created_at.isoformat() if created_at else None}
+        for content, role, created_at in rows
+    ]
 
 
 def _retrieve_structured_memory_records(

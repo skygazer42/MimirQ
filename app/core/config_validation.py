@@ -337,8 +337,6 @@ def validate_uvicorn_workers_and_distributed_limits(settings: Settings) -> None:
             raise ValueError(
                 "TENANT_QPS_QUOTA_ENABLED with UVICORN_WORKERS > 1 requires RATE_LIMIT_REDIS_ENABLED=true and REDIS_URL"
             )
-        if settings.BM25_INDEX_ENABLED and not settings.BM25_LAZY_BUILD_ENABLED:
-            raise ValueError("BM25_LAZY_BUILD_ENABLED must be true when UVICORN_WORKERS > 1")
 
 
 def validate_saml_replay(settings: Settings) -> None:
@@ -932,8 +930,6 @@ def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
     )
     _require_int_min(settings.MILVUS_EXPR_MAX_DOC_IDS or 0, 0, "MILVUS_EXPR_MAX_DOC_IDS must be >= 0")
 
-    _require_int_min(settings.BM25_CACHE_MAX_TENANTS or 0, 0, "BM25_CACHE_MAX_TENANTS must be >= 0")
-    _require_int_min(settings.BM25_EAGER_UPSERT_MAX_CHUNKS or 0, 0, "BM25_EAGER_UPSERT_MAX_CHUNKS must be >= 0")
     rebuild_max_chunks = settings.RETRIEVAL_REBUILD_MAX_CHUNKS or 0
     _require_int_min(rebuild_max_chunks, 0, "RETRIEVAL_REBUILD_MAX_CHUNKS must be >= 0")
     _raise_if(is_production and rebuild_max_chunks <= 0, "RETRIEVAL_REBUILD_MAX_CHUNKS must be > 0 in production")

@@ -20,6 +20,7 @@ from app.rag.retrieval.hybrid.metadata_scope import collect_dataset_scope
 from app.rag.retrieval.hybrid.runtime_scope import ResolvedRetrievalScope
 from app.rag.retrieval.retriever_options import HybridSearchOptions
 from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
+from app.storage.bm25.milvus import BM25IndexNotReadyError
 from app.storage.vector.factory import BaseVectorStore, get_vector_store
 
 
@@ -327,6 +328,8 @@ class _ChannelCollector:
                 metadata_filter=self.request.resolved_scope.keyword_filter,
             )
             self.health.succeeded("bm25")
+        except BM25IndexNotReadyError:
+            raise
         except Exception as exc:
             self.keyword.bm25_failure = exc
             self.health.failed("bm25", exc)

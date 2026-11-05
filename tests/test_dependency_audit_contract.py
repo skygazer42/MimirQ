@@ -27,9 +27,9 @@ def test_audit_remediation_pins_known_fixed_versions() -> None:
         "chromadb",
         "langchain-chroma",
         "faiss-cpu",
+        "rank-bm25",
     }.isdisjoint(versions)
     assert versions["nltk"] == "3.10.2"
-    assert versions["rank-bm25"] == "0.2.2"
     assert not ROOT.joinpath("requirements-local-models.txt").exists()
     assert _requirement_versions("requirements-chroma.txt")["chromadb"] == "1.5.7"
     assert _requirement_versions("requirements-faiss.txt")["faiss-cpu"] == "1.13.2"

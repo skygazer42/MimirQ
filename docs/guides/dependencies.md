@@ -2,13 +2,13 @@
 
 API 使用 Milvus 客户端和模型服务接口。本地 Torch、sentence-transformers、HanLP、GLiNER、CLIP、SPLADE 与 HF ColBERT 推理已退出；Chroma 和 FAISS 仍作为可选向量后端按需安装。
 
-基础环境仍包含现有文档处理、ONNX OCR、评测和监控依赖。模型权重和 GPU 运行环境由独立模型服务管理，服务可以部署在本机或内网。普通解析、BM25/jieba、图片上传、预览、OCR 与模型看图对话继续保留。
+基础环境仍包含现有文档处理、ONNX OCR、评测和监控依赖。模型权重和 GPU 运行环境由独立模型服务管理，服务可以部署在本机或内网。普通解析、jieba、图片上传、预览、OCR 与模型看图对话继续保留；知识库 BM25 由 Milvus 原生全文索引提供。
 
 ## 安装配置
 
 | 文件                      | 安装内容                                    | 使用场景                                            |
 | ------------------------- | ------------------------------------------- | --------------------------------------------------- |
-| `requirements.txt`        | 默认后端依赖、Milvus 客户端、BM25、常规解析 | API 与远程 Embedding/Rerank                         |
+| `requirements.txt`        | 默认后端依赖、Milvus 客户端、常规解析 | API 与远程 Embedding/Rerank                         |
 | `requirements-dev.txt`    | 基础环境和 pytest、Ruff、pip-audit 等工具   | 日常开发、基础验证                                  |
 | `requirements-chroma.txt` | 基础环境和 Chroma、LangChain Chroma 适配器  | 显式选择 Chroma 的本地知识库                        |
 | `requirements-faiss.txt`  | 基础环境和 FAISS                            | FAISS 后端或 ColBERT ANN 加速；无官方 Windows wheel |
@@ -71,7 +71,9 @@ python -m pip install -r requirements-faiss.txt
 
 项目生产默认仍为 Milvus。切换后端不会迁移已有向量索引；已有 Chroma/FAISS 数据应继续使用原后端，直到单独完成迁移。
 
-`rank-bm25` 保留在基础环境：知识库混合检索和聊天记忆均通过 LangChain 的 BM25Retriever 使用它。它不需要 Torch 或模型权重；其进程内索引占用取决于实际文档数量。迁移到服务端 BM25 属于后续检索设计工作，不能用删除依赖替代。
+`rank-bm25` 已移除：知识库 BM25 使用 Milvus 内置 function 和全文索引，聊天记忆在 PostgreSQL 的最近有界会话消息上进行关键词排序。API 不再构建本地 BM25 或缓存整份语料。Chroma/FAISS 保留向量能力；原生 BM25 需要 Milvus，不能通过安装 rank-bm25 恢复本地实现。jieba 继续服务轻量关键词、查询处理和聊天记忆。
+
+已有文档需要先预览并显式执行[Milvus BM25 回填](./milvus_bm25.md)，不重新计算 Embedding 或自动修改原有语义向量集合。
 
 ## Docker 与 Compose
 
