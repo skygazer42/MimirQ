@@ -106,8 +106,8 @@ export function ChunkCard({
   onToggleReviewed,
 }: Readonly<ChunkCardProps>) {
   const t = useTranslations('ChunkPreview')
-  const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
-  const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
+  const rangeLabel = `${chunk.start_index}-${chunk.end_index}`
+  const tokens = typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null
   const chunkMetadata = getChunkMetadata(chunk)
   const chunkRole = getStringValue(chunkMetadata, 'chunk_role')
   const sectionLabel = useMemo(() => getChunkSectionLabel(chunk), [chunk])

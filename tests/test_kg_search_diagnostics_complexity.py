@@ -117,7 +117,7 @@ def _install_module(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
         RerankStrategy=_RerankStrategy,
         SearchConfig=_SearchConfig,
     )
-    add_module("app.rag.kg.search.searcher", KGSearcher=type("KGSearcher", (), {}))
+    add_module("app.rag.kg.search.searcher", search=None)
     add_module(
         "app.rag.kg.utils",
         get_logger=lambda _name: SimpleNamespace(debug=lambda *_a, **_k: None, warning=lambda *_a, **_k: None),
@@ -292,7 +292,7 @@ def test_run_kg_search_diagnostics_deterministic_scope_order_and_schema(
         {"events": [_event(chunk_miss, title="hardcase hit")], "entities": [], "clues": [], "stats": {}},
     ]
     fake_searcher = _FakeSearcher(responses)
-    monkeypatch.setattr(module, "KGSearcher", lambda: fake_searcher)
+    monkeypatch.setattr(module, "search_kg", fake_searcher.search)
     monkeypatch.setattr(module, "_load_cases", lambda *_a, **_k: (2, [case_scoped, case_failed]))
     monkeypatch.setattr(
         module,
@@ -400,7 +400,7 @@ def test_run_kg_search_diagnostics_preflight_and_llm_hardcases(
         },
     ]
     fake_searcher = _FakeSearcher(responses)
-    monkeypatch.setattr(module, "KGSearcher", lambda: fake_searcher)
+    monkeypatch.setattr(module, "search_kg", fake_searcher.search)
     monkeypatch.setattr(module, "_load_cases", lambda *_a, **_k: (1, [case]))
     monkeypatch.setattr(module, "_resolve_ground_truth_event_ids", lambda *_a, **_k: ["gt"])
     monkeypatch.setattr(module, "_ground_truth_has_skill", lambda *_a, **_k: False)

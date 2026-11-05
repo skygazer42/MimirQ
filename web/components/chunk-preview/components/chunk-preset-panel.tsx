@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bookmark, Loader2, RefreshCw, Save } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
@@ -19,23 +19,14 @@ import {
 import { cn, detachPromise } from '@/lib/utils'
 import { chunkPresetApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import type { ChunkPreset, DocumentPipelineOptions, JsonObject } from '@/types'
+import { decodeSeparatorInput, getPresetSeparator } from '../utils/separators'
 
 function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)))
-}
-
-function decodeSeparatorInput(raw: string) {
-  const value = (raw || '').trim()
-  if (!value) return ''
-  try {
-    const escapedValue = value.replaceAll('"', String.raw`\"`)
-    return JSON.parse(`"${escapedValue}"`)
-  } catch {
-    return value
-  }
 }
 
 type ChunkPresetPayload = JsonObject & {
@@ -84,22 +75,28 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   const [saveAsName, setSaveAsName] = useState('')
   const [saveAsDescription, setSaveAsDescription] = useState('')
   const [saving, setSaving] = useState(false)
+  const mountedRef = useRef(false)
+  const scopeRevisionRef = useRef(0)
+  const listRequestRef = useRef(0)
+  const saveRef = useRef<{ sessionRevision: number } | null>(null)
+  const draftRevisionRef = useRef(0)
+
+  useEffect(() => {
+    mountedRef.current = true
+    setSaving(false)
+    return () => {
+      mountedRef.current = false
+      scopeRevisionRef.current += 1
+      listRequestRef.current += 1
+      saveRef.current = null
+    }
+  }, [datasetId])
 
   const selectedPreset = useMemo(() => items.find((p) => p.id === selectedId) || null, [items, selectedId])
 
   const effectiveSeparator = useMemo(() => {
-    const presetMap: Record<string, string> = {
-      paragraph: '\n\n',
-      line: '\n',
-      sentence_cn: '。', // cn
-      sentence_en: '.', // en
-      markdown_hr: '---',
-      markdown_h1: '# ',
-      markdown_h2: '## ',
-    }
-
     if (separatorPreset && separatorPreset !== 'custom') {
-      return presetMap[separatorPreset] ?? '\n\n'
+      return getPresetSeparator(separatorPreset)
     }
 
     const raw = String(separatorCustom || '').trim()
@@ -173,6 +170,14 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
   }
 
   const refresh = useCallback(async () => {
+    const request = ++listRequestRef.current
+    const scope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      mountedRef.current &&
+      listRequestRef.current === request &&
+      getAuthCacheScope() === scope &&
+      getAuthSessionRevision() === sessionRevision
     setLoading(true)
     try {
       const ds = (datasetId || '').trim()
@@ -180,29 +185,40 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         limit: 200,
         ...(ds ? { dataset_id: ds, include_global: true } : {}),
       })
+      if (!isCurrent()) return
       const next = res?.items || []
       setItems(next)
-      if (selectedId && !next.some((p) => p.id === selectedId)) {
-        setSelectedId('')
-      }
+      setSelectedId((previous) => (previous && !next.some((preset) => preset.id === previous) ? '' : previous))
     } catch (error: unknown) {
-      toast.error(formatApiError(error, t('chunkPresetPanel.loadFailed')))
+      if (isCurrent()) toast.error(formatApiError(error, t('chunkPresetPanel.loadFailed')))
     } finally {
-      setLoading(false)
+      if (mountedRef.current && listRequestRef.current === request) setLoading(false)
     }
-  }, [datasetId, selectedId, t])
+  }, [datasetId, t])
 
   useEffect(() => {
     detachPromise(refresh())
   }, [refresh])
 
   const onSave = async () => {
+    const sessionRevision = getAuthSessionRevision()
+    if (saveRef.current?.sessionRevision === sessionRevision) return
     if (!selectedPreset) {
+      draftRevisionRef.current += 1
       setSaveAsName('')
       setSaveAsDescription('')
       setSaveAsOpen(true)
       return
     }
+    const save = { sessionRevision }
+    saveRef.current = save
+    const scopeRevision = scopeRevisionRef.current
+    const authScope = getAuthCacheScope()
+    const isCurrent = () =>
+      mountedRef.current &&
+      scopeRevisionRef.current === scopeRevision &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setSaving(true)
     try {
       const payload = buildPayload()
@@ -211,22 +227,38 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         description: selectedPreset.description ?? null,
         payload,
       })
+      if (!isCurrent()) return
       await refresh()
-      toast.success(t('chunkPresetPanel.updated'))
+      if (isCurrent()) toast.success(t('chunkPresetPanel.updated'))
     } catch (error: unknown) {
-      toast.error(formatApiError(error, t('chunkPresetPanel.saveFailed')))
+      if (isCurrent()) toast.error(formatApiError(error, t('chunkPresetPanel.saveFailed')))
     } finally {
-      setSaving(false)
+      if (saveRef.current === save) {
+        saveRef.current = null
+        if (mountedRef.current) setSaving(false)
+      }
     }
   }
 
   const onSaveAs = async () => {
+    const sessionRevision = getAuthSessionRevision()
+    if (saveRef.current?.sessionRevision === sessionRevision) return
     const name = (saveAsName || '').trim()
     if (!name) {
       toast.error(t('chunkPresetPanel.nameRequired'))
       return
     }
 
+    const save = { sessionRevision }
+    saveRef.current = save
+    const scopeRevision = scopeRevisionRef.current
+    const draftRevision = draftRevisionRef.current
+    const authScope = getAuthCacheScope()
+    const isCurrent = () =>
+      mountedRef.current &&
+      scopeRevisionRef.current === scopeRevision &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setSaving(true)
     try {
       const payload = buildPayload()
@@ -235,14 +267,20 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         description: (saveAsDescription || '').trim() || null,
         payload,
       })
+      if (!isCurrent()) return
       await refresh()
+      if (!isCurrent() || draftRevisionRef.current !== draftRevision) return
       setSelectedId(created.id)
       setSaveAsOpen(false)
       toast.success(t('chunkPresetPanel.createdAndSelected'))
     } catch (error: unknown) {
-      toast.error(formatApiError(error, t('chunkPresetPanel.createFailed')))
+      if (isCurrent() && draftRevisionRef.current === draftRevision)
+        toast.error(formatApiError(error, t('chunkPresetPanel.createFailed')))
     } finally {
-      setSaving(false)
+      if (saveRef.current === save) {
+        saveRef.current = null
+        if (mountedRef.current) setSaving(false)
+      }
     }
   }
 
@@ -289,6 +327,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         <Select
           value={selectedId || '__none__'}
           onValueChange={(value) => {
+            draftRevisionRef.current += 1
             const nextId = value === '__none__' ? '' : value
             setSelectedId(nextId)
             const preset = items.find((p) => p.id === nextId)
@@ -334,6 +373,7 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
               variant="ghost"
               className="h-7 rounded-md px-2.5 text-[11px] text-muted-foreground hover:bg-muted/55 hover:text-foreground"
               onClick={() => {
+                draftRevisionRef.current += 1
                 setSaveAsName(`${selectedPreset.name} ${t('chunkPresetPanel.copySuffix')}`)
                 setSaveAsDescription(selectedPreset.description || '')
                 setSaveAsOpen(true)
@@ -346,7 +386,13 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
         </div>
       </div>
 
-      <Dialog open={saveAsOpen} onOpenChange={setSaveAsOpen}>
+      <Dialog
+        open={saveAsOpen}
+        onOpenChange={(open) => {
+          draftRevisionRef.current += 1
+          setSaveAsOpen(open)
+        }}
+      >
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{t('chunkPresetPanel.dialogTitle')}</DialogTitle>
@@ -358,7 +404,10 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
               <div className="text-xs font-medium text-muted-foreground">{t('chunkPresetPanel.name')}</div>
               <Input
                 value={saveAsName}
-                onChange={(e) => setSaveAsName(e.target.value)}
+                onChange={(e) => {
+                  draftRevisionRef.current += 1
+                  setSaveAsName(e.target.value)
+                }}
                 placeholder={t('chunkPresetPanel.namePlaceholder')}
               />
             </div>
@@ -366,7 +415,10 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
               <div className="text-xs font-medium text-muted-foreground">{t('chunkPresetPanel.description')}</div>
               <Textarea
                 value={saveAsDescription}
-                onChange={(e) => setSaveAsDescription(e.target.value)}
+                onChange={(e) => {
+                  draftRevisionRef.current += 1
+                  setSaveAsDescription(e.target.value)
+                }}
                 placeholder={t('chunkPresetPanel.descriptionPlaceholder')}
                 className="min-h-[80px]"
               />
@@ -374,7 +426,15 @@ export function ChunkPresetPanel({ className }: Readonly<{ className?: string }>
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setSaveAsOpen(false)} disabled={saving}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                draftRevisionRef.current += 1
+                setSaveAsOpen(false)
+              }}
+              disabled={saving}
+            >
               {commonT('cancel')}
             </Button>
             <Button type="button" onClick={() => detachPromise(onSaveAs())} disabled={saving}>

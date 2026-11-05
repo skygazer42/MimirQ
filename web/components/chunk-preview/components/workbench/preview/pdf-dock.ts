@@ -1,10 +1,21 @@
 import { readClientStorage } from '@/lib/client-storage'
+import type { ChunkPreviewResponse } from '@/types'
 
 export const ORIGINAL_PREVIEW_MODE_STORAGE_KEY = 'mimirq_chunk_preview_original_preview_mode_v1'
 
 const VALID_PREVIEW_MODES = new Set(['raw', 'rendered', 'editor', 'pdf'] as const)
 
 export type OriginalPreviewMode = 'raw' | 'rendered' | 'editor' | 'pdf'
+
+export function isPdfOriginalFile(
+  preview: Pick<ChunkPreviewResponse, 'file_type'> | null,
+  file: Pick<File, 'name'> | null,
+): boolean {
+  if (String(preview?.file_type || '').toLowerCase() === 'pdf') return true
+  return String(file?.name || '')
+    .toLowerCase()
+    .endsWith('.pdf')
+}
 
 export function getStoredOriginalPreviewMode(): OriginalPreviewMode | null {
   if (globalThis.window === undefined) return null

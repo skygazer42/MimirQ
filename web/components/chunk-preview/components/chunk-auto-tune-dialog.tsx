@@ -8,7 +8,7 @@
  */
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Wand2, Loader2, X, Download } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
@@ -22,6 +22,7 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
 import { detachPromise } from '@/lib/utils'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 
 type TuneCandidate = {
   chunkSize: number
@@ -82,6 +83,24 @@ export function ChunkAutoTuneDialog() {
   const [topN, setTopN] = useState(5)
 
   const [results, setResults] = useState<TuneCandidate[]>([])
+
+  useEffect(() => {
+    setResults([])
+    setRunning(false)
+    return () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    }
+  }, [
+    currentFile,
+    datasetId,
+    parserBackend,
+    chunkStrategy,
+    parentChildRatio,
+    parentChildMinChildSize,
+    pipelineCtx.enabled,
+    pipelineCtx.options,
+  ])
 
   const sha = previewData?.file_sha256
   const fileType = previewData?.file_type
@@ -170,6 +189,13 @@ export function ChunkAutoTuneDialog() {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      abortRef.current === controller &&
+      !controller.signal.aborted &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
 
     setRunning(true)
     setResults([])
@@ -198,7 +224,7 @@ export function ChunkAutoTuneDialog() {
 
     try {
       for (let i = 0; i < candidates.length; i += 1) {
-        if (controller.signal.aborted) break
+        if (!isCurrent()) break
         const c = candidates[i]
         const t0 = performance.now()
         try {
@@ -210,6 +236,7 @@ export function ChunkAutoTuneDialog() {
             },
             { signal: controller.signal },
           )
+          if (!isCurrent()) break
           const dur = Math.max(0, Math.round(performance.now() - t0))
           const s = res.stats
           out.push({
@@ -230,6 +257,7 @@ export function ChunkAutoTuneDialog() {
             quality: res.quality_gate ?? null,
           })
         } catch (err: unknown) {
+          if (!isCurrent()) break
           out.push({
             chunkSize: c.chunkSize,
             chunkOverlap: c.chunkOverlap,
@@ -241,10 +269,17 @@ export function ChunkAutoTuneDialog() {
         if (i % 2 === 1) setResults([...out])
       }
     } finally {
-      setResults([...out])
-      setRunning(false)
+      if (isCurrent()) setResults([...out])
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setRunning(false)
+      }
       const total = Math.max(0, Math.round(performance.now() - started))
-      if (!controller.signal.aborted) {
+      if (
+        !controller.signal.aborted &&
+        getAuthCacheScope() === authScope &&
+        getAuthSessionRevision() === sessionRevision
+      ) {
         toast.success(
           t('autoTune.toasts.completed', {
             okCount: out.filter((x) => x.ok).length,
@@ -279,7 +314,7 @@ export function ChunkAutoTuneDialog() {
     updateSettings({ chunkSize: c.chunkSize, chunkOverlap: c.chunkOverlap })
     setOpen(false)
     // Force a fresh preview so the user sees the actual chunk output.
-    await runPreview({ force: true })
+    await runPreview({ force: true, settings: { chunkSize: c.chunkSize, chunkOverlap: c.chunkOverlap } })
   }
 
   return (

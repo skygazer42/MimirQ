@@ -13,7 +13,7 @@ Optional persistence (compact run snapshots) is handled at the API layer.
 
 import asyncio
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
@@ -42,7 +42,7 @@ from app.rag.evaluation.kg_hardcase_generator import generate_hardcases_llm
 from app.rag.evaluation.kg_search_diagnostics_metrics import compute_kg_hit_metrics
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.search.config import RerankStrategy, SearchConfig
-from app.rag.kg.search.searcher import KGSearcher
+from app.rag.kg.search.searcher import search as search_kg
 from app.rag.kg.utils import get_logger
 from app.services.regression_run_scope import validate_case_ids_belong_to_dataset
 
@@ -676,7 +676,7 @@ def _build_search_config(
 
 
 async def _run_search(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     query: str,
@@ -700,7 +700,7 @@ async def _run_search(
         graph_embeddings_enabled=graph_embeddings_enabled,
     )
     try:
-        raw = await searcher.search(cfg)
+        raw = await search(cfg)
         return _SearchOutcome(
             cfg=cfg,
             raw_events=list((raw or {}).get("events") or []),
@@ -759,7 +759,7 @@ def _evaluated_run_to_result(query: str, evaluated: _EvaluatedSearch) -> KGSearc
 
 
 async def _run_evaluated_search(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     query: str,
@@ -774,7 +774,7 @@ async def _run_evaluated_search(
     graph_embeddings_enabled: bool | None = None,
 ) -> _EvaluatedSearch:
     outcome = await _run_search(
-        searcher,
+        search,
         scope=scope,
         query=query,
         relation_expansion_enabled=relation_expansion_enabled,
@@ -821,7 +821,7 @@ def _ablation_result_payload(run: _EvaluatedSearch) -> dict[str, Any]:
 
 
 async def _run_rerank_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -832,7 +832,7 @@ async def _run_rerank_ablation(
     base = baseline.outcome.cfg.rerank.strategy
     alt = RerankStrategy.RRF if base == RerankStrategy.PAGERANK else RerankStrategy.PAGERANK
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -851,7 +851,7 @@ async def _run_rerank_ablation(
 
 
 async def _run_relation_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -861,7 +861,7 @@ async def _run_relation_ablation(
 ) -> tuple[dict[str, Any], bool]:
     base_rel = bool((baseline.relation_debug or {}).get("enabled"))
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -880,7 +880,7 @@ async def _run_relation_ablation(
 
 
 async def _run_path_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -890,7 +890,7 @@ async def _run_path_ablation(
 ) -> tuple[dict[str, Any], bool]:
     base_expand = bool(getattr(baseline.outcome.cfg.expand, "enabled", True))
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -909,7 +909,7 @@ async def _run_path_ablation(
 
 
 async def _run_skill_nodes_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -918,7 +918,7 @@ async def _run_skill_nodes_ablation(
     baseline: _EvaluatedSearch,
 ) -> tuple[dict[str, Any], bool]:
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -936,7 +936,7 @@ async def _run_skill_nodes_ablation(
 
 
 async def _run_case_ablations(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     case_ctx: _CaseContext,
@@ -957,7 +957,7 @@ async def _run_case_ablations(
     for key, cause, runner in steps:
         try:
             payload, hit = await runner(
-                searcher,
+                search,
                 scope=scope,
                 question=case_ctx.question,
                 evidence_set=case_ctx.evidence_set,
@@ -1038,7 +1038,7 @@ def _build_case_item(
 
 
 async def _evaluate_case(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     db: Session,
     tenant_id: UUID,
@@ -1054,14 +1054,14 @@ async def _evaluate_case(
         scope_doc_uuids=case_ctx.scope_doc_uuids,
     )
     baseline = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=case_ctx.question,
         evidence_set=case_ctx.evidence_set,
         k=limits.k,
     )
     ablations, override = await _run_case_ablations(
-        searcher,
+        search,
         scope=scope,
         case_ctx=case_ctx,
         baseline=baseline,
@@ -1324,7 +1324,7 @@ def _queue_llm_hardcase_case(
 
 
 async def _append_hardcase_runs(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     evidence_set: set[str],
@@ -1336,7 +1336,7 @@ async def _append_hardcase_runs(
     for hardcase in hardcases:
         state.hardcases_generated += 1
         evaluated = await _run_evaluated_search(
-            searcher,
+            search,
             scope=scope,
             query=str(hardcase.question),
             evidence_set=set(evidence_set),
@@ -1354,7 +1354,7 @@ async def _append_hardcase_runs(
 
 
 async def _run_deterministic_hardcases_for_case(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     db: Session,
     tenant_id: UUID,
@@ -1377,7 +1377,7 @@ async def _run_deterministic_hardcases_for_case(
     if hardcases:
         state.note_deterministic_case_used()
     await _append_hardcase_runs(
-        searcher,
+        search,
         scope=evaluation.scope,
         evidence_set=evaluation.ctx.evidence_set,
         k=limits.k,
@@ -1398,7 +1398,7 @@ async def _load_kg_diagnostics_llm_client() -> Any | None:
 
 
 async def _run_llm_hardcases(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -1432,7 +1432,7 @@ async def _run_llm_hardcases(
             scope_doc_uuids=pending.scope_doc_uuids,
         )
         await _append_hardcase_runs(
-            searcher,
+            search,
             scope=scope,
             evidence_set=pending.evidence_set,
             k=limits.k,
@@ -1513,10 +1513,10 @@ async def run_kg_search_diagnostics(
         preflight=state.preflight,
     )
 
-    searcher = KGSearcher()
+    search = search_kg
     for case in cases:
         evaluation = await _evaluate_case(
-            searcher,
+            search,
             db=db,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -1529,7 +1529,7 @@ async def run_kg_search_diagnostics(
 
         if _should_generate_deterministic_hardcases(limits, state, evaluation):
             await _run_deterministic_hardcases_for_case(
-                searcher,
+                search,
                 db=db,
                 tenant_id=tenant_id,
                 limits=limits,
@@ -1545,7 +1545,7 @@ async def run_kg_search_diagnostics(
         )
 
     await _run_llm_hardcases(
-        searcher,
+        search,
         tenant_id=tenant_id,
         account_id=account_id,
         limits=limits,
