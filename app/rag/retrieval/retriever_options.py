@@ -57,6 +57,16 @@ def _resolve_hybrid_search_options(
     return replace(options, **legacy_overrides)
 
 
+def retrieval_cache_runtime_values() -> dict[str, Any]:
+    """Bind candidate, semantic and answer caches to the same retrieval configuration."""
+    prefixes = ("BM25_", "MILVUS_BM25_", "COLBERT_", "COLPALI_", "LEXICAL_", "RERANK", "RETRIEVAL_", "SPARSE_")
+    return {
+        key: value
+        for key, value in settings.model_dump(mode="json").items()
+        if key.startswith(prefixes) or key == "VECTOR_BACKEND"
+    }
+
+
 def _build_retrieval_cache_behavior_hash(
     *,
     retriever: "HybridRetriever",
@@ -65,12 +75,7 @@ def _build_retrieval_cache_behavior_hash(
     option_values = asdict(options)
     if options.document_ids:
         option_values["document_ids"] = sorted({str(document_id) for document_id in options.document_ids})
-    prefixes = ("BM25_", "COLBERT_", "COLPALI_", "LEXICAL_", "RERANK", "RETRIEVAL_", "SPARSE_")
-    runtime = {
-        key: value
-        for key, value in settings.model_dump(mode="json").items()
-        if key.startswith(prefixes) or key == "VECTOR_BACKEND"
-    }
+    runtime = retrieval_cache_runtime_values()
     return stable_json_hash(
         {"options": option_values, "retriever": retriever.model_dump(mode="json"), "runtime": runtime},
         length=24,
@@ -112,6 +117,7 @@ def _metadata_filter_has_dataset_scope(metadata_filter: dict[str, Any] | None) -
 
 __all__ = [
     "HybridSearchOptions",
+    "retrieval_cache_runtime_values",
     "_build_retrieval_cache_behavior_hash",
     "_dataset_scoped_runtime_lookup_error",
     "_metadata_filter_has_dataset_scope",

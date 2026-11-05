@@ -428,6 +428,9 @@ class CorpusIndex:
             self._store.initialize()
         for start in range(0, len(documents), batch_size):
             self._store.upsert(documents[start : start + batch_size], tenant_id=scope.tenant_id)
+        corpus_cache_tokens.invalidate_corpus_cache_scope(
+            db, tenant_id=scope.tenant_id, dataset_ids=scope.dataset_ids, document_ids=scope.document_ids
+        )
         self._invalidate_derived_indexes(scope.tenant_id)
         return len(documents)
 
@@ -458,8 +461,12 @@ class CorpusIndex:
         key = self.scope_key(scope)
         native = bm25_available()
         if native:
+            if not documents:
+                self._store.initialize()
             for start in range(0, len(documents), batch_size):
                 self._store.upsert(documents[start : start + batch_size], tenant_id=tenant_id)
+            corpus_cache_tokens.invalidate_corpus_cache_scope(db, tenant_id=tenant_id, dataset_ids=scope.dataset_ids)
+            self._invalidate_derived_indexes(tenant_id)
         if settings.SPARSE_RETRIEVAL_ENABLED and documents:
             self.artifacts.sparse._build_sparse_index(
                 cache_key=key,

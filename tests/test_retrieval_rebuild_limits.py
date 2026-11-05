@@ -52,6 +52,9 @@ def test_disabled_rebuild_cap_skips_the_count_query(monkeypatch):
 
 
 def test_rebuild_persisted_retrieval_indexes_builds_under_cap(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.corpus_cache_tokens.invalidate_corpus_cache_scope", lambda *_args, **_kwargs: None
+    )
     from app.core.config import settings
 
     monkeypatch.setattr(settings, "VECTOR_BACKEND", "milvus")

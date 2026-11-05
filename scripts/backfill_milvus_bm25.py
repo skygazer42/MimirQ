@@ -50,6 +50,8 @@ def main(argv: list[str] | None = None) -> int:
         result = run_backfill(
             db=db, corpus_index=get_corpus_index(), scope=scope, apply=args.apply, batch_size=args.batch_size
         )
+        if args.apply:
+            db.commit()
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))
     return 0
 

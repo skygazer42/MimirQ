@@ -98,6 +98,9 @@ assert 'app.rag.retriever' not in sys.modules
 
 
 def test_rebuild_published_corpus_batches_native_upserts_and_keeps_dataset_ids(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.corpus_cache_tokens.invalidate_corpus_cache_scope", lambda *_args, **_kwargs: None
+    )
     from app.core.config import settings
     from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
 

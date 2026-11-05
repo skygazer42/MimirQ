@@ -34,7 +34,10 @@
     "tests/test_retrieval_rebuild_limits.py",
     "tests/test_production_database_startup.py",
     "tests/test_rag_complexity_batch2.py",
-    "tests/test_robustness_redundancy_fixes.py"
+    "tests/test_robustness_redundancy_fixes.py",
+    "tests/test_milvus_bm25_review_boundaries.py",
+    "tests/test_chat_cache_corpus_invalidation.py",
+    "tests/test_chat_response_cache_does_not_cross_scopes.py"
   ],
   "excluded_baseline_tests": [
     "test_all_retrieval_failures_build_engine_error_message",

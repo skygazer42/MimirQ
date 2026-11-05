@@ -249,3 +249,37 @@ def test_true_or_branch_does_not_push_an_optional_dataset_constraint():
     assert len(result) == 1
     call = next(value for name, value in client.calls if name == "search")
     assert call["filter"] == f'tenant_id == "{tenant}"'
+
+
+@pytest.mark.parametrize("delete_fails", [False, True])
+def test_complex_filter_delete_trims_foreign_references_and_closes_iterator(delete_fails):
+    from types import SimpleNamespace
+
+    tenant, dataset, document = uuid4(), uuid4(), uuid4()
+    allowed = _hit(tenant, dataset, document)
+    denied = _hit(tenant, dataset, document, tag="denied")
+    foreign = _hit(uuid4(), dataset, document)
+    rows = [{"id": hit["id"], **hit["entity"]} for hit in [allowed, denied, foreign]]
+    batches = iter([rows, []])
+    closed = []
+    iterator = SimpleNamespace(next=lambda: next(batches), close=lambda: closed.append(True))
+    client = Client()
+    client.query_iterator = lambda **kwargs: iterator
+    writes = []
+
+    def delete(**kwargs):
+        writes.append(kwargs)
+        if delete_fails:
+            raise RuntimeError("native delete unavailable")
+        return {"delete_count": len(kwargs["ids"])}
+
+    client.delete = delete
+    owner = _owner(client)
+    if delete_fails:
+        with pytest.raises(RuntimeError, match="native delete unavailable"):
+            owner.delete(tenant_id=tenant, metadata_filter={"tag": "allowed"})
+    else:
+        assert owner.delete(tenant_id=tenant, metadata_filter={"tag": "allowed"}) == 1
+    assert writes[0]["ids"] == [allowed["id"]]
+    assert "filter" not in writes[0]
+    assert closed == [True]

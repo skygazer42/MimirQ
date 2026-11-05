@@ -17,6 +17,14 @@ def corpus_db(monkeypatch):
     monkeypatch.setattr(settings, "BM25_INDEX_ENABLED", True)
     engine = create_engine("sqlite://")
     metadata = MetaData()
+    Table(
+        "datasets",
+        metadata,
+        Column("id", Uuid, primary_key=True),
+        Column("tenant_id", Uuid),
+        Column("updated_at", DateTime(timezone=True)),
+        Column("metadata", JSON, key="dataset_metadata"),
+    )
     documents = Table(
         "documents",
         metadata,
@@ -25,6 +33,7 @@ def corpus_db(monkeypatch):
         Column("dataset_id", Uuid),
         Column("status", String),
         Column("publication_status", String),
+        Column("updated_at", DateTime(timezone=True)),
         Column("archived_at", DateTime),
         Column("disabled_at", DateTime),
         Column("metadata", JSON, key="doc_metadata"),
@@ -48,6 +57,13 @@ def corpus_db(monkeypatch):
 
 
 def _document(db, table, tenant, dataset, *, published=True):
+    datasets = table.metadata.tables["datasets"]
+    if db.scalar(datasets.select().where(datasets.c.id == dataset)) is None:
+        db.execute(
+            datasets.insert().values(
+                id=dataset, tenant_id=tenant, updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc), dataset_metadata={}
+            )
+        )
     document = uuid4()
     db.execute(
         table.insert().values(
@@ -56,6 +72,7 @@ def _document(db, table, tenant, dataset, *, published=True):
             dataset_id=dataset,
             status="completed",
             publication_status="published" if published else "draft",
+            updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )
     )
     return document
@@ -200,3 +217,142 @@ def test_backfill_does_not_restore_disabled_archived_or_old_pipeline_chunks(corp
     store = Store()
     assert CorpusIndex(bm25_store=store).rebuild(db, scope=CorpusScope(tenant, (dataset,))) == 1
     assert [doc.id for doc in store.calls[0][1]] == [expected]
+
+
+@pytest.mark.parametrize("scope_kind", ["dataset", "document", "multi_dataset", "tenant"])
+def test_successful_backfill_rotates_all_affected_cache_scopes_without_committing(corpus_db, scope_kind):
+    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+
+    db, documents, chunks = corpus_db
+    tenant, first_dataset, second_dataset, foreign_tenant, foreign_dataset = (uuid4() for _ in range(5))
+    ids = []
+    for owner, dataset in [(tenant, first_dataset), (tenant, second_dataset), (foreign_tenant, foreign_dataset)]:
+        document = _document(db, documents, owner, dataset)
+        ids.append(document)
+        db.execute(
+            chunks.insert().values(
+                id=uuid4(), tenant_id=owner, document_id=document, chunk_index=0, content="source", doc_metadata={}
+            )
+        )
+    db.commit()
+    corpus = CorpusIndex(bm25_store=Store())
+    tracked = [
+        CorpusScope(tenant, (first_dataset,)),
+        CorpusScope(tenant, document_ids=(ids[0],)),
+        CorpusScope(tenant, (second_dataset,)),
+        CorpusScope(tenant, document_ids=(ids[1],)),
+        CorpusScope(foreign_tenant, (foreign_dataset,)),
+        CorpusScope(foreign_tenant, document_ids=(ids[2],)),
+    ]
+    before = [corpus.resolve_version(item, db=db) for item in tracked]
+    assert all(before)
+    scopes = {
+        "dataset": CorpusScope(tenant, (first_dataset,)),
+        "document": CorpusScope(tenant, document_ids=(ids[0],)),
+        "multi_dataset": CorpusScope(tenant, (first_dataset, second_dataset)),
+        "tenant": CorpusScope(tenant),
+    }
+    corpus.rebuild(db, scope=scopes[scope_kind], batch_size=1)
+    after = [corpus.resolve_version(item, db=db) for item in tracked]
+    assert after[0] != before[0] and after[1] != before[1]
+    assert (after[2] != before[2]) is (scope_kind in {"multi_dataset", "tenant"})
+    assert (after[3] != before[3]) is (scope_kind in {"multi_dataset", "tenant"})
+    assert after[4:] == before[4:]
+    db.rollback()
+    assert [corpus.resolve_version(item, db=db) for item in tracked] == before
+
+
+def test_failed_native_backfill_does_not_publish_cache_revisions(corpus_db):
+    from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
+
+    db, documents, chunks = corpus_db
+    tenant, dataset = uuid4(), uuid4()
+    document = _document(db, documents, tenant, dataset)
+    for index in range(2):
+        db.execute(
+            chunks.insert().values(
+                id=uuid4(), tenant_id=tenant, document_id=document, chunk_index=index, content="source", doc_metadata={}
+            )
+        )
+    db.commit()
+    store = Store()
+    calls = []
+
+    def fail_second(rows, **kwargs):
+        calls.append(rows)
+        if len(calls) == 2:
+            raise RuntimeError("native batch failed")
+
+    store.upsert = fail_second
+    corpus = CorpusIndex(bm25_store=store)
+    scope = CorpusScope(tenant, (dataset,))
+    before = corpus.resolve_version(scope, db=db)
+    with pytest.raises(RuntimeError, match="native batch failed"):
+        corpus.rebuild(db, scope=scope, batch_size=1)
+    assert len(calls) == 2
+    assert corpus.resolve_version(scope, db=db) == before
+
+
+def test_empty_persisted_rebuild_initializes_the_real_native_schema(corpus_db):
+    pytest.importorskip("pymilvus")
+    from app.rag.retrieval.corpus_index import CorpusIndex
+    from app.storage.bm25.milvus import MilvusBM25Store
+    from tests.test_milvus_native_bm25 import Client
+
+    db, _, _ = corpus_db
+    client = Client(exists=False)
+    result = CorpusIndex(bm25_store=MilvusBM25Store(client=client)).rebuild_persisted_retrieval_indexes(
+        db, tenant_id=uuid4()
+    )
+    assert result["bm25_rebuilt"] is True
+    assert client.exists is True
+    assert any(name == "create" for name, _ in client.calls)
+
+
+@pytest.mark.parametrize("apply", [False, True])
+def test_backfill_cli_commits_only_explicit_apply(apply, monkeypatch, capsys):
+    from app.core import database
+    from scripts import backfill_milvus_bm25 as cli
+
+    class Session:
+        commits = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def commit(self):
+            self.commits += 1
+
+    db = Session()
+    monkeypatch.setattr(database, "SessionLocal", lambda: db)
+    monkeypatch.setattr(cli, "run_backfill", lambda **kwargs: {"mode": "apply" if kwargs["apply"] else "dry-run"})
+    assert cli.main(["--tenant-id", str(uuid4()), *(["--apply"] if apply else [])]) == 0
+    assert db.commits == int(apply)
+
+
+def test_legacy_persisted_rebuild_cli_commits_its_owned_revision_transaction(monkeypatch):
+    from app.core import database
+    from app.rag.retriever import HybridRetriever
+    from scripts import rebuild_retrieval_indexes as cli
+
+    class Session:
+        commits = 0
+        closed = False
+
+        def commit(self):
+            self.commits += 1
+
+        def close(self):
+            self.closed = True
+
+    db = Session()
+    monkeypatch.setattr(database, "SessionLocal", lambda: db)
+    monkeypatch.setattr(
+        HybridRetriever, "rebuild_persisted_retrieval_indexes", lambda *_args, **_kwargs: {"doc_count": 0}
+    )
+    monkeypatch.setattr("sys.argv", ["rebuild_retrieval_indexes.py", "--tenant-id", str(uuid4())])
+    assert cli.main() == 0
+    assert db.commits == 1 and db.closed

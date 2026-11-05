@@ -30,7 +30,7 @@ from app.rag.pipeline_plugins.contracts import (
     RETRIEVAL_TEXT_METADATA_KEY,
 )
 from app.rag.preprocessing.normalization import normalize_text
-from app.rag.retrieval.corpus_index import get_corpus_index
+from app.rag.retrieval.corpus_index import bm25_available, get_corpus_index
 from app.services.dataset_embedding_config import (
     DatasetEmbeddingRuntimeConfig,
     collection_name_for_embedding_space,
@@ -2312,7 +2312,7 @@ class Indexer:
         tenant_id: UUID,
         document_ids: list[UUID] | None = None,
     ) -> None:
-        if not settings.BM25_INDEX_ENABLED:
+        if not bm25_available():
             return
         count = get_corpus_index().rebuild_bm25_index_for_operational_scope(
             self._db,
