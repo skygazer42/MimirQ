@@ -1,11 +1,12 @@
 'use client'
 
 import { useCallback, useRef, useState } from 'react'
+import type { ReactNode, PointerEvent as ReactPointerEvent, MouseEvent as ReactMouseEvent } from 'react'
 
 import { cn } from '@/lib/utils'
 
 type ParsingRightPanelProps = {
-  children: React.ReactNode
+  children: ReactNode
   className?: string
   dragScroll?: boolean
 }
@@ -31,7 +32,7 @@ export function ParsingRightPanel({ children, className, dragScroll = false }: R
   }, [])
 
   const handlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (!dragScroll || event.pointerType !== 'mouse' || event.button !== 0) return
 
       const target = event.target as HTMLElement | null
@@ -57,7 +58,7 @@ export function ParsingRightPanel({ children, className, dragScroll = false }: R
     [dragScroll],
   )
 
-  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     const container = containerRef.current
     const dragState = dragStateRef.current
     if (!container || dragState?.pointerId !== event.pointerId) return
@@ -81,7 +82,7 @@ export function ParsingRightPanel({ children, className, dragScroll = false }: R
   }, [])
 
   const handlePointerUp = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       const dragState = dragStateRef.current
       if (dragState?.pointerId !== event.pointerId) return
       clearDragState()
@@ -89,7 +90,7 @@ export function ParsingRightPanel({ children, className, dragScroll = false }: R
     [clearDragState],
   )
 
-  const handleClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+  const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
     if (!suppressClickRef.current) return
     suppressClickRef.current = false
     event.preventDefault()

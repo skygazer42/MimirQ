@@ -1,24 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import { useTranslations } from 'next-intl'
 
 import { toast } from 'sonner'
 
-import { parsingApi } from '@/lib/api'
+import { parsingApi } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { restoreParsingRunFromMarkdown } from '@/lib/parsing-run-restore'
 import { detachPromise } from '@/lib/utils'
 import { type ParsedFileData } from '@/store/use-parsed-files-store'
-import { type FileStatus } from '@/components/ui/file-queue-item'
+import type { ParsingContentResponse } from '@/lib/api/parsing'
 
 import type { ParseFailureDiagnostics, ParsedFile } from './parsing-types'
-
-type MutableRef<T> = {
-  current: T
-}
+import { bumpParsingProgress, countMarkdownHeadings, mapBackendStatusToLibraryStatus } from './parsing-page-utils'
 
 function estimateTableCount(markdownContent: string): number {
   const tableMatches = markdownContent.match(/\|.*\|/g) || []
@@ -29,16 +26,13 @@ function estimateTableCount(markdownContent: string): number {
 type UseParsingRunActionsOptions = {
   activeFile: ParsedFile | null
   autoParseFileId: string | null
-  bumpParsingProgress: (prev: ParsedFile[], fileId: string) => ParsedFile[]
   cancelParse: (fileId: string) => void
-  countMarkdownHeadings: (markdown: string) => number
-  fileIdSetRef: MutableRef<Set<string>>
-  filesRef: MutableRef<ParsedFile[]>
+  fileIdSetRef: RefObject<Set<string>>
+  filesRef: RefObject<ParsedFile[]>
   imageCaptionEnabled: boolean
   imageOcrEnabled: boolean
-  mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
-  parseControllersRef: MutableRef<Map<string, AbortController>>
-  parseProgressIntervalsRef: MutableRef<Map<string, ReturnType<typeof setInterval>>>
+  parseControllersRef: RefObject<Map<string, AbortController>>
+  parseProgressIntervalsRef: RefObject<Map<string, ReturnType<typeof setInterval>>>
   parserBackend: string
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
   setAutoParseFileId: Dispatch<SetStateAction<string | null>>
@@ -51,7 +45,7 @@ type UseParsingRunActionsOptions = {
   vlmCorrectionEnabled: boolean
 }
 
-function getMarkdownStats(markdownContent: string, apiStats: Record<string, unknown> | undefined, blockCount: number) {
+function getMarkdownStats(markdownContent: string, apiStats: ParsingContentResponse['stats'], blockCount: number) {
   return {
     charCount: markdownContent.length,
     lineCount: markdownContent.split('\n').length,
@@ -69,14 +63,11 @@ function getMarkdownStats(markdownContent: string, apiStats: Record<string, unkn
 export function useParsingRunActions({
   activeFile,
   autoParseFileId,
-  bumpParsingProgress,
   cancelParse,
-  countMarkdownHeadings,
   fileIdSetRef,
   filesRef,
   imageCaptionEnabled,
   imageOcrEnabled,
-  mapBackendStatusToLibraryStatus,
   parseControllersRef,
   parseProgressIntervalsRef,
   parserBackend,
@@ -238,13 +229,8 @@ export function useParsingRunActions({
           ? Number(data.parse_duration_sec)
           : fallbackDurationSec
         const runId = `${resolvedBackend}-${Date.now()}`
-        const stats = getMarkdownStats(
-          markdownContent,
-          data.stats as Record<string, unknown> | undefined,
-          blocks.length,
-        )
+        const stats = getMarkdownStats(markdownContent, data.stats, blocks.length)
         stats.headingCount = countMarkdownHeadings(markdownContent)
-        const responseExtras = data as unknown as { pdf_quality?: unknown; quality_gate?: unknown }
 
         const run = {
           id: runId,
@@ -255,8 +241,8 @@ export function useParsingRunActions({
           blocks,
           elements: data.elements || [],
           createdAt: Date.now(),
-          pdfQuality: responseExtras.pdf_quality ?? null,
-          qualityGate: responseExtras.quality_gate ?? null,
+          pdfQuality: data.pdf_quality ?? null,
+          qualityGate: data.quality_gate ?? null,
         }
 
         setFiles((prev) =>
@@ -273,8 +259,8 @@ export function useParsingRunActions({
                   duration: durationSec,
                   stats,
                   elements: data.elements || [],
-                  pdfQuality: responseExtras.pdf_quality ?? null,
-                  qualityGate: responseExtras.quality_gate ?? null,
+                  pdfQuality: data.pdf_quality ?? null,
+                  qualityGate: data.quality_gate ?? null,
                   runs: [...(item.runs || []), run],
                   activeRunId: runId,
                 }
@@ -337,14 +323,11 @@ export function useParsingRunActions({
       }
     },
     [
-      bumpParsingProgress,
       cancelParse,
-      countMarkdownHeadings,
       fileIdSetRef,
       filesRef,
       imageCaptionEnabled,
       imageOcrEnabled,
-      mapBackendStatusToLibraryStatus,
       parseControllersRef,
       parseProgressIntervalsRef,
       parserBackend,

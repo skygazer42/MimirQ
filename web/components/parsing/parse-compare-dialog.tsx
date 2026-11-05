@@ -15,19 +15,9 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { diffParsingElements } from '@/lib/parsing-element-diff'
 import { cn } from '@/lib/utils'
-import type { ParsingElement } from '@/lib/api/parsing'
+import type { ParseCompareRun } from './parsing-types'
 
-export type ParseCompareRun = {
-  id: string
-  parserBackend?: string
-  parserLabel?: string
-  rawMarkdown: string
-  cleanedMarkdown?: string
-  createdAt?: number
-  elements?: ParsingElement[]
-}
-
-type Props = {
+type ParseCompareDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   runs: ParseCompareRun[]
@@ -50,7 +40,13 @@ function safeTime(run: ParseCompareRun): string {
   }
 }
 
-export function ParseCompareDialog({ open, onOpenChange, runs, defaultBaseRunId, onUseRun }: Readonly<Props>) {
+export function ParseCompareDialog({
+  open,
+  onOpenChange,
+  runs,
+  defaultBaseRunId,
+  onUseRun,
+}: Readonly<ParseCompareDialogProps>) {
   const [mode, setMode] = useState<CompareMode>('cleaned')
   const [baseId, setBaseId] = useState<string>('')
   const [compareId, setCompareId] = useState<string>('')

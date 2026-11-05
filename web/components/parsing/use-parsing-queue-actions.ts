@@ -6,7 +6,8 @@ import { useTranslations } from 'next-intl'
 
 import { toast } from 'sonner'
 
-import { documentApi, parsingApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
+import { parsingApi } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
 import { ROOT_FOLDER_ID, type ParsedFileData } from '@/store/use-parsed-files-store'
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ReactNode, PointerEvent as ReactPointerEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -11,7 +12,7 @@ import { Button } from '@/components/ui/button'
 type ParsingLeftPanelProps = {
   collapsed: boolean
   onToggleCollapsed: () => void
-  children: React.ReactNode
+  children: ReactNode
   className?: string
 }
 
@@ -46,6 +47,9 @@ export function ParsingLeftPanel({
     startWidth: number
     startX: number
   } | null>(null)
+  const resizeCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => resizeCleanupRef.current?.(), [])
 
   useEffect(() => {
     setSidebarWidth(readStoredParsingLeftPanelWidth())
@@ -60,11 +64,12 @@ export function ParsingLeftPanel({
   }, [])
 
   const handleResizePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
       if (collapsed) {
         return
       }
 
+      resizeCleanupRef.current?.()
       event.preventDefault()
       resizeStateRef.current = {
         currentWidth: sidebarWidth,
@@ -79,10 +84,13 @@ export function ParsingLeftPanel({
 
       const controller = new AbortController()
       const restorePageInteraction = () => {
+        resizeStateRef.current = null
         document.body.style.cursor = previousCursor
         document.body.style.userSelect = previousUserSelect
         controller.abort()
+        if (resizeCleanupRef.current === restorePageInteraction) resizeCleanupRef.current = null
       }
+      resizeCleanupRef.current = restorePageInteraction
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
         const resizeState = resizeStateRef.current
@@ -118,7 +126,7 @@ export function ParsingLeftPanel({
   )
 
   const handleResizeKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
       if (collapsed) {
         return
       }

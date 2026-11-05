@@ -17,19 +17,19 @@ export type BboxOverlayItem = {
   position: ParsingPosition
 }
 
-export function BboxOverlay(
-  props: Readonly<{
-    items: BboxOverlayItem[]
-    scale: number
-    pageBaseWidth?: number | null
-    pageBaseHeight?: number | null
-    showAll: boolean
-    activeIds: Set<string>
-    hoveredIds: Set<string>
-    onHoverId?: (id: string | null) => void
-    onClickId?: (id: string, hint?: ParsingEditFocusHint) => void
-  }>,
-) {
+type BboxOverlayProps = {
+  items: BboxOverlayItem[]
+  scale: number
+  pageBaseWidth?: number | null
+  pageBaseHeight?: number | null
+  showAll: boolean
+  activeIds: Set<string>
+  hoveredIds: Set<string>
+  onHoverId?: (id: string | null) => void
+  onClickId?: (id: string, hint?: ParsingEditFocusHint) => void
+}
+
+export function BboxOverlay(props: Readonly<BboxOverlayProps>) {
   const { items, scale, pageBaseWidth, pageBaseHeight, showAll, activeIds, hoveredIds, onHoverId, onClickId } = props
   const coordinateSpace = detectPdfBboxCoordinateSpace({
     items,

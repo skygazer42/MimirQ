@@ -9,6 +9,11 @@ import {
   type Dispatch,
   type RefObject,
   type SetStateAction,
+  type ReactNode,
+  type ChangeEvent as ReactChangeEvent,
+  type DragEvent as ReactDragEvent,
+  type PointerEvent as ReactPointerEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from 'react'
 import {
   AlertCircle,
@@ -45,7 +50,7 @@ import {
   KNOWLEDGE_OPS_SUMMARY_PANEL_CLASS,
 } from '@/components/ui/knowledge-ops-hero'
 import { WorkbenchPanelDialog, WorkbenchScaffold } from '@/components/workbench'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import type { ParsingElement } from '@/lib/api/parsing'
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
@@ -57,8 +62,7 @@ import type { ParsingBlock } from '@/lib/parsing-positions'
 import { type FolderNode, ROOT_FOLDER_ID, type ParsedFileData } from '@/store/use-parsed-files-store'
 
 import { countMarkdownHeadings, getLibraryStatusBadge } from './parsing-page-utils'
-import type { ParsedFile, ParseRun } from './parsing-types'
-import type { ParsingLibrarySourceStatus } from './use-parsing-page-state'
+import type { ParsedFile, ParseRun, ParsingLibrarySourceStatus } from './parsing-types'
 
 type ParsingWorkbenchShellProps = {
   activeBlockId: string | null
@@ -88,12 +92,12 @@ type ParsingWorkbenchShellProps = {
   folders: FolderNode[]
   handleCancelEdit: () => void
   handleDeleteFolder: (folderIds: string[]) => void
-  handleFileDragStart: (event: React.DragEvent<HTMLElement>, fileId: string) => void
-  handleFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>
+  handleFileDragStart: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
+  handleFileSelect: (event: ReactChangeEvent<HTMLInputElement>) => Promise<void>
   handleFolderDragLeave: () => void
-  handleFolderDragOver: (event: React.DragEvent<HTMLElement>, folderId: string) => void
-  handleFolderDrop: (event: React.DragEvent<HTMLElement>, folderId: string) => void
-  handleRebindFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>
+  handleFolderDragOver: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
+  handleFolderDrop: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
+  handleRebindFileSelect: (event: ReactChangeEvent<HTMLInputElement>) => Promise<void>
   handleSaveEdit: () => Promise<void>
   handleSelectRun: (runId: string) => void
   handleStartEdit: () => void
@@ -244,15 +248,13 @@ function parsingGovernanceButtonClass(canSubmitToGovernance: boolean) {
   return 'border-info/20 bg-info/[0.10] text-info/70'
 }
 
-function ParsingInspectorCard({
-  title,
-  icon: Icon,
-  children,
-}: Readonly<{
+type ParsingInspectorCardProps = {
   title: string
   icon: typeof Info
-  children: React.ReactNode
-}>) {
+  children: ReactNode
+}
+
+function ParsingInspectorCard({ title, icon: Icon, children }: Readonly<ParsingInspectorCardProps>) {
   return (
     <section className="rounded-[18px] border border-border/60 bg-background/55 p-4 shadow-[0_14px_34px_-30px_rgba(15,23,42,0.24)]">
       <div className="mb-3 flex items-center gap-2">
@@ -266,17 +268,19 @@ function ParsingInspectorCard({
   )
 }
 
+type ParsingInspectorDisclosureProps = {
+  title: string
+  icon: typeof Info
+  children: ReactNode
+  defaultOpen?: boolean
+}
+
 function ParsingInspectorDisclosure({
   title,
   icon: Icon,
   children,
   defaultOpen = false,
-}: Readonly<{
-  title: string
-  icon: typeof Info
-  children: React.ReactNode
-  defaultOpen?: boolean
-}>) {
+}: Readonly<ParsingInspectorDisclosureProps>) {
   return (
     <details
       open={defaultOpen}
@@ -299,11 +303,11 @@ function ParsingInspectorDisclosure({
   )
 }
 
-function ParsingMetricGrid({
-  items,
-}: Readonly<{
+type ParsingMetricGridProps = {
   items: Array<{ label: string; value: string | number }>
-}>) {
+}
+
+function ParsingMetricGrid({ items }: Readonly<ParsingMetricGridProps>) {
   return (
     <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/55 bg-muted/15">
       {items.map((item) => (
@@ -341,15 +345,15 @@ const PARSING_STATUS_METRIC_TONES: Record<ParsingStatusMetricTone, { card: strin
   },
 }
 
-function ParsingStatusMetricGrid({
-  items,
-}: Readonly<{
+type ParsingStatusMetricGridProps = {
   items: Array<{
     label: string
     tone: ParsingStatusMetricTone
     value: string | number
   }>
-}>) {
+}
+
+function ParsingStatusMetricGrid({ items }: Readonly<ParsingStatusMetricGridProps>) {
   return (
     <div className="grid grid-cols-2 gap-2">
       {items.map((item) => {
@@ -375,6 +379,31 @@ function ParsingStatusMetricGrid({
   )
 }
 
+type ParsingInspectorPanelProps = {
+  activeFile: ParsedFile | null
+  activeLibraryFile: ParsedFileData | null
+  activeLibraryFolderPathLabel: string
+  activeLibraryStatusBadge: ReturnType<typeof getLibraryStatusBadge> | null
+  activeMarkdown: string
+  copied: boolean
+  parsedCount: number
+  parsingCount: number
+  pendingCount: number
+  parserBackend: string
+  queueFileCount: number
+  readyGovernanceCount: number
+  selectedDatasetId: string | null
+  selectedReadyGovernanceCount: number
+  scopeFileCount: number
+  onCopyMarkdown: () => void
+  onDownloadMarkdown: () => void
+  onParseFile: (fileId: string) => void
+  onRestoreLibraryFile: (autoParse: boolean) => void
+  onRequestRebindLibraryFile: (autoParse: boolean) => void
+  onSubmitSelectedToGovernance: () => void
+  onSubmitToGovernance: () => void
+}
+
 function ParsingInspectorPanel({
   activeFile,
   activeLibraryFile,
@@ -398,30 +427,7 @@ function ParsingInspectorPanel({
   onRequestRebindLibraryFile,
   onSubmitSelectedToGovernance,
   onSubmitToGovernance,
-}: Readonly<{
-  activeFile: ParsedFile | null
-  activeLibraryFile: ParsedFileData | null
-  activeLibraryFolderPathLabel: string
-  activeLibraryStatusBadge: ReturnType<typeof getLibraryStatusBadge> | null
-  activeMarkdown: string
-  copied: boolean
-  parsedCount: number
-  parsingCount: number
-  pendingCount: number
-  parserBackend: string
-  queueFileCount: number
-  readyGovernanceCount: number
-  selectedDatasetId: string | null
-  selectedReadyGovernanceCount: number
-  scopeFileCount: number
-  onCopyMarkdown: () => void
-  onDownloadMarkdown: () => void
-  onParseFile: (fileId: string) => void
-  onRestoreLibraryFile: (autoParse: boolean) => void
-  onRequestRebindLibraryFile: (autoParse: boolean) => void
-  onSubmitSelectedToGovernance: () => void
-  onSubmitToGovernance: () => void
-}>) {
+}: Readonly<ParsingInspectorPanelProps>) {
   const selectedName = activeFile?.file.name || activeLibraryFile?.filename || ''
   const selectedSize = activeFile?.file.size ?? activeLibraryFile?.fileSize ?? null
   const selectedParser = activeFile?.parserLabel || activeLibraryFile?.parser || getParserLabel(parserBackend)
@@ -747,11 +753,11 @@ function ParsingInspectorPanel({
   )
 }
 
-function ResizableParsingInspectorRail({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+type ResizableParsingInspectorRailProps = {
+  children: ReactNode
+}
+
+function ResizableParsingInspectorRail({ children }: Readonly<ResizableParsingInspectorRailProps>) {
   const [inspectorWidth, setInspectorWidth] = useState(DEFAULT_PARSING_INSPECTOR_WIDTH)
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
   const resizeStateRef = useRef<{
@@ -759,6 +765,9 @@ function ResizableParsingInspectorRail({
     startWidth: number
     startX: number
   } | null>(null)
+  const resizeCleanupRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => () => resizeCleanupRef.current?.(), [])
 
   useEffect(() => {
     setInspectorWidth(readStoredParsingInspectorWidth())
@@ -773,7 +782,8 @@ function ResizableParsingInspectorRail({
   }, [])
 
   const handleResizePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLDivElement>) => {
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      resizeCleanupRef.current?.()
       event.preventDefault()
       resizeStateRef.current = {
         currentWidth: inspectorWidth,
@@ -788,10 +798,13 @@ function ResizableParsingInspectorRail({
 
       const controller = new AbortController()
       const restorePageInteraction = () => {
+        resizeStateRef.current = null
         document.body.style.cursor = previousCursor
         document.body.style.userSelect = previousUserSelect
         controller.abort()
+        if (resizeCleanupRef.current === restorePageInteraction) resizeCleanupRef.current = null
       }
+      resizeCleanupRef.current = restorePageInteraction
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
         const resizeState = resizeStateRef.current
@@ -827,7 +840,7 @@ function ResizableParsingInspectorRail({
   )
 
   const handleResizeKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
       const step = event.shiftKey ? 32 : 16
       const nextWidthByKey: Record<string, number | undefined> = {
         ArrowLeft: inspectorWidth + step,

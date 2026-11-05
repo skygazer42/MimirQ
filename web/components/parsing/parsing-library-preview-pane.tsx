@@ -20,11 +20,7 @@ import { cn } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import type { ParsedFileData } from '@/store/use-parsed-files-store'
-
-type StatusBadge = {
-  label: string
-  cls: string
-}
+import type { LibraryStatusBadge } from './parsing-page-utils'
 
 type ParsingLibraryPreviewPaneProps = {
   file: ParsedFileData
@@ -33,7 +29,7 @@ type ParsingLibraryPreviewPaneProps = {
   folderPathLabel: string
   sourceStatus: 'unknown' | 'available' | 'missing'
   defaultParserBackend: string
-  statusBadge?: StatusBadge | null
+  statusBadge?: LibraryStatusBadge | null
   onClose: () => void
   onUpdateParser: (backend: string) => void
   onReprocessKnowledgeFile: (backend: string) => void

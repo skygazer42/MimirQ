@@ -3,13 +3,12 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
+import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import type { ParsingEditSession } from '@/lib/parsing-edit-focus'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 
-import type { ParsedFile } from './parsing-types'
-
-export type ParsingLibrarySourceStatus = 'unknown' | 'available' | 'missing'
+import type { ParsedFile, ParsingLibrarySourceStatus } from './parsing-types'
 
 type UseParsingPageStateOptions = {
   files: ParsedFile[]
@@ -90,33 +89,27 @@ export function useParsingPageState({ files, setFiles }: Readonly<UseParsingPage
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    const stored = globalThis.window.localStorage.getItem('mimirq_parsing_image_caption_enabled')
+    const stored = readClientStorage('mimirq_parsing_image_caption_enabled')
     if (stored === 'true') setImageCaptionEnabled(true)
-    const imageOcrStored = globalThis.window.localStorage.getItem('mimirq_parsing_image_ocr_enabled')
+    const imageOcrStored = readClientStorage('mimirq_parsing_image_ocr_enabled')
     if (imageOcrStored === 'true') setImageOcrEnabled(true)
-    const vlmCorrectionStored = globalThis.window.localStorage.getItem('mimirq_parsing_vlm_correction_enabled')
+    const vlmCorrectionStored = readClientStorage('mimirq_parsing_vlm_correction_enabled')
     if (vlmCorrectionStored === 'true') setVlmCorrectionEnabled(true)
   }, [])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem(
-      'mimirq_parsing_image_caption_enabled',
-      imageCaptionEnabled ? 'true' : 'false',
-    )
+    writeClientStorage('mimirq_parsing_image_caption_enabled', imageCaptionEnabled ? 'true' : 'false')
   }, [imageCaptionEnabled])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem('mimirq_parsing_image_ocr_enabled', imageOcrEnabled ? 'true' : 'false')
+    writeClientStorage('mimirq_parsing_image_ocr_enabled', imageOcrEnabled ? 'true' : 'false')
   }, [imageOcrEnabled])
 
   useEffect(() => {
     if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem(
-      'mimirq_parsing_vlm_correction_enabled',
-      vlmCorrectionEnabled ? 'true' : 'false',
-    )
+    writeClientStorage('mimirq_parsing_vlm_correction_enabled', vlmCorrectionEnabled ? 'true' : 'false')
   }, [vlmCorrectionEnabled])
 
   const setQueueFileParserBackend = useCallback(
