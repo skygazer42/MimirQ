@@ -378,7 +378,7 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "/data/actions-runner" not in workflow
     assert "127.0.0.1:35983" not in workflow
     assert "docker build --network host" in workflow
-    assert workflow.count("docker build --network host") == 2
+    assert workflow.count("docker build --network host") == 3
     assert "docker/setup-buildx-action" not in workflow
     assert "docker/build-push-action" not in workflow
     assert "Prepare Docker build proxy" in workflow
@@ -668,7 +668,10 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert 'python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID"' in docker_job
     assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in docker_job
     assert "Set up Docker Buildx" not in docker_job
-    assert docker_job.count("docker build --network host") == 2
+    assert docker_job.count("docker build --network host") == 3
+    assert "--build-arg REQUIREMENTS_FILE=requirements-chroma.txt" in docker_job
+    assert "-t mimirq-backend-chroma-ci -f docker/Dockerfile ." in docker_job
+    assert docker_job.count("MIMIRQ_BACKEND_IMAGE: mimirq-backend-chroma-ci") == 5
     assert "--build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY" in docker_job
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job

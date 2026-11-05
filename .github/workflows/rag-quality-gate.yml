@@ -57,13 +57,13 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-dev.txt
+            requirements-faiss.txt
 
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
           python -m pip install --retries 10 --timeout 120 \
-            --extra-index-url https://download.pytorch.org/whl/cpu \
-            -r requirements-dev.txt
+            -r requirements-dev.txt -r requirements-faiss.txt
 
       - name: Require explicit real-provider configuration
         run: |

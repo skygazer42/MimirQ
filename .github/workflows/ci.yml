@@ -397,6 +397,13 @@ jobs:
             --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
             -t mimirq-backend -f docker/Dockerfile .
 
+      - name: Build Chroma backend image for retrieval smoke
+        run: |
+          docker build --network host \
+            --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
+            --build-arg REQUIREMENTS_FILE=requirements-chroma.txt \
+            -t mimirq-backend-chroma-ci -f docker/Dockerfile .
+
       - name: Build web image
         run: |
           docker build --network host \
@@ -489,7 +496,7 @@ jobs:
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
           MARKDOWN_IMAGE_PROXY_SECRET: ci-markdown-image-proxy-secret
-          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend-chroma-ci
         run: |
           compose=(docker compose -f docker/docker-compose.retrieval-dev.yml)
           if ! "${compose[@]}" up -d --no-build --wait --wait-timeout 300; then
@@ -524,7 +531,7 @@ jobs:
         env:
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
-          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend-chroma-ci
         run: |
           mkdir -p artifacts
           api2_name="mimirq-api-secondary-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -547,7 +554,7 @@ jobs:
         env:
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-ci-${{ github.run_id }}-${{ github.run_attempt }}
-          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend-chroma-ci
         run: |
           docker rm -f "mimirq-web-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" || true
           docker compose -f docker/docker-compose.retrieval-dev.yml down -v --remove-orphans
@@ -556,7 +563,7 @@ jobs:
         env:
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-ci-live-${{ github.run_id }}-${{ github.run_attempt }}
-          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend-chroma-ci
           AUTH_MODE_RETRIEVAL_DEV: header
           UPLOAD_DEDUP_ENABLED_RETRIEVAL_DEV: "true"
           RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"
@@ -597,7 +604,7 @@ jobs:
         env:
           BACKEND_PORT: "0"
           COMPOSE_PROJECT_NAME: mimirq-ci-live-${{ github.run_id }}-${{ github.run_attempt }}
-          MIMIRQ_BACKEND_IMAGE: mimirq-backend
+          MIMIRQ_BACKEND_IMAGE: mimirq-backend-chroma-ci
           AUTH_MODE_RETRIEVAL_DEV: header
           UPLOAD_DEDUP_ENABLED_RETRIEVAL_DEV: "true"
           RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_RETRIEVAL_DEV: "true"

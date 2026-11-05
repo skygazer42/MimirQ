@@ -31,8 +31,8 @@
 **Files:**
 - Modify: `requirements.txt`, `docker/Dockerfile`, `docker/docker-compose.yml`, `docker/docker-compose.lite.yml`, `docker/docker-compose.retrieval-dev.yml`, `Makefile`, `scripts/audit.ps1`.
 - Create: `requirements-local-models.txt`, `requirements-chroma.txt`, `requirements-faiss.txt`, `requirements-ci.txt`.
-- Modify: `.github/workflows/ci.yml`, `.github/workflows/api-docs.yml`, `docs/guides/dependencies.md`.
-- Test: existing `tests/test_dependency_audit_contract.py`, `tests/test_ci_workflow_contracts.py`.
+- Modify: `.github/workflows/ci.yml`, `.github/workflows/api-docs.yml`, `.github/workflows/rag-quality-gate.yml`, `docs/guides/dependencies.md`.
+- Test: existing `tests/test_dependency_audit_contract.py`, `tests/test_ci_workflow_contracts.py`, `tests/rag/evaluation/test_rag_quality_gate.py`.
 
 **Interfaces:**
 - Consumes: existing pinned requirement versions, CPU wheel manifest, existing Compose backend defaults.
@@ -44,5 +44,5 @@
 - [x] Remove mandatory Torch installation from the default image and documentation CI; wire actual CI/Compose consumers and audit coverage.
 - [x] Rewrite installation guidance and complete the Agent Note.
 - [x] Resolve the complete core graph for Linux 3.11 and Windows 3.12; verify excluded packages stay absent.
-- [ ] Run relevant contract/static/note/Compose checks, inspect the final diff, and request one fresh code review.
+- [x] Run relevant contract/static/note/Compose checks, inspect the final diff, and request one fresh code review.
 - [ ] Transfer only reviewed task files into the original checkout, preserving concurrent work.

@@ -14,6 +14,8 @@ Status: implemented
 
 `requirements-ci.txt` 汇合开发与可选配置，仅供既有完整后端回归使用。主 Docker 构建默认安装基础配置，通过 `REQUIREMENTS_FILE` 选择显式配置；已有 lite/retrieval-dev Compose 选择 Chroma 配置以保持已有存储语义。文档 CI 使用基础配置，FAISS 专用回归显式安装对应配置。依赖审计覆盖所有受支持配置。
 
+Docker CI 同时保留默认基础镜像与独立的 `mimirq-backend-chroma-ci` 镜像。五个复用镜像的检索、JWT 与清理入口统一选择后者，避免 `--no-build` 绕过 Compose 的安装配置。夜间 FAISS 评测显式叠加 FAISS 配置，其已有词法夹具不能替代该依赖声明。
+
 `rank-bm25` 保留：知识库混合检索和聊天记忆均通过 LangChain BM25Retriever 使用它。本次不迁移索引、不更改默认向量后端或模型配置，也不卸载现有开发环境。
 
 ## Alternatives considered
@@ -25,7 +27,7 @@ Status: implemented
 ## Testing
 
 - 基础配置使用 uv 完整解析：Linux/Python 3.11 为 234 个包，Windows/Python 3.12 为 232 个包；两份图均不包含 Torch、torchvision、sentence-transformers、Chroma、FAISS、HanLP、Accelerate、langchain-chroma 或 nvidia-*。完整 CI 配置也完成 Linux 解析；验证工具对多个受信任源采用与 pip 相同的候选匹配方式，不改变项目包管理器。
-- 相关既有依赖、CI、可选导入、远程 Embedding 和解析隔离检查共 71 项通过。基础版本先复现主安装仍包含重依赖的失败，再验证拆分结果。检查同时修正既有 Windows 路径分隔符断言，以及受前端格式化影响的 CI 字符串断言。
+- 相关既有依赖、CI、可选导入、远程 Embedding、解析隔离和评测配置检查共 78 项通过。基础版本先复现主安装仍包含重依赖的失败，再验证拆分结果。独立复核发现的预构建镜像和夜间 FAISS 配置均先复现契约检查失败，再修正并通过验证。检查同时修正既有 Windows 路径分隔符断言，以及受前端格式化影响的 CI 字符串断言。
 - Docker Compose 实际配置展开确认主 API/worker 使用基础配置，lite/retrieval-dev 使用 Chroma 配置。只展开配置，不启动容器或完整服务栈。
 - 主 Dockerfile 和文档 CI 不再预装 Torch；本地模型 CPU 版本与既有校验 wheel 清单保持一致。安装文档记录每个配置的用途、BM25 的保留原因，以及现有环境不会自动卸载旧包。
 
