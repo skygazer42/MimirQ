@@ -4,12 +4,17 @@ Split out of ``app.rag.kg.api.routes`` (see ``app.rag.kg.api.routes_support``).
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from app.rag.kg.schemas import KGGraphResponse
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 
 
 class KGGraphProjectionParams(BaseModel):
@@ -69,33 +74,33 @@ class KGSnapshotCounts:
     entities: int
     links: int
     relations: int
-    updated_at: Any
+    updated_at: "datetime | None"
     entity_types: list[dict[str, Any]]
 
 
 @dataclass
 class KGSnapshotDetailRows:
-    events: list[Any]
-    entities: list[Any]
-    links: list[Any]
-    relations: list[Any]
+    events: list["KgSourceEvent"]
+    entities: list["KgEntity"]
+    links: list["KgEventEntity"]
+    relations: list["KgRelation"]
 
 
 @dataclass
 class KGMergeTargets:
     source_id: UUID
     target_id: UUID
-    source_entity: Any
-    target_entity: Any
+    source_entity: "KgEntity"
+    target_entity: "KgEntity"
 
 
 @dataclass
 class KGMergeAffectedRows:
-    source_assocs: list[Any]
+    source_assocs: list["KgEventEntity"]
     source_assoc_ids: set[str]
     assoc_snapshot_by_id: dict[str, dict[str, Any]]
     impacted_event_ids: set[UUID]
-    source_relations: list[Any]
+    source_relations: list["KgRelation"]
     source_relation_ids: set[str]
     relation_snapshot_by_id: dict[str, dict[str, Any]]
 

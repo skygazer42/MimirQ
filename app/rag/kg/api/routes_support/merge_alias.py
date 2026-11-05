@@ -7,7 +7,7 @@ Function-local (deferred) imports are preserved verbatim.
 import contextlib
 import uuid
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -24,25 +24,28 @@ from app.rag.kg.api.routes_support.projection import (
 from app.rag.kg.api.routes_support.schemas import KGMergeAffectedRows, KGMergeTargets
 from app.rag.kg.schemas import KGEntityAliasSuggestionItem, KGEntityAliasSuggestionsResponse
 
+if TYPE_CHECKING:
+    from app.rag.kg.models import KgEntity, KgEntityRedirect, KgEntityResolutionAction, KgEventEntity, KgRelation
+
 
 def _offline_alias_suggestions(
     db: Session,
-    entity_model: Any,
+    entity_model: type["KgEntity"],
     *,
     tenant_id: UUID,
-    entity: Any,
+    entity: "KgEntity",
     resolved_id: UUID,
     want_k: int,
     min_similarity: float,
 ) -> KGEntityAliasSuggestionsResponse:
     from sqlalchemy import and_  # noqa: WPS433
 
-    norm = str(getattr(entity, "normalized_name", "") or "").strip()
+    norm = str(entity.normalized_name or "").strip()
     prefix = norm[:4] if len(norm) >= 4 else norm
     query = db.query(entity_model).filter(
         and_(
             entity_model.tenant_id == tenant_id,
-            entity_model.type == getattr(entity, "type", None),
+            entity_model.type == entity.type,
             entity_model.id != resolved_id,
         )
     )
@@ -91,7 +94,7 @@ def _vector_alias_suggestions(
     db: Session,
     *,
     tenant_id: UUID,
-    entity: Any,
+    entity: "KgEntity",
     resolved_id: UUID,
     want_k: int,
 ) -> KGEntityAliasSuggestionsResponse:
@@ -103,7 +106,7 @@ def _vector_alias_suggestions(
             query_vector=list(entity.vector),
             tenant_id=tenant_id,
             k=max(1, int(want_k)),
-            entity_type=str(getattr(entity, "type", "") or None) or None,
+            entity_type=str(entity.type or None) or None,
         )
         suggestions = [
             _vector_alias_suggestion_item(hit)
@@ -136,7 +139,9 @@ def _vector_alias_suggestion_item(hit: dict[str, Any]) -> KGEntityAliasSuggestio
     )
 
 
-def _entity_relation_rows(db: Session, relation_model: Any, *, tenant_id: UUID, entity_id: UUID) -> list[Any]:
+def _entity_relation_rows(
+    db: Session, relation_model: type["KgRelation"], *, tenant_id: UUID, entity_id: UUID
+) -> list[Any]:
     rel_rows = []
     rel_rows.extend(db.query(relation_model).filter_by(tenant_id=tenant_id, subject_entity_id=entity_id).all())
     rel_rows.extend(db.query(relation_model).filter_by(tenant_id=tenant_id, object_entity_id=entity_id).all())
@@ -150,7 +155,7 @@ def _entity_relation_rows(db: Session, relation_model: Any, *, tenant_id: UUID, 
 
 def _merge_targets(
     db: Session,
-    entity_model: Any,
+    entity_model: type["KgEntity"],
     *,
     tenant_id: UUID,
     source_raw: UUID,
@@ -178,8 +183,8 @@ def _merge_affected_rows(
     *,
     tenant_id: UUID,
     source_id: UUID,
-    event_entity_model: Any,
-    relation_model: Any,
+    event_entity_model: type["KgEventEntity"],
+    relation_model: type["KgRelation"],
 ) -> KGMergeAffectedRows:
     source_assocs = db.query(event_entity_model).filter_by(entity_id=source_id).all()
     source_relations = _entity_relation_rows(db, relation_model, tenant_id=tenant_id, entity_id=source_id)
@@ -205,7 +210,7 @@ def _merge_affected_rows(
 
 
 def _create_merge_action(
-    action_model: Any,
+    action_model: type["KgEntityResolutionAction"],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -265,7 +270,7 @@ def _add_resolution_audit_log(
 
 def _ensure_merge_redirect(
     db: Session,
-    redirect_model: Any,
+    redirect_model: type["KgEntityRedirect"],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -313,7 +318,7 @@ def _apply_merge_relation_updates(
 
 def _dedupe_merged_event_entity_edges(
     db: Session,
-    event_entity_model: Any,
+    event_entity_model: type["KgEventEntity"],
     *,
     source_id: UUID,
     target_id: UUID,
@@ -380,7 +385,7 @@ def _merge_duplicate_assoc_fields(keep: Any, rows: list[Any]) -> None:
 
 
 def _delete_source_entity_vector_if_enabled(source_id: UUID) -> bool:
-    if not bool(getattr(settings, "KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED", False)):
+    if not bool(settings.KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED):
         return False
     try:
         from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name  # noqa: WPS433

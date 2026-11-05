@@ -3,8 +3,9 @@ import contextlib
 import gzip
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 # GraphML export only constructs and serializes a new tree; no untrusted XML is parsed.
@@ -121,6 +122,10 @@ from app.rag.kg.schemas import (
 )
 from app.services import dataset_service
 from app.services.document_access import filter_allowed_document_ids
+
+if TYPE_CHECKING:
+    from app.rag.kg.models import KgEntity, KgEntityResolutionAction, KgEventEntity, KgRelation, KgSourceEvent
+    from app.rag.kg.schemas import KGGraphLink
 
 KG_EXTRACTION_ALREADY_QUEUED_DETAIL = _common_support.KG_EXTRACTION_ALREADY_QUEUED_DETAIL
 KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL = _common_support.KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL
@@ -499,21 +504,21 @@ def _search_kg_entity_nodes(
     return nodes
 
 
-def _kg_entity_search_node(ent: Any) -> KGGraphNode:
+def _kg_entity_search_node(ent: "KgEntity") -> KGGraphNode:
     return KGGraphNode(
         id=str(ent.id),
         label=(ent.name or "").strip() or str(ent.id),
-        group=_stable_group_for(getattr(ent, "type", "") or "unknown"),
+        group=_stable_group_for(ent.type or "unknown"),
         val=1,
         meta={
             "kind": "entity",
-            "type": getattr(ent, "type", None),
-            "normalized_name": getattr(ent, "normalized_name", None),
+            "type": ent.type,
+            "normalized_name": ent.normalized_name,
         },
     )
 
 
-def _kg_event_search_node(event: Any) -> KGGraphNode:
+def _kg_event_search_node(event: "KgSourceEvent") -> KGGraphNode:
     return KGGraphNode(
         id=str(event.id),
         label=(event.title or "").strip() or str(event.id),
@@ -983,7 +988,7 @@ def _kg_snapshot_detail_rows(
     return KGSnapshotDetailRows(events=event_rows, entities=entity_rows, links=link_rows, relations=relation_rows)
 
 
-def _kg_snapshot_event_node(event: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_event_node(event: "KgSourceEvent", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {
         "title": event.title,
         "summary": event.summary,
@@ -1000,7 +1005,7 @@ def _kg_snapshot_event_node(event: Any, canonical_json_hash: Any) -> dict[str, A
     }
 
 
-def _kg_snapshot_entity_node(entity: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_entity_node(entity: "KgEntity", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {
         "name": entity.name,
         "type": entity.type,
@@ -1017,7 +1022,7 @@ def _kg_snapshot_entity_node(entity: Any, canonical_json_hash: Any) -> dict[str,
     }
 
 
-def _kg_snapshot_link_edge(link: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_link_edge(link: "KgEventEntity", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {"role": link.role, "weight": str(link.weight), "extra_data": link.extra_data or {}}
     return {
         "id": f"event_entity:{link.id}",
@@ -1029,7 +1034,7 @@ def _kg_snapshot_link_edge(link: Any, canonical_json_hash: Any) -> dict[str, Any
     }
 
 
-def _kg_snapshot_relation_edge(relation: Any, canonical_json_hash: Any) -> dict[str, Any]:
+def _kg_snapshot_relation_edge(relation: "KgRelation", canonical_json_hash: Callable[[Any], str]) -> dict[str, Any]:
     props = {
         "predicate": relation.predicate,
         "predicate_raw": relation.predicate_raw,
@@ -1054,7 +1059,7 @@ def _add_kg_snapshot_details(
     rows: KGSnapshotDetailRows,
     counts: KGSnapshotCounts,
     detail_limit: int,
-    canonical_json_hash: Any,
+    canonical_json_hash: Callable[[Any], str],
 ) -> dict[str, Any]:
     snapshot["nodes"] = [
         *[_kg_snapshot_event_node(event, canonical_json_hash) for event in rows.events],
@@ -1176,11 +1181,11 @@ def compare_kg_snapshots(
     return diff_kg_snapshots(snap_a, snap_b)
 
 
-def _add_graphml_key(root: Any, *, key_id: str, kind: str, name: str, typ: str) -> None:
+def _add_graphml_key(root: ET.Element, *, key_id: str, kind: str, name: str, typ: str) -> None:
     ET.SubElement(root, "key", {"id": key_id, "for": kind, "attr.name": name, "attr.type": typ})
 
 
-def _build_graphml_root() -> tuple[Any, Any]:
+def _build_graphml_root() -> tuple[ET.Element, ET.Element]:
     graphml_xmlns = "http" + "://graphml.graphdrawing.org/xmlns"
     root = ET.Element("graphml", xmlns=graphml_xmlns)
     for key_id, kind, name, typ in (
@@ -1202,28 +1207,28 @@ def _build_graphml_root() -> tuple[Any, Any]:
     return root, graph_el
 
 
-def _add_graphml_node(graph_el: Any, node: Any) -> None:
+def _add_graphml_node(graph_el: ET.Element, node: KGGraphNode) -> None:
     n = ET.SubElement(graph_el, "node", {"id": str(node.id)})
-    meta = dict(getattr(node, "meta", {}) or {})
+    meta = dict(node.meta or {})
     ET.SubElement(n, "data", {"key": "d0"}).text = str(node.label or node.id)
     ET.SubElement(n, "data", {"key": "d1"}).text = str(meta.get("kind") or "")
     ET.SubElement(n, "data", {"key": "d2"}).text = str(meta.get("type") or "")
     ET.SubElement(n, "data", {"key": "d3"}).text = str(meta.get("normalized_name") or "")
     ET.SubElement(n, "data", {"key": "d4"}).text = str(meta.get("document_id") or "")
     ET.SubElement(n, "data", {"key": "d5"}).text = str(meta.get("chunk_id") or "")
-    ET.SubElement(n, "data", {"key": "d6"}).text = str(int(getattr(node, "group", 0) or 0))
-    ET.SubElement(n, "data", {"key": "d7"}).text = str(int(getattr(node, "val", 1) or 1))
+    ET.SubElement(n, "data", {"key": "d6"}).text = str(int(node.group or 0))
+    ET.SubElement(n, "data", {"key": "d7"}).text = str(int(node.val or 1))
 
 
-def _add_graphml_edge(graph_el: Any, idx: int, link: Any) -> None:
+def _add_graphml_edge(graph_el: ET.Element, idx: int, link: "KGGraphLink") -> None:
     edge = ET.SubElement(
         graph_el,
         "edge",
         {"id": f"e{idx}", "source": str(link.source), "target": str(link.target)},
     )
-    meta = dict(getattr(link, "meta", {}) or {})
-    ET.SubElement(edge, "data", {"key": "e0"}).text = str(getattr(link, "label", "") or "")
-    ET.SubElement(edge, "data", {"key": "e1"}).text = str(float(getattr(link, "weight", 1.0) or 1.0))
+    meta = dict(link.meta or {})
+    ET.SubElement(edge, "data", {"key": "e0"}).text = str(link.label or "")
+    ET.SubElement(edge, "data", {"key": "e1"}).text = str(float(link.weight or 1.0))
     ET.SubElement(edge, "data", {"key": "e2"}).text = str(meta.get("kind") or "")
     ET.SubElement(edge, "data", {"key": "e3"}).text = str(int(meta.get("shared_events") or 0))
 
@@ -1602,9 +1607,9 @@ def create_kg_entity_alias(
                 resource_id=str(resolved_id),
                 details={
                     "alias_hash": _audit_hash_text(alias_text),
-                    "alias_chars": int(len(alias_text)),
+                    "alias_chars": len(alias_text),
                     "normalized_alias_hash": _audit_hash_text(norm),
-                    "normalized_alias_chars": int(len(norm)),
+                    "normalized_alias_chars": len(norm),
                 },
             )
         )
@@ -1674,7 +1679,7 @@ def delete_kg_entity_alias(
         raise
 
     # Return the current alias set after deletion.
-    return list_kg_entity_aliases(entity_id=entity_id, tenant_id=tenant_id, account_id=account_id, db=db)
+    return list_kg_entity_aliases(entity_id=entity_id, tenant_id=tenant_id, _account_id=account_id, db=db)
 
 
 @router.get(
@@ -1780,11 +1785,11 @@ def preview_kg_entity_merge(
             "source_relations": len(rel_by_id),
             "self_relations_removed": int(self_rel_after),
             # Preview details (bounded) for UI conflict resolution workflows.
-            "source_events": int(len(source_event_ids)),
+            "source_events": len(source_event_ids),
             "source_event_ids_sample": source_event_sample,
             "overlap_event_ids_sample": overlap_event_sample,
             # Merge semantics: overlapping events will trigger a dedupe delete of the source association.
-            "event_entity_edges_deleted": int(len(overlap_events)),
+            "event_entity_edges_deleted": len(overlap_events),
             "event_entity_edges_updated": int(max(0, len(source_assocs) - len(overlap_events))),
         },
     )
@@ -1996,7 +2001,7 @@ def delete_kg_predicate_ontology(
         raise
 
     # Return updated list for convenience in the UI.
-    return list_kg_predicate_ontology(tenant_id=tenant_id, account_id=account_id, db=db)
+    return list_kg_predicate_ontology(tenant_id=tenant_id, _account_id=account_id, db=db)
 
 
 @router.post("/entities/merge", response_model=KGEntityMergeResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -2129,14 +2134,14 @@ def _split_new_entity_name(payload: KGEntitySplitRequest) -> str:
 
 
 def _create_split_entity(
-    entity_model: Any,
+    entity_model: type["KgEntity"],
     *,
     tenant_id: UUID,
-    source_entity: Any,
+    source_entity: "KgEntity",
     new_name: str,
     new_norm: str,
     original_id: UUID,
-) -> tuple[UUID, Any]:
+) -> tuple[UUID, "KgEntity"]:
     from datetime import datetime
 
     new_entity_id = uuid.uuid4()
@@ -2144,7 +2149,7 @@ def _create_split_entity(
         id=new_entity_id,
         tenant_id=tenant_id,
         name=new_name,
-        type=str(getattr(source_entity, "type", "") or "unknown"),
+        type=str(source_entity.type or "unknown"),
         normalized_name=new_norm,
         description=None,
         vector=None,
@@ -2187,7 +2192,7 @@ def _move_split_relations(
 
 
 def _create_split_action(
-    action_model: Any,
+    action_model: type["KgEntityResolutionAction"],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -2197,7 +2202,7 @@ def _create_split_action(
     moved_relation_ids: list[str],
     new_name: str,
     event_ids: list[UUID],
-) -> Any:
+) -> "KgEntityResolutionAction":
     from datetime import datetime
 
     return action_model(
@@ -2377,10 +2382,10 @@ def undo_kg_entity_resolution_action(
         action_id=action.id,
         status=str(action.status or ""),
         stats={
-            "restored_event_entity_edges": int(stats.restored_edges),
-            "restored_relations": int(stats.restored_relations),
-            "redirect_removed": bool(stats.redirect_removed),
-            "deleted_new_entity": bool(stats.deleted_new_entity),
+            "restored_event_entity_edges": stats.restored_edges,
+            "restored_relations": stats.restored_relations,
+            "redirect_removed": stats.redirect_removed,
+            "deleted_new_entity": stats.deleted_new_entity,
         },
     )
 

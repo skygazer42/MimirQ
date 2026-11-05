@@ -6,7 +6,7 @@ imports are preserved verbatim.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -17,8 +17,13 @@ from app.rag.kg.api.routes_support.common import KG_API_FALLBACK_LOG_MESSAGE, lo
 from app.rag.kg.api.routes_support.projection import _dict_list, _uuid_list, _uuid_or_none
 from app.rag.kg.api.routes_support.schemas import KGUndoStats
 
+if TYPE_CHECKING:
+    from app.rag.kg.models import KgEntityRedirect, KgEntityResolutionAction, KgEventEntity, KgRelation
 
-def _get_applied_resolution_action(db: Session, action_model: Any, *, tenant_id: UUID, action_id: UUID) -> Any:
+
+def _get_applied_resolution_action(
+    db: Session, action_model: type["KgEntityResolutionAction"], *, tenant_id: UUID, action_id: UUID
+) -> "KgEntityResolutionAction":
     action = db.query(action_model).filter_by(tenant_id=tenant_id, id=action_id).first()
     if not action:
         raise HTTPException(status_code=404, detail="Resolution action not found")
@@ -34,7 +39,9 @@ def _resolution_action_kind(payload: dict[str, Any]) -> str:
     return action_kind
 
 
-def _restore_updated_assocs(db: Session, event_entity_model: Any, *, entity_id: UUID, assoc_ids: set[str]) -> int:
+def _restore_updated_assocs(
+    db: Session, event_entity_model: type["KgEventEntity"], *, entity_id: UUID, assoc_ids: set[str]
+) -> int:
     restored = 0
     if not assoc_ids:
         return restored
@@ -47,7 +54,7 @@ def _restore_updated_assocs(db: Session, event_entity_model: Any, *, entity_id: 
 
 
 def _restore_deleted_assoc_rows(
-    db: Session, event_entity_model: Any, *, source_id: UUID, rows: list[dict[str, Any]]
+    db: Session, event_entity_model: type["KgEventEntity"], *, source_id: UUID, rows: list[dict[str, Any]]
 ) -> int:
     restored = 0
     for row in rows:
@@ -71,7 +78,7 @@ def _restore_deleted_assoc_rows(
 
 def _restore_updated_relations(
     db: Session,
-    relation_model: Any,
+    relation_model: type["KgRelation"],
     *,
     tenant_id: UUID,
     source_id: UUID,
@@ -125,7 +132,7 @@ def _restored_relation_row_payload(*, row: dict[str, Any], tenant_id: UUID, sour
 
 def _restore_deleted_relation_rows(
     db: Session,
-    relation_model: Any,
+    relation_model: type["KgRelation"],
     *,
     tenant_id: UUID,
     source_id: UUID,
@@ -144,7 +151,7 @@ def _restore_deleted_relation_rows(
 
 def _remove_merge_redirect(
     db: Session,
-    redirect_model: Any,
+    redirect_model: type["KgEntityRedirect"],
     *,
     tenant_id: UUID,
     source_id: UUID,
@@ -163,7 +170,7 @@ def _remove_merge_redirect(
 def _restore_source_entity_vector_if_needed(
     db: Session, *, tenant_id: UUID, source_id: UUID, vector_deleted: bool
 ) -> None:
-    if not vector_deleted or not bool(getattr(settings, "KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED", False)):
+    if not vector_deleted or not bool(settings.KG_ENTITY_RESOLUTION_UPDATE_VECTORS_ENABLED):
         return
     try:
         from app.rag.kg.models import KgEntity  # noqa: WPS433
@@ -200,9 +207,9 @@ def _undo_merge_resolution_action(
     *,
     tenant_id: UUID,
     payload: dict[str, Any],
-    redirect_model: Any,
-    event_entity_model: Any,
-    relation_model: Any,
+    redirect_model: type["KgEntityRedirect"],
+    event_entity_model: type["KgEventEntity"],
+    relation_model: type["KgRelation"],
 ) -> KGUndoStats:
     source_id = _uuid_or_none(payload.get("source_entity_id"))
     target_id = _uuid_or_none(payload.get("target_entity_id"))
@@ -259,9 +266,9 @@ def _undo_split_resolution_action(
     *,
     tenant_id: UUID,
     payload: dict[str, Any],
-    redirect_model: Any,
-    event_entity_model: Any,
-    relation_model: Any,
+    redirect_model: type["KgEntityRedirect"],
+    event_entity_model: type["KgEventEntity"],
+    relation_model: type["KgRelation"],
 ) -> KGUndoStats:
     original_id = _uuid_or_none(payload.get("original_entity_id"))
     new_id = _uuid_or_none(payload.get("new_entity_id"))
@@ -296,7 +303,7 @@ def _undo_split_resolution_action(
 
 def _restore_split_relations(
     db: Session,
-    relation_model: Any,
+    relation_model: type["KgRelation"],
     *,
     tenant_id: UUID,
     original_id: UUID,
@@ -321,9 +328,9 @@ def _restore_split_relations(
 def _delete_orphan_split_entity(
     db: Session,
     *,
-    redirect_model: Any,
-    event_entity_model: Any,
-    relation_model: Any,
+    redirect_model: type["KgEntityRedirect"],
+    event_entity_model: type["KgEventEntity"],
+    relation_model: type["KgRelation"],
     tenant_id: UUID,
     new_id: UUID,
 ) -> bool:
