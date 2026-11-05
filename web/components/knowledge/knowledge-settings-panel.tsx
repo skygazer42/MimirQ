@@ -5,7 +5,7 @@
  * 优化版：任务中心极致高密度、UI Pro Max 视觉增强
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -51,6 +51,7 @@ import {
 } from '@/lib/dataset-rag-contract'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { cn, detachPromise, formatDate } from '@/lib/utils'
 import type { ConnectorRunOut } from '@/types/connectors'
 import type { Dataset, DatasetRagViewConfig } from '@/types/datasets'
@@ -264,6 +265,16 @@ export function KnowledgeSettingsPanel({
   const [datasetRagVerification, setDatasetRagVerification] = useState<DatasetRagVerificationState | null>(null)
   const [guideExpanded, setGuideExpanded] = useState(false)
   const [currentConfigOpen, setCurrentConfigOpen] = useState(false)
+  const settingsVisit = useMemo(() => ({ datasetId: selectedDatasetId }), [selectedDatasetId])
+  const settingsVisitRef = useRef<typeof settingsVisit | null>(null)
+  const saveRequestRef = useRef<object | null>(null)
+
+  useEffect(() => {
+    settingsVisitRef.current = settingsVisit
+    return () => {
+      if (settingsVisitRef.current === settingsVisit) settingsVisitRef.current = null
+    }
+  }, [settingsVisit])
 
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.snapshot,
@@ -299,7 +310,13 @@ export function KnowledgeSettingsPanel({
   }, [savedConfig])
 
   const handleSave = async () => {
-    if (!draftConfig || isSavingSettings) return
+    if (!draftConfig || isSavingSettings || saveRequestRef.current) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isSessionCurrent = () => getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
+    const canPublish = () => settingsVisitRef.current === settingsVisit && isSessionCurrent()
+    saveRequestRef.current = request
     setIsSavingSettings(true)
     try {
       if (selectedDatasetId) {
@@ -312,24 +329,31 @@ export function KnowledgeSettingsPanel({
           embedding_defaults: buildDatasetEmbeddingDefaults(draftConfig),
           rag_defaults: nextRagDefaults ?? undefined,
         })
+        if (!isSessionCurrent()) return
         const refreshedDataset = await datasetApi.get(selectedDatasetId)
+        if (!isSessionCurrent()) return
         queryClient.setQueryData(queryKeys.datasets.detail(selectedDatasetId), refreshedDataset)
         await queryClient.invalidateQueries({
           queryKey: queryKeys.datasets.all,
         })
+        if (!isSessionCurrent()) return
         await queryClient.invalidateQueries({
           queryKey: queryKeys.datasets.exhaustive(),
         })
+        if (!isSessionCurrent()) return
 
         const nextConfig = settingsQuery.data
           ? buildScopedSettingsConfig(settingsQuery.data, refreshedDataset)
           : cloneSettingsConfig(draftConfig)
-        setSavedConfig(cloneSettingsConfig(nextConfig))
-        setDraftConfig(cloneSettingsConfig(nextConfig))
+        if (canPublish()) {
+          setSavedConfig(cloneSettingsConfig(nextConfig))
+          setDraftConfig(cloneSettingsConfig(nextConfig))
+        }
 
         const hashRequest = buildRetrievalConfigHashRequest(refreshedDataset.rag_defaults)
         if (hashRequest) {
           const hashResponse = await retrievalApi.configHash(hashRequest)
+          if (!canPublish()) return
           setDatasetRagVerification({
             datasetId: selectedDatasetId,
             hash: toTrimmedPrimitiveString(hashResponse.hash),
@@ -339,20 +363,26 @@ export function KnowledgeSettingsPanel({
           toast.success(
             `已保存并验证数据集契约（cfg ${toTrimmedPrimitiveString(hashResponse.hash).slice(0, 12) || '--'}）`,
           )
-        } else {
+        } else if (canPublish()) {
           setDatasetRagVerification(null)
           toast.success('已保存到当前数据集；当前未配置 dataset 级检索契约')
         }
       } else {
         await settingsApi.update(draftConfig)
+        if (!canPublish()) return
         setSavedConfig(cloneSettingsConfig(draftConfig))
         toast.success(t('toasts.saveSuccess'))
       }
     } catch (err) {
-      toast.error(formatApiError(err, t('toasts.saveFailed')))
+      if (canPublish()) toast.error(formatApiError(err, t('toasts.saveFailed')))
     } finally {
-      setIsSavingSettings(false)
-      setConfirmEmbeddingSaveOpen(false)
+      if (saveRequestRef.current === request) {
+        saveRequestRef.current = null
+        if (settingsVisitRef.current) {
+          setIsSavingSettings(false)
+          setConfirmEmbeddingSaveOpen(false)
+        }
+      }
     }
   }
 
