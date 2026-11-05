@@ -1,10 +1,17 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.evaluation.metrics.retrieval import evaluate_retrieval_metrics
 
 DEFAULT_ALPHA_VALUES = (0.3, 0.5, 0.7)
 DEFAULT_RRF_K_VALUES = (10, 30, 60, 100)
 DEFAULT_TOP_K_VALUES = (5, 20, 50)
+
+
+class _HybridRunConfig(TypedDict):
+    fusion: str
+    rrf_k: int
+    alpha: float
+    top_k: int
 
 
 def _fmt_value(value: Any) -> str:
@@ -110,7 +117,7 @@ def run_hybrid_sweep(
 
     rows: list[dict[str, Any]] = []
     for cfg in configs:
-        route_config = {
+        route_config: _HybridRunConfig = {
             "fusion": str(cfg.get("fusion") or "rrf"),
             "rrf_k": max(1, int(cfg.get("rrf_k") or 60)),
             "alpha": max(0.0, min(1.0, float(cfg.get("alpha", 0.5)))),
@@ -118,15 +125,15 @@ def run_hybrid_sweep(
         }
         retrieved = _weighted_rrf(
             channels,
-            alpha=float(route_config["alpha"]),
-            rrf_k=int(route_config["rrf_k"]),
-            top_k=int(route_config["top_k"]),
+            alpha=route_config["alpha"],
+            rrf_k=route_config["rrf_k"],
+            top_k=route_config["top_k"],
         )
         retrieval_metrics = evaluate_retrieval_metrics(
             gold_chunk_ids=gold_chunk_ids,
             retrieved_chunk_ids=retrieved,
             cited_chunk_ids=cited_chunk_ids,
-            recall_k=int(route_config["top_k"]),
+            recall_k=route_config["top_k"],
         )
         retrieval_metrics["hit_at_k"] = 1.0 if retrieval_metrics.get("recall_at_k", 0.0) > 0 else 0.0
         retrieval_metrics["mrr"] = _mrr(gold_chunk_ids, retrieved)
@@ -148,9 +155,9 @@ def run_hybrid_sweep(
     for index, row in enumerate(rows):
         metrics = (row.get("evaluators") or {}).get("retrieval") or {}
         key = (
-            float(metrics.get("recall_at_k") or 0.0),
-            float(metrics.get("mrr") or 0.0),
-            float(metrics.get("hit_at_k") or 0.0),
+            metrics.get("recall_at_k") or 0.0,
+            metrics.get("mrr") or 0.0,
+            metrics.get("hit_at_k") or 0.0,
             -index,
         )
         if best_key is None or key > best_key:

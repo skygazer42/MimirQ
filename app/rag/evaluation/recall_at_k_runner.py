@@ -1,4 +1,16 @@
-from typing import Any
+from typing import Any, TypedDict
+
+
+class _RecallRow(TypedDict):
+    query_id: str
+    query: str
+    expected_document_ids: list[str]
+    retrieved_document_ids: list[str]
+    hit_at_k: float
+    recall_at_k: float
+    mrr: float
+    latency_ms: float
+    cost_usd: float
 
 
 def _normalize_ids(values: list[Any] | None) -> list[str]:
@@ -19,7 +31,7 @@ def run_recall_at_k_runner(
     top_k: int,
     benchmark_name: str,
 ) -> dict[str, Any]:
-    out_rows: list[dict[str, Any]] = []
+    out_rows: list[_RecallRow] = []
     for row in rows or []:
         expected_ids = _normalize_ids((row or {}).get("expected_document_ids"))
         retrieved_ids = _normalize_ids((row or {}).get("retrieved_document_ids"))
