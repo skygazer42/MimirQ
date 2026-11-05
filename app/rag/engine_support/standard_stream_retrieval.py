@@ -435,12 +435,26 @@ async def boost_kg_and_select_images(runtime: StandardStreamState) -> None:
         runtime.data.kg_chunk_boost_meta = {"enabled": False, "reason": "exception"}
 
     from app.rag.core.vision_reader import select_image_evidence
+    from app.services.document_asset_access import filter_authorized_image_evidence
 
-    runtime.data.image_docs = (
-        select_image_evidence(runtime.data.docs)
-        if str(runtime.data.multimodal_modality or "text").strip().lower() == "image"
-        else []
-    )
+    runtime.data.image_docs = []
+    db, tenant_id, account_id = runtime.data.db, runtime.data.tenant_id, runtime.data.account_id
+    if (
+        str(runtime.data.multimodal_modality or "text").strip().lower() == "image"
+        and db is not None
+        and tenant_id is not None
+        and account_id is not None
+    ):
+        try:
+            runtime.data.image_docs = filter_authorized_image_evidence(
+                db=db,
+                tenant_id=tenant_id,
+                account_id=account_id,
+                candidates=select_image_evidence(runtime.data.docs),
+                max_images=max(settings.VISION_RAG_READER_MAX_IMAGES, settings.VISION_RAG_GENERATION_MAX_IMAGES),
+            )
+        finally:
+            runtime.module._release_request_session(db)
     runtime.data.image_meta = {
         "enabled": False,
         "used": bool(runtime.data.image_docs),

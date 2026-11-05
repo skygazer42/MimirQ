@@ -45,5 +45,5 @@
 - [x] Remove SPLADE/HF ColBERT implementation and configuration branches, preserving deterministic test contracts.
 - [x] Remove CLIP indexing/query and keep image upload/OCR/citation/multimodal owners; reject retired interface/config explicitly.
 - [x] Clean frontend choices, local dependency/wheel installation, documentation and generated types.
-- [ ] Run focused integration, type/static checks and independent review; fix concrete findings.
+- [x] Run focused integration, type/static checks and independent review; fix concrete findings.
 - [ ] Complete decision record, commit reviewable work and transfer only task changes to E:/MimirQ.

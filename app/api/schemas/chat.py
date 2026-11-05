@@ -166,14 +166,6 @@ class Citation(BaseModel):
     retrieval_score: float | None = None
     reranker_provider: str | None = None
 
-    @field_validator("reranker_provider")
-    @classmethod
-    def _validate_reranker_execution(cls, value: str | None) -> str | None:
-        from app.core.model_execution import reject_retired_model_provider
-
-        reject_retired_model_provider(value, capability="reranker")
-        return value
-
     rerank_elapsed_sec: float | None = None
     rerank_model_used: str | None = None
     retrieval_mode: str | None = None
@@ -591,6 +583,14 @@ class ChatRAGConfig(BaseModel):
         if default_profile_applied and bool(settings.CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY):
             self.visible_evidence_only = True
         return self
+
+    @field_validator("retrieval_profile")
+    @classmethod
+    def _validate_profile_execution(cls, value: str | None) -> str | None:
+        from app.core.model_execution import reject_retired_retrieval_profile
+
+        reject_retired_retrieval_profile(value)
+        return value
 
 
 class ChatRequest(BaseModel):

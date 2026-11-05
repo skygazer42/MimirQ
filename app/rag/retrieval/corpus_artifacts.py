@@ -213,9 +213,8 @@ class SparseCorpusIndex:
         """
         Build (or rebuild) a sparse retrieval index for the current scope key.
 
-        This is SPLADE-style sparse retrieval:
-        - deterministic provider for tests/offline
-        - optional SPLADE provider (HF/transformers) for production experiments (opt-in)
+        Only the deterministic provider for tests/offline is supported.
+        The in-process SPLADE model provider has been retired.
 
         Indices can be persisted to disk when enabled.
         """

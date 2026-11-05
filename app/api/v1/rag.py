@@ -19,6 +19,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.model_execution import RetiredModelProviderError
 from app.rag.core.logging import get_logger
 from app.services import dataset_service
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
@@ -273,6 +274,8 @@ def _resolve_dataset_defaults_rag_config(
                 request_fields_set=rag_fields_set,
                 raw_dataset_defaults=raw_defaults,
             )
+    except RetiredModelProviderError:
+        raise
     except Exception:
         dataset_rag_defaults_applied_fields = []
         dataset_defaults_meta = None
@@ -342,6 +345,8 @@ def _resolve_preview_rag_template_meta(
                     db.commit()
                 except Exception:
                     db.rollback()
+    except RetiredModelProviderError:
+        raise
     except Exception:
         rag_config_template_meta = None
         rag_config_template_patch_applied_fields = []

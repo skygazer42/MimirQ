@@ -11,17 +11,13 @@ from typing import Any
 
 from app.api.schemas.chat import ChatRAGConfig
 from app.api.schemas.dataset import DatasetRAGDefaults
-from app.core.model_execution import reject_retired_model_provider
+from app.services.rag_config_template_apply import validate_rag_config_patch
 
 
 def _coerce_dataset_defaults(raw_dataset_defaults: Any) -> DatasetRAGDefaults | None:
     if isinstance(raw_dataset_defaults, DatasetRAGDefaults):
         return raw_dataset_defaults
     if isinstance(raw_dataset_defaults, dict):
-        reject_retired_model_provider(str(raw_dataset_defaults.get("reranker_provider") or ""), capability="reranker")
-        reject_retired_model_provider(
-            str(raw_dataset_defaults.get("sparse_retrieval_provider") or ""), capability="sparse"
-        )
         try:
             return DatasetRAGDefaults(**raw_dataset_defaults)
         except Exception:
@@ -54,6 +50,7 @@ def _merge_dataset_rag_overrides(
         applied.append(key)
     if not applied:
         return rag_config, []
+    validate_rag_config_patch(merged)
     return ChatRAGConfig(**merged), applied
 
 

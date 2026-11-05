@@ -1,7 +1,8 @@
 """Tenant-scoped authorization and lookup for document assets."""
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -11,6 +12,7 @@ from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _looks_like_local_image_id
 from app.services import dataset_service
 from app.services.document_access_service import assert_document_acl_readable, get_document_for_lifecycle
 from app.services.document_lifecycle_service import DOC_NOT_FOUND_DETAIL
@@ -22,6 +24,8 @@ from app.services.document_preview_utils import (
 )
 
 logger = get_logger(__name__)
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
 IMAGE_NOT_FOUND_DETAIL = "Image not found"
 
 
@@ -270,11 +274,14 @@ def authorize_image_url(
 ) -> None:
     if ":" in image_id:
         try:
-            _tenant_part, dataset_part, document_part, _chunk_key = image_id.split(":", 3)
+            tenant_part, dataset_part, document_part, _chunk_key = image_id.split(":", 3)
+            image_tenant_id = UUID(tenant_part)
             dataset_id = UUID(dataset_part)
             document_id = UUID(document_part)
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
+        if image_tenant_id != tenant_id:
+            raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
         document = authorize_document_asset(
             db=db,
             tenant_id=tenant_id,
@@ -294,7 +301,34 @@ def authorize_image_url(
         dataset_service.assert_dataset_readable(db, dataset, account_id)
 
 
+def filter_authorized_image_evidence(
+    *, db: Session, tenant_id: UUID, account_id: str, candidates: Iterable["Document"], max_images: int
+) -> list["Document"]:
+    """Trim editable image references using the same ownership checks as asset requests."""
+    allowed: list["Document"] = []
+    seen: set[str] = set()
+    for doc in candidates:
+        if len(allowed) >= max_images:
+            break
+        reference = str(doc.metadata.get("img_id") or doc.metadata.get("image_id") or "").strip()
+        if not reference or reference in seen:
+            continue
+        seen.add(reference)
+        try:
+            if _looks_like_local_image_id(reference):
+                resolve_preview_image(db=db, tenant_id=tenant_id, account_id=account_id, image_id=reference)
+            else:
+                authorize_image_url(db=db, tenant_id=tenant_id, account_id=account_id, image_id=reference)
+        except HTTPException as exc:
+            if exc.status_code in {403, 404}:
+                continue
+            raise
+        allowed.append(doc)
+    return allowed
+
+
 __all__ = [
+    "filter_authorized_image_evidence",
     "assert_document_asset_readable",
     "assert_preview_binding_access",
     "authorize_document_asset",

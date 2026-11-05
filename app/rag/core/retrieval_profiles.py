@@ -1,6 +1,6 @@
 from typing import Any, NotRequired, TypedDict
 
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_model_provider, reject_retired_retrieval_profile
 
 
 class _ProfileOptions(TypedDict):
@@ -65,8 +65,7 @@ SUPPORTED_RETRIEVAL_PROFILES = set(RECALL_FIRST_RETRIEVAL_PROFILES) | {
 
 def normalize_retrieval_profile(profile: Any) -> str | None:
     value = str(profile or "").strip().lower()
-    if value == "sparse_splade":
-        raise ValueError("The sparse_splade retrieval profile has been retired")
+    reject_retired_retrieval_profile(value)
     if not value:
         return None
     return value

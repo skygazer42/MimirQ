@@ -409,6 +409,14 @@ class RagasRegressionRunCreateRequest(BaseModel):
         _validate_numeric_fusion_override(self.fusion_weights, field_name="fusion_weights", caster=float, max_value=10)
         return self
 
+    @field_validator("retrieval_profile")
+    @classmethod
+    def _validate_profile_execution(cls, value: str | None) -> str | None:
+        from app.core.model_execution import reject_retired_retrieval_profile
+
+        reject_retired_retrieval_profile(value)
+        return value
+
 
 class RagasRegressionAblationBatchRequest(RagasRegressionRunCreateRequest):
     grid: dict[str, list[Any]] = Field(

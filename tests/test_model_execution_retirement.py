@@ -165,12 +165,20 @@ def test_image_reader_uses_existing_document_evidence() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("modality", ["image", "text"])
-async def test_stream_selects_existing_image_evidence_without_duplicate_retrieval(modality: str) -> None:
+async def test_stream_selects_existing_image_evidence_without_duplicate_retrieval(
+    modality: str, monkeypatch, tmp_path
+) -> None:
     from types import SimpleNamespace
+    from uuid import uuid4
 
     from langchain_core.documents import Document
 
     from app.rag.engine_support.standard_stream_retrieval import boost_kg_and_select_images
+    from app.services import document_asset_access
+
+    monkeypatch.setattr(
+        document_asset_access, "resolve_preview_image", lambda **_kwargs: tmp_path / "owned-preview.png"
+    )
 
     image = Document(page_content="chart OCR", metadata={"image_id": "a" * 32})
     text = Document(page_content="normal evidence", metadata={})
@@ -182,9 +190,14 @@ async def test_stream_selects_existing_image_evidence_without_duplicate_retrieva
             enable_kg_chunk_boost=False,
             kg_chunk_boost_weight=None,
             kg_chunk_boost_max_promoted=None,
+            db=object(),
+            tenant_id=uuid4(),
+            account_id="preview-owner",
         ),
         module=SimpleNamespace(
-            Document=Document, _apply_kg_chunk_boost=lambda docs, **_kwargs: (docs, {"enabled": False})
+            Document=Document,
+            _apply_kg_chunk_boost=lambda docs, **_kwargs: (docs, {"enabled": False}),
+            _release_request_session=lambda _db: None,
         ),
     )
     await boost_kg_and_select_images(state)

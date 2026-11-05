@@ -271,12 +271,14 @@ class DatasetBase(BaseModel):
 def _validate_dataset_execution(
     embedding: DatasetEmbeddingDefaults | None, rag: DatasetRAGDefaults | None, pipeline: DocumentPipelineOptions | None
 ) -> None:
-    from app.core.model_execution import reject_retired_model_provider
+    from app.core.model_execution import reject_retired_model_provider, validate_rag_execution_selection
 
     if embedding is not None:
         reject_retired_model_provider(embedding.provider, capability="embedding")
     if rag is not None:
-        reject_retired_model_provider(rag.reranker_provider, capability="reranker")
+        validate_rag_execution_selection(
+            reranker_provider=rag.reranker_provider, retrieval_profile=rag.retrieval_profile
+        )
     if pipeline is not None:
         reject_retired_model_provider(pipeline.governance_keywords_provider, capability="keyword")
 
