@@ -103,6 +103,10 @@ export type ChunkPreviewState = {
   onClose?: () => void
 }
 
+export type ChunkPreviewRunSettings = Partial<
+  Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy' | 'parserBackend'>
+>
+
 export type ChunkPreviewActions = {
   // 文件操作
   addFiles: (files: File[]) => void
@@ -130,10 +134,10 @@ export type ChunkPreviewActions = {
   // 拖放处理
   handleDragOver: (e: React.DragEvent) => void
   handleDragLeave: (e: React.DragEvent) => void
-  handleDrop: (e: React.DragEvent) => void
+  handleDrop: (e: React.DragEvent) => Promise<void>
 
   // 数据操作
-  runPreview: (options?: { force?: boolean }) => Promise<void>
+  runPreview: (options?: { force?: boolean; settings?: ChunkPreviewRunSettings }) => Promise<void>
   cancelPreview: () => void
   submitChunks: () => Promise<void>
   submitSelectedFiles: () => Promise<void>

@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { FileText, Loader2, AlertCircle } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -15,14 +15,19 @@ import { MarkdownToc } from '@/components/markdown/markdown-toc'
 import { extractMarkdownHeadings } from '@/lib/markdown'
 import { createPositionTagIndexMapper, findPositionTagRanges, stripPositionTags } from '@/lib/parsing-positions'
 import { cn } from '@/lib/utils'
+import { writeClientStorage } from '@/lib/client-storage'
 import type { ChunkPreviewItem } from '@/types'
 import { OriginalPreviewMonaco } from './original-preview-monaco'
 import { PdfPreview } from './pdf-preview'
 import { CoverageHeatmapMini } from './coverage-heatmap-mini'
-import { getInitialOriginalPreviewMode, ORIGINAL_PREVIEW_MODE_STORAGE_KEY } from './pdf-dock'
+import {
+  getInitialOriginalPreviewMode,
+  isPdfOriginalFile,
+  ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
+  type OriginalPreviewMode,
+} from './pdf-dock'
 
 const AUTO_LOAD_TEXT_MAX_BYTES = 800_000
-type PreviewMode = 'raw' | 'rendered' | 'editor' | 'pdf'
 
 type IdleGlobal = typeof globalThis & {
   requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
@@ -103,17 +108,21 @@ export function OriginalPreview() {
     isLoading,
     error,
   } = useChunkPreview()
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('raw')
+  const [previewMode, setPreviewMode] = useState<OriginalPreviewMode>('raw')
+  const [previewModeLoaded, setPreviewModeLoaded] = useState(false)
   const [forceFullHighlight, setForceFullHighlight] = useState(false)
-  const [localOriginalText, setLocalOriginalText] = useState<string | null>(null)
+  const [localOriginal, setLocalOriginal] = useState<{ file: File; text: string } | null>(null)
+  const localOriginalText = localOriginal?.file === currentFile ? localOriginal.text : null
   const [localLoading, setLocalLoading] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
+  const localReadRequestRef = useRef<{ file: File } | null>(null)
+  const autoReadFileRef = useRef<File | null>(null)
   const highlightRef = useRef<HTMLElement | null>(null)
 
   useEffect(() => {
-    if (globalThis.window === undefined) return
-    globalThis.window.localStorage.setItem(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, previewMode)
-  }, [previewMode])
+    if (!previewModeLoaded) return
+    writeClientStorage(ORIGINAL_PREVIEW_MODE_STORAGE_KEY, previewMode)
+  }, [previewMode, previewModeLoaded])
 
   const activeChunkIndex = hoveredChunkIndex ?? selectedChunkIndex
   const activeChunkMeta = useMemo(() => {
@@ -128,17 +137,13 @@ export function OriginalPreview() {
     }
   }, [activeChunkIndex, previewData?.chunks])
 
-  const isPdf = useMemo(() => {
-    const ft = String(previewData?.file_type || '').toLowerCase()
-    if (ft === 'pdf') return true
-    const name = String(currentFile?.name || '').toLowerCase()
-    return name.endsWith('.pdf')
-  }, [currentFile?.name, previewData?.file_type])
+  const isPdf = isPdfOriginalFile(previewData, currentFile)
 
   // Keep the preferred preview mode sticky across chunk inspections (especially useful for PDF docking).
   useEffect(() => {
     if (globalThis.window === undefined) return
     setPreviewMode(getInitialOriginalPreviewMode(isPdf))
+    setPreviewModeLoaded(true)
   }, [isPdf])
 
   useEffect(() => {
@@ -200,11 +205,38 @@ export function OriginalPreview() {
   })()
 
   useEffect(() => {
-    setLocalOriginalText(null)
+    localReadRequestRef.current = null
+    autoReadFileRef.current = null
+    setLocalOriginal(null)
     setLocalError(null)
     setLocalLoading(false)
     setForceFullHighlight(false)
+    return () => {
+      localReadRequestRef.current = null
+    }
   }, [currentFile, previewData?.filename])
+
+  const readLocalOriginal = useCallback(async () => {
+    if (!currentFile || localReadRequestRef.current) return
+    const request = { file: currentFile }
+    localReadRequestRef.current = request
+    setLocalLoading(true)
+    setLocalError(null)
+
+    try {
+      const text = await request.file.text()
+      if (localReadRequestRef.current !== request) return
+      setLocalOriginal({ file: request.file, text })
+    } catch (error: unknown) {
+      if (localReadRequestRef.current !== request) return
+      setLocalError(getErrorMessage(error, t('originalPreview.errors.readLocalFailed')))
+    } finally {
+      if (localReadRequestRef.current === request) {
+        localReadRequestRef.current = null
+        setLocalLoading(false)
+      }
+    }
+  }, [currentFile, t])
 
   useEffect(() => {
     if (!previewData) return
@@ -212,31 +244,11 @@ export function OriginalPreview() {
     if (!canLoadFromFile) return
     if (!currentFile) return
     if (currentFile.size > AUTO_LOAD_TEXT_MAX_BYTES) return
-    if (localOriginalText) return
-    if (localLoading) return
+    if (localOriginalText !== null || autoReadFileRef.current === currentFile) return
 
-    let alive = true
-    setLocalLoading(true)
-    setLocalError(null)
-    currentFile
-      .text()
-      .then((text) => {
-        if (!alive) return
-        setLocalOriginalText(text)
-      })
-      .catch((error: unknown) => {
-        if (!alive) return
-        setLocalError(getErrorMessage(error, t('originalPreview.errors.readLocalFailed')))
-      })
-      .finally(() => {
-        if (!alive) return
-        setLocalLoading(false)
-      })
-
-    return () => {
-      alive = false
-    }
-  }, [canLoadFromFile, currentFile, localLoading, localOriginalText, previewData, t])
+    autoReadFileRef.current = currentFile
+    void readLocalOriginal()
+  }, [canLoadFromFile, currentFile, localOriginalText, previewData, readLocalOriginal])
 
   const highlightModel = useMemo(() => {
     if (!effectiveOriginalText || activeChunkIndex === null) return null
@@ -688,18 +700,7 @@ export function OriginalPreview() {
                       size="sm"
                       className="h-8 px-3 text-[11px] mt-2"
                       disabled={localLoading}
-                      onClick={async () => {
-                        try {
-                          setLocalLoading(true)
-                          setLocalError(null)
-                          const text = await currentFile.text()
-                          setLocalOriginalText(text)
-                        } catch (error: unknown) {
-                          setLocalError(getErrorMessage(error, t('originalPreview.errors.readLocalFailed')))
-                        } finally {
-                          setLocalLoading(false)
-                        }
-                      }}
+                      onClick={readLocalOriginal}
                     >
                       {localLoading
                         ? t('originalPreview.empty.readLocalLoading')

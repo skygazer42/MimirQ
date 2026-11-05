@@ -3,7 +3,8 @@
  */
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient, type Query } from '@tanstack/react-query'
 import Link from 'next/link'
 import {
   Settings,
@@ -36,11 +37,14 @@ import { ChunkStrategyDropdown } from '@/components/business/chunk-strategy-drop
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { datasetApi, evaluationApi, pipelineApi } from '@/lib/api'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
+import { queryKeys } from '@/lib/query-keys'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 import { ChunkPresetPanel } from '@/components/chunk-preview/components/chunk-preset-panel'
 import { ChunkAutoTuneDialog } from '@/components/chunk-preview/components/chunk-auto-tune-dialog'
 import { formatPreviewWarningMessage } from '@/components/chunk-preview/utils/preview-warnings'
+import { decodeSeparatorInput, getPresetSeparator } from '../../utils/separators'
 import type {
   ChunkPreviewHistogramBin,
   ChunkPreviewRecommendationPatch,
@@ -287,6 +291,7 @@ function SidebarPanel({
 
 export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const t = useTranslations('ChunkPreview')
+  const queryClient = useQueryClient()
   const {
     fileList,
     currentFileIndex,
@@ -455,29 +460,13 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const effectiveSeparator = useMemo(() => {
     if (!isSeparatorStrategy) return null
 
-    const presetMap: Record<string, string> = {
-      paragraph: '\n\n',
-      line: '\n',
-      sentence_cn: '。',
-      sentence_en: '.',
-      markdown_hr: '---',
-      markdown_h1: '# ',
-      markdown_h2: '## ',
-    }
-
     if (separatorPreset && separatorPreset !== 'custom') {
-      return presetMap[separatorPreset] ?? '\n\n'
+      return getPresetSeparator(separatorPreset)
     }
 
     const raw = String(separatorCustom || '').trim()
     if (!raw) return '\n\n'
-    try {
-      // Same trick as context.decodeSeparatorInput: support \n, \t, \uXXXX etc.
-      const escapedValue = raw.replaceAll('"', String.raw`\"`)
-      return JSON.parse(`"${escapedValue}"`)
-    } catch {
-      return raw
-    }
+    return decodeSeparatorInput(raw)
   }, [isSeparatorStrategy, separatorCustom, separatorPreset])
 
   const separatorPresetOptions = useMemo(() => {
@@ -591,6 +580,28 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
     href: string
     caseCount: number
   } | null>(null)
+  const mountedRef = useRef(false)
+  const ingestionRequestRef = useRef<object | null>(null)
+  const reportRequestRef = useRef<object | null>(null)
+  const goldenSubmissionRef = useRef<{ sessionRevision: number } | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      ingestionRequestRef.current = null
+      reportRequestRef.current = null
+      goldenSubmissionRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    ingestionRequestRef.current = null
+    setIngestionPreview(null)
+    setIngestionError(null)
+    setIngestionLoading(false)
+    setIngestionDetailsOpen(false)
+  }, [currentFile, datasetId, parserBackend, chunkStrategy])
 
   const applyPipelinePatch = (
     patch: DocumentPipelineOptions | JsonObject | null | undefined,
@@ -661,6 +672,18 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
   const selectedGoldenPlugin = selectedChunkPlugin?.contract?.golden?.enabled ? selectedChunkPlugin : null
   const selectedGoldenPluginRef = selectedChunkPlugin?.refs.chunk || ''
   const selectedChunkPluginRef = selectedGoldenPluginRef
+  useEffect(() => {
+    reportRequestRef.current = null
+    setPluginChunkReport(null)
+    setPluginChunkReportLoading(false)
+  }, [selectedChunkPluginRef])
+
+  useEffect(() => {
+    goldenSubmissionRef.current = null
+    setGoldenImportLoading(false)
+    setGoldenRegressionLoading(false)
+    setLastGoldenRegressionRun(null)
+  }, [datasetId, selectedGoldenPluginRef])
   const selectedAuditPlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
   const selectedAuditPackageHash = String(selectedAuditPlugin?.package_hash || '').trim()
   const selectedAuditReportOwner =
@@ -728,7 +751,20 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
       toast.error(t('sidebar.pythonPlugins.importGoldenNoPlugin'))
       return
     }
-    if (goldenImportLoading || goldenRegressionLoading) return
+    const sessionRevision = getAuthSessionRevision()
+    if (goldenSubmissionRef.current?.sessionRevision === sessionRevision) return
+    const submission = { sessionRevision }
+    goldenSubmissionRef.current = submission
+    const authScope = getAuthCacheScope()
+    const isSessionCurrent = () => getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
+    const canPublish = () => mountedRef.current && goldenSubmissionRef.current === submission && isSessionCurrent()
+    const originalCases = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: queryKeys.evaluations.regressionCases().slice(0, 2) })
+      .filter((query) => {
+        const params = query.queryKey[2] as Parameters<typeof evaluationApi.listRegressionCases>[0]
+        return !params?.dataset_id || params.dataset_id === datasetId
+      })
 
     const setLoading = runRegression ? setGoldenRegressionLoading : setGoldenImportLoading
     setLoading(true)
@@ -739,17 +775,21 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         max_items: 500,
         overwrite: false,
       })
+      if (!isSessionCurrent()) return
+      invalidateOriginalEvaluationLists(originalCases)
       const caseIds = result.import_result.case_ids ?? []
       const imported = caseIds.length
       if (result.draft.items_total <= 0 || imported <= 0) {
-        toast.info(t('sidebar.pythonPlugins.importGoldenEmpty'))
+        if (canPublish()) toast.info(t('sidebar.pythonPlugins.importGoldenEmpty'))
         return
       }
       if (runRegression) {
-        if (caseIds.length <= 0) {
-          toast.info(t('sidebar.pythonPlugins.importGoldenRunNoCases'))
-          return
-        }
+        const originalRuns = [queryKeys.evaluations.regressionRuns(), queryKeys.evaluations.regressionLeaderboard()]
+          .flatMap((key) => queryClient.getQueryCache().findAll({ queryKey: key.slice(0, 2) }))
+          .filter((query) => {
+            const params = query.queryKey[2] as Parameters<typeof evaluationApi.listRegressionRuns>[0]
+            return !params?.dataset_id || params.dataset_id === datasetId
+          })
         const run = await evaluationApi.createRegressionRun({
           dataset_id: datasetId,
           case_ids: caseIds,
@@ -761,6 +801,9 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
           hierarchy_overfetch_factor: 4,
           max_cases: Math.max(1, Math.min(caseIds.length, 500)),
         })
+        if (!isSessionCurrent()) return
+        invalidateOriginalEvaluationLists(originalRuns)
+        if (!canPublish()) return
         setLastGoldenRegressionRun({
           id: run.id,
           href: `/evaluations?tab=regression&dataset_id=${encodeURIComponent(datasetId)}&run_id=${encodeURIComponent(run.id)}`,
@@ -774,17 +817,21 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         )
         return
       }
-      toast.success(
-        t('sidebar.pythonPlugins.importGoldenSuccess', {
-          created: result.import_result.created,
-          updated: result.import_result.updated,
-          skipped: result.import_result.skipped,
-        }),
-      )
+      if (canPublish())
+        toast.success(
+          t('sidebar.pythonPlugins.importGoldenSuccess', {
+            created: result.import_result.created,
+            updated: result.import_result.updated,
+            skipped: result.import_result.skipped,
+          }),
+        )
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.importGoldenError')))
+      if (canPublish()) toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.importGoldenError')))
     } finally {
-      setLoading(false)
+      if (goldenSubmissionRef.current === submission) {
+        goldenSubmissionRef.current = null
+        if (mountedRef.current) setLoading(false)
+      }
     }
   }
 
@@ -793,7 +840,16 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
       toast.error(t('sidebar.pythonPlugins.chunkReportNoPlugin'))
       return
     }
-    if (pluginChunkReportLoading) return
+    if (reportRequestRef.current) return
+    const request = {}
+    reportRequestRef.current = request
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      mountedRef.current &&
+      reportRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setPluginChunkReportLoading(true)
     try {
       const report = await pipelineApi.buildPluginChunkReport({
@@ -802,6 +858,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         max_examples_per_section: 2,
         preview_chars: 180,
       })
+      if (!isCurrent()) return
       setPluginChunkReport(report)
       if (report.passed) {
         toast.success(t('sidebar.pythonPlugins.chunkReportSuccess'))
@@ -809,9 +866,57 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
         toast.error(t('sidebar.pythonPlugins.chunkReportFailed'))
       }
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.chunkReportError')))
+      if (isCurrent()) toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.chunkReportError')))
     } finally {
-      setPluginChunkReportLoading(false)
+      if (reportRequestRef.current === request) {
+        reportRequestRef.current = null
+        if (mountedRef.current) setPluginChunkReportLoading(false)
+      }
+    }
+  }
+
+  const invalidateOriginalEvaluationLists = (queries: Query[]) => {
+    for (const query of queries) {
+      if (queryClient.getQueryCache().get(query.queryHash) === query) {
+        void queryClient.invalidateQueries({ queryKey: query.queryKey, exact: true })
+      }
+    }
+  }
+
+  const handleIngestionPreview = async () => {
+    if (!datasetId) {
+      toast.error(t('sidebar.ingestionPreview.selectDatasetFirst'))
+      return
+    }
+    if (!currentFile || ingestionRequestRef.current) return
+    const request = {}
+    ingestionRequestRef.current = request
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      mountedRef.current &&
+      ingestionRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
+    setIngestionLoading(true)
+    setIngestionError(null)
+    try {
+      const result = await pipelineApi.ingestionPreview(currentFile, {
+        dataset_id: datasetId,
+        parser_backend: parserBackend || undefined,
+        chunk_strategy: chunkStrategy || undefined,
+        diff_max_lines: 300,
+      })
+      if (!isCurrent()) return
+      setIngestionPreview(result)
+      toast.success(t('sidebar.ingestionPreview.generatedSuccess'))
+    } catch (error: unknown) {
+      if (isCurrent()) setIngestionError(getErrorMessage(error, t('sidebar.ingestionPreview.requestFailed')))
+    } finally {
+      if (ingestionRequestRef.current === request) {
+        ingestionRequestRef.current = null
+        if (mountedRef.current) setIngestionLoading(false)
+      }
     }
   }
 
@@ -1245,29 +1350,7 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
             disabled={!datasetId || !currentFile || ingestionLoading}
             className="h-8 w-full justify-start rounded-md border-info/15 bg-info/[0.04] text-[11px] shadow-none hover:bg-info/[0.08]"
             title={!datasetId ? t('sidebar.ingestionPreview.selectDatasetFirst') : undefined}
-            onClick={async () => {
-              if (!datasetId) {
-                toast.error(t('sidebar.ingestionPreview.selectDatasetFirst'))
-                return
-              }
-              if (!currentFile) return
-              setIngestionLoading(true)
-              setIngestionError(null)
-              try {
-                const result = await pipelineApi.ingestionPreview(currentFile, {
-                  dataset_id: datasetId,
-                  parser_backend: parserBackend || undefined,
-                  chunk_strategy: chunkStrategy || undefined,
-                  diff_max_lines: 300,
-                })
-                setIngestionPreview(result)
-                toast.success(t('sidebar.ingestionPreview.generatedSuccess'))
-              } catch (error: unknown) {
-                setIngestionError(getErrorMessage(error, t('sidebar.ingestionPreview.requestFailed')))
-              } finally {
-                setIngestionLoading(false)
-              }
-            }}
+            onClick={handleIngestionPreview}
           >
             {ingestionLoading ? (
               <Loader2 className="mr-2 size-4 shrink-0 animate-spin motion-reduce:animate-none" />
@@ -2919,7 +3002,15 @@ export function Sidebar({ variant = 'panel' }: SidebarProps = {}) {
                     chunkSize: item.chunkSize,
                     chunkOverlap: item.chunkOverlap,
                   })
-                  runPreview({ force: true })
+                  runPreview({
+                    force: true,
+                    settings: {
+                      parserBackend: item.parserBackend,
+                      strategy: item.strategy,
+                      chunkSize: item.chunkSize,
+                      chunkOverlap: item.chunkOverlap,
+                    },
+                  })
                   toast.success(t('sidebar.history.restoreSuccess'))
                 }}
               >

@@ -201,6 +201,11 @@ export function OriginalPreviewMonaco(
   const activeDecorationIdsRef = useRef<string[]>([])
   const clickDisposableRef = useRef<MonacoDisposable | null>(null)
   const scrollDisposableRef = useRef<MonacoDisposable | null>(null)
+  const listenerPropsRef = useRef({ chunks, onSelectChunkIndex, onScrollTopChange })
+
+  useEffect(() => {
+    listenerPropsRef.current = { chunks, onSelectChunkIndex, onScrollTopChange }
+  }, [chunks, onSelectChunkIndex, onScrollTopChange])
 
   const lineStarts = useMemo(() => buildLineStarts(text), [text])
   const { theme, systemTheme } = useTheme()
@@ -416,22 +421,26 @@ export function OriginalPreviewMonaco(
           if (onSelectChunkIndex) {
             clickDisposableRef.current?.dispose()
             clickDisposableRef.current = editor.onMouseDown((event: MonacoMouseEvent) => {
+              const current = listenerPropsRef.current
+              if (!current.onSelectChunkIndex) return
               if (!event.event.leftButton) return
               const position = event.target.position
               if (!position) return
               const model = editor.getModel()
               if (!model) return
               const offset = model.getOffsetAt(position)
-              const best = pickBestChunkAtOffset(chunks, offset)
+              const best = pickBestChunkAtOffset(current.chunks, offset)
               if (!best) return
-              onSelectChunkIndex(best.index)
+              current.onSelectChunkIndex(best.index)
             })
           }
 
           if (onScrollTopChange) {
             scrollDisposableRef.current?.dispose()
             scrollDisposableRef.current = editor.onDidScrollChange((event: MonacoScrollEvent) => {
-              onScrollTopChange(typeof event.scrollTop === 'number' ? event.scrollTop : editor.getScrollTop())
+              const onScroll = listenerPropsRef.current.onScrollTopChange
+              if (!onScroll) return
+              onScroll(typeof event.scrollTop === 'number' ? event.scrollTop : editor.getScrollTop())
             })
           }
         }}
