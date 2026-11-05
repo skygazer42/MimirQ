@@ -13,7 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
-import { settingsApi } from '@/lib/api'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
 import type { ModelProvider, ProviderConfig } from '@/types/models'
 
