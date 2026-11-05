@@ -99,9 +99,9 @@ def _preprocess_ingestion_preview_file(
                 "applied": bool(step.applied),
                 "changed": bool(step.changed),
                 "note": step.note,
-                "bytes_before": int(getattr(step, "bytes_before", 0) or 0),
-                "bytes_after": int(getattr(step, "bytes_after", 0) or 0),
-                "elapsed_ms": int(getattr(step, "elapsed_ms", 0) or 0),
+                "bytes_before": int(step.bytes_before or 0),
+                "bytes_after": int(step.bytes_after or 0),
+                "elapsed_ms": int(step.elapsed_ms or 0),
             }
             for step in (pre.steps or [])
         ],

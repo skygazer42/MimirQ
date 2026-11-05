@@ -365,16 +365,16 @@ def _compute_parsing_quality_gate(
         grade = "fail"
         reasons.append("empty_markdown")
 
-    if is_pdf and int(getattr(text_quality, "content_chars", 0) or 0) < int(min_content_chars or 0):
+    if is_pdf and text_quality.content_chars < int(min_content_chars or 0):
         grade = "fail"
         reasons.append("low_content_chars")
 
     # Heuristic warnings (best-effort).
-    if float(getattr(text_quality, "replacement_ratio", 0.0) or 0.0) >= 0.08:
+    if text_quality.replacement_ratio >= 0.08:
         grade = _grade_max(grade, "warn")
         reasons.append("high_replacement_ratio")
 
-    if float(getattr(text_quality, "density", 0.0) or 0.0) <= 0.12:
+    if text_quality.density <= 0.12:
         grade = _grade_max(grade, "warn")
         reasons.append("low_density")
 
@@ -425,7 +425,7 @@ def extract_parsing_document(
     )
     markdown = ""
     if row is not None:
-        markdown = str(getattr(row, "markdown_content", "") or getattr(row, "original_markdown_content", "") or "")
+        markdown = str(row.markdown_content or row.original_markdown_content or "")
     elements = meta.get("elements") if isinstance(meta.get("elements"), list) else []
     result = extract_parsing_fields(
         markdown=markdown,
@@ -452,7 +452,7 @@ def _coerce_float(value: Any) -> float | None:
         f = float(value)
         if f != f:  # NaN
             return None
-        return float(f)
+        return f
     except Exception:
         return None
 
@@ -595,7 +595,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
     # Try to find an existing dataset marked as parsing workspace for this owner.
     existing = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.owner_id == account_id).all()
     for ds in existing:
-        meta = getattr(ds, "dataset_metadata", None) or {}
+        meta = ds.dataset_metadata or {}
         if isinstance(meta, dict) and meta.get("parsing_workspace") is True:
             return ds
 
@@ -633,7 +633,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
                 .first()
             )
             if ds:
-                meta = dict(getattr(ds, "dataset_metadata", None) or {})
+                meta = dict(ds.dataset_metadata or {})
                 meta["parsing_workspace"] = True
                 meta["parsing_workspace_owner_tag"] = owner_tag
                 ds.dataset_metadata = meta
@@ -641,7 +641,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
                 db.refresh(ds)
                 return ds
         raise
-    meta = dict(getattr(ds, "dataset_metadata", None) or {})
+    meta = dict(ds.dataset_metadata or {})
     meta["parsing_workspace"] = True
     meta["parsing_workspace_owner_tag"] = owner_tag
     ds.dataset_metadata = meta
@@ -681,7 +681,7 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
         # Should not happen for workspace docs, but keep safe default.
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
-    owner_id = str(getattr(doc, "owner_id", "") or "").strip()
+    owner_id = str(doc.owner_id or "").strip()
     if owner_id and owner_id != str(account_id or "").strip():
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -864,7 +864,7 @@ async def _resolve_workspace_source_path(
             dataset_id=doc.dataset_id,
             document_id=doc.id,
             file_type=doc.file_type,
-            document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+            document_metadata=dict(doc.doc_metadata or {}),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Object storage is disabled") from exc
@@ -979,7 +979,7 @@ async def _parse_workspace_source(
             "mode": "preview",
         },
         disconnect_check=request.is_disconnected,
-        timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
     )
 
 
@@ -1079,7 +1079,7 @@ async def _run_workspace_fallback_candidate(
                 "pdf_quality": dict(pdf_quality) if isinstance(pdf_quality, dict) else None,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
         )
     except Exception as exc:  # noqa: BLE001
         return None, {"from": resolved_backend, "to": cand_backend, "accepted": False, "error": str(exc)[:200]}
@@ -2084,7 +2084,7 @@ def delete_parsing_document(
                     dataset_id=doc.dataset_id,
                     document_id=doc.id,
                     file_type=doc.file_type,
-                    document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+                    document_metadata=dict(doc.doc_metadata or {}),
                 )
                 store.delete_object(object_name=ref.object_name)
             else:

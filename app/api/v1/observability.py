@@ -6,7 +6,7 @@ JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -41,6 +41,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     409: {"description": "Conflict"},
     416: {"description": "Range Not Satisfiable"},
 }
+
+if TYPE_CHECKING:
+    from app.models.index_drift_item import IndexDriftItem
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 logger = get_logger(__name__)
@@ -180,7 +183,7 @@ def _build_queryset_health_timeseries(rows: list[Any]) -> dict[str, list[Any]]:
 
 
 def _visible_queryset_health_rows(rows: list[Any], *, limit: int) -> tuple[int, bool, list[Any]]:
-    total = int(len(rows))
+    total = len(rows)
     cap = max(1, int(limit or 1))
     truncated = total > cap
     return total, truncated, rows[-cap:] if cap else rows
@@ -642,27 +645,27 @@ class PerfSuiteRunResponse(_SchemaAliasedModel):
     diff: dict[str, Any] = Field(default_factory=dict)
 
 
-def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
+def _serialize_index_drift_item(item: "IndexDriftItem") -> dict[str, Any]:
     return {
-        "id": str(getattr(item, "id", "") or ""),
-        "tenant_id": str(getattr(item, "tenant_id", "") or ""),
-        "dataset_id": str(getattr(item, "dataset_id", "") or "") or None,
-        "document_id": str(getattr(item, "document_id", "") or "") or None,
-        "chunk_id": str(getattr(item, "chunk_id", "") or "") or None,
-        "operation": str(getattr(item, "operation", "") or ""),
-        "channel": str(getattr(item, "channel", "") or ""),
-        "strictness": str(getattr(item, "strictness", "") or ""),
-        "status": str(getattr(item, "status", "") or ""),
-        "reason": str(getattr(item, "reason", "") or ""),
-        "details": dict(getattr(item, "details", {}) or {}),
-        "reconcile_task_id": str(getattr(item, "reconcile_task_id", "") or "") or None,
-        "replay_count": int(getattr(item, "replay_count", 0) or 0),
-        "created_at": getattr(item, "created_at", None),
-        "updated_at": getattr(item, "updated_at", None),
-        "last_replayed_at": getattr(item, "last_replayed_at", None),
-        "resolved_at": getattr(item, "resolved_at", None),
-        "resolved_by": str(getattr(item, "resolved_by", "") or "") or None,
-        "resolution_note": str(getattr(item, "resolution_note", "") or "") or None,
+        "id": str(item.id or ""),
+        "tenant_id": str(item.tenant_id or ""),
+        "dataset_id": str(item.dataset_id or "") or None,
+        "document_id": str(item.document_id or "") or None,
+        "chunk_id": str(item.chunk_id or "") or None,
+        "operation": str(item.operation or ""),
+        "channel": str(item.channel or ""),
+        "strictness": str(item.strictness or ""),
+        "status": str(item.status or ""),
+        "reason": str(item.reason or ""),
+        "details": dict(item.details or {}),
+        "reconcile_task_id": str(item.reconcile_task_id or "") or None,
+        "replay_count": int(item.replay_count or 0),
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "last_replayed_at": item.last_replayed_at,
+        "resolved_at": item.resolved_at,
+        "resolved_by": str(item.resolved_by or "") or None,
+        "resolution_note": str(item.resolution_note or "") or None,
     }
 
 
@@ -756,7 +759,7 @@ def list_queryset_health_runs(
         enabled=bool(path.exists()),
         path=str(path),
         total=total,
-        truncated=bool(truncated),
+        truncated=truncated,
         items=items,
         timeseries=_build_queryset_health_timeseries(visible),
     )

@@ -129,17 +129,17 @@ def _dataset_scan_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _scan_run_reference_time(row: object) -> datetime | None:
-    ts = getattr(row, "updated_at", None) or getattr(row, "created_at", None)
+def _scan_run_reference_time(row: DBDatasetProfileScanRun) -> datetime | None:
+    ts = row.updated_at or row.created_at
     if ts is None:
         return None
-    if getattr(ts, "tzinfo", None) is None:
+    if ts.tzinfo is None:
         return ts.replace(tzinfo=timezone.utc)
     return ts
 
 
-def _is_stale_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
+def _is_stale_scan_run(row: DBDatasetProfileScanRun, *, now: datetime) -> bool:
+    status = str(row.status or "").strip().lower()
     if status not in {"pending", "running"}:
         return False
     ts = _scan_run_reference_time(row)
@@ -150,8 +150,8 @@ def _is_stale_scan_run(row: object, *, now: datetime) -> bool:
     return ts + _DATASET_SCAN_RUNNING_STALE_AFTER <= now
 
 
-def _is_hard_stale_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
+def _is_hard_stale_scan_run(row: DBDatasetProfileScanRun, *, now: datetime) -> bool:
+    status = str(row.status or "").strip().lower()
     ts = _scan_run_reference_time(row)
     if ts is None:
         return False
@@ -175,7 +175,7 @@ async def _expire_stale_dataset_profile_scan_runs(db: Session, *, tenant_id: UUI
     )
     expired = 0
     for row in rows:
-        status = str(getattr(row, "status", "") or "").strip().lower()
+        status = str(row.status or "").strip().lower()
         if not _is_stale_scan_run(row, now=now):
             continue
         if bool(settings.TASK_QUEUE_ENABLED):
@@ -228,7 +228,7 @@ def _mark_dataset_profile_scan_run_failed(
 
 
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     opts = parse_pipeline_from_metadata(meta)
@@ -241,7 +241,7 @@ def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
 
 
 def _dataset_retention_policy_out(ds: Dataset) -> DatasetRetentionPolicy | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     pol = parse_retention_policy_from_metadata(meta)
@@ -249,7 +249,7 @@ def _dataset_retention_policy_out(ds: Dataset) -> DatasetRetentionPolicy | None:
 
 
 def _dataset_ingestion_defaults(ds: Dataset) -> tuple[str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None
     pb = meta.get("default_parser_backend")
@@ -408,7 +408,7 @@ def _build_table_routing_policy_audit(
 
 
 def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("rag_defaults")
@@ -426,7 +426,7 @@ def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
 
 
 def _dataset_embedding_defaults_out(ds: Dataset) -> DatasetEmbeddingDefaults | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("embedding_defaults")
@@ -474,7 +474,7 @@ def _upsert_dataset_embedding_defaults_metadata(
 
 
 def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None, None
 
@@ -496,7 +496,7 @@ def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None,
 
 
 def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None, None
 
@@ -518,7 +518,7 @@ def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, 
 
 
 def _dataset_chunk_targets_v2_out(ds: Dataset) -> DatasetChunkTargetsV2 | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("chunk_targets_v2")
@@ -1525,7 +1525,7 @@ def update_dataset(
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     metadata_changed = _apply_update_dataset_metadata_defaults(meta, payload)
 
     updated = dataset_service.update_dataset(
@@ -1562,7 +1562,7 @@ def update_dataset(
 
 
 def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     meta_dict = meta if isinstance(meta, dict) else {}
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
@@ -1651,7 +1651,7 @@ def import_dataset_config(
 
     replace = bool(payload.replace)
     cfg = payload.config
-    meta = dict(getattr(ds, "dataset_metadata", None) or {})
+    meta = dict(ds.dataset_metadata or {})
     changed = _apply_config_import_metadata(meta, cfg, replace=replace)
 
     if changed:
@@ -1697,7 +1697,7 @@ def put_dataset_retrieval_audit(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     meta["retrieval_audit"] = audit.model_dump(mode="json")
     dataset.dataset_metadata = meta
     db.commit()
@@ -2131,7 +2131,7 @@ def get_dataset_ingestion_policy(
 ):
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
     dataset_service.assert_dataset_readable(db, dataset, account_id)
-    meta = getattr(dataset, "dataset_metadata", None)
+    meta = dataset.dataset_metadata
     meta_obj = meta if isinstance(meta, dict) else {}
     policy = parse_ingestion_policy_from_metadata(meta_obj) or IngestionPolicy(version="1", rules=[])
     audit = _build_table_routing_policy_audit(meta=meta_obj, policy=policy)
@@ -2157,7 +2157,7 @@ def list_dataset_ingestion_policy_versions(
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
     dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     current_id = meta.get(_INGESTION_POLICY_CURRENT_VERSION_ID_KEY)
     current_id = str(current_id) if isinstance(current_id, str) and current_id.strip() else None
 
@@ -2220,7 +2220,7 @@ def rollback_dataset_ingestion_policy(
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     target_id, target = _require_ingestion_policy_version(meta, body.version_id)
     normalized = _normalized_stored_ingestion_policy(target)
 
@@ -2261,7 +2261,7 @@ def put_dataset_ingestion_policy(
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     normalized = validate_and_normalize_ingestion_policy(payload)
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     if normalized.rules:
         meta["ingestion_policy"] = normalized.model_dump()
     else:
@@ -2305,7 +2305,7 @@ async def import_dataset_ingestion_policy(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"invalid ingestion policy: {str(exc)[:200]}") from exc
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     if not replace and "ingestion_policy" in meta:
         # Best-effort: do not merge in v1 (explicit by design).
         raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
@@ -2330,13 +2330,13 @@ def export_dataset_ingestion_policy(
 ):
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
     dataset_service.assert_dataset_readable(db, dataset, account_id)
-    meta = getattr(dataset, "dataset_metadata", None)
+    meta = dataset.dataset_metadata
     policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(
         version="1", rules=[]
     )
 
     content = export_policy_json(policy)
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.ingestion-policy.json"
     return Response(
         content=content,
@@ -2346,27 +2346,27 @@ def export_dataset_ingestion_policy(
 
 
 def _scan_run_out_from_row(row: DBDatasetProfileScanRun) -> DatasetProfileScanRunOut:
-    cfg = getattr(row, "config", None)
+    cfg = row.config
     if not isinstance(cfg, dict):
         cfg = {}
-    summary = getattr(row, "summary", None)
+    summary = row.summary
     if not isinstance(summary, dict):
         summary = {}
     return DatasetProfileScanRunOut(
         id=row.id,
         tenant_id=row.tenant_id,
         dataset_id=row.dataset_id,
-        requested_by=getattr(row, "requested_by", None),
-        kind=str(getattr(row, "kind", "") or "deep"),
-        status=str(getattr(row, "status", "") or "pending"),
-        progress=int(getattr(row, "progress", 0) or 0),
+        requested_by=row.requested_by,
+        kind=str(row.kind or "deep"),
+        status=str(row.status or "pending"),
+        progress=int(row.progress or 0),
         config=cfg,
         summary=summary,
-        error_message=getattr(row, "error_message", None),
-        started_at=getattr(row, "started_at", None),
-        finished_at=getattr(row, "finished_at", None),
-        created_at=getattr(row, "created_at", None),
-        updated_at=getattr(row, "updated_at", None),
+        error_message=row.error_message,
+        started_at=row.started_at,
+        finished_at=row.finished_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -2723,7 +2723,7 @@ def export_dataset_profile_summary(
     )
     # Use JSON mode so UUID/datetime serialize correctly.
     content = json.dumps(summary.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.profile.json"
     return Response(
         content=content,
@@ -2753,14 +2753,14 @@ def export_dataset_profile_html_report(
 
     html = render_dataset_profile_html(
         title="MimirQ · 数据画像报告",
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         dataset_id=str(dataset_id),
         generated_at=summary.generated_at,
         summary=summary.model_dump(),
         redact=bool(redact),
     )
 
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.profile.html"
     return Response(
         content=html,
@@ -2815,7 +2815,7 @@ def _summarize_document_metadata(meta: Any, *, max_keys_sample: int = 20) -> dic
     keys_sorted = sorted(set(keys))
     max_keys_sample = max(0, int(max_keys_sample or 0))
     return {
-        "keys_count": int(len(keys_sorted)),
+        "keys_count": len(keys_sorted),
         "keys_sample": keys_sorted[:max_keys_sample],
     }
 
@@ -2884,24 +2884,22 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
         "schema": "mimirq.dataset_document_export.v1",
         "id": str(doc.id),
         "tenant_id": str(doc.tenant_id),
-        "dataset_id": (str(doc.dataset_id) if getattr(doc, "dataset_id", None) is not None else None),
-        "status": str(getattr(doc, "status", "") or ""),
-        "file_type": str(getattr(doc, "file_type", "") or ""),
-        "file_size": int(getattr(doc, "file_size", 0) or 0),
-        "chunk_count": int(getattr(doc, "chunk_count", 0) or 0),
-        "total_characters": int(getattr(doc, "total_characters", 0) or 0),
-        "created_at": _dt_to_json(getattr(doc, "created_at", None)),
-        "updated_at": _dt_to_json(getattr(doc, "updated_at", None)),
-        "processed_at": _dt_to_json(getattr(doc, "processed_at", None)),
-        "archived_at": _dt_to_json(getattr(doc, "archived_at", None)),
-        "disabled_at": _dt_to_json(getattr(doc, "disabled_at", None)),
+        "dataset_id": (str(doc.dataset_id) if doc.dataset_id is not None else None),
+        "status": str(doc.status or ""),
+        "file_type": str(doc.file_type or ""),
+        "file_size": int(doc.file_size or 0),
+        "chunk_count": int(doc.chunk_count or 0),
+        "total_characters": int(doc.total_characters or 0),
+        "created_at": _dt_to_json(doc.created_at),
+        "updated_at": _dt_to_json(doc.updated_at),
+        "processed_at": _dt_to_json(doc.processed_at),
+        "archived_at": _dt_to_json(doc.archived_at),
+        "disabled_at": _dt_to_json(doc.disabled_at),
         # Lifecycle / governance workflow signals (PII-safe by default).
         "lifecycle_owner_hash": None,
-        "review_due_at": _dt_to_json(getattr(doc, "review_due_at", None)),
-        "authority_level": (
-            int(getattr(doc, "authority_level", 0) or 0) if getattr(doc, "authority_level", None) is not None else None
-        ),
-        "supersedes_document_id": (str(getattr(doc, "supersedes_document_id", "") or "") or None),
+        "review_due_at": _dt_to_json(doc.review_due_at),
+        "authority_level": (int(doc.authority_level or 0) if doc.authority_level is not None else None),
+        "supersedes_document_id": (str(doc.supersedes_document_id or "") or None),
         **_document_pipeline_export_fields(doc, meta),
         **_document_source_export_fields(meta, include_sensitive=include_sensitive),
     }
@@ -2909,22 +2907,22 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
 
 def _document_sensitive_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
     return {
-        "filename": str(getattr(doc, "filename", "") or ""),
-        "file_path": str(getattr(doc, "file_path", "") or ""),
-        "owner_id": (str(getattr(doc, "owner_id", "") or "") or None),
-        "access_mode": (str(getattr(doc, "access_mode", "") or "") or None),
-        "lifecycle_owner": (str(getattr(doc, "lifecycle_owner", "") or "") or None),
-        "error_message": (str(getattr(doc, "error_message", "") or "") or None),
+        "filename": str(doc.filename or ""),
+        "file_path": str(doc.file_path or ""),
+        "owner_id": (str(doc.owner_id or "") or None),
+        "access_mode": (str(doc.access_mode or "") or None),
+        "lifecycle_owner": (str(doc.lifecycle_owner or "") or None),
+        "error_message": (str(doc.error_message or "") or None),
         "doc_metadata": meta,
     }
 
 
 def _document_redacted_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
-    filename = str(getattr(doc, "filename", "") or "").strip()
-    file_path = str(getattr(doc, "file_path", "") or "").strip()
-    owner_id = str(getattr(doc, "owner_id", "") or "").strip()
-    lifecycle_owner = str(getattr(doc, "lifecycle_owner", "") or "").strip()
-    error_message = str(getattr(doc, "error_message", "") or "").strip()
+    filename = str(doc.filename or "").strip()
+    file_path = str(doc.file_path or "").strip()
+    owner_id = str(doc.owner_id or "").strip()
+    lifecycle_owner = str(doc.lifecycle_owner or "").strip()
+    error_message = str(doc.error_message or "").strip()
     return {
         "filename_hash": (stable_hash(filename, length=16) if filename else None),
         "file_path_hash": (stable_hash(file_path, length=16) if file_path else None),
@@ -2936,7 +2934,7 @@ def _document_redacted_export_fields(doc: DBDocument, meta: dict[str, Any]) -> d
 
 
 def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[str, Any]:
-    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
     out = _document_base_export_row(doc, meta, include_sensitive=include_sensitive)
     if include_sensitive:
         out.update(_document_sensitive_export_fields(doc, meta))
@@ -3020,10 +3018,10 @@ def _record_dataset_documents_export_audit(
 
 
 def _safe_dataset_export_name(ds: Dataset) -> str:
-    return _DATASET_SAFE_NAME_RE.sub("_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    return _DATASET_SAFE_NAME_RE.sub("_", str(ds.name or "dataset"))[:64]
 
 
-def _next_documents_cursor(rows: list[DBDocument]) -> dict[str, str] | None:
+def _next_documents_cursor(rows: list[DBDocument]) -> dict[str, str | None] | None:
     if not rows:
         return None
     last = rows[-1]
@@ -3048,7 +3046,7 @@ def _documents_json_export_response(
         "schema": "mimirq.dataset_document_export_page.v1",
         "dataset_id": str(dataset_id),
         "limit": int(limit or 0),
-        "returned": int(len(items)),
+        "returned": len(items),
         "next_cursor": _next_documents_cursor(rows),
         "items": items,
     }
@@ -3126,13 +3124,13 @@ def _dataset_bundle_summary_payload(ds: Dataset, tenant_id: UUID, exported_at: d
         "exported_at": _dt_to_json(exported_at),
         "tenant_id": str(tenant_id),
         "dataset": {
-            "id": str(getattr(ds, "id", "")),
-            "name": str(getattr(ds, "name", "") or ""),
-            "description": str(getattr(ds, "description", "") or ""),
-            "permission": str(getattr(ds, "permission", "") or ""),
-            "owner_id": (str(getattr(ds, "owner_id", "") or "") or None),
-            "created_at": _dt_to_json(getattr(ds, "created_at", None)),
-            "updated_at": _dt_to_json(getattr(ds, "updated_at", None)),
+            "id": str(ds.id),
+            "name": str(ds.name or ""),
+            "description": str(ds.description or ""),
+            "permission": str(ds.permission or ""),
+            "owner_id": (str(ds.owner_id or "") or None),
+            "created_at": _dt_to_json(ds.created_at),
+            "updated_at": _dt_to_json(ds.updated_at),
         },
     }
 
@@ -3141,8 +3139,8 @@ def _dataset_bundle_config_payload(ds: Dataset, exported_at: datetime) -> dict[s
     return {
         "schema": "mimirq.dataset_config_export.v1",
         "version": "1",
-        "dataset_id": getattr(ds, "id", None),
-        "name": str(getattr(ds, "name", "") or ""),
+        "dataset_id": ds.id,
+        "name": str(ds.name or ""),
         "exported_at": exported_at,
         "config": _build_dataset_config_bundle(ds),
     }
@@ -3169,9 +3167,9 @@ def _document_storage_manifest(raw_path: str, *, include_sensitive: bool) -> dic
 
 
 def _document_artifact_manifest(doc: DBDocument, row: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
-    raw_path = str(getattr(doc, "file_path", "") or "").strip()
+    raw_path = str(doc.file_path or "").strip()
     return {
-        "document_id": str(getattr(doc, "id", "")),
+        "document_id": str(doc.id),
         "doc_pipeline_key": row.get("doc_pipeline_key"),
         "pipeline_hash": row.get("pipeline_hash"),
         "active_pipeline_hash": row.get("active_pipeline_hash"),
@@ -3202,7 +3200,7 @@ def _dataset_bundle_kg_stats(db: Session, tenant_id: UUID, docs: list[DBDocument
     try:
         from app.rag.kg.models import KgSourceEvent  # noqa: WPS433
 
-        doc_ids = [getattr(doc, "id", None) for doc in docs]
+        doc_ids = [doc.id for doc in docs]
         doc_ids = [doc_id for doc_id in doc_ids if doc_id is not None]
         events = (
             db.query(KgSourceEvent)

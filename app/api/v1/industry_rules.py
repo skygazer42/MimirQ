@@ -59,7 +59,7 @@ def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage industry rules",
     )
-    if str(getattr(member, "role", "") or "").strip().lower() != "owner":
+    if str(member.role or "").strip().lower() != "owner":
         raise HTTPException(status_code=403, detail="No permission to manage industry rules")
 
 
@@ -67,9 +67,9 @@ def _ruleset_summary(name: str) -> dict[str, Any]:
     ruleset = load_ruleset(name)
     return {
         "name": ruleset.name,
-        "glossary_count": int(len(ruleset.glossary)),
-        "pattern_count": int(len(ruleset.patterns)),
-        "intent_count": int(len(ruleset.intents)),
+        "glossary_count": len(ruleset.glossary),
+        "pattern_count": len(ruleset.patterns),
+        "intent_count": len(ruleset.intents),
     }
 
 
@@ -77,9 +77,9 @@ def _ruleset_detail(name: str) -> dict[str, Any]:
     ruleset = load_ruleset(name)
     return {
         "name": ruleset.name,
-        "glossary_count": int(len(ruleset.glossary)),
-        "pattern_count": int(len(ruleset.patterns)),
-        "intent_count": int(len(ruleset.intents)),
+        "glossary_count": len(ruleset.glossary),
+        "pattern_count": len(ruleset.patterns),
+        "intent_count": len(ruleset.intents),
         "glossary": dict(ruleset.glossary),
         "patterns": list(ruleset.patterns),
         "intents": list(ruleset.intents),
@@ -110,7 +110,7 @@ def get_industry_rulesets() -> dict[str, Any]:
     rows = [_ruleset_summary(name) for name in names]
     return {
         "schema": _INDEX_SCHEMA,
-        "count": int(len(rows)),
+        "count": len(rows),
         "rulesets": rows,
     }
 

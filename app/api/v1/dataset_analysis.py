@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
@@ -30,16 +30,19 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
+if TYPE_CHECKING:
+    from app.models.dataset import Dataset
+
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
-def _require_dataset_readable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
+def _require_dataset_readable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str) -> "Dataset":
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
     dataset_service.assert_dataset_readable(db, dataset, account_id)
     return dataset
 
 
-def _require_dataset_writable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str):
+def _require_dataset_writable(*, db: Session, tenant_id: UUID, dataset_id: UUID, account_id: str) -> "Dataset":
     dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
     dataset_service.assert_dataset_writable(db, dataset, account_id)
     return dataset
@@ -88,7 +91,7 @@ def get_dataset_analysis_summary(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         from_ts=from_ts,
         to_ts=to_ts,
         feedback_polarity=feedback_polarity,
@@ -116,7 +119,7 @@ def get_dataset_analysis_examples(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         from_ts=from_ts,
         to_ts=to_ts,
         feedback_polarity=feedback_polarity,
@@ -145,7 +148,7 @@ def get_dataset_analysis_rule_suggestions(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         ruleset_name=ruleset,
         from_ts=from_ts,
         to_ts=to_ts,
@@ -173,7 +176,7 @@ def export_dataset_analysis_json_endpoint(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         from_ts=from_ts,
         to_ts=to_ts,
         feedback_polarity=feedback_polarity,
@@ -200,7 +203,7 @@ def export_dataset_analysis_jsonl_endpoint(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         from_ts=from_ts,
         to_ts=to_ts,
         feedback_polarity=feedback_polarity,
@@ -228,7 +231,7 @@ def export_dataset_analysis_html_endpoint(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         from_ts=from_ts,
         to_ts=to_ts,
         feedback_polarity=feedback_polarity,
@@ -258,7 +261,7 @@ def writeback_dataset_analysis_glossary_endpoint(
         db=db,
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         ruleset_name=ruleset,
         from_ts=from_ts,
         to_ts=to_ts,
@@ -289,7 +292,7 @@ def create_dataset_analysis_png_task_endpoint(
             db=db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
-            dataset_name=str(getattr(dataset, "name", "") or ""),
+            dataset_name=str(dataset.name or ""),
             account_id=account_id,
             background_tasks=background_tasks,
             from_ts=from_ts,

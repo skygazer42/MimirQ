@@ -473,7 +473,7 @@ async def _import_plugin_golden_draft_bundle(
         max_items=max(1, min(2000, int(max_items or 500))),
         items=items,
     )
-    result = await import_ragas_regression_cases(
+    result = import_ragas_regression_cases(
         payload,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -1051,7 +1051,7 @@ async def parse_preview(
                 "parser_backend": parser_backend,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
         )
         return result
     except SubprocessCancelled:
@@ -1196,7 +1196,7 @@ async def ingestion_preview(
                 "parser_backend": config.parser_backend_choice,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
         )
 
         # Governance clean preview (issues + diff).
@@ -1305,7 +1305,7 @@ def clean_preview(
     except RegexSubstitutionTimeoutError as exc:
         raise HTTPException(status_code=400, detail=exc.to_detail()) from exc
 
-    rule_hits = list(getattr(result, "rule_hits", None) or [])
+    rule_hits = list(result.rule_hits or [])
     rule_stats = _clean_preview_rule_stats(rules, rule_meta, rule_hits)
 
     text = _apply_preview_format_transforms(result.markdown, body)
@@ -1408,7 +1408,7 @@ def learn_common_lines(
     return GovernanceCommonLinesLearnResponse(
         dataset_id=body.dataset_id,
         total_documents=int(total),
-        used_documents=int(len(texts)),
+        used_documents=len(texts),
         candidates=candidates,
     )
 

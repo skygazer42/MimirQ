@@ -192,7 +192,7 @@ def _find_keyword_offsets(text: str, keyword: str, *, limit: int = 2) -> list[tu
     flags = re.IGNORECASE if kw.isascii() else 0
     out: list[tuple[int, int]] = []
     for match in re.finditer(re.escape(kw), text, flags=flags):
-        start, end = int(match.start()), int(match.end())
+        start, end = match.start(), match.end()
         if end <= start:
             continue
         out.append((start, end))
@@ -500,7 +500,7 @@ def _trim_focus_rule_span(text: str, label: str, start: int, end: int) -> tuple[
     snippet = text[start:end]
     marker_start = None
     for match in _ACTION_MARKER_RE.finditer(snippet):
-        marker_start = int(match.start())
+        marker_start = match.start()
     if marker_start is not None:
         start += marker_start
     return _trim_match_span(text, start, end)
@@ -514,7 +514,7 @@ def _collect_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnota
             trimmed, offset = _trim_entity_span(raw)
             if len(trimmed) < 2:
                 continue
-            start = int(match.start()) + int(offset)
+            start = match.start() + int(offset)
             end = start + len(trimmed)
             item = _make_auto_annotation(
                 source_text=text,
@@ -621,7 +621,7 @@ def _append_focus_rule_candidates(
 ) -> None:
     for label, annotation_type, pattern, confidence in _FOCUS_RULES:
         for match in pattern.finditer(text):
-            start, end = _trim_focus_rule_span(text, label, int(match.start()), int(match.end()))
+            start, end = _trim_focus_rule_span(text, label, match.start(), match.end())
             item = _make_auto_annotation(
                 source_text=text,
                 start=start,
@@ -651,7 +651,7 @@ def _append_focus_sentence_candidate(
         sentence = (match.group(0) or "").strip()
         if not sentence or not _focus_sentence_has_signal(sentence):
             continue
-        start, end = _trim_match_span(text, int(match.start()), int(match.end()))
+        start, end = _trim_match_span(text, match.start(), match.end())
         item = _make_auto_annotation(
             source_text=text,
             start=start,

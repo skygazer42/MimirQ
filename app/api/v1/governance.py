@@ -158,15 +158,15 @@ def list_stale_documents_by_dataset(
         items.append(
             StaleDocumentItem(
                 id=d.id,
-                filename=str(getattr(d, "filename", "") or ""),
-                file_type=str(getattr(d, "file_type", "") or ""),
-                status=str(getattr(d, "status", "") or ""),
-                lifecycle_owner=getattr(d, "lifecycle_owner", None),
-                review_due_at=getattr(d, "review_due_at", None),
-                authority_level=getattr(d, "authority_level", None),
-                supersedes_document_id=getattr(d, "supersedes_document_id", None),
-                created_at=getattr(d, "created_at", None),
-                updated_at=getattr(d, "updated_at", None),
+                filename=str(d.filename or ""),
+                file_type=str(d.file_type or ""),
+                status=str(d.status or ""),
+                lifecycle_owner=d.lifecycle_owner,
+                review_due_at=d.review_due_at,
+                authority_level=d.authority_level,
+                supersedes_document_id=d.supersedes_document_id,
+                created_at=d.created_at,
+                updated_at=d.updated_at,
             )
         )
 
