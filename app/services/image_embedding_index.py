@@ -12,7 +12,7 @@ import io
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import and_, select
@@ -24,6 +24,12 @@ from app.rag.core.metadata import normalize_image_metadata
 from app.rag.embedding.clip_embedder import encode_clip_image, encode_clip_text
 from app.storage.object.minio import MinIOService
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
+
+if TYPE_CHECKING:
+    from PIL.Image import Image
+
+    from app.models.document import DocumentChunk
+    from app.storage.vector.milvus import MilvusAdapter
 
 logger = get_logger("rag.multimodal.clip")
 
@@ -72,7 +78,7 @@ def _load_image_bytes_from_local(*, tenant_id: UUID, image_id: str, max_bytes: i
             if int(max_bytes or 0) > 0:
                 try:
                     st = p.stat()
-                    if int(getattr(st, "st_size", 0) or 0) > int(max_bytes):
+                    if int(st.st_size or 0) > int(max_bytes):
                         return None
                 except Exception as exc:
                     # If stat fails, still try to read boundedly below.
@@ -134,7 +140,7 @@ def _load_image_bytes_from_minio(*, img_id: str, max_bytes: int) -> bytes | None
         return None
 
 
-def _load_pil_image_from_bytes(raw: bytes) -> Any | None:
+def _load_pil_image_from_bytes(raw: bytes) -> "Image | None":
     if not raw:
         return None
     try:
@@ -144,7 +150,7 @@ def _load_pil_image_from_bytes(raw: bytes) -> Any | None:
         # Force decode now so downstream embeds do not depend on open file handles.
         img.load()
         # Normalize mode to keep embeddings stable across formats.
-        if getattr(img, "mode", None) not in {"RGB", "RGBA"}:
+        if img.mode not in {"RGB", "RGBA"}:
             img = img.convert("RGB")
         return img
     except Exception:
@@ -183,12 +189,12 @@ def _load_chunk_image_bytes(*, tenant_id: UUID, meta: dict[str, Any], max_bytes:
 
 def _build_image_index_item(
     *,
-    chunk: Any,
+    chunk: "DocumentChunk",
     tenant_id: UUID,
     dataset_id: UUID,
     meta: dict[str, Any],
 ) -> dict[str, Any] | None:
-    chunk_id = getattr(chunk, "id", None)
+    chunk_id = chunk.id
     if chunk_id is None:
         return None
     normalize_image_metadata(meta)
@@ -198,10 +204,10 @@ def _build_image_index_item(
         "metadata": {
             "tenant_id": str(tenant_id),
             "dataset_id": str(dataset_id),
-            "document_id": str(getattr(chunk, "document_id", "") or ""),
+            "document_id": str(chunk.document_id or ""),
             "chunk_id": str(chunk_id),
-            "chunk_index": int(getattr(chunk, "chunk_index", 0) or 0),
-            "page_number": int(getattr(chunk, "page_number", 0) or 0),
+            "chunk_index": int(chunk.chunk_index or 0),
+            "page_number": int(chunk.page_number or 0),
             "img_id": meta.get("img_id") or meta.get("image_id") or "",
             "image_id": meta.get("image_id") or "",
             "image_url": meta.get("image_url") or meta.get("img_url") or "",
@@ -212,7 +218,7 @@ def _build_image_index_item(
 
 def _flush_image_index_batch(
     *,
-    adapter: Any,
+    adapter: "MilvusAdapter",
     items: list[dict[str, Any]],
     embeddings: list[list[float]],
     upsert: bool,
@@ -280,7 +286,7 @@ def index_clip_image_embeddings_for_dataset(
     dim = 0
 
     for chunk in rows:
-        meta = dict(getattr(chunk, "doc_metadata", None) or {})
+        meta = dict(chunk.doc_metadata or {})
         if not _is_image_chunk(meta):
             skipped += 1
             continue
@@ -301,7 +307,7 @@ def index_clip_image_embeddings_for_dataset(
             continue
 
         if dim <= 0:
-            dim = int(len(vec))
+            dim = len(vec)
 
         item = _build_image_index_item(chunk=chunk, tenant_id=tenant_id, dataset_id=dataset_id, meta=meta)
         if item is None:
@@ -333,10 +339,10 @@ def index_clip_image_embeddings_for_dataset(
     )
 
     return ImageIndexStats(
-        indexed=int(indexed),
-        skipped=int(skipped),
-        failed=int(failed),
-        dim=int(dim),
+        indexed=indexed,
+        skipped=skipped,
+        failed=failed,
+        dim=dim,
         errors=errors or None,
     )
 
@@ -449,9 +455,9 @@ def build_image_citations(
         rows_q = rows_q.filter(DBDocument.id.in_(select(doc_ids_subq.c.id)))
 
     rows = rows_q.all()
-    by_id: dict[str, tuple[Any, str]] = {}
+    by_id: dict[str, tuple["DocumentChunk", str]] = {}
     for chunk, filename in rows:
-        cid = getattr(chunk, "id", None)
+        cid = chunk.id
         if cid is None:
             continue
         by_id[str(cid)] = (chunk, str(filename or "").strip())
@@ -462,19 +468,19 @@ def build_image_citations(
         if item is None:
             continue
         row, filename = item
-        meta = dict(getattr(row, "doc_metadata", None) or {})
+        meta = dict(row.doc_metadata or {})
         normalize_image_metadata(meta)
-        doc_name = filename or str(meta.get("source") or "").strip() or str(getattr(row, "document_id", "") or "")
+        doc_name = filename or str(meta.get("source") or "").strip() or str(row.document_id or "")
         out.append(
             {
-                "document_id": str(getattr(row, "document_id", "") or ""),
+                "document_id": str(row.document_id or ""),
                 "document_name": doc_name,
-                "chunk_id": str(getattr(row, "id", "") or ""),
-                "chunk_index": int(getattr(row, "chunk_index", 0) or 0),
-                "page_number": getattr(row, "page_number", None),
+                "chunk_id": str(row.id or ""),
+                "chunk_index": int(row.chunk_index or 0),
+                "page_number": row.page_number,
                 # Keep content bounded; image chunks often have OCR/caption text.
-                "chunk_content": str(getattr(row, "content", "") or "")[:2000],
-                "relevance_score": float(h.score),
+                "chunk_content": str(row.content or "")[:2000],
+                "relevance_score": h.score,
                 "has_image": True,
                 "img_id": meta.get("img_id") or None,
                 "img_url": meta.get("img_url") or meta.get("image_url") or None,

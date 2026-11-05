@@ -40,18 +40,18 @@ class ResolvedGovernanceProfile:
 
 def _profile_identity(profile: GovernanceProfileOut) -> str:
     # Custom profiles have id; builtins do not. key is always present.
-    if getattr(profile, "id", None):
+    if profile.id:
         return str(profile.id)
     return str(profile.key or "")
 
 
 def _summary(profile: GovernanceProfileOut) -> GovernanceProfileSummary:
     return GovernanceProfileSummary(
-        id=getattr(profile, "id", None),
-        key=str(getattr(profile, "key", "") or ""),
-        name=str(getattr(profile, "name", "") or ""),
-        description=getattr(profile, "description", None),
-        is_system=bool(getattr(profile, "is_system", False)),
+        id=profile.id,
+        key=str(profile.key or ""),
+        name=str(profile.name or ""),
+        description=profile.description,
+        is_system=bool(profile.is_system),
     )
 
 
@@ -72,7 +72,7 @@ def _resolve_profile_chain(
         seen.add(ident)
         chain_leaf_to_root.append(current)
 
-        parent_ref = str(getattr(current.payload, "extends", None) or "").strip()
+        parent_ref = str(current.payload.extends or "").strip()
         if not parent_ref:
             return list(reversed(chain_leaf_to_root))
         current = fetch_by_ref(parent_ref)
@@ -87,22 +87,22 @@ def _merge_profile_payload(chain: list[GovernanceProfileOut]) -> GovernanceProfi
     processing_scripts: list = []
 
     for profile in chain:
-        for fmt in getattr(profile.payload, "input_formats", None) or []:
+        for fmt in profile.payload.input_formats or []:
             value = str(fmt or "").strip().lower()
             if value in {"markdown", "html"} and value not in input_formats:
                 input_formats.append(value)
 
-        patch = getattr(profile.payload, "pipeline_patch", None) or {}
+        patch = profile.payload.pipeline_patch or {}
         if isinstance(patch, dict):
             pipeline_patch.update(dict(patch))
 
-        for rule in getattr(profile.payload, "regex_rules", None) or []:
+        for rule in profile.payload.regex_rules or []:
             if isinstance(rule, RegexRuleModel):
                 regex_rules.append(rule)
             elif isinstance(rule, dict):
                 regex_rules.append(RegexRuleModel(**rule))
 
-        processing_scripts.extend(list(getattr(profile.payload, "processing_scripts", None) or []))
+        processing_scripts.extend(list(profile.payload.processing_scripts or []))
 
     return GovernanceProfilePayload(
         version="1",
@@ -169,20 +169,20 @@ def _load_governance_profile_ref(
     if row is None:
         raise ValueError("governance profile not found")
 
-    payload_raw = getattr(row, "payload", None)
+    payload_raw = row.payload
     if not isinstance(payload_raw, dict):
         payload_raw = {}
 
     try:
         return GovernanceProfileOut(
             id=row.id,
-            key=(str(getattr(row, "key", "") or "").strip() or f"custom:{str(row.id)}"),
-            name=str(getattr(row, "name", "") or ""),
-            description=getattr(row, "description", None),
-            is_system=bool(getattr(row, "is_system", False)),
+            key=(str(row.key or "").strip() or f"custom:{str(row.id)}"),
+            name=str(row.name or ""),
+            description=row.description,
+            is_system=bool(row.is_system),
             payload=payload_raw,  # pydantic validates nested payload
-            created_at=getattr(row, "created_at", None),
-            updated_at=getattr(row, "updated_at", None),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
         )
     except ValidationError as exc:
         raise ValueError("invalid governance profile payload in DB") from exc

@@ -84,7 +84,7 @@ def _records_from_citations(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-        if str(record.get("content") or "").strip():
+        if record["content"].strip():
             records.append(record)
     return records
 

@@ -124,7 +124,7 @@ def _anchor_binding_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) 
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         raw_binding = policy.get("anchor_binding")
         if isinstance(raw_binding, dict) and raw_binding.get("enabled") is True:
@@ -166,7 +166,7 @@ def _policy_slot_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
@@ -185,7 +185,7 @@ def _metadata_anchor_preflight_block_terms_for_policy_refs(policy_plugin_refs: t
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_term in _response_hint_string_list(policy, "metadata_anchor_preflight_block_terms"):
             term = str(raw_term or "").strip()
@@ -239,7 +239,7 @@ def _requested_policy_slot_specs_for_query(
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
@@ -566,7 +566,7 @@ def _policy_slot_canonical_query_term(
         return ""
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         mappings = [
             dict(raw_mapping)
@@ -600,7 +600,7 @@ def _policy_slot_query_terms(
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
@@ -635,7 +635,7 @@ def _mixed_intent_policy_slot_queries(
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         mappings = [dict(item) for item in policy.get("query_expansion_values") or () if isinstance(item, dict)]
         canonical_terms_by_value = _policy_slot_canonical_terms_by_value(mappings)

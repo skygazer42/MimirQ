@@ -17,9 +17,10 @@ def evaluate_retrieval_metrics(
     if not gold:
         return {"recall_at_k": 0.0, "citation_coverage": 0.0}
 
-    recall_hits = len(set(gold) & set(retrieved))
-    cite_hits = len(set(gold) & set(cited))
+    gold_ids = set(gold)
+    recall_hits = len(gold_ids & set(retrieved))
+    cite_hits = len(gold_ids & set(cited))
     return {
-        "recall_at_k": round(recall_hits / len(set(gold)), 4),
-        "citation_coverage": round(cite_hits / len(set(gold)), 4),
+        "recall_at_k": round(recall_hits / len(gold_ids), 4),
+        "citation_coverage": round(cite_hits / len(gold_ids), 4),
     }

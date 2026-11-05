@@ -45,7 +45,7 @@ def _metadata_answer_highlights(
     seen: set[str] = set()
 
     def add(text: str) -> None:
-        value = str(text or "").strip()
+        value = text.strip()
         if not value or value in seen:
             return
         seen.add(value)

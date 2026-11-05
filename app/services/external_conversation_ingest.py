@@ -218,10 +218,6 @@ def _external_message_metadata(
     }
 
 
-def _is_mimirq_citation(value: Any) -> bool:
-    return _normalize_mimirq_citation(value) is not None
-
-
 _CITATION_CONTENT_KEYS = ("chunk_content", "content", "text", "quote", "snippet", "page_content")
 _CITATION_TITLE_KEYS = ("document_name", "title", "filename", "source", "source_path", "document_id")
 _CITATION_SCORE_KEYS = (
@@ -399,7 +395,7 @@ def _mimirq_citations_for_storage(citations: list[dict[str, Any]]) -> list[dict[
         normalized = _normalize_mimirq_citation(item)
         if normalized is None:
             continue
-        key = (str(normalized.get("document_id") or ""), str(normalized.get("chunk_id") or ""))
+        key = (normalized["document_id"], normalized["chunk_id"])
         if key in seen:
             continue
         seen.add(key)

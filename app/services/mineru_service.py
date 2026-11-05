@@ -69,7 +69,7 @@ def _zip_safe_entries(zip_bytes: bytes) -> tuple[zipfile.ZipFile, list[zipfile.Z
 
     total_bytes = 0
     for info in infos:
-        total_bytes += int(getattr(info, "file_size", 0) or 0)
+        total_bytes += info.file_size or 0
         if info.file_size and info.file_size > max_single:
             zip_file.close()
             raise ValueError(f"ZIP entry too large: {info.filename} ({info.file_size} bytes)")
@@ -106,7 +106,7 @@ def _preferred_markdown_info(markdown_infos: list[zipfile.ZipInfo]) -> zipfile.Z
 
     def sort_key(info: zipfile.ZipInfo) -> tuple[int, int]:
         depth = len([part for part in (info.filename or "").replace("\\", "/").split("/") if part])
-        return (depth, -int(getattr(info, "file_size", 0) or 0))
+        return (depth, -(info.file_size or 0))
 
     return min(markdown_infos, key=sort_key)
 
@@ -359,7 +359,7 @@ class MinerUService:
 
         self._token_exp = try_get_jwt_exp(self.api_token) if self.api_token else None
         now = int(time.time())
-        token_valid = bool(self.api_token) and (self._token_exp is None or int(self._token_exp) > now)
+        token_valid = bool(self.api_token) and (self._token_exp is None or self._token_exp > now)
 
         self.enabled = bool(settings.MINERU_ENABLED) and (token_valid or bool(self.local_server_url))
 
@@ -367,12 +367,12 @@ class MinerUService:
             bool(settings.MINERU_ENABLED)
             and self.api_token
             and self._token_exp is not None
-            and int(self._token_exp) <= now
+            and self._token_exp <= now
             and not self._warned_token_expired
         ):
             logger.warning(
                 "MINERU_API_TOKEN appears expired (exp=%s). Refresh token to use MinerU online API.",
-                format_unix_ts_utc(int(self._token_exp)),
+                format_unix_ts_utc(self._token_exp),
             )
             self._warned_token_expired = True
 
@@ -386,14 +386,14 @@ class MinerUService:
         exp = self._token_exp
         if exp is not None:
             now = int(time.time())
-            if int(exp) <= now:
+            if exp <= now:
                 return (
                     f"MinerU API unauthorized (HTTP {status_code}): MINERU_API_TOKEN expired at "
-                    f"{format_unix_ts_utc(int(exp))}"
+                    f"{format_unix_ts_utc(exp)}"
                 )
             return (
                 f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN "
-                f"(exp={format_unix_ts_utc(int(exp))})"
+                f"(exp={format_unix_ts_utc(exp)})"
             )
         return f"MinerU API unauthorized (HTTP {status_code}): invalid MINERU_API_TOKEN"
 
@@ -403,9 +403,9 @@ class MinerUService:
             raise RuntimeError("MinerU is disabled. Set MINERU_ENABLED=true to enable.")
         if not self.api_token:
             raise RuntimeError("MinerU online API requires MINERU_API_TOKEN.")
-        if self._token_exp is not None and int(self._token_exp) <= int(time.time()):
+        if self._token_exp is not None and self._token_exp <= int(time.time()):
             raise RuntimeError(
-                f"MINERU_API_TOKEN expired at {format_unix_ts_utc(int(self._token_exp))}. Please refresh token."
+                f"MINERU_API_TOKEN expired at {format_unix_ts_utc(self._token_exp)}. Please refresh token."
             )
 
     @staticmethod
@@ -442,7 +442,7 @@ class MinerUService:
         try:
             resp = await pool.request_with_retry(method, url, headers=headers, timeout=30.0, **kwargs)
         except httpx.HTTPStatusError as exc:
-            status = int(getattr(exc.response, "status_code", 0) or 0)
+            status = int(exc.response.status_code or 0)
             if status in {401, 403}:
                 raise RuntimeError(self._format_auth_error(status)) from exc
             raise RuntimeError(f"MinerU API request failed (HTTP {status}): {str(exc)[:200]}") from exc
@@ -550,7 +550,7 @@ class MinerUService:
                     return gen()
 
             resp = await pool.put(upload_url, content=_FileChunks(file_path), timeout=300.0)
-            ok = int(getattr(resp, "status_code", 0) or 0) == 200
+            ok = int(resp.status_code or 0) == 200
             try:
                 await resp.aclose()
             except Exception as exc:
@@ -561,7 +561,7 @@ class MinerUService:
             return False
 
     def upload_file(self, file_path: Path, upload_url: str) -> bool:
-        return bool(_run_coroutine_sync(lambda: self.aupload_file(file_path, upload_url)))
+        return _run_coroutine_sync(lambda: self.aupload_file(file_path, upload_url))
 
     async def aget_task_status(self, batch_id: str) -> dict[str, Any]:
         """
@@ -622,7 +622,7 @@ class MinerUService:
             "total_files": total_files,
             "completed_files": completed_files,
             "failed_files": failed_files,
-            "progress": max(0, min(100, int(progress))),
+            "progress": max(0, min(100, progress)),
             "result_url": None,
             "error": first_error,
         }
@@ -754,7 +754,7 @@ class MinerUService:
         Returns:
             Markdown content.
         """
-        return str(_run_coroutine_sync(lambda: self.adownload_result(result_url)))
+        return _run_coroutine_sync(lambda: self.adownload_result(result_url))
 
     async def adownload_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (async)."""
@@ -770,7 +770,7 @@ class MinerUService:
 
     def download_result_zip(self, zip_url: str) -> bytes:
         """Download parse result ZIP bytes (sync)."""
-        return bytes(_run_coroutine_sync(lambda: self.adownload_result_zip(zip_url)))
+        return _run_coroutine_sync(lambda: self.adownload_result_zip(zip_url))
 
     @staticmethod
     def _extract_markdown_from_zip_bytes(zip_bytes: bytes) -> str:

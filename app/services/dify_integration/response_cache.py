@@ -238,9 +238,7 @@ class _DifyResponseCache:
     def _purge_expired_locked(self, *, now: float, ttl_sec: int) -> None:
         if ttl_sec <= 0 or not self._entries:
             return
-        expired = [
-            key for key, entry in self._entries.items() if now - float(entry.created_at_monotonic) > float(ttl_sec)
-        ]
+        expired = [key for key, entry in self._entries.items() if now - entry.created_at_monotonic > float(ttl_sec)]
         for key in expired:
             self._entries.pop(key, None)
 

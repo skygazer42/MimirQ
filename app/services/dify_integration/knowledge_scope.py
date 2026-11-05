@@ -1,4 +1,5 @@
 import json
+from functools import partial
 from typing import Any
 from uuid import UUID
 
@@ -6,7 +7,13 @@ from fastapi import HTTPException
 
 from app.core.config import settings
 from app.core.env import is_production_env
-from app.rag.retrieval.planner import DatasetRouteHint, DatasetScopePlan, normalize_route_mode, plan_dataset_scope
+from app.rag.retrieval.planner import (
+    DatasetRouteHint,
+    DatasetScopePlan,
+    normalize_route_mode,
+    plan_dataset_scope,
+    retrieval_policy_fallback_multiplier,
+)
 from app.services.dify_integration import common, policy_helpers
 from app.services.dify_integration.auth import _coerce_uuid, _split_items
 from app.services.dify_integration.policy_helpers import knowledge_mapping_plugin_refs
@@ -204,15 +211,36 @@ def resolve_dataset_ids(knowledge_id: str, *, query: str = "") -> list[UUID]:
 
 
 def resolve_policy_plugin_refs(knowledge_id: str) -> tuple[str, ...]:
-    return policy_helpers.resolve_knowledge_policy_plugin_refs(knowledge_id, knowledge_map=load_knowledge_map())
+    return policy_helpers.resolve_knowledge_policy_plugin_refs(
+        knowledge_id,
+        knowledge_map=load_knowledge_map(),
+        knowledge_mapping_plugin_refs=policy_helpers.knowledge_mapping_plugin_refs,
+    )
 
 
 def resolve_policy_filter_fields(knowledge_id: str) -> set[str] | None:
-    return policy_helpers.resolve_knowledge_policy_filter_fields(knowledge_id, knowledge_map=load_knowledge_map())
+    return policy_helpers.resolve_knowledge_policy_filter_fields(
+        knowledge_id,
+        knowledge_map=load_knowledge_map(),
+        knowledge_mapping_plugin_refs=policy_helpers.knowledge_mapping_plugin_refs,
+        retrieval_policy_filter_fields_for_plugin_refs=partial(
+            policy_helpers.retrieval_policy_filter_fields_for_plugin_refs,
+            policy_resolver=policy_helpers.retrieval_policy_for_plugin_ref,
+        ),
+    )
 
 
 def resolve_policy_fallback_multiplier(knowledge_id: str) -> int:
-    return policy_helpers.resolve_knowledge_policy_fallback_multiplier(knowledge_id, knowledge_map=load_knowledge_map())
+    return policy_helpers.resolve_knowledge_policy_fallback_multiplier(
+        knowledge_id,
+        knowledge_map=load_knowledge_map(),
+        knowledge_mapping_plugin_refs=policy_helpers.knowledge_mapping_plugin_refs,
+        retrieval_policy_fallback_multiplier_for_plugin_refs=partial(
+            policy_helpers.retrieval_policy_fallback_multiplier_for_plugin_refs,
+            policy_resolver=policy_helpers.retrieval_policy_for_plugin_ref,
+            fallback_multiplier_resolver=retrieval_policy_fallback_multiplier,
+        ),
+    )
 
 
 def resolve_warmup_knowledge_ids(knowledge_map: dict[str, Any] | None = None) -> tuple[str, ...]:

@@ -4,7 +4,7 @@ from typing import Any
 from app.core.config import settings
 from app.core.optional_deps import check_dependency, require_dependency
 from app.models.document import DocumentChunk
-from app.rag.kg.extraction.parser import EntityValueParser
+from app.rag.kg.extraction.parser import normalize_entity_name, normalize_entity_type
 from app.rag.kg.utils import get_logger
 
 logger = get_logger("kg.extract.gliner")
@@ -22,7 +22,6 @@ class GLiNERExtractor:
 
     def __init__(self) -> None:
         self._model: Any | None = None
-        self._parser = EntityValueParser()
 
     @staticmethod
     def is_available() -> bool:
@@ -34,9 +33,9 @@ class GLiNERExtractor:
             return self._model
         module = require_dependency("gliner", feature="kg_extraction_gliner", pip_name="gliner")
         gliner_cls = module.GLiNER
-        model_name = str(getattr(settings, "KG_GLINER_MODEL_NAME", "") or "").strip() or "urchade/gliner_multi_pii-v1"
+        model_name = str(settings.KG_GLINER_MODEL_NAME or "").strip() or "urchade/gliner_multi_pii-v1"
         model = gliner_cls.from_pretrained(model_name)
-        device = str(getattr(settings, "KG_GLINER_DEVICE", "cpu") or "cpu").strip().lower()
+        device = str(settings.KG_GLINER_DEVICE or "cpu").strip().lower()
         if device and device != "cpu" and hasattr(model, "to"):
             model = model.to(device)
         self._model = model
@@ -55,14 +54,12 @@ class GLiNERExtractor:
 
         labels = entity_types
         if not labels:
-            raw = str(getattr(settings, "KG_GLINER_DEFAULT_ENTITY_TYPES", "") or "")
+            raw = str(settings.KG_GLINER_DEFAULT_ENTITY_TYPES or "")
             labels = [x.strip() for x in raw.replace("\n", ",").split(",") if x.strip()]
         if not labels:
             labels = ["person", "organization", "location", "event"]
 
-        score_threshold = float(
-            getattr(settings, "KG_GLINER_ENTITY_THRESHOLD", 0.5) if threshold is None else threshold
-        )
+        score_threshold = float(settings.KG_GLINER_ENTITY_THRESHOLD if threshold is None else threshold)
 
         model = self._ensure_model()
         raw_entities = await asyncio.to_thread(
@@ -78,12 +75,12 @@ class GLiNERExtractor:
             name = str(ent.get("text") or "").strip()
             if not name:
                 continue
-            label = self._parser.normalize_type(str(ent.get("label") or "unknown"))
+            label = normalize_entity_type(str(ent.get("label") or "unknown"))
             score = float(ent.get("score") or 0.0)
             out.append(
                 {
                     "name": name,
-                    "normalized_name": self._parser.normalize_name(name),
+                    "normalized_name": normalize_entity_name(name),
                     "type": label,
                     "description": "",
                     "evidence_quote": name,

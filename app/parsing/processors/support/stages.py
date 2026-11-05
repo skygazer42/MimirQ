@@ -82,7 +82,8 @@ from app.services.parse_cache import (
     build_parse_cache_key as build_remote_parse_cache_key,
 )
 from app.services.parse_cache import (
-    parse_cache_service,
+    get_parse_cache,
+    set_parse_cache,
 )
 from app.types.document_analytics import compute_document_analytics
 
@@ -333,7 +334,7 @@ class ParsingStage:
                 config_hash=(pipeline_hash or "unknown"),
                 version=str(getattr(settings, "PARSE_CACHE_VERSION", "v1") or "v1"),
             )
-            cached, age_ms = parse_cache_service.get(
+            cached, age_ms = get_parse_cache(
                 tenant_id=str(tenant_id),
                 dataset_id=str(dataset_id),
                 cache_key=parse_cache_key,
@@ -490,7 +491,7 @@ class ParsingStage:
                     for doc in documents
                 ],
             )
-            parse_cache_service.set(
+            set_parse_cache(
                 tenant_id=str(tenant_id),
                 dataset_id=str(dataset_id),
                 cache_key=parse_cache_key,

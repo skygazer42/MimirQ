@@ -20,9 +20,7 @@ def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
 
 def _resolve_mixed_intent_subquery_top_k(*, response_top_k: int, candidate_top_k: int) -> int:
     try:
-        configured = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", response_top_k) or response_top_k
-        )
+        configured = int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K or response_top_k)
     except (TypeError, ValueError):
         configured = int(response_top_k or 1)
     return max(1, min(max(1, int(candidate_top_k or 1)), max(1, configured)))

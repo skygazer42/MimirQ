@@ -913,7 +913,7 @@ def _metadata_anchor_service_and_title_matches(
     ):
         matches = _metadata_anchor_first_matching_records(
             ctx,
-            list(conditions) if isinstance(conditions, tuple) else conditions,
+            conditions,
         )
         if matches:
             return matches

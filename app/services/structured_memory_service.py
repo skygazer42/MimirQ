@@ -114,7 +114,7 @@ def _collect_entity_token_counts(raw: str) -> tuple[dict[str, int], dict[str, st
         if normalized is None:
             continue
         sig, tok = normalized
-        counts[sig] = int(counts.get(sig, 0) or 0) + 1
+        counts[sig] = (counts.get(sig, 0) or 0) + 1
         display.setdefault(sig, tok)
     return counts, display
 
@@ -137,10 +137,10 @@ def extract_entity_tokens(*, text: str, max_entities: int) -> list[str]:
         return []
 
     counts, display = _collect_entity_token_counts(raw)
-    ranked = sorted(counts.items(), key=lambda t: (-int(t[1]), _stable_sig(t[0]), t[0]))
+    ranked = sorted(counts.items(), key=lambda t: (-t[1], _stable_sig(t[0]), t[0]))
     out: list[str] = []
     for sig, _cnt in ranked:
-        out.append(display.get(sig) or sig)
+        out.append(display[sig])
         if len(out) >= max_out:
             break
     return out
@@ -161,11 +161,11 @@ def extract_fact_sentences(*, text: str, max_facts: int) -> list[str]:
         return []
 
     # Split into sentences (simple heuristic).
-    parts = re.split(r"[。！？!?\\n]+", raw)
+    parts = re.split(r"[。！？!?\n]+", raw)
     out: list[str] = []
     seen: set[str] = set()
     for p in parts:
-        s = str(p or "").strip()
+        s = (p or "").strip()
         if not s:
             continue
         if len(s) < 10 or len(s) > 220:
@@ -216,8 +216,8 @@ def extract_structured_memory_for_turn(
         "entities": entities,
         "facts": facts,
         "stats": {
-            "entities": int(len(entities)),
-            "facts": int(len(facts)),
+            "entities": len(entities),
+            "facts": len(facts),
         },
     }
 
@@ -232,7 +232,7 @@ def _record_memory_entity(
     if not tok or _is_pii_like(tok):
         return
     sig = _stable_sig(tok)
-    ent_counts[sig] = int(ent_counts.get(sig, 0) or 0) + 1
+    ent_counts[sig] = (ent_counts.get(sig, 0) or 0) + 1
     ent_surface.setdefault(sig, tok)
 
 
@@ -315,8 +315,8 @@ def build_structured_memory_context(
 
     ent_counts, ent_surface, facts = _collect_structured_memory_records(records)
 
-    ranked_entities = sorted(ent_counts.items(), key=lambda t: (-int(t[1]), _stable_sig(t[0]), t[0]))
-    entities_out = [(ent_surface.get(sig) or sig) for sig, _cnt in ranked_entities][:max_e]
+    ranked_entities = sorted(ent_counts.items(), key=lambda t: (-t[1], _stable_sig(t[0]), t[0]))
+    entities_out = [ent_surface[sig] for sig, _cnt in ranked_entities][:max_e]
     facts_out = facts[:max_f]
 
     text = _render_structured_memory_context(entities=entities_out, facts=facts_out)

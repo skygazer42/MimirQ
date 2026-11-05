@@ -188,9 +188,6 @@ from app.services.parse_cache import (
 from app.services.parse_cache import (
     build_parse_cache_key as build_remote_parse_cache_key,  # noqa: F401
 )
-from app.services.parse_cache import (
-    parse_cache_service,  # noqa: F401
-)
 from app.services.pipeline_config import build_indexing_options as _build_indexing_options
 from app.services.pipeline_config import resolve_pipeline_effective as _resolve_pipeline_effective
 from app.services.tenant_quota_service import TenantQuotaExceededError
@@ -325,7 +322,6 @@ __all__ = (
     "normalize_image_metadata",
     "normalize_section_metadata",
     "normalize_documents",
-    "parse_cache_service",
     "ParseResult",
     "ParsingError",
     "ParsingStage",

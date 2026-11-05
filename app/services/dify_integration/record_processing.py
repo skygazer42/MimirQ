@@ -7,7 +7,7 @@ from app.api.schemas.dify import DifyExternalKnowledgeRecord
 from app.core.config import settings
 from app.rag.retrieval.planner import compact_high_confidence_items, retrieval_policy_response_compaction
 from app.rag.retrieval.plugin_policy import filter_records_by_retrieval_policy_alignment
-from app.services.dify_integration import answer_hints, policy_helpers, query_policy, record_ranking
+from app.services.dify_integration import answer_hints, policy_helpers, query_policy, record_helpers, record_ranking
 from app.services.dify_integration.anchor_strength import (
     _record_has_any_requested_slot_field as _record_has_any_requested_slot_field,
 )
@@ -52,7 +52,7 @@ def _response_compaction_for_records(
             refs.append(text)
     for ref in refs:
         compaction = retrieval_policy_response_compaction(policy_helpers.retrieval_policy_for_plugin_ref(ref))
-        if bool(compaction.get("enabled")):
+        if compaction["enabled"]:
             return compaction
     return {"enabled": False}
 
@@ -185,7 +185,7 @@ def _compact_records_for_response(
     )
     if not limited:
         return []
-    policy_compaction_enabled = bool(policy_compaction.get("enabled"))
+    policy_compaction_enabled = policy_compaction["enabled"]
     compaction_scores = _response_compaction_scores(
         limited, query=query, policy_plugin_refs=policy_plugin_refs, policy_enabled=policy_compaction_enabled
     )
@@ -194,8 +194,8 @@ def _compact_records_for_response(
         compaction_scores,
         top_k,
         compaction_enabled,
-        float(policy_compaction.get("min_top_score") if policy_compaction_enabled else default_min_top_score or 0.7),
-        float(
+        policy_compaction.get("min_top_score") if policy_compaction_enabled else default_min_top_score or 0.7,
+        (
             policy_compaction.get("relative_score_floor")
             if policy_compaction_enabled
             else default_relative_score_floor or 0.65
@@ -300,14 +300,6 @@ def _fast_metadata_fields(
     return (hint_text, _structured_label_values_from_content(hint_text))
 
 
-def _append_unique_line(lines: list[str], seen: set[str], line: str) -> None:
-    value = str(line or "").strip()
-    if not value or value in seen:
-        return
-    seen.add(value)
-    lines.append(value)
-
-
 def _fast_compaction_lines(
     fields: dict[str, str],
     metadata_fields: dict[str, str],
@@ -327,10 +319,12 @@ def _fast_compaction_lines(
         if not value and requested_labels:
             value = "、".join(requested_labels)
         if value:
-            _append_unique_line(lines, seen, f"{prefix}：{_clamp_hint_value(value, limit=max_chars)}")
+            record_helpers._append_unique_line(lines, seen, f"{prefix}：{_clamp_hint_value(value, limit=max_chars)}")
     for label in labels:
         if fields.get(label):
-            _append_unique_line(lines, seen, f"{label}：{_clamp_hint_value(fields[label], limit=max_chars)}")
+            record_helpers._append_unique_line(
+                lines, seen, f"{label}：{_clamp_hint_value(fields[label], limit=max_chars)}"
+            )
     return lines
 
 
@@ -401,7 +395,7 @@ def _apply_response_policy_compaction(
     compaction_enabled: bool,
     policy_compaction: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    if not compaction_enabled or not bool(policy_compaction.get("enabled")):
+    if not compaction_enabled or not policy_compaction["enabled"]:
         return records
     if record_ranking._record_has_strong_question_anchor(
         records[0], query=query, policy_plugin_refs=policy_plugin_refs

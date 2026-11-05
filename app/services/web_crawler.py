@@ -13,7 +13,7 @@ import re
 from collections import deque
 from dataclasses import dataclass, field, replace
 from functools import lru_cache
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 from urllib.parse import urljoin, urlsplit, urlunsplit
 from urllib.robotparser import RobotFileParser
 
@@ -30,9 +30,20 @@ from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.html_canonical import extract_canonical_url, normalize_url_for_dedup
 
+if TYPE_CHECKING:
+    from xml.etree.ElementTree import Element
+
 _DISALLOWED_SCHEMES = ("javascript:", "mailto:", "tel:", "data:", "file:")
 _SENSITIVE_REQUEST_HEADERS = frozenset({"authorization", "cookie", "proxy-authorization"})
 logger = get_logger("services.web_crawler")
+
+
+class _CrawlDegradation(TypedDict):
+    level: str
+    feature: str
+    dependency: str
+    reason: str
+    remediation: str
 
 
 def _request_origin(url: str) -> tuple[str, str, int | None] | None:
@@ -113,18 +124,18 @@ def _xml_tag_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def _first_child_loc_text(node: Any) -> str:
+def _first_child_loc_text(node: "Element") -> str:
     for child in node:
-        if _xml_tag_name(str(getattr(child, "tag", "") or "")).lower() != "loc":
+        if _xml_tag_name(str(child.tag or "")).lower() != "loc":
             continue
         return (child.text or "").strip()
     return ""
 
 
-def _named_children_loc_values(root: Any, *, child_name: str) -> list[str]:
+def _named_children_loc_values(root: "Element", *, child_name: str) -> list[str]:
     values: list[str] = []
     for child in root:
-        if _xml_tag_name(str(getattr(child, "tag", "") or "")).lower() != child_name:
+        if _xml_tag_name(str(child.tag or "")).lower() != child_name:
             continue
         loc = _first_child_loc_text(child)
         if loc:
@@ -132,10 +143,10 @@ def _named_children_loc_values(root: Any, *, child_name: str) -> list[str]:
     return values
 
 
-def _iter_loc_values(root: Any) -> list[str]:
+def _iter_loc_values(root: "Element") -> list[str]:
     values: list[str] = []
     for child in root.iter():
-        if _xml_tag_name(str(getattr(child, "tag", "") or "")).lower() != "loc":
+        if _xml_tag_name(str(child.tag or "")).lower() != "loc":
             continue
         loc = (child.text or "").strip()
         if loc:
@@ -161,7 +172,7 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
     except Exception:
         return [], []
 
-    root_name = _xml_tag_name(str(getattr(root, "tag", "") or "")).lower()
+    root_name = _xml_tag_name(str(root.tag or "")).lower()
     if root_name.endswith("sitemapindex"):
         return [], _named_children_loc_values(root, child_name="sitemap")
 
@@ -330,7 +341,7 @@ async def _client_for_fetch_target(
 
 async def _resolve_redirect_hop(
     *,
-    resp: Any,
+    resp: httpx.Response,
     current_url: str,
     current_origin: tuple[str, str, int | None] | None,
     request_headers: dict[str, str],
@@ -353,7 +364,7 @@ async def _resolve_redirect_hop(
     return next_target, next_url, next_origin, request_headers, hops + 1
 
 
-async def _read_response_text(resp: Any, *, max_bytes: int) -> str:
+async def _read_response_text(resp: httpx.Response, *, max_bytes: int) -> str:
     chunks: list[bytes] = []
     size = 0
     async for chunk in resp.aiter_bytes():
@@ -432,7 +443,7 @@ async def _fetch_page_text(
             await pinned_https_client.aclose()
 
 
-def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str], dict[str, Any] | None]:
+def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str], _CrawlDegradation | None]:
     lxml_html = _get_lxml_html()
     if lxml_html is None:
         return (
@@ -777,7 +788,7 @@ async def _validated_crawl_url(url: str, *, errors: list[dict[str, Any]]) -> str
     try:
         return await validate_url_for_ingest(url)
     except HTTPException as exc:
-        _append_crawl_error(errors, url=url, error=str(getattr(exc, "detail", "") or "invalid_url"))
+        _append_crawl_error(errors, url=url, error=str(exc.detail or "invalid_url"))
     except Exception as exc:
         _append_crawl_error(errors, url=url, error=str(exc))
     return None
@@ -806,23 +817,23 @@ def _record_crawled_url(
 
 def _record_degraded_crawl(
     *,
-    degraded: dict[str, Any] | None,
+    degraded: _CrawlDegradation | None,
     degraded_seen: set[tuple[str, str]],
     errors: list[dict[str, Any]],
     safe_url: str,
 ) -> None:
     if degraded is None:
         return
-    key = (str(degraded.get("feature") or ""), str(degraded.get("dependency") or ""))
+    key = (degraded["feature"], degraded["dependency"])
     if key in degraded_seen:
         return
     degraded_seen.add(key)
     logger.warning(
         "Web crawl degraded: feature=%s dependency=%s reason=%s remediation=%s",
-        str(degraded.get("feature") or "unknown"),
-        str(degraded.get("dependency") or "unknown"),
-        str(degraded.get("reason") or "unknown"),
-        str(degraded.get("remediation") or ""),
+        degraded["feature"],
+        degraded["dependency"],
+        degraded["reason"],
+        degraded["remediation"],
     )
     if len(errors) < 20:
         errors.append({"url": safe_url, **degraded})

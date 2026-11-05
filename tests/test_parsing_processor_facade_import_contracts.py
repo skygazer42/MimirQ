@@ -203,7 +203,6 @@ FACADE_EXPORT_SOURCES = (
     ("governance_processor", "app.rag.preprocessing.processor", "governance_processor"),
     ("RemoteParseCacheEntry", "app.services.parse_cache", "ParseCacheEntry"),
     ("build_remote_parse_cache_key", "app.services.parse_cache", "build_parse_cache_key"),
-    ("parse_cache_service", "app.services.parse_cache", "parse_cache_service"),
     ("compute_document_analytics", "app.types.document_analytics", "compute_document_analytics"),
 )
 
