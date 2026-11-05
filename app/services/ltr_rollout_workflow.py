@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 from uuid import UUID
 
 from app.models.chat import Conversation, Message
@@ -35,6 +35,11 @@ _DEFAULT_LTR_ROLLOUT_GATE_POLICY_PROFILE: dict[str, Any] = {
         "block": {"max_failed_checks": 9999, "canary_ratio": 0.0},
     },
 }
+
+
+class _GatePolicyLevel(TypedDict):
+    max_failed_checks: int
+    canary_ratio: float
 
 
 def _safe_uuid_text(value: Any) -> str | None:
@@ -173,21 +178,21 @@ def materialize_feedback_case(
     user_message: Message | None,
     trace_payload: dict[str, Any] | None = None,
 ) -> FeedbackCaseMaterialization:
-    meta = assistant.message_metadata if isinstance(getattr(assistant, "message_metadata", None), dict) else {}
-    dataset_id = _safe_uuid_text(meta.get("dataset_id")) or _safe_uuid_text(getattr(conversation, "dataset_id", None))
+    meta = assistant.message_metadata if isinstance(assistant.message_metadata, dict) else {}
+    dataset_id = _safe_uuid_text(meta.get("dataset_id")) or _safe_uuid_text(conversation.dataset_id)
     request_id = str(meta.get("request_id") or "").strip()
 
     question = str(getattr(user_message, "content", "") or "").strip() or "(missing user question)"
-    reference_sources = normalize_reference_sources(getattr(assistant, "citations", None))
+    reference_sources = normalize_reference_sources(assistant.citations)
     if not reference_sources and isinstance(trace_payload, dict):
         reference_sources = normalize_reference_sources(trace_payload.get("citations"))
 
-    tags = _normalize_tags(getattr(feedback, "tags", None))
-    extra = dict(getattr(feedback, "extra", {}) or {})
+    tags = _normalize_tags(feedback.tags)
+    extra = dict(feedback.extra or {})
     extra.setdefault("source", "feedback")
     extra.setdefault("feedback_id", str(feedback.id))
     extra.setdefault("message_id", str(feedback.message_id))
-    extra.setdefault("rating", int(getattr(feedback, "rating", 0) or 0))
+    extra.setdefault("rating", int(feedback.rating or 0))
     if request_id:
         extra["retrieval_trace_request_id"] = request_id
     if isinstance(trace_payload, dict) and trace_payload:
@@ -197,7 +202,7 @@ def materialize_feedback_case(
         feedback_id=str(feedback.id),
         dataset_id=dataset_id,
         question=question,
-        expected_answer=_safe_text(getattr(feedback, "expected_answer", None), max_len=20_000),
+        expected_answer=_safe_text(feedback.expected_answer, max_len=20_000),
         reference_sources=reference_sources,
         tags=tags,
         extra=extra,
@@ -227,21 +232,21 @@ def build_rollout_regression_bundle(
     selected_feedback_cases = 0
 
     for item in evidence_items or []:
-        if str(getattr(item, "status", "") or "").strip().lower() != "approved":
+        if str(item.status or "").strip().lower() != "approved":
             continue
-        if str(getattr(item, "dataset_id", "") or "") != dataset_text:
+        if str(item.dataset_id or "") != dataset_text:
             raise ValueError("dataset_id mismatch for evidence item")
-        refs = normalize_reference_sources(getattr(item, "reference_sources", None))
+        refs = normalize_reference_sources(item.reference_sources)
         if not refs:
             continue
         approved_evidence_items += 1
         items_out.append(
             {
-                "question": str(getattr(item, "query", "") or "").strip(),
-                "expected_answer": getattr(item, "expected_answer", None),
+                "question": str(item.query or "").strip(),
+                "expected_answer": item.expected_answer,
                 "reference_sources": refs,
                 "tags": _normalize_tags(
-                    getattr(item, "tags", None),
+                    item.tags,
                     prefixes=[
                         "evidence_suite",
                         f"evidence_suite:{str(suite.id)}" if suite is not None else "evidence_suite",
@@ -284,9 +289,9 @@ def build_rollout_regression_bundle(
         "dataset_id": dataset_text,
         "generated_at": generated_at or _now_utc_iso(),
         "source_summary": {
-            "approved_evidence_items": int(approved_evidence_items),
-            "selected_feedback_cases": int(selected_feedback_cases),
-            "total_items": int(len(items_out)),
+            "approved_evidence_items": approved_evidence_items,
+            "selected_feedback_cases": selected_feedback_cases,
+            "total_items": len(items_out),
         },
         "items": items_out,
     }
@@ -362,7 +367,7 @@ def normalize_ltr_rollout_gate_policy_profile(raw: Any | None) -> dict[str, Any]
     payload = raw if isinstance(raw, dict) else {}
     levels_payload = payload.get("levels") if isinstance(payload.get("levels"), dict) else payload
 
-    levels: dict[str, dict[str, Any]] = {}
+    levels: dict[str, _GatePolicyLevel] = {}
     for level in ("pass", "warn", "block"):
         cur = levels_payload.get(level) if isinstance(levels_payload, dict) else None
         base = (
@@ -378,20 +383,20 @@ def normalize_ltr_rollout_gate_policy_profile(raw: Any | None) -> dict[str, Any]
         if canary_ratio is None:
             canary_ratio = _safe_float((base or {}).get("canary_ratio"), min_value=0.0, max_value=1.0) or 0.0
         levels[level] = {
-            "max_failed_checks": int(max_failed),
-            "canary_ratio": round(float(canary_ratio), 4),
+            "max_failed_checks": max_failed,
+            "canary_ratio": round(canary_ratio, 4),
         }
 
     # Ensure monotonic boundaries: pass <= warn <= block.
-    pass_max = int(levels["pass"]["max_failed_checks"])
-    warn_max = int(levels["warn"]["max_failed_checks"])
-    block_max = int(levels["block"]["max_failed_checks"])
+    pass_max = levels["pass"]["max_failed_checks"]
+    warn_max = levels["warn"]["max_failed_checks"]
+    block_max = levels["block"]["max_failed_checks"]
     if warn_max < pass_max:
         warn_max = pass_max
     if block_max < warn_max:
         block_max = warn_max
-    levels["warn"]["max_failed_checks"] = int(warn_max)
-    levels["block"]["max_failed_checks"] = int(block_max)
+    levels["warn"]["max_failed_checks"] = warn_max
+    levels["block"]["max_failed_checks"] = block_max
 
     return {
         "schema": "mimirq.ltr_rollout_gate_policy_profile.v1",
@@ -425,8 +430,8 @@ def _evaluate_gate_policy_decision(*, failed_checks: int, policy_profile: dict[s
     return {
         "schema": "mimirq.ltr_rollout_gate_decision.v1",
         "level": level,
-        "failed_checks": int(max(0, int(failed_checks or 0))),
-        "canary_ratio": round(float(ratio), 4),
+        "failed_checks": max(0, int(failed_checks or 0)),
+        "canary_ratio": round(ratio, 4),
     }
 
 
@@ -504,26 +509,26 @@ def evaluate_ltr_rollout_gate(
         checks.append(
             {
                 "metric": metric,
-                "passed": bool(passed),
-                "actual": round(float(actual), 4),
+                "passed": passed,
+                "actual": round(actual, 4),
                 "bounds": {k: round(float(v), 4) for k, v in metric_bounds.items() if _as_float(v) is not None},
             }
         )
 
-    failed = sum(1 for item in checks if not bool(item.get("passed")))
+    failed = sum(1 for item in checks if not item.get("passed"))
     summary = {
-        "total": int(len(checks)),
-        "passed": int(len(checks) - failed),
-        "failed": int(failed),
+        "total": len(checks),
+        "passed": len(checks) - failed,
+        "failed": failed,
     }
     policy_profile = normalized.get("policy_profile") if isinstance(normalized.get("policy_profile"), dict) else {}
-    decision = _evaluate_gate_policy_decision(failed_checks=int(failed), policy_profile=policy_profile)
+    decision = _evaluate_gate_policy_decision(failed_checks=failed, policy_profile=policy_profile)
     gate_passed = str(decision.get("level") or "").strip().lower() == "pass"
 
     return {
         "schema": "mimirq.ltr_rollout_gate_result.v1",
         "generated_at": generated_at or _now_utc_iso(),
-        "passed": bool(gate_passed),
+        "passed": gate_passed,
         "summary": summary,
         "reasons": reasons,
         "checks": checks,
@@ -551,7 +556,7 @@ def build_rollout_comparison(
 
     deltas: dict[str, float] = {}
     for key in sorted(set(candidate_metrics) | set(baseline_metrics)):
-        deltas[key] = round(float(candidate_metrics.get(key, 0.0)) - float(baseline_metrics.get(key, 0.0)), 4)
+        deltas[key] = round(candidate_metrics.get(key, 0.0) - baseline_metrics.get(key, 0.0), 4)
 
     return {
         "schema": "mimirq.ltr_rollout_comparison.v1",
@@ -594,7 +599,7 @@ def build_ltr_rollout_activation_plan(
     canary_on_pass: bool = False,
     canary_ratio: float | None = None,
 ) -> dict[str, Any]:
-    if not bool(canary_on_pass):
+    if not canary_on_pass:
         return {"performed": False, "status": "manual_review_required"}
 
     level = str(((gate.get("decision") or {}).get("level") if isinstance(gate, dict) else "") or "").strip().lower()
@@ -628,7 +633,7 @@ def build_ltr_rollout_activation_plan(
         "status": "canary_activation_ready",
         "mode": "canary",
         "candidate_model_id": cid,
-        "canary_ratio": round(float(ratio), 4),
+        "canary_ratio": round(ratio, 4),
         "actor_id": (str(actor_id) if str(actor_id or "").strip() else None),
     }
 

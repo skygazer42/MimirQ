@@ -64,7 +64,7 @@ def _paired_t_p_value(deltas: list[float]) -> float | None:
     if stdev is None or stdev <= 0:
         return 1.0 if abs(mean_delta) <= 1e-12 else 0.0
     z = abs(mean_delta / (stdev / math.sqrt(len(deltas))))
-    return round(float(math.erfc(z / math.sqrt(2.0))), 6)
+    return round(math.erfc(z / math.sqrt(2.0)), 6)
 
 
 def _rank_abs_deltas(deltas: list[float]) -> list[tuple[float, float]]:
@@ -100,14 +100,14 @@ def _wilcoxon_p_value(deltas: list[float]) -> float | None:
             if min(signed, total_rank - signed) <= observed + 1e-12:
                 extreme += 1
             count += 1
-        return round(float(extreme / count), 6)
+        return round(extreme / count, 6)
 
     mean = total_rank / 2.0
     variance = sum(rank * rank for _delta, rank in ranked) / 4.0
     if variance <= 0:
         return None
     z = abs(positive_rank - mean) / math.sqrt(variance)
-    return round(float(math.erfc(z / math.sqrt(2.0))), 6)
+    return round(math.erfc(z / math.sqrt(2.0)), 6)
 
 
 def _mcnemar_p_value(pairs: list[tuple[float, float]]) -> float | None:
@@ -122,7 +122,7 @@ def _mcnemar_p_value(pairs: list[tuple[float, float]]) -> float | None:
     if discordant == 0:
         return 1.0
     chi_square = (abs(base_wrong_target_right - base_right_target_wrong) - 1.0) ** 2 / discordant
-    return round(float(math.erfc(math.sqrt(max(0.0, chi_square) / 2.0))), 6)
+    return round(math.erfc(math.sqrt(max(0.0, chi_square) / 2.0)), 6)
 
 
 def _bootstrap_ci(metric_key: str, deltas: list[float], iterations: int) -> tuple[float | None, float | None]:
@@ -140,8 +140,8 @@ def _bootstrap_ci(metric_key: str, deltas: list[float], iterations: int) -> tupl
         ]
         means.append(sum(sample) / len(sample))
     means.sort()
-    low_idx = max(0, min(len(means) - 1, int(math.floor(0.025 * (len(means) - 1)))))
-    high_idx = max(0, min(len(means) - 1, int(math.ceil(0.975 * (len(means) - 1)))))
+    low_idx = max(0, min(len(means) - 1, math.floor(0.025 * (len(means) - 1))))
+    high_idx = max(0, min(len(means) - 1, math.ceil(0.975 * (len(means) - 1))))
     return round(float(means[low_idx]), 6), round(float(means[high_idx]), 6)
 
 
@@ -225,7 +225,7 @@ def _metric_diffs_for_case(
         target_value = _as_float(_scores(target_item).get(key))
         if base_value is None or target_value is None:
             continue
-        delta = round(float(target_value - base_value), 6)
+        delta = round(target_value - base_value, 6)
         deltas.append(delta)
         metric_diffs.append({"key": key, "before": base_value, "after": target_value, "delta": delta})
     return metric_diffs, deltas

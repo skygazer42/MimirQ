@@ -20,7 +20,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
@@ -82,7 +82,7 @@ def _stable_sample(*, tenant_id: str | None, request_id: str | None, rate: float
     digest = hashlib.sha256(key).digest()
     # 0..1 float from first 4 bytes.
     val = int.from_bytes(digest[:4], "big") / float(2**32)
-    return bool(val < r)
+    return val < r
 
 
 def compute_faithfulness_det(answer: str, contexts: list[str], *, max_evidence_chars: int = 24_000) -> float | None:
@@ -176,14 +176,23 @@ def _finite_metric(value: Any) -> float | None:
     return number if number is not None and math.isfinite(number) else None
 
 
+class _QualityBucket(TypedDict):
+    ts_ms: int
+    samples: int
+    faith_sum: float
+    faith_n: int
+    util_sum: float
+    util_n: int
+
+
 def _quality_buckets(
     records: list[dict[str, Any]],
     *,
     bucket_ms: int,
-) -> tuple[dict[int, dict[str, Any]], list[float], list[float]]:
+) -> tuple[dict[int, _QualityBucket], list[float], list[float]]:
     faith_values: list[float] = []
     utilization_values: list[float] = []
-    buckets: dict[int, dict[str, Any]] = defaultdict(
+    buckets: dict[int, _QualityBucket] = defaultdict(
         lambda: {
             "ts_ms": 0,
             "samples": 0,
@@ -198,35 +207,35 @@ def _quality_buckets(
         if not ts_ms:
             continue
         bucket_timestamp = (ts_ms // bucket_ms) * bucket_ms
-        bucket = buckets[int(bucket_timestamp)]
-        bucket["ts_ms"] = int(bucket_timestamp)
-        bucket["samples"] = int(bucket.get("samples") or 0) + 1
+        bucket = buckets[bucket_timestamp]
+        bucket["ts_ms"] = bucket_timestamp
+        bucket["samples"] += 1
         faithfulness = _finite_metric(record.get("faithfulness_det"))
         if faithfulness is not None:
             faith_values.append(faithfulness)
-            bucket["faith_sum"] = float(bucket.get("faith_sum") or 0.0) + faithfulness
-            bucket["faith_n"] = int(bucket.get("faith_n") or 0) + 1
+            bucket["faith_sum"] = (bucket["faith_sum"] or 0.0) + faithfulness
+            bucket["faith_n"] += 1
         utilization = _finite_metric(record.get("chunk_utilization"))
         if utilization is not None:
             utilization_values.append(utilization)
-            bucket["util_sum"] = float(bucket.get("util_sum") or 0.0) + utilization
-            bucket["util_n"] = int(bucket.get("util_n") or 0) + 1
+            bucket["util_sum"] = (bucket["util_sum"] or 0.0) + utilization
+            bucket["util_n"] += 1
     return buckets, faith_values, utilization_values
 
 
 def _quality_timeseries(
-    buckets: dict[int, dict[str, Any]],
+    buckets: dict[int, _QualityBucket],
 ) -> tuple[list[int], list[int], list[float | None], list[float | None]]:
     timestamps = sorted(buckets)
-    samples = [int(buckets[key].get("samples") or 0) for key in timestamps]
+    samples = [buckets[key]["samples"] for key in timestamps]
     faithfulness: list[float | None] = []
     utilization: list[float | None] = []
     for key in timestamps:
         bucket = buckets[key]
-        faith_count = int(bucket.get("faith_n") or 0)
-        utilization_count = int(bucket.get("util_n") or 0)
-        faithfulness.append((float(bucket.get("faith_sum") or 0.0) / faith_count) if faith_count else None)
-        utilization.append((float(bucket.get("util_sum") or 0.0) / utilization_count) if utilization_count else None)
+        faith_count = bucket["faith_n"]
+        utilization_count = bucket["util_n"]
+        faithfulness.append(((bucket["faith_sum"] or 0.0) / faith_count) if faith_count else None)
+        utilization.append(((bucket["util_sum"] or 0.0) / utilization_count) if utilization_count else None)
     return timestamps, samples, faithfulness, utilization
 
 
@@ -243,10 +252,10 @@ def _quality_alert(
     return {
         "kind": "quality_drop",
         "metric": metric,
-        "value": round(float(value), 4),
-        "threshold": round(float(threshold), 4),
-        "bucket_ts_ms": int(bucket_ts_ms),
-        "samples": int(samples),
+        "value": round(value, 4),
+        "threshold": round(threshold, 4),
+        "bucket_ts_ms": bucket_ts_ms,
+        "samples": samples,
     }
 
 
@@ -313,20 +322,20 @@ def summarize_online_quality(
     )
 
     return OnlineQualitySummary(
-        enabled=bool(enabled),
+        enabled=enabled,
         path=str(path),
-        window_minutes=int(window_minutes),
-        bucket_minutes=int(bucket_minutes),
-        truncated=bool(truncated),
-        record_count=int(len(raw_records)),
-        sample_count=int(len(records)),
+        window_minutes=window_minutes,
+        bucket_minutes=bucket_minutes,
+        truncated=truncated,
+        record_count=len(raw_records),
+        sample_count=len(records),
         faithfulness_det_avg=_mean(faith_vals),
         chunk_utilization_avg=_mean(util_vals),
         timeseries={
             "ts_ms": ts_ms_series,
             "samples": samples_series,
-            "faithfulness_det_avg": [None if v is None else round(float(v), 4) for v in faith_series],
-            "chunk_utilization_avg": [None if v is None else round(float(v), 4) for v in util_series],
+            "faithfulness_det_avg": [None if v is None else round(v, 4) for v in faith_series],
+            "chunk_utilization_avg": [None if v is None else round(v, 4) for v in util_series],
         },
         alerts=alerts,
     )
@@ -433,7 +442,7 @@ def maybe_enqueue_online_eval(
         "request_id": str(request_id or "")[:200] if request_id else None,
         "retrieval_mode": str(retrieval_mode or "").strip().lower() or None,
         "citations_count": int(citations_count) if citations_count is not None else None,
-        "sample_rate": round(float(rate), 6),
+        "sample_rate": round(rate, 6),
         "answer": str(answer or ""),
         "contexts": [str(c or "") for c in (contexts or []) if str(c or "").strip()],
     }
@@ -451,7 +460,7 @@ def maybe_enqueue_online_eval(
                 "dataset_id": str(dataset_id) if dataset_id else None,
                 "request_id": str(request_id or "")[:200] if request_id else None,
                 "reason": "queue_full",
-                "sample_rate": round(float(rate), 6),
+                "sample_rate": round(rate, 6),
             }
         )
         return {"enabled": True, "enqueued": False, "reason": "queue_full", "sample_rate": rate}

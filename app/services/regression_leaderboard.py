@@ -8,11 +8,14 @@ Goal:
 
 import json
 from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
 from app.rag.core.query_rewrite_strategy import build_query_rewrite_strategy_spec
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+
+if TYPE_CHECKING:
+    from app.models.evaluation import RagasRegressionRun
 
 
 def _to_float(v: Any) -> float | None:
@@ -139,7 +142,7 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
 
 def build_regression_run_leaderboard(
     *,
-    runs: Iterable[object],
+    runs: "Iterable[RagasRegressionRun]",
     metric_key: str,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
@@ -153,8 +156,8 @@ def build_regression_run_leaderboard(
 
     items: list[dict[str, Any]] = []
     for r in runs or []:
-        summary = _safe_dict(getattr(r, "summary", None))
-        params = _safe_dict(getattr(r, "params", None))
+        summary = _safe_dict(r.summary)
+        params = _safe_dict(r.params)
         rag_params = _safe_dict(params.get("rag_params"))
 
         metric_value = _to_float(summary.get(metric_key))
@@ -162,10 +165,10 @@ def build_regression_run_leaderboard(
 
         items.append(
             {
-                "run_id": str(getattr(r, "id", "") or ""),
-                "status": str(getattr(r, "status", "") or ""),
-                "created_at": getattr(r, "created_at", None),
-                "finished_at": getattr(r, "finished_at", None),
+                "run_id": str(r.id or ""),
+                "status": str(r.status or ""),
+                "created_at": r.created_at,
+                "finished_at": r.finished_at,
                 "metric_key": metric_key,
                 "metric_value": metric_value,
                 "retrieval_config_hash": cfg_hash,

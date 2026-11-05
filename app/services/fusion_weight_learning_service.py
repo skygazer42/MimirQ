@@ -111,10 +111,10 @@ def summarize_fusion_weight_observability(
 ) -> dict[str, Any]:
     filtered = _iter_filtered_traces(rows, tenant_id=tenant_id)
 
-    strategy_hist = Counter()
-    rrf_hist = Counter()
-    channel_signal_coverage = Counter()
-    weight_profiles = Counter()
+    strategy_hist: Counter[str] = Counter()
+    rrf_hist: Counter[str] = Counter()
+    channel_signal_coverage: Counter[str] = Counter()
+    weight_profiles: Counter[str] = Counter()
     ltr_training_ready_rows = 0
 
     for trace, row, _source in filtered:
@@ -142,11 +142,11 @@ def summarize_fusion_weight_observability(
         "schema": FUSION_WEIGHT_OBSERVABILITY_SCHEMA,
         "tenant_id": _normalize_tenant_id(tenant_id) or None,
         "summary": {
-            "observed_rows": int(len(filtered)),
-            "ltr_training_ready_rows": int(ltr_training_ready_rows),
+            "observed_rows": len(filtered),
+            "ltr_training_ready_rows": ltr_training_ready_rows,
             "fusion_strategy_histogram": dict(sorted(strategy_hist.items())),
             "rrf_k_histogram": dict(sorted(rrf_hist.items(), key=lambda item: int(item[0]))),
-            "channel_signal_coverage": {key: int(channel_signal_coverage.get(key, 0)) for key in _CHANNELS},
+            "channel_signal_coverage": {key: channel_signal_coverage.get(key, 0) for key in _CHANNELS},
             "observed_weight_profiles": dict(sorted(weight_profiles.items())),
         },
     }
@@ -216,8 +216,8 @@ def suggest_tenant_fusion_weights(
 ) -> dict[str, Any]:
     filtered = _iter_filtered_traces(rows, tenant_id=tenant_id)
 
-    positives = defaultdict(list)
-    negatives = defaultdict(list)
+    positives: defaultdict[str, list[float]] = defaultdict(list)
+    negatives: defaultdict[str, list[float]] = defaultdict(list)
     used_rows = 0
 
     for trace, row, source in filtered:
@@ -254,7 +254,7 @@ def suggest_tenant_fusion_weights(
         "tenant_id": _normalize_tenant_id(tenant_id) or None,
         "fusion_weights": weights,
         "summary": {
-            "training_rows": int(used_rows),
+            "training_rows": used_rows,
             "weight_source": weight_source,
             "channel_positive_avg": {channel: round(_average(positives[channel]), 6) for channel in _CHANNELS},
             "channel_negative_avg": {channel: round(_average(negatives[channel]), 6) for channel in _CHANNELS},

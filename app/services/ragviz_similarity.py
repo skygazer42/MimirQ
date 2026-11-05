@@ -8,7 +8,7 @@ collection-collection similarity heatmaps similar to Kumi.
 
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import numpy as np
@@ -24,7 +24,12 @@ from app.models.evaluation import RagasRegressionCase
 from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.services import dataset_service
-from app.services.document_access import filter_allowed_document_ids
+from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
+
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
 
 @dataclass(frozen=True)
@@ -36,7 +41,7 @@ class RagvizCollection:
     meta: dict[str, Any]
 
 
-_embeddings_adapter = None
+_embeddings_adapter: "LangChainEmbeddingsAdapter | None" = None
 _DEFAULT_SIMILARITY_MAX_ITEMS = 100
 
 
@@ -46,7 +51,7 @@ class SimilarityLimitError(ValueError):
         self.detail = detail or {}
 
 
-def _get_embeddings_adapter():
+def _get_embeddings_adapter() -> "LangChainEmbeddingsAdapter":
     global _embeddings_adapter
     if _embeddings_adapter is not None:
         return _embeddings_adapter
@@ -257,6 +262,15 @@ def _dataset_chunks_items(
         .all()
     )
 
+    allowed_document_ids, _missing_document_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        [document_id for _chunk, _filename, document_id, _file_type in rows],
+        check_member=False,
+    )
+    rows = [row for row in rows if row[2] in allowed_document_ids]
+
     items: list[dict[str, Any]] = []
     texts: list[str] = []
     for idx, (chunk, filename, document_id, file_type) in enumerate(rows):
@@ -324,7 +338,7 @@ def _regression_cases_base_query(
     tenant_id: UUID,
     account_id: str,
     dataset_id: UUID,
-):
+) -> "Query[RagasRegressionCase]":
     ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if not ds:
         raise ValueError("Dataset not found")
@@ -418,6 +432,15 @@ def _regression_chunks_items(
         )
         .all()
     )
+    allowed_document_ids, _missing_document_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        [doc_id for _chunk, _filename, doc_id, _file_type in chunk_rows],
+        check_member=False,
+    )
+    chunk_rows = [row for row in chunk_rows if row[2] in allowed_document_ids]
+
     chunk_map: dict[UUID, tuple[DocumentChunk, str, UUID, str]] = {}
     for chunk, filename, doc_id, file_type in chunk_rows:
         chunk_map[chunk.id] = (chunk, str(filename or ""), doc_id, str(file_type or ""))
@@ -558,8 +581,8 @@ def calculate_similarity_matrix(
         "metadata": {
             "x_collection": x_collection,
             "y_collection": y_collection,
-            "x_max_items": int(x_max_items),
-            "y_max_items": int(y_max_items),
+            "x_max_items": x_max_items,
+            "y_max_items": y_max_items,
             "calculation_time": time.time() - start,
         },
     }

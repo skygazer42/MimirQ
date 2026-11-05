@@ -12,7 +12,7 @@ from app.models.feedback import MessageFeedback
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
 from app.rag.trace_schema import RagTrace, RagTraceListResponse
-from app.services.feedback_service import FeedbackService
+from app.services import feedback_service
 
 
 class _FakeQuery:
@@ -185,7 +185,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
     )
     db = _FakeDB(feedback_rows=[], messages=[user_msg, assistant_msg], conversations=[conv])
 
-    row = FeedbackService.upsert_message_feedback(
+    row = feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -237,7 +237,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
         "eval_case_status": "promoted",
         "eval_case_id": "case-1",
     }
-    updated = FeedbackService.upsert_message_feedback(
+    updated = feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -263,7 +263,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
     assert updated.extra["eval_case_status"] == "promoted"
     assert updated.extra["eval_case_id"] == "case-1"
 
-    user_retry = FeedbackService.upsert_message_feedback(
+    user_retry = feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -327,7 +327,7 @@ def test_upsert_message_feedback_rejects_other_accounts_conversation() -> None:
     db = _FakeDB(feedback_rows=[], messages=[user_msg, assistant_msg], conversations=[conv])
 
     with pytest.raises(HTTPException) as exc_info:
-        FeedbackService.upsert_message_feedback(
+        feedback_service.upsert_message_feedback(
             db=db,
             tenant_id=tenant_id,
             account_id="intruder",
@@ -469,7 +469,7 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
         conversations=[conv_a, conv_b],
     )
 
-    listed = FeedbackService.list_message_feedback(
+    listed = feedback_service.list_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -481,7 +481,7 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
         limit=10,
         ensure_member_fn=lambda *_args, **_kwargs: None,
     )
-    enriched = FeedbackService.list_message_feedback_enriched(
+    enriched = feedback_service.list_message_feedback_enriched(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -550,8 +550,8 @@ def test_list_message_feedback_uses_stable_sql_page_boundaries() -> None:
         "ensure_member_fn": lambda *_args, **_kwargs: None,
     }
 
-    first = FeedbackService.list_message_feedback(skip=0, **args)
-    second = FeedbackService.list_message_feedback(skip=1, **args)
+    first = feedback_service.list_message_feedback(skip=0, **args)
+    second = feedback_service.list_message_feedback(skip=1, **args)
 
     assert first["total"] == second["total"] == 2
     assert [row.id for row in first["items"]] == [newer_id.id]
@@ -626,7 +626,7 @@ def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None
     )
     db = _FakeDB(feedback_rows=[feedback], messages=[user_msg, assistant_msg], conversations=[conv])
 
-    out = FeedbackService.build_feedback_loop_candidates(
+    out = feedback_service.build_feedback_loop_candidates(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -843,7 +843,7 @@ def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
     )
     db = _FakeDB(feedback_rows=[feedback_row], messages=[], conversations=[])
 
-    archived = FeedbackService.patch_message_feedback(
+    archived = feedback_service.patch_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="reviewer",
@@ -858,7 +858,7 @@ def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
     assert archived.category == "wrong_answer"
     assert archived.category_source == "reviewer"
 
-    unarchived = FeedbackService.patch_message_feedback(
+    unarchived = feedback_service.patch_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="reviewer",

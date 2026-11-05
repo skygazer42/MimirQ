@@ -40,9 +40,9 @@ def dispatch_feedback_loop_batch(
     else:
         if db is None or tenant_id is None or not account_id:
             raise ValueError("rows or db+tenant_id+account_id are required")
-        from app.services.feedback_service import FeedbackService
+        from app.services import feedback_service
 
-        candidate_payload = FeedbackService.build_feedback_loop_candidates(
+        candidate_payload = feedback_service.build_feedback_loop_candidates(
             db=db,
             tenant_id=tenant_id,
             account_id=str(account_id),

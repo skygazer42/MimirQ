@@ -23,8 +23,9 @@ from app.api.utils.http_exception_responses import (
 from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
+from app.services import report_service
 from app.services.report_html import _scrub_report_for_redaction, render_dataset_report_html, render_rag_audit_html
-from app.services.report_service import DatasetReportRequest, ReportService
+from app.services.report_service import DatasetReportRequest
 
 if TYPE_CHECKING:
     from app.models.evaluation import RagasRegressionRun
@@ -62,7 +63,7 @@ def _build_report(
     pipeline_hash: str | None,
     connector_runs_limit: int,
 ) -> DatasetReportOut:
-    return ReportService.build_dataset_report(
+    return report_service.build_dataset_report(
         context.db,
         request=DatasetReportRequest(
             tenant_id=context.tenant_id,

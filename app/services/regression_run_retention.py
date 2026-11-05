@@ -12,11 +12,15 @@ be used by:
 """
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.models.evaluation import RagasRegressionItem, RagasRegressionRun
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
 
 
 def _base_query(
@@ -25,7 +29,7 @@ def _base_query(
     tenant_id: UUID,
     cutoff: datetime,
     dataset_id: UUID | None = None,
-):
+) -> "Query[tuple[UUID]]":
     q = (
         db.query(RagasRegressionRun.id)
         .filter(
@@ -104,7 +108,7 @@ def purge_regression_run_rows(
         .delete(synchronize_session=False)
         or 0
     )
-    if bool(commit):
+    if commit:
         db.commit()
 
     return (deleted_runs, deleted_items)

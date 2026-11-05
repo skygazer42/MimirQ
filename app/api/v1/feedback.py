@@ -32,9 +32,8 @@ from app.models.feedback import MessageFeedback
 from app.rag.core.logging import get_logger
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
 from app.rag.industry_rules.loaders.yaml_loader import load_ruleset, ruleset_exists
-from app.services import dataset_service
+from app.services import dataset_service, feedback_service
 from app.services.audit_log_service import audit_log_event
-from app.services.feedback_service import FeedbackService
 from app.services.rag_trace_service import list_rag_traces
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
@@ -420,7 +419,7 @@ def upsert_message_feedback(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Submit feedback for an assistant message (idempotent: resubmit will update)."""
-    return FeedbackService.upsert_message_feedback(
+    return feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -450,7 +449,7 @@ def list_message_feedback(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Query feedback list (returns all items in current tenant by default)."""
-    return FeedbackService.list_message_feedback(
+    return feedback_service.list_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -480,7 +479,7 @@ def list_message_feedback_enriched(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Feedback list with joined message content + conversation title (for triage dashboards)."""
-    return FeedbackService.list_message_feedback_enriched(
+    return feedback_service.list_message_feedback_enriched(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -511,7 +510,7 @@ def patch_message_feedback(
         TenantPermissions.FEEDBACK_TRIAGE_WRITE,
         detail="No permission to triage feedback",
     )
-    return FeedbackService.patch_message_feedback(
+    return feedback_service.patch_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -551,7 +550,7 @@ def preview_feedback_loop_candidates(
         if not ruleset_exists(ruleset_name):
             raise HTTPException(status_code=404, detail="Industry ruleset not found")
         ruleset_obj = load_ruleset(ruleset_name)
-    return FeedbackService.build_feedback_loop_candidates(
+    return feedback_service.build_feedback_loop_candidates(
         db=db,
         tenant_id=tenant_id,
         account_id=account_id,
