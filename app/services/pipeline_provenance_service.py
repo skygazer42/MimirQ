@@ -75,9 +75,7 @@ def upsert_pipeline_provenance_version(
         # Remove oldest by created_at string (ISO sorts lexicographically).
         items: list[tuple[str, str]] = []
         for key, payload in versions.items():
-            ts = ""
-            if isinstance(payload, dict):
-                ts = str(payload.get("created_at") or "")
+            ts = str(payload.get("created_at") or "")
             items.append((ts, key))
         items.sort(key=lambda item: (item[0] or "", item[1]))
 
@@ -272,7 +270,7 @@ def build_pipeline_version_snapshot(
     except Exception as exc:
         logger.debug("Ignoring settings import failure while building index provenance: %s", exc)
     else:
-        index_obj["vector_backend"] = str(getattr(settings, "VECTOR_BACKEND", None) or "") or None
+        index_obj["vector_backend"] = str(settings.VECTOR_BACKEND or "") or None
     index_hash = canonical_json_sha256(index_obj)
 
     pipeline_run_hash = canonical_json_sha256(
@@ -318,7 +316,7 @@ def build_pipeline_version_snapshot(
                 "version": "1",
                 "hash": index_hash,
                 "embedding_space_hash": emb,
-                "vector_backend": index_obj.get("vector_backend"),
+                "vector_backend": index_obj["vector_backend"],
             },
         },
         "pipeline_run_hash": pipeline_run_hash,

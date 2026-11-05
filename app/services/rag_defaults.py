@@ -46,7 +46,7 @@ def _merge_dataset_rag_overrides(
         if key in provided:
             continue
         merged[key] = value
-        applied.append(str(key))
+        applied.append(key)
     if not applied:
         return rag_config, []
     return ChatRAGConfig(**merged), applied

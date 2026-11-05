@@ -57,7 +57,7 @@ def _normalize_regex_rules(raw: object) -> list[dict]:
 
 def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> GovernanceProfilePayload:
     extends = None
-    raw_extends = getattr(payload, "extends", None)
+    raw_extends = payload.extends
     if raw_extends is not None:
         ref = str(raw_extends or "").strip()
         if ref:

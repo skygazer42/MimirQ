@@ -803,7 +803,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else str(options.governance_pii_mode or "mask")
     )
     governance_pii_mask = (
-        getattr(settings, "GOVERNANCE_PII_MASK", DEFAULT_GOVERNANCE_PII_MASK)
+        settings.GOVERNANCE_PII_MASK
         if options.governance_pii_mask is None
         else str(options.governance_pii_mask or DEFAULT_GOVERNANCE_PII_MASK)
     )
@@ -848,7 +848,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else str(options.governance_secrets_mode or "mask")
     )
     governance_secrets_mask = (
-        getattr(settings, "GOVERNANCE_SECRETS_MASK", DEFAULT_GOVERNANCE_SECRETS_MASK)
+        settings.GOVERNANCE_SECRETS_MASK
         if options.governance_secrets_mask is None
         else str(options.governance_secrets_mask or DEFAULT_GOVERNANCE_SECRETS_MASK)
     )
@@ -1193,8 +1193,8 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         table_store_auto_file_bytes_threshold=int(table_store_auto_file_bytes_threshold),
         image_caption_enabled=bool(image_caption_enabled),
         image_ocr_enabled=bool(image_ocr_enabled),
-        image_ocr_max_chars=int(image_ocr_max_chars),
-        image_ocr_max_images=int(image_ocr_max_images),
+        image_ocr_max_chars=image_ocr_max_chars,
+        image_ocr_max_images=image_ocr_max_images,
     )
 
 
