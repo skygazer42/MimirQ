@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     try:
-        out = Path(args.out) if str(args.out or "").strip() else None
+        out = Path(args.out) if args.out.strip() else None
         run(policy_path=Path(args.policy), out=out)
     except Exception as exc:
         print(f"[queryset-health-policy] invalid policy: {exc}", file=sys.stderr)

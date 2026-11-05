@@ -61,8 +61,8 @@ def run(
     base_tail = set(_parse_risk_tail(baseline))
     curr_tail = set(_parse_risk_tail(current))
     diff["parse_risk_tail_drift"] = {
-        "baseline_count": int(len(base_tail)),
-        "current_count": int(len(curr_tail)),
+        "baseline_count": len(base_tail),
+        "current_count": len(curr_tail),
         "added_document_ids": sorted(curr_tail - base_tail),
         "removed_document_ids": sorted(base_tail - curr_tail),
         "retained_document_ids": sorted(base_tail & curr_tail),
@@ -142,11 +142,11 @@ def main(argv: list[str] | None = None) -> int:
         diff = run(
             baseline_path=Path(args.a),
             current_path=Path(args.b),
-            out=Path(args.out) if str(args.out or "").strip() else None,
-            max_hard_case_ids=max(1, int(args.max_hard_case_ids or 1)),
+            out=Path(args.out) if args.out.strip() else None,
+            max_hard_case_ids=max(1, args.max_hard_case_ids or 1),
         )
-        if str(args.out_md or "").strip():
-            out_md = Path(str(args.out_md))
+        if args.out_md.strip():
+            out_md = Path(args.out_md)
             out_md.parent.mkdir(parents=True, exist_ok=True)
             out_md.write_text(_render_markdown(diff), encoding="utf-8")
     except Exception as exc:

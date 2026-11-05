@@ -34,7 +34,7 @@ def _risk_from_parse_quality_score(raw_score: Any) -> float:
         score = 0.0
     if score > 1.0:
         score = 1.0
-    return round(1.0 - float(score), 6)
+    return round(1.0 - score, 6)
 
 
 @dataclass
@@ -67,7 +67,7 @@ def _record_candidate(
     if row is None:
         row = Candidate(document_id=doc_id)
         bucket[doc_id] = row
-    row.merge(risk_score=float(max(0.0, min(1.0, risk_score))), reason=reason, source=source)
+    row.merge(risk_score=max(0.0, min(1.0, risk_score)), reason=reason, source=source)
 
 
 def _collect_quality_documents(
@@ -151,7 +151,7 @@ def _collect_explicit_candidates(
         _record_candidate(
             bucket,
             document_id=item.get("document_id"),
-            risk_score=float(_coerce_float(risk, default=0.0)),
+            risk_score=_coerce_float(risk, default=0.0),
             reason=str(item.get("reason") or "candidate"),
             source=source_name,
         )
@@ -192,17 +192,17 @@ def build_parse_repair_schedule(
         loaded_inputs.append(str(path))
         _collect_from_object(raw, source_name=path.name, bucket=bucket)
 
-    rows: list[Candidate] = [r for r in bucket.values() if float(r.risk_score) >= min_risk_score]
-    rows.sort(key=lambda r: (-float(r.risk_score), r.document_id))
+    rows: list[Candidate] = [r for r in bucket.values() if r.risk_score >= min_risk_score]
+    rows.sort(key=lambda r: (-r.risk_score, r.document_id))
     rows = rows[:max_docs]
 
     actions: list[dict[str, Any]] = []
     for idx, row in enumerate(rows, start=1):
         actions.append(
             {
-                "rank": int(idx),
+                "rank": idx,
                 "document_id": row.document_id,
-                "risk_score": round(float(row.risk_score), 4),
+                "risk_score": round(row.risk_score, 4),
                 "priority": ("high" if row.risk_score >= 0.8 else "medium" if row.risk_score >= 0.5 else "low"),
                 "reasons": sorted(row.reasons),
                 "sources": sorted(row.sources),
@@ -215,12 +215,12 @@ def build_parse_repair_schedule(
         "generated_at": _now_utc_iso(),
         "inputs": loaded_inputs,
         "policy": {
-            "max_docs": int(max_docs),
-            "min_risk_score": round(float(min_risk_score), 4),
+            "max_docs": max_docs,
+            "min_risk_score": round(min_risk_score, 4),
         },
         "summary": {
-            "candidates_seen": int(len(bucket)),
-            "scheduled_documents": int(len(actions)),
+            "candidates_seen": len(bucket),
+            "scheduled_documents": len(actions),
         },
         "actions": actions,
     }
@@ -240,7 +240,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compact", action="store_true")
     args = parser.parse_args(argv)
 
-    inputs = [Path(p).expanduser().resolve() for p in (args.input or []) if str(p or "").strip()]
+    inputs = [Path(p).expanduser().resolve() for p in args.input if p.strip()]
     if not inputs:
         raise SystemExit("--input is required at least once")
     missing = [str(p) for p in inputs if not p.exists()]
@@ -249,15 +249,15 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = build_parse_repair_schedule(
         inputs=inputs,
-        max_docs=max(1, int(args.max_docs or 1)),
-        min_risk_score=float(args.min_risk_score),
+        max_docs=max(1, args.max_docs),
+        min_risk_score=args.min_risk_score,
     )
 
-    out = Path(str(args.out)).expanduser().resolve()
+    out = Path(args.out).expanduser().resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
-    if bool(args.compact):
+    if args.compact:
         print(json.dumps(payload, ensure_ascii=False))
     else:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

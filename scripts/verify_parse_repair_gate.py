@@ -102,11 +102,11 @@ def evaluate_parse_repair_gate(
     )
 
     failures: list[str] = []
-    if float(shrinkage) < float(min_shrinkage):
+    if shrinkage < float(min_shrinkage):
         failures.append(f"shrinkage={shrinkage:.4f} < min_shrinkage={float(min_shrinkage):.4f}")
-    if int(len(added)) > int(max_added_tail):
+    if len(added) > int(max_added_tail):
         failures.append(f"added_tail={len(added)} > max_added_tail={int(max_added_tail)}")
-    if int(max_current_tail) >= 0 and int(current_count) > int(max_current_tail):
+    if int(max_current_tail) >= 0 and current_count > int(max_current_tail):
         failures.append(f"current_tail={current_count} > max_current_tail={int(max_current_tail)}")
 
     return {
@@ -118,12 +118,12 @@ def evaluate_parse_repair_gate(
             "max_current_tail": int(max_current_tail),
         },
         "observed": {
-            "baseline_tail_count": int(baseline_count),
-            "current_tail_count": int(current_count),
-            "shrinkage": round(float(shrinkage), 4),
-            "added_tail_count": int(len(added)),
-            "removed_tail_count": int(len(removed)),
-            "retained_tail_count": int(len(retained)),
+            "baseline_tail_count": baseline_count,
+            "current_tail_count": current_count,
+            "shrinkage": round(shrinkage, 4),
+            "added_tail_count": len(added),
+            "removed_tail_count": len(removed),
+            "retained_tail_count": len(retained),
             "added_document_ids": added[:200],
             "removed_document_ids": removed[:200],
         },
@@ -142,8 +142,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default="artifacts/parse_repair_gate.report.json")
     args = p.parse_args(argv)
 
-    baseline_path = Path(str(args.baseline)).expanduser().resolve()
-    current_path = Path(str(args.current)).expanduser().resolve()
+    baseline_path = Path(args.baseline).expanduser().resolve()
+    current_path = Path(args.current).expanduser().resolve()
     if not baseline_path.exists():
         raise SystemExit(f"baseline_not_found:{baseline_path}")
     if not current_path.exists():
@@ -156,16 +156,16 @@ def main(argv: list[str] | None = None) -> int:
         baseline_payload=baseline_payload,
         current_payload=current_payload,
         min_shrinkage=max(0.0, min(1.0, _safe_float(args.min_shrinkage, 0.2))),
-        max_added_tail=max(0, int(args.max_added_tail or 0)),
-        max_current_tail=int(args.max_current_tail),
+        max_added_tail=max(0, args.max_added_tail),
+        max_current_tail=args.max_current_tail,
     )
-    out_path = Path(str(args.out)).expanduser().resolve()
+    out_path = Path(args.out).expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(f"[verify-parse-repair-gate] wrote {out_path}")
-    print(f"[verify-parse-repair-gate] passed={bool(report.get('passed'))}")
-    return 0 if bool(report.get("passed")) else 1
+    print(f"[verify-parse-repair-gate] passed={report['passed']}")
+    return 0 if report["passed"] else 1
 
 
 if __name__ == "__main__":

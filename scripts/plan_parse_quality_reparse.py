@@ -56,7 +56,7 @@ def run(
         else []
     )
     low_threshold = _coerce_float(parse_risk.get("low_threshold"), 0.35)
-    cutoff = float(max_score) if max_score is not None else float(low_threshold)
+    cutoff = float(max_score) if max_score is not None else low_threshold
     cap = max(1, int(max_docs or 100))
 
     rows: list[tuple[str, float]] = []
@@ -88,18 +88,18 @@ def run(
         "generated_at": datetime.now(UTC).isoformat(),
         "source_report": str(report_path),
         "dataset_id": str(report.get("dataset_id") or ""),
-        "low_threshold": round(float(low_threshold), 3),
-        "max_score": round(float(cutoff), 3),
+        "low_threshold": round(low_threshold, 3),
+        "max_score": round(cutoff, 3),
         "recommendation": str(parse_risk.get("recommendation") or ""),
         "summary": {
             "considered_documents": _coerce_int(parse_risk.get("considered_documents"), 0),
             "high_risk_documents": _coerce_int(parse_risk.get("high_risk_documents"), 0),
-            "selected_candidates": int(len(rows)),
+            "selected_candidates": len(rows),
         },
         "candidates": [
             {
                 "document_id": doc_id,
-                "score": round(float(score), 3),
+                "score": round(score, 3),
                 "reason": str((specialty_meta.get(doc_id) or {}).get("reason") or "parse_quality_below_threshold"),
                 "specialty_signals": dict((specialty_meta.get(doc_id) or {}).get("specialty_signals") or {}),
             }
@@ -129,9 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         payload = run(
             report_path=Path(args.report),
-            out=Path(args.out) if str(args.out or "").strip() else None,
-            max_docs=max(1, int(args.max_docs or 1)),
-            max_score=(float(args.max_score) if args.max_score is not None else None),
+            out=Path(args.out) if args.out.strip() else None,
+            max_docs=max(1, args.max_docs),
+            max_score=args.max_score,
         )
     except Exception as exc:
         print(f"[plan_parse_quality_reparse] ERROR: {exc}", file=sys.stderr)

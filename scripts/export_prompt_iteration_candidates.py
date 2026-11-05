@@ -54,7 +54,7 @@ def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -
         groups.append(
             {
                 "group_key": group_key,
-                "count": int(count),
+                "count": count,
                 "suggested_prompt_action": _suggested_action(group_key),
                 "samples": samples,
             }
@@ -63,8 +63,8 @@ def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -
     return {
         "schema": "mimirq.prompt_iteration_candidates.v1",
         "summary": {
-            "negative_feedback_count": int(len(negative_rows)),
-            "groups_count": int(len(groups)),
+            "negative_feedback_count": len(negative_rows),
+            "groups_count": len(groups),
         },
         "groups": groups,
     }

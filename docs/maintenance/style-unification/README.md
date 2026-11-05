@@ -6,7 +6,7 @@
 本目录记录全项目迁移。**当前仍在实施，不代表全仓语义审核已完成。**
 
 - [实施计划](../../superpowers/plans/2026-11-02-style-unification.md)：统一约定、Skill 分工、业务批次与验收；数据集、权限配额、SCIM、配置、通用 API 及身份令牌类别已完成本轮静态核对，基础后端与后续业务链继续按清单推进。
-- `coverage.csv`：当前 3,865 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
+- `coverage.csv`：当前 3,867 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
 - `baseline-python-failures.txt`：原始 Python 基线失败和收集错误的用例名称。
 - `verification.md`：基线及各批真实检查结果；历史结果不代表当前版本通过。
 
@@ -37,3 +37,10 @@
 - 合入当前主线后的 14 个测试文件共 123 项全部通过；完整 TypeScript、69 文件 ESLint、72 文件 Prettier 和 102 条笔记门禁通过。此前两条冻结复现用例也各自通过；旧失败和旧 110 项记录保持原样。只验证受控 DOM 与源码，未运行浏览器、后端或 Python。
 - 本批反馈测试改名为 `page-client.request-lifecycle.test.tsx`，正文与固定 Git 候选相同，保留原工作区重名的未跟踪文件。新增五个代码／测试文件及三条决定记录后，清单为 3,865 项／224 项待处理或待合入。两处必要调用方迁移不另计完整文件审核。
 - 证据：`knowledge-import-ingestion62-20261105/knowledge62-root-final-review.json`，以及 `independent-root/followup-5b/`、`independent-root/current-context-2ee/` 的固定源码与检查记录。
+
+## 解析质量、基准数据与发布脚本
+
+- 完成 29 个原文件：27 个调整，2 个原样保留。CLI 直接传递已声明的原生参数，计数与已归一化记录不再重复转换；714 个函数的参数／默认值、23 个真实状态或资源类及脚本预算保持。类型元数据仅补充两个签名与既有标准库 Iterator 导入。
+- 独立修复使合法零分策略排在错误哨兵之前；两套基准脚本正确解包单列数据库记录，MIRACL 切片追加到实际缓冲区。SQL 范围、事务、UUID 校验、资源关闭和评分公式保持。
+- 作者与独立评审按固定 Git 来源核对全部 29 个文件；Root 新运行 AST、声明／CLI、Ruff／格式与 104 条笔记门禁，均通过。原 Python 测试未改、未跑；旧 chunk 测试固化了与零分修复冲突的顺序，已明确记录，未算作通过。未声称实际解析、模型、数据库或发布链运行验证。
+- 证据：`core-quality-release29-20261106/core29-root-category-report.json`、独立审阅报告及 `root-integration/source-check.json`。清单 3,867 项／195 项待处理或待合入。

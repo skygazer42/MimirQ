@@ -1835,3 +1835,9 @@
 当前 2ee6a191a 主线上组合候选保留 72 个最终源码／笔记身份，仅将本批反馈测试换为同目录的新文件名以保留原工作区未跟踪文件。14 个测试文件／123 项全部通过、无跳过；完整非增量 TypeScript、69 文件 ESLint（零警告）、72 文件 Prettier、102 条笔记门禁通过；检查前后源码与用户原文件哈希一致。62 个原文件闭合为 29 调整／33 符合；加入 8 个新路径后，清单 3,865 项／224 项待处理或待合入。未运行浏览器、服务、真实 HTTP 或 Python。
 
 证据：`knowledge-import-ingestion62-20261105/knowledge62-root-final-review.json`、`independent-root/current-context-2ee/source-inputs.json` 和 `checks.json`。
+
+## 2026-11-06：核心质量与发布脚本 29 文件
+
+27 调整／2 原字节符合。283 项作者与 109 项独立审阅证据的哈希核对通过；独立整模块证明明确 477 个表达式、3 项元数据和两个已批准缺陷修复。Root 新检查所有29源码／两条笔记与固定 Git 一致，AST3.11、714 函数声明／默认值、23 完整 class、401 项选定 argparse 调用、Ruff29／格式29、104 条笔记门禁均通过；Root 的401项选定CLI计数与独立评审407项的选择口径不同，不作同一计数。
+
+保留旧 `tests/test_chunk_autotune.py` 的已知排序期望冲突，不新增、修改或运行 Python 测试，不以静态检查声称业务／数据库／发布链运行验收。清单 3,867 项／195 项待处理或待合入。证据：`core-quality-release29-20261106/core29-root-category-report.json`、`root-integration/source-check.json`。
