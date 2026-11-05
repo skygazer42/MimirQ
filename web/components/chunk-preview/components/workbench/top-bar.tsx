@@ -3,7 +3,7 @@
  */
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
   Check,
@@ -55,6 +55,7 @@ import {
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { useRouter } from '@/i18n/navigation'
 import { getAuthHeaders } from '@/lib/auth-headers'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { API_V1_BASE_URL } from '@/lib/env'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
@@ -164,6 +165,7 @@ export function TopBar() {
   const pipelineCtx = usePipelineOptions()
   const { enabled: pipelineOverridesEnabled, options: pipelineOptions } = pipelineCtx
   const importConfigInputRef = useRef<HTMLInputElement>(null)
+  const configImportRef = useRef<object | null>(null)
   const {
     currentFileIndex,
     currentFileItem,
@@ -202,6 +204,13 @@ export function TopBar() {
     updateSeparatorSettings,
     onClose,
   } = useChunkPreview()
+
+  useEffect(
+    () => () => {
+      configImportRef.current = null
+    },
+    [currentFile, currentFileItem?.id, datasetId],
+  )
 
   if (!currentFile || !currentFileItem) return null
 
@@ -273,7 +282,7 @@ export function TopBar() {
 
   const escapeForAnsiC = (value: string) => {
     // Used for bash $'...' strings in generated cURL.
-    return value.replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH).replaceAll("'", String.raw`\\'`)
+    return value.replaceAll(SHELL_BACKSLASH, DOUBLE_SHELL_BACKSLASH).replaceAll("'", SHELL_BACKSLASH + "'")
   }
   const escapeForDoubleQuotedShell = (value: string) =>
     value
@@ -346,7 +355,7 @@ export function TopBar() {
     toast.error(t('topBar.toasts.clipboardUnsupported'))
   }
 
-  const applyConfigFromText = async (text: string) => {
+  const applyConfigFromText = (text: string) => {
     const parsed = JSON.parse(text || '{}') as unknown
     if (!isRecord(parsed)) {
       toast.error(t('topBar.toasts.invalidJsonObject'))
@@ -415,6 +424,28 @@ export function TopBar() {
     }
 
     return true
+  }
+
+  const importConfiguration = async (
+    readText: () => Promise<string>,
+    successMessage: string,
+    failureMessage: string,
+  ) => {
+    const request = {}
+    configImportRef.current = request
+    const scope = getAuthCacheScope()
+    const revision = getAuthSessionRevision()
+    const isCurrent = () =>
+      configImportRef.current === request && getAuthCacheScope() === scope && getAuthSessionRevision() === revision
+    try {
+      const text = await readText()
+      if (!isCurrent()) return
+      if (applyConfigFromText(text)) toast.success(successMessage)
+    } catch (error: unknown) {
+      if (isCurrent()) toast.error(getErrorMessage(error, failureMessage))
+    } finally {
+      if (configImportRef.current === request) configImportRef.current = null
+    }
   }
 
   return (
@@ -696,17 +727,13 @@ export function TopBar() {
                   const file = e.target.files?.[0]
                   e.target.value = ''
                   if (!file) return
-                  file
-                    .text()
-                    .then(async (text) => {
-                      const ok = await applyConfigFromText(text)
-                      if (ok) {
-                        toast.success(t('topBar.toasts.importedFromFile'))
-                      }
-                    })
-                    .catch((error: unknown) =>
-                      toast.error(getErrorMessage(error, t('topBar.toasts.readConfigFileFailed'))),
-                    )
+                  detachPromise(
+                    importConfiguration(
+                      () => file.text(),
+                      t('topBar.toasts.importedFromFile'),
+                      t('topBar.toasts.readConfigFileFailed'),
+                    ),
+                  )
                 }}
               />
               <DropdownMenuItem
@@ -740,20 +767,18 @@ export function TopBar() {
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="rounded-xl py-2 font-bold text-xs"
-                onSelect={async () => {
-                  try {
-                    if (!navigator.clipboard?.readText) {
-                      toast.error(t('topBar.toasts.clipboardReadUnsupported'))
-                      return
-                    }
-                    const text = await navigator.clipboard.readText()
-                    const ok = await applyConfigFromText(text)
-                    if (ok) {
-                      toast.success(t('topBar.toasts.importedFromClipboard'))
-                    }
-                  } catch (error: unknown) {
-                    toast.error(getErrorMessage(error, t('topBar.toasts.importConfigFailed')))
+                onSelect={() => {
+                  if (!navigator.clipboard?.readText) {
+                    toast.error(t('topBar.toasts.clipboardReadUnsupported'))
+                    return
                   }
+                  detachPromise(
+                    importConfiguration(
+                      () => navigator.clipboard.readText(),
+                      t('topBar.toasts.importedFromClipboard'),
+                      t('topBar.toasts.importConfigFailed'),
+                    ),
+                  )
                 }}
               >
                 <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
@@ -882,16 +907,16 @@ export function TopBar() {
                   const pipeline = pipelineOverridesEnabled ? JSON.stringify(pipelineOptions || {}) : null
                   const authHeaders = getAuthHeaders()
                   const lines = [
-                    `curl -X POST "${url}" \\`,
+                    `curl -X POST "${url}"`,
                     ...Object.entries(authHeaders).map(
-                      ([name, value]) => `  -H "${name}: ${escapeForDoubleQuotedShell(value)}" \\`,
+                      ([name, value]) => `  -H "${name}: ${escapeForDoubleQuotedShell(value)}"`,
                     ),
-                    `  -F "file=@/path/to/your-file" \\`,
-                    `  -F "parser_backend=${effectiveParserBackend}" \\`,
-                    `  -F "chunk_strategy=${effectiveChunkStrategy}"`,
+                    `  -F "file=@/path/to/your-file"`,
+                    `  -F "parser_backend=${escapeForDoubleQuotedShell(effectiveParserBackend)}"`,
+                    `  -F "chunk_strategy=${escapeForDoubleQuotedShell(effectiveChunkStrategy)}"`,
                   ]
                   if (datasetId) {
-                    lines.push(`  -F "dataset_id=${datasetId}"`)
+                    lines.push(`  -F "dataset_id=${escapeForDoubleQuotedShell(datasetId)}"`)
                   }
                   if (shouldIncludeParentChildSettings) {
                     lines.push(
@@ -900,7 +925,7 @@ export function TopBar() {
                     )
                   }
                   if (shouldIncludeSeparatorSettings) {
-                    lines.push(`  -F "separator_preset=${separatorPreset}"`)
+                    lines.push(`  -F "separator_preset=${escapeForDoubleQuotedShell(separatorPreset)}"`)
                     if (separatorPreset === 'custom') {
                       lines.push(`  -F $'separator=${escapeForAnsiC(separatorCustom)}'`)
                     }
@@ -910,11 +935,12 @@ export function TopBar() {
                     }
                   }
                   if (pipeline) {
-                    const lastLine = lines.at(-1)
-                    if (lastLine) lines.splice(-1, 1, `${lastLine} ${SHELL_BACKSLASH}`)
-                    lines.push(`  -F 'pipeline=${pipeline}'`)
+                    lines.push(`  -F "pipeline=${escapeForDoubleQuotedShell(pipeline)}"`)
                   }
-                  detachPromise(copyText(lines.join('\n'), t('topBar.toasts.copiedCurl')))
+                  const command = lines
+                    .map((line, index) => (index < lines.length - 1 ? `${line} ${SHELL_BACKSLASH}` : line))
+                    .join('\n')
+                  detachPromise(copyText(command, t('topBar.toasts.copiedCurl')))
                 }}
               >
                 <Copy className="mr-2.5 h-4 w-4 opacity-60" strokeWidth={2.5} />
