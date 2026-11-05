@@ -19,20 +19,7 @@ import {
   computeChunkPreviewDiff,
 } from '@/components/chunk-preview/utils/ab-diff'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
-
-type RunHistoryItem = {
-  id: string
-  fileName: string
-  parserBackend: string
-  strategy: string
-  chunkSize: number
-  chunkOverlap: number
-  totalChunks: number
-  durationMs: number
-  createdAt: number
-  cacheHit: boolean
-  cacheKey?: string
-}
+import type { ChunkPreviewState } from '../types'
 
 function formatDelta(n: number) {
   if (!Number.isFinite(n) || n === 0) return '0'
@@ -157,7 +144,7 @@ export function ChunkCompareDialog(
     onOpenChange: (open: boolean) => void
     current: ChunkPreviewResponse
     currentFileName: string
-    runHistory: RunHistoryItem[]
+    runHistory: ChunkPreviewState['runHistory']
     getCachedPreview: (cacheKey: string) => ChunkPreviewResponse | null
   }>,
 ) {

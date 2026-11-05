@@ -371,10 +371,6 @@ export function chunkPreviewToReviewReport(
   }
 }
 
-function oneLine(value: unknown) {
-  return toSingleLinePrimitiveString(value)
-}
-
 function fmtPctRatio(value: unknown): string | null {
   const v = Number(value)
   if (!Number.isFinite(v)) return null
@@ -402,8 +398,8 @@ export function chunkPreviewToReviewMarkdown(
   const lines: string[] = []
 
   const filename = String(report.file.filename || preview.filename || 'document')
-  lines.push(`# ${filename} — Chunk Review`, '', `- schema: ${String(report.schema || 'mimirq.chunk_review.v1')}`)
-  if (report.generated_at) lines.push(`- generated_at: ${String(report.generated_at)}`)
+  lines.push(`# ${filename} — Chunk Review`, '', `- schema: ${report.schema}`)
+  lines.push(`- generated_at: ${report.generated_at}`)
   lines.push('')
 
   const cfg = report.config
@@ -411,8 +407,8 @@ export function chunkPreviewToReviewMarkdown(
     '## Config',
     `- parser_backend: ${String(cfg.parser_backend || '')}`,
     `- chunk_strategy: ${String(cfg.chunk_strategy || '')}`,
-    `- chunk_size: ${String(cfg.chunk_size ?? '')} (${String(cfg.unit || 'chars')})`,
-    `- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${String(cfg.unit || 'chars')})`,
+    `- chunk_size: ${String(cfg.chunk_size ?? '')} (${cfg.unit})`,
+    `- chunk_overlap: ${String(cfg.chunk_overlap ?? '')} (${cfg.unit})`,
     '',
   )
 
@@ -432,10 +428,10 @@ export function chunkPreviewToReviewMarkdown(
   lines.push(
     '## Summary',
     `- total_chunks: ${String(summary.total_chunks ?? '')}`,
-    `- total_chunks_in_report: ${String(summary.total_chunks_in_report ?? '')}`,
-    `- include_disabled: ${String(summary.include_disabled ?? false)}`,
-    `- disabled_count: ${String(summary.disabled_count ?? 0)} · edited_count: ${String(summary.edited_count ?? 0)}`,
-    `- issue_counts: short=${String(issueCounts.short ?? 0)} duplicate=${String(issueCounts.duplicate ?? 0)} gap=${String(issueCounts.gap ?? 0)} overlap=${String(issueCounts.overlap ?? 0)}`,
+    `- total_chunks_in_report: ${summary.total_chunks_in_report}`,
+    `- include_disabled: ${summary.include_disabled}`,
+    `- disabled_count: ${summary.disabled_count} · edited_count: ${summary.edited_count}`,
+    `- issue_counts: short=${issueCounts.short} duplicate=${issueCounts.duplicate} gap=${issueCounts.gap} overlap=${issueCounts.overlap}`,
     '',
   )
 
@@ -452,7 +448,7 @@ export function chunkPreviewToReviewMarkdown(
   const recs = report.recommendations
   if (recs.length) {
     lines.push('## Recommendations')
-    for (const r of recs.slice(0, 20)) lines.push(`- ${oneLine(r)}`)
+    for (const r of recs.slice(0, 20)) lines.push(`- ${toSingleLinePrimitiveString(r)}`)
     if (recs.length > 20) lines.push(`- …(+${recs.length - 20})`)
     lines.push('')
   }
@@ -464,13 +460,13 @@ export function chunkPreviewToReviewMarkdown(
     lines.push('## Samples (first 30 flagged chunks)')
     for (const c of flagged.slice(0, 30)) {
       const idx = Number(c.index)
-      const range = `${String(c.start_index ?? '')}-${String(c.end_index ?? '')}`
-      const flags = Object.entries(c.flags || {})
+      const range = `${c.start_index}-${c.end_index}`
+      const flags = Object.entries(c.flags)
         .filter(([, v]) => Boolean(v))
         .map(([k]) => k)
         .join(',')
       lines.push(`- #${Number.isFinite(idx) ? idx + 1 : '?'} · range ${range} · flags: ${flags || '-'}`)
-      const previewText = oneLine(c.content_preview || '')
+      const previewText = toSingleLinePrimitiveString(c.content_preview)
       if (previewText) lines.push(`  - preview: ${previewText}`)
     }
     if (flagged.length > 30) lines.push(`- …(+${flagged.length - 30})`)
