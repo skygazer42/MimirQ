@@ -19,8 +19,8 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = _parse_args()
-    tenant_id = UUID(str(args.tenant_id))
-    dataset_id = UUID(str(args.dataset_id)) if args.dataset_id else None
+    tenant_id = UUID(args.tenant_id)
+    dataset_id = UUID(args.dataset_id) if args.dataset_id else None
 
     from app.core.database import SessionLocal
     from app.rag.retriever import HybridRetriever
@@ -32,7 +32,7 @@ def main() -> int:
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
-            batch_size=max(1, int(args.batch_size or 1)),
+            batch_size=max(1, args.batch_size),
         )
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
