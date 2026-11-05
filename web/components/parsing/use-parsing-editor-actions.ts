@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { useRouter } from '@/i18n/navigation'
-import { parsingApi } from '@/lib/api'
+import { parsingApi } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
 import {
   applyBlockEditToMarkdown,
@@ -19,13 +19,13 @@ import type { ParsingBlock } from '@/lib/parsing-positions'
 import { type ParsedFileData } from '@/store/use-parsed-files-store'
 
 import type { ParsedFile, ParseRun } from './parsing-types'
+import { countMarkdownHeadings } from './parsing-page-utils'
 
 function applyEditedMarkdown(
   prev: ParsedFile[],
   fileId: string,
   targetRunId: string | undefined,
   editedContent: string,
-  countMarkdownHeadings: (markdown: string) => number,
 ): ParsedFile[] {
   return prev.map((file) => {
     if (file.id !== fileId) return file
@@ -93,7 +93,6 @@ type UseParsingEditorActionsOptions = {
   activeMarkdown: string
   activeRun: ParseRun | null
   addParsedFile: (file: Omit<ParsedFileData, 'id' | 'parsedAt'>) => string
-  countMarkdownHeadings: (markdown: string) => number
   editSession: ParsingEditSession | null
   editedContent: string
   files: ParsedFile[]
@@ -118,7 +117,6 @@ export function useParsingEditorActions({
   activeMarkdown,
   activeRun,
   addParsedFile,
-  countMarkdownHeadings,
   editSession,
   editedContent,
   files,
@@ -196,7 +194,7 @@ export function useParsingEditorActions({
           ? editedContent
           : activeMarkdown
 
-    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown, countMarkdownHeadings))
+    setFiles((prev) => applyEditedMarkdown(prev, activeFile.id, targetRunId, nextMarkdown))
     setRightPanelMode('markdown')
     setActiveBlockId(null)
     setEditSession(null)
@@ -224,7 +222,6 @@ export function useParsingEditorActions({
     activeFile,
     activeMarkdown,
     activeRun,
-    countMarkdownHeadings,
     editSession,
     editedContent,
     setActiveBlockId,

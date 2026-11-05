@@ -12,6 +12,8 @@ The bootstrap runtime uses `ChatRequest`, `ChatRAGConfig`, and `RagConfigTemplat
 
 Cache payload parsing remains a serialized Redis boundary: dictionary and citation shape checks, best-effort cache failure handling, and singleflight follower behavior stay in place. Optional memory lookup, template usage rollback, transaction order, cache keys, tenant/account/document scope, lease timing, timeout, and cancellation behavior are unchanged.
 
+[RAG 运行链的配置字段与内部值](2026-11-05-rag-runtime-owned-values.md)沿用上述缓存边界，处理检索、图流程及实际资源的读取与签名；本篇继续持有 HTTP bootstrap 的类型决定。
+
 ## Alternatives considered
 
 - Keep `Any` and defensive `getattr` defaults: this supports objects that do not satisfy the existing request and ORM contracts, but obscures missing internal fields and duplicates schema guarantees.

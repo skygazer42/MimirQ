@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, DragEvent as ReactDragEvent, ReactNode } from 'react'
 import {
   ArrowRightLeft,
   ChevronDown,
@@ -37,7 +37,7 @@ import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FolderNode, ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
+import { type FolderNode, ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 
 type FolderDialogState =
   | { open: false }
@@ -116,6 +116,39 @@ const smallFileIconToneClasses: Record<
     border: 'border-border/70',
     icon: 'text-muted-foreground',
   },
+}
+
+const paperBand: Record<string, string> = {
+  red: 'bg-destructive/70',
+  blue: 'bg-primary/70',
+  emerald: 'bg-success/70',
+  amber: 'bg-warning/70',
+  rose: 'bg-destructive/70',
+  sky: 'bg-primary/30',
+  teal: 'bg-success/70',
+  slate: 'bg-muted-foreground/40',
+}
+
+const textTone: Record<string, string> = {
+  red: 'text-destructive',
+  blue: 'text-primary',
+  emerald: 'text-success',
+  amber: 'text-warning',
+  rose: 'text-destructive',
+  sky: 'text-primary',
+  teal: 'text-success',
+  slate: 'text-muted-foreground',
+}
+
+const badgeBorder: Record<string, string> = {
+  red: 'border-destructive/30',
+  blue: 'border-primary/30',
+  emerald: 'border-success/30',
+  amber: 'border-warning/30',
+  rose: 'border-destructive/30',
+  sky: 'border-primary/25',
+  teal: 'border-success/30',
+  slate: 'border-border/60',
 }
 
 export function getFileIcon(filename: string, className?: string) {
@@ -200,38 +233,6 @@ export function getFileIcon(filename: string, className?: string) {
 
   // Large Icon (Detailed Paper Style)
   // Simulating a vertical document page with a colored fold/header
-  const paperBand: Record<string, string> = {
-    red: 'bg-destructive/70',
-    blue: 'bg-primary/70',
-    emerald: 'bg-success/70',
-    amber: 'bg-warning/70',
-    rose: 'bg-destructive/70',
-    sky: 'bg-primary/30',
-    teal: 'bg-success/70',
-    slate: 'bg-muted-foreground/40',
-  }
-
-  const textTone: Record<string, string> = {
-    red: 'text-destructive',
-    blue: 'text-primary',
-    emerald: 'text-success',
-    amber: 'text-warning',
-    rose: 'text-destructive',
-    sky: 'text-primary',
-    teal: 'text-success',
-    slate: 'text-muted-foreground',
-  }
-
-  const badgeBorder: Record<string, string> = {
-    red: 'border-destructive/30',
-    blue: 'border-primary/30',
-    emerald: 'border-success/30',
-    amber: 'border-warning/30',
-    rose: 'border-destructive/30',
-    sky: 'border-primary/25',
-    teal: 'border-success/30',
-    slate: 'border-border/60',
-  }
 
   return (
     <div className={cn('relative flex items-center justify-center', className)}>
@@ -278,7 +279,7 @@ export function getFileIcon(filename: string, className?: string) {
   )
 }
 
-function getFolderIconElement(depth: number, isOpen: boolean) {
+function getFolderIconElement(isOpen: boolean) {
   const className = 'w-4 h-4 flex-shrink-0'
 
   return isOpen ? (
@@ -327,6 +328,21 @@ function getParsingProgressTitle(progress: number | null): string {
   return `处理中 ${Math.round(progress)}%`
 }
 
+type DocumentFolderTreeProps = {
+  className?: string
+  onRequestUpload?: (folderId: string) => void
+  onRequestUploadFolder?: (folderId: string) => void
+  fileItems?: DocumentTreeFileItem[]
+  showFiles?: FolderFileVisibility
+  onSelectFile?: (fileId: string) => void
+  onDeleteFolder?: (folderIds: string[]) => void
+  onFileDrop?: (fileId: string, folderId: string) => void
+  onRetryFile?: (fileId: string) => void
+  onRemoveFile?: (fileId: string) => void
+  onFileDragStart?: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
+  onToggleFileSelected?: (fileId: string) => void
+}
+
 export function DocumentFolderTree({
   className,
   onRequestUpload,
@@ -340,20 +356,7 @@ export function DocumentFolderTree({
   onRemoveFile,
   onFileDragStart,
   onToggleFileSelected,
-}: Readonly<{
-  className?: string
-  onRequestUpload?: (folderId: string) => void
-  onRequestUploadFolder?: (folderId: string) => void
-  fileItems?: DocumentTreeFileItem[]
-  showFiles?: FolderFileVisibility
-  onSelectFile?: (fileId: string) => void
-  onDeleteFolder?: (folderIds: string[]) => void
-  onFileDrop?: (fileId: string, folderId: string) => void
-  onRetryFile?: (fileId: string) => void
-  onRemoveFile?: (fileId: string) => void
-  onFileDragStart?: (event: React.DragEvent<HTMLElement>, fileId: string) => void
-  onToggleFileSelected?: (fileId: string) => void
-}>) {
+}: Readonly<DocumentFolderTreeProps>) {
   const libraryFiles = useParsedFiles((state) => state.files)
   const folders = useParsedFiles((state) => state.folders)
   const activeFolderId = useParsedFiles((state) => state.activeFolderId)
@@ -554,21 +557,9 @@ export function DocumentFolderTree({
   const handleMoveSubmit = useCallback(() => {
     if (!(dialog.open && dialog.mode === 'move')) return
     const targetParentId = moveParentId || ROOT_FOLDER_ID
-    const ok = moveFolder(dialog.folderId, targetParentId)
-    if (ok) {
-      toast.success('文件夹已移动')
-      closeDialog()
-      return
-    }
-    // Provide accurate feedback instead of always reporting success.
-    const currentParentId = folders.find((f) => f.id === dialog.folderId)?.parentId || ROOT_FOLDER_ID
-    if ((currentParentId || ROOT_FOLDER_ID) === (targetParentId || ROOT_FOLDER_ID)) {
-      toast.info('该文件夹已在目标目录')
-    } else {
-      toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
-    }
+    moveFolderWithToast(dialog.folderId, targetParentId)
     closeDialog()
-  }, [dialog, moveFolder, moveParentId, closeDialog, folders])
+  }, [dialog, moveParentId, moveFolderWithToast, closeDialog])
 
   const moveTargetOptions = useMemo(() => {
     if (!(dialog.open && dialog.mode === 'move')) return []
@@ -647,7 +638,7 @@ export function DocumentFolderTree({
     }
   }, [])
 
-  const autoScrollOnDrag = useCallback((e: React.DragEvent) => {
+  const autoScrollOnDrag = useCallback((e: ReactDragEvent) => {
     const container = scrollContainerRef.current
     if (!container) return
     const rect = container.getBoundingClientRect()
@@ -701,7 +692,7 @@ export function DocumentFolderTree({
       const canRemoveFile = Boolean(onRemoveFile)
       const hasInlineActions = canRunFile || canRemoveFile
       const progressTitle = getParsingProgressTitle(progress)
-      let selectableControl: React.ReactNode = null
+      let selectableControl: ReactNode = null
       if (file.isSelectable) {
         selectableControl = (
           <button
@@ -721,9 +712,9 @@ export function DocumentFolderTree({
         )
       }
 
-      let inlineActions: React.ReactNode = null
+      let inlineActions: ReactNode = null
       if (hasInlineActions) {
-        let runAction: React.ReactNode = null
+        let runAction: ReactNode = null
         if (canRunFile && onRetryFile) {
           const actionLabel = isPending ? '解析' : '重试'
           const ActionIcon = isPending ? Play : RotateCcw
@@ -743,7 +734,7 @@ export function DocumentFolderTree({
           )
         }
 
-        let removeAction: React.ReactNode = null
+        let removeAction: ReactNode = null
         if (canRemoveFile && onRemoveFile) {
           removeAction = (
             <ConfirmDialog
@@ -777,7 +768,7 @@ export function DocumentFolderTree({
         )
       }
 
-      let parsingProgressBar: React.ReactNode = null
+      let parsingProgressBar: ReactNode = null
       if (isParsing) {
         parsingProgressBar = (
           <div className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 overflow-hidden rounded-full bg-primary/12">
@@ -1028,7 +1019,7 @@ export function DocumentFolderTree({
             type="button"
             title={folder.name}
           >
-            {getFolderIconElement(depth, isActive)}
+            {getFolderIconElement(isActive)}
             <span className="truncate text-[12px] font-medium leading-4">{folder.name}</span>
             <span className="ml-auto rounded-md bg-muted/55 px-1.5 py-0.5 text-[9px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
               {count}
@@ -1246,7 +1237,7 @@ export function DocumentFolderTree({
             onClick={() => selectFolder(ROOT_FOLDER_ID)}
             type="button"
           >
-            {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
+            {getFolderIconElement(activeFolderId === ROOT_FOLDER_ID)}
             <span className="truncate text-[12px] font-medium leading-4">根目录</span>
             <span className="ml-auto rounded-md bg-muted/55 px-1.5 py-0.5 text-[9px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
               {rootCount}

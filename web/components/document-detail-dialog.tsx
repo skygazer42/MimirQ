@@ -34,7 +34,8 @@ import { DocumentVersionsDialog } from '@/components/document-detail-dialog/docu
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
-import { documentApi, kgApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
+import { kgApi } from '@/lib/api/graph'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
@@ -42,6 +43,7 @@ import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/do
 import { getParserLabel } from '@/lib/parser-options'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
   Document,
@@ -63,7 +65,7 @@ const ACTIVE_PIPELINE_VALUE = '__active__'
 const CHUNK_PAGE_SIZE = 200
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 type SaveActionState = 'idle' | 'skipped' | 'saved' | 'failed'
-type DocumentPublicationStatus = 'draft' | 'published' | 'deprecated'
+type DocumentPublicationStatus = Document['publication_status']
 type LifecycleDraftValues = {
   publicationStatus: DocumentPublicationStatus
   owner: string
@@ -73,7 +75,7 @@ type LifecycleDraftValues = {
 }
 type LifecycleValidationKey =
   'validation.supersedesUuid' | 'validation.authorityInteger' | 'validation.authorityRange' | 'validation.reviewDueAt'
-type AccessModeFormValue = FormDataEntryValue | string | null | undefined
+type FormFieldValue = FormDataEntryValue | null | undefined
 type DocumentMetadataRecord = Record<string, unknown>
 type DocumentPipelineMetadata = DocumentMetadataRecord & {
   parser_backend_requested?: string
@@ -85,7 +87,7 @@ type DocumentPipelineMetadata = DocumentMetadataRecord & {
   pipeline_hash?: string
 }
 
-function formString(value: AccessModeFormValue, fallback = ''): string {
+function formString(value: FormFieldValue, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
@@ -128,7 +130,7 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
+function normalizeAccessMode(value: FormFieldValue): DocumentAccessMode {
   const normalized = formString(value).trim()
   switch (normalized) {
     case 'inherit':
@@ -141,7 +143,7 @@ function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
   }
 }
 
-function parseStringArrayField(value: FormDataEntryValue | string | null | undefined): string[] {
+function parseStringArrayField(value: FormFieldValue): string[] {
   let parsed: unknown = []
   try {
     parsed = JSON.parse(formString(value, '[]'))
@@ -164,7 +166,7 @@ function parseStringArrayField(value: FormDataEntryValue | string | null | undef
   return out
 }
 
-function normalizePublicationStatus(value: FormDataEntryValue | string | null | undefined): DocumentPublicationStatus {
+function normalizePublicationStatus(value: FormFieldValue): DocumentPublicationStatus {
   const normalized = formString(value).trim()
   return normalized === 'draft' || normalized === 'deprecated' ? normalized : 'published'
 }
@@ -208,7 +210,25 @@ function hasLifecycleChanges(doc: Document, values: LifecycleDraftValues) {
   )
 }
 
-function DocumentSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+type DocumentSaveButtonProps = { disabled: boolean }
+
+function parseAccessMembers(raw: string): string[] {
+  const parts = (raw || '')
+    .split(/[\n,;]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const p of parts) {
+    if (seen.has(p)) continue
+    seen.add(p)
+    out.push(p)
+    if (out.length >= 200) break
+  }
+  return out
+}
+
+function DocumentSaveButton({ disabled }: Readonly<DocumentSaveButtonProps>) {
   const commonT = useTranslations('Common')
   const { pending } = useFormStatus()
 
@@ -247,6 +267,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [isKgWorking, setIsKgWorking] = useState(false)
   const [isCleanDocxDownloading, setIsCleanDocxDownloading] = useState(false)
   const [chunkQuery, setChunkQuery] = useState('')
+  const chunkScope = useMemo(
+    () => ({ documentId: initialDocument.id, open, activeView, query: chunkQuery, pipelineHash: viewPipelineHash }),
+    [activeView, chunkQuery, initialDocument.id, open, viewPipelineHash],
+  )
+  const chunkScopeRef = useRef<typeof chunkScope | null>(null)
+  const chunkRequestRef = useRef<object | null>(null)
+
+  useEffect(() => {
+    chunkScopeRef.current = chunkScope
+    return () => {
+      if (chunkScopeRef.current === chunkScope) {
+        chunkScopeRef.current = null
+        chunkRequestRef.current = null
+      }
+    }
+  }, [chunkScope])
+
   const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
   const [editingChunkContent, setEditingChunkContent] = useState<string>('')
   const [chunkOpWorkingId, setChunkOpWorkingId] = useState<string | null>(null)
@@ -254,9 +291,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
 
   const [lifecycleEditing, setLifecycleEditing] = useState(false)
-  const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] = useState<
-    'draft' | 'published' | 'deprecated'
-  >('published')
+  const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] =
+    useState<DocumentPublicationStatus>('published')
   const [lifecycleOwnerDraft, setLifecycleOwnerDraft] = useState('')
   const [lifecycleReviewDueDraft, setLifecycleReviewDueDraft] = useState('')
   const [lifecycleAuthorityDraft, setLifecycleAuthorityDraft] = useState('')
@@ -620,9 +656,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
   const fetchChunksPage = useCallback(
     async (skip: number) => {
-      const q = chunkQuery.trim()
-      const pipelineHash = viewPipelineHash === ACTIVE_PIPELINE_VALUE ? undefined : viewPipelineHash
-      const res = await documentApi.listChunks(initialDocument.id, {
+      const q = chunkScope.query.trim()
+      const pipelineHash = chunkScope.pipelineHash === ACTIVE_PIPELINE_VALUE ? undefined : chunkScope.pipelineHash
+      const res = await documentApi.listChunks(chunkScope.documentId, {
         skip,
         limit: CHUNK_PAGE_SIZE,
         q: q || undefined,
@@ -630,42 +666,72 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       })
       return res
     },
-    [chunkQuery, initialDocument.id, viewPipelineHash],
+    [chunkScope],
   )
 
   const reloadChunks = useCallback(async () => {
+    if (chunkScopeRef.current !== chunkScope) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    chunkRequestRef.current = request
+    const isCurrent = () =>
+      chunkScopeRef.current === chunkScope &&
+      chunkRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setIsLoadingChunks(true)
     setChunkError(null)
     setChunks([])
     setChunksTotal(0)
     try {
       const res = await fetchChunksPage(0)
+      if (!isCurrent()) return
       setChunks(res.items || [])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
+      if (!isCurrent()) return
       reportClientError('Load document chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadChunksFailed')))
     } finally {
-      setIsLoadingChunks(false)
+      if (chunkRequestRef.current === request) {
+        chunkRequestRef.current = null
+        setIsLoadingChunks(false)
+      }
     }
-  }, [fetchChunksPage, t])
+  }, [chunkScope, fetchChunksPage, t])
 
   const loadMoreChunks = useCallback(async () => {
     if (isLoadingChunks) return
     if (chunks.length >= chunksTotal) return
+    if (chunkScopeRef.current !== chunkScope) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    chunkRequestRef.current = request
+    const isCurrent = () =>
+      chunkScopeRef.current === chunkScope &&
+      chunkRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setIsLoadingChunks(true)
     setChunkError(null)
     try {
       const res = await fetchChunksPage(chunks.length)
+      if (!isCurrent()) return
       setChunks((prev) => [...prev, ...(res.items || [])])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
+      if (!isCurrent()) return
       reportClientError('Load more chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadMoreChunksFailed')))
     } finally {
-      setIsLoadingChunks(false)
+      if (chunkRequestRef.current === request) {
+        chunkRequestRef.current = null
+        setIsLoadingChunks(false)
+      }
     }
-  }, [chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks, t])
+  }, [chunkScope, chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks, t])
 
   useEffect(() => {
     if (!open) return
@@ -887,22 +953,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setIsCleanDocxDownloading(false)
     }
   }
-
-  const parseAccessMembers = useCallback((raw: string): string[] => {
-    const parts = (raw || '')
-      .split(/[\n,;]+/g)
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const out: string[] = []
-    const seen = new Set<string>()
-    for (const p of parts) {
-      if (seen.has(p)) continue
-      seen.add(p)
-      out.push(p)
-      if (out.length >= 200) break
-    }
-    return out
-  }, [])
 
   const [, saveAccessAction, isSavingAccess] = useActionState(
     async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {

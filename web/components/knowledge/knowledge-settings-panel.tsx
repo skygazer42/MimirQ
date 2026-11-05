@@ -1,11 +1,8 @@
 'use client'
 
-/**
- * KnowledgeSettingsPanel & KnowledgeConnectorRunsPanel
- * 优化版：任务中心极致高密度、UI Pro Max 视觉增强
- */
+/** 数据集配置草稿、保存验证与连接器运行记录。 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -40,7 +37,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Switch } from '@/components/ui/switch'
 
-import { datasetApi, retrievalApi, settingsApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { retrievalApi } from '@/lib/api/rag'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
 import {
   buildDatasetRagDefaultsForUpdate,
@@ -51,6 +50,7 @@ import {
 } from '@/lib/dataset-rag-contract'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { cn, detachPromise, formatDate } from '@/lib/utils'
 import type { ConnectorRunOut } from '@/types/connectors'
 import type { Dataset, DatasetRagViewConfig } from '@/types/datasets'
@@ -60,6 +60,14 @@ import type { SystemSettings } from '@/types/settings'
 type KnowledgeSettingsConfig = Pick<SystemSettings, 'embedding'> & {
   rag: DatasetRagViewConfig
 }
+type KnowledgeSettingsVisit = {
+  datasetId: string | undefined
+}
+type KnowledgeSettingsDraftState = {
+  visit: KnowledgeSettingsVisit | null
+  savedConfig: KnowledgeSettingsConfig | null
+  draftConfig: KnowledgeSettingsConfig | null
+}
 type DatasetRagVerificationState = {
   datasetId: string
   hash: string
@@ -67,8 +75,7 @@ type DatasetRagVerificationState = {
   verifiedAt: string
 }
 type ConnectorRunStatusFilter = 'all' | 'pending' | 'running' | 'failed' | 'completed' | 'cancelled'
-type TranslateValue = string | number | Date
-type TranslateFn = (key: string, values?: Record<string, TranslateValue>) => string
+type TranslateFn = ReturnType<typeof useTranslations<'KnowledgeSettingsPanel'>>
 
 type KnowledgeSettingsPanelProps = {
   selectedDatasetId?: string
@@ -205,10 +212,6 @@ function inferEmbeddingBrand(embedding: KnowledgeSettingsConfig['embedding'] | n
   return 'OpenAI Embedding'
 }
 
-function cloneSettingsConfig(config: KnowledgeSettingsConfig): KnowledgeSettingsConfig {
-  return structuredClone(config)
-}
-
 function buildScopedSettingsConfig(
   settings: SystemSettings,
   selectedDataset?: Dataset | null,
@@ -257,13 +260,36 @@ export function KnowledgeSettingsPanel({
   // setRunStatusFilter('all')
   // bg-primary/10 px-2.5 py-0.5 rounded-lg border border-primary/20
   // border-border/40 bg-background/70
-  const [draftConfig, setDraftConfig] = useState<KnowledgeSettingsConfig | null>(null)
-  const [savedConfig, setSavedConfig] = useState<KnowledgeSettingsConfig | null>(null)
+  const settingsVisit = useMemo(() => ({ datasetId: selectedDatasetId }), [selectedDatasetId])
+  const [configState, setConfigState] = useState<KnowledgeSettingsDraftState>({
+    visit: null,
+    savedConfig: null,
+    draftConfig: null,
+  })
+  const { savedConfig, draftConfig } = configState
+  const setSavedConfig = useCallback((config: KnowledgeSettingsConfig | null) => {
+    setConfigState((current) => ({ ...current, savedConfig: config }))
+  }, [])
+  const setDraftConfig = useCallback((update: SetStateAction<KnowledgeSettingsConfig | null>) => {
+    setConfigState((current) => ({
+      ...current,
+      draftConfig: typeof update === 'function' ? update(current.draftConfig) : update,
+    }))
+  }, [])
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [confirmEmbeddingSaveOpen, setConfirmEmbeddingSaveOpen] = useState(false)
   const [datasetRagVerification, setDatasetRagVerification] = useState<DatasetRagVerificationState | null>(null)
   const [guideExpanded, setGuideExpanded] = useState(false)
   const [currentConfigOpen, setCurrentConfigOpen] = useState(false)
+  const settingsVisitRef = useRef<typeof settingsVisit | null>(null)
+  const saveRequestRef = useRef<object | null>(null)
+
+  useEffect(() => {
+    settingsVisitRef.current = settingsVisit
+    return () => {
+      if (settingsVisitRef.current === settingsVisit) settingsVisitRef.current = null
+    }
+  }, [settingsVisit])
 
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.snapshot,
@@ -276,8 +302,14 @@ export function KnowledgeSettingsPanel({
   useEffect(() => {
     if (!settingsQuery.data) return
     const cfg = buildScopedSettingsConfig(settingsQuery.data, selectedDataset)
-    setSavedConfig(cfg)
-    setDraftConfig(cloneSettingsConfig(cfg))
+    setConfigState((current) => ({
+      visit: settingsVisit,
+      savedConfig: cfg,
+      draftConfig:
+        current.visit === settingsVisit && JSON.stringify(current.savedConfig) !== JSON.stringify(current.draftConfig)
+          ? current.draftConfig
+          : structuredClone(cfg),
+    }))
   }, [
     settingsQuery.data,
     selectedDataset,
@@ -285,6 +317,7 @@ export function KnowledgeSettingsPanel({
     selectedDataset?.embedding_defaults?.model,
     selectedDataset?.embedding_defaults?.provider,
     selectedDatasetId,
+    settingsVisit,
   ])
 
   useEffect(() => {
@@ -294,12 +327,18 @@ export function KnowledgeSettingsPanel({
 
   const isDirty = useMemo(() => JSON.stringify(savedConfig) !== JSON.stringify(draftConfig), [savedConfig, draftConfig])
   const handleResetDraft = useCallback(() => {
-    setDraftConfig(savedConfig ? cloneSettingsConfig(savedConfig) : null)
+    setDraftConfig(savedConfig ? structuredClone(savedConfig) : null)
     setConfirmEmbeddingSaveOpen(false)
-  }, [savedConfig])
+  }, [savedConfig, setDraftConfig])
 
   const handleSave = async () => {
-    if (!draftConfig || isSavingSettings) return
+    if (!draftConfig || isSavingSettings || saveRequestRef.current) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isSessionCurrent = () => getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
+    const canPublish = () => settingsVisitRef.current === settingsVisit && isSessionCurrent()
+    saveRequestRef.current = request
     setIsSavingSettings(true)
     try {
       if (selectedDatasetId) {
@@ -312,24 +351,31 @@ export function KnowledgeSettingsPanel({
           embedding_defaults: buildDatasetEmbeddingDefaults(draftConfig),
           rag_defaults: nextRagDefaults ?? undefined,
         })
+        if (!isSessionCurrent()) return
         const refreshedDataset = await datasetApi.get(selectedDatasetId)
+        if (!isSessionCurrent()) return
         queryClient.setQueryData(queryKeys.datasets.detail(selectedDatasetId), refreshedDataset)
         await queryClient.invalidateQueries({
           queryKey: queryKeys.datasets.all,
         })
+        if (!isSessionCurrent()) return
         await queryClient.invalidateQueries({
           queryKey: queryKeys.datasets.exhaustive(),
         })
+        if (!isSessionCurrent()) return
 
         const nextConfig = settingsQuery.data
           ? buildScopedSettingsConfig(settingsQuery.data, refreshedDataset)
-          : cloneSettingsConfig(draftConfig)
-        setSavedConfig(cloneSettingsConfig(nextConfig))
-        setDraftConfig(cloneSettingsConfig(nextConfig))
+          : structuredClone(draftConfig)
+        if (canPublish()) {
+          setSavedConfig(structuredClone(nextConfig))
+          setDraftConfig(structuredClone(nextConfig))
+        }
 
         const hashRequest = buildRetrievalConfigHashRequest(refreshedDataset.rag_defaults)
         if (hashRequest) {
           const hashResponse = await retrievalApi.configHash(hashRequest)
+          if (!canPublish()) return
           setDatasetRagVerification({
             datasetId: selectedDatasetId,
             hash: toTrimmedPrimitiveString(hashResponse.hash),
@@ -339,20 +385,26 @@ export function KnowledgeSettingsPanel({
           toast.success(
             `已保存并验证数据集契约（cfg ${toTrimmedPrimitiveString(hashResponse.hash).slice(0, 12) || '--'}）`,
           )
-        } else {
+        } else if (canPublish()) {
           setDatasetRagVerification(null)
           toast.success('已保存到当前数据集；当前未配置 dataset 级检索契约')
         }
       } else {
         await settingsApi.update(draftConfig)
-        setSavedConfig(cloneSettingsConfig(draftConfig))
+        if (!canPublish()) return
+        setSavedConfig(structuredClone(draftConfig))
         toast.success(t('toasts.saveSuccess'))
       }
     } catch (err) {
-      toast.error(formatApiError(err, t('toasts.saveFailed')))
+      if (canPublish()) toast.error(formatApiError(err, t('toasts.saveFailed')))
     } finally {
-      setIsSavingSettings(false)
-      setConfirmEmbeddingSaveOpen(false)
+      if (saveRequestRef.current === request) {
+        saveRequestRef.current = null
+        if (settingsVisitRef.current) {
+          setIsSavingSettings(false)
+          setConfirmEmbeddingSaveOpen(false)
+        }
+      }
     }
   }
 
@@ -956,7 +1008,7 @@ export function KnowledgeConnectorRunsPanel({
   )
 
   const visibleRuns = useMemo(() => {
-    let list =
+    const list =
       runStatusFilter === 'all'
         ? connectorRuns
         : connectorRuns.filter((r) => String(r.status).toLowerCase() === runStatusFilter)

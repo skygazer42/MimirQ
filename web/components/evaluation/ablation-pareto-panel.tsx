@@ -96,7 +96,7 @@ export function AblationParetoPanel({
       if (metric === null || runLatency === null) return null
       return { id: run.id, metric, latency: runLatency }
     })
-    .filter((point): point is Pick<ParetoPoint, 'id' | 'metric' | 'latency'> => point !== null)
+    .filter((point): point is ParetoCandidate => point !== null)
 
   const minMetric = rawPoints.length ? Math.min(...rawPoints.map((point) => point.metric)) : 0
   const maxMetric = rawPoints.length ? Math.max(...rawPoints.map((point) => point.metric)) : 1

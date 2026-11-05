@@ -4,7 +4,7 @@
  * 知识库管理页面
  * 重构为更贴近设计稿的密集型管理工作台，同时保留共享 workbench 能力。
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent as ReactChangeEvent } from 'react'
 import Image from 'next/image'
 import { useSearchParams } from 'next/navigation'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -41,6 +41,8 @@ import {
   parseKnowledgeQueryState,
   serializeKnowledgeQueryState,
   type KnowledgeQueryState,
+  type KnowledgeTabType,
+  type KnowledgeViewMode,
 } from '@/components/knowledge/use-knowledge-query-state'
 import { useKnowledgeScrollContainer } from '@/components/knowledge/use-knowledge-scroll-container'
 import { KnowledgeWorkbenchActions } from '@/components/knowledge/knowledge-workbench-actions'
@@ -54,7 +56,7 @@ import { useConnectorRuns } from '@/hooks/use-connector-runs'
 import { useDatasets } from '@/hooks/use-datasets'
 import { useDocuments } from '@/hooks/use-documents'
 import { Link, useRouter } from '@/i18n/navigation'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import { buildChunkPreviewDocumentHref } from '@/lib/chunk-preview-links'
 import { cn, detachPromise } from '@/lib/utils'
@@ -68,7 +70,6 @@ const KNOWLEDGE_GLASS_CARD_CLASS =
 const KNOWLEDGE_WORKBENCH_SURFACE_CLASS =
   'border-foreground/10 bg-background shadow-none backdrop-blur-none dark:border-foreground/10 dark:bg-background'
 const DOCUMENTS_PAGE_SIZE = 20
-type TabKey = 'documents' | 'retrieval' | 'settings'
 
 /*
  * Source markers retained for legacy source tests while the documents tab is
@@ -97,7 +98,7 @@ export default function KnowledgePage() {
   })
   const initialQueryState = initialQueryStateRef.current
 
-  const [activeTab, setActiveTab] = useState<TabKey>(initialQueryState.activeTab)
+  const [activeTab, setActiveTab] = useState<KnowledgeTabType>(initialQueryState.activeTab)
   const [desktopScopeCollapsed, setDesktopScopeCollapsed] = useState(false)
   const [datasetScope, setDatasetScope] = useState<string>(initialQueryState.datasetScope)
   const [docFilter, setDocFilter] = useState(initialQueryState.docFilter)
@@ -106,12 +107,11 @@ export default function KnowledgePage() {
   const [folderPath, setFolderPath] = useState<string | null>(initialQueryState.folderPath)
   const [sortKey, setSortKey] = useState(initialQueryState.sortKey)
   const [sortDir, setSortDir] = useState(initialQueryState.sortDir)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(initialQueryState.viewMode)
+  const [viewMode, setViewMode] = useState<KnowledgeViewMode>(initialQueryState.viewMode)
   const [documentsPage, setDocumentsPage] = useState(1)
   const [activeConnectorRunId, setActiveConnectorRunId] = useState<string | null>(initialQueryState.connectorRunId)
   const [peekingDocId, setPeekingDocId] = useState<string | null>(null)
   const [showConnectorRunsPanel, setShowConnectorRunsPanel] = useState(false)
-  const setShowTaskCenter = setShowConnectorRunsPanel
   const [mobileScopeOpen, setMobileScopeOpen] = useState(false)
   const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false)
   const [mobileRunsOpen, setMobileRunsOpen] = useState(false)
@@ -368,7 +368,7 @@ export default function KnowledgePage() {
   }, [])
 
   const handleFileUpload = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: ReactChangeEvent<HTMLInputElement>) => {
       const files = event.target.files
       if (!files?.length) return
 
@@ -466,7 +466,7 @@ export default function KnowledgePage() {
 
   const scopeMode = activeTab === 'documents' ? 'documents' : activeTab === 'retrieval' ? 'retrieval' : 'settings'
 
-  const tabs: Array<{ key: TabKey; label: string; icon: typeof FileStack }> = [
+  const tabs: Array<{ key: KnowledgeTabType; label: string; icon: typeof FileStack }> = [
     { key: 'documents', label: t('tabs.documents.label'), icon: FileStack },
     { key: 'retrieval', label: t('tabs.retrieval.label'), icon: Activity },
     { key: 'settings', label: t('tabs.settings.label'), icon: Database },
@@ -772,7 +772,7 @@ export default function KnowledgePage() {
                       loadDocuments={loadDocuments}
                       loadConnectorRuns={loadConnectorRuns}
                       onConnectorRunCreated={(run) => {
-                        setShowTaskCenter(true)
+                        setShowConnectorRunsPanel(true)
                         setPeekingDocId(null)
                         setActiveTab('documents')
                       }}
@@ -1060,7 +1060,7 @@ export default function KnowledgePage() {
                 anySelectedArchived={anySelectedArchived}
                 anySelectedNotArchived={anySelectedNotArchived}
                 deleteDocument={deleteDocument}
-                handleFileUpload={handleFileUpload}
+
                 onPeek={openChunkManager}
                 onScrollContainerChange={setDocumentsScrollEl}
               />

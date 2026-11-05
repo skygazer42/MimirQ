@@ -455,9 +455,9 @@ export function TestCaseManager({
         citations,
         exported_at: exportedAt,
         source: 'retrieve_preview',
-        has_evidence: (res as any)?.has_evidence ?? null,
-        abstain_triggered: (res as any)?.abstain_triggered ?? null,
-        abstain_reason: (res as any)?.abstain_reason ?? null,
+        has_evidence: res?.has_evidence ?? null,
+        abstain_triggered: res?.abstain_triggered ?? null,
+        abstain_reason: res?.abstain_reason ?? null,
       })
       setEvidenceQuestion(q)
       setEvidenceExpectedAnswer(newExpectedAnswer || '')
@@ -512,7 +512,7 @@ export function TestCaseManager({
       setEvidenceExpectedAnswer('')
 
       const selectedChunkIds = Array.isArray(parsed?.selected_chunk_ids) ? parsed.selected_chunk_ids : []
-      const normalizedSelected = selectedChunkIds.map((x: any) => toTrimmedPrimitiveString(x)).filter(Boolean)
+      const normalizedSelected = selectedChunkIds.map((x: unknown) => toTrimmedPrimitiveString(x)).filter(Boolean)
 
       // Default: keep the exported selection (if present), else select top-1 as a starting point.
       const firstChunkId = toTrimmedPrimitiveString(citations?.[0]?.chunk_id)
@@ -528,7 +528,7 @@ export function TestCaseManager({
         })(),
       )
       setEvidenceDialogOpen(true)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to parse Evidence Pack', err)
       toast.error('Evidence Pack 解析失败（请确认是 JSON 文件）')
     } finally {
@@ -556,8 +556,8 @@ export function TestCaseManager({
     const sourceTag = evidencePack?.source === 'retrieve_preview' ? 'from_retrieval_preview' : 'evidence_pack'
     const selected = new Set(Array.from(evidenceSelectedChunkIds || []))
     const refs: RegressionReferenceSource[] = (evidenceCitations || [])
-      .filter((c: any) => selected.has(String(c?.chunk_id || '')))
-      .map((c: any) => ({
+      .filter((c) => selected.has(String(c?.chunk_id || '')))
+      .map((c) => ({
         document_id: String(c?.document_id || ''),
         chunk_id: String(c?.chunk_id || ''),
         page_number: typeof c?.page_number === 'number' ? c.page_number : undefined,
@@ -602,7 +602,7 @@ export function TestCaseManager({
       setIsCreating(false)
       setNewQuestion('')
       setNewExpectedAnswer('')
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to create case from evidence pack', err)
       toast.error(formatApiError(err, '创建回归用例失败'))
     } finally {
@@ -1092,7 +1092,7 @@ export function TestCaseManager({
                 </div>
               </div>
               <div className="max-h-64 overflow-y-auto">
-                {(evidenceCitations || []).map((c: any, idx: number) => {
+                {(evidenceCitations || []).map((c, idx) => {
                   const chunkId = String(c?.chunk_id || '')
                   const checked = !!chunkId && evidenceSelectedChunkIds.has(chunkId)
                   const label = String(c?.document_name || c?.document_id || 'Unknown')

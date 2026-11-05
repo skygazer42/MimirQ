@@ -20,7 +20,7 @@ const routeState = vi.hoisted(() => ({
   pathname: '/knowledge/ingestion',
 }))
 
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api/documents', () => ({
   documentApi: documentApiMock,
 }))
 vi.mock('@/hooks/use-auth', () => ({

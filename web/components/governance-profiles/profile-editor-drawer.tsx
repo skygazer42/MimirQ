@@ -13,7 +13,8 @@ import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
-import { governanceApi, pipelineApi } from '@/lib/api'
+import { governanceApi } from '@/lib/api/governance'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientWarning } from '@/lib/client-logging'
 import { coerceOneOf } from '@/lib/one-of'
@@ -25,13 +26,13 @@ import type {
   GovernanceProfileOut,
   GovernanceProfilePayload,
   RegexRuleModel,
-} from '@/types'
+} from '@/types/processing'
 import { buildCleanPreviewRequestFromGovernanceProfile } from '@/lib/governance-profile-utils'
 import { CleanPreviewRuleStatsPanel } from '@/components/governance-profiles/clean-preview-rule-stats-panel'
 
 type Mode = 'create' | 'edit' | 'view'
 
-type Props = {
+type ProfileEditorDrawerProps = {
   open: boolean
   mode: Mode
   profileRef?: string | null
@@ -266,7 +267,7 @@ export function ProfileEditorDrawer({
   onOpenChange,
   onSaved,
   onCreated,
-}: Readonly<Props>) {
+}: Readonly<ProfileEditorDrawerProps>) {
   const isReadOnly = mode === 'view'
   const isCreate = mode === 'create'
 

@@ -1,6 +1,7 @@
 'use client'
 
 import type { FileStatus } from '@/components/ui/file-queue-item'
+import type { ParsingElement } from '@/lib/api/parsing'
 
 import type { ParsedFile } from './parsing-types'
 
@@ -10,6 +11,15 @@ export type LibraryStatusBadge = {
 }
 
 type ParsingWorkbenchTranslationGetter = (key: string) => string
+
+export function normalizeParsingBackendCandidate(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : ''
+}
+
+export function readPersistedParsingElements(value: unknown): ParsingElement[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is ParsingElement => Boolean(item) && typeof item === 'object')
+}
 
 export function countMarkdownHeadings(markdown: string) {
   const md = String(markdown || '').trim()

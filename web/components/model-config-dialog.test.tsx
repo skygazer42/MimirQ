@@ -14,7 +14,7 @@ vi.mock('@/components/ui/dialog', () => ({
 vi.mock('@/components/provider-icon', () => ({
   ProviderIcon: () => null,
 }))
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api/settings', () => ({
   settingsApi: { testLLM: vi.fn() },
 }))
 

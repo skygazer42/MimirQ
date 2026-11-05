@@ -27,6 +27,7 @@ const boundary = vi.hoisted(() => ({
   message: vi.fn(),
 }))
 vi.hoisted(() => vi.stubGlobal('BroadcastChannel', undefined))
+vi.mock('@/lib/api/access', () => vi.importMock('@/lib/api'))
 vi.mock('@/lib/api', () => ({
   groupApi: {
     listGroups: boundary.list,

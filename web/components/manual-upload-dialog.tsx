@@ -3,14 +3,15 @@
  */
 'use client'
 
-import { useState, useMemo, ChangeEvent, useRef, useEffect, useCallback } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
+import type { ChangeEvent } from 'react'
 import { Upload, Loader2, FileText, Settings2, Scissors, AlignJustify, Hash, FileType } from 'lucide-react'
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { cn, formatFileSize } from '@/lib/utils'
 import type { DocumentPreview, ManualChunk } from '@/types'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
@@ -22,6 +23,7 @@ import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { PipelineOptionsPanel } from '@/components/pipeline-options-panel'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 
 type ManualUploadDialogProps = {
   onUploaded?: () => void
@@ -125,12 +127,23 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
   }, [file, parserBackend])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const previewAbortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(false)
+  const fileVisitRef = useRef<{ file: File | null }>({ file: null })
+  const submissionRef = useRef<{ sessionRevision: number } | null>(null)
+
+  const retirePreview = useCallback(() => {
+    previewAbortRef.current?.abort()
+    previewAbortRef.current = null
+  }, [])
 
   useEffect(() => {
+    mountedRef.current = true
     return () => {
-      previewAbortRef.current?.abort()
+      mountedRef.current = false
+      fileVisitRef.current = { file: null }
+      retirePreview()
     }
-  }, [])
+  }, [retirePreview])
 
   useEffect(() => {
     if (typeof pipelineOptions.chunk_size === 'number' && pipelineOptions.chunk_size !== chunkSize) {
@@ -149,9 +162,20 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
     if (!files || files.length === 0) return
 
     const selected = files[0]
-    previewAbortRef.current?.abort()
+    retirePreview()
+    const visit = { file: selected }
+    fileVisitRef.current = visit
     const controller = new AbortController()
     previewAbortRef.current = controller
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      mountedRef.current &&
+      fileVisitRef.current === visit &&
+      previewAbortRef.current === controller &&
+      !controller.signal.aborted &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setFile(selected)
     setPreview(null)
     setError(null)
@@ -164,18 +188,21 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
         pipelineOverridesEnabled ? pipelineOptions : undefined,
         { signal: controller.signal },
       )
+      if (!isCurrent()) return
       setPreview(result)
     } catch (err: unknown) {
-      if (controller.signal.aborted) return
+      if (!isCurrent()) return
       reportClientError('Manual upload preview parse failed', err)
       setError(formatApiError(err, '文档解析失败'))
     } finally {
       if (previewAbortRef.current === controller) {
         previewAbortRef.current = null
+        if (mountedRef.current) {
+          setIsParsing(false)
+          // 清空 input，方便下次选同一文件
+          e.target.value = ''
+        }
       }
-      setIsParsing(false)
-      // 清空 input，方便下次选同一文件
-      e.target.value = ''
     }
   }
 
@@ -265,6 +292,11 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
 
   const handleSubmit = async () => {
     if (!preview) return
+    const visit = fileVisitRef.current
+    if (visit.file !== file) return
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    if (submissionRef.current?.sessionRevision === sessionRevision) return
 
     const chunks = buildChunks()
     if (!chunks.length) {
@@ -272,6 +304,10 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
       return
     }
 
+    const submission = { sessionRevision }
+    submissionRef.current = submission
+    const isSessionCurrent = () => getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
+    const canPublish = () => mountedRef.current && fileVisitRef.current === visit && isSessionCurrent()
     setIsSubmitting(true)
     setError(null)
 
@@ -295,20 +331,31 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
         pipeline,
       })
 
-      setOpen(false)
-      setPreview(null)
-      setFile(null)
+      if (!isSessionCurrent()) return
+      if (canPublish()) {
+        fileVisitRef.current = { file: null }
+        setOpen(false)
+        setPreview(null)
+        setFile(null)
+      }
 
       if (onUploaded) onUploaded()
     } catch (err: unknown) {
+      if (!isSessionCurrent()) return
       reportClientError('Manual upload failed', err)
-      setError(formatApiError(err, '手动切片上传失败'))
+      if (canPublish()) setError(formatApiError(err, '手动切片上传失败'))
     } finally {
-      setIsSubmitting(false)
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        if (mountedRef.current) setIsSubmitting(false)
+      }
     }
   }
 
   const resetState = () => {
+    fileVisitRef.current = { file: null }
+    retirePreview()
+    submissionRef.current = null
     setFile(null)
     setPreview(null)
     setError(null)
@@ -321,6 +368,7 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
     <Dialog
       open={open}
       onOpenChange={(next) => {
+        if (next) fileVisitRef.current = { file: fileVisitRef.current.file }
         setOpen(next)
         if (!next) resetState()
       }}
@@ -568,7 +616,16 @@ export function ManualUploadDialog({ onUploaded }: Readonly<ManualUploadDialogPr
 
         {/* Footer */}
         <div className="bg-muted/20 p-4 border-t border-border flex justify-end gap-3">
-          <Button variant="ghost" onClick={() => setOpen(false)} disabled={isSubmitting}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              fileVisitRef.current = { file: fileVisitRef.current.file }
+              retirePreview()
+              setIsParsing(false)
+              setOpen(false)
+            }}
+            disabled={isSubmitting}
+          >
             取消
           </Button>
           <Button

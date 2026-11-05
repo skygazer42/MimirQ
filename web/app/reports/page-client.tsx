@@ -87,7 +87,7 @@ export default function ReportsCenterPage() {
     queryKey: queryKeys.datasets.exhaustive({ purpose: 'reports' }),
     queryFn: () => datasetApi.listAll(),
   })
-  const categoriesQuery = useQuery<Awaited<ReturnType<typeof datasetCategoryApi.listTree>>>({
+  const categoriesQuery = useQuery({
     queryKey: queryKeys.reports.categories,
     queryFn: () => datasetCategoryApi.listTree(),
   })

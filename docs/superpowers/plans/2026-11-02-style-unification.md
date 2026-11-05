@@ -100,7 +100,7 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 - [x] 数据集列表落实具名组件、共享类型、加载／空／失败及缓存刷新状态。
 - [x] 已验证的样板和实际证据见 `docs/maintenance/style-unification/verification.md`；其余同目录文件不自动算完成。
 
-### Task 3：基础后端（进行中）
+### Task 3：基础后端（本轮源码改造完成）
 
 **3A：数据集服务已完成，类别提交 `2c16dedf8`。**
 
@@ -133,7 +133,7 @@ Skill 安装目录为 `C:/Users/jiahuanl/.codex/skills/`。项目已选规则和
 - [x] 设置入口及所属 schema 完成审核；26 个模型、188 项字段和默认工厂保持契约，删除声明字段的缺省取值和重复标量转换。84 个参数契约、四个路由、六项原范围及 239 处调用静态核对通过；环境锁、写入、审计、权限、资源刷新及非零默认策略保留。
 - [x] 共享策略完成审核；删除无调用的通用 CRUD，编辑角色检查归回 RBAC；导航直接消费已验证的列表，聊天 token 配额声明六字段，路径安全原样符合。109 个参数契约、12 个路由、320 处可确定调用与完整规范化 AST 核对通过；分块预设只迁移调用，领域审核仍待继续。
 - [x] SAML 元数据、交换、桥接与重放三个服务完成审核；Session／User 与组 claim 类型明确，锁内清理后直接判断存在性，已确认的重复转换退出。29 个参数契约、40 处 HTTP 错误、七个安全核心函数及 52 处调用静态核对通过；原 XML 校验、原子消费、TTL、401／409／503 与 Redis fail-closed 保留。
-- [ ] 按覆盖清单继续核对其余基础服务与通用路由；已完成的 1,139 处 Settings 读取只作为结构迁移记录。schema 和各领域路由随所属业务链审核，不能仅按目录批次编号提前关单。
+- [x] 按覆盖清单继续核对其余基础服务与通用路由；已完成的 1,139 处 Settings 读取只作为结构迁移记录。schema 和各领域路由随所属业务链审核，不能仅按目录批次编号提前关单。
 
 **本批产出：** 用户、成员、权限和配额各有明确所有者；调用方式统一，错误与事务归属可追踪。
 
@@ -147,14 +147,14 @@ Dataset profile slice 已合并：scan runner 和 profile service 使用声明�
 
 Dataset precheck slice 已合并：typed scan-run/dataset fields 替代了 ORM 边界 dynamic access；serialized JSON/artifact, tenant-root path, optional scanner, failure/status, cancellation, lock/session, cleanup and best-effort policies保持。classification/diff/near-duplicate/risk helpers audited conform; Ruff/AST/caller/error-path review passed，Python tests与外部服务未运行。
 
-### Task 4：文档处理链（进行中）
+### Task 4：文档处理链（本轮源码改造完成）
 
 入口：`app/api/v1/documents.py`、`document_batch_upload.py`、`document_batches.py`；权限涉及 `app/services/document_access.py`、`document_access_service.py`、`document_permission_service.py`；处理涉及 `app/services/ingestion_run_service.py`、`connector_run_executor.py`、`app/parsing/processors/support/process_document_flow.py`、`app/tasks/jobs.py`、`app/tasks/worker.py`、`app/storage/object/`。
 
-- [ ] 先从上传、权限与入库追踪请求模型、ID、元数据及参数映射；确认三个访问模块的职责，只有同一业务规则确有重复才合并。
-- [ ] 再追踪入库、连接器运行、解析、存储和后台任务；去掉路由装配器反向依赖及整个 `Any` 模块传递，共享请求类型归入所属 schema。
-- [ ] 按真实契约清理重复转换、空值过滤和吞异常；存储客户端与解析器的资源类保留，重试、任务取消、幂等和回滚顺序逐项核对。
-- [ ] 每条完整处理链验证静态契约、记录未运行的外部依赖检查、更新覆盖并提交；不把“转成更多小文件”当产出。
+- [x] 先从上传、权限与入库追踪请求模型、ID、元数据及参数映射；确认三个访问模块的职责，只有同一业务规则确有重复才合并。
+- [x] 再追踪入库、连接器运行、解析、存储和后台任务；去掉路由装配器反向依赖及整个 `Any` 模块传递，共享请求类型归入所属 schema。
+- [x] 按真实契约清理重复转换、空值过滤和吞异常；存储客户端与解析器的资源类保留，重试、任务取消、幂等和回滚顺序逐项核对。
+- [x] 每条完整处理链验证静态契约、记录未运行的外部依赖检查、更新覆盖并提交；不把“转成更多小文件”当产出。
 
 入库运行记录服务及 ORM 已完成审核：五个静态入口改为模块函数，四个生产调用文件直接使用实际所有者，两个整模块参数退出；JSON 边界、原锁顺序、事务与 best-effort／required 政策保留。九个相关模块通过 Ruff、格式及完整规范化 AST 核对，302 个参数契约、九个路由与 577 处确定调用静态匹配。调用文件只完成精确迁移，其余业务仍待审核。
 
@@ -224,7 +224,7 @@ Parser backend sub-slice reviewed four files: aliases remain owned by `backends.
 
 Parser table structure/rendering slice retains cell/row order, span/coordinate validation, Markdown/OCR normalization, CSV/HTML escaping and renderer failure behavior while removing contract-redundant normalization. Four-file Ruff/AST/caller checks and independent review passed; parser/OCR runtime was not run.
 
-### Task 5：RAG 与模型调用（进行中）
+### Task 5：RAG 与模型调用（本轮静态改造完成）
 
 入口：`app/api/v1/rag.py`、`app/rag/engine.py`、`app/rag/engine_support/`、`app/rag/retrieval/orchestration/`、`app/rag/embedding/`、`app/rag/reranker/`、`app/rag/llm/`，以及实际索引所有者 `app/services/indexer.py`、`app/services/indexing/`、`app/services/dataset_embedding_config.py` 和 `app/storage/vector/`；同批覆盖其实际检索、索引、KG、评估与工具调用模块。
 
@@ -266,23 +266,23 @@ Hierarchy orchestration retains its optional refill guard and now iterates the d
 
 Retrieval trace finalization now increments its locally initialized integer counters directly; debug sanitization remains defensive at the raw debug/PII boundary. Trace schema, ordering, and error diagnostics remain unchanged; Ruff/AST/caller scan and independent review passed.
 
-- [ ] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
-- [ ] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。
-- [ ] 核对排名、阈值、缓存键、配置指纹、超时、取消、预算和流事件；不为缩短函数改变策略或事件顺序。
-- [ ] 用已有固定样例和配置资料作静态契约参照；Python 测试及模型／解析依赖验证本次不启动。已有 CI 结果有则记录，不能把样例源码核对写成检索结果回归通过。
-- [ ] 每条调用链检查、审阅、覆盖登记和提交后，再进入下一条。
+- [x] 按查询准备 → 通道召回 → 融合／重排 → 上下文 → 模型／流式返回的顺序追踪数据和预算，再处理各条依赖链。
+- [x] 合并经证实重复的参数映射与控制流，核对动态取值和无依据默认值；保留供应商协议适配、可选插件边界和有状态资源。
+- [x] 核对排名、阈值、缓存键、配置指纹、超时、取消、预算和流事件；不为缩短函数改变策略或事件顺序。
+- [x] 用已有固定样例和配置资料作静态契约参照；Python 测试及模型／解析依赖验证本次不启动。已有 CI 结果有则记录，不能把样例源码核对写成检索结果回归通过。
+- [x] 每条调用链检查、审阅、覆盖登记和提交后，再进入下一条。
 
 **本批产出：** 检索主流程顺序可读，模型、索引和检索职责清楚；运行效果的未验证范围如实列出。
 
-### Task 6：全量前端
+### Task 6：全量前端（源码、受控测试与构建完成）
 
 入口先为 `web/lib/api/core.ts`、`web/lib/api-client.ts`、`web/lib/api/`、`web/types/`；再按数据集／文档与入库、检索对话、权限设置、评估治理与观测覆盖 `web/app/`、`web/components/`、`web/hooks/` 及剩余自研前端文件。
 
-- [ ] 先核对 API 客户端、错误转换、请求／响应类型和 legacy 导出使用者；只有不存在真实兼容对象才删除旧入口，生成的 `web/types/openapi.ts` 保持生成来源。
-- [ ] 再按领域统一 `export function`、`type`、组件内聚和数据所有者；Hook 负责状态／副作用，纯计算直接派生，只有编辑草稿才维护独立副本。
-- [ ] 核对加载、刷新、空数据、筛选无结果、失败与处理中状态；确认旧请求晚到、重复提交、失败保留及保存后读回。状态表达遵循现有业务，不统一制造一套状态管理框架。
-- [ ] 页面、共享组件和所有使用方同批调整；`web/app/[locale]/` 中框架入口转导出按其路由职责保留，不只为形式改写。
-- [ ] 按 `oil-frontend` 和 `oil-ui-pro` 检查受影响真实页面与必要状态，复用现有浏览器会话；设计方向继续沿用，仅补受影响的判断。纯格式化单独提交，语义批次运行相关前端检查。
+- [x] 先核对 API 客户端、错误转换、请求／响应类型和 legacy 导出使用者；只有不存在真实兼容对象才删除旧入口，生成的 `web/types/openapi.ts` 保持生成来源。
+- [x] 再按领域统一 `export function`、`type`、组件内聚和数据所有者；Hook 负责状态／副作用，纯计算直接派生，只有编辑草稿才维护独立副本。
+- [x] 核对加载、刷新、空数据、筛选无结果、失败与处理中状态；确认旧请求晚到、重复提交、失败保留及保存后读回。状态表达遵循现有业务，不统一制造一套状态管理框架。
+- [x] 页面、共享组件和所有使用方同批调整；`web/app/[locale]/` 中框架入口转导出按其路由职责保留，不只为形式改写。
+- [ ] 按 `oil-frontend` 和 `oil-ui-pro` 检查受影响真实页面与必要状态，复用现有浏览器会话；设计方向继续沿用，仅补受影响的判断。纯格式化单独提交，语义批次运行相关前端检查。 本轮真实浏览器未启动：保留此前自动审批对本地 Next 服务启动的拒绝约束；受控 DOM／源码验证不作为视觉或 hydration 验收。
 
 **本批产出：** 各领域页面采用一致的组织与声明方式；共享实现有明确职责，真实交互和数据归属可核对。
 
@@ -310,7 +310,7 @@ System API slice 已合并：health response uses its backend type owner, usage 
 
 The settings `feature-flags`, `frontend-preferences`, and `system-status` sections were audited as conforming named components with local props types and direct settings/API owners. No UI or state behavior changed; formatting remains pending because Prettier is unavailable.
 
-### Task 7：脚本与全仓收尾
+### Task 7：脚本与全仓收尾（覆盖与现有检查闭合）
 
 范围：`scripts/`、`ci/`、`docker/` 下自研运行代码、入口及覆盖表中剩余文件；Python 测试仅按本轮暂缓约定登记，前端测试继续按职责维护。
 
@@ -318,10 +318,10 @@ The settings `feature-flags`, `frontend-preferences`, and `system-status` sectio
 
 Diagnostics/smoke CLI 首片完成：`compose_diagnostics.py` 将重复 compose `ps` 命令及 JSONL parsing 收敛到一个 helper，同时保留两次 subprocess 调用、参数、错误记录、报告字段和主函数 exit code；`api_ping.py`、`api_smoke.py`、`check_parsers.py` 审阅后符合标准。Ruff/AST 与独立审查通过；CLI/runtime 未运行。
 
-- [ ] 核对脚本参数、退出码、输出、路径、配置和资源释放；命令行有意输出及必要兼容注明理由，不套用业务服务的错误转换。
-- [ ] 将覆盖表与最终 Git 跟踪列表重新对齐；新增、删除、移动都有去向，逐一检查 pending，不能因格式通过或改过一个引用就关单。
-- [ ] 核对残留旧符号、重复业务实现、转发模块、动态注册及过期豁免；有真实用途的保留并记录依据。
-- [ ] 完成下面的全量验收及提交审阅；报告本次新增问题、原有失败和未运行验证。只有本轮授权范围全部有结论，才声明该范围完成。
+- [x] 核对脚本参数、退出码、输出、路径、配置和资源释放；命令行有意输出及必要兼容注明理由，不套用业务服务的错误转换。
+- [x] 将覆盖表与最终 Git 跟踪列表重新对齐；新增、删除、移动都有去向，逐一检查 pending，不能因格式通过或改过一个引用就关单。
+- [x] 核对残留旧符号、重复业务实现、转发模块、动态注册及过期豁免；有真实用途的保留并记录依据。
+- [x] 完成下面的全量验收及提交审阅；报告本次新增问题、原有失败和未运行验证。只有本轮授权范围全部有结论，才声明该范围完成。
 
 ## 7. 验证、提交与完成标准
 
@@ -359,3 +359,13 @@ pnpm -C web run build
 **记录与提交：** 继续使用 `docs/maintenance/style-unification/coverage.csv` 和 `verification.md`。每批说明解决的阅读／维护问题、改动范围、真实检查结果和未验证项；只对实质性职责决策补短记录。纯排版与逻辑整理分开提交，不新增常驻评分脚本或整套管理工具。若检查因本批修改失败，先修复或只回退本批具体改动，再推进。
 
 **完成条件：** 全部跟踪文件都有本轮处理结论；暂缓测试、第三方、生成物等明确标明理由。所有新增检查失败已解决，旧失败与环境限制有归属。注册登录、权限拒绝、数据集、上传和检索对话分别标明源码核对、实际运行或未验证，不能用历史结果替代当前版本证据。
+
+## 最终交付记录（2026-11-06）
+
+全仓逐文件覆盖与源码改造闭合：3,886 个已跟踪路径，0 pending；1,396 调整、904 符合、1,586 有理由保留。前述分批日志保留当时的工具或验证状态，最终执行结果以 `docs/maintenance/style-unification/verification.md` 的最终验收为准。
+
+当前合成源码通过前端完整 174 文件／1,192 项受控测试、TypeScript、ESLint、Prettier、八项 UI/API 检查、115 条笔记门禁，以及 Git 原字节快照的生产 Webpack 构建和包体预算。Python 对全部 1,806 个自研文件完成 AST3.11／Ruff／格式检查，75 个第三方或历史路径按原登记排除；按用户本轮要求不新增、扩写或运行 Python 测试。
+
+注册登录、权限、数据集、文档上传、检索对话分别登记为源码／受控 DOM 核对；真实浏览器、IdP、API／数据库／解析器／模型和真实 RAG 检索验收未执行。旧 chunk 排序断言冲突、浏览器启动审批限制、Windows 初次归档解包失败及其安全导出替代路径均在最终验证记录中单列，未冒充通过。
+
+所有接受的类别来源保留在合成提交的 Git 历史和证据中。原工作区既有未提交内容保留，完整交付源码来自隔离工作区与固定 Git 分支；没有将原有未提交内容复制或发布到交付版本。

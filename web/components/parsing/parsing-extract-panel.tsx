@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, Loader2, WandSparkles } from 'lucide-react'
 
-import { parsingApi } from '@/lib/api'
+import { parsingApi } from '@/lib/api/parsing'
 import type {
   ParsingElement,
   ParsingExtractEvidence,
@@ -160,6 +160,16 @@ export function ParsingExtractPanel({
   const [result, setResult] = useState<ParsingExtractResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
+  const mountedRef = useRef(false)
+  const requestRef = useRef<object | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      requestRef.current = null
+    }
+  }, [])
 
   const availableKinds = useMemo(() => {
     const values = new Set<string>(['', 'seal', 'equation', 'table', 'image', 'heading', 'paragraph'])
@@ -190,6 +200,8 @@ export function ParsingExtractPanel({
   }, [showVisualKindField])
 
   useEffect(() => {
+    requestRef.current = null
+    setIsRunning(false)
     const defaults = suggestDefaults(activeElements)
     setSchemaFieldName(defaults.fieldName)
     setSchemaSourceKind(defaults.sourceKind)
@@ -207,7 +219,10 @@ export function ParsingExtractPanel({
   }, [activeElements, documentId])
 
   const handleRun = async () => {
-    if (!documentId || isRunning) return
+    if (!documentId || requestRef.current) return
+    const request = {}
+    requestRef.current = request
+    const isCurrent = () => mountedRef.current && requestRef.current === request
     setIsRunning(true)
     setError(null)
 
@@ -245,12 +260,17 @@ export function ParsingExtractPanel({
       }
 
       const response = await parsingApi.extract(documentId, payload)
+      if (!isCurrent()) return
       setResult(response)
     } catch (err) {
+      if (!isCurrent()) return
       setError(formatApiError(err, '抽取失败'))
       setResult(null)
     } finally {
-      setIsRunning(false)
+      if (requestRef.current === request) {
+        requestRef.current = null
+        if (mountedRef.current) setIsRunning(false)
+      }
     }
   }
 

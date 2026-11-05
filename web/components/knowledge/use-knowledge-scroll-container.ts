@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
 
 type KnowledgeScrollContainer = {
   /**
    * Mount this sentinel inside the main pane subtree so we can resolve the
    * correct internal scroll container via `.closest(...)`.
    */
-  sentinelRef: React.RefObject<HTMLDivElement | null>
+  sentinelRef: RefObject<HTMLDivElement | null>
   scrollEl: HTMLElement | null
 }
 

@@ -1,5 +1,6 @@
 'use client'
 
+import type { DragEvent as ReactDragEvent } from 'react'
 import { Play } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -28,7 +29,7 @@ type ParsingMobileQueueContentProps = {
   onMoveFileToFolder: (fileId: string, folderId: string) => void
   onRemoveFile: (fileId: string) => void
   onRetryParse: (fileId: string) => void
-  onFileDragStart: (event: React.DragEvent<HTMLElement>, fileId: string) => void
+  onFileDragStart: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
 }
 
 export function ParsingMobileQueueContent({

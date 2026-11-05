@@ -22,7 +22,7 @@ Usage:
 import functools
 import os
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -37,10 +37,10 @@ logger = get_logger("rag.tracing.langsmith")
 
 
 # Configuration
-LANGSMITH_API_KEY = getattr(settings, "LANGSMITH_API_KEY", "")
-LANGSMITH_PROJECT = getattr(settings, "LANGSMITH_PROJECT", "mimirq")
-LANGSMITH_ENDPOINT = getattr(settings, "LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-LANGSMITH_TRACING_ENABLED = getattr(settings, "LANGSMITH_TRACING_ENABLED", False)
+LANGSMITH_API_KEY = settings.LANGSMITH_API_KEY
+LANGSMITH_PROJECT = settings.LANGSMITH_PROJECT
+LANGSMITH_ENDPOINT = settings.LANGSMITH_ENDPOINT
+LANGSMITH_TRACING_ENABLED = settings.LANGSMITH_TRACING_ENABLED
 
 # Import langsmith if tracing is enabled
 LangSmithClient = None  # type: ignore
@@ -91,7 +91,7 @@ class TracingClient:
         api_key: str | None = None,
         project: str | None = None,
         endpoint: str | None = None,
-    ):
+    ) -> None:
         """
         Initialize the tracing client.
 
@@ -236,7 +236,7 @@ class TracingClient:
         inputs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         tags: list[str] | None = None,
-    ):
+    ) -> Iterator[SpanContext]:
         """
         Context manager for tracing.
 
@@ -273,7 +273,7 @@ class TracingClient:
         inputs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         tags: list[str] | None = None,
-    ):
+    ) -> AsyncIterator[SpanContext]:
         """
         Async context manager for tracing.
 

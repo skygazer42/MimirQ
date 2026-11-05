@@ -114,15 +114,13 @@ function findNearestScrollableAncestor(container: HTMLElement): HTMLElement | nu
   return null
 }
 
-function scrollPdfPageIntoElement({
-  behavior,
-  scrollElement,
-  targetElement,
-}: {
+type ScrollPdfPageIntoElementOptions = {
   behavior: ScrollBehavior
   scrollElement: HTMLElement
   targetElement: HTMLElement
-}) {
+}
+
+function scrollPdfPageIntoElement({ behavior, scrollElement, targetElement }: ScrollPdfPageIntoElementOptions) {
   const scrollRect = scrollElement.getBoundingClientRect()
   const targetRect = targetElement.getBoundingClientRect()
   const centeredTop =
@@ -137,19 +135,21 @@ function scrollPdfPageIntoElement({
   })
 }
 
+type ScrollPdfOverlayIntoElementOptions = {
+  behavior: ScrollBehavior
+  overlayHeight: number
+  overlayTop: number
+  pageElement: HTMLElement
+  scrollElement: HTMLElement
+}
+
 function scrollPdfOverlayIntoElement({
   behavior,
   overlayHeight,
   overlayTop,
   pageElement,
   scrollElement,
-}: {
-  behavior: ScrollBehavior
-  overlayHeight: number
-  overlayTop: number
-  pageElement: HTMLElement
-  scrollElement: HTMLElement
-}) {
+}: ScrollPdfOverlayIntoElementOptions) {
   const scrollRect = scrollElement.getBoundingClientRect()
   const pageRect = pageElement.getBoundingClientRect()
   scrollElement.scrollTo({

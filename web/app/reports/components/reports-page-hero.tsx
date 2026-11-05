@@ -9,6 +9,18 @@ import type { DatasetReport, DatasetReportDataProvenance } from '@/types'
 import { reportStatusLabel, reportStatusTone, shortPipelineHash } from '../report-format'
 import { DataPill } from './report-atoms'
 
+type ReportsPageHeroProps = Readonly<{
+  selectedDatasetName: string
+  datasetId: string
+  totalDocs: number
+  isLoadingReport: boolean
+  report: DatasetReport | null
+  latestAuditTime: string
+  dataSourceLabel: string
+  dataSourceSub: string
+  dataProvenance: DatasetReportDataProvenance | null
+}>
+
 export function ReportsHeaderPills({
   selectedDatasetName,
   datasetId,
@@ -19,17 +31,7 @@ export function ReportsHeaderPills({
   dataSourceLabel,
   dataSourceSub,
   dataProvenance,
-}: Readonly<{
-  selectedDatasetName: string
-  datasetId: string
-  totalDocs: number
-  isLoadingReport: boolean
-  report: DatasetReport | null
-  latestAuditTime: string
-  dataSourceLabel: string
-  dataSourceSub: string
-  dataProvenance: DatasetReportDataProvenance | null
-}>) {
+}: ReportsPageHeroProps) {
   return (
     <div className="grid min-w-0 gap-px overflow-hidden rounded-xl border border-info/15 bg-info/15 shadow-none sm:grid-cols-2 xl:grid-cols-[1.35fr_0.86fr_0.9fr_0.88fr_1.15fr]">
       <DataPill
@@ -77,17 +79,7 @@ export function ReportsPageHero({
   dataSourceLabel,
   dataSourceSub,
   dataProvenance,
-}: Readonly<{
-  selectedDatasetName: string
-  datasetId: string
-  totalDocs: number
-  isLoadingReport: boolean
-  report: DatasetReport | null
-  latestAuditTime: string
-  dataSourceLabel: string
-  dataSourceSub: string
-  dataProvenance: DatasetReportDataProvenance | null
-}>) {
+}: ReportsPageHeroProps) {
   return (
     <KnowledgeOpsHero
       iconImage="report-export"

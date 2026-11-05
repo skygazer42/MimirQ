@@ -27,10 +27,12 @@ import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatApiError } from '@/lib/api-errors'
-import { datasetApi, industryRulesApi, type IndustryRulesetDetail } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { industryRulesApi } from '@/lib/api/industry-rules'
 import { queryKeys } from '@/lib/query-keys'
 import { randomBase36Id } from '@/lib/secure-random'
 import { cn, detachPromise } from '@/lib/utils'
+import type { IndustryRulesetDetail } from '@/types/backend'
 
 type GlossaryEntry = {
   id: string
@@ -140,24 +142,24 @@ function buildGlossaryPayload(entries: GlossaryEntry[]): Record<string, string[]
   return out
 }
 
-function buildPatternsPayload(entries: PatternEntry[]): Array<Record<string, unknown>> {
+function buildPatternsPayload(entries: PatternEntry[]) {
   return entries
     .map((entry) => ({
       markers: splitCommaText(entry.markersText),
       followup: entry.followup.trim(),
       enabled: entry.enabled,
     }))
-    .filter((entry) => Array.isArray(entry.markers) && entry.markers.length > 0)
+    .filter((entry) => entry.markers.length > 0)
 }
 
-function buildIntentsPayload(entries: IntentEntry[]): Array<Record<string, unknown>> {
+function buildIntentsPayload(entries: IntentEntry[]) {
   return entries
     .map((entry) => ({
       name: entry.name.trim(),
       keywords: splitCommaText(entry.keywordsText),
       route: entry.route.trim() || 'default',
     }))
-    .filter((entry) => textValue(entry.name))
+    .filter((entry) => entry.name)
 }
 
 function suggestionRowsFromPayload(payload: unknown): GlossarySuggestion[] {

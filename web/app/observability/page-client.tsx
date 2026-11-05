@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
 import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { observabilityApi } from '@/lib/api'
+import { observabilityApi } from '@/lib/api/observability'
 import { formatApiError } from '@/lib/api-errors'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { cn, detachPromise } from '@/lib/utils'

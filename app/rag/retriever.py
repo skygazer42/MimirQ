@@ -106,7 +106,7 @@ class HybridRetriever(
     vector_weight: float = 0.6
     keyword_weight: float = 0.4
     mmr_lambda: float = settings.RETRIEVAL_MMR_LAMBDA
-    mmr_fetch_k_multiplier: int = getattr(settings, "RETRIEVAL_MMR_FETCH_K_MULTIPLIER", 4)
+    mmr_fetch_k_multiplier: int = settings.RETRIEVAL_MMR_FETCH_K_MULTIPLIER
     enable_reranker: bool = settings.ENABLE_RERANKER
     reranker_provider: str = settings.RERANKER_PROVIDER
     reranker_top_n: int = settings.RERANKER_TOP_N
@@ -128,8 +128,8 @@ class HybridRetriever(
     dedup_jaccard_threshold: float = settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD
     dedup_max_compare: int = settings.RETRIEVAL_DEDUP_MAX_COMPARE
     max_chunks_per_doc: int = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
-    max_chunks_per_record_identity: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY", 2)
-    max_chunks_per_page: int = getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_PAGE", 0)
+    max_chunks_per_record_identity: int = settings.RETRIEVAL_MAX_CHUNKS_PER_RECORD_IDENTITY
+    max_chunks_per_page: int = settings.RETRIEVAL_MAX_CHUNKS_PER_PAGE
     min_distinct_docs: int = settings.RETRIEVAL_MIN_DISTINCT_DOCS
     tenant_id: UUID | None = None
     # Optional: used for candidate-level ACL trimming when retrieval is not pre-scoped
@@ -144,7 +144,7 @@ class HybridRetriever(
     entity_key: str | None = None
     partition_keys: list[str] | None = None
     entity_candidates: list[str] | None = None
-    metadata_filter_enabled: bool = getattr(settings, "RETRIEVAL_METADATA_FILTER_ENABLED", True)
+    metadata_filter_enabled: bool = settings.RETRIEVAL_METADATA_FILTER_ENABLED
     retrieval_profile: str | None = None
     context_neighbor_window: int | None = None
     context_neighbor_max_added: int | None = None
@@ -154,8 +154,8 @@ class HybridRetriever(
     context_neighbor_high_span: int | None = None
     context_neighbor_mid_span: int | None = None
     enable_hierarchy_recall: bool = False
-    hierarchy_family_collapse: bool = getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", True)
-    hierarchy_overfetch_factor: int = max(1, int(getattr(settings, "HIERARCHY_RECALL_OVERFETCH_FACTOR", 4) or 4))
+    hierarchy_family_collapse: bool = settings.HIERARCHY_RECALL_FAMILY_COLLAPSE
+    hierarchy_overfetch_factor: int = max(1, int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR or 4))
     lexical_db_hybrid_fallback_only: bool | None = None
     lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
     metadata_exact_db_fallback_enabled: bool | None = None
@@ -209,7 +209,7 @@ class HybridRetriever(
     def _effective_sparse_enabled(self) -> bool:
         if self.sparse_enabled is not None:
             return bool(self.sparse_enabled)
-        return bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
+        return bool(settings.SPARSE_RETRIEVAL_ENABLED)
 
     def _resolve_sparse_provider_status(self, *, sparse_enabled: bool) -> dict[str, Any]:
         from app.rag.retrieval.sparse import resolve_sparse_provider_capability
@@ -217,7 +217,7 @@ class HybridRetriever(
         return resolve_sparse_provider_capability(
             requested_provider=str(self.sparse_provider or ""),
             sparse_enabled=bool(sparse_enabled),
-            splade_model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
+            splade_model_name=str(settings.SPARSE_SPLADE_MODEL_NAME or ""),
             default_provider="deterministic",
         )
 
@@ -229,7 +229,7 @@ class HybridRetriever(
         if tenant_id is not None:
             return tenant_id
         try:
-            return UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+            return UUID(str(settings.DEFAULT_TENANT_ID or ""))
         except (TypeError, ValueError, AttributeError):
             return None
 
@@ -398,7 +398,7 @@ class HybridRetriever(
 
         max_workers = min(
             len(runtime_shards),
-            max(1, int(getattr(settings, "RAG_VECTOR_SHARD_MAX_CONCURRENCY", 4) or 1)),
+            max(1, int(settings.RAG_VECTOR_SHARD_MAX_CONCURRENCY or 1)),
         )
         if max_workers <= 1:
             outcomes = [search_shard(shard) for shard in runtime_shards]
@@ -495,7 +495,7 @@ class HybridRetriever(
         meta = {
             "entity_key": (str(entity_key or self.entity_key or "").strip() or None),
             "partition_keys": list(keys),
-            "candidates_count": int(len(entity_candidates or self.entity_candidates or [])),
+            "candidates_count": len(entity_candidates or self.entity_candidates or []),
         }
         return merged, meta
 
@@ -759,14 +759,14 @@ class HybridRetriever(
             scoped_filter["document_id"] = {"$in": [str(doc_id) for doc_id in document_ids]}
         adapter = get_milvus_adapter(resolve_collection_name(embedding_runtime.collection_name))
         native_hybrid_meta: dict[str, Any] = {
-            "enabled": bool(getattr(settings, "MILVUS_NATIVE_HYBRID", False)),
+            "enabled": bool(settings.MILVUS_NATIVE_HYBRID),
             "used": False,
             "fallback_reason": None,
         }
         results: list[dict[str, Any]] = []
         can_try_native_hybrid = bool(
             native_hybrid_meta["enabled"]
-            and str(getattr(settings, "VECTOR_BACKEND", "") or "").strip().lower() == "milvus"
+            and str(settings.VECTOR_BACKEND or "").strip().lower() == "milvus"
             and self._effective_sparse_enabled()
         )
         if can_try_native_hybrid:
@@ -780,17 +780,17 @@ class HybridRetriever(
                     .lower()
                     or "deterministic"
                 )
-                synonyms = parse_synonyms(str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or ""))
+                synonyms = parse_synonyms(str(settings.SPARSE_RETRIEVAL_SYNONYMS or ""))
                 encoder = get_sparse_encoder(
                     provider=sparse_provider,
                     synonyms=synonyms,
-                    synonyms_raw=str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or ""),
-                    model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-                    device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-                    batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-                    max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-                    top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-                    min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
+                    synonyms_raw=str(settings.SPARSE_RETRIEVAL_SYNONYMS or ""),
+                    model_name=str(settings.SPARSE_SPLADE_MODEL_NAME or ""),
+                    device=str(settings.SPARSE_SPLADE_DEVICE or "cpu"),
+                    batch_size=int(settings.SPARSE_SPLADE_BATCH_SIZE or 8),
+                    max_length=int(settings.SPARSE_SPLADE_MAX_LENGTH or 256),
+                    top_k=int(settings.SPARSE_SPLADE_TOP_K or 128),
+                    min_weight=float(settings.SPARSE_SPLADE_MIN_WEIGHT or 0.0),
                 )
                 sparse_query_vector = self._sparse_query_vector(encoder, query)
                 if not getattr(sparse_query_vector, "weights", None):
@@ -925,11 +925,11 @@ class HybridRetriever(
             score = float(item.get("score", 0.0) or 0.0)
             meta = dict(item.get("metadata") or {})
             meta.setdefault("visual_parser", "colpali")
-            meta["colpali_score"] = float(score)
+            meta["colpali_score"] = score
             item["metadata"] = meta
-            item["colpali_score"] = float(score)
+            item["colpali_score"] = score
             # Piggyback on lexical score so existing fusion logic can merge the channel.
-            item["lexical_score"] = float(score)
+            item["lexical_score"] = score
             item["hit_type"] = "colpali_retriever"
             out.append(item)
         return out
@@ -1030,9 +1030,9 @@ class HybridRetriever(
             embedding_runtime=embedding_runtime,
         )
         cache_enabled = bool(
-            getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)
-            or getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)
-            or getattr(settings, "SEMANTIC_CACHE_ENABLED", False)
+            settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED
+            or settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED
+            or settings.SEMANTIC_CACHE_ENABLED
         )
         request = candidate_retrieval.CandidateRequest(
             query=query,
@@ -1092,29 +1092,29 @@ class HybridRetriever(
         lexical_hybrid_fallback_only = (
             bool(self.lexical_db_hybrid_fallback_only)
             if self.lexical_db_hybrid_fallback_only is not None
-            else bool(getattr(settings, "LEXICAL_DB_HYBRID_FALLBACK_ONLY", True))
+            else bool(settings.LEXICAL_DB_HYBRID_FALLBACK_ONLY)
         )
         lexical_metadata_exact_fallback_enabled = (
             bool(self.lexical_db_hybrid_metadata_exact_fallback_enabled)
             if self.lexical_db_hybrid_metadata_exact_fallback_enabled is not None
-            else bool(getattr(settings, "LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED", True))
+            else bool(settings.LEXICAL_DB_HYBRID_METADATA_EXACT_FALLBACK_ENABLED)
         )
         metadata_exact_db_enabled = (
             bool(self.metadata_exact_db_fallback_enabled)
             if self.metadata_exact_db_fallback_enabled is not None
-            else bool(getattr(settings, "RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED", True))
+            else bool(settings.RETRIEVAL_METADATA_EXACT_DB_FALLBACK_ENABLED)
         )
         return channel_collection.ChannelPolicy(
             sparse=corpus_channels.SparseSearchPolicy(
                 enabled=self._effective_sparse_enabled(),
                 provider=self.sparse_provider,
             ),
-            native_hybrid_enabled=bool(getattr(settings, "MILVUS_NATIVE_HYBRID", False)),
-            colbert_enabled=bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
-            colpali_enabled=bool(getattr(settings, "COLPALI_RETRIEVAL_ENABLED", False)),
-            bm25_enabled=bool(getattr(settings, "BM25_INDEX_ENABLED", True)),
-            lexical_enabled=bool(getattr(settings, "LEXICAL_DB_ENABLED", True)),
-            keyword_bm25_secondary_enabled=bool(getattr(settings, "RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED", False)),
+            native_hybrid_enabled=bool(settings.MILVUS_NATIVE_HYBRID),
+            colbert_enabled=bool(settings.COLBERT_RETRIEVAL_ENABLED),
+            colpali_enabled=bool(settings.COLPALI_RETRIEVAL_ENABLED),
+            bm25_enabled=bool(settings.BM25_INDEX_ENABLED),
+            lexical_enabled=bool(settings.LEXICAL_DB_ENABLED),
+            keyword_bm25_secondary_enabled=bool(settings.RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED),
             lexical_hybrid_fallback_only=lexical_hybrid_fallback_only,
             lexical_metadata_exact_fallback_enabled=lexical_metadata_exact_fallback_enabled,
             metadata_exact_db_enabled=metadata_exact_db_enabled,
@@ -1193,7 +1193,7 @@ class HybridRetriever(
         return docs
 
     def _normalize_retrieval_query(self, query: str) -> tuple[str, str, Any]:
-        max_query_chars = int(getattr(settings, "RETRIEVAL_QUERY_MAX_CHARS", 8_000) or 8_000)
+        max_query_chars = int(settings.RETRIEVAL_QUERY_MAX_CHARS or 8_000)
         if len(str(query or "")) > max_query_chars:
             raise ValueError(f"retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
         from app.query.normalize import normalize_query
@@ -1208,7 +1208,7 @@ class HybridRetriever(
         dataset_scope_ids = self._explicit_dataset_scope_ids()
         if dataset_scope_ids or (self.document_ids or []) or metadata_filter_dataset_scoped:
             return metadata_filter_dataset_scoped, dataset_scope_ids
-        if not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
+        if not settings.CHAT_ALLOW_OPEN_SCOPE:
             raise ValueError("dataset_id is required when document_ids is empty")
         return metadata_filter_dataset_scoped, dataset_scope_ids
 
@@ -1219,10 +1219,10 @@ class HybridRetriever(
     ) -> tuple[int, int, int, list[str]]:
         requested_k = max(1, int(self.k or 0))
         search_k = requested_k
-        if bool(self.enable_reranker):
+        if self.enable_reranker:
             search_k = resolve_rerank_search_k(
                 requested_k=search_k,
-                profile=str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
+                profile=str(settings.RERANK_PROFILE or "").strip().lower() or None,
             )
         hierarchy_family_collapse_enabled = self._should_apply_hierarchy_family_collapse()
         hierarchy_overfetch_factor = max(1, int(self.hierarchy_overfetch_factor or 1))
@@ -1255,7 +1255,7 @@ class HybridRetriever(
         mult_source = (
             self.retrieval_overfetch_multiplier
             if self.retrieval_overfetch_multiplier is not None
-            else getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1)
+            else settings.RETRIEVAL_OVERFETCH_MULTIPLIER
         )
         mult = max(1, int(mult_source or 1))
         if mult > 1:
@@ -1263,7 +1263,7 @@ class HybridRetriever(
         cap_source = (
             self.retrieval_overfetch_max_k
             if self.retrieval_overfetch_max_k is not None
-            else getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0)
+            else settings.RETRIEVAL_OVERFETCH_MAX_K
         )
         cap = int(cap_source or 0)
         if cap > 0:
@@ -1287,21 +1287,21 @@ class HybridRetriever(
             "requested_k": int(requested_k),
             "search_k": int(search_k),
             "fetch_k": int(fetch_k),
-            "overfetch_enabled": bool(search_k > requested_k),
+            "overfetch_enabled": search_k > requested_k,
             "overfetch_reasons": overfetch_reasons,
             "retrieval_profile": str(self.retrieval_profile or "").strip().lower() or None,
-            "rerank_profile": str(getattr(settings, "RERANK_PROFILE", "") or "").strip().lower() or None,
+            "rerank_profile": str(settings.RERANK_PROFILE or "").strip().lower() or None,
             "hierarchy_family_collapse_enabled": bool(self._should_apply_hierarchy_family_collapse()),
-            "hierarchy_overfetch_factor": int(max(1, int(self.hierarchy_overfetch_factor or 1))),
+            "hierarchy_overfetch_factor": max(1, int(self.hierarchy_overfetch_factor or 1)),
             "overfetch_multiplier": int(
                 self.retrieval_overfetch_multiplier
                 if self.retrieval_overfetch_multiplier is not None
-                else getattr(settings, "RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1
+                else settings.RETRIEVAL_OVERFETCH_MULTIPLIER or 1
             ),
             "overfetch_cap_k": int(
                 self.retrieval_overfetch_max_k
                 if self.retrieval_overfetch_max_k is not None
-                else getattr(settings, "RETRIEVAL_OVERFETCH_MAX_K", 0) or 0
+                else settings.RETRIEVAL_OVERFETCH_MAX_K or 0
             ),
             "query_normalization": {
                 "original": original_query,
@@ -1355,14 +1355,14 @@ class HybridRetriever(
 
     def _record_milvus_pushdown_debug(self, debug: dict[str, Any]) -> None:
         try:
-            max_doc_ids = int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0)
+            max_doc_ids = int(settings.MILVUS_EXPR_MAX_DOC_IDS or 0)
             debug["milvus_doc_id_pushdown_skipped"] = bool(
                 settings.VECTOR_BACKEND == "milvus"
                 and max_doc_ids > 0
                 and self.document_ids
                 and len(self.document_ids) > max_doc_ids
             )
-            debug["milvus_expr_max_doc_ids"] = int(max_doc_ids)
+            debug["milvus_expr_max_doc_ids"] = max_doc_ids
         except (TypeError, ValueError, AttributeError):
             debug["milvus_doc_id_pushdown_skipped"] = None
 
@@ -1399,7 +1399,7 @@ class HybridRetriever(
     def _record_hybrid_debug_metrics(self, debug: dict[str, Any], batch: candidate_retrieval.CandidateBatch) -> None:
         debug["hybrid_results"] = len(batch.candidates)
         debug["channels"] = dict(batch.channel_metrics)
-        channels_debug = debug["channels"] if isinstance(debug.get("channels"), dict) else {}
+        channels_debug = debug["channels"]
         debug["retrieval_degraded"] = bool(channels_debug.get("retrieval_degraded", False))
         debug["retrieval_degraded_reasons"] = list(channels_debug.get("degraded_reasons") or [])
         debug["all_retrieval_channels_failed"] = bool(channels_debug.get("all_retrieval_channels_failed", False))
@@ -1572,7 +1572,7 @@ class HybridRetriever(
         results = self._compact_high_confidence_results(results, top_k=requested_k, stats=compact_stats)
         if compact_stats:
             debug["context_compaction"] = compact_stats
-        debug["stitching_enabled"] = bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False))
+        debug["stitching_enabled"] = bool(settings.RAG_CONTEXT_STITCHING_ENABLED)
         return results
 
     def _results_to_documents(
@@ -1583,7 +1583,7 @@ class HybridRetriever(
         requested_k: int,
     ) -> list[Document]:
         prefix = list(results[:requested_k]) if results else []
-        if prefix and bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)):
+        if prefix and settings.RAG_CONTEXT_STITCHING_ENABLED:
             try:
                 prefix = self._stitch_results_for_continuity(prefix)
             except Exception as exc:
@@ -1655,7 +1655,7 @@ class HybridRetriever(
 
         enabled = bool(prefer_authority or prefer_latest or filter_superseded)
         if stats is not None:
-            stats["enabled"] = bool(enabled)
+            stats["enabled"] = enabled
             stats["prefer_authority"] = bool(prefer_authority)
             stats["prefer_latest"] = bool(prefer_latest)
             stats["filter_superseded"] = bool(filter_superseded)
@@ -1703,9 +1703,9 @@ class HybridRetriever(
     @staticmethod
     def _governance_policy_flags() -> tuple[bool, bool, bool]:
         return (
-            bool(getattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY", False)),
-            bool(getattr(settings, "RETRIEVAL_GOVERNANCE_PREFER_LATEST", False)),
-            bool(getattr(settings, "RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED", False)),
+            bool(settings.RETRIEVAL_GOVERNANCE_PREFER_AUTHORITY),
+            bool(settings.RETRIEVAL_GOVERNANCE_PREFER_LATEST),
+            bool(settings.RETRIEVAL_GOVERNANCE_FILTER_SUPERSEDED),
         )
 
     def _collect_governance_features(
@@ -1804,9 +1804,9 @@ class HybridRetriever(
         prefer_authority: bool,
         prefer_latest: bool,
     ) -> tuple[list[tuple[float, int, dict[str, Any]]], list[float]]:
-        auth_boost_max = float(getattr(settings, "RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX", 0.0) or 0.0)
-        latest_boost_max = float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0)
-        window_days = max(1, int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180))
+        auth_boost_max = float(settings.RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX or 0.0)
+        latest_boost_max = float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX or 0.0)
+        window_days = max(1, int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS or 180))
         now_ts = time.time()
         boosts: list[float] = []
         scored: list[tuple[float, int, dict[str, Any]]] = []

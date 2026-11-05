@@ -10,8 +10,8 @@
 
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useRef } from 'react'
 import { evaluationApi, documentApi, chatApi, datasetApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
 import type {
@@ -43,7 +43,7 @@ type TestGenerationDialogProps = {
   open: boolean
   onClose: () => void
   onGenerated?: () => void
-  initialSourceType?: 'documents' | 'conversations'
+  initialSourceType?: SourceType
   initialDatasetId?: string
   initialDocumentIds?: string[]
 }
@@ -75,6 +75,7 @@ export function TestGenerationDialog({
   initialDatasetId,
   initialDocumentIds,
 }: Readonly<TestGenerationDialogProps>) {
+  const queryClient = useQueryClient()
   const [step, setStep] = useState<Step>('select_source')
   const [sourceType, setSourceType] = useState<SourceType>('documents')
 
@@ -94,6 +95,7 @@ export function TestGenerationDialog({
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([])
   const [savedCaseIds, setSavedCaseIds] = useState<string[]>([])
   const [error, setError] = useState<string>('')
+  const generationTokenRef = useRef(0)
 
   const documentsQuery = useQuery({
     queryKey: queryKeys.documents.list(TEST_GEN_DOCUMENT_PARAMS),
@@ -149,7 +151,11 @@ export function TestGenerationDialog({
   }
 
   useEffect(() => {
-    if (!open) resetState()
+    if (!open) {
+      generationTokenRef.current += 1
+      setIsGenerating(false)
+      resetState()
+    }
   }, [open])
 
   // 关闭对话框
@@ -190,6 +196,15 @@ export function TestGenerationDialog({
 
   // 生成问题
   const handleGenerate = async () => {
+    const sourceQueryKey =
+      sourceType === 'documents'
+        ? queryKeys.documents.list(TEST_GEN_DOCUMENT_PARAMS)
+        : queryKeys.chat.conversations(TEST_GEN_CONVERSATION_PARAMS)
+    const queryCache = queryClient.getQueryCache()
+    const sourceQueryOwner = queryCache.find({ queryKey: sourceQueryKey, exact: true })
+    if (!sourceQueryOwner) return
+    const ownsSourceQuery = () => queryCache.find({ queryKey: sourceQueryKey, exact: true }) === sourceQueryOwner
+    const requestToken = (generationTokenRef.current += 1)
     setIsGenerating(true)
     setError('')
 
@@ -227,10 +242,16 @@ export function TestGenerationDialog({
         result = await evaluationApi.generateFromConversations(params)
       }
 
+      if (!ownsSourceQuery()) return
       if (result.status === 'completed') {
-        setGeneratedQuestions(result.generated_questions)
-        setSavedCaseIds(result.saved_case_ids || [])
-        setStep('preview')
+        if (result.saved_case_ids?.length) {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.evaluations.regressionCases().slice(0, 2) })
+        }
+        if (requestToken === generationTokenRef.current) {
+          setGeneratedQuestions(result.generated_questions)
+          setSavedCaseIds(result.saved_case_ids || [])
+          setStep('preview')
+        }
         if (autoSave) {
           toast.success(
             `成功生成 ${result.generated_questions.length} 个问题，已保存 ${result.saved_case_ids?.length || 0} 个用例`,
@@ -239,16 +260,17 @@ export function TestGenerationDialog({
           toast.success(`成功生成 ${result.generated_questions.length} 个问题`)
         }
       } else {
-        setError(result.error_message || '生成失败')
+        if (requestToken === generationTokenRef.current) setError(result.error_message || '生成失败')
         toast.error('生成失败')
       }
     } catch (error: unknown) {
+      if (!ownsSourceQuery()) return
       console.error('生成问题失败:', error)
       const msg = formatApiError(error, '生成问题失败')
-      setError(msg)
+      if (requestToken === generationTokenRef.current) setError(msg)
       toast.error(msg)
     } finally {
-      setIsGenerating(false)
+      if (requestToken === generationTokenRef.current) setIsGenerating(false)
     }
   }
 
@@ -596,7 +618,14 @@ export function TestGenerationDialog({
 
             {step === 'configure' && (
               <>
-                <Button variant="outline" onClick={() => setStep('select_source')}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    generationTokenRef.current += 1
+                    setIsGenerating(false)
+                    setStep('select_source')
+                  }}
+                >
                   上一步
                 </Button>
                 <Button onClick={handleGenerate} disabled={isGenerating}>

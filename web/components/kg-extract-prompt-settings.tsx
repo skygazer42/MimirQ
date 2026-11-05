@@ -5,7 +5,8 @@ import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ChevronDown, RefreshCw, Save } from 'lucide-react'
 
-import { settingsApi, type KGConfig, type PromptTemplate } from '@/lib/api'
+import type { PromptTemplate } from '@/lib/api/prompts'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +16,11 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import type { KGConfig } from '@/types/settings'
+
+type KgExtractPromptSettingsProps = {
+  templates: PromptTemplate[]
+}
 
 const DEFAULT_KG_CONFIG: KGConfig = {
   chat_enabled: false,
@@ -27,7 +33,7 @@ const DEFAULT_KG_CONFIG: KGConfig = {
 
 const SELECT_DEFAULT_VALUE = '__mimirq_default__'
 
-export function KgExtractPromptSettings({ templates }: Readonly<{ templates: PromptTemplate[] }>) {
+export function KgExtractPromptSettings({ templates }: Readonly<KgExtractPromptSettingsProps>) {
   const queryClient = useQueryClient()
   const [showAdvanced, setShowAdvanced] = useState(false)
 

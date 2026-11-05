@@ -1,5 +1,6 @@
 'use client'
 
+import type { DragEvent as ReactDragEvent } from 'react'
 import { FolderOpen } from 'lucide-react'
 
 import { FileQueueItem } from '@/components/ui/file-queue-item'
@@ -29,10 +30,10 @@ type ParsingLibraryBrowserProps = {
   folderPathById: Record<string, string>
   selectedGovernanceFileIds: ReadonlySet<string>
   onFolderSelect: (folderId: string) => void
-  onFolderDragOver: (event: React.DragEvent<HTMLElement>, folderId: string) => void
+  onFolderDragOver: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
   onFolderDragLeave: () => void
-  onFolderDrop: (event: React.DragEvent<HTMLElement>, folderId: string) => void
-  onQueueFileDragStart: (event: React.DragEvent<HTMLElement>, fileId: string) => void
+  onFolderDrop: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
+  onQueueFileDragStart: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
   onSelectQueueFile: (fileId: string) => void
   onSelectLibraryFile: (fileId: string) => void
   onToggleGovernanceFileSelection: (fileId: string) => void

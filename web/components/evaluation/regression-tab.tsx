@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'next/navigation'
 import { datasetApi, evaluationApi } from '@/lib/api'
-import type { Dataset, RegressionRun, RegressionRunCreate, RegressionRunDetail } from '@/types'
+import type { RegressionRunCreate } from '@/types'
 import { Button } from '@/components/ui/button'
 import { TestCaseManager } from '@/components/test-case-manager'
 import { TestGenerationDialog } from '@/components/test-generation-dialog'
@@ -465,7 +465,7 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
     queryFn: () => datasetApi.listAll(),
     staleTime: 30_000,
   })
-  const datasets = useMemo<Dataset[]>(() => {
+  const datasets = useMemo(() => {
     return datasetsQuery.data ?? []
   }, [datasetsQuery.data])
   const isLoadingDatasets = datasetsQuery.isLoading || datasetsQuery.isFetching
@@ -505,12 +505,12 @@ export function RegressionTestTab({ embedded = false }: Readonly<{ embedded?: bo
         include_contexts: false,
       }),
     refetchInterval: (query) => {
-      const detail = query.state.data as RegressionRunDetail | undefined
+      const detail = query.state.data
       const status = detail?.run?.status
       return status === 'pending' || status === 'running' ? 2000 : false
     },
   })
-  const runs = useMemo<RegressionRun[]>(() => {
+  const runs = useMemo(() => {
     const items = runsQuery.data?.items
     return Array.isArray(items) ? items : []
   }, [runsQuery.data])

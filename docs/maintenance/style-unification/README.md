@@ -3,10 +3,10 @@
 基线：`codex/local-account-registration` 的 `77b6adc1bce523482f0509302a454ce20e01c41c`。
 实施分支：`codex/local-account-registration`；工作区：`E:/MimirQ`；更新日期：2026-11-05。
 
-本目录记录全项目迁移。**当前仍在实施，不代表全仓语义审核已完成。**
+本目录记录全项目迁移。**逐文件风格审核与代码调整已闭合；实际执行的验证及运行环境限制见 `verification.md`。**
 
 - [实施计划](../../superpowers/plans/2026-11-02-style-unification.md)：统一约定、Skill 分工、业务批次与验收；数据集、权限配额、SCIM、配置、通用 API 及身份令牌类别已完成本轮静态核对，基础后端与后续业务链继续按清单推进。
-- `coverage.csv`：当前 3,870 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
+- `coverage.csv`：当前 3,886 个文件与逐文件处理状态（含本批新增决定记录），新增、删除和移动在所属批次同步。
 - `baseline-python-failures.txt`：原始 Python 基线失败和收集错误的用例名称。
 - `verification.md`：基线及各批真实检查结果；历史结果不代表当前版本通过。
 
@@ -51,3 +51,16 @@
 - 独立修复使生成的 Python 能正确读取包含 JSON 布尔值／null 的检索配置；主请求错误使用现有脱敏函数处理该请求的已知凭据。既有截断、编码与其他凭据策略保持，未声称解决所有日志脱敏场景。
 - 固定 Git 源码、258 项作者／99 项独立评审证据、新运行的 AST／声明／Ruff22／格式22、107 条笔记门禁及 Core 统计依赖身份均通过。未运行 Python 测试、Dify、SDK、网络或数据库，不将静态验收作为真实服务运行结果。
 - 证据：`changzhou-dify-benchmark-delivery22-20261106/dify22-root-category-report.json`、独立审阅与 `root-integration/source-check.json`。清单 3,870 项／173 项待处理或待合入。
+
+## 最终合成与完整覆盖
+
+- 最后 173 个待处理文件全部闭合：六个已独立审阅类别的 114 个 owner，以及治理、设置与运维类别的 59 个 owner。保留各类别已有提交和审阅依据，使用七个分支来源正常合并；没有选择旧的未修复候选。
+- 113 个旧类别 owner 与接受来源原字节匹配；知识库动作组件保留主线已接受的 LoadConnectorRuns 类型迁移。治理类别 29 调整／30 符合；API／DTO 仍指向实际相同声明，没有新增锁、fallback 或请求生命周期规则。
+- 原始 1,806 个自研 Python 文件的语法／Ruff／格式，以及合入前一组 174 个前端测试文件／1,192 项、全量类型／lint／格式及八项 UI/API 检查通过。纳入治理类别后的最终检查和构建另记，历史通过结果不改写为新版本运行结果。
+- 清单覆盖全部 3,886 个已跟踪路径，待处理项为零。第三方、生成物、历史迁移、静态资源及框架形式保留逐路径理由；Python 测试按用户要求不新增、扩写或执行，已知旧 chunk 排序断言冲突保留说明。
+- 原 `E:/MimirQ` 的既有未提交内容继续留在原工作区。完整合成源码位于当前干净工作区，来源均为固定 Git 候选；没有复制或发布原工作区的未提交修改。全量运行验证范围与限制见 `verification.md`。
+- 证据：`consolidated-reviewed-20261106/held114-map.json`、`final-source-inputs.json`、`before-governance/` 和最终验收目录。
+
+## 最终现有检查验收
+
+完整合成源码的174个前端测试文件／1,192项、TypeScript、ESLint、Prettier、八项UI/API检查和115条笔记门禁全部通过；生产Webpack构建、内置TypeScript及包体预算通过。Git快照3,886个源文件均按原字节核对，构建只更新一次性快照中的生成 `next-env.d.ts`；原工作区源码不受构建影响。Python1,806个自研文件的AST3.11、Ruff／格式通过，Python测试及真实服务／浏览器／模型／数据库验收保持本轮声明的限制。详见 `verification.md` 最终验收。

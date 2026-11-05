@@ -61,7 +61,7 @@ import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
 import { RegressionTestTab } from '@/components/evaluation/regression-tab'
 import { QuerysetHealthTab } from '@/components/evaluation/queryset-health-tab'
-import { RagasMetricSelector, ragasMetricLabel } from '@/components/evaluation/ragas-metric-selector'
+import { RagasMetricSelector, ragasMetricLabel as metricLabel } from '@/components/evaluation/ragas-metric-selector'
 
 type TabType = 'conversation' | 'regression' | 'queryset_health'
 type ConversationEvidenceFilter = 'ready' | 'missing' | 'all'
@@ -113,10 +113,6 @@ const TAB_META: Array<{
     icon: BarChart3,
   },
 ]
-
-function metricLabel(key: string): string {
-  return ragasMetricLabel(key)
-}
 
 function displayMetricsFor(summary: JsonObject, metricKeys: string[]) {
   return metricKeys.flatMap((key) => {
@@ -1078,7 +1074,7 @@ function EvaluationsPageContent() {
         include_contexts: false,
       }),
     refetchInterval: (query) => {
-      const detail = query.state.data as RagasRunDetail | undefined
+      const detail = query.state.data
       const status = detail?.run?.status
       return status === 'pending' || status === 'running' ? 2000 : false
     },

@@ -15,7 +15,7 @@ import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
-import { chunkPresetApi, governanceApi } from '@/lib/api'
+import { chunkPresetApi, governanceApi } from '@/lib/api/governance'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 

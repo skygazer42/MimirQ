@@ -102,16 +102,16 @@ function parseGrid(value: string): { grid: GridSpec; variants: GridVariant[]; er
   if (!entries.length) return { grid: {}, variants: [], error: '至少配置一个参数数组' }
 
   const grid = Object.fromEntries(entries.map(([key, values]) => [key, values])) as GridSpec
-  const variants: Array<Record<string, RegressionAblationGridValue>> = [{}]
+  const variants: GridVariant[] = [{}]
   for (const [key, values] of entries) {
-    const next: Array<Record<string, RegressionAblationGridValue>> = []
+    const next: GridVariant[] = []
     for (const variant of variants) {
       for (const item of values) next.push({ ...variant, [key]: item })
     }
     variants.splice(0, variants.length, ...next.slice(0, MAX_GRID_COMBINATIONS + 1))
   }
 
-  return { grid, variants: variants.map((item) => item as GridVariant), error: null }
+  return { grid, variants, error: null }
 }
 
 export function AblationGridPanel({

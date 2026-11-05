@@ -5,19 +5,18 @@ import { WorkbenchPane } from '@/components/workbench'
 import { DatasetFolderTree } from '@/components/document-library/dataset-folder-tree'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { queryKeys } from '@/lib/query-keys'
 import type { Dataset } from '@/types'
 import { useTranslations } from 'next-intl'
+import type { KnowledgeLifecycleFilter, KnowledgeStatusFilter, KnowledgeTabType } from './use-knowledge-query-state'
 
-type DocLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
-type DocStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
 type DocCountValue = string | number
 
 type KnowledgeScopePanelProps = {
   className?: string
   surface?: 'pane' | 'embedded'
-  mode?: 'documents' | 'retrieval' | 'settings'
+  mode?: KnowledgeTabType
   datasets: Dataset[]
   datasetsLoading?: boolean
 
@@ -26,13 +25,13 @@ type KnowledgeScopePanelProps = {
   datasetAllValue?: string
 
   selectedDatasetId?: string
-  lifecycleFilter: DocLifecycleFilter
-  setLifecycleFilter: (value: DocLifecycleFilter) => void
+  lifecycleFilter: KnowledgeLifecycleFilter
+  setLifecycleFilter: (value: KnowledgeLifecycleFilter) => void
   folderPath: string | null
   setFolderPath: (value: string | null) => void
 
-  statusFilter: DocStatusFilter
-  setStatusFilter: (value: DocStatusFilter) => void
+  statusFilter: KnowledgeStatusFilter
+  setStatusFilter: (value: KnowledgeStatusFilter) => void
   totalDocs: DocCountValue
   completedDocsValue: DocCountValue
   processingDocsValue: DocCountValue
@@ -48,6 +47,17 @@ type KnowledgeScopePanelProps = {
  * group/empty rounded-[16px] border border-dashed border-border/60 bg-card/36
  * border border-border/60 bg-card/76
  */
+
+const statusThemes: Record<KnowledgeStatusFilter, string> = {
+  all: 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_12px_-4px_hsl(var(--primary)/0.3)]',
+  completed:
+    'bg-success/10 border-success/40 text-success dark:text-success shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
+  processing: 'bg-info/10 border-info/40 text-info dark:text-info shadow-[0_0_12px_-4px_hsl(var(--info)/0.3)]',
+  failed:
+    'bg-destructive/10 border-destructive/40 text-destructive dark:text-destructive/85 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
+  quarantined:
+    'bg-warning/10 border-warning/40 text-warning dark:text-warning shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
+}
 
 export function KnowledgeScopePanel({
   className,
@@ -114,25 +124,11 @@ export function KnowledgeScopePanel({
       { key: 'processing', count: processingDocsValue },
       { key: 'failed', count: failedDocsValue },
       { key: 'quarantined', count: quarantinedDocsValue },
-    ] satisfies Array<{ key: DocStatusFilter; count: DocCountValue }>
+    ] satisfies Array<{ key: KnowledgeStatusFilter; count: DocCountValue }>
   ).map((item) => {
-    const count = Number(item.count || 0)
-
     return {
       ...item,
       label: t(`status.${item.key}.label`),
-      countElement: (
-        <span
-          className={cn(
-            'font-mono text-[11px] transition-all tabular-nums',
-            count === 0
-              ? 'rounded-md bg-muted/35 px-1.5 py-0.5 font-semibold text-foreground/58 dark:bg-muted/20 dark:text-foreground/55'
-              : 'rounded-md border border-border/60 bg-card/75 px-1.5 py-0.5 font-medium text-foreground shadow-[inset_0_1px_0_hsl(var(--card)/0.82)] dark:border-border/60 dark:bg-muted/35',
-          )}
-        >
-          {count}
-        </span>
-      ),
     }
   })
 
@@ -173,17 +169,6 @@ export function KnowledgeScopePanel({
   ]
   const [datasetListExpanded, setDatasetListExpanded] = useState(false)
   const selectedDatasetItem = datasetItems.find((item) => item.id === datasetScope) ?? datasetItems[0]
-
-  const statusThemes: Record<DocStatusFilter, string> = {
-    all: 'bg-primary/10 border-primary/40 text-primary shadow-[0_0_12px_-4px_hsl(var(--primary)/0.3)]',
-    completed:
-      'bg-success/10 border-success/40 text-success dark:text-success shadow-[0_0_12px_-4px_rgba(16,185,129,0.3)]',
-    processing: 'bg-info/10 border-info/40 text-info dark:text-info shadow-[0_0_12px_-4px_hsl(var(--info)/0.3)]',
-    failed:
-      'bg-destructive/10 border-destructive/40 text-destructive dark:text-destructive/85 shadow-[0_0_12px_-4px_rgba(239,68,68,0.3)]',
-    quarantined:
-      'bg-warning/10 border-warning/40 text-warning dark:text-warning shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)]',
-  }
 
   const activeStatusCount = Number(statusItems.find((item) => item.key === statusFilter)?.count || 0)
   const body = (
@@ -362,7 +347,7 @@ export function KnowledgeScopePanel({
               {lifecycleFilter}
             </div>
           </div>
-          <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as DocLifecycleFilter)}>
+          <Select value={lifecycleFilter} onValueChange={(v) => setLifecycleFilter(v as KnowledgeLifecycleFilter)}>
             <SelectTrigger
               className={cn('w-full', embeddedSelectTriggerClassName)}
               aria-label={t('lifecycle.ariaLabel')}

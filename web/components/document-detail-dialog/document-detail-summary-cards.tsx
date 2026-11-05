@@ -7,14 +7,14 @@ import { IconButton } from '@/components/ui/icon-button'
 import { Panel } from '@/components/ui/panel'
 import { cn } from '@/lib/utils'
 
-type AnalyticsLike = {
+type DocumentAnalyticsMetadata = {
   char_count?: unknown
   page_count?: unknown
   table_count?: unknown
   image_count?: unknown
 }
 
-type PipelineEffectiveLike = {
+type DocumentPipelineSummaryMetadata = {
   chunk_size?: unknown
   chunk_overlap?: unknown
   chunk_vector_enabled?: unknown
@@ -27,7 +27,7 @@ type DocumentDetailSummaryCardsProps = Readonly<{
   requestedParserBackend: string
   chunkStrategyLabel: string | null
   chunkStrategy: string
-  analyticsRaw: AnalyticsLike
+  analyticsRaw: DocumentAnalyticsMetadata
   governanceEnabled: boolean
   governanceRulesApplied: unknown
   governanceChangedDocuments: unknown
@@ -36,11 +36,17 @@ type DocumentDetailSummaryCardsProps = Readonly<{
   viewingPipelineHash: string
   activePipelineHash: string
   lastPipelineHash: string
-  pipelineEffective: PipelineEffectiveLike
+  pipelineEffective: DocumentPipelineSummaryMetadata
   onCopyPipelineHash: (hash: string) => void
 }>
 
-function TraceRow({ label, value, mono }: Readonly<{ label: string; value: string; mono?: boolean }>) {
+type TraceRowProps = {
+  label: string
+  value: string
+  mono?: boolean
+}
+
+function TraceRow({ label, value, mono }: Readonly<TraceRowProps>) {
   const display = value?.trim?.() ? value : '-'
 
   return (

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { RefObject } from 'react'
+import type { RefObject, ChangeEvent as ReactChangeEvent, DragEvent as ReactDragEvent } from 'react'
 import { Database, FileText, FolderUp, Loader2, Paperclip, Play, Plus, Settings2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 
@@ -46,18 +46,18 @@ type ParsingSidebarPaneProps = {
   onImageCaptionEnabledChange: (enabled: boolean) => void
   onImageOcrEnabledChange: (enabled: boolean) => void
   onVlmCorrectionEnabledChange: (enabled: boolean) => void
-  onFolderDragOver: (event: React.DragEvent<HTMLElement>, folderId: string) => void
+  onFolderDragOver: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
   onFolderDragLeave: () => void
-  onFolderDrop: (event: React.DragEvent<HTMLElement>, folderId: string) => void
+  onFolderDrop: (event: ReactDragEvent<HTMLElement>, folderId: string) => void
   onFolderTreeSelectFile: (fileId: string) => void
   onToggleGovernanceFileSelection: (fileId: string) => void
   onDeleteFolder: (folderIds: string[]) => void
   onMoveFileToFolder: (fileId: string, folderId: string) => void
-  onFileDragStart: (event: React.DragEvent<HTMLElement>, fileId: string) => void
+  onFileDragStart: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
   onRetryFile: (fileId: string) => void
   onRemoveFile: (fileId: string) => void
-  onFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => void
-  onRebindFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => void
+  onFileSelect: (event: ReactChangeEvent<HTMLInputElement>) => void
+  onRebindFileSelect: (event: ReactChangeEvent<HTMLInputElement>) => void
 }
 
 type DatasetScopeOption = {

@@ -175,6 +175,290 @@ function detectPipelineIndexPreset(options: DocumentPipelineOptions): PipelineIn
   return 'custom'
 }
 
+const GOVERNANCE_TOGGLES: ToggleOptionItem[] = [
+  {
+    key: 'governance_extract_frontmatter',
+    label: '提取 Frontmatter',
+    hint: '读取 Markdown YAML frontmatter 作为元数据',
+  },
+  {
+    key: 'governance_strip_frontmatter',
+    label: '剥离 Frontmatter',
+    hint: '提取后从正文中删除 frontmatter',
+    dependsOn: 'governance_extract_frontmatter',
+  },
+  {
+    key: 'governance_remove_toc_lines',
+    label: '清理目录行',
+    hint: '移除目录/索引类噪声',
+  },
+  {
+    key: 'governance_remove_noise_lines',
+    label: '过滤噪声行',
+    hint: '移除符号占比过高的短行',
+  },
+  {
+    key: 'governance_unwrap_lines',
+    label: '合并软换行',
+    hint: '拼接被换行切开的段落',
+  },
+  {
+    key: 'governance_remove_common_lines',
+    label: '去重页眉页脚',
+    hint: '剔除跨页重复行',
+  },
+  {
+    key: 'governance_remove_boilerplate',
+    label: '移除样板信息',
+    hint: '删除免责声明/致谢/版权等低价值内容',
+  },
+  {
+    key: 'governance_normalize_urls',
+    label: '规范化 URL',
+    hint: '去追踪参、统一 URL 格式以便去重',
+  },
+  {
+    key: 'governance_trim_references',
+    label: '裁剪参考文献',
+    hint: '裁剪文末 References/Bibliography（保守）',
+  },
+  {
+    key: 'governance_drop_duplicate_paragraphs',
+    label: '段落重复块去重',
+    hint: '删除文内重复出现多次的段落块',
+  },
+  {
+    key: 'governance_normalize_tables',
+    label: '规范化表格',
+    hint: '对 Markdown pipe 表格做对齐/裁剪',
+  },
+  {
+    key: 'governance_strip_code_line_numbers',
+    label: '移除代码行号',
+    hint: '对 fenced code 内的行号做最佳努力去除',
+  },
+  {
+    key: 'governance_detect_language',
+    label: '检测语言',
+    hint: '识别 zh/en/mixed 写入元数据',
+  },
+  {
+    key: 'governance_extract_keywords',
+    label: '抽取关键词',
+    hint: '提取文档级关键词写入元数据',
+  },
+  {
+    key: 'governance_pii_anonymize',
+    label: '匿名化隐私信息',
+    hint: '邮箱/电话/身份证/卡号等脱敏',
+  },
+  {
+    key: 'governance_secrets_redact',
+    label: '脱敏密钥/Token',
+    hint: 'API Key/私钥/Bearer token 等脱敏',
+  },
+  {
+    key: 'governance_drop_outline_only',
+    label: '丢弃大纲文档',
+    hint: '仅标题/目录为主的文档将被过滤',
+  },
+  {
+    key: 'governance_drop_low_density',
+    label: '丢弃低密度文本',
+    hint: '乱码/符号占比过高将被过滤',
+  },
+  {
+    key: 'governance_quarantine_on_drop',
+    label: '隔离而非失败',
+    hint: '触发质量过滤时标记 quarantined，便于人工复核',
+  },
+]
+
+const GOVERNANCE_NUMBERS: NumberOptionItem[] = [
+  {
+    key: 'governance_language_min_chars',
+    label: '语言最小字符',
+    hint: '内容太短时不做语言检测',
+    min: 0,
+    max: 200000,
+    step: 10,
+    dependsOn: 'governance_detect_language',
+  },
+  {
+    key: 'governance_max_blank_lines',
+    label: '最大空行数',
+    hint: '0 合并段落；2 强分段',
+    min: 0,
+    max: 10,
+    step: 1,
+  },
+  {
+    key: 'governance_unwrap_max_line_length',
+    label: '最大行长',
+    hint: '超过长度不再合并',
+    min: 40,
+    max: 400,
+    step: 10,
+  },
+  {
+    key: 'governance_noise_ratio_threshold',
+    label: '噪声阈值',
+    hint: '越低过滤越激进',
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+  {
+    key: 'governance_noise_min_chars',
+    label: '最小字符数',
+    hint: '短行低于该值会剔除',
+    min: 1,
+    max: 20,
+    step: 1,
+  },
+  {
+    key: 'governance_common_lines_min_ratio',
+    label: '重复行比例',
+    hint: '跨页重复比例阈值',
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+  {
+    key: 'governance_common_lines_min_docs',
+    label: '重复行文档数',
+    hint: '至少出现的页数',
+    min: 2,
+    max: 50,
+    step: 1,
+  },
+  {
+    key: 'governance_drop_duplicate_paragraphs_min_occurrences',
+    label: '段落去重次数',
+    hint: '重复次数达到该值才移除',
+    min: 2,
+    max: 100,
+    step: 1,
+    dependsOn: 'governance_drop_duplicate_paragraphs',
+  },
+  {
+    key: 'governance_drop_duplicate_paragraphs_min_chars',
+    label: '段落最小字符',
+    hint: '太短的段落不参与去重',
+    min: 0,
+    max: 50000,
+    step: 10,
+    dependsOn: 'governance_drop_duplicate_paragraphs',
+  },
+  {
+    key: 'governance_drop_duplicate_paragraphs_max_chars',
+    label: '段落最大字符',
+    hint: '过长段落不参与去重（0 表示不限制）',
+    min: 0,
+    max: 200000,
+    step: 50,
+    dependsOn: 'governance_drop_duplicate_paragraphs',
+  },
+  {
+    key: 'governance_drop_outline_min_content_chars',
+    label: '大纲最小内容量',
+    hint: '少于该值才触发过滤',
+    min: 0,
+    max: 200000,
+    step: 50,
+  },
+  {
+    key: 'governance_drop_outline_max_heading_ratio',
+    label: '大纲标题比例',
+    hint: '越低越严格',
+    min: 0,
+    max: 1,
+    step: 0.05,
+  },
+  {
+    key: 'governance_drop_low_density_threshold',
+    label: '低密度阈值',
+    hint: '越高越严格',
+    min: 0,
+    max: 1,
+    step: 0.02,
+  },
+]
+
+const PIPELINE_TOGGLES: ToggleOptionItem[] = [
+  {
+    key: 'parse_fallback_enabled',
+    label: '解析回退',
+    hint: '解析质量差时尝试其他后端（PDF）',
+  },
+  {
+    key: 'persist_parsed_content',
+    label: '持久化解析结果',
+    hint: '保存 raw+clean markdown 便于审计/回溯',
+  },
+  {
+    key: 'near_dedup_enabled',
+    label: '跨文档近重复去重',
+    hint: 'SimHash 去除跨文档重复 chunks',
+  },
+]
+
+const PIPELINE_NUMBERS: NumberOptionItem[] = [
+  {
+    key: 'chunk_merge_small_min_chars',
+    label: '短块合并阈值',
+    hint: '将极短 chunk 与相邻 chunk 合并（0 关闭），可减少过碎片化与噪声',
+    min: 0,
+    max: 10000,
+    step: 10,
+  },
+  {
+    key: 'parse_fallback_min_content_chars',
+    label: '回退最小内容',
+    hint: '少于该值认为解析失败',
+    min: 0,
+    max: 200000,
+    step: 10,
+    dependsOn: 'parse_fallback_enabled',
+  },
+  {
+    key: 'parse_fallback_max_retries',
+    label: '回退重试次数',
+    hint: '最多尝试次数',
+    min: 0,
+    max: 3,
+    step: 1,
+    dependsOn: 'parse_fallback_enabled',
+  },
+  {
+    key: 'persist_parsed_content_max_chars',
+    label: '持久化最大字符',
+    hint: '过大时截断保存',
+    min: 0,
+    max: 2000000,
+    step: 1000,
+    dependsOn: 'persist_parsed_content',
+  },
+  {
+    key: 'near_dedup_hamming_threshold',
+    label: '近重复阈值',
+    hint: 'SimHash 汉明距离阈值',
+    min: 0,
+    max: 64,
+    step: 1,
+    dependsOn: 'near_dedup_enabled',
+  },
+  {
+    key: 'near_dedup_max_bucket_size',
+    label: '去重桶最大值',
+    hint: '控制索引体积与误判风险',
+    min: 8,
+    max: 100000,
+    step: 8,
+    dependsOn: 'near_dedup_enabled',
+  },
+]
+
 export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>) {
   const { className, compact } = props
   const ctx = usePipelineOptions()
@@ -315,290 +599,6 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
 
     return groups
   }, [showIndexingControls])
-
-  const governanceToggles: ToggleOptionItem[] = [
-    {
-      key: 'governance_extract_frontmatter',
-      label: '提取 Frontmatter',
-      hint: '读取 Markdown YAML frontmatter 作为元数据',
-    },
-    {
-      key: 'governance_strip_frontmatter',
-      label: '剥离 Frontmatter',
-      hint: '提取后从正文中删除 frontmatter',
-      dependsOn: 'governance_extract_frontmatter',
-    },
-    {
-      key: 'governance_remove_toc_lines',
-      label: '清理目录行',
-      hint: '移除目录/索引类噪声',
-    },
-    {
-      key: 'governance_remove_noise_lines',
-      label: '过滤噪声行',
-      hint: '移除符号占比过高的短行',
-    },
-    {
-      key: 'governance_unwrap_lines',
-      label: '合并软换行',
-      hint: '拼接被换行切开的段落',
-    },
-    {
-      key: 'governance_remove_common_lines',
-      label: '去重页眉页脚',
-      hint: '剔除跨页重复行',
-    },
-    {
-      key: 'governance_remove_boilerplate',
-      label: '移除样板信息',
-      hint: '删除免责声明/致谢/版权等低价值内容',
-    },
-    {
-      key: 'governance_normalize_urls',
-      label: '规范化 URL',
-      hint: '去追踪参、统一 URL 格式以便去重',
-    },
-    {
-      key: 'governance_trim_references',
-      label: '裁剪参考文献',
-      hint: '裁剪文末 References/Bibliography（保守）',
-    },
-    {
-      key: 'governance_drop_duplicate_paragraphs',
-      label: '段落重复块去重',
-      hint: '删除文内重复出现多次的段落块',
-    },
-    {
-      key: 'governance_normalize_tables',
-      label: '规范化表格',
-      hint: '对 Markdown pipe 表格做对齐/裁剪',
-    },
-    {
-      key: 'governance_strip_code_line_numbers',
-      label: '移除代码行号',
-      hint: '对 fenced code 内的行号做最佳努力去除',
-    },
-    {
-      key: 'governance_detect_language',
-      label: '检测语言',
-      hint: '识别 zh/en/mixed 写入元数据',
-    },
-    {
-      key: 'governance_extract_keywords',
-      label: '抽取关键词',
-      hint: '提取文档级关键词写入元数据',
-    },
-    {
-      key: 'governance_pii_anonymize',
-      label: '匿名化隐私信息',
-      hint: '邮箱/电话/身份证/卡号等脱敏',
-    },
-    {
-      key: 'governance_secrets_redact',
-      label: '脱敏密钥/Token',
-      hint: 'API Key/私钥/Bearer token 等脱敏',
-    },
-    {
-      key: 'governance_drop_outline_only',
-      label: '丢弃大纲文档',
-      hint: '仅标题/目录为主的文档将被过滤',
-    },
-    {
-      key: 'governance_drop_low_density',
-      label: '丢弃低密度文本',
-      hint: '乱码/符号占比过高将被过滤',
-    },
-    {
-      key: 'governance_quarantine_on_drop',
-      label: '隔离而非失败',
-      hint: '触发质量过滤时标记 quarantined，便于人工复核',
-    },
-  ]
-
-  const governanceNumbers: NumberOptionItem[] = [
-    {
-      key: 'governance_language_min_chars',
-      label: '语言最小字符',
-      hint: '内容太短时不做语言检测',
-      min: 0,
-      max: 200000,
-      step: 10,
-      dependsOn: 'governance_detect_language',
-    },
-    {
-      key: 'governance_max_blank_lines',
-      label: '最大空行数',
-      hint: '0 合并段落；2 强分段',
-      min: 0,
-      max: 10,
-      step: 1,
-    },
-    {
-      key: 'governance_unwrap_max_line_length',
-      label: '最大行长',
-      hint: '超过长度不再合并',
-      min: 40,
-      max: 400,
-      step: 10,
-    },
-    {
-      key: 'governance_noise_ratio_threshold',
-      label: '噪声阈值',
-      hint: '越低过滤越激进',
-      min: 0,
-      max: 1,
-      step: 0.05,
-    },
-    {
-      key: 'governance_noise_min_chars',
-      label: '最小字符数',
-      hint: '短行低于该值会剔除',
-      min: 1,
-      max: 20,
-      step: 1,
-    },
-    {
-      key: 'governance_common_lines_min_ratio',
-      label: '重复行比例',
-      hint: '跨页重复比例阈值',
-      min: 0,
-      max: 1,
-      step: 0.05,
-    },
-    {
-      key: 'governance_common_lines_min_docs',
-      label: '重复行文档数',
-      hint: '至少出现的页数',
-      min: 2,
-      max: 50,
-      step: 1,
-    },
-    {
-      key: 'governance_drop_duplicate_paragraphs_min_occurrences',
-      label: '段落去重次数',
-      hint: '重复次数达到该值才移除',
-      min: 2,
-      max: 100,
-      step: 1,
-      dependsOn: 'governance_drop_duplicate_paragraphs',
-    },
-    {
-      key: 'governance_drop_duplicate_paragraphs_min_chars',
-      label: '段落最小字符',
-      hint: '太短的段落不参与去重',
-      min: 0,
-      max: 50000,
-      step: 10,
-      dependsOn: 'governance_drop_duplicate_paragraphs',
-    },
-    {
-      key: 'governance_drop_duplicate_paragraphs_max_chars',
-      label: '段落最大字符',
-      hint: '过长段落不参与去重（0 表示不限制）',
-      min: 0,
-      max: 200000,
-      step: 50,
-      dependsOn: 'governance_drop_duplicate_paragraphs',
-    },
-    {
-      key: 'governance_drop_outline_min_content_chars',
-      label: '大纲最小内容量',
-      hint: '少于该值才触发过滤',
-      min: 0,
-      max: 200000,
-      step: 50,
-    },
-    {
-      key: 'governance_drop_outline_max_heading_ratio',
-      label: '大纲标题比例',
-      hint: '越低越严格',
-      min: 0,
-      max: 1,
-      step: 0.05,
-    },
-    {
-      key: 'governance_drop_low_density_threshold',
-      label: '低密度阈值',
-      hint: '越高越严格',
-      min: 0,
-      max: 1,
-      step: 0.02,
-    },
-  ]
-
-  const pipelineToggles: ToggleOptionItem[] = [
-    {
-      key: 'parse_fallback_enabled',
-      label: '解析回退',
-      hint: '解析质量差时尝试其他后端（PDF）',
-    },
-    {
-      key: 'persist_parsed_content',
-      label: '持久化解析结果',
-      hint: '保存 raw+clean markdown 便于审计/回溯',
-    },
-    {
-      key: 'near_dedup_enabled',
-      label: '跨文档近重复去重',
-      hint: 'SimHash 去除跨文档重复 chunks',
-    },
-  ]
-
-  const pipelineNumbers: NumberOptionItem[] = [
-    {
-      key: 'chunk_merge_small_min_chars',
-      label: '短块合并阈值',
-      hint: '将极短 chunk 与相邻 chunk 合并（0 关闭），可减少过碎片化与噪声',
-      min: 0,
-      max: 10000,
-      step: 10,
-    },
-    {
-      key: 'parse_fallback_min_content_chars',
-      label: '回退最小内容',
-      hint: '少于该值认为解析失败',
-      min: 0,
-      max: 200000,
-      step: 10,
-      dependsOn: 'parse_fallback_enabled',
-    },
-    {
-      key: 'parse_fallback_max_retries',
-      label: '回退重试次数',
-      hint: '最多尝试次数',
-      min: 0,
-      max: 3,
-      step: 1,
-      dependsOn: 'parse_fallback_enabled',
-    },
-    {
-      key: 'persist_parsed_content_max_chars',
-      label: '持久化最大字符',
-      hint: '过大时截断保存',
-      min: 0,
-      max: 2000000,
-      step: 1000,
-      dependsOn: 'persist_parsed_content',
-    },
-    {
-      key: 'near_dedup_hamming_threshold',
-      label: '近重复阈值',
-      hint: 'SimHash 汉明距离阈值',
-      min: 0,
-      max: 64,
-      step: 1,
-      dependsOn: 'near_dedup_enabled',
-    },
-    {
-      key: 'near_dedup_max_bucket_size',
-      label: '去重桶最大值',
-      hint: '控制索引体积与误判风险',
-      min: 8,
-      max: 100000,
-      step: 8,
-      dependsOn: 'near_dedup_enabled',
-    },
-  ]
 
   const handleChecked = (key: keyof typeof options, value: boolean) => {
     updateOption(key, value === true)
@@ -943,7 +943,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           治理清洗
                         </div>
                         <div className="space-y-3">
-                          {governanceToggles.map((item) => {
+                          {GOVERNANCE_TOGGLES.map((item) => {
                             const checked = !!options[item.key]
                             const dependsOn = item.dependsOn
                             const disabled = governanceDisabled || (dependsOn ? !options[dependsOn] : false)
@@ -1180,7 +1180,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                       </div>
 
                       <div className="grid gap-3 pt-1">
-                        {governanceNumbers.map((item) => {
+                        {GOVERNANCE_NUMBERS.map((item) => {
                           const value = options[item.key]
                           const dependsOn = item.dependsOn
                           const shouldHide =
@@ -1216,7 +1216,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                           解析与去重
                         </div>
                         <div className="space-y-3">
-                          {pipelineToggles.map((item) => {
+                          {PIPELINE_TOGGLES.map((item) => {
                             const checked = !!options[item.key]
                             return (
                               <div key={item.key} className="flex items-center justify-between gap-3">
@@ -1239,7 +1239,7 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                         </div>
 
                         <div className="grid gap-3 pt-1">
-                          {pipelineNumbers.map((item) => {
+                          {PIPELINE_NUMBERS.map((item) => {
                             const value = options[item.key]
                             const dependsOn = item.dependsOn
                             const shouldHide = dependsOn ? !options[dependsOn] : false

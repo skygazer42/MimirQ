@@ -1847,3 +1847,36 @@
 15 调整／7 原字节符合。258 项作者和 99 项独立评审证据哈希核对通过；Root 新检查完整22源码／三条笔记的固定 Git 身份、AST3.11、31 处共享函数导入、691→662 模块函数、15 项类型元数据、七个完整 class 以及 Core 共享统计源码，均匹配。Ruff22／格式22／107 条笔记门禁通过。
 
 两个已批准独立缺陷修复及共享函数 body／globals／原始输入生产者由独立评审明确核对；Root 未重跑历史阶段，不运行 Python 测试或目标／生成代码／SDK／Dify／网络／数据库。清单 3,870 项／173 项待处理或待合入。证据：`changzhou-dify-benchmark-delivery22-20261106/dify22-root-category-report.json`、`root-integration/source-check.json`。
+
+## 2026-11-06：合成分支与最后类别
+
+七个固定来源在独立干净工作区正常合并，无冲突。全部173个原待处理owner保持接受的源码身份；一处既有主线类型迁移由精确双hash／diff记录支持，未恢复旧版本。新增15个旧类别支持路径及一篇治理笔记后，覆盖清单3,886项／0 pending；必要fixture alias与既有笔记事实更新不另计完整owner。
+
+第一组合成索引4df2b2654a9c9dfdfd6b4ba44bb15d8863f77eb1：174个Vitest文件／1,192项全部通过，完整非增量TypeScript、ESLint、Prettier及八项UI/API检查全部通过，检查前后3,885个已跟踪文件哈希一致。同期Python1,881路径中1,806个自研AST3.11及八批Ruff／格式检查通过，75个第三方或历史路径保持登记的排除；未运行Python测试或业务。
+
+最后治理59来源固定bb4c21c7ed828436fbd0df67dfed1b138397af3a，作者68项与独立审阅者24项受控测试分开记录；独立TSC、60文件lint、61文件格式、59模块源码／声明／消费者检查通过，67件作者封存件复核一致。最终合成版本的全量前端与生产构建结果将在最终验收中登记，不把第一组结果冒充最终重复执行。
+
+原工作区修改和未跟踪文件保留；没有启动真实服务或浏览器，不声称视觉、hydration、真实鉴权／数据库／模型／RAG运行验收。证据：`consolidated-reviewed-20261106/final-source-inputs.json`、`before-governance/`、治理类别独立报告与最终验收记录。
+
+## 最终验收（2026-11-06，完整合成源码）
+
+| 要求 | 当前证据 |
+|---|---|
+| 全量覆盖 | 3,886 个跟踪路径与索引完全一致，0 review/format pending；每行都有理由与证据。1,396 adjusted、904 conforms、1,586 preserved。|
+| 统一约定 | Ruff py311／120，贡献指南与模块职责、明确异常边界；ESLint具名组件／type规则；单一Prettier两空格、单引号、无分号、120、JSX双引号。框架与生成接口保留明确理由。|
+| Python | 全1,881路径中1,806自研AST3.11及八批显式Ruff／格式检查通过；75个第三方或历史路径登记排除。最终合成没有改变这些已验证Python输入。|
+| 前端全量 | 全量ESLint、Prettier、非增量TypeScript、174文件／1,192项Vitest全部通过，0失败／跳过；八项现有UI/API检查通过。|
+| 生产构建 | 一次性Git原字节快照生产Webpack构建、内置TypeScript与包体预算全部通过。3,886个快照源逐一绑定索引树e67464c81a56780df849a654d50f99c58ca0d02e；仅生成next-env.d.ts更新，无其他跟踪源变化。|
+| 决定记录 | 115条笔记的目录／链接、格式及归档门禁通过；没有新增常驻评分或测试管理工具。|
+| 注册／登录及权限拒绝 | 源码与现有受控认证、会话、权限用例通过；真实IdP／API／数据库权限集成未运行。|
+| 数据集与文档上传 | 源码、真实React／QueryClient／File的受控用例通过，覆盖访问切换、旧响应、重复提交及独立批次；未连接真实后端、解析与存储。|
+| 检索对话／排序与预算 | 前端受控SSE／会话用例和检索代码／配置／排序／预算契约核对；真实RAG／模型／数据库未运行，静态证明不作为检索结果回归。|
+
+本轮明确未运行或保留的事项：
+
+- Python测试遵照用户追加要求未新增、扩写或执行。旧 `tests/test_chunk_autotune.py` 有已知断言固化零分排在错误哨兵之后，与已批准修复冲突；保留原字节并报告，未计为通过。
+- 真实页面、视觉、hydration与后台服务集成未验收。此前自动审批拒绝启动本地Next服务，保持该运行约束；没有改用其他surface绕过。已有受控DOM检查与生产构建只证明各自实际范围。
+- 初次Windows tar导出受历史模型链接和中文路径限制退出1；改为新短目录中的固定Git对象逐文件导出。六个历史模型链接以原始Git指针定义保存，前端构建不执行它们。所有导出失败与正确替代结果分别保留，未改第三方模型或原仓库。
+- 一次性构建禁用遥测／Sentry上传，不验证外部监控；原附加OpenAPI导出／Handbook依赖限制保留。
+
+证据位于 `consolidated-reviewed-20261106/final-acceptance/`：`frontend-checks.json`、`production-build.json`、`build-source-manifest.json`、`python-source-continuity.json`，以及 `before-governance/root-full-python-static-20261106.json`。较早的源树／110项／123项检查仍是历史记录，不改写为最终重复运行。源码／笔记与原工作区保护信息见 `final-source-inputs.json`、`held114-map.json` 及各类别独立报告。

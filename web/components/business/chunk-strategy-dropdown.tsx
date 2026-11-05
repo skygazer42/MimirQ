@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils'
 import {
   buildChunkStrategyCatalog,
   getChunkStrategyOption,
-  ChunkStrategyOption,
+  type ChunkStrategyOption,
   type ChunkStrategyCatalogItem,
   type ChunkStrategyRecommendation,
 } from '@/lib/chunk-strategies'
