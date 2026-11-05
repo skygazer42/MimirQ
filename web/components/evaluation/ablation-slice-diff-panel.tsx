@@ -8,6 +8,7 @@ import type { RagasRegressionRunDiffResponse, RegressionRunMetricDiff, Regressio
 const KEY_METRICS = ['retrieval_recall', 'retrieval_mrr', 'retrieval_ndcg_at_10', 'retrieval_hit_at_20']
 
 function toNumber(value: unknown): number | null {
+  if (value == null) return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }

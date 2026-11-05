@@ -15,6 +15,15 @@ import {
 
 import type { DataPillTone } from '../types'
 
+const DATA_PILL_TONE_CLASSES: Record<DataPillTone, string> = {
+  blue: 'bg-info/10 text-info ring-info/20',
+  green: 'bg-success/10 text-success ring-success/20',
+  amber: 'bg-warning/10 text-warning ring-warning/20',
+  rose: 'bg-destructive/10 text-destructive ring-destructive/20',
+  violet: 'bg-accent/10 text-accent ring-accent/20',
+  slate: 'bg-muted/50 text-muted-foreground ring-border/50',
+}
+
 export function DataPill({
   icon: Icon,
   label,
@@ -28,14 +37,7 @@ export function DataPill({
   sub?: string
   tone?: DataPillTone
 }>) {
-  const toneClass = {
-    blue: 'bg-info/10 text-info ring-info/20',
-    green: 'bg-success/10 text-success ring-success/20',
-    amber: 'bg-warning/10 text-warning ring-warning/20',
-    rose: 'bg-destructive/10 text-destructive ring-destructive/20',
-    violet: 'bg-accent/10 text-accent ring-accent/20',
-    slate: 'bg-muted/50 text-muted-foreground ring-border/50',
-  }[tone]
+  const toneClass = DATA_PILL_TONE_CLASSES[tone]
   const valueToneClass = {
     blue: 'text-foreground',
     green: 'text-success',
@@ -72,16 +74,9 @@ export function AuditMetricCard({
   label: string
   value: string
   sub: string
-  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+  tone?: DataPillTone
 }>) {
-  const toneClass = {
-    blue: 'bg-info/10 text-info ring-info/20',
-    green: 'bg-success/10 text-success ring-success/20',
-    amber: 'bg-warning/10 text-warning ring-warning/20',
-    rose: 'bg-destructive/10 text-destructive ring-destructive/20',
-    violet: 'bg-accent/10 text-accent ring-accent/20',
-    slate: 'bg-muted/50 text-muted-foreground ring-border/50',
-  }[tone]
+  const toneClass = DATA_PILL_TONE_CLASSES[tone]
 
   return (
     <article className="min-w-0 bg-background/72 px-3 py-2">
@@ -110,7 +105,7 @@ export function ReportSignalRow({
   label: string
   value: string
   sub: string
-  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+  tone?: DataPillTone
 }>) {
   const toneClass = {
     blue: 'text-info',
@@ -167,7 +162,7 @@ export function CompactAuditFact({
   label: string
   value: string
   sub: string
-  tone?: 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'slate'
+  tone?: DataPillTone
 }>) {
   const toneClass = {
     blue: {

@@ -68,10 +68,6 @@ type RegressionLeaderboardRow = {
   retrieval_config_hash?: string | null
 }
 
-type RegressionRunLeaderboard = {
-  items?: RegressionLeaderboardRow[]
-}
-
 type AblationInlineTone = 'neutral' | 'sky' | 'amber' | 'violet' | 'emerald'
 type LeaderboardAssignRole = 'base' | 'target'
 
@@ -1514,11 +1510,8 @@ export function RetrievalAblationsPage() {
     }
   }, [diffScore])
 
-  const datasets = useMemo(() => datasetsQuery.data ?? EMPTY_DATASETS, [datasetsQuery.data])
-  const runs = useMemo(
-    () => (Array.isArray(runsQuery.data?.items) ? runsQuery.data?.items : EMPTY_RUNS),
-    [runsQuery.data?.items],
-  )
+  const datasets = datasetsQuery.data ?? EMPTY_DATASETS
+  const runs = Array.isArray(runsQuery.data?.items) ? runsQuery.data?.items : EMPTY_RUNS
   const datasetsLoading = datasetsQuery.isLoading || datasetsQuery.isFetching
   const runsLoading = runsQuery.isLoading || runsQuery.isFetching
   const selectedDatasetCasesLoading = selectedDatasetCasesQuery.isLoading || selectedDatasetCasesQuery.isFetching

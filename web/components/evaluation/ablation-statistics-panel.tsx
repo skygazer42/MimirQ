@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import type { RagasRegressionRunDiffResponse, RegressionRunMetricSignificance } from '@/types'
 
 function toFinite(value: unknown): number | null {
+  if (value == null) return null
   const next = Number(value)
   return Number.isFinite(next) ? next : null
 }
