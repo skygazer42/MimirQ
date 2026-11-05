@@ -40,7 +40,7 @@ def _clamp01(value: float) -> float:
         return 0.0
     if value > 1.0:
         return 1.0
-    return float(value)
+    return value
 
 
 def _is_pdf(mime: str, ext: str) -> bool:
@@ -94,7 +94,7 @@ def _recommend_pdf_strategy(
                 "layout_mode": "full",
                 "table_detection": True,
                 "seal_review": True,
-                "seal_candidate_count": int(seal_candidate_count),
+                "seal_candidate_count": seal_candidate_count,
             },
             [*reason_codes, "low_seal_confidence"],
         )
@@ -198,7 +198,7 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
     seal_expected = _to_bool(payload.get("seal_expected"))
     seal_confidence = _clamp01(_safe_float(payload.get("seal_confidence"), 0.0))
     seal_candidate_count = max(0, _safe_int(payload.get("seal_candidate_count"), 0))
-    seal_low_confidence = bool(seal_expected and seal_confidence > 0.0 and seal_confidence < 0.6)
+    seal_low_confidence = seal_expected and seal_confidence > 0.0 and seal_confidence < 0.6
 
     if _is_pdf(mime, ext):
         strategy, confidence, parser_options, reason_codes = _recommend_pdf_strategy(
@@ -226,14 +226,14 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
         "profile": {
             "mime_type": mime or None,
             "file_extension": ext or None,
-            "page_count": int(page_count),
-            "table_density": round(float(table_density), 4),
-            "image_ratio": round(float(image_ratio), 4),
-            "ocr_ratio": round(float(ocr_ratio), 4),
-            "has_tables": bool(has_tables),
-            "seal_expected": bool(seal_expected),
-            "seal_confidence": round(float(seal_confidence), 4) if seal_expected else None,
-            "seal_candidate_count": int(seal_candidate_count),
+            "page_count": page_count,
+            "table_density": round(table_density, 4),
+            "image_ratio": round(image_ratio, 4),
+            "ocr_ratio": round(ocr_ratio, 4),
+            "has_tables": has_tables,
+            "seal_expected": seal_expected,
+            "seal_confidence": round(seal_confidence, 4) if seal_expected else None,
+            "seal_candidate_count": seal_candidate_count,
         },
         "parser_options": parser_options,
     }

@@ -18,7 +18,7 @@ def _coerce_float(value: Any) -> float | None:
         number = float(value)
         if number != number:
             return None
-        return float(number)
+        return number
     except Exception:
         return None
 
@@ -118,7 +118,7 @@ def _build_evidence(element: Mapping[str, Any], *, score: float, value: str) -> 
         "visual_kind": visual_kind or None,
         "bbox": dict(bbox) if isinstance(bbox, Mapping) else None,
         "text": value or None,
-        "score": round(float(score), 3),
+        "score": round(score, 3),
     }
 
 
@@ -176,7 +176,7 @@ def _extract_field(
             continue
         ranked.append((score, dict(raw), value))
 
-    ranked.sort(key=lambda item: (float(item[0]), float(_coerce_float(item[1].get("confidence")) or 0.0)), reverse=True)
+    ranked.sort(key=lambda item: (item[0], _coerce_float(item[1].get("confidence")) or 0.0), reverse=True)
     if ranked:
         best_score, best_element, best_value = ranked[0]
         evidence = [
@@ -185,7 +185,7 @@ def _extract_field(
         ]
         return {
             "value": best_value,
-            "confidence": round(float(_coerce_float(best_element.get("confidence")) or best_score), 3),
+            "confidence": round(_coerce_float(best_element.get("confidence")) or best_score, 3),
             "evidence": evidence,
             "strategy": "element_match",
         }

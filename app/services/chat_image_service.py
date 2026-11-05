@@ -84,7 +84,7 @@ def build_chat_image_context_docs(
     Returns: (docs, meta)
     """
     enabled = bool(settings.IMAGE_EMBEDDING_ENABLED)
-    meta: dict[str, Any] = {"enabled": bool(enabled), "used": False, "reason": "not_run"}
+    meta: dict[str, Any] = {"enabled": enabled, "used": False, "reason": "not_run"}
     if not enabled:
         meta["reason"] = "IMAGE_EMBEDDING_ENABLED=false"
         return [], meta
@@ -136,8 +136,8 @@ def build_chat_image_context_docs(
             {
                 "reason": "ok",
                 "used": bool(docs),
-                "hits": int(len(hits or [])),
-                "returned": int(len(docs or [])),
+                "hits": len(hits or []),
+                "returned": len(docs or []),
             }
         )
         return docs, meta

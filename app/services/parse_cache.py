@@ -143,114 +143,109 @@ class ParseCacheEntry:
         )
 
 
-class ParseCacheService:
-    def get(
-        self,
-        *,
-        tenant_id: str,
-        dataset_id: str,
-        cache_key: str,
-        ttl_sec: int,
-        max_bytes: int,
-    ) -> tuple[ParseCacheEntry | None, int | None]:
-        """
-        Return (entry, age_ms).
-        """
-        if not bool(settings.PARSE_CACHE_ENABLED):
-            return None, None
-        if not bool(settings.MINIO_ENABLED):
-            return None, None
-        ttl_i = max(0, int(ttl_sec or 0))
-        max_bytes_i = max(0, int(max_bytes or 0))
-        if ttl_i <= 0 or max_bytes_i <= 0:
-            return None, None
+def get_parse_cache(
+    *,
+    tenant_id: str,
+    dataset_id: str,
+    cache_key: str,
+    ttl_sec: int,
+    max_bytes: int,
+) -> tuple[ParseCacheEntry | None, int | None]:
+    """
+    Return (entry, age_ms).
+    """
+    if not bool(settings.PARSE_CACHE_ENABLED):
+        return None, None
+    if not bool(settings.MINIO_ENABLED):
+        return None, None
+    ttl_i = max(0, int(ttl_sec or 0))
+    max_bytes_i = max(0, int(max_bytes or 0))
+    if ttl_i <= 0 or max_bytes_i <= 0:
+        return None, None
 
-        try:
-            object_name = build_parse_cache_object_name(
-                tenant_id=str(tenant_id),
-                dataset_id=str(dataset_id),
-                cache_key=str(cache_key),
-            )
-        except Exception:
-            return None, None
+    try:
+        object_name = build_parse_cache_object_name(
+            tenant_id=str(tenant_id),
+            dataset_id=str(dataset_id),
+            cache_key=str(cache_key),
+        )
+    except Exception:
+        return None, None
 
-        try:
-            raw = minio_service.get_object_bytes(object_name=object_name, max_bytes=max_bytes_i)
-        except Exception:
-            return None, None
+    try:
+        raw = minio_service.get_object_bytes(object_name=object_name, max_bytes=max_bytes_i)
+    except Exception:
+        return None, None
 
-        try:
-            obj = json.loads(raw.decode("utf-8"))
-        except Exception:
-            return None, None
+    try:
+        obj = json.loads(raw.decode("utf-8"))
+    except Exception:
+        return None, None
 
-        entry = ParseCacheEntry.from_obj(obj)
-        if entry is None:
-            return None, None
+    entry = ParseCacheEntry.from_obj(obj)
+    if entry is None:
+        return None, None
 
-        age_s = _age_seconds(entry.created_at)
-        if age_s is None:
-            return None, None
-        age_ms = int(round(age_s * 1000))
-        if ttl_i > 0 and age_s > float(ttl_i):
-            # Best-effort cleanup of stale cache (do not fail).
-            with contextlib.suppress(Exception):
-                minio_service.delete_object(object_name=object_name)
-            return None, None
+    age_s = _age_seconds(entry.created_at)
+    if age_s is None:
+        return None, None
+    age_ms = int(round(age_s * 1000))
+    if ttl_i > 0 and age_s > float(ttl_i):
+        # Best-effort cleanup of stale cache (do not fail).
+        with contextlib.suppress(Exception):
+            minio_service.delete_object(object_name=object_name)
+        return None, None
 
-        return entry, age_ms
-
-    def set(
-        self,
-        *,
-        tenant_id: str,
-        dataset_id: str,
-        cache_key: str,
-        entry: ParseCacheEntry,
-        max_bytes: int,
-    ) -> bool:
-        if not bool(settings.PARSE_CACHE_ENABLED):
-            return False
-        if not bool(settings.MINIO_ENABLED):
-            return False
-        max_bytes_i = max(0, int(max_bytes or 0))
-        if max_bytes_i <= 0:
-            return False
-
-        try:
-            object_name = build_parse_cache_object_name(
-                tenant_id=str(tenant_id),
-                dataset_id=str(dataset_id),
-                cache_key=str(cache_key),
-            )
-        except Exception:
-            return False
-
-        try:
-            blob = json.dumps(entry.to_dict(), ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
-        except Exception:
-            return False
-        if len(blob) > max_bytes_i:
-            return False
-
-        try:
-            minio_service.put_object_bytes(
-                object_name=object_name,
-                data=blob,
-                content_type="application/json",
-            )
-            return True
-        except Exception as exc:  # noqa: BLE001
-            logger.info("Parse cache set failed (ignored): %s", str(exc)[:200])
-            return False
+    return entry, age_ms
 
 
-parse_cache_service = ParseCacheService()
+def set_parse_cache(
+    *,
+    tenant_id: str,
+    dataset_id: str,
+    cache_key: str,
+    entry: ParseCacheEntry,
+    max_bytes: int,
+) -> bool:
+    if not bool(settings.PARSE_CACHE_ENABLED):
+        return False
+    if not bool(settings.MINIO_ENABLED):
+        return False
+    max_bytes_i = max(0, int(max_bytes or 0))
+    if max_bytes_i <= 0:
+        return False
+
+    try:
+        object_name = build_parse_cache_object_name(
+            tenant_id=str(tenant_id),
+            dataset_id=str(dataset_id),
+            cache_key=str(cache_key),
+        )
+    except Exception:
+        return False
+
+    try:
+        blob = json.dumps(entry.to_dict(), ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
+    except Exception:
+        return False
+    if len(blob) > max_bytes_i:
+        return False
+
+    try:
+        minio_service.put_object_bytes(
+            object_name=object_name,
+            data=blob,
+            content_type="application/json",
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.info("Parse cache set failed (ignored): %s", str(exc)[:200])
+        return False
 
 
 __all__ = [
     "ParseCacheEntry",
-    "ParseCacheService",
     "build_parse_cache_key",
-    "parse_cache_service",
+    "get_parse_cache",
+    "set_parse_cache",
 ]
