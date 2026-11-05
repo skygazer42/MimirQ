@@ -27,20 +27,15 @@ export function shouldReportWebVital(name: string): name is FrontendWebVitalName
 }
 
 export function normalizeWebVitalMetric(metric: WebVitalMetric): FrontendWebVitalPayload {
-  const payload: FrontendWebVitalPayload = {
+  return {
     id: String(metric.id || ''),
     name: metric.name as FrontendWebVitalName,
     value: Number(metric.value),
+    ...(typeof metric.rating === 'string' && metric.rating ? { rating: metric.rating } : {}),
+    ...(typeof metric.navigationType === 'string' && metric.navigationType
+      ? { navigation_type: metric.navigationType }
+      : {}),
   }
-
-  if (typeof metric.rating === 'string' && metric.rating) {
-    ;(payload as { rating?: string }).rating = metric.rating
-  }
-  if (typeof metric.navigationType === 'string' && metric.navigationType) {
-    ;(payload as { navigation_type?: string }).navigation_type = metric.navigationType
-  }
-
-  return payload
 }
 
 export function canReportWebVital(

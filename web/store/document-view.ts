@@ -79,8 +79,8 @@ const noopStorage = {
   removeItem: (_name: string) => {},
 }
 
-function normalizeDocumentId(documentId: string | null | undefined): string | null {
-  const normalized = String(documentId || '').trim()
+function normalizeId(id: string | null | undefined): string | null {
+  const normalized = String(id || '').trim()
   return normalized || null
 }
 
@@ -103,11 +103,6 @@ function sanitizeHighlightRange(
   const start = typeof startRaw === 'number' && Number.isFinite(startRaw) ? Math.trunc(startRaw) : null
   const end = typeof endRaw === 'number' && Number.isFinite(endRaw) ? Math.trunc(endRaw) : null
   return start != null && end != null && end > start ? ({ start, end } satisfies HighlightRange) : null
-}
-
-function normalizeChunkId(chunkId: string | null | undefined): string | null {
-  const normalized = String(chunkId || '').trim()
-  return normalized || null
 }
 
 function normalizeOptionalText(
@@ -137,14 +132,14 @@ function sanitizeSourceContext(
   if (sourceContext?.kind !== 'chat-citation') return null
 
   const messageId = String(sourceContext.messageId || '').trim()
-  const documentId = normalizeDocumentId(sourceContext.documentId)
+  const documentId = normalizeId(sourceContext.documentId)
   if (!messageId || !documentId) return null
 
   return {
     kind: 'chat-citation',
     messageId,
     documentId,
-    chunkId: normalizeChunkId(sourceContext.chunkId),
+    chunkId: normalizeId(sourceContext.chunkId),
     documentName: normalizeOptionalText(sourceContext.documentName, 300),
     chunkContent: normalizeOptionalText(sourceContext.chunkContent),
     chunkIndex: normalizeOptionalNumber(sourceContext.chunkIndex),
@@ -160,10 +155,10 @@ function buildResumeTarget(
   previewAnchor?: Partial<DocumentPreviewAnchor> | DocumentPreviewAnchor | null,
   sourceContext?: DocumentViewSourceContext | null,
 ): DocumentViewResumeTarget | null {
-  const documentId = normalizeDocumentId(rawDocumentId)
+  const documentId = normalizeId(rawDocumentId)
   if (!documentId) return null
 
-  const chunkId = normalizeChunkId(rawChunkId)
+  const chunkId = normalizeId(rawChunkId)
   const highlightRange = sanitizeHighlightRange(range)
   const sanitizedPreviewAnchor = sanitizeDocumentPreviewAnchor(previewAnchor)
   const sanitizedSourceContext = sanitizeSourceContext(sourceContext)
@@ -180,13 +175,13 @@ function buildResumeTarget(
 function sanitizeResumeTarget(target: DocumentViewResumeTarget | null | undefined): DocumentViewResumeTarget | null {
   if (!target) return null
 
-  const documentId = normalizeDocumentId(target.documentId)
+  const documentId = normalizeId(target.documentId)
   if (!documentId) return null
   const sourceContext = sanitizeSourceContext(target.sourceContext)
 
   return {
     documentId,
-    chunkId: normalizeChunkId(target.chunkId),
+    chunkId: normalizeId(target.chunkId),
     highlightRange: sanitizeHighlightRange(target.highlightRange),
     previewAnchor: sanitizeDocumentPreviewAnchor(target.previewAnchor),
     activeTab: sanitizeDocumentViewTab(target.activeTab),
@@ -252,7 +247,7 @@ export const useDocumentView = create<DocumentViewState>()(
 
       openDocument: (rawDocumentId, chunkId, range, options) =>
         set((state) => {
-          const documentId = normalizeDocumentId(rawDocumentId)
+          const documentId = normalizeId(rawDocumentId)
           if (!documentId) return state
 
           const highlightRange = sanitizeHighlightRange(range)
@@ -363,14 +358,14 @@ export const useDocumentView = create<DocumentViewState>()(
         })),
 
       getDocumentLayout: (documentId) => {
-        const id = normalizeDocumentId(documentId)
+        const id = normalizeId(documentId)
         if (!id) return null
         return get().documentLayouts[id] || null
       },
 
       setDocumentLayout: (documentId, patch) =>
         set((state) => {
-          const id = normalizeDocumentId(documentId)
+          const id = normalizeId(documentId)
           if (!id) return state
 
           const nextLayouts = { ...state.documentLayouts }

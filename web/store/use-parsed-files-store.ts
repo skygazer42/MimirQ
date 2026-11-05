@@ -114,8 +114,6 @@ type ParsedFilesState = {
   setLoaded: (loaded: boolean) => void
 }
 
-const makeId = () => generateRequestId()
-
 function getUpdatedMarkdownFields(updates: ParsedFileUpdates): {
   nextMarkdown: string | undefined
   nextOriginal: string | undefined
@@ -250,7 +248,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         const newFile: ParsedFileData = {
           ...file,
           originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
-          id: makeId(),
+          id: generateRequestId(),
           parsedAt: new Date().toISOString(),
           folderId: file.folderId || ROOT_FOLDER_ID,
           status: file.status ?? 'parsed',
@@ -319,7 +317,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
 
         const { nextMarkdown, nextOriginal } = getUpdatedMarkdownFields(updates)
         const shouldPersistMarkdown =
-          globalThis.window !== undefined && (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string')
+          globalThis.window !== undefined && (nextMarkdown !== undefined || nextOriginal !== undefined)
         const shouldAwaitPersistence = shouldPersistMarkdown && updates.status === 'parsed'
         const markdownContent = nextMarkdown ?? ''
         const originalMarkdownContent = nextOriginal ?? ''
@@ -378,7 +376,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
       createFolder: (name, parentId) => {
         const trimmed = name.trim()
         const newFolder: FolderNode = {
-          id: makeId(),
+          id: generateRequestId(),
           name: trimmed || '新建文件夹',
           parentId: parentId || get().activeFolderId || ROOT_FOLDER_ID,
           createdAt: new Date().toISOString(),
@@ -437,7 +435,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         }
 
         const prevParentId = byId.get(id)?.parentId || ROOT_FOLDER_ID
-        if ((prevParentId || ROOT_FOLDER_ID) === (normalizedParentId || ROOT_FOLDER_ID)) return false
+        if (prevParentId === normalizedParentId) return false
 
         set((state) => ({
           folders: state.folders.map((f) => (f.id === id ? { ...f, parentId: normalizedParentId } : f)),
