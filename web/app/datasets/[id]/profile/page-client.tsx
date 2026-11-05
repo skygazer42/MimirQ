@@ -218,6 +218,24 @@ function formatChunkTargetLabel(value: unknown): string {
     .replace('Overlap waste', '重叠成本')
 }
 
+function qualityBucketLabel(key: string): string {
+  switch (String(key || '').toLowerCase()) {
+    case 'high_density':
+      return '高密度'
+    case 'mid_density':
+      return '中密度'
+    case 'low_density':
+      return '低密度'
+    case 'outline_heavy':
+      return '目录/标题占比高'
+    case 'tiny':
+      return '内容过短'
+    case 'unknown':
+    default:
+      return '未知'
+  }
+}
+
 function asDocumentStatus(status: string | null | undefined): Document['status'] {
   switch (status) {
     case 'pending':
@@ -482,24 +500,6 @@ export default function DatasetProfilePage() {
     return top
   }, [summary])
 
-  function qualityBucketLabel(key: string): string {
-    switch (String(key || '').toLowerCase()) {
-      case 'high_density':
-        return '高密度'
-      case 'mid_density':
-        return '中密度'
-      case 'low_density':
-        return '低密度'
-      case 'outline_heavy':
-        return '目录/标题占比高'
-      case 'tiny':
-        return '内容过短'
-      case 'unknown':
-      default:
-        return '未知'
-    }
-  }
-
   const qualityBucketChartData = useMemo(() => {
     const m = summary?.by_quality_bucket || {}
     const order = ['high_density', 'mid_density', 'low_density', 'outline_heavy', 'tiny', 'unknown']
@@ -642,8 +642,10 @@ export default function DatasetProfilePage() {
 
   const pollScanRun = useCallback(
     async (datasetIdValue: string, runId: string) => {
+      const timer = pollTimerRef.current
       try {
         const next = await datasetApi.getProfileScanRun(datasetIdValue, runId)
+        if (pollTimerRef.current !== timer) return
         setScanRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
@@ -657,6 +659,7 @@ export default function DatasetProfilePage() {
         stopPolling()
         detachPromise(refreshProfileOverview())
       } catch (e) {
+        if (pollTimerRef.current !== timer) return
         reportClientError('Failed to poll dataset profile scan run', e)
         setScanRunning(false)
         stopPolling()

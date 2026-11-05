@@ -35,7 +35,6 @@ import { cn } from '@/lib/utils'
 import type {
   ConnectorRunListResponse,
   ConnectorRunOut,
-  Dataset,
   DbCatalogTableDetail,
   DbCatalogTableSummary,
   DbProfileSnapshot,
@@ -179,7 +178,7 @@ export default function DatasetDbCatalogPage() {
     },
     enabled: Boolean(datasetId),
   })
-  const dataset = (datasetQuery.data ?? null) as Dataset | null
+  const dataset = datasetQuery.data ?? null
   const items: DbCatalogTableSummary[] = useMemo(
     () => catalogTablesQuery.data?.items || [],
     [catalogTablesQuery.data?.items],

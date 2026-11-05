@@ -63,7 +63,6 @@ import type {
   DatasetPrecheckScanRunCreateRequest,
   DatasetPrecheckScanRunOut,
   DatasetPrecheckSummary,
-  IngestionPolicyImportResponse,
 } from '@/types'
 
 const PIE_COLORS = [
@@ -499,13 +498,20 @@ export default function DatasetPrecheckPage() {
     stopPolling()
     stopSse()
     if (st === 'completed') {
+      let cancelled = false
       detachPromise(
         datasetApi
           .getPrecheckSummary(datasetId, selectedRun.id)
-          .then(setSummary)
-          .catch(() => setSummary(null)),
+          .then((next) => {
+            if (!cancelled) setSummary(next)
+          })
+          .catch(() => {
+            if (!cancelled) setSummary(null)
+          }),
       )
-      return
+      return () => {
+        cancelled = true
+      }
     }
     setSummary(null)
   }, [datasetId, selectedRun, startSse, stopPolling, stopSse])
@@ -564,13 +570,9 @@ export default function DatasetPrecheckPage() {
     if (!datasetId || !selectedRun?.id) return
     setPolicyApplying(true)
     try {
-      const res: IngestionPolicyImportResponse = await datasetApi.applyPrecheckIngestionPolicy(
-        datasetId,
-        selectedRun.id,
-        {
-          replace: !!policyApplyReplace,
-        },
-      )
+      const res = await datasetApi.applyPrecheckIngestionPolicy(datasetId, selectedRun.id, {
+        replace: !!policyApplyReplace,
+      })
       toast.success(`已应用入库策略（rules=${res.rule_count}）`)
     } catch (e: unknown) {
       reportClientError('Failed to apply ingestion policy', e)

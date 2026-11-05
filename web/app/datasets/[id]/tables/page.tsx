@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -21,7 +21,7 @@ import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 
-import type { Dataset, DatasetTableAsset, TableAskResponse, TableQueryResponse } from '@/types'
+import type { DatasetTableAsset, TableAskResponse, TableQueryResponse } from '@/types'
 
 function asDatasetId(raw: unknown): string | null {
   if (typeof raw === 'string' && raw.trim()) return raw
@@ -60,6 +60,28 @@ export default function DatasetTablesPage() {
   const [semFilterInstruction, setSemFilterInstruction] = useState('')
   const [semFilterRes, setSemFilterRes] = useState<TableQueryResponse | null>(null)
   const [semFilterRunning, setSemFilterRunning] = useState(false)
+  const tableScopeRef = useRef<{ datasetId: string | null; tableId: string | undefined } | null>({
+    datasetId,
+    tableId: selected?.table_id,
+  })
+
+  useEffect(() => {
+    if (tableScopeRef.current?.datasetId !== datasetId || tableScopeRef.current?.tableId !== selected?.table_id) {
+      tableScopeRef.current = { datasetId, tableId: selected?.table_id }
+    }
+    setQueryRes(null)
+    setAskRes(null)
+    setSemFilterRes(null)
+    setQueryRunning(false)
+    setAskRunning(false)
+    setSemFilterRunning(false)
+  }, [datasetId, selected?.table_id])
+
+  useEffect(() => {
+    return () => {
+      tableScopeRef.current = null
+    }
+  }, [])
 
   const datasetQuery = useQuery({
     queryKey: queryKeys.datasets.detail(datasetId || ''),
@@ -77,7 +99,7 @@ export default function DatasetTablesPage() {
     },
     enabled: Boolean(datasetId),
   })
-  const dataset = (datasetQuery.data ?? null) as Dataset | null
+  const dataset = datasetQuery.data ?? null
   const items: DatasetTableAsset[] = useMemo(() => tablesQuery.data?.items || [], [tablesQuery.data?.items])
   const isLoading = datasetQuery.isFetching || tablesQuery.isFetching
   const loadError = datasetQuery.error ?? tablesQuery.error
@@ -126,17 +148,23 @@ export default function DatasetTablesPage() {
 
   const selectTable = async (table: DatasetTableAsset) => {
     if (!datasetId) return
+    if (tableScopeRef.current?.datasetId !== datasetId || tableScopeRef.current?.tableId !== table.table_id) {
+      tableScopeRef.current = { datasetId, tableId: table.table_id }
+    }
+    const scope = tableScopeRef.current
     setSelected(table)
     try {
       const full = await datasetApi.getTable(datasetId, table.table_id, {
         include_columns: true,
         include_sample_rows: true,
       })
+      if (tableScopeRef.current !== scope) return
       setSelected(full)
       // Update default query target table for convenience.
       const sheetName = `sheet_${full.sheet_index || 0}`
       setQuerySql(`SELECT * FROM "${sheetName}" LIMIT 20`)
     } catch (e: unknown) {
+      if (tableScopeRef.current !== scope) return
       reportClientError('Failed to load dataset table detail', e)
       toast.error(formatApiError(e, '加载表格详情失败'))
     }
@@ -144,38 +172,45 @@ export default function DatasetTablesPage() {
 
   const runQuery = async () => {
     if (!datasetId || !selected) return
+    const scope = tableScopeRef.current
     setQueryRunning(true)
     setQueryRes(null)
     try {
       const res = await datasetApi.queryTable(datasetId, selected.table_id, { sql: querySql })
+      if (tableScopeRef.current !== scope) return
       setQueryRes(res)
     } catch (e: unknown) {
+      if (tableScopeRef.current !== scope) return
       reportClientError('Dataset table SQL query failed', e)
       toast.error(formatApiError(e, '查询失败（只允许 SELECT/WITH SELECT）'))
     } finally {
-      setQueryRunning(false)
+      if (tableScopeRef.current === scope) setQueryRunning(false)
     }
   }
 
   const ask = async () => {
     if (!datasetId || !selected) return
     if (!question.trim()) return
+    const scope = tableScopeRef.current
     setAskRunning(true)
     setAskRes(null)
     try {
       const res = await datasetApi.askTable(datasetId, selected.table_id, { question: question.trim() })
+      if (tableScopeRef.current !== scope) return
       setAskRes(res)
     } catch (e: unknown) {
+      if (tableScopeRef.current !== scope) return
       reportClientError('Dataset table question answering failed', e)
       toast.error(formatApiError(e, 'TAG 问答失败（需要开启 TABLE_NL2SQL_ENABLED）'))
     } finally {
-      setAskRunning(false)
+      if (tableScopeRef.current === scope) setAskRunning(false)
     }
   }
 
   const semFilter = async () => {
     if (!datasetId || !selected) return
     if (!semFilterInstruction.trim()) return
+    const scope = tableScopeRef.current
     setSemFilterRunning(true)
     setSemFilterRes(null)
     try {
@@ -183,12 +218,14 @@ export default function DatasetTablesPage() {
         user_instruction: semFilterInstruction.trim(),
         strategy: 'cot',
       })
+      if (tableScopeRef.current !== scope) return
       setSemFilterRes(res)
     } catch (e: unknown) {
+      if (tableScopeRef.current !== scope) return
       reportClientError('Dataset table semantic filter failed', e)
       toast.error(formatApiError(e, '语义过滤失败（需要开启 TABLE_LOTUS_ENABLED 或 TABLE_NL2SQL_ENABLED）'))
     } finally {
-      setSemFilterRunning(false)
+      if (tableScopeRef.current === scope) setSemFilterRunning(false)
     }
   }
 
