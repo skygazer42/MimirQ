@@ -42,6 +42,7 @@ import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/do
 import { getParserLabel } from '@/lib/parser-options'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
   Document,
@@ -247,6 +248,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [isKgWorking, setIsKgWorking] = useState(false)
   const [isCleanDocxDownloading, setIsCleanDocxDownloading] = useState(false)
   const [chunkQuery, setChunkQuery] = useState('')
+  const chunkScope = useMemo(
+    () => ({ documentId: initialDocument.id, open, activeView, query: chunkQuery, pipelineHash: viewPipelineHash }),
+    [activeView, chunkQuery, initialDocument.id, open, viewPipelineHash],
+  )
+  const chunkScopeRef = useRef<typeof chunkScope | null>(null)
+  const chunkRequestRef = useRef<object | null>(null)
+
+  useEffect(() => {
+    chunkScopeRef.current = chunkScope
+    return () => {
+      if (chunkScopeRef.current === chunkScope) {
+        chunkScopeRef.current = null
+        chunkRequestRef.current = null
+      }
+    }
+  }, [chunkScope])
+
   const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
   const [editingChunkContent, setEditingChunkContent] = useState<string>('')
   const [chunkOpWorkingId, setChunkOpWorkingId] = useState<string | null>(null)
@@ -620,9 +638,9 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
   const fetchChunksPage = useCallback(
     async (skip: number) => {
-      const q = chunkQuery.trim()
-      const pipelineHash = viewPipelineHash === ACTIVE_PIPELINE_VALUE ? undefined : viewPipelineHash
-      const res = await documentApi.listChunks(initialDocument.id, {
+      const q = chunkScope.query.trim()
+      const pipelineHash = chunkScope.pipelineHash === ACTIVE_PIPELINE_VALUE ? undefined : chunkScope.pipelineHash
+      const res = await documentApi.listChunks(chunkScope.documentId, {
         skip,
         limit: CHUNK_PAGE_SIZE,
         q: q || undefined,
@@ -630,42 +648,72 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       })
       return res
     },
-    [chunkQuery, initialDocument.id, viewPipelineHash],
+    [chunkScope],
   )
 
   const reloadChunks = useCallback(async () => {
+    if (chunkScopeRef.current !== chunkScope) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    chunkRequestRef.current = request
+    const isCurrent = () =>
+      chunkScopeRef.current === chunkScope &&
+      chunkRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setIsLoadingChunks(true)
     setChunkError(null)
     setChunks([])
     setChunksTotal(0)
     try {
       const res = await fetchChunksPage(0)
+      if (!isCurrent()) return
       setChunks(res.items || [])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
+      if (!isCurrent()) return
       reportClientError('Load document chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadChunksFailed')))
     } finally {
-      setIsLoadingChunks(false)
+      if (chunkRequestRef.current === request) {
+        chunkRequestRef.current = null
+        setIsLoadingChunks(false)
+      }
     }
-  }, [fetchChunksPage, t])
+  }, [chunkScope, fetchChunksPage, t])
 
   const loadMoreChunks = useCallback(async () => {
     if (isLoadingChunks) return
     if (chunks.length >= chunksTotal) return
+    if (chunkScopeRef.current !== chunkScope) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    chunkRequestRef.current = request
+    const isCurrent = () =>
+      chunkScopeRef.current === chunkScope &&
+      chunkRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setIsLoadingChunks(true)
     setChunkError(null)
     try {
       const res = await fetchChunksPage(chunks.length)
+      if (!isCurrent()) return
       setChunks((prev) => [...prev, ...(res.items || [])])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
+      if (!isCurrent()) return
       reportClientError('Load more chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadMoreChunksFailed')))
     } finally {
-      setIsLoadingChunks(false)
+      if (chunkRequestRef.current === request) {
+        chunkRequestRef.current = null
+        setIsLoadingChunks(false)
+      }
     }
-  }, [chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks, t])
+  }, [chunkScope, chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks, t])
 
   useEffect(() => {
     if (!open) return
