@@ -23,7 +23,7 @@ function clampInt(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.trunc(value)))
 }
 
-function percentile(sorted: number[], p: number) {
+export function percentile(sorted: number[], p: number) {
   if (sorted.length === 0) return 0
   const pp = Math.min(100, Math.max(0, p))
   const idx = Math.floor((pp / 100) * (sorted.length - 1))

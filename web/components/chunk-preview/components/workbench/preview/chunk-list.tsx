@@ -59,6 +59,7 @@ import {
   ORIGINAL_PREVIEW_MODE_STORAGE_KEY,
   getStoredOriginalPreviewMode,
   shouldRevealPdfPreviewOnChunkSelect,
+  isPdfOriginalFile,
 } from './pdf-dock'
 
 const QUERY_DEBOUNCE_MS = 150
@@ -160,12 +161,7 @@ export function ChunkList() {
   const isParentChildStrategy = previewData?.chunk_strategy === 'parent_child'
   const isHierarchyView = isParentChildStrategy && viewMode === 'hierarchy'
   const isSectionView = groupMode === 'section' && !isHierarchyView
-  const supportsPdfDocking = useMemo(() => {
-    const fileType = String(previewData?.file_type || '').toLowerCase()
-    if (fileType === 'pdf') return true
-    const name = String(currentFile?.name || '').toLowerCase()
-    return name.endsWith('.pdf')
-  }, [currentFile?.name, previewData?.file_type])
+  const supportsPdfDocking = isPdfOriginalFile(previewData, currentFile)
 
   const selectChunkIndex = useCallback(
     (nextIndex: number | null) => {
@@ -271,7 +267,7 @@ export function ChunkList() {
         content,
         metadata,
         length: content.length,
-        tokens_est: roughEstimateTokens(content),
+        tokens_est: override.content === undefined ? chunk.tokens_est : roughEstimateTokens(content),
       }
     })
   }, [previewData?.chunks, chunkOverrides])

@@ -2,21 +2,11 @@ import type { ChunkPreviewResponse } from '@/types'
 
 import { fnv1a32 } from './review-signals'
 import { toChunkPreviewExport } from './export'
+import { percentile } from './stats'
 
 function safeNum(value: unknown): number | null {
   const n = Number(value)
   return Number.isFinite(n) ? n : null
-}
-
-function clampInt(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, Math.trunc(value)))
-}
-
-function percentile(sorted: number[], p: number) {
-  if (sorted.length === 0) return 0
-  const pp = Math.min(100, Math.max(0, p))
-  const idx = Math.floor((pp / 100) * (sorted.length - 1))
-  return sorted[clampInt(idx, 0, sorted.length - 1)] ?? 0
 }
 
 function buildMultiset(chunks: Array<{ index: number; content?: string }>) {

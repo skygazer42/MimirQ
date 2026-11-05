@@ -29,11 +29,14 @@ export async function scanFiles(items: DataTransferItemList): Promise<File[]> {
     } else if (entry.isDirectory) {
       // 如果是文件夹，递归读取子项
       const dirReader = (entry as FileSystemDirectoryEntry).createReader()
-      const entries = await new Promise<FileSystemEntry[]>((resolve, reject) => {
-        dirReader.readEntries(resolve, reject)
-      })
-      for (const child of entries) {
-        await traverse(child)
+      for (;;) {
+        const entries = await new Promise<FileSystemEntry[]>((resolve, reject) => {
+          dirReader.readEntries(resolve, reject)
+        })
+        if (entries.length === 0) break
+        for (const child of entries) {
+          await traverse(child)
+        }
       }
     }
   }
