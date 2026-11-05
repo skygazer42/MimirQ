@@ -33,11 +33,11 @@ from app.rag.embedding.factory import select_embedding_model
 class BenchmarkResults:
     """Benchmark results."""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str) -> None:
         self.name = name
         self.times: list[float] = []
 
-    def add_time(self, elapsed: float):
+    def add_time(self, elapsed: float) -> None:
         """Add a single run time."""
         self.times.append(elapsed)
 
@@ -56,7 +56,7 @@ class BenchmarkResults:
             "stdev": statistics.stdev(self.times) if len(self.times) > 1 else 0,
         }
 
-    def print_stats(self):
+    def print_stats(self) -> None:
         """Print summary stats."""
         stats = self.get_stats()
         if "error" in stats:
@@ -250,7 +250,7 @@ async def benchmark_image_upload_serial(num_images: int = 20, runs: int = 3) -> 
     return results
 
 
-def compare_results(baseline: BenchmarkResults, optimized: BenchmarkResults):
+def compare_results(baseline: BenchmarkResults, optimized: BenchmarkResults) -> None:
     """Compare pre- and post-optimization results."""
     baseline_stats = baseline.get_stats()
     optimized_stats = optimized.get_stats()
@@ -276,7 +276,7 @@ def compare_results(baseline: BenchmarkResults, optimized: BenchmarkResults):
         print(f"  ⚠️  Performance degraded by {abs(improvement):.1f}%")
 
 
-async def run_embedding_benchmark():
+async def run_embedding_benchmark() -> None:
     """Run embedding benchmarks."""
     print("\n" + "=" * 60)
     print("🧪 Embedding Concurrency Performance Test")
@@ -311,7 +311,7 @@ async def run_embedding_benchmark():
     compare_results(serial_results, concurrent_results)
 
 
-async def run_image_upload_benchmark():
+async def run_image_upload_benchmark() -> None:
     """Run image upload benchmarks."""
     print("\n" + "=" * 60)
     print("🧪 Image Upload Concurrency Performance Test")
@@ -336,7 +336,7 @@ async def run_image_upload_benchmark():
     compare_results(serial_results, concurrent_results)
 
 
-async def main():
+async def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="I/O Concurrency Performance Benchmark")
     parser.add_argument(

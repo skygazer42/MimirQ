@@ -19,7 +19,7 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    nbytes = max(16, int(args.nbytes or 32))
+    nbytes = max(16, args.nbytes or 32)
     key = secrets.token_urlsafe(nbytes)
     print(key)
     return 0

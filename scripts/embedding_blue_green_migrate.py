@@ -43,7 +43,7 @@ from app.services.embedding_migration import (  # noqa: E402
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
+        return UUID(value)
     except Exception as exc:  # noqa: BLE001
         raise argparse.ArgumentTypeError("value must be a valid UUID") from exc
 
@@ -74,45 +74,44 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": False, "error": "shadow_config_disabled"}, ensure_ascii=False))
         return 2
 
-    execute = bool(args.execute)
-    if not bool(args.execute) and not bool(args.dry_run):
-        execute = False
+    execute = args.execute
 
     out: dict[str, object] = {"ok": True, "shadow": cfg}
 
     db = SessionLocal()
     try:
-        if not bool(args.overlap_check):
+        if not args.overlap_check:
             backfill = run_shadow_collection_backfill(
                 db=db,
                 tenant_id=args.tenant_id,
                 dataset_id=args.dataset_id,
-                document_limit=int(args.document_limit or 0),
-                chunk_limit_per_document=int(args.chunk_limit_per_document or 0),
-                embed_batch_size=(int(args.embed_batch_size) if int(args.embed_batch_size or 0) > 0 else None),
-                execute=bool(execute),
+                document_limit=args.document_limit,
+                chunk_limit_per_document=args.chunk_limit_per_document,
+                embed_batch_size=args.embed_batch_size if args.embed_batch_size > 0 else None,
+                execute=execute,
             )
             out["backfill"] = backfill
 
-        if bool(args.overlap_check):
+        if args.overlap_check:
             overlap = run_embedding_migration_overlap_check(
                 db=db,
                 tenant_id=args.tenant_id,
                 dataset_id=args.dataset_id,
-                sample_n=int(args.overlap_sample_n or 0),
-                top_k=int(args.overlap_top_k or 0),
+                sample_n=args.overlap_sample_n,
+                top_k=args.overlap_top_k,
             )
             out["overlap"] = overlap
     finally:
         db.close()
 
     out_json = json.dumps(out, ensure_ascii=False, indent=2) + "\n"
-    if str(args.out or "").strip():
-        path = Path(str(args.out).strip())
+    output_path = args.out.strip()
+    if output_path:
+        path = Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(out_json, encoding="utf-8")
 
-    print(out_json if str(args.out or "").strip() else json.dumps(out, ensure_ascii=False))
+    print(out_json if output_path else json.dumps(out, ensure_ascii=False))
     return 0
 
 
