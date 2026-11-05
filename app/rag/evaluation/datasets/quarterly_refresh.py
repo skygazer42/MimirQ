@@ -25,22 +25,22 @@ def plan_quarterly_refresh(
     quarter_key: str,
     refresh_ratio: float = 0.2,
 ) -> dict[str, Any]:
-    normalized_rows = [normalize_eval_dataset_sample(dict(row or {})) for row in (rows or []) if isinstance(row, dict)]
+    normalized_rows = [normalize_eval_dataset_sample(row) for row in (rows or []) if isinstance(row, dict)]
     quarter = str(quarter_key or "").strip() or "unknown"
     ratio = _normalize_ratio(refresh_ratio)
 
     ranked = sorted(
         normalized_rows,
         key=lambda row: (
-            _stable_rank(quarter_key=quarter, sample_id=str(row.get("sample_id") or "")),
-            str(row.get("sample_id") or ""),
+            _stable_rank(quarter_key=quarter, sample_id=row["sample_id"]),
+            row["sample_id"],
         ),
     )
 
     total = len(ranked)
     refresh_count = 0
     if total > 0 and ratio > 0.0:
-        refresh_count = max(1, int(round(total * ratio)))
+        refresh_count = max(1, round(total * ratio))
         refresh_count = min(refresh_count, total)
 
     refresh_rows: list[dict[str, Any]] = []
@@ -48,7 +48,7 @@ def plan_quarterly_refresh(
     for idx, row in enumerate(ranked):
         row_copy = dict(row)
         if idx < refresh_count:
-            tags = [str(tag).strip() for tag in (row_copy.get("tags") or []) if str(tag or "").strip()]
+            tags = list(row_copy["tags"])
             if "quarterly_refresh" not in tags:
                 tags.append("quarterly_refresh")
             row_copy["tags"] = tags
@@ -63,12 +63,12 @@ def plan_quarterly_refresh(
         "quarter_key": quarter,
         "refresh_ratio": ratio,
         "summary": {
-            "total_samples": int(total),
-            "refresh_samples": int(len(refresh_rows)),
-            "stable_samples": int(len(stable_rows)),
+            "total_samples": total,
+            "refresh_samples": len(refresh_rows),
+            "stable_samples": len(stable_rows),
         },
-        "refresh_sample_ids": [str(row.get("sample_id") or "") for row in refresh_rows],
-        "stable_sample_ids": [str(row.get("sample_id") or "") for row in stable_rows],
+        "refresh_sample_ids": [row["sample_id"] for row in refresh_rows],
+        "stable_sample_ids": [row["sample_id"] for row in stable_rows],
         "refresh_rows": refresh_rows,
         "stable_rows": stable_rows,
     }

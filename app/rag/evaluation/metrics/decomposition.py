@@ -48,7 +48,7 @@ def compute_decomposition_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if pred_set == gold_set:
             exact_match += 1
 
-        true_positive = int(len(gold_set & pred_set))
+        true_positive = len(gold_set & pred_set)
         precision_i = 0.0 if not pred_set else true_positive / len(pred_set)
         recall_i = 0.0 if not gold_set else true_positive / len(gold_set)
         if precision_i <= 0.0 or recall_i <= 0.0:
@@ -56,9 +56,9 @@ def compute_decomposition_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         else:
             f1_i = (2.0 * precision_i * recall_i) / (precision_i + recall_i)
 
-        precision_values.append(float(precision_i))
-        recall_values.append(float(recall_i))
-        f1_values.append(float(f1_i))
+        precision_values.append(precision_i)
+        recall_values.append(recall_i)
+        f1_values.append(f1_i)
 
     precision = 0.0 if not precision_values else round(sum(precision_values) / len(precision_values), 4)
     recall = 0.0 if not recall_values else round(sum(recall_values) / len(recall_values), 4)
@@ -66,8 +66,8 @@ def compute_decomposition_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     exact_match_rate = 0.0 if evaluated <= 0 else round(exact_match / evaluated, 4)
 
     return {
-        "evaluated": int(evaluated),
-        "exact_match": int(exact_match),
+        "evaluated": evaluated,
+        "exact_match": exact_match,
         "exact_match_rate": exact_match_rate,
         "precision": precision,
         "recall": recall,
