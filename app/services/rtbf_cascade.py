@@ -18,6 +18,7 @@ Notes:
 """
 
 import contextlib
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -37,22 +38,13 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _safe_int(value: object, *, default: int = 0) -> int:
-    try:
-        if value is None:
-            return int(default)
-        return int(value)
-    except Exception:
-        return int(default)
-
-
-def _match_reason_list(doc: object, *, subject_account_id: str, subject_user_uuid: UUID | None) -> list[str]:
+def _match_reason_list(doc: DBDocument, *, subject_account_id: str, subject_user_uuid: UUID | None) -> list[str]:
     reasons: list[str] = []
-    if str(getattr(doc, "owner_id", "") or "").strip() == subject_account_id:
+    if str(doc.owner_id or "").strip() == subject_account_id:
         reasons.append("owner_id")
-    if str(getattr(doc, "lifecycle_owner", "") or "").strip() == subject_account_id:
+    if str(doc.lifecycle_owner or "").strip() == subject_account_id:
         reasons.append("lifecycle_owner")
-    if subject_user_uuid is not None and getattr(doc, "user_id", None) == subject_user_uuid:
+    if subject_user_uuid is not None and doc.user_id == subject_user_uuid:
         reasons.append("user_id")
     return reasons
 
@@ -87,10 +79,10 @@ def _list_rtbf_documents(
             continue
         out.append(
             {
-                "document_id": getattr(doc, "id", None),
-                "dataset_id": getattr(doc, "dataset_id", None),
-                "owner_id": str(getattr(doc, "owner_id", "") or "").strip() or None,
-                "filename": str(getattr(doc, "filename", "") or "").strip() or None,
+                "document_id": doc.id,
+                "dataset_id": doc.dataset_id,
+                "owner_id": str(doc.owner_id or "").strip() or None,
+                "filename": str(doc.filename or "").strip() or None,
                 "match_reasons": reasons,
             }
         )
@@ -98,7 +90,7 @@ def _list_rtbf_documents(
 
 
 async def _run_delete_document_lifecycle(
-    delete_document_lifecycle,
+    delete_document_lifecycle: Callable[..., Awaitable[None]],
     *,
     document_id: UUID,
     tenant_id: UUID,
@@ -154,7 +146,7 @@ def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: boo
             "dataset_id": (str(item.get("dataset_id")) if item.get("dataset_id") is not None else None),
             "filename": item.get("filename"),
             "match_reasons": list(item.get("match_reasons") or []),
-            "status": "planned" if bool(dry_run) else "pending",
+            "status": "planned" if dry_run else "pending",
             "attempts": 0,
         }
         for item in candidates[:50]
@@ -198,9 +190,9 @@ def _build_rtbf_summary(
         "subject_account_id": subject,
         "dry_run": bool(dry_run),
         "max_docs": int(max_docs),
-        "max_retries": int(max(0, int(max_retries or 0))),
+        "max_retries": max(0, int(max_retries or 0)),
         "artifact_scopes": list(RTBF_ARTIFACT_SCOPES),
-        "eligible": int(len(candidates)),
+        "eligible": len(candidates),
         "deleted": 0,
         "errors": 0,
         "cache_invalidations": 0,
@@ -250,19 +242,17 @@ async def _execute_rtbf_cascade(
                 document_id=document_id,
                 status="error",
                 error=str(exc)[:200],
-                attempts=int(max(1, int(max_retries or 0) + 1)),
+                attempts=max(1, int(max_retries or 0) + 1),
             )
             _increment_summary(summary, "errors")
 
     if successful_dataset_ids:
         try:
-            summary["cache_invalidations"] = int(
-                _invalidate_dataset_caches(
-                    db,
-                    tenant_id=tenant_id,
-                    dataset_ids=successful_dataset_ids,
-                    max_retries=max_retries,
-                )
+            summary["cache_invalidations"] = _invalidate_dataset_caches(
+                db,
+                tenant_id=tenant_id,
+                dataset_ids=successful_dataset_ids,
+                max_retries=max_retries,
             )
         except Exception:
             _increment_summary(summary, "errors")

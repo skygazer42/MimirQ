@@ -10,7 +10,7 @@ Important: Do NOT read or emit chunk content. Ids + counters only.
 
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -22,11 +22,21 @@ from app.models.evidence import EvidenceItem
 from app.services.evidence_drift_audit import build_drift_slice_keys, classify_reference_source_drift
 
 
-def _flatten_reference_pointers(items: list[EvidenceItem]) -> tuple[list[dict[str, Any]], int]:
-    pointers: list[dict[str, Any]] = []
+class _ReferencePointer(TypedDict):
+    suite_id: UUID
+    item_id: UUID
+    item_status: str
+    dataset_id: UUID
+    reference_source: dict[str, Any]
+    document_id: UUID
+    chunk_id: UUID
+
+
+def _flatten_reference_pointers(items: list[EvidenceItem]) -> tuple[list[_ReferencePointer], int]:
+    pointers: list[_ReferencePointer] = []
     invalid_refs = 0
     for item in items:
-        raw_refs = getattr(item, "reference_sources", None)
+        raw_refs = item.reference_sources
         refs = raw_refs if isinstance(raw_refs, list) else []
         for ref in refs:
             if not isinstance(ref, dict):
@@ -42,7 +52,7 @@ def _flatten_reference_pointers(items: list[EvidenceItem]) -> tuple[list[dict[st
                 {
                     "suite_id": item.suite_id,
                     "item_id": item.id,
-                    "item_status": str(getattr(item, "status", "") or "").strip().lower() or "unknown",
+                    "item_status": str(item.status or "").strip().lower() or "unknown",
                     "dataset_id": item.dataset_id,
                     "reference_source": dict(ref),
                     "document_id": doc_uuid,
@@ -52,8 +62,10 @@ def _flatten_reference_pointers(items: list[EvidenceItem]) -> tuple[list[dict[st
     return pointers, invalid_refs
 
 
-def _fetch_document_map(db: Session, *, tenant_id: UUID, pointers: list[dict[str, Any]]) -> dict[UUID, dict[str, Any]]:
-    doc_ids = sorted({pointer["document_id"] for pointer in pointers if pointer.get("document_id") is not None})
+def _fetch_document_map(
+    db: Session, *, tenant_id: UUID, pointers: list[_ReferencePointer]
+) -> dict[UUID, dict[str, Any]]:
+    doc_ids = sorted({pointer["document_id"] for pointer in pointers})
     if not doc_ids:
         return {}
     rows = (
@@ -73,8 +85,8 @@ def _fetch_document_map(db: Session, *, tenant_id: UUID, pointers: list[dict[str
     }
 
 
-def _fetch_chunk_map(db: Session, *, tenant_id: UUID, pointers: list[dict[str, Any]]) -> dict[UUID, dict[str, Any]]:
-    chunk_ids = sorted({pointer["chunk_id"] for pointer in pointers if pointer.get("chunk_id") is not None})
+def _fetch_chunk_map(db: Session, *, tenant_id: UUID, pointers: list[_ReferencePointer]) -> dict[UUID, dict[str, Any]]:
+    chunk_ids = sorted({pointer["chunk_id"] for pointer in pointers})
     if not chunk_ids:
         return {}
     rows = (
@@ -122,11 +134,11 @@ def _build_slice_output(
 ) -> dict[str, dict[str, Any]]:
     slices_out: dict[str, dict[str, Any]] = {}
     for slice_name, buckets in slice_totals.items():
-        rows = sorted(buckets.items(), key=lambda kv: (-int(kv[1] or 0), kv[0]))[: max(0, int(slice_top_n or 0))]
+        rows = sorted(buckets.items(), key=lambda kv: (-kv[1], kv[0]))[: max(0, int(slice_top_n or 0))]
         out_buckets: dict[str, Any] = {}
         for bucket, total in rows:
-            total_i = int(total or 0)
-            drift_i = int(slice_drifts[slice_name].get(bucket) or 0)
+            total_i = total
+            drift_i = slice_drifts[slice_name].get(bucket, 0)
             ok_i = max(0, total_i - drift_i)
             out_buckets[bucket] = {
                 "total": total_i,
@@ -134,9 +146,7 @@ def _build_slice_output(
                 "drift": drift_i,
                 "drift_rate": round(drift_i / total_i, 6) if total_i > 0 else 0.0,
                 "reasons": {
-                    str(k): int(v)
-                    for k, v in sorted((slice_reasons[slice_name].get(bucket) or Counter()).items())
-                    if int(v or 0) > 0
+                    str(k): v for k, v in sorted((slice_reasons[slice_name].get(bucket) or Counter()).items()) if v > 0
                 },
             }
         slices_out[slice_name] = out_buckets
@@ -168,7 +178,7 @@ def audit_reference_sources_drift(
 
     # Aggregate counters.
     total_items = len({it.id for it in items})
-    total_refs = len(pointers) + int(invalid_refs)
+    total_refs = len(pointers) + invalid_refs
     ok_refs = 0
     drift_refs = 0
     reasons: Counter[str] = Counter()
@@ -183,8 +193,8 @@ def audit_reference_sources_drift(
 
     # Count invalid refs as drift (PII-safe, no details).
     if invalid_refs:
-        reasons["invalid_reference"] += int(invalid_refs)
-        drift_refs += int(invalid_refs)
+        reasons["invalid_reference"] += invalid_refs
+        drift_refs += invalid_refs
 
     for p in pointers:
         ref = p["reference_source"]
@@ -245,14 +255,14 @@ def audit_reference_sources_drift(
         generated_at=now,
         dataset_id=dataset_id,
         suite_id=suite_id,
-        total_items=int(total_items),
-        total_references=int(total_refs),
-        ok_references=int(ok_refs),
-        drift_references=int(drift_refs),
-        drift_rate=float(drift_rate),
-        reasons={str(k): int(v) for k, v in sorted(reasons.items()) if int(v or 0) > 0},
+        total_items=total_items,
+        total_references=total_refs,
+        ok_references=ok_refs,
+        drift_references=drift_refs,
+        drift_rate=drift_rate,
+        reasons={str(k): v for k, v in sorted(reasons.items()) if v > 0},
         slices=slices_out,
-        details_truncated=bool(details_truncated),
+        details_truncated=details_truncated,
         drifted_references=details,
     )
 
