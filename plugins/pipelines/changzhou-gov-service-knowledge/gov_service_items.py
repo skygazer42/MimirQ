@@ -2,7 +2,7 @@
 
 import hashlib
 import re
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from langchain_core.documents import Document
@@ -61,16 +61,27 @@ _SERVICE_RETRIEVAL_INTENTS = (
 )
 
 
+class _ServiceItemCandidate(TypedDict):
+    idx: int
+    start: int
+    end: int
+    title: str
+    aliases: list[str]
+    fields: dict[str, str]
+    record_text: str
+    content_fingerprint: str
+    identity_key: str
+    online_url_raw: str
+    online_url_normalized: str
+
+
 def _source_name(meta: dict[str, Any]) -> str:
     user_meta = meta.get("user") if isinstance(meta.get("user"), dict) else {}
     for key in ("source", "source_path", "filename", "file_name", "source_file"):
         value = str(meta.get(key) or "").strip()
         if value:
             return value
-    value = str(user_meta.get("source_rel_path") or "").strip() if isinstance(user_meta, dict) else ""
-    if value:
-        return value
-    return ""
+    return str(user_meta.get("source_rel_path") or "").strip()
 
 
 def _district_from_source(source: str) -> str:
@@ -83,7 +94,7 @@ def _district_from_source(source: str) -> str:
 
 
 def _normalize_url(raw: str) -> str:
-    value = str(raw or "").strip().strip("<>").strip()
+    value = raw.strip().strip("<>").strip()
     if not value:
         return ""
     try:
@@ -97,7 +108,7 @@ def _normalize_url(raw: str) -> str:
 
 
 def _extract_url(text: str) -> tuple[str, str]:
-    match = _URL_RE.search(text or "")
+    match = _URL_RE.search(text)
     if not match:
         return "", ""
     raw = match.group(0).strip()
@@ -105,7 +116,7 @@ def _extract_url(text: str) -> tuple[str, str]:
 
 
 def _split_aliases(text: str) -> list[str]:
-    match = _ALIAS_RE.search(text or "")
+    match = _ALIAS_RE.search(text)
     if not match:
         return []
     seen: set[str] = set()
@@ -123,10 +134,10 @@ def _semantic_terms(*values: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for value in values:
-        text = str(value or "").strip().strip("[]").strip()
+        text = value.strip().strip("[]").strip()
         candidates = [text, *[match.group("value").strip() for match in _PAREN_TERM_RE.finditer(text)]]
         for candidate in candidates:
-            term = str(candidate or "").strip().strip("？?。；;，,")
+            term = candidate.strip().strip("？?。；;，,")
             if not term or term in seen:
                 continue
             seen.add(term)
@@ -139,14 +150,14 @@ def _service_semantic_keys(*, district: str, title: str, aliases: list[str]) -> 
     seen: set[str] = set()
 
     def add(key: str) -> None:
-        value = str(key or "").strip()
+        value = key.strip()
         if not value or value in seen:
             return
         seen.add(value)
         keys.append(value)
 
-    title = str(title or "").strip()
-    district = str(district or "").strip()
+    title = title.strip()
+    district = district.strip()
     if title:
         if district:
             add(f"service:{district}:{title}")
@@ -160,7 +171,7 @@ def _service_semantic_keys(*, district: str, title: str, aliases: list[str]) -> 
 
 def _clean_block_text(block: str) -> str:
     lines: list[str] = []
-    for raw in (block or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+    for raw in block.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         line = raw.strip()
         if not line:
             continue
@@ -180,7 +191,7 @@ def _extract_fields(cleaned: str) -> dict[str, str]:
     fields: dict[str, str] = {}
     current_name = ""
     current_value: list[str] = []
-    for raw in (cleaned or "").splitlines():
+    for raw in cleaned.splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -215,7 +226,7 @@ def _render_record_text(*, district: str, title: str, fields: dict[str, str], al
 
 
 def _identity_text(value: str) -> str:
-    text = str(value or "").strip().translate(str.maketrans({"（": "(", "）": ")"}))
+    text = value.strip().translate(str.maketrans({"（": "(", "）": ")"}))
     return re.sub(r"\s+", "", text)
 
 
@@ -233,7 +244,7 @@ def _record_id(
     base = hashlib.sha256(seed).hexdigest()[:24]
     if duplicate_variant_count <= 1:
         return base
-    suffix = str(content_fingerprint or "").strip()[:12]
+    suffix = content_fingerprint.strip()[:12]
     return f"{base}-{suffix}" if suffix else base
 
 
@@ -267,7 +278,7 @@ def govern_documents(
         source = _source_name(source_meta)
         district = str(params.get("district") or source_meta.get("district") or _district_from_source(source)).strip()
         text = source_doc.page_content or ""
-        candidates: list[dict[str, Any]] = []
+        candidates: list[_ServiceItemCandidate] = []
 
         for idx, (start, end, block) in enumerate(_block_positions(text), 1):
             title_match = _TITLE_RE.search(block)
@@ -302,22 +313,22 @@ def govern_documents(
 
         variants_by_key: dict[str, set[str]] = {}
         for item in candidates:
-            variants_by_key.setdefault(str(item["identity_key"]), set()).add(str(item["content_fingerprint"]))
+            variants_by_key.setdefault(item["identity_key"], set()).add(item["content_fingerprint"])
         variant_counts = {key: len(values) for key, values in variants_by_key.items()}
 
         for item in candidates:
-            title = str(item["title"])
-            aliases = list(item["aliases"])
-            fields = dict(item["fields"])
-            record_text = str(item["record_text"])
-            online_url_raw = str(item["online_url_raw"])
-            online_url_normalized = str(item["online_url_normalized"])
+            title = item["title"]
+            aliases = item["aliases"]
+            fields = item["fields"]
+            record_text = item["record_text"]
+            online_url_raw = item["online_url_raw"]
+            online_url_normalized = item["online_url_normalized"]
             record_id = _record_id(
                 source=source,
                 district=district,
                 title=title,
-                content_fingerprint=str(item["content_fingerprint"]),
-                duplicate_variant_count=variant_counts.get(str(item["identity_key"]), 1),
+                content_fingerprint=item["content_fingerprint"],
+                duplicate_variant_count=variant_counts[item["identity_key"]],
             )
             meta = {
                 **source_meta,
@@ -327,9 +338,9 @@ def govern_documents(
                 "service_aliases": aliases,
                 "source_file": source,
                 "source_record_id": record_id,
-                "source_record_index": int(item["idx"]),
-                "source_start_char": int(item["start"]),
-                "source_end_char": int(item["end"]),
+                "source_record_index": item["idx"],
+                "source_start_char": item["start"],
+                "source_end_char": item["end"],
                 "online_url": online_url_normalized or online_url_raw,
                 "online_url_raw": online_url_raw,
                 "online_url_normalized": online_url_normalized,
@@ -404,12 +415,12 @@ def _split_value_units(value: str) -> list[str]:
 
 
 def _split_oversize_unit(unit: str, budget: int) -> list[str]:
-    text = str(unit or "").strip()
+    text = unit.strip()
     if not text:
         return []
     if len(text) <= budget:
         return [text]
-    step = max(80, int(budget or 0))
+    step = max(80, budget)
     return [text[i : i + step].strip() for i in range(0, len(text), step) if text[i : i + step].strip()]
 
 
@@ -436,8 +447,8 @@ def _field_segments(name: str, value: str, *, budget: int) -> list[str]:
 
 
 def _chunk_contents(prefix: str, fields: dict[str, str], field_names: tuple[str, ...], *, max_chars: int) -> list[str]:
-    prefix = str(prefix or "").strip()
-    budget = max(120, int(max_chars or 0) - (len(prefix) + 1 if prefix else 0))
+    prefix = prefix.strip()
+    budget = max(120, max_chars - (len(prefix) + 1 if prefix else 0))
     segments: list[str] = []
     for name in field_names:
         value = fields.get(name)

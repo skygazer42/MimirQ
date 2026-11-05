@@ -16,6 +16,8 @@ local runner 与 reports 的 descriptor 参数标注实际 `PipelinePluginDescri
 
 当前插件执行模型仍在进程内：RLock、sys.path、sys.modules snapshot/restore、bytecode suppression、文件或 module 入口、每次 generator next 的执行上下文和 finally 顺序保持。package hash、来源证明、发布与测试报告 gating、可选 YAML、允许的前缀与平台保留命名空间不变。两个 contextmanager 只补充实际的 `Iterator[None]` 返回注解。
 
+[政务插件的来源与内部记录](2026-11-05-governance-plugin-owned-records.md)沿用原始值边界，处理具体插件的重复来源读取、事项候选、章节和实体；平台合同及运行层决定保持。
+
 三个已声明 Settings 字段直接读取，原 str/bool 解析与默认值保留。原始插件 Document/IndexRecord/字典/文本/迭代器、inspect.signature、JSON、YAML、regex、metadata、provenance 和黄金草稿模板仍保留全部入口检查、转换、复制和错误政策；不执行插件或安全 scanner 来验证本批。
 
 ## Alternatives considered
