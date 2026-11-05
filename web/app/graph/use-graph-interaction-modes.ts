@@ -11,16 +11,13 @@ import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse, Ra
 import { toast } from 'sonner'
 
 import { buildGraphFromTrace, getGraphLinkEndpointId, type GraphLinkLike, type GraphNodeLike } from './graph-page-utils'
+import type { UseGraphDataLoadingResult } from './use-graph-data-loading'
+import type { UseGraphPageStateResult } from './use-graph-page-state'
 
 type GraphViewportApi = {
   focusNode?: (nodeId: string) => void
   zoomToFit?: () => void
 } | null
-
-type GraphExplainabilityStep = {
-  node: string
-  reason: string
-}
 
 type UseGraphInteractionModesParams = Readonly<{
   searchInputRef: RefObject<HTMLInputElement | null>
@@ -28,10 +25,7 @@ type UseGraphInteractionModesParams = Readonly<{
   handleExpandNode: () => void
   handleDeleteNode: (node?: GraphNodeLike) => void
   getActiveGraph: () => GraphViewportApi
-  loadInitialData: (
-    source?: 'live',
-    opts?: { includeEntityLinks?: boolean; includeRelationLinks?: boolean; minSharedEvents?: number },
-  ) => Promise<void>
+  loadInitialData: UseGraphDataLoadingResult['loadInitialData']
   selectedNode: GraphNodeLike | null
   isDetailOpen: boolean
   isLinkDetailOpen: boolean
@@ -68,7 +62,7 @@ type UseGraphInteractionModesParams = Readonly<{
   setConnectLabelDraft: Dispatch<SetStateAction<string>>
   setConnectLabelOpen: Dispatch<SetStateAction<boolean>>
   setCurrentStepIndex: Dispatch<SetStateAction<number>>
-  setExplainSteps: Dispatch<SetStateAction<GraphExplainabilityStep[]>>
+  setExplainSteps: Dispatch<SetStateAction<UseGraphPageStateResult['explainSteps']>>
   setIsExplainMode: Dispatch<SetStateAction<boolean>>
   setViewMode: Dispatch<SetStateAction<'2d' | '3d'>>
   setGraphData: Dispatch<SetStateAction<GraphData>>
@@ -85,7 +79,7 @@ type UseGraphInteractionModesParams = Readonly<{
   resetExplainMode: () => void
 }>
 
-function buildHeuristicExplainSteps(data: GraphData): GraphExplainabilityStep[] {
+function buildHeuristicExplainSteps(data: GraphData): UseGraphPageStateResult['explainSteps'] {
   if (data.nodes.length === 0) return []
 
   const trace: GraphNodeLike[] = []

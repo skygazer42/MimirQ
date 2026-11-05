@@ -151,6 +151,23 @@ type GraphNodeDetailPanelProps = Readonly<{
   onMergeAliasSuggestion: (row: KGEntityAliasSuggestionItem) => void
 }>
 
+type GraphNodeKgDetailProps = Pick<
+  GraphNodeDetailPanelProps,
+  | 'selectedNode'
+  | 'kgNodeDetailLoading'
+  | 'kgNodeDetail'
+  | 'entityAliasesLoading'
+  | 'entityAliases'
+  | 'aliasDraft'
+  | 'aliasSaving'
+  | 'aliasSuggestionsLoading'
+  | 'aliasSuggestions'
+  | 'onAliasDraftChange'
+  | 'onSaveAlias'
+  | 'onRequestDeleteAlias'
+  | 'onMergeAliasSuggestion'
+>
+
 function GraphNodeKgDetail({
   selectedNode,
   kgNodeDetailLoading,
@@ -165,24 +182,7 @@ function GraphNodeKgDetail({
   onSaveAlias,
   onRequestDeleteAlias,
   onMergeAliasSuggestion,
-}: Omit<
-  GraphNodeDetailPanelProps,
-  | 'open'
-  | 'detailScrollRef'
-  | 'dataSource'
-  | 'lastResolutionActionId'
-  | 'undoSubmitting'
-  | 'isLoading'
-  | 'onClose'
-  | 'onChat'
-  | 'onViewSource'
-  | 'onExpandNode'
-  | 'onStartConnectMode'
-  | 'onDeleteNode'
-  | 'onOpenMerge'
-  | 'onOpenSplit'
-  | 'onUndoLastResolution'
->) {
+}: GraphNodeKgDetailProps) {
   if (kgNodeDetailLoading) {
     return (
       <div className="rounded-lg border border-info/30 bg-info/10 p-2.5 text-[11px] text-muted-foreground">

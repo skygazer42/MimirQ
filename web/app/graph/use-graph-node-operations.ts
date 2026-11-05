@@ -10,34 +10,24 @@ import { detachPromise } from '@/lib/utils'
 import type { KGEntityDetailResponse, KGEventDetailResponse } from '@/types'
 
 import { getGraphLinkEndpointId, type GraphNodeLike } from './graph-page-utils'
-
-type DeleteNodeTarget = {
-  id: string
-  label: string
-} | null
-
-type GraphScopeParams = Readonly<{
-  document_ids?: string[]
-  dataset_id?: string
-  pipeline_hash?: string
-}> | null
+import type { UseGraphPageStateResult } from './use-graph-page-state'
 
 type UseGraphNodeOperationsParams = Readonly<{
   dataSource: 'live' | 'file'
   isDetailOpen: boolean
   selectedNode: GraphNodeLike | null
-  scopeParams: GraphScopeParams
+  scopeParams: UseGraphPageStateResult['scopeParams']
   includeEntityLinks: boolean
   includeRelationLinks: boolean
   minSharedEvents: number
   maxEntityLinks: number
   scopedDocumentIds: string[] | null
   pipelineHash: string | null
-  deleteNodeTarget: DeleteNodeTarget
+  deleteNodeTarget: UseGraphPageStateResult['deleteNodeTarget']
   setGraphData: Dispatch<SetStateAction<GraphData>>
   setIsLoading: Dispatch<SetStateAction<boolean>>
   setDeleteNodeOpen: Dispatch<SetStateAction<boolean>>
-  setDeleteNodeTarget: Dispatch<SetStateAction<DeleteNodeTarget>>
+  setDeleteNodeTarget: Dispatch<SetStateAction<UseGraphPageStateResult['deleteNodeTarget']>>
   setSelectedNode: Dispatch<SetStateAction<GraphNodeLike | null>>
   setIsDetailOpen: Dispatch<SetStateAction<boolean>>
   setKgNodeDetail: Dispatch<SetStateAction<KGEntityDetailResponse | KGEventDetailResponse | null>>

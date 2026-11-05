@@ -20,22 +20,12 @@ import {
   type GraphNodeLike,
   stripFilenameExtension,
 } from './graph-page-utils'
+import type { UseGraphPageStateResult } from './use-graph-page-state'
 
 type GraphViewportApi = {
   zoomToFit?: () => void
   exportPngDataUrl?: () => string | null
   exportSvgString?: () => string | null
-} | null
-
-type GraphScopeParams = Readonly<{
-  document_ids?: string[]
-  dataset_id?: string
-  pipeline_hash?: string
-}> | null
-
-type DeleteNodeTarget = {
-  id: string
-  label: string
 } | null
 
 function getGraphNodeDocumentId(node: GraphNodeLike | null | undefined): string {
@@ -70,7 +60,7 @@ type UseGraphPageActionsParams = Readonly<{
   viewMode: '2d' | '3d'
   datasetId: string | null
   dataSource: 'live' | 'file'
-  scopeParams: GraphScopeParams
+  scopeParams: UseGraphPageStateResult['scopeParams']
   includeEntityLinks: boolean
   includeRelationLinks: boolean
   minSharedEvents: number
@@ -81,7 +71,7 @@ type UseGraphPageActionsParams = Readonly<{
   setSelectedNode: Dispatch<SetStateAction<GraphNodeLike | null>>
   setSelectedLink: Dispatch<SetStateAction<GraphLinkLike | null>>
   setDeleteNodeOpen: Dispatch<SetStateAction<boolean>>
-  setDeleteNodeTarget: Dispatch<SetStateAction<DeleteNodeTarget>>
+  setDeleteNodeTarget: Dispatch<SetStateAction<UseGraphPageStateResult['deleteNodeTarget']>>
 }>
 
 export function useGraphPageActions({

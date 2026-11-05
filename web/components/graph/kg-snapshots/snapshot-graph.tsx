@@ -77,7 +77,7 @@ export function iconForNodeType(type: string): ReactNode {
 export function strengthForWeight(weight: unknown): SnapshotStudioLink['strength'] {
   const value = Number(weight ?? 1)
   if (!Number.isFinite(value)) return 'medium'
-  if (value >= 0.75 || value >= 3) return 'strong'
+  if (value >= 0.75) return 'strong'
   if (value <= 0.25) return 'weak'
   return 'medium'
 }
