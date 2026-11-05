@@ -246,6 +246,6 @@ def _dify_kg_records_from_rows(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-        if str(record.get("content") or "").strip():
+        if record["content"].strip():
             records.append(record)
     return records

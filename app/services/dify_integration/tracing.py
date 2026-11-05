@@ -16,10 +16,6 @@ _DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS = 160
 
 _DIFY_TRACE_QUERY_PATH_MAX_CHARS = 120
 
-_DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS = 160
-
-_DIFY_TRACE_QUERY_PATH_MAX_CHARS = 120
-
 
 def _dify_trace_citation(record: DifyExternalKnowledgeRecord, *, elapsed_sec: float | None) -> dict[str, Any]:
     metadata = record.metadata
@@ -127,7 +123,7 @@ def _log_dify_external_rag_trace(
             "source": "dify_external_knowledge",
             "conversation_id": str(conversation_id),
             "tenant_id": str(tenant_id),
-            "request_id": str(resolved_request_id),
+            "request_id": resolved_request_id,
             "question": str(question or ""),
             "query_for_retrieval": str(question or ""),
             "citations_count": len(citations),

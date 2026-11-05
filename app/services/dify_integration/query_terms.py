@@ -2,6 +2,7 @@
 
 from app.services.dify_integration.common import (
     _CJK_RE,
+    _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS,
     _MIN_SPECIFIC_INTENT_CHARS,
     _QUOTED_ANCHOR_RE,
     _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
@@ -33,8 +34,6 @@ from app.services.dify_integration.scoring import (
     _rstrip_service_anchor_query_noise,
     _strip_trailing_service_anchor_admin,
 )
-
-_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS = 8
 
 
 def _strip_service_anchor_query_noise(

@@ -6,7 +6,7 @@ from typing import Any
 from app.core.config import settings
 from app.rag.core.logging import get_logger
 from app.rag.reranker.factory import get_reranker
-from app.rag.reranker.types import RerankCandidate
+from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.rag.retrieval.planner import retrieval_policy_query_terms
 from app.rag.retrieval.plugin_policy import (
     record_retrieval_policy_anchor_binding_scores,
@@ -434,7 +434,7 @@ def _final_rerank_provider(records: list[dict[str, Any]]) -> str | None:
 
 def _final_rerank_candidate_count(record_count: int, top_k: int) -> int:
     try:
-        configured_top_n = int(getattr(settings, "RERANKER_TOP_N", top_k) or top_k)
+        configured_top_n = int(settings.RERANKER_TOP_N or top_k)
     except (TypeError, ValueError):
         configured_top_n = int(top_k or 1)
     return min(record_count, max(1, int(top_k or 1), configured_top_n))
@@ -468,7 +468,7 @@ def _ordered_final_rerank_records(
     *,
     id_to_record: dict[str, dict[str, Any]],
     provider: str,
-    result: Any,
+    result: RerankResult,
     elapsed_sec: float,
 ) -> list[dict[str, Any]]:
     ordered: list[dict[str, Any]] = []
@@ -502,7 +502,7 @@ def _final_rerank_record_with_metadata(
     *,
     candidate_id: str,
     rerank_provider: str,
-    result: Any,
+    result: RerankResult,
     elapsed_sec: float,
 ) -> dict[str, Any]:
     next_record = dict(record)
@@ -737,7 +737,7 @@ def _composite_exact_anchor_slot_metadata(
         "dify_composite_source_chunk_ids": source_chunk_ids,
         "dify_composite_source_document_ids": source_document_ids,
     }
-    section_types = [spec["value"] for spec in covered_specs if spec.get("metadata") == "section_type"]
+    section_types = [spec["value"] for spec in covered_specs if spec["metadata"] == "section_type"]
     if section_types:
         metadata["section_type"] = "composite"
         metadata["dify_composite_section_types"] = section_types

@@ -161,9 +161,14 @@ def _build_dify_external_retrieval_context(
     policy_fallback_multiplier = 1
     if not fast_latency_profile:
         policy_fallback_multiplier = knowledge_scope.resolve_policy_fallback_multiplier(body.knowledge_id)
+        try:
+            fallback_configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX or 50)
+        except (TypeError, ValueError):
+            fallback_configured_max = 50
         candidate_top_k = policy_helpers.apply_policy_fallback_candidate_multiplier(
             candidate_top_k,
             multiplier=policy_fallback_multiplier,
+            configured_max=fallback_configured_max,
         )
     policy_plugin_refs = knowledge_scope.resolve_policy_plugin_refs(body.knowledge_id)
     if (
@@ -380,7 +385,7 @@ async def _apply_metadata_anchor_preflight(ctx: _DifyExternalRetrievalContext) -
     has_preflight_anchor = _dify_preflight_has_anchor(ctx, metadata_anchor_records)
     ctx.stage_timings_ms["metadata_preflight_ms"] = round((time.perf_counter() - preflight_started) * 1000, 2)
     ctx.stage_timings_ms["metadata_preflight_records"] = len(metadata_anchor_records)
-    ctx.stage_timings_ms["metadata_preflight_accepted"] = bool(has_preflight_anchor)
+    ctx.stage_timings_ms["metadata_preflight_accepted"] = has_preflight_anchor
     if has_preflight_anchor:
         ctx.metadata_anchor_fallback_count = len(metadata_anchor_records)
         ctx.records.extend(metadata_anchor_records)

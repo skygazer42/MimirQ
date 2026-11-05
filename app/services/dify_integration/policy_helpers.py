@@ -30,7 +30,7 @@ def retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
         descriptor = resolve_registered_plugin_descriptor(ref)
     except Exception:
         return {}
-    policy = getattr(descriptor, "retrieval_policy", None)
+    policy = descriptor.retrieval_policy
     if isinstance(policy, dict) and policy.get("schema") == "mimirq.retrieval_policy.v1":
         return dict(policy)
     return {}
@@ -103,7 +103,7 @@ def response_hints_for_record(
     if not plugin_ref:
         return {}
     policy = retrieval_policy_for_plugin_ref(plugin_ref)
-    raw = policy.get("response_hints") if isinstance(policy, dict) else None
+    raw = policy.get("response_hints")
     return dict(raw) if isinstance(raw, dict) else {}
 
 
@@ -171,7 +171,7 @@ def fast_response_field_rules_for_policy_refs(
     seen_labels: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_rule in policy.get("fast_response_field_rules") or ():
             rule = dict(raw_rule) if isinstance(raw_rule, dict) else {}
@@ -193,7 +193,7 @@ def requested_label_prefixes_for_policy_refs(
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
         policy = retrieval_policy_for_plugin_ref(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         response_hints = policy.get("response_hints")
         if not isinstance(response_hints, dict):
