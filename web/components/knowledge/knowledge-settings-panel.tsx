@@ -2,7 +2,7 @@
 
 /** 数据集配置草稿、保存验证与连接器运行记录。 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -59,6 +59,14 @@ import type { SystemSettings } from '@/types/settings'
 // --- 类型定义 ---
 type KnowledgeSettingsConfig = Pick<SystemSettings, 'embedding'> & {
   rag: DatasetRagViewConfig
+}
+type KnowledgeSettingsVisit = {
+  datasetId: string | undefined
+}
+type KnowledgeSettingsDraftState = {
+  visit: KnowledgeSettingsVisit | null
+  savedConfig: KnowledgeSettingsConfig | null
+  draftConfig: KnowledgeSettingsConfig | null
 }
 type DatasetRagVerificationState = {
   datasetId: string
@@ -252,14 +260,27 @@ export function KnowledgeSettingsPanel({
   // setRunStatusFilter('all')
   // bg-primary/10 px-2.5 py-0.5 rounded-lg border border-primary/20
   // border-border/40 bg-background/70
-  const [draftConfig, setDraftConfig] = useState<KnowledgeSettingsConfig | null>(null)
-  const [savedConfig, setSavedConfig] = useState<KnowledgeSettingsConfig | null>(null)
+  const settingsVisit = useMemo(() => ({ datasetId: selectedDatasetId }), [selectedDatasetId])
+  const [configState, setConfigState] = useState<KnowledgeSettingsDraftState>({
+    visit: null,
+    savedConfig: null,
+    draftConfig: null,
+  })
+  const { savedConfig, draftConfig } = configState
+  const setSavedConfig = useCallback((config: KnowledgeSettingsConfig | null) => {
+    setConfigState((current) => ({ ...current, savedConfig: config }))
+  }, [])
+  const setDraftConfig = useCallback((update: SetStateAction<KnowledgeSettingsConfig | null>) => {
+    setConfigState((current) => ({
+      ...current,
+      draftConfig: typeof update === 'function' ? update(current.draftConfig) : update,
+    }))
+  }, [])
   const [isSavingSettings, setIsSavingSettings] = useState(false)
   const [confirmEmbeddingSaveOpen, setConfirmEmbeddingSaveOpen] = useState(false)
   const [datasetRagVerification, setDatasetRagVerification] = useState<DatasetRagVerificationState | null>(null)
   const [guideExpanded, setGuideExpanded] = useState(false)
   const [currentConfigOpen, setCurrentConfigOpen] = useState(false)
-  const settingsVisit = useMemo(() => ({ datasetId: selectedDatasetId }), [selectedDatasetId])
   const settingsVisitRef = useRef<typeof settingsVisit | null>(null)
   const saveRequestRef = useRef<object | null>(null)
 
@@ -281,8 +302,14 @@ export function KnowledgeSettingsPanel({
   useEffect(() => {
     if (!settingsQuery.data) return
     const cfg = buildScopedSettingsConfig(settingsQuery.data, selectedDataset)
-    setSavedConfig(cfg)
-    setDraftConfig(structuredClone(cfg))
+    setConfigState((current) => ({
+      visit: settingsVisit,
+      savedConfig: cfg,
+      draftConfig:
+        current.visit === settingsVisit && JSON.stringify(current.savedConfig) !== JSON.stringify(current.draftConfig)
+          ? current.draftConfig
+          : structuredClone(cfg),
+    }))
   }, [
     settingsQuery.data,
     selectedDataset,
@@ -290,6 +317,7 @@ export function KnowledgeSettingsPanel({
     selectedDataset?.embedding_defaults?.model,
     selectedDataset?.embedding_defaults?.provider,
     selectedDatasetId,
+    settingsVisit,
   ])
 
   useEffect(() => {
@@ -301,7 +329,7 @@ export function KnowledgeSettingsPanel({
   const handleResetDraft = useCallback(() => {
     setDraftConfig(savedConfig ? structuredClone(savedConfig) : null)
     setConfirmEmbeddingSaveOpen(false)
-  }, [savedConfig])
+  }, [savedConfig, setDraftConfig])
 
   const handleSave = async () => {
     if (!draftConfig || isSavingSettings || saveRequestRef.current) return

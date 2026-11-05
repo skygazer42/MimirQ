@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Dataset, SystemSettings } from '@/types'
 
 const ports = vi.hoisted(() => ({
-  datasets: { update: vi.fn(), get: vi.fn() },
+  datasets: { update: vi.fn(), get: vi.fn(), listAll: vi.fn() },
   settings: { get: vi.fn(), update: vi.fn() },
   retrieval: { configHash: vi.fn() },
   translate: (key: string) => key,
@@ -48,6 +48,7 @@ vi.mock('@/components/ui/select', async () => {
 })
 
 import { KnowledgeSettingsPanel } from './knowledge-settings-panel'
+import { useDatasets } from '@/hooks/use-datasets'
 import { clearAuthSession, setAuthSession } from '@/lib/auth-storage'
 import { queryKeys } from '@/lib/query-keys'
 
@@ -259,11 +260,12 @@ async function mount() {
   const root = createRoot(holder)
   function Harness() {
     const [id, setId] = useState('dataset-a')
+    const { datasets: knownDatasets } = useDatasets()
     return (
       <KnowledgeSettingsPanel
         selectedDatasetId={id}
-        selectedDataset={datasets.find((dataset) => dataset.id === id)}
-        datasets={datasets}
+        selectedDataset={knownDatasets.find((dataset) => dataset.id === id)}
+        datasets={knownDatasets}
         onDatasetScopeChange={setId}
       />
     )
@@ -326,6 +328,7 @@ beforeEach(() => {
   ports.settings.get.mockReset().mockResolvedValue(settings())
   ports.settings.update.mockReset().mockResolvedValue({ success: true })
   ports.datasets.update.mockReset().mockResolvedValue(undefined)
+  ports.datasets.listAll.mockReset().mockImplementation(async () => structuredClone(datasets))
   ports.datasets.get.mockReset().mockImplementation(async (id: string) => ({
     ...datasets.find((dataset) => dataset.id === id),
     rag_defaults: { top_k: 12, score_threshold: 0.6, retrieval_mode: 'hybrid' },
@@ -426,5 +429,97 @@ describe('knowledge settings save ownership', () => {
     expect(button('保存配置').disabled).toBe(false)
     expect(ports.toast.error).toHaveBeenCalledWith('current save rejected')
     expect(ports.datasets.get).not.toHaveBeenCalled()
+  })
+})
+
+describe('independent actual dataset-query integration', () => {
+  it('refreshes the saved baseline behind a revisited draft and resets to the accepted server value', async () => {
+    const response = deferred<unknown>()
+    let persisted = structuredClone(datasets)
+    ports.datasets.listAll.mockImplementation(async () => structuredClone(persisted))
+    ports.datasets.update.mockReturnValueOnce(response.promise)
+    const view = await mount()
+    click('应用建议值')
+    click('保存配置')
+    switchScope('dataset-b')
+    switchScope('dataset-a')
+    editTopK(18)
+    persisted = persisted.map((dataset) =>
+      dataset.id === 'dataset-a'
+        ? { ...dataset, rag_defaults: { top_k: 12, score_threshold: 0.6, retrieval_mode: 'hybrid' } }
+        : dataset,
+    )
+    await act(async () => response.resolve(undefined))
+    await act(async () => {
+      await vi.waitFor(() => expect(ports.datasets.listAll.mock.calls.length).toBeGreaterThan(1))
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(topK().value).toBe('18')
+    expect(view.client.getQueryData<Dataset>(queryKeys.datasets.detail('dataset-a'))?.rag_defaults?.top_k).toBe(12)
+    expect(
+      view.client
+        .getQueryData<Dataset[]>(queryKeys.datasets.exhaustive({ exhaustive: true }))
+        ?.find((dataset) => dataset.id === 'dataset-a')?.rag_defaults?.top_k,
+    ).toBe(12)
+    click('恢复已保存')
+    expect(topK().value).toBe('12')
+    expect(button('保存配置').disabled).toBe(true)
+  })
+
+  it('preserves a new A visit draft while the old save refreshes the real exhaustive dataset query', async () => {
+    const response = deferred<unknown>()
+    let persisted = structuredClone(datasets)
+    ports.datasets.listAll.mockImplementation(async () => structuredClone(persisted))
+    ports.datasets.update.mockReturnValueOnce(response.promise)
+    await mount()
+    click('应用建议值')
+    click('保存配置')
+    switchScope('dataset-b')
+    switchScope('dataset-a')
+    editTopK(18)
+    expect(topK().value).toBe('18')
+    persisted = persisted.map((dataset) =>
+      dataset.id === 'dataset-a'
+        ? { ...dataset, rag_defaults: { top_k: 12, score_threshold: 0.6, retrieval_mode: 'hybrid' } }
+        : dataset,
+    )
+    await act(async () => response.resolve(undefined))
+    await act(async () => {
+      await vi.waitFor(() => expect(ports.datasets.listAll.mock.calls.length).toBeGreaterThan(1))
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(topK().value).toBe('18')
+    expect(button('保存配置').disabled).toBe(false)
+  })
+
+  it('preserves an edited B draft as the unchanged-object control during old A refresh', async () => {
+    const response = deferred<unknown>()
+    let persisted = structuredClone(datasets)
+    ports.datasets.listAll.mockImplementation(async () => structuredClone(persisted))
+    ports.datasets.update.mockReturnValueOnce(response.promise)
+    await mount()
+    click('应用建议值')
+    click('保存配置')
+    switchScope('dataset-b')
+    editTopK(27)
+    expect(topK().value).toBe('27')
+    persisted = persisted.map((dataset) =>
+      dataset.id === 'dataset-a'
+        ? { ...dataset, rag_defaults: { top_k: 12, score_threshold: 0.6, retrieval_mode: 'hybrid' } }
+        : dataset,
+    )
+    await act(async () => response.resolve(undefined))
+    await act(async () => {
+      await vi.waitFor(() => expect(ports.datasets.listAll.mock.calls.length).toBeGreaterThan(1))
+    })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(topK().value).toBe('27')
+    expect(button('保存配置').disabled).toBe(false)
   })
 })
