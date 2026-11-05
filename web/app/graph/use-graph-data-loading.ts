@@ -100,8 +100,8 @@ export function useGraphDataLoading({
   resetExplainMode,
 }: UseGraphDataLoadingParams): UseGraphDataLoadingResult {
   const [autoLoadedGraphKey, setAutoLoadedGraphKey] = useState<string | null>(null)
-  // Monotonic token to discard stale initial-load responses: when the scope
-  // changes quickly, an earlier (slower) fetch must not overwrite a later one.
+  // Live loads and Trace selections share one owner so an earlier operation
+  // cannot overwrite a newer graph or clear its loading state.
   const loadTokenRef = useRef(0)
 
   const resetGraphSurface = useCallback(() => {
@@ -223,10 +223,12 @@ export function useGraphDataLoading({
       const file = event.target.files?.[0]
       if (!file) return
 
+      const requestToken = (loadTokenRef.current += 1)
       setIsLoading(true)
       setFileName(file.name)
       try {
         const text = await file.text()
+        if (requestToken !== loadTokenRef.current) return
         const payload = JSON.parse(text)
         const trace = extractTraceFromPayload(payload)
         if (!trace) {
@@ -242,11 +244,13 @@ export function useGraphDataLoading({
         setViewMode('2d')
         toast.success('Trace 已导入（可点击右下角 Play 回放）')
       } catch (error) {
-        reportClientError('Failed to import trace JSON', error)
-        setTraceReplay(null)
-        toast.error('导入 Trace 失败：请检查 JSON 格式或粘贴/导出内容是否完整')
+        if (requestToken === loadTokenRef.current) {
+          reportClientError('Failed to import trace JSON', error)
+          setTraceReplay(null)
+          toast.error('导入 Trace 失败：请检查 JSON 格式或粘贴/导出内容是否完整')
+        }
       } finally {
-        setIsLoading(false)
+        if (requestToken === loadTokenRef.current) setIsLoading(false)
         event.target.value = ''
       }
     },
@@ -297,7 +301,12 @@ export function useGraphDataLoading({
     }
 
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      const parsed = JSON.parse(trimmed)
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(trimmed)
+      } catch (error) {
+        if (!fileName.toLowerCase().endsWith('.jsonl')) throw error
+      }
       if (Array.isArray(parsed)) return coerceRows(parsed)
       if (parsed && typeof parsed === 'object') {
         const payload = parsed as KGManualImportRequest
