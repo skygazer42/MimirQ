@@ -89,7 +89,7 @@ def _lexical_score(*, query_terms: list[str], name: str, normalized_name: str, t
 
     if matched > 1:
         score = min(1.0, score + min(0.12, matched * 0.03))
-    return float(score)
+    return score
 
 
 def _active_pipeline_hash_expr(doc_model):  # noqa: ANN001
@@ -273,44 +273,44 @@ def _apply_entity_lexical_scope(
     return stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
 
 
-def _format_lexical_entity(entity, *, terms: list[str], tenant_id) -> dict | None:  # noqa: ANN001
-    entity_id = str(getattr(entity, "id", "") or "")
+def _format_lexical_entity(entity: KgEntity, *, terms: list[str], tenant_id: UUID | str) -> dict | None:
+    entity_id = str(entity.id or "")
     score = _lexical_score(
         query_terms=terms,
-        name=str(getattr(entity, "name", "") or ""),
-        normalized_name=str(getattr(entity, "normalized_name", "") or ""),
+        name=str(entity.name or ""),
+        normalized_name=str(entity.normalized_name or ""),
     )
     if not entity_id or score <= 0:
         return None
     return {
         "entity_id": entity_id,
-        "name": str(getattr(entity, "name", "") or ""),
-        "type": str(getattr(entity, "type", "") or "unknown"),
-        "similarity": float(score),
+        "name": str(entity.name or ""),
+        "type": str(entity.type or "unknown"),
+        "similarity": score,
         "tenant_id": str(tenant_id),
         "method": "lexical_match",
     }
 
 
-def _canonical_entity_ids(rows: list) -> list:  # noqa: ANN001
-    return [getattr(row, "canonical_entity_id", None) for row in rows if getattr(row, "canonical_entity_id", None)]
+def _canonical_entity_ids(rows: list[KgEntityAlias]) -> list[UUID]:
+    return [row.canonical_entity_id for row in rows if row.canonical_entity_id]
 
 
-def _alias_match_item(row, entity, *, resolved_id, tenant_id: UUID) -> dict:  # noqa: ANN001
+def _alias_match_item(row: KgEntityAlias, entity: KgEntity, *, resolved_id: UUID, tenant_id: UUID) -> dict:
     return {
         "entity_id": str(resolved_id),
-        "name": str(getattr(entity, "name", "") or ""),
-        "type": str(getattr(entity, "type", "") or "unknown"),
+        "name": str(entity.name or ""),
+        "type": str(entity.type or "unknown"),
         "similarity": 1.0,
         "tenant_id": str(tenant_id),
-        "alias_id": str(getattr(row, "id", "") or ""),
-        "alias": str(getattr(row, "alias", "") or ""),
+        "alias_id": str(row.id or ""),
+        "alias": str(row.alias or ""),
         "method": "alias_match",
     }
 
 
 def _alias_match_results(
-    rows: list,
+    rows: list[KgEntityAlias],
     *,
     resolved_map: dict[UUID, UUID],
     ent_by_id: dict[UUID, KgEntity],
@@ -320,7 +320,7 @@ def _alias_match_results(
     out: list[dict] = []
     seen: set[str] = set()
     for row in rows:
-        raw_id = getattr(row, "canonical_entity_id", None)
+        raw_id = row.canonical_entity_id
         resolved_id = resolved_map.get(raw_id, raw_id)
         entity = ent_by_id.get(resolved_id)
         sig = str(resolved_id) if resolved_id is not None else ""
@@ -439,23 +439,23 @@ def _apply_event_lexical_scope(
     return stmt.where(KgSourceEvent.document_id.in_(select(allowed_docs.c.id)))
 
 
-def _format_lexical_event(event, *, terms: list[str], tenant_id) -> dict | None:  # noqa: ANN001
+def _format_lexical_event(event: KgSourceEvent, *, terms: list[str], tenant_id: UUID | str) -> dict | None:
     score = _lexical_score(
         query_terms=terms,
-        name=str(getattr(event, "title", "") or ""),
-        normalized_name=str(getattr(event, "title", "") or ""),
-        text=f"{getattr(event, 'summary', '') or ''} {getattr(event, 'content', '') or ''}",
+        name=str(event.title or ""),
+        normalized_name=str(event.title or ""),
+        text=f"{event.summary or ''} {event.content or ''}",
     )
     if score <= 0:
         return None
     return {
-        "event_id": str(getattr(event, "id", "") or ""),
-        "title": str(getattr(event, "title", "") or ""),
-        "summary": str(getattr(event, "summary", "") or ""),
-        "similarity": float(score),
+        "event_id": str(event.id or ""),
+        "title": str(event.title or ""),
+        "summary": str(event.summary or ""),
+        "similarity": score,
         "tenant_id": str(tenant_id),
-        "chunk_id": str(getattr(event, "chunk_id", "") or ""),
-        "document_id": str(getattr(event, "document_id", "") or ""),
+        "chunk_id": str(event.chunk_id or ""),
+        "document_id": str(event.document_id or ""),
         "method": "lexical_match",
     }
 
@@ -533,7 +533,7 @@ class EntityRepository:
         scored: list[dict] = []
         seen_ids: set[str] = set()
         for ent in rows:
-            ent_id = str(getattr(ent, "id", "") or "")
+            ent_id = str(ent.id or "")
             if not ent_id or ent_id in seen_ids:
                 continue
             seen_ids.add(ent_id)
@@ -592,6 +592,98 @@ class EntityRepository:
         return ent
 
 
+def _update_redirect_map(
+    redirect_map: dict[UUID, UUID],
+    rows: list[KgEntityRedirect],
+) -> set[UUID]:
+    next_frontier: set[UUID] = set()
+    for row in rows:
+        frm = row.from_entity_id
+        to = row.to_entity_id
+        if frm is None or to is None or frm == to or redirect_map.get(frm) == to:
+            continue
+        redirect_map[frm] = to
+        if to not in redirect_map:
+            next_frontier.add(to)
+    return {candidate for candidate in next_frontier if candidate not in redirect_map}
+
+
+def _resolve_redirect_origin(
+    origin: UUID,
+    *,
+    resolved: dict[UUID, UUID],
+    redirect_map: dict[UUID, UUID],
+    max_depth: int,
+) -> None:
+    cur = origin
+    path: list[UUID] = []
+    path_index: dict[UUID, int] = {}
+    steps = 0
+    while steps < max_depth:
+        if _resolve_known_redirect(cur, path=path, resolved=resolved):
+            return
+        if _resolve_redirect_cycle(cur, path=path, path_index=path_index, resolved=resolved):
+            return
+        path_index[cur] = len(path)
+        path.append(cur)
+        nxt = redirect_map.get(cur)
+        if _resolve_terminal_redirect(cur, nxt=nxt, path=path, resolved=resolved):
+            return
+        cur = nxt
+        steps += 1
+    canonical = resolved.get(cur, cur)
+    for node in path:
+        resolved[node] = canonical
+
+
+def _resolve_known_redirect(
+    cur: UUID,
+    *,
+    path: list[UUID],
+    resolved: dict[UUID, UUID],
+) -> bool:
+    if cur not in resolved:
+        return False
+    canonical = resolved[cur]
+    for node in path:
+        resolved[node] = canonical
+    return True
+
+
+def _resolve_redirect_cycle(
+    cur: UUID,
+    *,
+    path: list[UUID],
+    path_index: dict[UUID, int],
+    resolved: dict[UUID, UUID],
+) -> bool:
+    if cur not in path_index:
+        return False
+    cycle_start = path_index[cur]
+    cycle_nodes = path[cycle_start:]
+    for node in cycle_nodes:
+        resolved[node] = node
+    if cycle_start > 0:
+        cycle_entry = path[cycle_start]
+        for node in path[:cycle_start]:
+            resolved[node] = cycle_entry
+    return True
+
+
+def _resolve_terminal_redirect(
+    cur: UUID,
+    *,
+    nxt: UUID | None,
+    path: list[UUID],
+    resolved: dict[UUID, UUID],
+) -> bool:
+    if nxt is not None and nxt != cur:
+        return False
+    for node in path:
+        resolved[node] = cur
+    return True
+
+
 class AliasRepository:
     """Alias lookup helpers for KG search and entity resolution UI."""
 
@@ -616,100 +708,8 @@ class AliasRepository:
         while frontier and hops < max_depth:
             hops += 1
             rows = self._redirect_rows(tenant_id=tenant_id, from_entity_ids=frontier)
-            frontier = self._update_redirect_map(redirect_map, rows)
+            frontier = _update_redirect_map(redirect_map, rows)
         return redirect_map
-
-    def _update_redirect_map(
-        self,
-        redirect_map: dict[UUID, UUID],
-        rows: list[KgEntityRedirect],
-    ) -> set[UUID]:
-        next_frontier: set[UUID] = set()
-        for row in rows:
-            frm = getattr(row, "from_entity_id", None)
-            to = getattr(row, "to_entity_id", None)
-            if frm is None or to is None or frm == to or redirect_map.get(frm) == to:
-                continue
-            redirect_map[frm] = to
-            if to not in redirect_map:
-                next_frontier.add(to)
-        return {candidate for candidate in next_frontier if candidate not in redirect_map}
-
-    def _resolve_redirect_origin(
-        self,
-        origin: UUID,
-        *,
-        resolved: dict[UUID, UUID],
-        redirect_map: dict[UUID, UUID],
-        max_depth: int,
-    ) -> None:
-        cur = origin
-        path: list[UUID] = []
-        path_index: dict[UUID, int] = {}
-        steps = 0
-        while steps < max_depth:
-            if self._resolve_known_redirect(cur, path=path, resolved=resolved):
-                return
-            if self._resolve_redirect_cycle(cur, path=path, path_index=path_index, resolved=resolved):
-                return
-            path_index[cur] = len(path)
-            path.append(cur)
-            nxt = redirect_map.get(cur)
-            if self._resolve_terminal_redirect(cur, nxt=nxt, path=path, resolved=resolved):
-                return
-            cur = nxt
-            steps += 1
-        canonical = resolved.get(cur, cur)
-        for node in path:
-            resolved[node] = canonical
-
-    def _resolve_known_redirect(
-        self,
-        cur: UUID,
-        *,
-        path: list[UUID],
-        resolved: dict[UUID, UUID],
-    ) -> bool:
-        if cur not in resolved:
-            return False
-        canonical = resolved[cur]
-        for node in path:
-            resolved[node] = canonical
-        return True
-
-    def _resolve_redirect_cycle(
-        self,
-        cur: UUID,
-        *,
-        path: list[UUID],
-        path_index: dict[UUID, int],
-        resolved: dict[UUID, UUID],
-    ) -> bool:
-        if cur not in path_index:
-            return False
-        cycle_start = path_index[cur]
-        cycle_nodes = path[cycle_start:]
-        for node in cycle_nodes:
-            resolved[node] = node
-        if cycle_start > 0:
-            cycle_entry = path[cycle_start]
-            for node in path[:cycle_start]:
-                resolved[node] = cycle_entry
-        return True
-
-    def _resolve_terminal_redirect(
-        self,
-        cur: UUID,
-        *,
-        nxt: UUID | None,
-        path: list[UUID],
-        resolved: dict[UUID, UUID],
-    ) -> bool:
-        if nxt is not None and nxt != cur:
-            return False
-        for node in path:
-            resolved[node] = cur
-        return True
 
     def _resolve_redirects(self, entity_ids: Iterable[UUID], *, tenant_id: UUID, max_hops: int = 6) -> dict[UUID, UUID]:
         """
@@ -727,7 +727,7 @@ class AliasRepository:
         for origin in ids:
             if origin in resolved:
                 continue
-            self._resolve_redirect_origin(origin, resolved=resolved, redirect_map=redirect_map, max_depth=max_depth)
+            _resolve_redirect_origin(origin, resolved=resolved, redirect_map=redirect_map, max_depth=max_depth)
         return {eid: resolved.get(eid, eid) for eid in ids}
 
     def match_aliases(
@@ -776,7 +776,7 @@ class AliasRepository:
             .filter(KgEntity.id.in_(resolved_ids))
             .all()
         )
-        ent_by_id = {e.id: e for e in ents if getattr(e, "id", None) is not None}
+        ent_by_id = {e.id: e for e in ents if e.id is not None}
 
         return _alias_match_results(
             rows, resolved_map=resolved_map, ent_by_id=ent_by_id, tenant_id=tenant_id, limit=lim
@@ -1404,16 +1404,12 @@ class RelationRepository:
         Mirrors the semantics in EventRepository._allowed_document_ids_subquery_for_dataset so that
         relation search respects document-level ACL (security trimming).
         """
-        from app.models.document import Document as DBDocument  # noqa: WPS433
-        from app.services.dataset_profile_service import build_dataset_documents_query  # noqa: WPS433
-
-        _ds, q = build_dataset_documents_query(
+        return _allowed_document_ids_subquery_for_dataset(
             self.session,
             tenant_id=tenant_id,
-            account_id=str(account_id or "").strip(),
+            account_id=account_id,
             dataset_id=dataset_id,
         )
-        return q.with_entities(DBDocument.id).subquery()
 
     def _relation_query_for_entities(self, *, ids: list[UUID], tenant_id: UUID):
         return (

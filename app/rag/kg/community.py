@@ -97,7 +97,7 @@ def _community_edges_from_counts(counts: dict[tuple[str, str], float], *, min_we
     edges = [
         CommunityEdge(a=a, b=b, w=float(weight)) for (a, b), weight in counts.items() if float(weight) >= min_weight
     ]
-    edges.sort(key=lambda edge: (-float(edge.w), _stable_sig(edge.a), _stable_sig(edge.b), edge.a, edge.b))
+    edges.sort(key=lambda edge: (-edge.w, _stable_sig(edge.a), _stable_sig(edge.b), edge.a, edge.b))
     return edges
 
 
@@ -209,14 +209,14 @@ def label_propagation_communities(
 def _label_adjacency(nodes: list[str], edges: list[CommunityEdge]) -> dict[str, list[tuple[str, float]]]:
     adj: dict[str, list[tuple[str, float]]] = {node: [] for node in nodes}
     for edge in edges or []:
-        a = str(getattr(edge, "a", "") or "").strip()
-        b = str(getattr(edge, "b", "") or "").strip()
-        weight = _safe_float(getattr(edge, "w", 0.0), default=0.0)
+        a = str(edge.a or "").strip()
+        b = str(edge.b or "").strip()
+        weight = _safe_float(edge.w, default=0.0)
         if a in adj and b in adj and a != b and weight > 0:
             adj[a].append((b, weight))
             adj[b].append((a, weight))
     for node, neighbors in adj.items():
-        neighbors.sort(key=lambda item: (-float(item[1]), _stable_sig(item[0]), item[0]))
+        neighbors.sort(key=lambda item: (-item[1], _stable_sig(item[0]), item[0]))
         adj[node] = neighbors
     return adj
 
@@ -316,7 +316,7 @@ def _entity_record(entity: dict[str, Any]) -> tuple[str, dict[str, Any], float] 
         "type": str(entity.get("type") or "").strip() or "unknown",
         "weight": _safe_float(entity.get("weight"), default=0.0),
     }
-    return entity_id, record, float(record["weight"])
+    return entity_id, record, record["weight"]
 
 
 def _index_entities(entities: list[dict[str, Any]]) -> tuple[dict[str, dict[str, Any]], dict[str, float], list[str]]:
@@ -383,8 +383,8 @@ def _ranked_community_labels(
     labels = sorted(
         community_entities.keys(),
         key=lambda label: (
-            -int(len(community_events.get(label, []) or [])),
-            -int(len(community_entities.get(label, []) or [])),
+            -len(community_events.get(label, []) or []),
+            -len(community_entities.get(label, []) or []),
             _stable_sig(label),
             label,
         ),
@@ -403,7 +403,7 @@ def _scored_events(event_ids: list[str], ev_info: dict[str, dict[str, Any]]) -> 
     scored = [
         (_safe_float((ev_info.get(event_id) or {}).get("score"), default=0.0), event_id) for event_id in event_ids
     ]
-    return sorted(scored, key=lambda item: (-float(item[0]), _stable_sig(item[1]), item[1]))
+    return sorted(scored, key=lambda item: (-item[0], _stable_sig(item[1]), item[1]))
 
 
 def _top_events(event_ids: list[str], ev_info: dict[str, dict[str, Any]], *, max_events: int) -> list[dict[str, Any]]:
@@ -447,8 +447,8 @@ def _build_community_report(
         "schema": "mimirq.kg_community_report.v1",
         "community_id": str(idx),
         "label": label,
-        "entity_count": int(len(entity_ids)),
-        "event_count": int(len(event_ids)),
+        "entity_count": len(entity_ids),
+        "event_count": len(event_ids),
         "entities": top_entities,
         "events": top_events,
         "summary": _community_summary(top_entities, top_events),
