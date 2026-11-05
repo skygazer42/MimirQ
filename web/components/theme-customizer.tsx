@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import type { ReactNode } from 'react'
 import { Check, Moon, Sun, Settings2, RefreshCw, Sparkles } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useTheme } from 'next-themes'
@@ -34,7 +35,7 @@ const PRESET_COLORS = [
 ]
 
 type ThemeCustomizerProps = {
-  trigger?: React.ReactNode
+  trigger?: ReactNode
 }
 
 export function ThemeCustomizer({ trigger }: Readonly<ThemeCustomizerProps> = {}) {

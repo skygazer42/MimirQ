@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.rag.core.logging import get_logger
-from app.rag.evaluation.poc_runner.telemetry import feedback_polarity_from_score
+from app.rag.evaluation.poc_runner.telemetry import _coerce_datetime, feedback_polarity_from_score
 
 
 def _coerce_mapping(value: Any) -> dict[str, Any]:
@@ -35,23 +35,6 @@ def _safe_str(value: Any, *, max_len: int = 255) -> str | None:
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
-
-
-def _coerce_datetime(value: Any) -> datetime | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    text = str(value or "").strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(text)
-    except Exception:
-        return None
-    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _assistant_request_id(message: dict[str, Any]) -> str | None:

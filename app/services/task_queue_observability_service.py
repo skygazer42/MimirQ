@@ -17,13 +17,16 @@ import json
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from prometheus_client import Gauge
 
 from app.core.config import settings
 from app.core.optional_deps import optional_import
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from arq.connections import ArqRedis
 
 logger = get_logger(__name__)
 
@@ -143,7 +146,7 @@ def _sanitize_recent_job_outcome(outcome: dict[str, Any] | None) -> dict[str, An
     return payload
 
 
-async def observe_task_worker_heartbeat(*, redis: Any, queue_name: str, worker_id: str) -> None:
+async def observe_task_worker_heartbeat(*, redis: "ArqRedis | None", queue_name: str, worker_id: str) -> None:
     """
     Best-effort worker heartbeat update.
 
@@ -166,17 +169,17 @@ async def observe_task_worker_heartbeat(*, redis: Any, queue_name: str, worker_i
     key = _workers_registry_key(q)
     ttl = _heartbeat_ttl_sec()
     # Keep the registry alive as long as workers keep heartbeating.
-    expire_sec = max(60, int(ttl * 4))
+    expire_sec = max(60, ttl * 4)
 
     try:
-        await redis.zadd(key, {wid: float(now_ts)})
-        await redis.expire(key, int(expire_sec))
+        await redis.zadd(key, {wid: now_ts})
+        await redis.expire(key, expire_sec)
     except Exception:
         # Fail open (no logs here; avoid log spam from tight heartbeat loops).
         return
 
 
-async def observe_task_job_outcome(*, redis: Any, queue_name: str, outcome: dict[str, Any]) -> None:
+async def observe_task_job_outcome(*, redis: "ArqRedis | None", queue_name: str, outcome: dict[str, Any]) -> None:
     """
     Best-effort recent job outcome registry for admin observability snapshots.
     """
@@ -189,18 +192,18 @@ async def observe_task_job_outcome(*, redis: Any, queue_name: str, outcome: dict
 
     q = str(queue_name or "").strip() or _queue_name()
     key = _recent_jobs_key(q)
-    ttl = max(300, int(_heartbeat_ttl_sec()) * 10)
+    ttl = max(300, _heartbeat_ttl_sec() * 10)
     limit = _recent_job_outcomes_limit()
 
     try:
         await redis.lpush(key, json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str))
-        await redis.ltrim(key, 0, int(limit) - 1)
-        await redis.expire(key, int(ttl))
+        await redis.ltrim(key, 0, limit - 1)
+        await redis.expire(key, ttl)
     except Exception:
         return
 
 
-async def _get_arq_redis() -> Any | None:
+async def _get_arq_redis() -> "ArqRedis | None":
     """
     Return arq Redis pool when task queue is enabled; otherwise None.
 
@@ -221,7 +224,7 @@ async def _get_arq_redis() -> Any | None:
         return None
 
 
-async def _read_queue_depth(*, redis: Any, queue_name: str) -> int | None:
+async def _read_queue_depth(*, redis: "ArqRedis", queue_name: str) -> int | None:
     try:
         depth = int(await redis.zcard(queue_name))
         return max(0, depth)
@@ -229,22 +232,22 @@ async def _read_queue_depth(*, redis: Any, queue_name: str) -> int | None:
         return None
 
 
-async def _read_active_workers(*, redis: Any, queue_name: str) -> int | None:
+async def _read_active_workers(*, redis: "ArqRedis", queue_name: str) -> int | None:
     try:
         ttl = _heartbeat_ttl_sec()
         now_ts = time.time()
         cutoff = now_ts - float(ttl)
         registry_key = _workers_registry_key(queue_name)
-        await redis.zremrangebyscore(registry_key, "-inf", float(cutoff))
+        await redis.zremrangebyscore(registry_key, "-inf", cutoff)
         workers_active = int(await redis.zcard(registry_key))
         return max(0, workers_active)
     except Exception:
         return None
 
 
-async def _read_recent_job_outcomes(*, redis: Any, queue_name: str) -> list[dict[str, Any]]:
+async def _read_recent_job_outcomes(*, redis: "ArqRedis", queue_name: str) -> list[dict[str, Any]]:
     try:
-        raw_items = await redis.lrange(_recent_jobs_key(queue_name), 0, int(_recent_job_outcomes_limit()) - 1)
+        raw_items = await redis.lrange(_recent_jobs_key(queue_name), 0, _recent_job_outcomes_limit() - 1)
     except Exception:
         return []
 
@@ -264,7 +267,9 @@ async def _read_recent_job_outcomes(*, redis: Any, queue_name: str) -> list[dict
     return recent_job_outcomes
 
 
-async def _refresh_from_redis(*, redis: Any, queue_name: str) -> tuple[bool, int | None, int | None, str | None]:
+async def _refresh_from_redis(
+    *, redis: "ArqRedis | None", queue_name: str
+) -> tuple[bool, int | None, int | None, list[dict[str, Any]], str | None]:
     """
     Return (broker_up, depth, workers_active, recent_job_outcomes, error).
     """
@@ -346,27 +351,27 @@ async def refresh_task_queue_observability_snapshot(*, source: str) -> TaskQueue
         schema=TASK_QUEUE_OBSERVABILITY_SCHEMA_V1,
         generated_at=_now_utc(),
         source=str(source or "unknown"),
-        enabled=bool(enabled),
+        enabled=enabled,
         queue_name=q,
-        broker_up=bool(broker_up),
+        broker_up=broker_up,
         queue_depth=depth,
         workers_active=workers_active,
-        heartbeat_interval_sec=float(hb_int),
-        heartbeat_ttl_sec=int(hb_ttl),
-        poll_interval_sec=float(poll_int),
+        heartbeat_interval_sec=hb_int,
+        heartbeat_ttl_sec=hb_ttl,
+        poll_interval_sec=poll_int,
         recent_job_outcomes=list(recent_job_outcomes or []),
         error=err,
     )
 
     # Update gauges (only when prometheus is enabled).
-    if bool(settings.PROMETHEUS_ENABLED):
+    if settings.PROMETHEUS_ENABLED:
         try:
             TASK_QUEUE_BROKER_UP.labels(queue=q).set(1.0 if broker_up else 0.0)
             TASK_QUEUE_DEPTH.labels(queue=q).set(float(depth if depth is not None else -1))
             TASK_QUEUE_WORKERS_ACTIVE.labels(queue=q).set(float(workers_active if workers_active is not None else -1))
-            TASK_QUEUE_OBSERVABILITY_LAST_REFRESH_TIMESTAMP.labels(queue=q).set(float(time.time()))
+            TASK_QUEUE_OBSERVABILITY_LAST_REFRESH_TIMESTAMP.labels(queue=q).set(time.time())
             TASK_QUEUE_OBSERVABILITY_LAST_REFRESH_DURATION_SECONDS.labels(queue=q).set(
-                max(0.0, float(time.perf_counter() - t0))
+                max(0.0, time.perf_counter() - t0)
             )
         except Exception as exc:
             # Never fail the refresh due to metrics errors.
@@ -387,11 +392,11 @@ async def get_task_queue_observability_snapshot(*, force_refresh: bool = False) 
     - When poller is not running, this refreshes on demand.
     """
     poll_int = _poll_interval_sec()
-    max_age = max(5.0, float(poll_int) * 2.5)
+    max_age = max(5.0, poll_int * 2.5)
 
     async with _snapshot_lock:
         snap = _latest_snapshot
-        age = time.time() - float(_latest_snapshot_ts or 0.0)
+        age = time.time() - _latest_snapshot_ts
 
     if (not force_refresh) and snap is not None and age <= max_age:
         return snap
@@ -412,7 +417,7 @@ async def _poller_loop(stop_event: asyncio.Event) -> None:
             logger.debug("Task queue observability poll iteration failed; continuing: %s", exc)
 
         try:
-            await asyncio.wait_for(stop_event.wait(), timeout=float(interval))
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
         except asyncio.TimeoutError:
             continue
 

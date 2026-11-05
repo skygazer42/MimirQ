@@ -106,7 +106,7 @@ def evaluate_agent_redteam_case(case: dict[str, Any]) -> dict[str, Any]:
         "schema": "mimirq.agent_redteam_case.v1",
         "case_id": str(payload.get("case_id") or ""),
         "scenario": scenario,
-        "passed": bool(passed),
+        "passed": passed,
         "severity": severity,
         "reason_codes": reason_codes,
     }
@@ -129,8 +129,8 @@ def build_agent_redteam_summary(results: list[dict[str, Any]]) -> dict[str, Any]
     pass_rate = round(float(total_cases - failed_cases) / float(total_cases), 4) if total_cases > 0 else None
     return {
         "schema": "mimirq.agent_redteam_summary.v1",
-        "total_cases": int(total_cases),
-        "failed_cases": int(failed_cases),
+        "total_cases": total_cases,
+        "failed_cases": failed_cases,
         "pass_rate": pass_rate,
         "scenario_breakdown": dict(breakdown),
     }

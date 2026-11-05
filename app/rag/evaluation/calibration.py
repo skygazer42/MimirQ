@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from typing import TypedDict
 
 
 @dataclass(frozen=True)
@@ -12,6 +13,14 @@ class PlattScaler:
 class IsotonicCalibrator:
     thresholds: list[float]
     values: list[float]
+
+
+class _IsotonicBlock(TypedDict):
+    start: float
+    end: float
+    sum: float
+    count: int
+    mean: float
 
 
 def _sigmoid(x: float) -> float:
@@ -49,11 +58,11 @@ def fit_platt_scaler(
         grad_b /= len(xs)
         a -= lr * grad_a
         b -= lr * grad_b
-    return PlattScaler(a=float(a), b=float(b))
+    return PlattScaler(a=a, b=b)
 
 
 def predict_platt_probability(model: PlattScaler, score: float) -> float:
-    return float(_sigmoid((float(model.a) * float(score)) + float(model.b)))
+    return _sigmoid((float(model.a) * float(score)) + float(model.b))
 
 
 def fit_isotonic_calibrator(*, scores: list[float], labels: list[int]) -> IsotonicCalibrator:
@@ -61,26 +70,26 @@ def fit_isotonic_calibrator(*, scores: list[float], labels: list[int]) -> Isoton
     if not pairs:
         return IsotonicCalibrator(thresholds=[], values=[])
 
-    blocks: list[dict[str, float | int]] = []
+    blocks: list[_IsotonicBlock] = []
     for score, label in pairs:
         blocks.append({"start": score, "end": score, "sum": label, "count": 1, "mean": label})
-        while len(blocks) >= 2 and float(blocks[-2]["mean"]) > float(blocks[-1]["mean"]):
+        while len(blocks) >= 2 and blocks[-2]["mean"] > blocks[-1]["mean"]:
             right = blocks.pop()
             left = blocks.pop()
-            total_sum = float(left["sum"]) + float(right["sum"])
-            total_count = int(left["count"]) + int(right["count"])
+            total_sum = left["sum"] + right["sum"]
+            total_count = left["count"] + right["count"]
             blocks.append(
                 {
-                    "start": float(left["start"]),
-                    "end": float(right["end"]),
+                    "start": left["start"],
+                    "end": right["end"],
                     "sum": total_sum,
                     "count": total_count,
                     "mean": total_sum / float(total_count),
                 }
             )
 
-    thresholds = [float(block["end"]) for block in blocks]
-    values = [float(block["mean"]) for block in blocks]
+    thresholds = [block["end"] for block in blocks]
+    values = [block["mean"] for block in blocks]
     return IsotonicCalibrator(thresholds=thresholds, values=values)
 
 

@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import type { ComponentType } from 'react'
 import {
   Upload,
   Activity,
@@ -73,7 +74,7 @@ type SlashCommand = {
   description: string
   shortcut: string
   keywords: string[]
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
@@ -85,7 +86,7 @@ type KeyChordCommand = {
   key: string
   label: string
   description: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
@@ -111,7 +112,7 @@ type ModuleWorkbenchItem = {
   label: string
   description: string
   keywords: string[]
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }

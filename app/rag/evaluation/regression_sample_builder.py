@@ -6,7 +6,7 @@ from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.core.text import is_claim_supported, split_into_claims
 from app.rag.evaluation.chunk_diagnostics import compute_chunk_diagnostics
-from app.rag.evaluation.multihop import score_multihop_citation_chain
+from app.rag.evaluation.multihop import _coerce_dict, score_multihop_citation_chain
 from app.rag.pipeline_plugins.contracts import (
     DISPLAY_METADATA_KEY,
     EVALUABLE_METADATA_KEY,
@@ -34,16 +34,6 @@ def _get(obj: Any, key: str, default: Any = None) -> Any:
     if isinstance(obj, dict):
         return obj.get(key, default)
     return getattr(obj, key, default)
-
-
-def _coerce_dict(value: Any) -> dict[str, Any]:
-    if value is None:
-        return {}
-    if hasattr(value, "model_dump"):
-        return value.model_dump(mode="json")
-    if isinstance(value, dict):
-        return dict(value)
-    return {}
 
 
 def _dedup_ids(raw_items: Any, *, key: str) -> list[str]:

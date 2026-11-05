@@ -74,10 +74,10 @@ def _build_throughput_timeseries(
     for b in buckets:
         ts_ms.append(int(b.timestamp() * 1000))
         counts = bucket_counts.get(b, {})
-        completed.append(int(counts.get("completed", 0)))
-        failed.append(int(counts.get("failed", 0)))
-        quarantined.append(int(counts.get("quarantined", 0)))
-        cancelled.append(int(counts.get("cancelled", 0)))
+        completed.append(counts.get("completed", 0))
+        failed.append(counts.get("failed", 0))
+        quarantined.append(counts.get("quarantined", 0))
+        cancelled.append(counts.get("cancelled", 0))
 
     return {
         "ts_ms": ts_ms,
@@ -220,12 +220,12 @@ def summarize_ingestion_dashboard(
         avg_completed_sec = None
 
     return {
-        "window_hours": int(window_hours),
-        "bucket_minutes": int(bucket_minutes),
+        "window_hours": window_hours,
+        "bucket_minutes": bucket_minutes,
         "window_start": since,
         "window_end": now,
         "dataset_id": str(dataset_id) if dataset_id is not None else None,
-        "created_count": int(created_count),
+        "created_count": created_count,
         "by_status": dict(by_status),
         "by_stage_processing": dict(by_stage_processing),
         "avg_completed_latency_sec": avg_completed_sec,

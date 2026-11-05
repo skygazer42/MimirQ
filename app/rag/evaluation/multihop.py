@@ -70,7 +70,7 @@ def score_multihop_citation_chain(
         return {
             "schema": "mimirq.multihop_chain_score.v1",
             "enabled": False,
-            "reasoning_hops_count": int(hop_count),
+            "reasoning_hops_count": hop_count,
             "expected_chain_steps": 0,
             "matched_chain_steps": 0,
             "path_completeness": None,
@@ -91,8 +91,8 @@ def score_multihop_citation_chain(
         matched_chain_ids.append(cid)
         matched_positions.append((expected_idx, rank))
 
-    expected_steps = int(len(expected_chain))
-    matched_steps = int(len(matched_chain_ids))
+    expected_steps = len(expected_chain)
+    matched_steps = len(matched_chain_ids)
     completeness = round(float(matched_steps) / float(max(1, expected_steps)), 4)
 
     # Pairwise order consistency on matched chain steps.
@@ -110,17 +110,17 @@ def score_multihop_citation_chain(
         order_consistency = 1.0 if matched_steps == expected_steps else 0.0
     else:
         order_consistency = float(consistent_pairs) / float(max(1, total_pairs))
-    order_consistency = round(float(order_consistency), 4)
+    order_consistency = round(order_consistency, 4)
 
     return {
         "schema": "mimirq.multihop_chain_score.v1",
         "enabled": True,
-        "reasoning_hops_count": int(hop_count),
+        "reasoning_hops_count": hop_count,
         "expected_chain_steps": expected_steps,
         "matched_chain_steps": matched_steps,
         "path_completeness": completeness,
         "order_consistency": order_consistency,
-        "chain_hit": bool(matched_steps == expected_steps and expected_steps > 0),
+        "chain_hit": matched_steps == expected_steps and expected_steps > 0,
         "missing_chain_ids": missing_chain_ids[:20],
         "matched_chain_ids": matched_chain_ids[:20],
     }

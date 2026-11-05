@@ -13,6 +13,7 @@ Principles:
 """
 
 from collections import Counter
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -29,7 +30,7 @@ logger = get_logger(__name__)
 _RETENTION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical retention fallback failure: %s"
 SYSTEM_RETENTION_ACTOR_ID = "system:retention"
 
-_delete_document_lifecycle = None
+_delete_document_lifecycle: Callable[..., Awaitable[None]] | None = None
 
 
 def _dt_to_json(v: datetime | None) -> str | None:
@@ -49,7 +50,7 @@ def _normalize_lifecycle_state(value: str | None) -> str:
     return out if out in {"archived", "disabled", "either"} else "either"
 
 
-def _resolve_delete_document_lifecycle():  # noqa: ANN202
+def _resolve_delete_document_lifecycle() -> Callable[..., Awaitable[None]]:
     global _delete_document_lifecycle
     if _delete_document_lifecycle is not None:
         return _delete_document_lifecycle
@@ -85,7 +86,7 @@ def _categorize_delete_status(status_code: int | None) -> str:
 
 async def _execute_knowledge_asset_purge(
     *,
-    delete_document_lifecycle: Any,
+    delete_document_lifecycle: Callable[..., Awaitable[None]],
     planned: list[dict[str, Any]],
     db: Session,
     tenant_id: UUID,
@@ -201,11 +202,11 @@ def run_audit_log_retention(
     except Exception:
         max_delete_i = 100_000
 
-    cutoff = now0 - timedelta(days=int(retention_days_i))
+    cutoff = now0 - timedelta(days=retention_days_i)
 
     eligible = int(plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i) or 0)
     deleted = 0
-    if not bool(dry_run):
+    if not dry_run:
         deleted = int(
             purge_audit_log_rows(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i, commit=True) or 0
         )
@@ -221,11 +222,11 @@ def run_audit_log_retention(
             resource_id=None,
             details={
                 "dry_run": bool(dry_run),
-                "retention_days": int(retention_days_i),
+                "retention_days": retention_days_i,
                 "cutoff": _dt_to_json(cutoff),
-                "max_delete": int(max_delete_i),
-                "eligible": int(eligible),
-                "deleted": int(deleted),
+                "max_delete": max_delete_i,
+                "eligible": eligible,
+                "deleted": deleted,
                 "ran_at": _dt_to_json(now0),
             },
         )
@@ -239,11 +240,11 @@ def run_audit_log_retention(
     return {
         "tenant_id": str(tenant_id),
         "dry_run": bool(dry_run),
-        "retention_days": int(retention_days_i),
+        "retention_days": retention_days_i,
         "cutoff": _dt_to_json(cutoff),
-        "max_delete": int(max_delete_i),
-        "eligible": int(eligible),
-        "deleted": int(deleted),
+        "max_delete": max_delete_i,
+        "eligible": eligible,
+        "deleted": deleted,
         "ran_at": _dt_to_json(now0),
     }
 
@@ -275,7 +276,7 @@ def run_regression_run_retention(
         max_delete_i = 200
     max_delete_i = min(max_delete_i, 5000)
 
-    cutoff = now0 - timedelta(days=int(retention_days_i))
+    cutoff = now0 - timedelta(days=retention_days_i)
 
     eligible = int(
         plan_regression_run_purge(
@@ -289,7 +290,7 @@ def run_regression_run_retention(
     )
     deleted_runs = 0
     deleted_items = 0
-    if not bool(dry_run):
+    if not dry_run:
         deleted_runs, deleted_items = purge_regression_run_rows(
             db,
             tenant_id=tenant_id,
@@ -310,12 +311,12 @@ def run_regression_run_retention(
             resource_id=str(dataset_id) if dataset_id is not None else None,
             details={
                 "dry_run": bool(dry_run),
-                "retention_days": int(retention_days_i),
+                "retention_days": retention_days_i,
                 "cutoff": _dt_to_json(cutoff),
-                "max_delete": int(max_delete_i),
-                "eligible_runs": int(eligible),
-                "deleted_runs": int(deleted_runs),
-                "deleted_items": int(deleted_items),
+                "max_delete": max_delete_i,
+                "eligible_runs": eligible,
+                "deleted_runs": deleted_runs,
+                "deleted_items": deleted_items,
                 "ran_at": _dt_to_json(now0),
             },
         )
@@ -330,12 +331,12 @@ def run_regression_run_retention(
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id) if dataset_id is not None else None,
         "dry_run": bool(dry_run),
-        "retention_days": int(retention_days_i),
+        "retention_days": retention_days_i,
         "cutoff": _dt_to_json(cutoff),
-        "max_delete": int(max_delete_i),
-        "eligible_runs": int(eligible),
-        "deleted_runs": int(deleted_runs),
-        "deleted_items": int(deleted_items),
+        "max_delete": max_delete_i,
+        "eligible_runs": eligible,
+        "deleted_runs": deleted_runs,
+        "deleted_items": deleted_items,
         "ran_at": _dt_to_json(now0),
     }
 
@@ -362,7 +363,7 @@ async def run_knowledge_asset_retention(
     retention_days_i, max_delete_i = _normalize_retention_inputs(retention_days=retention_days, max_delete=max_delete)
 
     state = _normalize_lifecycle_state(lifecycle_state)
-    cutoff = now0 - timedelta(days=int(retention_days_i))
+    cutoff = now0 - timedelta(days=retention_days_i)
     planned = plan_knowledge_asset_purge(
         db,
         tenant_id=tenant_id,
@@ -374,7 +375,7 @@ async def run_knowledge_asset_retention(
 
     deleted = not_found = denied = conflicts = errors = 0
 
-    if not bool(dry_run):
+    if not dry_run:
         deleted, not_found, denied, conflicts, errors = await _execute_knowledge_asset_purge(
             delete_document_lifecycle=_resolve_delete_document_lifecycle(),
             planned=planned,
@@ -388,18 +389,18 @@ async def run_knowledge_asset_retention(
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id) if dataset_id is not None else None,
         "dry_run": bool(dry_run),
-        "retention_days": int(retention_days_i),
+        "retention_days": retention_days_i,
         "cutoff": _dt_to_json(cutoff),
-        "max_delete": int(max_delete_i),
+        "max_delete": max_delete_i,
         "lifecycle_state": state,
-        "eligible": int(len(planned)),
-        "deleted": int(deleted),
-        "not_found": int(not_found),
-        "denied": int(denied),
-        "conflicts": int(conflicts),
-        "errors": int(errors),
+        "eligible": len(planned),
+        "deleted": deleted,
+        "not_found": not_found,
+        "denied": denied,
+        "conflicts": conflicts,
+        "errors": errors,
         "artifact_scopes": ["documents", "chunks", "kg", "vectors", "object_assets"],
-        "eligible_by_state": dict(sorted((k, int(v)) for k, v in state_counts.items())),
+        "eligible_by_state": dict(sorted(state_counts.items())),
         "ran_at": _dt_to_json(now0),
     }
 

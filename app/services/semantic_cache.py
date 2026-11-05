@@ -15,7 +15,7 @@ Security posture:
 import hashlib
 import json
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
@@ -24,6 +24,12 @@ from app.rag.core.hashing import stable_hash, stable_json_dumps
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
 from app.storage.vector.milvus import MilvusMaintenanceError, get_milvus_adapter, resolve_collection_name
+
+if TYPE_CHECKING:
+    from redis import Redis
+
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
+    from app.storage.vector.milvus import MilvusAdapter
 
 logger = get_logger("semantic_cache")
 _LOOKUP_CLEANUP_MAX_DELETE = 4
@@ -43,11 +49,11 @@ _redis_client_slot = LazyRedisClient(
 )
 _get_redis_client = _redis_client_slot.get
 _invalidate_redis_client = _redis_client_slot.invalidate
-_embeddings: Any | None = None
-_adapter: Any | None = None
+_embeddings: "LangChainEmbeddingsAdapter | None" = None
+_adapter: "MilvusAdapter | None" = None
 
 
-def _get_embeddings():  # noqa: ANN202
+def _get_embeddings() -> "LangChainEmbeddingsAdapter":
     global _embeddings
     if _embeddings is not None:
         return _embeddings
@@ -67,7 +73,7 @@ def _get_embeddings():  # noqa: ANN202
     return _embeddings
 
 
-def _get_adapter():  # noqa: ANN202
+def _get_adapter() -> "MilvusAdapter":
     global _adapter
     if _adapter is not None:
         return _adapter
@@ -152,7 +158,7 @@ def _coerce_epoch(value: Any) -> int | None:
 
 def _flush_lookup_cleanup(
     *,
-    adapter: Any,
+    adapter: "MilvusAdapter",
     cleanup_ids: list[str],
     meta: dict[str, Any],
 ) -> None:
@@ -219,7 +225,7 @@ def _semantic_cache_embedding_or_skip(meta: dict[str, Any], *, query: str) -> li
 
 def _semantic_cache_search_results_or_skip(
     meta: dict[str, Any], *, tenant_id: str, vector: list[float], top_k: int
-) -> tuple[Any, list[dict[str, Any]]] | None:
+) -> "tuple[MilvusAdapter, list[dict[str, Any]]] | None":
     try:
         started_at = time.perf_counter()
         adapter = _get_adapter()
@@ -289,8 +295,8 @@ def _cached_semantic_payload_from_results(
     *,
     results: list[dict[str, Any]],
     meta: dict[str, Any],
-    adapter: Any,
-    client: Any,
+    adapter: "MilvusAdapter",
+    client: "Redis",
     tenant_id: str,
     account_id: str,
     scope_hash: str,
@@ -319,7 +325,7 @@ def _cached_semantic_payload_from_results(
             continue
         expires_at = _coerce_epoch(metadata.get("expires_at_epoch"))
         if expires_at is not None and expires_at <= now_epoch:
-            meta["expired_vectors_skipped"] = int(meta.get("expired_vectors_skipped", 0) or 0) + 1
+            meta["expired_vectors_skipped"] = meta.get("expired_vectors_skipped", 0) + 1
             _maybe_queue_semantic_cache_cleanup(
                 cleanup_ids=cleanup_ids,
                 cleanup_seen=cleanup_seen,
@@ -337,7 +343,7 @@ def _cached_semantic_payload_from_results(
             _invalidate_redis_client()
             return None, meta
         if not raw:
-            meta["orphan_vectors_skipped"] = int(meta.get("orphan_vectors_skipped", 0) or 0) + 1
+            meta["orphan_vectors_skipped"] = meta.get("orphan_vectors_skipped", 0) + 1
             _maybe_queue_semantic_cache_cleanup(
                 cleanup_ids=cleanup_ids,
                 cleanup_seen=cleanup_seen,
@@ -351,7 +357,7 @@ def _cached_semantic_payload_from_results(
             continue
 
         meta["hit"] = True
-        meta["score"] = float(score)
+        meta["score"] = score
         meta["vector_id"] = vector_id
         _flush_lookup_cleanup(adapter=adapter, cleanup_ids=cleanup_ids, meta=meta)
         return payload, meta
@@ -435,12 +441,12 @@ def get_cached_semantic_payload(
         threshold=threshold,
         embedding_space_hash=str(current_embedding_space_hash() or "") or "",
         now_epoch=int(time.time()),
-        cleanup_budget=max(0, int(_LOOKUP_CLEANUP_MAX_DELETE)),
+        cleanup_budget=max(0, _LOOKUP_CLEANUP_MAX_DELETE),
     )
 
 
-def _semantic_cache_store_precheck() -> tuple[int, Any | None]:
-    if not bool(settings.SEMANTIC_CACHE_ENABLED):
+def _semantic_cache_store_precheck() -> "tuple[int, Redis | None]":
+    if not settings.SEMANTIC_CACHE_ENABLED:
         return 0, None
     ttl = int(settings.SEMANTIC_CACHE_TTL_SEC or 0)
     if ttl <= 0:
@@ -515,7 +521,7 @@ def set_cached_semantic_payload(
         return False
 
     now = int(time.time())
-    expires_at = now + int(ttl)
+    expires_at = now + ttl
     pipeline_key = str(current_embedding_space_hash() or "") or ""
     meta = {
         "tenant_id": str(tenant_id),
@@ -524,8 +530,8 @@ def set_cached_semantic_payload(
         "embedding_space_hash": pipeline_key,
         "corpus_cache_token": str(corpus_cache_token),
         "scope_hash": str(scope_hash),
-        "created_at_epoch": int(now),
-        "expires_at_epoch": int(expires_at),
+        "created_at_epoch": now,
+        "expires_at_epoch": expires_at,
     }
     try:
         _get_adapter().add_vectors(
@@ -561,9 +567,9 @@ def _semantic_cache_retention_summary(
         "job": "semantic-cache",
         "tenant_id": tenant_id,
         "dry_run": bool(dry_run),
-        "max_delete": int(max_delete),
-        "max_scan": int(max_scan),
-        "ran_at_epoch": int(now_epoch),
+        "max_delete": max_delete,
+        "max_scan": max_scan,
+        "ran_at_epoch": now_epoch,
         "scanned": 0,
         "exhausted": False,
         "scan_limit_reached": False,
@@ -583,7 +589,7 @@ def _evaluate_retention_row(
     *,
     row: Any,
     now_epoch: int,
-    client: Any,
+    client: "Redis | None",
     delete_ids: list[str],
     max_delete: int,
     summary: dict[str, Any],
@@ -625,8 +631,8 @@ def _evaluate_retention_row(
 
 def _collect_retention_delete_ids(
     *,
-    adapter: Any,
-    client: Any,
+    adapter: "MilvusAdapter",
+    client: "Redis | None",
     tenant_id: str | None,
     now_epoch: int,
     max_delete: int,
@@ -648,7 +654,7 @@ def _collect_retention_delete_ids(
                 exhausted = True
                 break
 
-            remaining_scan = max_scan - int(summary["scanned"] or 0)
+            remaining_scan = max_scan - summary["scanned"]
             batch_rows = rows[:remaining_scan]
             summary["scanned"] += len(batch_rows)
             if len(rows) > len(batch_rows):
@@ -723,8 +729,8 @@ def run_semantic_cache_retention(
         summary["failed"] = True
         summary["errors"].append(str(exc)[:200])
 
-    summary["exhausted"] = bool(exhausted)
-    summary["scan_limit_reached"] = bool(
+    summary["exhausted"] = exhausted
+    summary["scan_limit_reached"] = (
         (not exhausted) and summary["scanned"] >= max_scan_i and len(delete_ids) < max_delete_i
     )
     summary["eligible"] = len(delete_ids)

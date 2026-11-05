@@ -118,8 +118,7 @@ def _latest_audit_event(
     if not row:
         return None
 
-    created_at = row[0] if isinstance(row, tuple) and len(row) > 0 else None
-    resource_id = row[1] if isinstance(row, tuple) and len(row) > 1 else None
+    created_at, resource_id = row
     if not isinstance(created_at, datetime):
         return None
 
@@ -162,7 +161,7 @@ def build_periodic_job_freshness_snapshot(
             except Exception:
                 age_seconds = None
 
-        stale_after_sec = max(1, int(spec.stale_after_hours) * 3600)
+        stale_after_sec = max(1, spec.stale_after_hours * 3600)
         if age_seconds is not None and age_seconds <= stale_after_sec:
             stale = False
 
@@ -171,12 +170,12 @@ def build_periodic_job_freshness_snapshot(
                 "key": spec.key,
                 "action": spec.action,
                 "resource_type": spec.resource_type,
-                "expected_interval_hours": int(spec.expected_interval_hours),
-                "stale_after_hours": int(spec.stale_after_hours),
+                "expected_interval_hours": spec.expected_interval_hours,
+                "stale_after_hours": spec.stale_after_hours,
                 "last_created_at": created_at,
                 "last_resource_id": resource_id,
                 "age_seconds": age_seconds,
-                "stale": bool(stale),
+                "stale": stale,
             }
         )
 

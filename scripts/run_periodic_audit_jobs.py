@@ -126,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         db = SessionLocal()
         try:
             rows = db.query(Tenant.id).all()
-            tenant_ids = [r[0] for r in rows if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
+            tenant_ids = [tenant_id for (tenant_id,) in rows if isinstance(tenant_id, UUID)]
         finally:
             db.close()
     elif args.tenant_id is not None:

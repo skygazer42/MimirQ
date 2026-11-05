@@ -1,7 +1,7 @@
 import json
 import threading
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -41,6 +41,9 @@ from app.rag.industry_rules.loaders import write_glossary_candidates
 from app.rag.industry_rules.mining.auto_rules import build_ruleset_suggestions
 from app.services import dataset_service
 from app.services.rag_trace_service import list_rag_traces
+
+if TYPE_CHECKING:
+    from fastapi import BackgroundTasks
 
 _SUMMARY_SCHEMA = "mimirq.dataset_analysis.summary.v1"
 _EXAMPLES_SCHEMA = "mimirq.dataset_analysis.examples.v1"
@@ -144,8 +147,8 @@ def _definitions() -> dict[str, str]:
 
 
 def _scope_summary(rows: list[dict[str, Any]]) -> dict[str, int]:
-    feedback_interactions = len([row for row in rows if bool(row.get("has_feedback"))])
-    attributable = len([row for row in rows if bool(row.get("attributable_feedback_eligible"))])
+    feedback_interactions = len([row for row in rows if row.get("has_feedback")])
+    attributable = len([row for row in rows if row.get("attributable_feedback_eligible")])
     return {
         "all_interactions": len(rows),
         "feedback_interactions": feedback_interactions,
@@ -158,7 +161,7 @@ def _load_scope_entities(
     db: Session,
     tenant_id: UUID,
     dataset_id: UUID,
-) -> tuple[list[Any], list[Any], list[Any]]:
+) -> tuple[list[Conversation], list[Message], list[MessageFeedback]]:
     conversations = (
         db.query(Conversation).filter(Conversation.tenant_id == tenant_id, Conversation.dataset_id == dataset_id).all()
     )
@@ -194,7 +197,7 @@ def _collect_scope_traces(
     *,
     tenant_id: UUID,
     dataset_id: UUID,
-    conversations: list[Any],
+    conversations: list[Conversation],
     window_minutes: int,
 ) -> list[dict[str, Any]]:
     traces: list[dict[str, Any]] = []
@@ -218,7 +221,7 @@ def _collect_scope_traces(
                 exc_info=True,
             )
             continue
-        for item in getattr(response, "items", []) or []:
+        for item in response.items:
             traces.append(_coerce_mapping(item))
     if trace_failures:
         raise DatasetAnalysisSourceIncompleteError(
@@ -312,7 +315,7 @@ def _build_full_bundle(
     patterns = mine_query_patterns(rows, top_k_keywords=20)
     metrics = compute_feedback_metrics(
         all_interactions=len(rows),
-        feedback_interactions=len([row for row in rows if bool(row.get("has_feedback"))]),
+        feedback_interactions=len([row for row in rows if row.get("has_feedback")]),
         counts=attribution["counts"],
     )
 
@@ -477,7 +480,7 @@ def build_tenant_dataset_analysis_dashboard(
             db=db,
             tenant_id=tenant_id,
             dataset_id=dataset.id,
-            dataset_name=str(getattr(dataset, "name", "") or ""),
+            dataset_name=str(dataset.name or ""),
             from_ts=from_ts,
             to_ts=to_ts,
             feedback_polarity=feedback_polarity,
@@ -500,7 +503,7 @@ def build_tenant_dataset_analysis_dashboard(
         cards.append(
             {
                 "dataset_id": str(dataset.id),
-                "dataset_name": str(getattr(dataset, "name", "") or ""),
+                "dataset_name": str(dataset.name or ""),
                 "scope_summary": scope_summary,
                 "metrics": metrics,
                 "counts": counts,
@@ -513,7 +516,7 @@ def build_tenant_dataset_analysis_dashboard(
     return {
         "schema": _DASHBOARD_SCHEMA,
         "tenant_id": str(tenant_id),
-        "dataset_count": int(len(cards)),
+        "dataset_count": len(cards),
         "summary": summary,
         "datasets": cards,
         "filters": {
@@ -940,7 +943,7 @@ def create_dataset_analysis_png_task(
     dataset_id: UUID,
     dataset_name: str,
     account_id: str,
-    background_tasks: Any,
+    background_tasks: "BackgroundTasks",
     from_ts: str | None = None,
     to_ts: str | None = None,
     feedback_polarity: str | None = None,

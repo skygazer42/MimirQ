@@ -14,7 +14,7 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable, TypedDict
 from uuid import UUID
 
 from sqlalchemy import and_, func, or_
@@ -25,6 +25,14 @@ from app.core.constants import EmbeddingProviders
 from app.core.pipeline_versions import get_active_pipeline_hash
 from app.core.redis_client import LazyRedisClient
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from redis import Redis
+    from sqlalchemy.orm import Query
+
+    from app.models.document import Document, DocumentChunk
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
+    from app.storage.vector.milvus import MilvusAdapter
 
 logger = get_logger("embedding_migration")
 
@@ -48,7 +56,7 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _create_embeddings_from_config(**kwargs: Any) -> Any:
+def _create_embeddings_from_config(**kwargs: Any) -> "LangChainEmbeddingsAdapter":
     from app.rag.embedding import create_langchain_embeddings_from_config
 
     return create_langchain_embeddings_from_config(**kwargs)
@@ -71,19 +79,19 @@ def _current_space_hash() -> str:
     return str(current_embedding_space_hash() or "").strip()
 
 
-def _get_collection_adapter(collection_name: str) -> Any:
+def _get_collection_adapter(collection_name: str) -> "MilvusAdapter":
     from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
 
     return get_milvus_adapter(resolve_collection_name(collection_name))
 
 
-def _document_model() -> Any:
+def _document_model() -> "type[Document]":
     from app.models.document import Document as DocumentModel
 
     return DocumentModel
 
 
-def _document_chunk_model() -> Any:
+def _document_chunk_model() -> "type[DocumentChunk]":
     from app.models.document import DocumentChunk as DocumentChunkModel
 
     return DocumentChunkModel
@@ -94,10 +102,10 @@ class _BackfillRuntime:
     payload: dict[str, Any]
     shadow_collection: str
     shadow_space: str
-    redis: Any
+    redis: "Redis | None"
     progress_key: str
-    embeddings: Any | None
-    adapter: Any | None
+    embeddings: "LangChainEmbeddingsAdapter | None"
+    adapter: "MilvusAdapter | None"
     embed_batch_size: int
 
 
@@ -108,6 +116,14 @@ class _OverlapRuntime:
     shadow_space: str
     primary_collection: str
     top_k: int
+
+
+class _ShadowEmbeddingConfig(TypedDict):
+    provider: str
+    model: str
+    base_url: str
+    collection: str
+    embedding_space_hash: str
 
 
 def _progress_key(
@@ -122,10 +138,10 @@ def _progress_key(
     return f"{prefix}:{tenant_id}:{scope}:{target_collection}:{target_space_hash}"
 
 
-def _save_progress(redis, *, key: str, payload: dict[str, Any]) -> None:  # noqa: ANN001
+def _save_progress(redis: "Redis | None", *, key: str, payload: dict[str, Any]) -> None:
     if redis is None:
         return
-    ttl = int(getattr(settings, "EMBEDDING_MIGRATION_PROGRESS_TTL_SEC", 7 * 24 * 3600) or 0)
+    ttl = int(settings.EMBEDDING_MIGRATION_PROGRESS_TTL_SEC or 0)
     try:
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         if ttl > 0:
@@ -168,13 +184,13 @@ def load_embedding_migration_progress(
         return None
 
 
-def resolve_shadow_embedding_config() -> dict[str, str] | None:
+def resolve_shadow_embedding_config() -> _ShadowEmbeddingConfig | None:
     """
     Resolve the shadow embedding config from Settings.
 
     Returns a small dict safe to log/return (no API keys).
     """
-    if not bool(settings.EMBEDDING_SHADOW_ENABLED):
+    if not settings.EMBEDDING_SHADOW_ENABLED:
         return None
 
     shadow_collection = str(settings.MILVUS_SHADOW_COLLECTION_NAME or "").strip()
@@ -209,7 +225,7 @@ def resolve_shadow_embedding_config() -> dict[str, str] | None:
     }
 
 
-def _init_shadow_embeddings():  # noqa: ANN202
+def _init_shadow_embeddings() -> "LangChainEmbeddingsAdapter":
     cfg = resolve_shadow_embedding_config()
     if cfg is None:
         raise RuntimeError("shadow embedding config not enabled")
@@ -220,15 +236,15 @@ def _init_shadow_embeddings():  # noqa: ANN202
         or str(settings.LLM_API_KEY or "").strip()
     )
     return _create_embeddings_from_config(
-        provider=str(cfg["provider"]),
-        model=str(cfg["model"]),
+        provider=cfg["provider"],
+        model=cfg["model"],
         api_key=api_key,
-        base_url=str(cfg["base_url"] or ""),
+        base_url=cfg["base_url"],
         dimension=None,  # Auto-detect
     )
 
 
-def _init_current_embeddings():  # noqa: ANN202
+def _init_current_embeddings() -> "LangChainEmbeddingsAdapter":
     provider_raw = (settings.EMBEDDING_PROVIDER or "local").lower()
     mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, "openai_compatible")
     api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
@@ -284,7 +300,7 @@ def _build_shadow_embedding_text(
         except Exception as exc:
             logger.debug("Ignoring contextual embedding prefix build failure: %s", exc)
 
-    if bool(meta.get("embedding_context_prefix_enabled")):
+    if meta.get("embedding_context_prefix_enabled"):
         embed_text = _build_embedding_text(embed_text, meta)
 
     return embed_text
@@ -304,7 +320,7 @@ def _field_aware_extras_for_chunk(
     chunk_uuid: str,
     meta: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    if not bool(meta.get("embedding_field_aware_enabled")):
+    if not meta.get("embedding_field_aware_enabled"):
         return []
 
     from app.services.indexer import (  # noqa: WPS433
@@ -332,7 +348,7 @@ def _field_aware_extras_for_chunk(
     return out
 
 
-def _active_documents_query(db: Session, *, tenant_id: UUID, dataset_id: UUID | None):  # noqa: ANN202
+def _active_documents_query(db: Session, *, tenant_id: UUID, dataset_id: UUID | None) -> "Query[Document]":
     document_model = _document_model()
     doc_ready_clause = or_(
         document_model.status == "completed",
@@ -372,10 +388,10 @@ def _build_backfill_payload(
     *,
     tenant_id: UUID,
     dataset_id: UUID | None,
-    cfg: dict[str, str],
+    cfg: _ShadowEmbeddingConfig,
 ) -> tuple[dict[str, Any], str, str]:
-    shadow_collection = str(cfg["collection"])
-    shadow_space = str(cfg["embedding_space_hash"])
+    shadow_collection = cfg["collection"]
+    shadow_space = cfg["embedding_space_hash"]
     primary_collection = str(settings.MILVUS_COLLECTION_NAME or "documents").strip()
     primary_space = _current_space_hash()
     payload: dict[str, Any] = {
@@ -438,7 +454,7 @@ def _build_backfill_runtime(
     *,
     tenant_id: UUID,
     dataset_id: UUID | None,
-    cfg: dict[str, str],
+    cfg: _ShadowEmbeddingConfig,
     execute: bool,
     embed_batch_size: int | None,
 ) -> _BackfillRuntime:
@@ -476,7 +492,7 @@ def _load_document_chunks(
     doc_id: UUID,
     active_hash: str,
     chunk_limit_per_document: int,
-) -> list[Any]:
+) -> "list[DocumentChunk]":
     document_chunk_model = _document_chunk_model()
     chunks_q = db.query(document_chunk_model).filter(
         document_chunk_model.tenant_id == tenant_id,
@@ -498,8 +514,8 @@ def _load_document_chunks(
 
 def _build_vector_docs_for_document(
     *,
-    doc: Any,
-    chunks: list[Any],
+    doc: "Document",
+    chunks: "list[DocumentChunk]",
     tenant_id: UUID,
     doc_id: UUID,
     active_hash: str,
@@ -508,19 +524,19 @@ def _build_vector_docs_for_document(
 ) -> list[dict[str, Any]]:
     vector_docs: list[dict[str, Any]] = []
     for chunk in chunks:
-        chunk_uuid = str(getattr(chunk, "id", "") or "").strip()
+        chunk_uuid = str(chunk.id or "").strip()
         if not chunk_uuid:
             continue
-        content = str(getattr(chunk, "content", "") or "")
+        content = str(chunk.content or "")
         if not content.strip():
             continue
 
-        meta0 = getattr(chunk, "doc_metadata", None)
+        meta0 = chunk.doc_metadata
         meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
         meta.setdefault("tenant_id", str(tenant_id))
-        meta.setdefault("dataset_id", str(getattr(doc, "dataset_id", "") or "") or "")
+        meta.setdefault("dataset_id", str(doc.dataset_id or "") or "")
         meta.setdefault("document_id", str(doc_id))
-        meta.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
+        meta.setdefault("chunk_index", int(chunk.chunk_index or 0))
         meta["chunk_id"] = chunk_uuid
         meta["embedding_space_hash"] = shadow_space
         if active_hash:
@@ -570,7 +586,7 @@ def _write_vector_docs(runtime: _BackfillRuntime, *, vector_docs: list[dict[str,
             batch_size=write_batch_size,
             upsert=True,
         )
-        written += int(len(batch))
+        written += len(batch)
     return written
 
 
@@ -578,7 +594,7 @@ def _process_backfill_document(
     *,
     runtime: _BackfillRuntime,
     db: Session,
-    doc: Any,
+    doc: "Document",
     tenant_id: UUID,
     dataset_id: UUID | None,
     chunk_limit_per_document: int,
@@ -591,10 +607,10 @@ def _process_backfill_document(
         runtime.payload["counters"]["errors"] += 1
         return
 
-    doc_meta = dict(getattr(doc, "doc_metadata", None) or {})
+    doc_meta = dict(doc.doc_metadata or {})
     active_hash = get_active_pipeline_hash(doc_meta) or ""
     doc_title = _derive_document_title_for_prefix(
-        filename=getattr(doc, "filename", None),
+        filename=doc.filename,
         doc_metadata=doc_meta,
     )
     chunks = _load_document_chunks(
@@ -620,9 +636,9 @@ def _process_backfill_document(
         return
 
     runtime.payload["counters"]["documents_indexed"] += 1
-    runtime.payload["counters"]["chunks_indexed"] += int(len(chunks))
+    runtime.payload["counters"]["chunks_indexed"] += len(chunks)
     if not execute:
-        runtime.payload["counters"]["vectors_skipped"] += int(len(vector_docs))
+        runtime.payload["counters"]["vectors_skipped"] += len(vector_docs)
         _persist_backfill_progress(
             runtime=runtime,
             tenant_id=tenant_id,
@@ -706,7 +722,7 @@ def run_shadow_collection_backfill(
             execute=execute,
         )
 
-    runtime.payload["elapsed_sec"] = round(max(0.0, float(time.perf_counter() - t0)), 3)
+    runtime.payload["elapsed_sec"] = round(max(0.0, time.perf_counter() - t0), 3)
     return runtime.payload
 
 
@@ -724,7 +740,7 @@ def _overlap_ratio(a: list[str], b: list[str], *, k: int) -> float:
     sb = set(b[:k])
     if not sa and not sb:
         return 1.0
-    return float(len(sa & sb) / float(k))
+    return len(sa & sb) / float(k)
 
 
 def _build_overlap_payload(
@@ -763,11 +779,11 @@ def _build_overlap_runtime(
     *,
     tenant_id: UUID,
     dataset_id: UUID | None,
-    cfg: dict[str, str],
+    cfg: _ShadowEmbeddingConfig,
     top_k: int,
 ) -> _OverlapRuntime:
-    shadow_collection = str(cfg["collection"])
-    shadow_space = str(cfg["embedding_space_hash"])
+    shadow_collection = cfg["collection"]
+    shadow_space = cfg["embedding_space_hash"]
     primary_collection = str(settings.MILVUS_COLLECTION_NAME or "documents").strip()
     primary_space = _current_space_hash()
     payload = _build_overlap_payload(
@@ -847,11 +863,11 @@ def _load_overlap_queries(
     return queries
 
 
-def _init_overlap_embeddings() -> tuple[Any, Any]:
+def _init_overlap_embeddings() -> "tuple[LangChainEmbeddingsAdapter, LangChainEmbeddingsAdapter]":
     return _init_current_embeddings(), _init_shadow_embeddings()
 
 
-def _init_overlap_adapters(runtime: _OverlapRuntime) -> tuple[Any, Any]:
+def _init_overlap_adapters(runtime: _OverlapRuntime) -> "tuple[MilvusAdapter, MilvusAdapter]":
     return (
         _get_collection_adapter(runtime.primary_collection),
         _get_collection_adapter(runtime.shadow_collection),
@@ -871,20 +887,20 @@ def _build_overlap_summary(
     errors: int,
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {
-        "errors": int(errors),
+        "errors": errors,
         "self_hit": {
-            "primary_ratio": float(self_hit_primary / max(1, query_count)),
-            "shadow_ratio": float(self_hit_shadow / max(1, query_count)),
+            "primary_ratio": self_hit_primary / max(1, query_count),
+            "shadow_ratio": self_hit_shadow / max(1, query_count),
         },
     }
     if overlaps:
         overlaps_sorted = sorted(float(value) for value in overlaps)
         avg = sum(overlaps_sorted) / float(len(overlaps_sorted))
         summary["overlap"] = {
-            "avg": float(avg),
-            "min": float(overlaps_sorted[0]),
-            "p50": float(overlaps_sorted[len(overlaps_sorted) // 2]),
-            "max": float(overlaps_sorted[-1]),
+            "avg": avg,
+            "min": overlaps_sorted[0],
+            "p50": overlaps_sorted[len(overlaps_sorted) // 2],
+            "max": overlaps_sorted[-1],
         }
     else:
         summary["overlap"] = None
@@ -896,10 +912,10 @@ def _measure_overlap(
     queries: list[tuple[str, str]],
     top_k: int,
     expr: str,
-    current_embeddings: Any,
-    shadow_embeddings: Any,
-    primary_adapter: Any,
-    shadow_adapter: Any,
+    current_embeddings: "LangChainEmbeddingsAdapter",
+    shadow_embeddings: "LangChainEmbeddingsAdapter",
+    primary_adapter: "MilvusAdapter",
+    shadow_adapter: "MilvusAdapter",
 ) -> dict[str, Any]:
     overlaps: list[float] = []
     self_hit_primary = 0
@@ -962,7 +978,7 @@ def run_embedding_migration_overlap_check(
         sample_n=sample_n,
         max_query_chars=max_query_chars,
     )
-    runtime.payload["sampled_queries"] = int(len(queries))
+    runtime.payload["sampled_queries"] = len(queries)
     if not queries:
         runtime.payload["ok"] = False
         runtime.payload["error"] = "no_queries"
@@ -973,7 +989,7 @@ def run_embedding_migration_overlap_check(
     except Exception as exc:  # noqa: BLE001
         runtime.payload["ok"] = False
         runtime.payload["error"] = f"embeddings_init_failed:{type(exc).__name__}"
-        runtime.payload["elapsed_sec"] = round(max(0.0, float(time.perf_counter() - t0)), 3)
+        runtime.payload["elapsed_sec"] = round(max(0.0, time.perf_counter() - t0), 3)
         return runtime.payload
 
     try:
@@ -981,7 +997,7 @@ def run_embedding_migration_overlap_check(
     except Exception as exc:  # noqa: BLE001
         runtime.payload["ok"] = False
         runtime.payload["error"] = f"milvus_adapter_init_failed:{type(exc).__name__}"
-        runtime.payload["elapsed_sec"] = round(max(0.0, float(time.perf_counter() - t0)), 3)
+        runtime.payload["elapsed_sec"] = round(max(0.0, time.perf_counter() - t0), 3)
         return runtime.payload
 
     expr = _milvus_scope_expr(tenant_id=tenant_id, dataset_id=dataset_id)
@@ -996,7 +1012,7 @@ def run_embedding_migration_overlap_check(
             shadow_adapter=shadow_adapter,
         )
     )
-    runtime.payload["elapsed_sec"] = round(max(0.0, float(time.perf_counter() - t0)), 3)
+    runtime.payload["elapsed_sec"] = round(max(0.0, time.perf_counter() - t0), 3)
     return runtime.payload
 
 

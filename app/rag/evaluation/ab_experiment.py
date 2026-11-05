@@ -42,7 +42,7 @@ def assign_ab_variant(
         "tenant_id": str(tenant_id or "").strip(),
         "user_id": str(user_id or "").strip(),
         "variant": normalized_variants[bucket],
-        "bucket": int(bucket),
+        "bucket": bucket,
     }
 
 
@@ -65,7 +65,7 @@ def summarize_ab_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
     variants_out: dict[str, dict[str, Any]] = {}
     for variant in sorted(counts.keys()):
         variants_out[variant] = {
-            "samples": int(counts[variant]),
+            "samples": counts[variant],
             "faithfulness_avg": _average(grouped[variant]["faithfulness"]),
             "latency_ms_avg": _average(grouped[variant]["latency_ms"]),
         }

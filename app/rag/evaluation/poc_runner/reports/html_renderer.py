@@ -101,7 +101,7 @@ def _render_heatmap(report: dict[str, Any]) -> str:
         .set_global_opts(
             title_opts=opts.TitleOpts(title="coverage-heatmap"),
             toolbox_opts=opts.ToolboxOpts(is_show=False),
-            visualmap_opts=opts.VisualMapOpts(min_=0, max_=max([int(v[2]) for v in values] or [1])),
+            visualmap_opts=opts.VisualMapOpts(min_=0, max_=max([v[2] for v in values] or [1])),
             xaxis_opts=opts.AxisOpts(axislabel_opts=opts.LabelOpts(rotate=0)),
         )
     )

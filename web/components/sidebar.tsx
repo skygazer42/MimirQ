@@ -4,6 +4,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import type { ChangeEvent } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { FileText, Upload, Loader2, Trash2, CheckCircle2, AlertCircle, X, Clock, Search } from 'lucide-react'
 import { useDocuments } from '@/hooks/use-documents'
@@ -35,6 +36,20 @@ import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 type SidebarVariant = 'app' | 'workbench'
 type SidebarProps = Readonly<{ variant?: SidebarVariant }>
 
+function getDocumentStatusIcon(status: string) {
+  switch (status) {
+    case 'completed':
+      return <CheckCircle2 className="size-4 text-success" />
+    case 'failed':
+      return <AlertCircle className="size-4 text-destructive" />
+    case 'processing':
+    case 'pending':
+      return <Loader2 className="size-4 text-primary animate-spin motion-reduce:animate-none" />
+    default:
+      return <Clock className="size-4 text-muted-foreground" />
+  }
+}
+
 export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
   const { documents, isLoading, uploadDocuments, cancelDocument, deleteDocument, loadDocuments } = useDocuments()
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([])
@@ -55,7 +70,7 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
   })
 
   // 处理文件上传
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
 
@@ -70,21 +85,6 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
   // 切换文档选择
   const toggleDocumentSelection = (docId: string) => {
     setSelectedDocIds((prev) => (prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]))
-  }
-
-  // 获取状态图标 - 更精致的版本
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="size-4 text-success" />
-      case 'failed':
-        return <AlertCircle className="size-4 text-destructive" />
-      case 'processing':
-      case 'pending':
-        return <Loader2 className="size-4 text-primary animate-spin motion-reduce:animate-none" />
-      default:
-        return <Clock className="size-4 text-muted-foreground" />
-    }
   }
 
   return (
@@ -223,12 +223,10 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
                     >
                       <DocumentCard
                         document={doc}
-                        index={virtualRow.index}
                         isSelected={selectedDocIds.includes(doc.id)}
                         onSelect={() => toggleDocumentSelection(doc.id)}
                         onCancel={() => cancelDocument(doc.id)}
                         onDelete={() => deleteDocument(doc.id)}
-                        getStatusIcon={getStatusIcon}
                       />
                     </div>
                   )
@@ -245,24 +243,15 @@ export function Sidebar({ variant = 'app' }: SidebarProps = {}) {
 // Alias export: keep a stable, explicit name for the knowledge-library sidebar.
 export const KnowledgeSidebar = Sidebar
 
-// 文档卡片组件 - 玻璃拟态与微交互
-function DocumentCard({
-  document,
-  index,
-  isSelected,
-  onSelect,
-  onCancel,
-  onDelete,
-  getStatusIcon,
-}: Readonly<{
+type DocumentCardProps = {
   document: Document
-  index: number
   isSelected: boolean
   onSelect: () => void
   onCancel: () => void
   onDelete: () => void
-  getStatusIcon: (status: string) => React.ReactNode
-}>) {
+}
+
+function DocumentCard({ document, isSelected, onSelect, onCancel, onDelete }: Readonly<DocumentCardProps>) {
   const parserBackend = (document.metadata?.parser_backend as string) || ''
   const parserLabel = parserBackend ? getParserLabel(parserBackend) : null
   return (
@@ -301,7 +290,7 @@ function DocumentCard({
             >
               {document.filename}
             </h3>
-            <div className="shrink-0 pt-0.5 opacity-70">{getStatusIcon(document.status)}</div>
+            <div className="shrink-0 pt-0.5 opacity-70">{getDocumentStatusIcon(document.status)}</div>
           </div>
 
           <div className="flex items-center gap-2 mt-1.5">

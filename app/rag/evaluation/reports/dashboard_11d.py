@@ -31,7 +31,7 @@ def _percentile(values: list[float], pct: int) -> float | None:
         return None
     ordered = sorted(float(v) for v in values)
     idx = max(0, min(len(ordered) - 1, math.ceil((pct / 100.0) * len(ordered)) - 1))
-    return round(float(ordered[idx]), 4)
+    return round(ordered[idx], 4)
 
 
 def _extract_eval_metric(row: dict[str, Any], *path: str) -> float | None:
@@ -140,7 +140,7 @@ def _abstain_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
         abstain_values.append(1.0 if bool(answer_det.get("refusal_correct")) else 0.0)
     return {
         "abstain_rate": _avg(abstain_values),
-        "evaluated_unanswerable": int(len(abstain_values)),
+        "evaluated_unanswerable": len(abstain_values),
     }
 
 
@@ -178,7 +178,7 @@ def _stability_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if len(latency_group) >= 2:
             latency_std_values.append(round(float(pstdev(latency_group)), 4))
     return {
-        "sample_groups_with_repeats": int(repeated_groups),
+        "sample_groups_with_repeats": repeated_groups,
         "answer_f1_std_avg": _avg(answer_f1_std_values),
         "latency_ms_std_avg": _avg(latency_std_values),
     }
@@ -269,14 +269,14 @@ def summarize_eval_dashboard_11d(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     for query_type, group in sorted(groups.items(), key=lambda kv: kv[0]):
         by_query_type[query_type] = {
-            "sample_count": int(len(group)),
+            "sample_count": len(group),
             "dimensions": _compute_dimensions(group),
         }
 
     return {
         "schema": "mimirq.eval.dashboard_11d.v1",
         "summary": {
-            "sample_count": int(len(normalized_rows)),
+            "sample_count": len(normalized_rows),
             "route_ids": route_ids,
         },
         "dimensions": _compute_dimensions(normalized_rows),

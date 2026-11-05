@@ -69,7 +69,7 @@ def _parse_datetime_best_effort(raw: object) -> datetime | None:
 def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:
     out: dict[str, int] = {}
     for k, v in counter.most_common(max(0, int(max_items or 0))):
-        out[str(k)] = int(v)
+        out[str(k)] = v
     return out
 
 
@@ -139,16 +139,16 @@ def _list_connector_document_rows(
     for r in rows:
         out.append(
             {
-                "connector_id": str(getattr(r, "connector_id", "") or ""),
-                "run_dataset_id": getattr(r, "run_dataset_id", None),
-                "document_id": getattr(r, "document_id", None),
-                "linked_at": getattr(r, "linked_at", None),
-                "document_dataset_id": getattr(r, "document_dataset_id", None),
-                "status": str(getattr(r, "status", "") or ""),
-                "created_at": getattr(r, "created_at", None),
-                "updated_at": getattr(r, "updated_at", None),
-                "processed_at": getattr(r, "processed_at", None),
-                "doc_metadata": dict(getattr(r, "doc_metadata", None) or {}),
+                "connector_id": str(r.connector_id or ""),
+                "run_dataset_id": r.run_dataset_id,
+                "document_id": r.document_id,
+                "linked_at": r.linked_at,
+                "document_dataset_id": r.document_dataset_id,
+                "status": str(r.status or ""),
+                "created_at": r.created_at,
+                "updated_at": r.updated_at,
+                "processed_at": r.processed_at,
+                "doc_metadata": dict(r.doc_metadata or {}),
             }
         )
     return out
@@ -182,8 +182,8 @@ def _skip_summary(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now),
-        "stale_after_days": int(stale_after_days),
-        "max_documents": int(max_documents),
+        "stale_after_days": stale_after_days,
+        "max_documents": max_documents,
         "ok": True,
         "skipped": True,
         "skip_reason": "already_written",
@@ -282,10 +282,10 @@ def _summarize_stale_rows(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now),
-        "stale_after_days": int(stale_after_days),
-        "max_documents": int(max_documents),
-        "scanned": int(scanned),
-        "stale": int(stale),
+        "stale_after_days": stale_after_days,
+        "max_documents": max_documents,
+        "scanned": scanned,
+        "stale": stale,
         "by_connector_scanned": _bounded_top_counts(by_connector_scanned, max_items=50),
         "by_connector_stale": _bounded_top_counts(by_connector_stale, max_items=50),
         "by_dataset_stale": _bounded_top_counts(by_dataset_stale, max_items=50),
@@ -325,11 +325,11 @@ def run_daily_stale_report(
         max_documents=max_documents,
     )
     report_date = now0.date().isoformat()
-    cutoff = now0 - timedelta(days=int(days_i))
+    cutoff = now0 - timedelta(days=days_i)
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db, tenant_id=tenant_id, action="connectors.stale_report.daily", report_date=report_date
         )
@@ -353,7 +353,7 @@ def run_daily_stale_report(
         cutoff=cutoff,
     )
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 

@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import type { HTMLMotionProps } from 'framer-motion'
-import * as React from 'react'
+import type { ReactNode } from 'react'
 
 const presets = {
   fade: {
@@ -36,7 +36,7 @@ type Preset = keyof typeof presets
 type AnimatedPresenceProps = Omit<HTMLMotionProps<'div'>, 'initial' | 'animate' | 'exit' | 'transition'> & {
   show: boolean
   preset?: Preset
-  children: React.ReactNode
+  children: ReactNode
   mode?: 'wait' | 'sync' | 'popLayout'
   className?: string
 }
