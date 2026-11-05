@@ -1841,3 +1841,9 @@
 27 调整／2 原字节符合。283 项作者与 109 项独立审阅证据的哈希核对通过；独立整模块证明明确 477 个表达式、3 项元数据和两个已批准缺陷修复。Root 新检查所有29源码／两条笔记与固定 Git 一致，AST3.11、714 函数声明／默认值、23 完整 class、401 项选定 argparse 调用、Ruff29／格式29、104 条笔记门禁均通过；Root 的401项选定CLI计数与独立评审407项的选择口径不同，不作同一计数。
 
 保留旧 `tests/test_chunk_autotune.py` 的已知排序期望冲突，不新增、修改或运行 Python 测试，不以静态检查声称业务／数据库／发布链运行验收。清单 3,867 项／195 项待处理或待合入。证据：`core-quality-release29-20261106/core29-root-category-report.json`、`root-integration/source-check.json`。
+
+## 2026-11-06：Dify 基准与交付脚本 22 文件
+
+15 调整／7 原字节符合。258 项作者和 99 项独立评审证据哈希核对通过；Root 新检查完整22源码／三条笔记的固定 Git 身份、AST3.11、31 处共享函数导入、691→662 模块函数、15 项类型元数据、七个完整 class 以及 Core 共享统计源码，均匹配。Ruff22／格式22／107 条笔记门禁通过。
+
+两个已批准独立缺陷修复及共享函数 body／globals／原始输入生产者由独立评审明确核对；Root 未重跑历史阶段，不运行 Python 测试或目标／生成代码／SDK／Dify／网络／数据库。清单 3,870 项／173 项待处理或待合入。证据：`changzhou-dify-benchmark-delivery22-20261106/dify22-root-category-report.json`、`root-integration/source-check.json`。

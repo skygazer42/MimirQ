@@ -11,7 +11,6 @@ import json
 import os
 import sys
 from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +27,10 @@ from scripts.changzhou_gov_collect_dify_answers import (  # noqa: E402
 from scripts.changzhou_gov_dify_trace_report import (  # noqa: E402
     DEFAULT_CONSOLE_BASE_URL,
     DEFAULT_STORAGE_STATE,
+    _emit_progress,
+    _format_cli_error,
+    _text,
+    _utc_now_text,
     collect_trace_report,
     load_console_token,
 )
@@ -56,27 +59,6 @@ DEFAULT_THRESHOLDS = {
     "generated_answer_policy_clean_rate": 1.0,
 }
 DEFAULT_MAXIMUMS = {"generated_answer_fallback_rate": 0.0}
-_CONSOLE_LOGIN_HINT = (
-    "Refresh Dify console login with "
-    "DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt "
-    "make dify-console-login."
-)
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _format_cli_error(exc: Exception) -> str:
-    message = str(exc)
-    lowered = message.lower()
-    if "http 401" in lowered or "token has expired" in lowered or "unauthorized" in lowered:
-        return f"{message}\nHINT: {_CONSOLE_LOGIN_HINT}"
-    return message
 
 
 def _env_file_values(path: str) -> dict[str, str]:
@@ -148,11 +130,6 @@ def _trace_passed(report: dict[str, Any]) -> bool:
 
 def _stage(passed: bool, report: dict[str, Any]) -> dict[str, Any]:
     return {"passed": bool(passed), "summary": report.get("summary") or {}, "report": report}
-
-
-def _emit_progress(progress_fn: ProgressFn | None, payload: dict[str, Any]) -> None:
-    if progress_fn is not None:
-        progress_fn(payload)
 
 
 def _finalize(stages: dict[str, dict[str, Any]]) -> dict[str, Any]:

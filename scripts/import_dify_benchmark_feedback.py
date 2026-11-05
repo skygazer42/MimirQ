@@ -13,8 +13,13 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 from uuid import UUID, uuid5
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models.chat import Message
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -543,8 +548,8 @@ def _upsert_feedback_records(records: list[FeedbackImportRecord]) -> dict[str, A
 
 def _upsert_message(
     *,
-    db: Any,
-    model: Any,
+    db: "Session",
+    model: "type[Message]",
     message_id: UUID,
     tenant_id: UUID,
     conversation_id: UUID,

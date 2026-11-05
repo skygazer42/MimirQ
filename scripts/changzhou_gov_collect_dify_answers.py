@@ -13,7 +13,6 @@ import os
 import sys
 import time
 from collections.abc import Callable, Mapping
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -24,7 +23,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.changzhou_gov_golden_eval import DEFAULT_CASES, load_cases  # noqa: E402
+from scripts.changzhou_gov_golden_eval import (  # noqa: E402
+    DEFAULT_CASES,
+    _text,
+    _utc_now_text,
+    load_cases,
+)
 
 DEFAULT_DIFY_BASE_URL = "http://127.0.0.1/v1"
 DEFAULT_API_KEY_FILE = "/tmp/dify_app_api_keys_post.json"
@@ -40,14 +44,6 @@ _TRANSIENT_DIFY_ERROR_MARKERS = (
     "temporarily unavailable",
 )
 _DIRECT_DIFY_HOSTS = {"dify.example.com"}
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _case_dify_inputs(case: dict[str, Any]) -> dict[str, Any]:
