@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Database, Loader2, RefreshCw } from 'lucide-react'
 import * as THREE from 'three'
 import type { ForceGraphMethods } from 'react-force-graph-3d'
+import type { Document, DocumentChunk } from '@/types'
 
 import { Button } from '@/components/ui/button'
 import { formatApiError } from '@/lib/api-errors'
@@ -90,20 +91,9 @@ type NebulaData = {
   clusters: ClusterDefinition[]
 }
 
-type DocumentListItem = {
-  id: string
-  filename?: string | null
-  file_type?: string | null
-  file_size?: number | null
-  status?: string | null
-  metadata?: Record<string, unknown> | null
-}
+type DocumentListItem = Pick<Document, 'id' | 'filename' | 'file_type' | 'file_size' | 'status' | 'metadata'>
 
-type DocumentChunkItem = {
-  id: string
-  content: string
-  chunk_index: number
-}
+type DocumentChunkItem = Pick<DocumentChunk, 'id' | 'content' | 'chunk_index'>
 
 const EMPTY_NEBULA: NebulaData = { nodes: [], links: [], clusters: [] }
 
@@ -287,7 +277,7 @@ function buildNebula(documents: DocumentListItem[], chunksByDocument: Map<string
 
 async function loadVectorNebulaData(): Promise<NebulaData> {
   const documentList = await documentApi.list({ limit: 24, status: 'completed' })
-  const documents = (documentList.items || []) as DocumentListItem[]
+  const documents = documentList.items || []
   const chunksByDocument = new Map<string, DocumentChunkItem[]>()
 
   await Promise.all(

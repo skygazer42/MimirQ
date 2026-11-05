@@ -20,9 +20,13 @@ export type KnowledgeQueryState = {
 
 const DEFAULT_DATASET_ALL = '__all__'
 
+type KnowledgeQueryOptions = {
+  datasetAllValue?: string
+}
+
 export function parseKnowledgeQueryState(
   searchParams: URLSearchParams,
-  opts?: { datasetAllValue?: string },
+  opts?: KnowledgeQueryOptions,
 ): KnowledgeQueryState {
   const DATASET_ALL = opts?.datasetAllValue ?? DEFAULT_DATASET_ALL
 
@@ -86,7 +90,7 @@ export function parseKnowledgeQueryState(
   return state
 }
 
-export function serializeKnowledgeQueryState(state: KnowledgeQueryState, opts?: { datasetAllValue?: string }): string {
+export function serializeKnowledgeQueryState(state: KnowledgeQueryState, opts?: KnowledgeQueryOptions): string {
   const DATASET_ALL = opts?.datasetAllValue ?? DEFAULT_DATASET_ALL
 
   const params = new URLSearchParams()

@@ -1,9 +1,6 @@
 'use client'
 
-/**
- * KnowledgeRetrievalPanel - Index Audit Module
- * 优化版：极致高密度诊断台、UI Pro Max 物理质感、极客化数据展示
- */
+/** 当前文档或数据集范围的索引审计、通道状态与修复动作。 */
 import { useMemo, useState } from 'react'
 import {
   Activity,
@@ -68,17 +65,19 @@ function getChecklistStateLabel(state: string): string {
   return '等待'
 }
 
+type DetailsButtonLabelOptions = {
+  hasIndexDetails: boolean
+  detailsExpanded: boolean
+  selectedDatasetId?: string
+  indexAuditLoading: boolean
+}
+
 function getDetailsButtonLabel({
   hasIndexDetails,
   detailsExpanded,
   selectedDatasetId,
   indexAuditLoading,
-}: {
-  hasIndexDetails: boolean
-  detailsExpanded: boolean
-  selectedDatasetId?: string
-  indexAuditLoading: boolean
-}): string {
+}: DetailsButtonLabelOptions): string {
   if (hasIndexDetails) {
     return detailsExpanded ? '收起索引详情' : '查看索引详情'
   }

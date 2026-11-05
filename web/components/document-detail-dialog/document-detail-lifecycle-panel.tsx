@@ -12,7 +12,7 @@ import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Document } from '@/types'
 
-type DocumentPublicationStatus = 'draft' | 'published' | 'deprecated'
+type DocumentPublicationStatus = Document['publication_status']
 
 type DocumentDetailLifecyclePanelProps = Readonly<{
   editing: boolean

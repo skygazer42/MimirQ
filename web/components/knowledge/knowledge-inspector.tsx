@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { CalendarClock, Database, FileSearch, FolderTree, Hash, Layers, Route, type LucideIcon } from 'lucide-react'
 
 import type { Document } from '@/types'
@@ -14,7 +15,7 @@ import { cn, formatDate, formatFileSize } from '@/lib/utils'
 
 type KnowledgeInspectorProps = {
   selectedDocs: Document[]
-  children?: React.ReactNode
+  children?: ReactNode
   className?: string
   embedded?: boolean
 }
@@ -263,15 +264,13 @@ export function KnowledgeInspector({
   )
 }
 
-function MetricTile({
-  icon: Icon,
-  label,
-  value,
-}: Readonly<{
+type MetricTileProps = {
   icon: LucideIcon
   label: string
   value: string
-}>) {
+}
+
+function MetricTile({ icon: Icon, label, value }: Readonly<MetricTileProps>) {
   return (
     <div className="rounded-[14px] border border-border/48 bg-card/62 px-2.5 py-2 shadow-[inset_0_1px_0_hsl(var(--card)/0.74)]">
       <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/66">

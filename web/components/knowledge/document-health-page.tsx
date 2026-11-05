@@ -22,7 +22,7 @@ import {
   Sigma,
   type LucideIcon,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 
 import { AppFrame } from '@/components/app-frame'
 import { Badge } from '@/components/ui/badge'
@@ -30,7 +30,7 @@ import { Button } from '@/components/ui/button'
 import { PageScaffold } from '@/components/ui/page-scaffold'
 import { Panel } from '@/components/ui/panel'
 import { useRouter } from '@/i18n/navigation'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, formatDate, formatFileSize } from '@/lib/utils'
@@ -149,14 +149,16 @@ function getReviewTone(value: number | null | undefined): HealthTone {
   return 'bad'
 }
 
-export default function DocumentHealthPage({ documentId }: Readonly<{ documentId: string }>) {
+type DocumentHealthPageProps = { documentId: string }
+
+export default function DocumentHealthPage({ documentId }: Readonly<DocumentHealthPageProps>) {
   const router = useRouter()
   const healthQuery = useQuery({
     queryKey: queryKeys.documents.health(documentId, DOCUMENT_HEALTH_QUERY_PARAMS),
     queryFn: () => documentApi.health(documentId, DOCUMENT_HEALTH_QUERY_PARAMS),
     enabled: Boolean(documentId),
   })
-  const data = (healthQuery.data ?? null) as DocumentHealthCard | null
+  const data = healthQuery.data ?? null
   const loading = healthQuery.isFetching
   const error = healthQuery.error ? formatApiError(healthQuery.error, '加载失败') : null
 
@@ -442,13 +444,12 @@ export default function DocumentHealthPage({ documentId }: Readonly<{ documentId
   )
 }
 
-function InfoPill({
-  icon: Icon,
-  value,
-}: Readonly<{
+type InfoPillProps = {
   icon: LucideIcon
   value: string
-}>) {
+}
+
+function InfoPill({ icon: Icon, value }: Readonly<InfoPillProps>) {
   return (
     <span className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border/45 bg-background/62 px-2 py-1 font-mono text-[10px] text-muted-foreground">
       <Icon className="size-3 shrink-0 text-info/72" />
@@ -457,15 +458,13 @@ function InfoPill({
   )
 }
 
-function HeroMetric({
-  icon: Icon,
-  label,
-  value,
-}: Readonly<{
+type HeroMetricProps = {
   icon: LucideIcon
   label: string
   value: string
-}>) {
+}
+
+function HeroMetric({ icon: Icon, label, value }: Readonly<HeroMetricProps>) {
   return (
     <div className="rounded-[16px] border border-border/45 bg-background/58 px-3 py-2 shadow-[inset_0_1px_0_hsl(var(--card)/0.72)]">
       <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/66">
@@ -479,19 +478,15 @@ function HeroMetric({
   )
 }
 
-function ScoreTile({
-  detail,
-  icon: Icon,
-  label,
-  tone,
-  value,
-}: Readonly<{
+type ScoreTileProps = {
   detail: string
   icon: LucideIcon
   label: string
   tone: HealthTone
   value: string
-}>) {
+}
+
+function ScoreTile({ detail, icon: Icon, label, tone, value }: Readonly<ScoreTileProps>) {
   const ToneIcon = tone === 'ok' ? CheckCircle2 : tone === 'bad' ? AlertTriangle : Sigma
 
   return (
@@ -521,21 +516,16 @@ function ScoreTile({
   )
 }
 
-function HealthSection({
-  badge,
-  children,
-  icon: Icon,
-  subtitle,
-  title,
-  tone,
-}: Readonly<{
+type HealthSectionProps = {
   badge: string
-  children: React.ReactNode
+  children: ReactNode
   icon: LucideIcon
   subtitle: string
   title: string
   tone: HealthTone
-}>) {
+}
+
+function HealthSection({ badge, children, icon: Icon, subtitle, title, tone }: Readonly<HealthSectionProps>) {
   return (
     <Panel
       variant="glass"
@@ -565,19 +555,19 @@ function HealthSection({
   )
 }
 
-function DenseGrid({ children }: Readonly<{ children: React.ReactNode }>) {
+type DenseGridProps = { children: ReactNode }
+
+function DenseGrid({ children }: Readonly<DenseGridProps>) {
   return <div className="grid grid-cols-2 gap-2">{children}</div>
 }
 
-function Fact({
-  label,
-  tone = 'neutral',
-  value,
-}: Readonly<{
+type FactProps = {
   label: string
   tone?: HealthTone
   value: string
-}>) {
+}
+
+function Fact({ label, tone = 'neutral', value }: Readonly<FactProps>) {
   return (
     <div className="min-w-0 rounded-[14px] border border-border/45 bg-background/58 px-2.5 py-2">
       <div className="text-[10px] font-medium leading-none text-muted-foreground/62">{label}</div>

@@ -18,7 +18,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { type Key, type ReactNode, type SyntheticEvent, useCallback, useState } from 'react'
+import { type ReactNode, type SyntheticEvent, useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -56,23 +56,14 @@ import { cn, formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import { getParserLabel } from '@/lib/parser-options'
 import { getUserTagsFromDocument } from '@/lib/document-user-tags'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
+import type { Virtualizer } from '@tanstack/react-virtual'
+import type { KnowledgeSortKey, KnowledgeSortDir, KnowledgeViewMode } from './use-knowledge-query-state'
 
-type ViewMode = 'grid' | 'list'
-type DocSortKey = 'created_at' | 'filename' | 'file_size'
-type DocSortDir = 'asc' | 'desc'
-type TranslateValue = string | number | Date
-type TranslateFn = (key: string, values?: Record<string, TranslateValue>) => string
-type VirtualRowLike = {
-  key: Key
-  index: number
-  start: number
-  end: number
-}
-type VirtualizerLike = {
-  getVirtualItems: () => VirtualRowLike[]
-  getTotalSize: () => number
-  measureElement: (node: Element | null) => void
-}
+type TranslateFn = ReturnType<typeof useTranslations<'KnowledgeDocumentsPanel'>>
+type KnowledgeDocumentsVirtualizer = Pick<
+  Virtualizer<HTMLElement, Element>,
+  'getVirtualItems' | 'getTotalSize' | 'measureElement'
+>
 
 type KnowledgeDocumentsPanelProps = {
   isLoading: boolean
@@ -94,16 +85,16 @@ type KnowledgeDocumentsPanelProps = {
   setDocFilter: (value: string) => void
   onClearFilters: () => void
 
-  sortKey: DocSortKey
-  sortDir: DocSortDir
-  setSortKey: (value: DocSortKey) => void
-  setSortDir: (value: DocSortDir) => void
+  sortKey: KnowledgeSortKey
+  sortDir: KnowledgeSortDir
+  setSortKey: (value: KnowledgeSortKey) => void
+  setSortDir: (value: KnowledgeSortDir) => void
 
-  viewMode: ViewMode
+  viewMode: KnowledgeViewMode
   docGridColumns: number
   docGridRowCount: number
-  docsGridVirtualizer: VirtualizerLike
-  docsTableVirtualizer: VirtualizerLike
+  docsGridVirtualizer: KnowledgeDocumentsVirtualizer
+  docsTableVirtualizer: KnowledgeDocumentsVirtualizer
   page: number
   pageSize: number
   pageCount: number
@@ -132,9 +123,13 @@ type KnowledgeDocumentsPanelProps = {
   anySelectedNotArchived: boolean
 
   deleteDocument: (id: string) => void | Promise<void>
-  handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void
   onPeek?: (docId: string) => void
   onScrollContainerChange?: (node: HTMLDivElement | null) => void
+}
+
+function getPeekChunksLabel(t: TranslateFn): string {
+  const resolved = t('actions.peekChunks')
+  return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '切片管理' : resolved
 }
 
 function getDocsGridColsClassName(docGridColumns: number): string {
@@ -300,10 +295,7 @@ export function KnowledgeDocumentsPanel({
   const documentListGridTemplate = showDatasetColumn
     ? '2.25rem minmax(16rem,1.65fr) minmax(8.5rem,.78fr) minmax(5.5rem,.55fr) minmax(5rem,.5fr) 3.75rem 5rem 5.5rem 8.5rem'
     : '2.25rem minmax(18rem,1.8fr) minmax(5.5rem,.55fr) minmax(5rem,.5fr) 3.75rem 5rem 5.5rem 8.5rem'
-  const peekChunksLabel = (() => {
-    const resolved = t('actions.peekChunks')
-    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '切片管理' : resolved
-  })()
+  const peekChunksLabel = getPeekChunksLabel(t)
 
   const docsGridVirtualRows = docsGridVirtualizer.getVirtualItems()
   const docsTableVirtualRows = docsTableVirtualizer.getVirtualItems()
@@ -405,7 +397,7 @@ export function KnowledgeDocumentsPanel({
       />
 
       <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end">
-        <Select value={sortKey} onValueChange={(value) => setSortKey(value as DocSortKey)}>
+        <Select value={sortKey} onValueChange={(value) => setSortKey(value as KnowledgeSortKey)}>
           <SelectTrigger className="h-8 min-w-[138px] rounded-xl border-border/55 bg-background/82 text-[11px] font-medium shadow-none dark:border-border/65 dark:bg-background/68">
             <SelectValue placeholder={t('table.columns.name')} />
           </SelectTrigger>
@@ -1324,6 +1316,18 @@ export function KnowledgeDocumentsPanel({
   )
 }
 
+type DocumentCardProps = {
+  doc: Document
+  statusBadge: ReturnType<typeof getStatusBadge>
+  statusBarClassName: string
+  onRequestDelete: (doc: Document) => void
+  copyText: (text: string, okMsg: string) => void | Promise<void>
+  t: TranslateFn
+  selected: boolean
+  onToggleSelect: () => void
+  onPeek?: (docId: string) => void
+}
+
 function DocumentCard({
   doc,
   statusBadge,
@@ -1334,21 +1338,8 @@ function DocumentCard({
   selected,
   onToggleSelect,
   onPeek,
-}: Readonly<{
-  doc: Document
-  statusBadge: { status: StatusBadgeStatus; label: string }
-  statusBarClassName: string
-  onRequestDelete: (doc: Document) => void
-  copyText: (text: string, okMsg: string) => void | Promise<void>
-  t: TranslateFn
-  selected: boolean
-  onToggleSelect: () => void
-  onPeek?: (docId: string) => void
-}>) {
-  const peekChunksLabel = (() => {
-    const resolved = t('actions.peekChunks')
-    return resolved === 'KnowledgeDocumentsPanel.actions.peekChunks' ? '切片管理' : resolved
-  })()
+}: Readonly<DocumentCardProps>) {
+  const peekChunksLabel = getPeekChunksLabel(t)
   const parserLabel = doc.metadata?.parser_backend ? getParserLabel(doc.metadata.parser_backend as string) : null
   const userTags = getUserTagsFromDocument(doc)
   const fileType = getFileTypeMeta(doc)

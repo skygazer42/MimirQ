@@ -34,7 +34,8 @@ import { DocumentVersionsDialog } from '@/components/document-detail-dialog/docu
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
-import { documentApi, kgApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
+import { kgApi } from '@/lib/api/graph'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
@@ -64,7 +65,7 @@ const ACTIVE_PIPELINE_VALUE = '__active__'
 const CHUNK_PAGE_SIZE = 200
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 type SaveActionState = 'idle' | 'skipped' | 'saved' | 'failed'
-type DocumentPublicationStatus = 'draft' | 'published' | 'deprecated'
+type DocumentPublicationStatus = Document['publication_status']
 type LifecycleDraftValues = {
   publicationStatus: DocumentPublicationStatus
   owner: string
@@ -74,7 +75,7 @@ type LifecycleDraftValues = {
 }
 type LifecycleValidationKey =
   'validation.supersedesUuid' | 'validation.authorityInteger' | 'validation.authorityRange' | 'validation.reviewDueAt'
-type AccessModeFormValue = FormDataEntryValue | string | null | undefined
+type FormFieldValue = FormDataEntryValue | null | undefined
 type DocumentMetadataRecord = Record<string, unknown>
 type DocumentPipelineMetadata = DocumentMetadataRecord & {
   parser_backend_requested?: string
@@ -86,7 +87,7 @@ type DocumentPipelineMetadata = DocumentMetadataRecord & {
   pipeline_hash?: string
 }
 
-function formString(value: AccessModeFormValue, fallback = ''): string {
+function formString(value: FormFieldValue, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
@@ -129,7 +130,7 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
+function normalizeAccessMode(value: FormFieldValue): DocumentAccessMode {
   const normalized = formString(value).trim()
   switch (normalized) {
     case 'inherit':
@@ -142,7 +143,7 @@ function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
   }
 }
 
-function parseStringArrayField(value: FormDataEntryValue | string | null | undefined): string[] {
+function parseStringArrayField(value: FormFieldValue): string[] {
   let parsed: unknown = []
   try {
     parsed = JSON.parse(formString(value, '[]'))
@@ -165,7 +166,7 @@ function parseStringArrayField(value: FormDataEntryValue | string | null | undef
   return out
 }
 
-function normalizePublicationStatus(value: FormDataEntryValue | string | null | undefined): DocumentPublicationStatus {
+function normalizePublicationStatus(value: FormFieldValue): DocumentPublicationStatus {
   const normalized = formString(value).trim()
   return normalized === 'draft' || normalized === 'deprecated' ? normalized : 'published'
 }
@@ -209,7 +210,25 @@ function hasLifecycleChanges(doc: Document, values: LifecycleDraftValues) {
   )
 }
 
-function DocumentSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+type DocumentSaveButtonProps = { disabled: boolean }
+
+function parseAccessMembers(raw: string): string[] {
+  const parts = (raw || '')
+    .split(/[\n,;]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const p of parts) {
+    if (seen.has(p)) continue
+    seen.add(p)
+    out.push(p)
+    if (out.length >= 200) break
+  }
+  return out
+}
+
+function DocumentSaveButton({ disabled }: Readonly<DocumentSaveButtonProps>) {
   const commonT = useTranslations('Common')
   const { pending } = useFormStatus()
 
@@ -272,9 +291,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
 
   const [lifecycleEditing, setLifecycleEditing] = useState(false)
-  const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] = useState<
-    'draft' | 'published' | 'deprecated'
-  >('published')
+  const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] =
+    useState<DocumentPublicationStatus>('published')
   const [lifecycleOwnerDraft, setLifecycleOwnerDraft] = useState('')
   const [lifecycleReviewDueDraft, setLifecycleReviewDueDraft] = useState('')
   const [lifecycleAuthorityDraft, setLifecycleAuthorityDraft] = useState('')
@@ -935,22 +953,6 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       setIsCleanDocxDownloading(false)
     }
   }
-
-  const parseAccessMembers = useCallback((raw: string): string[] => {
-    const parts = (raw || '')
-      .split(/[\n,;]+/g)
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const out: string[] = []
-    const seen = new Set<string>()
-    for (const p of parts) {
-      if (seen.has(p)) continue
-      seen.add(p)
-      out.push(p)
-      if (out.length >= 200) break
-    }
-    return out
-  }, [])
 
   const [, saveAccessAction, isSavingAccess] = useActionState(
     async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {

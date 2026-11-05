@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { Virtualizer } from '@tanstack/react-virtual'
 import {
   Ban,
   Calendar,
@@ -28,7 +29,7 @@ import { Input } from '@/components/ui/input'
 import { Panel } from '@/components/ui/panel'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { lineageApi } from '@/lib/api'
+import { lineageApi } from '@/lib/api/lineage'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, formatDate } from '@/lib/utils'
@@ -36,17 +37,10 @@ import type { Document, DocumentChunk, DocumentTimelineItem, DocumentVersionList
 
 const ACTIVE_PIPELINE_VALUE = '__active__'
 
-type VirtualItemLike = {
-  key: string | number | bigint
-  index: number
-  start: number
-}
-
-type VirtualizerLike = {
-  getTotalSize: () => number
-  getVirtualItems: () => VirtualItemLike[]
-  measureElement: (node: Element | null) => void
-}
+type DocumentDetailVirtualizer = Pick<
+  Virtualizer<HTMLDivElement, Element>,
+  'getTotalSize' | 'getVirtualItems' | 'measureElement'
+>
 
 type DocumentDetailActivityPanelProps = Readonly<{
   activeView: 'chunks' | 'timeline'
@@ -72,7 +66,7 @@ type DocumentDetailActivityPanelProps = Readonly<{
   onClose: () => void
   isSearching: boolean
   chunkError: string | null
-  chunkRowVirtualizer: VirtualizerLike
+  chunkRowVirtualizer: DocumentDetailVirtualizer
   canMutateChunks: boolean
   chunkOpWorkingId: string | null
   onBeginEditChunk: (chunk: DocumentChunk) => void
@@ -92,7 +86,7 @@ type DocumentDetailActivityPanelProps = Readonly<{
   timelineError: string | null
   docError: string | null
   onLoadTimeline: () => void
-  timelineRowVirtualizer: VirtualizerLike
+  timelineRowVirtualizer: DocumentDetailVirtualizer
 }>
 
 function highlightText(text: string, query: string) {
@@ -136,7 +130,11 @@ function prettyJson(value: unknown): string {
   }
 }
 
-function ChunkLineageButton({ chunkId }: Readonly<{ chunkId: string }>) {
+type ChunkLineageButtonProps = {
+  chunkId: string
+}
+
+function ChunkLineageButton({ chunkId }: Readonly<ChunkLineageButtonProps>) {
   const [open, setOpen] = useState(false)
   const lineageQuery = useQuery({
     queryKey: queryKeys.lineage.chunk(chunkId),

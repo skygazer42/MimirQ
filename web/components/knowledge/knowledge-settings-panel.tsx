@@ -1,9 +1,6 @@
 'use client'
 
-/**
- * KnowledgeSettingsPanel & KnowledgeConnectorRunsPanel
- * 优化版：任务中心极致高密度、UI Pro Max 视觉增强
- */
+/** 数据集配置草稿、保存验证与连接器运行记录。 */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -40,7 +37,9 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Switch } from '@/components/ui/switch'
 
-import { datasetApi, retrievalApi, settingsApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { retrievalApi } from '@/lib/api/rag'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
 import {
   buildDatasetRagDefaultsForUpdate,
@@ -68,8 +67,7 @@ type DatasetRagVerificationState = {
   verifiedAt: string
 }
 type ConnectorRunStatusFilter = 'all' | 'pending' | 'running' | 'failed' | 'completed' | 'cancelled'
-type TranslateValue = string | number | Date
-type TranslateFn = (key: string, values?: Record<string, TranslateValue>) => string
+type TranslateFn = ReturnType<typeof useTranslations<'KnowledgeSettingsPanel'>>
 
 type KnowledgeSettingsPanelProps = {
   selectedDatasetId?: string
@@ -206,10 +204,6 @@ function inferEmbeddingBrand(embedding: KnowledgeSettingsConfig['embedding'] | n
   return 'OpenAI Embedding'
 }
 
-function cloneSettingsConfig(config: KnowledgeSettingsConfig): KnowledgeSettingsConfig {
-  return structuredClone(config)
-}
-
 function buildScopedSettingsConfig(
   settings: SystemSettings,
   selectedDataset?: Dataset | null,
@@ -288,7 +282,7 @@ export function KnowledgeSettingsPanel({
     if (!settingsQuery.data) return
     const cfg = buildScopedSettingsConfig(settingsQuery.data, selectedDataset)
     setSavedConfig(cfg)
-    setDraftConfig(cloneSettingsConfig(cfg))
+    setDraftConfig(structuredClone(cfg))
   }, [
     settingsQuery.data,
     selectedDataset,
@@ -305,7 +299,7 @@ export function KnowledgeSettingsPanel({
 
   const isDirty = useMemo(() => JSON.stringify(savedConfig) !== JSON.stringify(draftConfig), [savedConfig, draftConfig])
   const handleResetDraft = useCallback(() => {
-    setDraftConfig(savedConfig ? cloneSettingsConfig(savedConfig) : null)
+    setDraftConfig(savedConfig ? structuredClone(savedConfig) : null)
     setConfirmEmbeddingSaveOpen(false)
   }, [savedConfig])
 
@@ -344,10 +338,10 @@ export function KnowledgeSettingsPanel({
 
         const nextConfig = settingsQuery.data
           ? buildScopedSettingsConfig(settingsQuery.data, refreshedDataset)
-          : cloneSettingsConfig(draftConfig)
+          : structuredClone(draftConfig)
         if (canPublish()) {
-          setSavedConfig(cloneSettingsConfig(nextConfig))
-          setDraftConfig(cloneSettingsConfig(nextConfig))
+          setSavedConfig(structuredClone(nextConfig))
+          setDraftConfig(structuredClone(nextConfig))
         }
 
         const hashRequest = buildRetrievalConfigHashRequest(refreshedDataset.rag_defaults)
@@ -370,7 +364,7 @@ export function KnowledgeSettingsPanel({
       } else {
         await settingsApi.update(draftConfig)
         if (!canPublish()) return
-        setSavedConfig(cloneSettingsConfig(draftConfig))
+        setSavedConfig(structuredClone(draftConfig))
         toast.success(t('toasts.saveSuccess'))
       }
     } catch (err) {
@@ -986,7 +980,7 @@ export function KnowledgeConnectorRunsPanel({
   )
 
   const visibleRuns = useMemo(() => {
-    let list =
+    const list =
       runStatusFilter === 'all'
         ? connectorRuns
         : connectorRuns.filter((r) => String(r.status).toLowerCase() === runStatusFilter)

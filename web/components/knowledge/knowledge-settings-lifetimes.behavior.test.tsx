@@ -326,12 +326,10 @@ beforeEach(() => {
   ports.settings.get.mockReset().mockResolvedValue(settings())
   ports.settings.update.mockReset().mockResolvedValue({ success: true })
   ports.datasets.update.mockReset().mockResolvedValue(undefined)
-  ports.datasets.get
-    .mockReset()
-    .mockImplementation(async (id: string) => ({
-      ...datasets.find((dataset) => dataset.id === id),
-      rag_defaults: { top_k: 12, score_threshold: 0.6, retrieval_mode: 'hybrid' },
-    }))
+  ports.datasets.get.mockReset().mockImplementation(async (id: string) => ({
+    ...datasets.find((dataset) => dataset.id === id),
+    rag_defaults: { top_k: 12, score_threshold: 0.6, retrieval_mode: 'hybrid' },
+  }))
   ports.retrieval.configHash.mockReset().mockResolvedValue({ hash: 'verified-hash', effective_config: { top_k: 12 } })
 })
 afterEach(() => {
