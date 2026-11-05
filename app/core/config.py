@@ -577,10 +577,6 @@ class Settings(BaseSettings):
     # Multi-modal retrieval (optional): CLIP embeddings for image chunks.
     # Disabled by default to avoid pulling heavyweight ML deps in minimal deployments.
     IMAGE_EMBEDDING_ENABLED: bool = False
-    IMAGE_EMBEDDING_MODEL_NAME: str = "clip-ViT-B-32"
-    IMAGE_EMBEDDING_DEVICE: str = "cpu"
-    IMAGE_EMBEDDING_BATCH_SIZE: int = 8
-    IMAGE_EMBEDDING_COLLECTION_NAME: str = "image_chunks"
     # Keep this aligned with parser_factory supported non-PDF formats.
     ALLOWED_EXTENSIONS: str = (
         ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,"
@@ -1227,9 +1223,9 @@ class Settings(BaseSettings):
     # Notes:
     # - Disabled by default (no behavior change).
     # - The default provider is deterministic and intended for tests/offline use.
-    # - Production SPLADE models (HF/transformers) must be loaded lazily and are optional.
+    # - Neural SPLADE execution has been retired from the API.
     SPARSE_RETRIEVAL_ENABLED: bool = False
-    SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | splade
+    SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     # Optional Milvus native dense+sparse retrieval path.
     # Safe-off by default: callers must opt in and the retriever auto-falls back
     # unless the request is dataset-scoped on Milvus with sparse retrieval enabled.
@@ -1241,28 +1237,17 @@ class Settings(BaseSettings):
     # Comma-separated synonym pairs like: "kubernetes:k8s,postgresql:postgres"
     # Used only by deterministic provider (test scaffold).
     SPARSE_RETRIEVAL_SYNONYMS: str = ""
-    # SPLADE provider (optional, opt-in): requires transformers + a local or HF model.
-    SPARSE_SPLADE_MODEL_NAME: str = ""
-    SPARSE_SPLADE_DEVICE: str = "cpu"  # cpu | cuda | auto
-    SPARSE_SPLADE_BATCH_SIZE: int = 8
-    SPARSE_SPLADE_MAX_LENGTH: int = 256
-    SPARSE_SPLADE_TOP_K: int = 128
-    SPARSE_SPLADE_MIN_WEIGHT: float = 0.0
 
     # Optional ColBERT-style retrieval (ANN) channel.
     #
     # Notes:
     # - Disabled by default (no behavior change).
     # - The deterministic provider is intended for tests/offline gating.
-    # - The HF provider is opt-in and requires a local/HF model.
+    # - Only the deterministic test implementation remains.
     COLBERT_RETRIEVAL_ENABLED: bool = False
-    COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | hf
+    COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED: bool = True
     COLBERT_RETRIEVAL_INDEX_DIR: str = "./data/colbert_indexes"
-    COLBERT_RETRIEVAL_MODEL_NAME: str = ""
-    COLBERT_RETRIEVAL_DEVICE: str = "cpu"  # cpu | cuda | auto
-    COLBERT_RETRIEVAL_BATCH_SIZE: int = 16
-    COLBERT_RETRIEVAL_MAX_LENGTH: int = 256
     # Safety cap: avoid building huge in-memory ANN matrices by accident.
     # 0 disables the cap (not recommended for production).
     COLBERT_RETRIEVAL_MAX_DOCS: int = 10_000
@@ -1274,20 +1259,14 @@ class Settings(BaseSettings):
     #
     # Notes:
     # - Disabled by default via provider=deterministic to preserve existing behavior.
-    # - The HF provider is opt-in and requires a local/HF transformer model.
-    COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic | hf
-    COLBERT_RERANK_MODEL_NAME: str = ""
-    COLBERT_RERANK_DEVICE: str = "cpu"  # cpu | cuda | auto
-    COLBERT_RERANK_BATCH_SIZE: int = 16
-    COLBERT_RERANK_MAX_LENGTH: int = 256
+    # - Only the deterministic test implementation remains.
+    COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     # Used only by deterministic provider.
     COLBERT_RERANK_EMBED_DIM: int = 64
     # Provider readiness guard for ColBERT reranker.
     # strict=false: fallback to deterministic provider on readiness/warmup failure.
     # strict=true: raise an error when requested provider is not ready.
-    COLBERT_RERANK_HEALTHCHECK_STRICT: bool = False
     # Optional one-time warmup probe for model-backed providers.
-    COLBERT_RERANK_WARMUP_ENABLED: bool = False
     # Optional: load fusion channel budget policy (generated from offline ablations).
     # When configured, orchestrator can auto-apply budgeted_rrf channel quotas.
     RAG_CHANNEL_BUDGET_POLICY_PATH: str = ""
@@ -1876,7 +1855,7 @@ class Settings(BaseSettings):
     NEAR_DEDUP_MAX_BUCKET_SIZE: int = 256
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
-    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | cross_encoder | long_context | mmr | none
+    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | long_context | mmr | none
     # Local Learning-to-Rank model path (xgboost JSON/UBJ).
     # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
     LTR_MODEL_PATH: str = ""
@@ -2071,21 +2050,13 @@ class Settings(BaseSettings):
     KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
     # KG extraction backend routing.
     # - llm: existing extraction path (default)
-    # - gliner: lightweight entity-first extraction (optional dependency)
-    # - hybrid: GLiNER pre-extract + LLM fallback
     KG_EXTRACTION_BACKEND: str = "llm"
     # Optional: override the default backend for very large documents when no
     # explicit extraction_backend is requested.
     KG_EXTRACT_LONG_DOC_BACKEND: str = "heuristic"
     KG_EXTRACT_LONG_DOC_MIN_CHUNKS: int = 300
-    # Safe default-off switch for GLiNER/hybrid routing.
+    # Retained only to reject an explicitly enabled legacy local model configuration.
     KG_GLINER_ENABLED: bool = False
-    KG_GLINER_MODEL_NAME: str = "urchade/gliner_multi_pii-v1"
-    KG_GLINER_DEVICE: str = "cpu"
-    KG_GLINER_ENTITY_THRESHOLD: float = 0.5
-    KG_GLINER_DEFAULT_ENTITY_TYPES: str = "person,organization,location,event,date,concept"
-    KG_HYBRID_LLM_THRESHOLD: float = 0.7
-    KG_HYBRID_REFINE_RELATIONS: bool = False
     # Evidence-first skill extraction (optional; improves precision for Skill/SOP nodes + taxonomy edges).
     # When enabled, the extractor will only persist Skill nodes/edges that can be grounded to a chunk-local
     # evidence quote/span (verbatim substring).

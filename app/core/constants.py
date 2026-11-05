@@ -147,20 +147,16 @@ class EmbeddingProviders:
 
     OPENAI = "openai"
     OPENAI_COMPATIBLE = "openai_compatible"
-    LOCAL = "local"
     DASHSCOPE = "dashscope"
     OLLAMA = "ollama"
     DETERMINISTIC_TEST = "deterministic_test"
 
-    ALL: frozenset[str] = frozenset(
-        {"openai", "openai_compatible", "local", "dashscope", "ollama", "deterministic_test"}
-    )
+    ALL: frozenset[str] = frozenset({"openai", "openai_compatible", "dashscope", "ollama", "deterministic_test"})
 
     # Provider map (alias -> canonical name)
     PROVIDER_MAP = {
         "openai": "openai_compatible",
         "openai_compatible": "openai_compatible",
-        "local": "local",
         "dashscope": "dashscope",
         "ollama": "ollama",
         "deterministic_test": "deterministic_test",

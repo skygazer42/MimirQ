@@ -10,6 +10,8 @@ Status: implemented
 
 ## Decision
 
+本地模型安装部分由[退出 API 内模型推理](../architecture/2026-11-05-retire-in-process-models.md)接管，`requirements-local-models.txt` 与对应实现已退出。本篇继续持有 Chroma/FAISS 的按需安装边界；下述本地模型安装验证属于首次拆分时的历史证据。
+
 `requirements.txt` 保留 Milvus、远程模型调用、现有文档处理、BM25、鉴权和服务基础依赖。`requirements-dev.txt` 继续在基础安装上叠加开发工具。本地推理依赖进入 `requirements-local-models.txt`，Chroma 和 FAISS 分别进入 `requirements-chroma.txt`、`requirements-faiss.txt`。每份可选配置引用基础文件，保留既有版本；Linux 的本地 Torch/torchvision 明确选择 CPU wheel。
 
 `requirements-ci.txt` 汇合开发与可选配置，仅供既有完整后端回归使用。主 Docker 构建默认安装基础配置，通过 `REQUIREMENTS_FILE` 选择显式配置；已有 lite/retrieval-dev Compose 选择 Chroma 配置以保持已有存储语义。文档 CI 使用基础配置，FAISS 专用回归显式安装对应配置。依赖审计覆盖所有受支持配置。

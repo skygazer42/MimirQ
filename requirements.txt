@@ -1,6 +1,6 @@
 # Default API runtime: Milvus and remote model providers.
-# Local models and alternative vector stores have separate requirements profiles.
-# See docs/guides/dependencies.md before enabling those optional features.
+# In-process Torch models are retired; alternative vector stores have optional profiles.
+# See docs/guides/dependencies.md for supported services and installation profiles.
 
 fastapi==0.135.3
 uvicorn[standard]==0.44.0

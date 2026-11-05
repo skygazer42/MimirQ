@@ -1936,46 +1936,6 @@ def _resolve_table_tag_context(
         return [], {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
 
 
-def _resolve_image_context(
-    db,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    question: str,
-    scope_doc_ids: list[UUID] | None,
-    scope_dataset_id: UUID | None,
-) -> tuple[list[Any], dict[str, Any]]:
-    try:
-        from app.services.chat_image_service import build_chat_image_context_docs
-
-        dataset_for_images = scope_dataset_id
-        if dataset_for_images is None and scope_doc_ids:
-            rows = (
-                db.query(DBDocument.dataset_id)
-                .filter(
-                    DBDocument.tenant_id == tenant_id,
-                    DBDocument.id.in_(list(scope_doc_ids)),
-                )
-                .distinct()
-                .all()
-            )
-            dataset_ids = {row[0] for row in rows if row and row[0]}
-            if len(dataset_ids) == 1:
-                dataset_for_images = next(iter(dataset_ids))
-        if dataset_for_images is None:
-            return [], {"enabled": False, "used": False, "reason": "missing_dataset_id"}
-        image_docs, image_meta = build_chat_image_context_docs(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=dataset_for_images,
-            question=question,
-        )
-        return list(image_docs or []), image_meta
-    except Exception as exc:  # noqa: BLE001
-        return [], {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
-
-
 def _prepare_regression_case_routing(
     db,
     *,
@@ -1999,16 +1959,6 @@ def _prepare_regression_case_routing(
             scope_dataset_id=scope_dataset_id,
         )
         injected_docs.extend(tag_docs)
-    if modality == "image":
-        image_docs, image_meta = _resolve_image_context(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            question=case.question,
-            scope_doc_ids=scope_doc_ids,
-            scope_dataset_id=scope_dataset_id,
-        )
-        injected_docs.extend(image_docs)
     return RegressionCaseRoutingState(
         modality=modality,
         multimodal_router_meta=multimodal_router_meta,

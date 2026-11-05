@@ -1,10 +1,8 @@
 export const RERANKER_PROVIDER_OPTIONS = [
   { key: 'llm', label: '大模型重排' },
-  { key: 'cross_encoder', label: '交叉编码器' },
-  { key: 'local_bge_v2_m3', label: '本地 BGE 重排' },
   { key: 'long_context', label: '长上下文重排' },
   { key: 'ltr', label: '学习排序模型' },
-  { key: 'colbert', label: 'ColBERT 后交互' },
+  { key: 'colbert', label: 'ColBERT（离线验证）' },
   { key: 'pc', label: '父子片段重排' },
   { key: 'weighted', label: '加权重排' },
   { key: 'mmr', label: '多样性重排' },
@@ -34,6 +32,7 @@ export function normalizeRerankerProvider(value: unknown, fallback = 'llm'): str
   if (provider === 'sentence_transformers' || provider === 'sentence_transformer') {
     return 'cross_encoder'
   }
+  if (provider === 'cross_encoder' || provider === 'local_bge_v2_m3') return provider
   if (provider === 'off' || provider === 'false' || provider === '0') {
     return 'none'
   }

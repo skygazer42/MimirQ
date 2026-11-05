@@ -1,5 +1,4 @@
 # Complete existing backend regression environment; not the default API image.
 -r requirements-dev.txt
--r requirements-local-models.txt
 -r requirements-chroma.txt
 -r requirements-faiss.txt

@@ -1,19 +1,18 @@
 # Ragvia 依赖与安装配置
 
-默认 API 环境使用 Milvus 客户端和远程模型接口。主依赖不安装 Torch、torchvision、sentence-transformers、HanLP、Accelerate、Chroma 或 FAISS；需要这些功能时，显式选择对应的安装配置。
+API 使用 Milvus 客户端和模型服务接口。本地 Torch、sentence-transformers、HanLP、GLiNER、CLIP、SPLADE 与 HF ColBERT 推理已退出；Chroma 和 FAISS 仍作为可选向量后端按需安装。
 
-基础环境仍包含现有文档处理、ONNX OCR、评测和监控依赖。这里的拆分解决本地 Torch 推理与可替代向量后端的默认安装问题，不代表 API 已经只剩 Web 框架和数据库驱动。
+基础环境仍包含现有文档处理、ONNX OCR、评测和监控依赖。模型权重和 GPU 运行环境由独立模型服务管理，服务可以部署在本机或内网。普通解析、BM25/jieba、图片上传、预览、OCR 与模型看图对话继续保留。
 
 ## 安装配置
 
-| 文件                            | 安装内容                                                                | 使用场景                                            |
-| ------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------- |
-| `requirements.txt`              | 默认后端依赖、Milvus 客户端、BM25、常规解析                             | API 与远程 Embedding/Rerank                         |
-| `requirements-dev.txt`          | 基础环境和 pytest、Ruff、pip-audit 等工具                               | 日常开发、基础验证                                  |
-| `requirements-local-models.txt` | 基础环境和 Torch、torchvision、sentence-transformers、Accelerate、HanLP | 进程内 Embedding、CrossEncoder、HanLP 关键词        |
-| `requirements-chroma.txt`       | 基础环境和 Chroma、LangChain Chroma 适配器                              | 显式选择 Chroma 的本地知识库                        |
-| `requirements-faiss.txt`        | 基础环境和 FAISS                                                        | FAISS 后端或 ColBERT ANN 加速；无官方 Windows wheel |
-| `requirements-ci.txt`           | 开发工具和上述所有可选依赖                                              | 现有完整后端回归；不用于默认 API 镜像               |
+| 文件                      | 安装内容                                    | 使用场景                                            |
+| ------------------------- | ------------------------------------------- | --------------------------------------------------- |
+| `requirements.txt`        | 默认后端依赖、Milvus 客户端、BM25、常规解析 | API 与远程 Embedding/Rerank                         |
+| `requirements-dev.txt`    | 基础环境和 pytest、Ruff、pip-audit 等工具   | 日常开发、基础验证                                  |
+| `requirements-chroma.txt` | 基础环境和 Chroma、LangChain Chroma 适配器  | 显式选择 Chroma 的本地知识库                        |
+| `requirements-faiss.txt`  | 基础环境和 FAISS                            | FAISS 后端或 ColBERT ANN 加速；无官方 Windows wheel |
+| `requirements-ci.txt`     | 开发工具和上述所有可选依赖                  | 现有完整后端回归；不用于默认 API 镜像               |
 
 所有可选配置都引用基础文件，可以独立安装。依赖版本沿用项目原有固定版本。
 
@@ -39,15 +38,24 @@ EMBEDDING_MODEL=BAAI/bge-m3
 
 同时按 `.env.example` 配置实际的 `EMBEDDING_API_BASE` 和 `EMBEDDING_API_KEY`。官方 OpenAI 服务应使用其提供的模型名，例如 `text-embedding-3-small`。Embedding 与 Rerank 服务可以部署在内网，API 调用方式不要求使用外部公有云。
 
-## 本地模型按需安装
+## 旧本地配置迁移
 
-```bash
-python -m pip install -r requirements-local-models.txt
-```
+`requirements-local-models.txt` 已删除，API 与 CI 不再提供 Torch wheel 安装步骤。安装旧模型包不会恢复已退出的实现。
 
-安装后才能选择 `EMBEDDING_PROVIDER=local` 或本地 CrossEncoder/HanLP 功能。模型权重另行准备，首次模型加载仍可能下载权重；仅安装 Python 包不等于模型已经就绪。
+| 旧选择                                                 | 处理方式                                                               |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `EMBEDDING_PROVIDER=local` 或数据集的 `provider=local` | 在独立服务部署原模型，显式改为受支持的 Embedding API 配置              |
+| `cross_encoder`、`local_bge_v2_m3` 及其别名            | 配置 Rerank API，或显式选择现有轻量重排/关闭重排                       |
+| `hanlp`                                                | 选择 jieba、jieba_textrank 或 simple；auto 固定使用 jieba              |
+| `splade`、ColBERT `hf`、`sparse_splade` 配置           | 已退出，不能自动改成测试用的确定性向量                                 |
+| KG 的 `gliner`、`hybrid`                               | 显式选择 llm 或 heuristic；自动标注保留 CPU、LLM API 和合规规则        |
+| `IMAGE_EMBEDDING_ENABLED=true`、非空 `query_image`     | 已退出；图片向量索引/搜索旧接口返回 HTTP 410，query_image 返回校验错误 |
 
-Linux 配置明确固定 `torch==2.13.0+cpu`、`torchvision==0.28.0+cpu`，并提供官方 CPU 源，防止默认拉入 CUDA 运行库。需要 GPU 推理时，优先使用独立模型服务及其专用 CUDA 环境。HanLP、Accelerate 都依赖 Torch，因此随本地模型一起安装。
+旧设置仍可读取以供修正，提交或执行已退出的选择会明确失败。若旧环境变量配置了本地模型或启用 CLIP/GLiNER，需要先修改部署配置才能启动。不会自动修改已保存的模型、删除向量集合或迁移索引。
+
+要求启用重排的检索预设需要显式配置受支持的重排服务或轻量重排器；不再隐式选择旧 CrossEncoder，也不会代为启用另一个模型 API。
+
+即使服务使用相同模型名称和维度，provider 与向量空间标识仍会变化；请单独验证模型输出、归一化方式和索引迁移/重建，不直接把旧 local 索引视为服务模型索引。模型 API 的连接测试只验证服务可用性。
 
 ## Chroma 与 FAISS 按需安装
 

@@ -90,27 +90,8 @@ class SparseCorpusIndex:
     ) -> tuple[dict[str, Any], Any]:
         synonyms_raw = settings.SPARSE_RETRIEVAL_SYNONYMS
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=settings.SPARSE_SPLADE_MODEL_NAME,
-            device=settings.SPARSE_SPLADE_DEVICE or "cpu",
-            batch_size=settings.SPARSE_SPLADE_BATCH_SIZE or 8,
-            max_length=settings.SPARSE_SPLADE_MAX_LENGTH or 256,
-            top_k=settings.SPARSE_SPLADE_TOP_K or 128,
-            min_weight=float(settings.SPARSE_SPLADE_MIN_WEIGHT or 0.0),
-        )
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=settings.SPARSE_SPLADE_MODEL_NAME,
-            device=settings.SPARSE_SPLADE_DEVICE or "cpu",
-            batch_size=settings.SPARSE_SPLADE_BATCH_SIZE or 8,
-            max_length=settings.SPARSE_SPLADE_MAX_LENGTH or 256,
-            top_k=settings.SPARSE_SPLADE_TOP_K or 128,
-            min_weight=float(settings.SPARSE_SPLADE_MIN_WEIGHT or 0.0),
-        )
+        provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
+        encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
         return (provider_config, encoder)
 
     @staticmethod
@@ -418,16 +399,7 @@ class SparseCorpusIndex:
     ) -> tuple[str, dict[str, Any], dict[str, Any]]:
         synonyms_raw = settings.SPARSE_RETRIEVAL_SYNONYMS
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=settings.SPARSE_SPLADE_MODEL_NAME,
-            device=settings.SPARSE_SPLADE_DEVICE or "cpu",
-            batch_size=settings.SPARSE_SPLADE_BATCH_SIZE or 8,
-            max_length=settings.SPARSE_SPLADE_MAX_LENGTH or 256,
-            top_k=settings.SPARSE_SPLADE_TOP_K or 128,
-            min_weight=float(settings.SPARSE_SPLADE_MIN_WEIGHT or 0.0),
-        )
+        provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
         return (synonyms_raw, synonyms, provider_config)
 
     def _load_persisted_sparse_vectors_for_search(
@@ -552,12 +524,7 @@ class ColbertCorpusIndex:
     @staticmethod
     def _build_colbert_provider_config(build_colbert_provider_config: Any, *, provider: str) -> dict[str, Any]:
         return build_colbert_provider_config(
-            provider=provider,
-            model_name=settings.COLBERT_RETRIEVAL_MODEL_NAME,
-            device=settings.COLBERT_RETRIEVAL_DEVICE or "cpu",
-            batch_size=settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16,
-            max_length=settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256,
-            deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64,
+            provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64
         )
 
     @staticmethod
@@ -622,14 +589,7 @@ class ColbertCorpusIndex:
 
         provider = self._colbert_provider_name()
         provider_config = self._build_colbert_provider_config(build_colbert_provider_config, provider=provider)
-        embedder = get_dense_embedder(
-            provider=provider,
-            model_name=settings.COLBERT_RETRIEVAL_MODEL_NAME,
-            device=settings.COLBERT_RETRIEVAL_DEVICE or "cpu",
-            batch_size=settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16,
-            max_length=settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256,
-            deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64,
-        )
+        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
         doc_ids, texts = self._collect_colbert_doc_text_pairs(docs)
         vecs = self._encode_colbert_texts(embedder, texts)
         fp = self._colbert_corpus_fingerprint(docs)
@@ -738,14 +698,7 @@ class ColbertCorpusIndex:
         if not base_ids or base_vecs is None:
             # Keep cold scopes lazy; the reader builds the full corpus when first needed.
             return
-        embedder = get_dense_embedder(
-            provider=provider,
-            model_name=settings.COLBERT_RETRIEVAL_MODEL_NAME,
-            device=settings.COLBERT_RETRIEVAL_DEVICE or "cpu",
-            batch_size=settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16,
-            max_length=settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256,
-            deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64,
-        )
+        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
         packed = self._colbert_incremental_vectors(
             cache_key=cache_key,
             corpus_docs=corpus_docs,

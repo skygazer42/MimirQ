@@ -25,13 +25,6 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
         lazy_modules=(),
     ),
     RerankerProviderFamily(
-        canonical_name="cross_encoder",
-        aliases=("cross_encoder", "cross-encoder", "sentence_transformers", "sentence-transformers"),
-        tier="prod",
-        category="local",
-        lazy_modules=("app.rag.reranker.cross_encoder",),
-    ),
-    RerankerProviderFamily(
         canonical_name="long_context",
         aliases=("long_context",),
         tier="prod",
@@ -44,13 +37,6 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
         tier="prod",
         category="local",
         lazy_modules=("app.rag.reranker.mmr",),
-    ),
-    RerankerProviderFamily(
-        canonical_name="local_bge_v2_m3",
-        aliases=("local_bge_v2_m3", "bge_v2_m3"),
-        tier="prod",
-        category="local",
-        lazy_modules=("app.rag.reranker.local_bge_v2_m3",),
     ),
     RerankerProviderFamily(
         canonical_name="ltr",
@@ -111,7 +97,7 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
     RerankerProviderFamily(
         canonical_name="colbert",
         aliases=("colbert", "late_interaction"),
-        tier="experimental",
+        tier="offline_only",
         category="late_interaction",
         lazy_modules=("app.rag.reranker.colbert",),
     ),

@@ -9,6 +9,7 @@ from dataclasses import asdict
 from typing import Any, Callable
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_model_provider
 from app.core.regex_safety import looks_like_nested_quantifier
 from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.refs import sanitize_python_plugin_ref
@@ -629,6 +630,11 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
     return pipeline or None
 
 
+def validate_pipeline_execution(options: PipelineOptions | PipelineEffective) -> None:
+    """Validate selected capabilities at write and execution boundaries, preserving readable history."""
+    reject_retired_model_provider(options.governance_keywords_provider, capability="keyword")
+
+
 def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions | None) -> bool:
     """
     Upsert `meta["pipeline"]` from PipelineOptions (or remove it when empty).
@@ -637,6 +643,7 @@ def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions |
     """
     if options is None:
         return False
+    validate_pipeline_execution(options)
     pipeline_meta = build_pipeline_metadata(options)
     if pipeline_meta:
         meta["pipeline"] = pipeline_meta

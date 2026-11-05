@@ -330,7 +330,7 @@ def create_langchain_embeddings_from_config(
     in app/storage/vector/milvus.py.
 
     Args:
-        provider: Provider name (e.g., "local", "openai_compatible", "dashscope")
+        provider: Service provider name (e.g., "openai_compatible", "dashscope")
         model: Model name
         api_key: API key (optional)
         base_url: API base URL (optional)
@@ -344,10 +344,12 @@ def create_langchain_embeddings_from_config(
         DeterministicTestEmbedding,
         OllamaEmbedding,
         OpenAICompatibleEmbedding,
-        SentenceTransformerEmbedding,
     )
 
     provider = provider.lower()
+    from app.core.model_execution import reject_retired_model_provider
+
+    reject_retired_model_provider(provider, capability="embedding")
     base_url = (base_url or "").strip()
     if provider in {"openai", "openai_compatible", "dashscope"}:
         stripped = base_url.rstrip("/")
@@ -356,10 +358,6 @@ def create_langchain_embeddings_from_config(
 
     if provider == "deterministic_test":
         embedding_model = DeterministicTestEmbedding(model=model, dimension=dimension)
-    elif provider == "local":
-        embedding_model = SentenceTransformerEmbedding(
-            model=model, dimension=dimension, base_url=base_url, api_key=api_key
-        )
     elif provider == "dashscope":
         embedding_model = DashScopeEmbedding(model=model, dimension=dimension, base_url=base_url, api_key=api_key)
     elif provider == "ollama":

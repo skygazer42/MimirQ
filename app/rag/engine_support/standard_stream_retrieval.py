@@ -407,7 +407,7 @@ async def inject_kg_chunks(runtime: StandardStreamState) -> None:
         runtime.data.kg_chunks_injected = 0
 
 
-async def boost_kg_and_retrieve_images(runtime: StandardStreamState) -> AsyncGenerator[dict[str, Any], None]:
+async def boost_kg_and_select_images(runtime: StandardStreamState) -> None:
 
     try:
         runtime.data.kg_boost_enabled = (
@@ -434,35 +434,18 @@ async def boost_kg_and_retrieve_images(runtime: StandardStreamState) -> AsyncGen
     except Exception:
         runtime.data.kg_chunk_boost_meta = {"enabled": False, "reason": "exception"}
 
-    # Optional: Image bridge - inject bounded image/figure chunks (CLIP) as extra context.
-    runtime.data.image_docs: list[Document] = []
-    runtime.data.image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
-    if str(runtime.data.multimodal_modality or "text").strip().lower() == "image":
-        try:
-            from app.services.chat_image_service import build_chat_image_context_docs
+    from app.rag.core.vision_reader import select_image_evidence
 
-            if runtime.data.db is None or runtime.data.tenant_id is None or runtime.data.dataset_id is None:
-                runtime.data.image_meta = {"enabled": False, "used": False, "reason": "missing_scope"}
-            else:
-                # Best-effort progress signal (only when the feature is enabled).
-                if bool(settings.IMAGE_EMBEDDING_ENABLED):
-                    yield {"type": "event", "data": {"message": "检测到图片/图表问题，正在尝试图片检索（CLIP）..."}}
-                runtime.data.image_docs, runtime.data.image_meta = build_chat_image_context_docs(
-                    runtime.data.db,
-                    tenant_id=runtime.data.tenant_id,
-                    account_id=runtime.data.account_id,
-                    dataset_id=runtime.data.dataset_id,
-                    question=runtime.data.query_for_retrieval,
-                    top_k=6,
-                )
-        except Exception as exc:  # noqa: BLE001
-            runtime.data.image_docs = []
-            runtime.data.image_meta = {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
-        finally:
-            runtime.module._release_request_session(runtime.data.db)
-
-    if runtime.data.image_docs:
-        runtime.data.docs = (runtime.data.image_docs or []) + (runtime.data.docs or [])
+    runtime.data.image_docs = (
+        select_image_evidence(runtime.data.docs)
+        if str(runtime.data.multimodal_modality or "text").strip().lower() == "image"
+        else []
+    )
+    runtime.data.image_meta = {
+        "enabled": False,
+        "used": bool(runtime.data.image_docs),
+        "reason": "retrieved_document_images",
+    }
 
     # Optional: Vision-native RAG (VLM-as-Reader) - read retrieved images and inject extracted text.
     runtime.data.vision_reader_docs: list[Document] = []
@@ -570,7 +553,7 @@ RETRIEVAL_OPERATIONS = (
     StreamOperation(fuse_retrieval_results, streams=False),
     StreamOperation(initialize_kg_enrichment, streams=False),
     StreamOperation(inject_kg_chunks, streams=False),
-    StreamOperation(boost_kg_and_retrieve_images, streams=True),
+    StreamOperation(boost_kg_and_select_images, streams=False),
     StreamOperation(read_images_and_initialize_tag, streams=True),
     StreamOperation(retrieve_tag_context, streams=True),
 )

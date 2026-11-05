@@ -532,60 +532,6 @@ def _collect_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnota
     return out
 
 
-def _gliner_entity_confidence(entity: dict[str, Any]) -> float:
-    try:
-        confidence = float(entity.get("score") or 0.78)
-    except Exception:
-        confidence = 0.78
-    return min(0.99, max(0.0, confidence))
-
-
-def _make_gliner_entity_annotation(text: str, entity: dict[str, Any]) -> AutoAnnotationItem | None:
-    quote = str(entity.get("evidence_quote") or entity.get("name") or "").strip()
-    if not quote:
-        return None
-
-    label = str(entity.get("type") or "entity").strip() or "entity"
-    for start, end in _find_keyword_offsets(text, quote, limit=1):
-        return _make_auto_annotation(
-            source_text=text,
-            start=start,
-            end=end,
-            annotation_type="entity",
-            label=label,
-            confidence=_gliner_entity_confidence(entity),
-            source="gliner",
-        )
-    return None
-
-
-async def _collect_gliner_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnotationItem]:
-    try:
-        from app.rag.kg.extraction.gliner_extractor import GLiNERExtractor
-    except Exception:
-        return []
-
-    try:
-        if not GLiNERExtractor.is_available():
-            return []
-        extractor = GLiNERExtractor()
-        entities = await extractor.extract_entities(
-            text=text,
-            entity_types=["person", "organization", "location", "product", "policy", "time", "money"],
-        )
-    except Exception:
-        return []
-
-    out: list[AutoAnnotationItem] = []
-    for entity in entities:
-        item = _make_gliner_entity_annotation(text, entity)
-        if item is not None:
-            out.append(item)
-        if len(out) >= max_items:
-            break
-    return out
-
-
 def _append_sensitive_match_annotations(
     text: str,
     out: list[AutoAnnotationItem],
@@ -888,20 +834,6 @@ def _collect_document_focus_rule_fallback(
     draft.strategy = "hybrid" if draft.strategy == "llm" else "rules"
 
 
-async def _collect_gliner_auto_provider(
-    draft: _AutoAnnotationDraft, scan_text: str, max_items: int
-) -> list[AutoAnnotationItem]:
-    if _remaining_auto_slots(draft, max_items) <= 0:
-        return []
-    gliner_items = await _collect_gliner_entity_annotations(
-        scan_text, max_items=_remaining_auto_slots(draft, max_items)
-    )
-    draft.candidates.extend(gliner_items)
-    if gliner_items:
-        _append_provider_used(draft.providers_used, "gliner")
-    return gliner_items
-
-
 def _collect_sensitive_auto_provider(
     draft: _AutoAnnotationDraft,
     scan_text: str,
@@ -961,11 +893,6 @@ async def _collect_document_focus_annotations(
 
     _collect_document_focus_rule_fallback(draft, scan_text, body, providers, max_items)
 
-    if "gliner" in providers:
-        gliner_items = await _collect_gliner_auto_provider(draft, scan_text, max_items)
-        if gliner_items:
-            draft.strategy = "hybrid" if draft.strategy == "llm" else "rules"
-
     if providers & _SENSITIVE_PROVIDER_SOURCES and _remaining_auto_slots(draft, max_items) > 0:
         _collect_sensitive_auto_provider(draft, scan_text, providers, max_items)
         draft.strategy = "hybrid" if draft.candidates else draft.strategy
@@ -979,8 +906,6 @@ async def _collect_compliance_annotations(
     max_items: int,
 ) -> None:
     _collect_sensitive_auto_provider(draft, scan_text, providers, max_items)
-    if "gliner" in providers:
-        await _collect_gliner_auto_provider(draft, scan_text, max_items)
     if "regex" in providers:
         _collect_regex_auto_provider(draft, scan_text, max_items)
     if "keyword" in providers:

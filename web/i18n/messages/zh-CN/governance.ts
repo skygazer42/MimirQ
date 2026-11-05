@@ -73,10 +73,6 @@ const governanceMessages = {
           label: '敏感合规',
           description: 'PII、密钥和实体线索优先',
         },
-        hybrid: {
-          label: '混合增强',
-          description: '本地规则 + AI 语义 + 敏感检测',
-        },
       },
       empty: '当前文档没有可标注内容',
       success: '已自动添加 {count} 个标注',

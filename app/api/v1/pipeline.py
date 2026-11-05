@@ -1184,6 +1184,9 @@ async def ingestion_preview(
             document_metadata={},
             request_overrides=patch_opts,
         )
+        from app.services.pipeline_config import validate_pipeline_execution
+
+        validate_pipeline_execution(effective)
 
         # Parse preview via subprocess worker.
         parsed = await run_subprocess_worker(
@@ -1473,10 +1476,9 @@ def extract_keywords(
     Extract keywords (for governance/annotation/classification).
 
     Supported providers:
-    - provider=auto (prefer HanLP, fallback to jieba)
+    - provider=auto (jieba)
     - provider=jieba / jieba_tfidf (default)
     - provider=jieba_textrank
-    - provider=hanlp (optional dependency; requires `hanlp` and `HANLP_TOKENIZER_MODEL`)
     - provider=simple (lightweight regex tokenization + term frequency)
     """
     dataset_service.ensure_member(db, tenant_id, account_id)

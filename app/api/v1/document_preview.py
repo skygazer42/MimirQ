@@ -380,6 +380,9 @@ async def preview_document(
             document_metadata={},
             request_overrides=pipeline_options,
         )
+        from app.services.pipeline_config import validate_pipeline_execution
+
+        validate_pipeline_execution(pipeline_effective)
         raw_analytics = _compute_preview_analytics(
             documents=documents,
             pdf_quality=pdf_quality,

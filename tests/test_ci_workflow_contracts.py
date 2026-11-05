@@ -19,16 +19,14 @@ def test_self_hosted_ci_bootstrap_script_contract() -> None:
     script = _read("scripts/prepare_self_hosted_ci.sh")
 
     assert script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
-    assert "--include-torch-wheel-dir" in script
+    assert "--include-torch-wheel-dir" not in script
     assert 'PY_BIN="$(command -v python3.11 || true)"' in script
     assert 'CACHE_ROOT="${RUNNER_TOOL_CACHE:-$RUNNER_TEMP}/mimirq"' in script
     assert 'VENV_DIR="${SELF_HOSTED_VENV_DIR:-$CACHE_ROOT/python-3.11}"' in script
     assert 'PIP_CACHE_DIR_VALUE="${PIP_CACHE_DIR:-$CACHE_ROOT/pip}"' in script
-    assert 'TORCH_WHEEL_DIR_VALUE="${TORCH_WHEEL_DIR:-$CACHE_ROOT/torch-wheels}"' in script
     assert 'echo "$VENV_DIR/bin" >> "$GITHUB_PATH"' in script
     assert 'echo "PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.org/simple}"' in script
     assert 'echo "PIP_CACHE_DIR=$PIP_CACHE_DIR_VALUE"' in script
-    assert 'echo "TORCH_WHEEL_DIR=$TORCH_WHEEL_DIR_VALUE"' in script
     assert 'echo "NO_PROXY=$NO_PROXY_VALUE"' in script
     assert 'HTTP_PROXY_VALUE="${SELF_HOSTED_HTTP_PROXY:-${HTTP_PROXY:-${http_proxy:-}}}"' in script
     assert 'HTTPS_PROXY_VALUE="${SELF_HOSTED_HTTPS_PROXY:-${HTTPS_PROXY:-${https_proxy:-}}}"' in script
@@ -174,7 +172,7 @@ def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> 
     assert "PIP_DEFAULT_TIMEOUT=60" in python_audit
     assert "--timeout 60" in python_audit
     assert "--index-url https://pypi.org/simple" in python_audit
-    assert "--extra-index-url https://download.pytorch.org/whl/cpu" in python_audit
+    assert "--extra-index-url https://download.pytorch.org/whl/cpu" not in python_audit
     for advisory in (
         "PYSEC-2026-311",
         "PYSEC-2026-3046",
@@ -364,13 +362,12 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "SELF_HOSTED_VENV_DIR: ${{ vars.CI_SELF_HOSTED_VENV_DIR || '' }}" in workflow
     assert "PIP_INDEX_URL: ${{ vars.CI_PIP_INDEX_URL || 'https://pypi.org/simple' }}" in workflow
     assert "PIP_CACHE_DIR: ${{ vars.CI_PIP_CACHE_DIR || '' }}" in workflow
-    assert "TORCH_WHEEL_DIR: ${{ vars.CI_TORCH_WHEEL_DIR || '' }}" in workflow
     assert "SELF_HOSTED_HTTP_PROXY: ${{ vars.CI_HTTP_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_HTTPS_PROXY: ${{ vars.CI_HTTPS_PROXY || '' }}" in workflow
     assert "SELF_HOSTED_NO_PROXY: ${{ vars.CI_NO_PROXY || '' }}" in workflow
     _assert_uses_self_hosted_bootstrap(
         workflow,
-        "bash scripts/prepare_self_hosted_ci.sh --include-torch-wheel-dir",
+        "bash scripts/prepare_self_hosted_ci.sh",
         count=4,
     )
     assert "runner.name == 'mimirq-main-01'" not in workflow
@@ -394,7 +391,6 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "redis:\n        image: redis:7-alpine" in public_pr_job
     # Hosted PR job caching: stable cache paths + pip/pnpm/torch-wheel/Playwright caches.
     assert "PIP_CACHE_DIR: /home/runner/.cache/pip" in public_pr_job
-    assert "TORCH_WHEEL_DIR: /home/runner/.cache/torch-wheels" in public_pr_job
     assert "${{ runner.temp }}/pip-cache" not in workflow
     assert "${{ runner.temp }}/torch-wheels" not in workflow
     assert "corepack enable" not in public_pr_job
@@ -404,14 +400,10 @@ def test_main_ci_routes_public_prs_to_hosted_smoke_checks() -> None:
     assert "cache-dependency-path: |\n            requirements.txt\n            requirements-dev.txt" in public_pr_job
     assert "cache: pnpm" in public_pr_job
     assert "cache-dependency-path: web/pnpm-lock.yaml" in public_pr_job
-    assert public_pr_job.count("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0") == 2
-    assert "path: /home/runner/.cache/torch-wheels" in public_pr_job
-    assert (
-        "key: torch-wheels-${{ runner.os }}-py311-${{ hashFiles('ci/download_verified_wheels.py') }}" in public_pr_job
-    )
+    assert public_pr_job.count("uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0") == 1
     assert "path: /home/runner/.cache/ms-playwright" in public_pr_job
     assert "key: playwright-${{ runner.os }}-${{ hashFiles('web/pnpm-lock.yaml') }}" in public_pr_job
-    assert 'python ci/download_verified_wheels.py --cache-dir "$TORCH_WHEEL_DIR"' in workflow
+    assert "download_verified_wheels.py" not in workflow
     assert "command -v rg" in workflow
     assert "rg --version | head -n 1" in workflow
     assert "make openapi-check" in workflow
@@ -626,25 +618,14 @@ def test_backend_dockerfile_uses_bundled_buildkit_frontend() -> None:
     assert not dockerfile.lstrip().startswith("# syntax=docker/dockerfile:")
 
 
-def test_cpu_torch_wheels_match_optional_local_model_requirements() -> None:
-    requirements = _read("requirements-local-models.txt")
-    torch_version = re.search(r'^torch==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
-    torchvision_version = re.search(r'^torchvision==([^;]+); platform_system == "Linux"$', requirements, re.MULTILINE)
-
-    assert torch_version is not None
-    assert torchvision_version is not None
-    assert torch_version.group(1).endswith("+cpu")
-    assert torchvision_version.group(1).endswith("+cpu")
+def test_api_profiles_do_not_install_retired_local_models() -> None:
     dockerfile = _read("docker/Dockerfile")
+    workflow = _read(".github/workflows/ci.yml")
     assert "ARG REQUIREMENTS_FILE=requirements.txt" in dockerfile
     assert "torch-" not in dockerfile
     assert "torchvision-" not in dockerfile
-    for install_surface in ("ci/download_verified_wheels.py", ".github/workflows/ci.yml"):
-        content = _read(install_surface)
-        assert set(re.findall(r"\btorch-([0-9.]+)\+cpu-", content)) == {torch_version.group(1).removesuffix("+cpu")}
-        assert set(re.findall(r"\btorchvision-([0-9.]+)\+cpu-", content)) == {
-            torchvision_version.group(1).removesuffix("+cpu")
-        }
+    assert "download_verified_wheels.py" not in workflow
+    assert "requirements-local-models.txt" not in _read("requirements-ci.txt")
 
 
 def test_docker_ci_supports_cold_web_builds() -> None:

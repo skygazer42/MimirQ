@@ -22,7 +22,7 @@ const RANGE_INPUT_CLASS =
 const DEFAULT_RERANKER_PROVIDER = 'llm'
 
 function getRerankerProviderLabel(value: string): string {
-  return RERANKER_PROVIDER_OPTIONS.find((option) => option.key === value)?.label ?? '大模型重排'
+  return RERANKER_PROVIDER_OPTIONS.find((option) => option.key === value)?.label ?? `已停用（${value}）`
 }
 
 function InlineHelp({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
@@ -201,6 +201,11 @@ export function RagSection({ rag, updateRag }: Readonly<RagSectionProps>) {
                 <SelectValue placeholder="选择重排服务" />
               </SelectTrigger>
               <SelectContent>
+                {!RERANKER_PROVIDER_OPTIONS.some((option) => option.key === rerankerProviderValue) ? (
+                  <SelectItem value={rerankerProviderValue} disabled>
+                    {rerankerProviderLabel}
+                  </SelectItem>
+                ) : null}
                 {RERANKER_PROVIDER_OPTIONS.map((option) => (
                   <SelectItem key={option.key} value={option.key}>
                     {option.label}

@@ -43,10 +43,7 @@ def sparse_provider_status(policy: SparseSearchPolicy) -> dict[str, Any]:
     from app.rag.retrieval.sparse import resolve_sparse_provider_capability
 
     return resolve_sparse_provider_capability(
-        requested_provider=policy.provider,
-        sparse_enabled=policy.enabled,
-        splade_model_name=settings.SPARSE_SPLADE_MODEL_NAME,
-        default_provider="deterministic",
+        requested_provider=policy.provider, sparse_enabled=policy.enabled, default_provider="deterministic"
     )
 
 
@@ -135,17 +132,7 @@ def search_sparse(
             else:
                 if reason == "none" and load_error:
                     reason = "index_load_error"
-                encoder = get_sparse_encoder(
-                    provider=provider,
-                    synonyms=synonyms,
-                    synonyms_raw=synonyms_raw,
-                    model_name=settings.SPARSE_SPLADE_MODEL_NAME,
-                    device=settings.SPARSE_SPLADE_DEVICE or "cpu",
-                    batch_size=settings.SPARSE_SPLADE_BATCH_SIZE or 8,
-                    max_length=settings.SPARSE_SPLADE_MAX_LENGTH or 256,
-                    top_k=settings.SPARSE_SPLADE_TOP_K or 128,
-                    min_weight=float(settings.SPARSE_SPLADE_MIN_WEIGHT or 0.0),
-                )
+                encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
                 scored = topk_scores(
                     query_vec=encoder.encode_batch([raw_query])[0], docs=vectors, k=max(0, request.top_k)
                 )
@@ -227,8 +214,6 @@ def search_colbert(request: CorpusChannelRequest, *, corpus_index: CorpusIndex) 
     readiness = resolve_colbert_ann_provider_capability(
         colbert_enabled=settings.COLBERT_RETRIEVAL_ENABLED,
         requested_provider=artifacts._colbert_provider_name(),
-        model_name=settings.COLBERT_RETRIEVAL_MODEL_NAME,
-        device=settings.COLBERT_RETRIEVAL_DEVICE or "cpu",
         docs_count=len(snapshot.documents),
         max_docs=max_docs,
     )
@@ -257,14 +242,7 @@ def search_colbert(request: CorpusChannelRequest, *, corpus_index: CorpusIndex) 
         )
         if index is None:
             raise RuntimeError("ColBERT index did not become ready")
-        embedder = get_dense_embedder(
-            provider=provider,
-            model_name=settings.COLBERT_RETRIEVAL_MODEL_NAME,
-            device=settings.COLBERT_RETRIEVAL_DEVICE or "cpu",
-            batch_size=settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16,
-            max_length=settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256,
-            deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64,
-        )
+        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
         query_vector = embedder.encode_batch([raw_query])[0]
         scored = topk_cosine_scores(query_vec=query_vector, doc_vecs=index.vectors, k=max(0, request.top_k))
         return CorpusChannelOutcome(

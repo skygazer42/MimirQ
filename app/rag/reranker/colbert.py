@@ -6,8 +6,8 @@ This implementation is intentionally lightweight:
 - no external model downloads
 - usable as an *optional* reranker provider for retrieval-first workloads
 
-It provides the plumbing/integration point. A production-grade ColBERT model
-can be wired in by implementing a TokenEmbedder that uses HF/torch.
+This retained implementation is for deterministic offline validation.
+Neural ColBERT model loading has been retired from the API.
 """
 
 import hashlib
@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from app.core.model_execution import reject_retired_model_provider
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
@@ -62,267 +63,31 @@ class _DeterministicHashEmbedder(TokenEmbedder):
         return np.stack(rows, axis=0).astype(np.float32, copy=False)
 
 
-class _HFTokenEmbedder(TokenEmbedder):
-    def __init__(
-        self,
-        *,
-        model_name: str,
-        device: str = "cpu",
-        batch_size: int = 16,
-        max_length: int = 256,
-    ) -> None:
-        self._model_name = str(model_name or "").strip()
-        if not self._model_name:
-            raise ValueError("HF ColBERT reranker requires model_name")
-
-        dev = str(device or "cpu").strip().lower() or "cpu"
-        if dev not in {"cpu", "cuda", "auto"}:
-            raise ValueError("HF ColBERT reranker device must be one of: cpu, cuda, auto")
-
-        self._device = dev
-        bs = int(batch_size or 0)
-        if bs < 1 or bs > 256:
-            raise ValueError("HF ColBERT reranker batch_size must be within [1, 256]")
-        self._batch_size = bs
-
-        ml = int(max_length or 0)
-        if ml < 8 or ml > 2048:
-            raise ValueError("HF ColBERT reranker max_length must be within [8, 2048]")
-        self._max_length = ml
-        self._lock = threading.Lock()
-        self._tokenizer = None
-        self._model = None
-        self._torch_device = None
-
-    def _ensure_loaded(self) -> None:
-        if self._tokenizer is not None and self._model is not None:
-            return
-
-        with self._lock:
-            if self._tokenizer is not None and self._model is not None:
-                return
-
-            import torch
-            from transformers import AutoModel, AutoTokenizer
-
-            device = self._device
-            if device == "auto":
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-
-            tokenizer = AutoTokenizer.from_pretrained(self._model_name)
-            model = AutoModel.from_pretrained(self._model_name)
-            model.eval()
-            model.to(device)
-
-            self._tokenizer = tokenizer
-            self._model = model
-            self._torch_device = device
-
-    def encode(self, tokens: list[str]) -> np.ndarray:
-        raw = [str(t or "") for t in (tokens or []) if str(t or "").strip()]
-        if not raw:
-            return np.zeros((0, 1), dtype=np.float32)
-
-        self._ensure_loaded()
-        tokenizer = self._tokenizer
-        model = self._model
-        device = self._torch_device
-        if tokenizer is None or model is None or device is None:
-            return np.zeros((len(raw), 1), dtype=np.float32)
-
-        import torch
-
-        rows: list[np.ndarray] = []
-        for i in range(0, len(raw), self._batch_size):
-            batch_tokens = raw[i : i + self._batch_size]
-            enc = tokenizer(
-                batch_tokens,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=self._max_length,
-            )
-            enc = {k: v.to(device) for k, v in enc.items() if hasattr(v, "to")}
-            attn = enc.get("attention_mask")
-            with torch.no_grad():
-                out = model(**enc)
-                last = getattr(out, "last_hidden_state", None)
-                if last is None:
-                    pooled = torch.zeros((len(batch_tokens), 1), dtype=torch.float32, device=device)
-                elif attn is None:
-                    pooled = torch.mean(last, dim=1)
-                else:
-                    mask = attn.unsqueeze(-1).to(last.dtype)
-                    denom = torch.clamp(mask.sum(dim=1), min=1.0)
-                    pooled = (last * mask).sum(dim=1) / denom
-            rows.append(pooled.detach().cpu().numpy().astype(np.float32, copy=False))
-
-        return np.concatenate(rows, axis=0) if rows else np.zeros((len(raw), 1), dtype=np.float32)
-
-
 _EMBEDDER_LOCK = threading.Lock()
 _EMBEDDER_CACHE: dict[str, TokenEmbedder] = {}
 
 
-def get_token_embedder(
-    *,
-    provider_name: str,
-    model_name: str = "",
-    device: str = "cpu",
-    batch_size: int = 16,
-    max_length: int = 256,
-    deterministic_dim: int = 16,
-) -> TokenEmbedder:
+def get_token_embedder(*, provider_name: str, deterministic_dim: int = 16) -> TokenEmbedder:
+    reject_retired_model_provider(provider_name, capability="colbert")
     provider = str(provider_name or "").strip().lower() or "deterministic"
-    if provider not in {"deterministic", "hf"}:
-        provider = "deterministic"
-
-    if provider == "deterministic":
-        key = f"deterministic:{int(deterministic_dim or 0)}"
-        with _EMBEDDER_LOCK:
-            cached = _EMBEDDER_CACHE.get(key)
-            if cached is not None:
-                return cached
-            inst = _DeterministicHashEmbedder(dim=deterministic_dim)
-            _EMBEDDER_CACHE[key] = inst
-            return inst
-
-    key = f"hf:{model_name}:{device}:{batch_size}:{max_length}"
+    if provider != "deterministic":
+        raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
+    key = f"deterministic:{int(deterministic_dim or 0)}"
     with _EMBEDDER_LOCK:
         cached = _EMBEDDER_CACHE.get(key)
         if cached is not None:
             return cached
-        inst = _HFTokenEmbedder(
-            model_name=model_name,
-            device=device,
-            batch_size=batch_size,
-            max_length=max_length,
-        )
+        inst = _DeterministicHashEmbedder(dim=deterministic_dim)
         _EMBEDDER_CACHE[key] = inst
         return inst
 
 
-def check_colbert_provider_readiness(
-    *,
-    provider_name: str,
-    model_name: str = "",
-    device: str = "cpu",
-) -> dict[str, Any]:
+def check_colbert_provider_readiness(*, provider_name: str) -> dict[str, Any]:
+    reject_retired_model_provider(provider_name, capability="colbert")
     provider = str(provider_name or "").strip().lower() or "deterministic"
-    if provider not in {"deterministic", "hf"}:
-        provider = "deterministic"
-    if provider == "deterministic":
-        return {
-            "provider": provider,
-            "ready": True,
-            "reason": "none",
-            "dependency_ok": True,
-            "model_name": "",
-            "device": "cpu",
-        }
-
-    resolved_model = str(model_name or "").strip()
-    resolved_device = str(device or "cpu").strip().lower() or "cpu"
-    if not resolved_model:
-        return {
-            "provider": provider,
-            "ready": False,
-            "reason": "model_name_missing",
-            "dependency_ok": False,
-            "model_name": resolved_model,
-            "device": resolved_device,
-        }
-    if resolved_device not in {"cpu", "cuda", "auto"}:
-        return {
-            "provider": provider,
-            "ready": False,
-            "reason": "invalid_device",
-            "dependency_ok": False,
-            "model_name": resolved_model,
-            "device": resolved_device,
-        }
-
-    try:
-        import torch  # noqa: PLC0415
-        import transformers as transformers  # noqa: PLC0415
-    except Exception:
-        return {
-            "provider": provider,
-            "ready": False,
-            "reason": "dependency_missing",
-            "dependency_ok": False,
-            "model_name": resolved_model,
-            "device": resolved_device,
-        }
-    if resolved_device == "cuda" and not bool(torch.cuda.is_available()):
-        return {
-            "provider": provider,
-            "ready": False,
-            "reason": "cuda_unavailable",
-            "dependency_ok": True,
-            "model_name": resolved_model,
-            "device": resolved_device,
-        }
-
-    return {
-        "provider": provider,
-        "ready": True,
-        "reason": "none",
-        "dependency_ok": True,
-        "model_name": resolved_model,
-        "device": resolved_device,
-    }
-
-
-def warmup_colbert_embedder(
-    *,
-    provider_name: str,
-    model_name: str = "",
-    device: str = "cpu",
-    batch_size: int = 16,
-    max_length: int = 256,
-    deterministic_dim: int = 16,
-) -> dict[str, Any]:
-    provider = str(provider_name or "").strip().lower() or "deterministic"
-    if provider not in {"deterministic", "hf"}:
-        provider = "deterministic"
-    if provider != "hf":
-        return {"ok": True, "reason": "skipped_non_hf", "provider": provider}
-
-    try:
-        embedder = get_token_embedder(
-            provider_name=provider,
-            model_name=model_name,
-            device=device,
-            batch_size=batch_size,
-            max_length=max_length,
-            deterministic_dim=deterministic_dim,
-        )
-        out = embedder.encode(["warmup_probe"])
-        rows = int(out.shape[0]) if isinstance(out, np.ndarray) and out.ndim == 2 else 0
-        cols = int(out.shape[1]) if isinstance(out, np.ndarray) and out.ndim == 2 else 0
-        if rows <= 0 or cols <= 0:
-            return {
-                "ok": False,
-                "reason": "empty_embedding",
-                "provider": provider,
-                "rows": rows,
-                "dim": cols,
-            }
-        return {
-            "ok": True,
-            "reason": "none",
-            "provider": provider,
-            "rows": rows,
-            "dim": cols,
-        }
-    except Exception as exc:  # noqa: BLE001
-        return {
-            "ok": False,
-            "reason": "warmup_exception",
-            "provider": provider,
-            "error": f"{exc.__class__.__name__}:{str(exc)[:160]}",
-        }
+    if provider != "deterministic":
+        raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
+    return {"provider": provider, "ready": True, "reason": "none", "dependency_ok": True}
 
 
 def _l2_normalize(x: np.ndarray) -> np.ndarray:
@@ -362,34 +127,18 @@ class ColBERTReranker(BaseReranker):
         self,
         *,
         provider_name: str = "deterministic",
-        model_name: str = "",
-        device: str = "cpu",
-        batch_size: int = 16,
-        max_length: int = 256,
         deterministic_dim: int = 16,
         embedder: TokenEmbedder | None = None,
-        provider_health: dict[str, Any] | None = None,
-        warmup_status: dict[str, Any] | None = None,
     ) -> None:
         provider = str(provider_name or "").strip().lower() or "deterministic"
-        if provider not in {"deterministic", "hf"}:
-            provider = "deterministic"
+        reject_retired_model_provider(provider, capability="colbert")
+        if provider != "deterministic":
+            raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
 
         self.provider_name = provider
-        self.model_name = str(model_name or "").strip()
-        self.device = str(device or "cpu").strip() or "cpu"
-        self.batch_size = max(1, int(batch_size or 0))
-        self.max_length = max(8, int(max_length or 0))
         self.deterministic_dim = max(2, int(deterministic_dim or 0))
-        self.provider_health = dict(provider_health or {})
-        self.warmup_status = dict(warmup_status or {})
         self._embedder = embedder or get_token_embedder(
-            provider_name=self.provider_name,
-            model_name=self.model_name,
-            device=self.device,
-            batch_size=self.batch_size,
-            max_length=self.max_length,
-            deterministic_dim=self.deterministic_dim,
+            provider_name=self.provider_name, deterministic_dim=self.deterministic_dim
         )
 
     def rerank(
@@ -412,12 +161,10 @@ class ColBERTReranker(BaseReranker):
                 ordered_ids=[],
                 score_map={},
                 provider="colbert",
-                model_used=self.model_name or "deterministic_hash",
+                model_used="deterministic_hash",
                 stats={
                     "embedder_provider": self.provider_name,
                     "late_interaction": True,
-                    "batch_size": self.batch_size,
-                    "max_length": self.max_length,
                 },
                 elapsed_sec=0.0,
             )
@@ -445,14 +192,12 @@ class ColBERTReranker(BaseReranker):
             ordered_ids=ordered_ids,
             score_map=score_map,
             provider="colbert",
-            model_used=self.model_name or "deterministic_hash",
+            model_used="deterministic_hash",
             stats={
                 "embedder_provider": self.provider_name,
                 "late_interaction": True,
                 "query_tokens": len(q_tokens),
                 "docs": len(score_map),
-                "batch_size": self.batch_size,
-                "max_length": self.max_length,
             },
             elapsed_sec=float(time.time() - start),
         )

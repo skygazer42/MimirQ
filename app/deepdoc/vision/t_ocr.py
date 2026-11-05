@@ -46,10 +46,10 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # 1 gpu
 
 
 def main(args):
-    import torch.cuda
+    from onnxruntime import get_available_providers
 
     logger = get_logger("deepdoc.vision.t_ocr")
-    cuda_devices = torch.cuda.device_count()
+    cuda_devices = 1 if "CUDAExecutionProvider" in get_available_providers() else 0
     limiter = [trio.CapacityLimiter(1) for _ in range(cuda_devices)] if cuda_devices > 1 else None
     ocr = OCR()
     images, outputs = init_in_out(args)

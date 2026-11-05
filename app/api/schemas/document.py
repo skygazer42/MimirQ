@@ -192,8 +192,9 @@ class DocumentPipelineOptions(BaseModel):
         default=None, description="Extract document-level keywords for metadata enrichment (best-effort)"
     )
     governance_keywords_provider: str | None = Field(
-        default=None, description="Keyword provider: auto / jieba / jieba_textrank / hanlp / simple"
+        default=None, description="Keyword provider: auto / jieba / jieba_textrank / simple"
     )
+
     governance_keywords_top_k: int | None = Field(default=None, ge=1, le=100, description="Max keywords to extract")
     governance_keywords_max_chars: int | None = Field(
         default=None, ge=0, le=2_000_000, description="Max chars used for keyword extraction (truncate when exceeded)"

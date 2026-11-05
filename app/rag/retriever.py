@@ -217,7 +217,6 @@ class HybridRetriever(
         return resolve_sparse_provider_capability(
             requested_provider=str(self.sparse_provider or ""),
             sparse_enabled=bool(sparse_enabled),
-            splade_model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
             default_provider="deterministic",
         )
 
@@ -785,12 +784,6 @@ class HybridRetriever(
                     provider=sparse_provider,
                     synonyms=synonyms,
                     synonyms_raw=str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or ""),
-                    model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-                    device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-                    batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-                    max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-                    top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-                    min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
                 )
                 sparse_query_vector = self._sparse_query_vector(encoder, query)
                 if not getattr(sparse_query_vector, "weights", None):

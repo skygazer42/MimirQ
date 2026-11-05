@@ -165,6 +165,15 @@ class Citation(BaseModel):
     rerank_score: float | None = None
     retrieval_score: float | None = None
     reranker_provider: str | None = None
+
+    @field_validator("reranker_provider")
+    @classmethod
+    def _validate_reranker_execution(cls, value: str | None) -> str | None:
+        from app.core.model_execution import reject_retired_model_provider
+
+        reject_retired_model_provider(value, capability="reranker")
+        return value
+
     rerank_elapsed_sec: float | None = None
     rerank_model_used: str | None = None
     retrieval_mode: str | None = None
@@ -356,7 +365,7 @@ class ChatRAGConfig(BaseModel):
     retrieval_overfetch_multiplier: int | None = Field(default=None, ge=1, le=20)
     retrieval_overfetch_max_k: int | None = Field(default=None, ge=1, le=500)
     sparse_retrieval_enabled: bool | None = None
-    sparse_retrieval_provider: Literal["deterministic", "splade"] | None = None
+    sparse_retrieval_provider: Literal["deterministic"] | None = None
 
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -365,6 +374,15 @@ class ChatRAGConfig(BaseModel):
 
     enable_reranker: bool = Field(default_factory=lambda: settings.ENABLE_RERANKER)  # optional: LLM/API rerank
     reranker_provider: str = Field(default_factory=lambda: settings.RERANKER_PROVIDER)  # llm | pc | none
+
+    @field_validator("reranker_provider")
+    @classmethod
+    def _validate_reranker_execution(cls, value: str) -> str:
+        from app.core.model_execution import reject_retired_model_provider
+
+        reject_retired_model_provider(value, capability="reranker")
+        return value
+
     reranker_top_n: int = Field(default_factory=lambda: settings.RERANKER_TOP_N, ge=1, le=200)
 
     # LangGraph path toggles

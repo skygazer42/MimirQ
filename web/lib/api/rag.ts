@@ -18,33 +18,6 @@ import { z } from 'zod'
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
-export type ClipImageIndexRequest = {
-  dataset_id: string
-  top_k?: number
-  max_chunks?: number
-  upsert?: boolean
-}
-
-export type ClipImageIndexResponse = {
-  indexed: number
-  skipped: number
-  failed: number
-  dim: number
-  errors: string[]
-}
-
-export type ClipImageSearchRequest = {
-  dataset_id: string
-  query: string
-  top_k?: number
-  auto_index?: boolean
-}
-
-export type ClipImageSearchResponse = {
-  citations: Citation[]
-  metrics: JsonObject
-}
-
 export type DocumentStructureRequest = {
   dataset_id: string
   document_id: string
@@ -152,16 +125,6 @@ export const ragApi = {
 
   async treeSearchPreview(params: TreeSearchPreviewRequest): Promise<TreeSearchPreviewResponse> {
     const { data } = await apiClient.post('/rag/tree-search-preview', params)
-    return data
-  },
-
-  async indexClipImages(params: ClipImageIndexRequest): Promise<ClipImageIndexResponse> {
-    const { data } = await apiClient.post('/rag/image-index', params)
-    return data
-  },
-
-  async searchClipImages(params: ClipImageSearchRequest): Promise<ClipImageSearchResponse> {
-    const { data } = await apiClient.post('/rag/image-search-preview', params)
     return data
   },
 

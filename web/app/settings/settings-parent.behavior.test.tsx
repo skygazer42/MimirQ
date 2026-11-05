@@ -536,11 +536,68 @@ describe('settings write and draft ownership', () => {
     expect(hook.result.current.selectedProvider).toBe(provider)
     expect(provider.config).toMatchObject({ apiKey: 'llm***mask', model: 'gpt-5.4-mini', temperature: 0 })
     await act(async () =>
-      hook.result.current.handleSaveConfig('local-embedding', { apiKey: '', apiBase: '', model: 'BAAI/bge-m3' }),
+      hook.result.current.handleSaveConfig('openai-embedding', {
+        apiKey: '',
+        apiBase: 'http://models.internal/v1',
+        model: 'BAAI/bge-m3',
+      }),
     )
     expect(boundary.update).toHaveBeenLastCalledWith({
-      embedding: { provider: 'local', model: 'BAAI/bge-m3', api_key: '', api_base: '' },
+      embedding: {
+        provider: 'openai_compatible',
+        model: 'BAAI/bge-m3',
+        api_key: '',
+        api_base: 'http://models.internal/v1',
+      },
     })
+  })
+
+  it('keeps API-served BGE models on the configured service instead of inferring local execution', async () => {
+    const stored = settings()
+    stored.embedding = {
+      provider: 'openai_compatible',
+      model: 'BAAI/bge-m3',
+      api_key: '',
+      api_base: 'http://models.internal/v1',
+    }
+    boundary.get.mockResolvedValue(stored)
+    const hook = await mount()
+    const provider = hook.result.current.groupedProviders.embedding.find((item) => item.id === 'openai-embedding')
+    expect(provider?.config).toMatchObject({ model: 'BAAI/bge-m3', apiBase: 'http://models.internal/v1' })
+    expect(hook.result.current.retiredEmbeddingModel).toBeNull()
+    expect(boundary.update).not.toHaveBeenCalled()
+  })
+
+  it('keeps a saved local model visible for correction without attaching it to a service or writing it', async () => {
+    const stored = settings()
+    stored.embedding = { provider: 'local', model: 'BAAI/bge-m3', api_key: '', api_base: '' }
+    boundary.get.mockResolvedValue(stored)
+    const hook = await mount()
+    expect(hook.result.current.retiredEmbeddingModel).toBe('BAAI/bge-m3')
+    expect(hook.result.current.groupedProviders.embedding.every((item) => !item.isConfigured)).toBe(true)
+    expect(boundary.update).not.toHaveBeenCalled()
+  })
+
+  it('keeps the Ollama embedding service protocol when displaying and saving its configuration', async () => {
+    const stored = settings()
+    stored.embedding = {
+      provider: 'ollama',
+      model: 'nomic-embed-text',
+      api_key: '',
+      api_base: 'http://localhost:11434',
+    }
+    boundary.get.mockResolvedValue(stored)
+    const hook = await mount()
+    const provider = hook.result.current.groupedProviders.embedding.find((item) => item.id === 'ollama-embedding')
+    expect(provider?.config).toMatchObject({ model: 'nomic-embed-text', apiBase: 'http://localhost:11434' })
+    await act(async () =>
+      hook.result.current.handleSaveConfig('ollama-embedding', {
+        apiKey: '',
+        apiBase: 'http://localhost:11434',
+        model: 'nomic-embed-text',
+      }),
+    )
+    expect(boundary.update).toHaveBeenLastCalledWith({ embedding: stored.embedding })
   })
 
   it('keeps a model dialog closed while another configuration write owns the save lane', async () => {

@@ -46,7 +46,7 @@ type DataAnnotatorProps = {
 
 type AnnotationTypeId = Annotation['type']
 type AnnotationTone = 'info' | 'success' | 'destructive' | 'primary'
-type AutoTagProviderId = 'cpu' | 'llm' | 'compliance' | 'hybrid'
+type AutoTagProviderId = 'cpu' | 'llm' | 'compliance'
 type AnnotationTypeConfig = {
   id: AnnotationTypeId
   label: string
@@ -75,9 +75,8 @@ const AUTO_TAG_PROVIDER_OPTIONS: Array<{
   { id: 'cpu', providers: ['cpu'], enableLlm: false, enableSensitive: false },
   { id: 'llm', providers: ['llm'], enableLlm: true, enableSensitive: false },
   { id: 'compliance', providers: ['pii', 'secret', 'regex'], enableLlm: false, enableSensitive: true },
-  { id: 'hybrid', providers: ['cpu', 'llm', 'gliner', 'pii', 'secret'], enableLlm: true, enableSensitive: true },
 ]
-const DEFAULT_AUTO_TAG_PROVIDER: AutoTagProviderId = 'hybrid'
+const DEFAULT_AUTO_TAG_PROVIDER: AutoTagProviderId = 'cpu'
 
 const TONE_STYLES: Record<
   AnnotationTone,

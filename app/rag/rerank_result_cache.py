@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_model_provider
 from app.core.redis_client import LazyRedisClient
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -65,8 +66,7 @@ _invalidate_redis_client = _redis_client_slot.invalidate
 
 def _normalize_provider(provider: str | None) -> str:
     p = str(provider or "").strip().lower()
-    if p in {"cross-encoder", "sentence_transformers", "sentence-transformers"}:
-        return "cross_encoder"
+    reject_retired_model_provider(p, capability="reranker")
     if p in {"xgboost_ltr"}:
         return "ltr"
     if p in {"late_interaction"}:
@@ -101,19 +101,7 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
                 )
                 .strip()
                 .lower(),
-                "colbert_model_name": str(getattr(settings, "COLBERT_RERANK_MODEL_NAME", "") or ""),
-                "colbert_device": str(getattr(settings, "COLBERT_RERANK_DEVICE", "cpu") or "cpu").strip().lower(),
-                "colbert_batch_size": int(getattr(settings, "COLBERT_RERANK_BATCH_SIZE", 16) or 16),
-                "colbert_max_length": int(getattr(settings, "COLBERT_RERANK_MAX_LENGTH", 256) or 256),
                 "colbert_embed_dim": int(getattr(settings, "COLBERT_RERANK_EMBED_DIM", 64) or 64),
-            }
-        )
-        return sig
-
-    if normalized == "cross_encoder":
-        sig.update(
-            {
-                "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
             }
         )
         return sig

@@ -1,9 +1,10 @@
 from typing import Any, TypedDict
 
+from app.core.model_execution import reject_retired_model_provider
 from app.rag.kg.extraction.relation_processor import normalize_predicate
 
 AUTO_GRAPH_R1_PLAN_SCHEMA_V1 = "mimirq.kg.auto_graph_r1_plan.v1"
-_VALID_BACKENDS = {"llm", "gliner", "hybrid"}
+_VALID_BACKENDS = {"llm", "heuristic"}
 
 
 class _EntityTypeCount(TypedDict):
@@ -18,6 +19,7 @@ class _PredicateCount(TypedDict):
 
 def _normalize_backend(value: str | None) -> str:
     backend = str(value or "").strip().lower()
+    reject_retired_model_provider(backend, capability="kg_extraction")
     if backend in _VALID_BACKENDS:
         return backend
     return "llm"

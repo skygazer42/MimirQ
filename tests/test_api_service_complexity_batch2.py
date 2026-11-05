@@ -453,11 +453,11 @@ def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metric
     assert result.metrics["structured_preset"] == "json_object"
     assert result.metrics["multimodal_router"]["modality"] == "image"
     assert result.metrics["tag"]["used"] is True
-    assert result.metrics["image"]["used"] is True
+    assert result.metrics["image"]["used"] is False
+    assert result.metrics["image"]["reason"] == "image_vector_retrieval_retired"
     assert captured["tag_kwargs"]["must_recall_expected_source_keys"] == ["policy"]
-    assert captured["image_kwargs"]["dataset_id"] == dataset_id
     assert "db" not in captured["invoke_state"]
-    assert captured["invoke_state"]["tag_docs"] == [{"kind": "tag"}, {"kind": "image"}]
+    assert captured["invoke_state"]["tag_docs"] == [{"kind": "tag"}]
     assert captured["invoke_state"]["rag_config_template"] == {"template": "balanced"}
     assert captured["invoke_config"]["recursion_limit"] == 17
     assert captured["invoke_context"]["tenant_id"] == str(tenant_id)

@@ -70,7 +70,7 @@ type OptionGroup = {
 const PIPELINE_INDEX_PRESET_VALUES = ['custom', 'economical', 'high_quality'] as const
 const GOVERNANCE_REMOVE_IMAGE_VALUES = ['none', 'decorative', 'all'] as const
 const GOVERNANCE_REDACTION_MODE_VALUES = ['mask', 'token'] as const
-const GOVERNANCE_KEYWORD_PROVIDER_VALUES = ['auto', 'jieba', 'jieba_textrank', 'hanlp', 'simple'] as const
+const GOVERNANCE_KEYWORD_PROVIDER_VALUES = ['auto', 'jieba', 'jieba_textrank', 'simple'] as const
 
 const PIPELINE_INDEX_PRESETS: Record<
   PipelineIndexPreset,
@@ -1121,7 +1121,11 @@ export function PipelineOptionsPanel(props: Readonly<PipelineOptionsPanelProps>)
                                 <SelectItem value="auto">auto</SelectItem>
                                 <SelectItem value="jieba">jieba</SelectItem>
                                 <SelectItem value="jieba_textrank">jieba_textrank</SelectItem>
-                                <SelectItem value="hanlp">hanlp</SelectItem>
+                                {options.governance_keywords_provider === 'hanlp' ? (
+                                  <SelectItem value="hanlp" disabled>
+                                    HanLP（已停用，请更换）
+                                  </SelectItem>
+                                ) : null}
                                 <SelectItem value="simple">simple</SelectItem>
                               </SelectContent>
                             </Select>
