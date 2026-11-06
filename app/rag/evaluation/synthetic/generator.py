@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.evaluation.datasets.schema import normalize_eval_dataset_sample

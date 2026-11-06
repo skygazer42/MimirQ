@@ -5,7 +5,6 @@ Note: `app.rag.tools` is a package (MCP tools). This module lives under that
 package to avoid the legacy `app/rag/tools.py` name collision.
 """
 
-
 from uuid import UUID
 
 from app.core.config import settings
@@ -65,12 +64,9 @@ def search_knowledge_base(
             content = doc.page_content
             score = meta.get("score", 0.0)
 
-            formatted_results.append(
-                f"[Document {idx}] {source} - Page {page} (relevance {score:.2f})\n{content}"
-            )
+            formatted_results.append(f"[Document {idx}] {source} - Page {page} (relevance {score:.2f})\n{content}")
 
         return "\n\n".join(formatted_results)
 
     except Exception as e:  # noqa: BLE001
         return f"Error occurred during search: {str(e)}"
-

@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +92,7 @@ def _effective_policy(
 
 def _history_context(
     history: Path | None,
-    load_history: Any,
+    load_history: Callable[[Path], list[dict[str, Any]]],
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     if history is None:
         return [], None

@@ -23,9 +23,11 @@ function createWrapper() {
     defaultOptions: { queries: { retry: false } },
   })
 
-  return function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
+  function Wrapper({ children }: Readonly<{ children: React.ReactNode }>) {
     return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   }
+
+  return Wrapper
 }
 
 describe('useTenantAccess', () => {
@@ -58,13 +60,20 @@ describe('useTenantAccess', () => {
   })
 
   it('refreshes a recently cached role when the user returns after administrator approval', async () => {
-    accessState.getCurrentTenantAccess.mockResolvedValueOnce({ role: 'viewer', permissions: [] })
+    accessState.getCurrentTenantAccess
+      .mockResolvedValueOnce({ role: 'viewer', permissions: [] })
       .mockResolvedValue({ role: 'editor', permissions: ['feedback_triage.write'] })
     const hook = renderHook(() => useTenantAccess(), { wrapper: createWrapper() })
     try {
-      await waitForAssertion(() => { expect(hook.result.current.data?.role).toBe('viewer') })
-      act(() => { focusManager.setFocused(false) })
-      act(() => { focusManager.setFocused(true) })
+      await waitForAssertion(() => {
+        expect(hook.result.current.data?.role).toBe('viewer')
+      })
+      act(() => {
+        focusManager.setFocused(false)
+      })
+      act(() => {
+        focusManager.setFocused(true)
+      })
       await waitForAssertion(() => {
         expect(hook.result.current.data?.role).toBe('editor')
         expect(hook.result.current.data?.permissions).toContain('feedback_triage.write')

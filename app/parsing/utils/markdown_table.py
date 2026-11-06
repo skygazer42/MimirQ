@@ -6,7 +6,6 @@ Goals:
 - Produce stable "table blocks" so markdown-aware chunkers can keep tables intact.
 """
 
-
 import re
 
 _WS_RE = re.compile(r"\s+")
@@ -47,7 +46,7 @@ def infer_table_header(rows: list[list[str]]) -> tuple[list[str], list[list[str]
         return [], []
 
     width = max((len(r) for r in rows), default=0)
-    width = max(0, int(width))
+    width = max(0, width)
     if width <= 0:
         return [], []
 
@@ -93,4 +92,3 @@ def build_markdown_table(*, header: list[str], rows: list[list[str]]) -> str:
 
 
 __all__ = ["build_markdown_table", "clean_table_cell", "infer_table_header"]
-

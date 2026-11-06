@@ -86,12 +86,5 @@ export function buildNextArgs(options) {
     return ['start', '-H', options.host, '-p', String(options.port)]
   }
 
-  return [
-    'dev',
-    options.turbopack ? '--turbopack' : '--webpack',
-    '-H',
-    options.host,
-    '-p',
-    String(options.port),
-  ]
+  return ['dev', options.turbopack ? '--turbopack' : '--webpack', '-H', options.host, '-p', String(options.port)]
 }

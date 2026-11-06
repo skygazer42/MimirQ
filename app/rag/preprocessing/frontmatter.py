@@ -5,7 +5,6 @@ The goal is metadata enrichment (title/tags/date/author) without adding heavy
 YAML dependencies. Parsing is intentionally limited and safe.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -219,7 +218,7 @@ def extract_markdown_frontmatter(
         data=data,
         raw=fm_raw,
         start_char=0,
-        end_char=int(end_char),
+        end_char=end_char,
         stripped_text=stripped_text,
         changed=bool(strip and stripped_text != raw),
     )

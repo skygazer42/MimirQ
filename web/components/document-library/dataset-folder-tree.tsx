@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw } from '@/components/icons'
 import { useTranslations } from 'next-intl'
@@ -8,7 +9,7 @@ import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { documentApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 import { queryKeys } from '@/lib/query-keys'
@@ -110,9 +111,7 @@ export function DatasetFolderTreeView({
         <div
           className={cn(
             'w-full flex items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-sm transition-colors group/node',
-            isSelected
-              ? 'border-foreground/10 bg-primary/[0.06] text-primary'
-              : 'hover:bg-muted/40'
+            isSelected ? 'border-foreground/10 bg-primary/[0.06] text-primary' : 'hover:bg-muted/40',
           )}
           style={{ paddingLeft: 8 + depth * 12 }}
         >
@@ -124,15 +123,19 @@ export function DatasetFolderTreeView({
             className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left focus-ring rounded-md py-0.5"
           >
             <span className="min-w-0 flex items-center gap-2">
-              <Icon className={cn("h-4 w-4 transition-colors", isSelected ? "text-primary" : "text-muted-foreground/60")} />
-              <span className={cn("truncate  transition-colors", isSelected ? "font-bold" : "font-medium")}>
+              <Icon
+                className={cn('h-4 w-4 transition-colors', isSelected ? 'text-primary' : 'text-muted-foreground/60')}
+              />
+              <span className={cn('truncate  transition-colors', isSelected ? 'font-bold' : 'font-medium')}>
                 {node.name || node.path || labels.unnamed}
               </span>
             </span>
-            <span className={cn(
-              "font-mono text-[11px] transition-all tabular-nums",
-              isSelected ? "font-semibold" : "text-muted-foreground/30 font-bold"
-            )}>
+            <span
+              className={cn(
+                'font-mono text-[11px] transition-all tabular-nums',
+                isSelected ? 'font-semibold' : 'text-muted-foreground/30 font-bold',
+              )}
+            >
               {node.documents}
             </span>
           </button>
@@ -141,7 +144,7 @@ export function DatasetFolderTreeView({
         {hasChildren && isExpanded ? (
           <div className="mt-0.5 relative">
             {/* Vertical Guide Line */}
-            <div 
+            <div
               className="pointer-events-none absolute bottom-2 top-0 left-[15px] w-px bg-foreground/10"
               style={{ left: 15 + depth * 12 }}
             />
@@ -159,9 +162,7 @@ export function DatasetFolderTreeView({
         onClick={() => onSelect(null)}
         className={cn(
           'w-full flex items-center justify-between rounded-md border border-transparent px-2 py-1.5 text-sm transition-colors focus-ring',
-          selectedPath
-            ? 'hover:bg-muted/40'
-            : 'border-foreground/10 bg-primary/[0.06] text-primary'
+          selectedPath ? 'hover:bg-muted/40' : 'border-foreground/10 bg-primary/[0.06] text-primary',
         )}
       >
         <span className="flex items-center gap-2 min-w-0">
@@ -201,7 +202,7 @@ export function DatasetFolderTree({
       lifecycle,
       max_depth: maxDepth,
     }),
-    [datasetId, lifecycle, maxDepth]
+    [datasetId, lifecycle, maxDepth],
   )
 
   const folderTreeQuery = useQuery({
@@ -213,9 +214,7 @@ export function DatasetFolderTree({
   const tree = datasetId ? (folderTreeQuery.data ?? null) : null
   const loading = Boolean(datasetId) && folderTreeQuery.isLoading
   const refreshing = Boolean(datasetId) && folderTreeQuery.isFetching
-  const error = folderTreeQuery.error
-    ? formatApiError(folderTreeQuery.error, t('loadFailed'))
-    : null
+  const error = folderTreeQuery.error ? formatApiError(folderTreeQuery.error, t('loadFailed')) : null
 
   useEffect(() => {
     if (!folderTreeQuery.error) return
@@ -230,14 +229,14 @@ export function DatasetFolderTree({
       unnamed: t('unnamed'),
       allDirectories: t('allDirectories'),
     }),
-    [t]
+    [t],
   )
 
   if (tree && tree.total_documents > 0 && tree.total_with_source_path <= 0) {
     return null
   }
 
-  let content: React.ReactNode
+  let content: ReactNode
   if (loading && !tree) {
     content = (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -250,14 +249,7 @@ export function DatasetFolderTree({
   } else if (!tree || tree.total_documents <= 0) {
     content = <div className="text-xs text-muted-foreground">{t('empty')}</div>
   } else {
-    content = (
-      <DatasetFolderTreeView
-        root={tree.root}
-        selectedPath={selectedPath}
-        onSelect={onSelect}
-        labels={labels}
-      />
-    )
+    content = <DatasetFolderTreeView root={tree.root} selectedPath={selectedPath} onSelect={onSelect} labels={labels} />
   }
 
   return (
@@ -275,7 +267,11 @@ export function DatasetFolderTree({
             disabled={refreshing}
             aria-label={t('refresh')}
           >
-            {refreshing ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="h-4 w-4" />}
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
           </Button>
         </div>
       ) : null}

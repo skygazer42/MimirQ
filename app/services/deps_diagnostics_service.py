@@ -7,7 +7,6 @@ This module is intended for ops tooling and incident response:
 - Dependency-light (avoid importing optional deps at import time)
 """
 
-
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -20,10 +19,6 @@ from app.rag.core.logging import get_logger
 _SCHEMA_V1 = "mimirq.observability.deps.v1"
 logger = get_logger(__name__)
 _DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE = "Ignoring non-critical deps diagnostics fallback failure: %s"
-
-
-def _now_utc_iso() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 def _probe_postgres() -> dict[str, Any]:
@@ -51,7 +46,7 @@ def _probe_postgres() -> dict[str, Any]:
             except Exception:
                 version = None
             status["status"] = "connected"
-            status["version"] = (str(version).strip()[:40] if version else None)
+            status["version"] = str(version).strip()[:40] if version else None
         finally:
             try:
                 db.close()
@@ -73,7 +68,7 @@ def _probe_redis() -> dict[str, Any]:
     """
 
     usage = redis_usage_flags(settings)
-    redis_required = bool(usage["task_queue"])
+    redis_required = usage["task_queue"]
     enabled = any(usage.values())
     if not enabled:
         return {
@@ -91,7 +86,7 @@ def _probe_redis() -> dict[str, Any]:
         import redis  # type: ignore
 
         client = redis.Redis.from_url(
-            getattr(settings, "REDIS_URL", "redis://localhost:6379/0"),
+            settings.REDIS_URL,
             socket_timeout=1,
             socket_connect_timeout=1,
             decode_responses=True,
@@ -105,7 +100,7 @@ def _probe_redis() -> dict[str, Any]:
         except Exception:
             version = None
         status["status"] = "connected"
-        status["version"] = (str(version).strip()[:40] if version else None)
+        status["version"] = str(version).strip()[:40] if version else None
     except Exception as exc:  # noqa: BLE001
         status["error"] = str(exc)[:200]
     status["elapsed_ms"] = round((time.perf_counter() - t0) * 1000.0, 2)
@@ -121,7 +116,7 @@ def _probe_minio() -> dict[str, Any]:
     - Server version may not be available without admin APIs; we return client version.
     """
 
-    enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+    enabled = settings.MINIO_ENABLED
     if not enabled:
         return {"status": "disabled", "enabled": False, "elapsed_ms": 0.0, "version": None}
 
@@ -131,9 +126,8 @@ def _probe_minio() -> dict[str, Any]:
         from app.storage.object.minio import minio_service
 
         raw = minio_service.health_check()
-        if isinstance(raw, dict):
-            out["status"] = str(raw.get("status") or "unknown")
-            out["elapsed_ms"] = raw.get("elapsed_ms")
+        out["status"] = raw["status"]
+        out["elapsed_ms"] = raw.get("elapsed_ms")
     except Exception as exc:  # noqa: BLE001
         out["error"] = str(exc)[:200]
         out["elapsed_ms"] = 0.0
@@ -144,7 +138,7 @@ def _probe_minio() -> dict[str, Any]:
 
         v = importlib.metadata.version("minio")
         if v:
-            out["version"] = f"client:{str(v).strip()[:40]}"
+            out["version"] = f"client:{v.strip()[:40]}"
     except Exception as exc:
         logger.debug(_DEPS_DIAGNOSTICS_FALLBACK_LOG_MESSAGE, exc)
 
@@ -156,7 +150,7 @@ def _probe_milvus() -> dict[str, Any]:
     Best-effort Milvus probe (when VECTOR_BACKEND=milvus).
     """
 
-    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
+    vector_backend = (settings.VECTOR_BACKEND or "milvus").lower()
     if vector_backend != "milvus":
         return {"status": "disabled", "backend": vector_backend, "elapsed_ms": 0.0, "version": None}
 

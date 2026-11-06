@@ -20,7 +20,7 @@ test('independent open UX observation', async ({ page }) => {
   console.log('ROLE_OPTIONS', await page.locator('body').ariaSnapshot())
   await page.getByRole('option', { name: '编辑者', exact: true }).click()
   await expect(page.getByRole('combobox', { name: '角色 顾言', exact: true })).toContainText('编辑者')
-  expect(state.members.find(member => member.user_id === 'member-viewer-b')?.role).toBe('editor')
+  expect(state.members.find((member) => member.user_id === 'member-viewer-b')?.role).toBe('editor')
   await page.screenshot({ path: path.join(evidence, '04-after-role-selection.png'), animations: 'disabled' })
   await page.getByRole('button', { name: '刷新成员', exact: true }).click()
   await expect(page.getByRole('combobox', { name: '角色 顾言', exact: true })).toContainText('编辑者')
@@ -42,10 +42,24 @@ test('independent open UX observation', async ({ page }) => {
   await page.screenshot({ path: path.join(evidence, '06-desktop-rejected-role.png'), animations: 'disabled' })
   await expect(page.getByRole('combobox', { name: '角色 顾言', exact: true })).toContainText('编辑者')
   await expect(page.getByRole('searchbox', { name: '搜索成员' })).toHaveValue('顾言')
-  expect(state.members.find(member => member.user_id === 'member-viewer-b')?.role).toBe('editor')
+  expect(state.members.find((member) => member.user_id === 'member-viewer-b')?.role).toBe('editor')
   console.log('FIXTURE_WRITES', JSON.stringify(state.writes))
   console.log('FIXTURE_ERRORS', JSON.stringify(state.errors))
-  fs.writeFileSync(path.join(evidence, 'desktop-state.json'), JSON.stringify({ writes: state.writes, reads: state.reads, blocked: state.blocked, errors: state.errors, savedRole: state.members.find(member => member.user_id === 'member-viewer-b')?.role, snapshot: await page.locator('body').ariaSnapshot() }, null, 2))
+  fs.writeFileSync(
+    path.join(evidence, 'desktop-state.json'),
+    JSON.stringify(
+      {
+        writes: state.writes,
+        reads: state.reads,
+        blocked: state.blocked,
+        errors: state.errors,
+        savedRole: state.members.find((member) => member.user_id === 'member-viewer-b')?.role,
+        snapshot: await page.locator('body').ariaSnapshot(),
+      },
+      null,
+      2,
+    ),
+  )
   expect(state.blocked).toEqual([])
 })
 
@@ -56,7 +70,10 @@ test('independent open UX narrow entry', async ({ page }) => {
   await openMembers(page)
   await page.screenshot({ path: path.join(evidence, '07-narrow-entry.png'), animations: 'disabled' })
   fs.writeFileSync(path.join(evidence, 'narrow-entry-accessibility.txt'), await page.locator('body').ariaSnapshot())
-  console.log('NARROW_UNNAMED_HEADER_BUTTONS', await page.locator('main').getByRole('button', { name: '', exact: true }).count())
+  console.log(
+    'NARROW_UNNAMED_HEADER_BUTTONS',
+    await page.locator('main').getByRole('button', { name: '', exact: true }).count(),
+  )
   // The two unnamed header controls were identified from the observed 390px screenshot.
   await page.locator('main').getByRole('button', { name: '', exact: true }).first().click()
   await expect(page.getByRole('dialog', { name: '角色说明', exact: true })).toBeVisible()
@@ -68,7 +85,7 @@ test('independent open UX narrow entry', async ({ page }) => {
   await page.screenshot({ path: path.join(evidence, '09-narrow-role-options.png'), animations: 'disabled' })
   await page.getByRole('option', { name: '编辑者', exact: true }).click()
   await expect(page.getByRole('combobox', { name: '角色 顾言', exact: true })).toContainText('编辑者')
-  expect(state.members.find(member => member.user_id === 'member-viewer-b')?.role).toBe('editor')
+  expect(state.members.find((member) => member.user_id === 'member-viewer-b')?.role).toBe('editor')
   await page.screenshot({ path: path.join(evidence, '10-narrow-saved-role.png'), animations: 'disabled' })
   console.log('NARROW_SAVED')
   await reloadMembers(page)
@@ -83,8 +100,22 @@ test('independent open UX narrow entry', async ({ page }) => {
   await expect(page.getByRole('alert').filter({ hasText: '租户策略拒绝这次角色变更' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: '角色 顾言', exact: true })).toContainText('编辑者')
   await expect(page.getByRole('searchbox', { name: '搜索成员' })).toHaveValue('顾言')
-  expect(state.members.find(member => member.user_id === 'member-viewer-b')?.role).toBe('editor')
+  expect(state.members.find((member) => member.user_id === 'member-viewer-b')?.role).toBe('editor')
   await page.screenshot({ path: path.join(evidence, '11-narrow-rejected-role.png'), animations: 'disabled' })
-  fs.writeFileSync(path.join(evidence, 'narrow-state.json'), JSON.stringify({ writes: state.writes, reads: state.reads, blocked: state.blocked, errors: state.errors, savedRole: state.members.find(member => member.user_id === 'member-viewer-b')?.role, snapshot: await page.locator('body').ariaSnapshot() }, null, 2))
+  fs.writeFileSync(
+    path.join(evidence, 'narrow-state.json'),
+    JSON.stringify(
+      {
+        writes: state.writes,
+        reads: state.reads,
+        blocked: state.blocked,
+        errors: state.errors,
+        savedRole: state.members.find((member) => member.user_id === 'member-viewer-b')?.role,
+        snapshot: await page.locator('body').ariaSnapshot(),
+      },
+      null,
+      2,
+    ),
+  )
   expect(state.blocked).toEqual([])
 })

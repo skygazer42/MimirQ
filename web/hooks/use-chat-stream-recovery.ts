@@ -1,25 +1,26 @@
-import type { Message } from '@/types'
-
-type GetMessagesResult = {
-  conversation_id: string
-  messages: Message[]
-  returned?: number
-  has_more?: boolean
-}
+import type { ConversationDetail, Message } from '@/types/chat'
 
 type RecoverStreamedAssistantMessageOptions = Readonly<{
   conversationId: string
   requestId: string
-  getMessages: (conversationId: string, params?: { limit?: number }) => Promise<GetMessagesResult>
+  getMessages: (conversationId: string, params?: { limit?: number }) => Promise<ConversationDetail>
+  signal?: AbortSignal
   attempts?: number
   delayMs?: number
   limit?: number
-  wait?: (delayMs: number) => Promise<void>
+  wait?: (delayMs: number, signal?: AbortSignal) => Promise<void>
 }>
 
-function sleep(delayMs: number) {
+function sleep(delayMs: number, signal?: AbortSignal): Promise<void> {
   return new Promise<void>((resolve) => {
-    globalThis.setTimeout(resolve, delayMs)
+    const finish = () => {
+      globalThis.clearTimeout(timer)
+      signal?.removeEventListener('abort', finish)
+      resolve()
+    }
+    const timer = globalThis.setTimeout(finish, delayMs)
+    if (signal?.aborted) finish()
+    else signal?.addEventListener('abort', finish, { once: true })
   })
 }
 
@@ -32,6 +33,7 @@ export async function recoverStreamedAssistantMessage({
   conversationId,
   requestId,
   getMessages,
+  signal,
   attempts = 4,
   delayMs = 500,
   limit = 40,
@@ -43,7 +45,9 @@ export async function recoverStreamedAssistantMessage({
   if (!trimmedConversationId || !trimmedRequestId) return null
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (signal?.aborted) return null
     const response = await getMessages(trimmedConversationId, { limit })
+    if (signal?.aborted) return null
     const recovered = (response.messages || []).find((message) => {
       return message.role === 'assistant' && getMessageRequestId(message) === trimmedRequestId
     })
@@ -51,7 +55,7 @@ export async function recoverStreamedAssistantMessage({
     if (recovered) return recovered
 
     if (attempt < attempts - 1) {
-      await wait(delayMs)
+      await wait(delayMs, signal)
     }
   }
 

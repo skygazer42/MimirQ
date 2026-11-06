@@ -11,14 +11,63 @@ fs.mkdirSync(evidence, { recursive: true })
 
 async function record(page: Page, name: string) {
   const visible = await page.locator('body').innerText()
-  const fields = await page.getByRole('textbox').evaluateAll(nodes => nodes.map(node => ({ label: node.getAttribute('aria-label'), placeholder: node.getAttribute('placeholder'), value: (node as HTMLInputElement).value })))
-  const numbers = await page.getByRole('spinbutton').evaluateAll(nodes => nodes.map(node => ({ label: node.getAttribute('aria-label'), placeholder: node.getAttribute('placeholder'), value: (node as HTMLInputElement).value })))
-  const controls = await page.getByRole('button').evaluateAll(nodes => nodes.filter(node => (node as HTMLElement).getBoundingClientRect().width > 0).map(node => ({ text: (node as HTMLElement).innerText, label: node.getAttribute('aria-label'), disabled: (node as HTMLButtonElement).disabled })))
-  const selects = await page.getByRole('combobox').evaluateAll(nodes => nodes.map(node => ({ label: node.getAttribute('aria-label'), value: (node as HTMLSelectElement).value, options: Array.from((node as HTMLSelectElement).options ?? []).map(option => ({ text: option.text, value: option.value })) })))
+  const fields = await page.getByRole('textbox').evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      label: node.getAttribute('aria-label'),
+      placeholder: node.getAttribute('placeholder'),
+      value: (node as HTMLInputElement).value,
+    })),
+  )
+  const numbers = await page.getByRole('spinbutton').evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      label: node.getAttribute('aria-label'),
+      placeholder: node.getAttribute('placeholder'),
+      value: (node as HTMLInputElement).value,
+    })),
+  )
+  const controls = await page.getByRole('button').evaluateAll((nodes) =>
+    nodes
+      .filter((node) => (node as HTMLElement).getBoundingClientRect().width > 0)
+      .map((node) => ({
+        text: (node as HTMLElement).innerText,
+        label: node.getAttribute('aria-label'),
+        disabled: (node as HTMLButtonElement).disabled,
+      })),
+  )
+  const selects = await page.getByRole('combobox').evaluateAll((nodes) =>
+    nodes.map((node) => ({
+      label: node.getAttribute('aria-label'),
+      value: (node as HTMLSelectElement).value,
+      options: Array.from((node as HTMLSelectElement).options ?? []).map((option) => ({
+        text: option.text,
+        value: option.value,
+      })),
+    })),
+  )
   const tabs = await page.getByRole('tab').allTextContents()
-  const graphics = await page.locator('svg, canvas').evaluateAll(nodes => nodes.map(node => { const rect = node.getBoundingClientRect(); return { tag: node.tagName, width: rect.width, height: rect.height, rectangles: node.querySelectorAll('rect').length, label: node.getAttribute('aria-label') } }).filter(node => node.width > 100 || node.height > 100))
-  const geometry = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, body: document.body.scrollWidth }))
-  fs.writeFileSync(path.join(evidence, `${name}.json`), JSON.stringify({ url: page.url(), visible, fields, numbers, controls, selects, tabs, graphics, geometry }, null, 2))
+  const graphics = await page.locator('svg, canvas').evaluateAll((nodes) =>
+    nodes
+      .map((node) => {
+        const rect = node.getBoundingClientRect()
+        return {
+          tag: node.tagName,
+          width: rect.width,
+          height: rect.height,
+          rectangles: node.querySelectorAll('rect').length,
+          label: node.getAttribute('aria-label'),
+        }
+      })
+      .filter((node) => node.width > 100 || node.height > 100),
+  )
+  const geometry = await page.evaluate(() => ({
+    viewport: innerWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+  }))
+  fs.writeFileSync(
+    path.join(evidence, `${name}.json`),
+    JSON.stringify({ url: page.url(), visible, fields, numbers, controls, selects, tabs, graphics, geometry }, null, 2),
+  )
   await page.screenshot({ path: path.join(evidence, `${name}.png`), animations: 'disabled' })
   console.log(JSON.stringify({ name, visible, fields, numbers, controls, selects, tabs, graphics, geometry }))
 }
@@ -35,7 +84,8 @@ async function mobile(page: Page) {
 }
 
 test.afterEach(async ({ page }, info) => {
-  if (info.status !== info.expectedStatus) await record(page, `failure-${info.title.replace(/[^a-z0-9]+/gi, '-')}`).catch(() => undefined)
+  if (info.status !== info.expectedStatus)
+    await record(page, `failure-${info.title.replace(/[^a-z0-9]+/gi, '-')}`).catch(() => undefined)
 })
 
 test('open UX task snapshots compare knowledge revisions', async ({ page }) => {
@@ -99,7 +149,9 @@ test('open UX task ablations assess the candidate configuration', async ({ page 
   await expect(page.getByRole('dialog')).toBeHidden({ timeout: 30000 })
   await expect.poll(() => state.writes.length).toBe(1)
   await page.getByRole('button', { name: '重新读取', exact: true }).click()
-  await expect(page.getByRole('button', { name: '设为基线 new-verification-run', exact: true })).toBeVisible({ timeout: 30000 })
+  await expect(page.getByRole('button', { name: '设为基线 new-verification-run', exact: true })).toBeVisible({
+    timeout: 30000,
+  })
   await record(page, 'ablations-mobile-run-created-readback')
 })
 
@@ -132,12 +184,16 @@ test('open UX risk similarity failed calculation preserves source choices', asyn
   await page.getByRole('combobox', { name: '横轴数据源 1', exact: true }).selectOption({ label: '设备手册（2 项）' })
   await page.getByRole('combobox', { name: '纵轴数据源 1', exact: true }).selectOption({ label: '维护规范（2 项）' })
   let releaseCalculation!: () => void
-  const calculationGate = new Promise<void>(resolve => { releaseCalculation = resolve })
-  await page.route('**/api/v1/ragviz/similarity/**', async route => {
+  const calculationGate = new Promise<void>((resolve) => {
+    releaseCalculation = resolve
+  })
+  await page.route('**/api/v1/ragviz/similarity/**', async (route) => {
     if (route.request().method() === 'POST') await calculationGate
     await route.fallback()
   })
-  const calculationStarted = page.waitForRequest(request => request.url().includes('/api/v1/ragviz/similarity/') && request.method() === 'POST')
+  const calculationStarted = page.waitForRequest(
+    (request) => request.url().includes('/api/v1/ragviz/similarity/') && request.method() === 'POST',
+  )
   await page.getByRole('button', { name: '计算相似度', exact: true }).click()
   await calculationStarted
   try {
@@ -180,7 +236,9 @@ test('open UX verification stable similarity cell detail', async ({ page }) => {
   const state = await similarityFixture(page)
   state.fail = false
   const navigations: string[] = []
-  page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations.push(frame.url()) })
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) navigations.push(frame.url())
+  })
   await page.setViewportSize({ width: 390, height: 844 })
   await openTask(page, '/knowledge/similarity')
   await mobile(page)
@@ -192,7 +250,8 @@ test('open UX verification stable similarity cell detail', async ({ page }) => {
   await record(page, 'similarity-mobile-stable-before-cell')
   await page.locator('svg text').filter({ hasText: /^1$/ }).first().click()
   await record(page, 'similarity-mobile-stable-after-cell')
-  if (!(await page.getByRole('dialog').isVisible())) await page.getByRole('button', { name: '统计与详情', exact: true }).click()
+  if (!(await page.getByRole('dialog').isVisible()))
+    await page.getByRole('button', { name: '统计与详情', exact: true }).click()
   await expect(page.getByText('选中单元', { exact: true })).toBeVisible()
   await record(page, 'similarity-mobile-stable-cell-detail')
   fs.writeFileSync(path.join(evidence, 'similarity-stable-navigations.json'), JSON.stringify(navigations, null, 2))

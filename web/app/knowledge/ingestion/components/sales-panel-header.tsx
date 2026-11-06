@@ -1,6 +1,6 @@
 'use client'
 
-import { ChevronRight, PlatformIcon } from '@/components/icons'
+import { ChevronRight, type PlatformIcon } from '@/components/icons'
 
 import { cn } from '@/lib/utils'
 
@@ -29,9 +29,7 @@ export function SalesPanelHeader({
           <span className="truncate">{title}</span>
         </div>
         {subtitle ? (
-          <div className="mt-0.5 pl-[18px] text-[8px] leading-3 text-muted-foreground">
-            {subtitle}
-          </div>
+          <div className="mt-0.5 pl-[18px] text-[8px] leading-3 text-muted-foreground">{subtitle}</div>
         ) : null}
       </div>
       {actionLabel ? (

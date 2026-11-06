@@ -8,7 +8,6 @@ This is a lightweight, dependency-free anonymizer intended for:
 It uses conservative patterns with basic validators to reduce false positives.
 """
 
-
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -196,7 +195,7 @@ def _append_pattern_matches(
         raw = match.group(0) or ""
         if not raw:
             continue
-        start, end = int(match.start()), int(match.end())
+        start, end = match.start(), match.end()
         if start < 0 or end <= start:
             continue
         if _overlaps_taken(taken, start, end):

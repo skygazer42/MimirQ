@@ -6,7 +6,6 @@ simple, code-fence-aware helpers to control the number of consecutive blank
 lines kept in the final text.
 """
 
-
 import re
 
 _CODE_FENCE_RE = re.compile(r"^\s*```")

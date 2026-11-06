@@ -56,7 +56,7 @@ export function buildReportHtml({
  <td>${escapeHtml(document.current_stage || '-')}</td>
  <td>${formatFileSize(document.file_size || 0)}</td>
  <td>${escapeHtml(document.error_message || '—')}</td>
- </tr>`
+ </tr>`,
     )
     .join('')
   const findingRows = (salesAuditSummary?.findings ?? [])
@@ -68,7 +68,7 @@ export function buildReportHtml({
  <td><span class="status-pill">${escapeHtml(item.severity)}</span></td>
  <td>${Number(item.count || 0).toLocaleString()}</td>
  <td>${escapeHtml(item.key)}</td>
- </tr>`
+ </tr>`,
     )
     .join('')
   const pocRows = salesPocCandidates
@@ -82,7 +82,7 @@ export function buildReportHtml({
  <td>${escapeHtml(item.primaryRisk)}</td>
  <td><span class="action-pill">${escapeHtml(item.actionLabel)}</span></td>
  <td>${escapeHtml(item.riskDescription)}</td>
- </tr>`
+ </tr>`,
     )
     .join('')
   const highRiskRows = salesHighRiskFiles
@@ -95,12 +95,10 @@ export function buildReportHtml({
  <td>${escapeHtml(item.fileSizeLabel)}</td>
  <td>${escapeHtml(item.primaryRisk)}</td>
  <td>${escapeHtml(item.riskDescription)}</td>
- </tr>`
+ </tr>`,
     )
     .join('')
-  const totalPrecheckFiles = Number(
-    salesAuditSummary?.total_files || totalDocs || 0
-  )
+  const totalPrecheckFiles = Number(salesAuditSummary?.total_files || totalDocs || 0)
   const scannedPdf = Number(salesAuditSummary?.pdf_scan.scanned || 0)
   const mixedPdf = Number(salesAuditSummary?.pdf_scan.unknown || 0)
   const blockingCount = (salesAuditSummary?.findings ?? [])
@@ -146,7 +144,7 @@ export function buildReportHtml({
  <div class="metric-label">${escapeHtml(item.label)}</div>
  <div class="metric-value">${escapeHtml(item.value)}</div>
  </div>
- </article>`
+ </article>`,
     )
     .join('')
   const basisCards = [
@@ -183,7 +181,7 @@ export function buildReportHtml({
  <div class="metric-label">${escapeHtml(item.label)}</div>
  <div class="metric-value metric-value--compact">${escapeHtml(item.value)}</div>
  </div>
- </article>`
+ </article>`,
     )
     .join('')
 

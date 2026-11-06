@@ -3,7 +3,6 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.rag.retrieval.hierarchy_expand import FetchByHierarchyKey, expand_hierarchy_context
-from app.rag.retrieval.neighbor_expand import expand_neighbors_by_score
 from app.rag.retrieval.sibling_expand import expand_document_siblings
 
 
@@ -388,25 +387,6 @@ def _process_windowed_result(
     return neighbor_added, 0
 
 
-def expand_reranked_ids_by_score(
-    *,
-    ranked_items: list[dict[str, Any]],
-    get_adjacent_ids,
-    high_threshold: float = 0.7,
-    mid_threshold: float = 0.4,
-    high_span: int = 3,
-    mid_span: int = 1,
-) -> dict[str, Any]:
-    return expand_neighbors_by_score(
-        ranked_items=ranked_items,
-        get_adjacent_ids=get_adjacent_ids,
-        high_threshold=high_threshold,
-        mid_threshold=mid_threshold,
-        high_span=high_span,
-        mid_span=mid_span,
-    )
-
-
 def expand_ranked_chunk_results(
     *,
     results: list[dict[str, Any]],
@@ -524,5 +504,4 @@ def expand_hierarchy_documents(
 __all__ = [
     "expand_hierarchy_documents",
     "expand_ranked_chunk_results",
-    "expand_reranked_ids_by_score",
 ]

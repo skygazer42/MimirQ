@@ -8,7 +8,6 @@ Currently supported:
 This is opt-in because it can be destructive for certain content.
 """
 
-
 import re
 from dataclasses import dataclass
 

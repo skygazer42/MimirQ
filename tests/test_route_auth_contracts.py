@@ -89,11 +89,7 @@ def test_api_routes_require_explicit_auth_dependencies() -> None:
 
 
 def test_auth_contract_exception_lists_are_explicit_and_current() -> None:
-    api_paths = {
-        route.path
-        for route in app.routes
-        if isinstance(route, APIRoute) and route.path.startswith("/api/")
-    }
+    api_paths = {route.path for route in app.routes if isinstance(route, APIRoute) and route.path.startswith("/api/")}
 
     assert _PUBLIC_API_PATHS.isdisjoint(_SELF_AUTHORIZING_API_PATHS)
     assert (_PUBLIC_API_PATHS | _SELF_AUTHORIZING_API_PATHS) <= api_paths

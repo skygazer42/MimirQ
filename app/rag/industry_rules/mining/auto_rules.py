@@ -37,7 +37,7 @@ def _build_glossary_suggestions(
         if not token or token in existing:
             continue
         out.append({"token": token, "count": int((item or {}).get("count") or 0), "source": (item or {}).get("source")})
-    out.sort(key=lambda item: (-int(item["count"]), len(str(item["token"])), str(item["token"])))
+    out.sort(key=lambda item: (-item["count"], len(item["token"]), item["token"]))
     out = out[: max(1, int(top_k or 1))]
     return out
 
@@ -53,12 +53,12 @@ def _build_pattern_suggestions(rows: list[dict[str, Any]], *, top_k: int) -> lis
         suggestions.append(
             {
                 "pattern_key": pattern_key,
-                "count": int(len(matches)),
+                "count": len(matches),
                 "sample_queries": matches[:3],
                 "followup_template": spec["followup"],
             }
         )
-    suggestions.sort(key=lambda item: (-int(item["count"]), str(item["pattern_key"])))
+    suggestions.sort(key=lambda item: (-item["count"], item["pattern_key"]))
     return suggestions[: max(1, int(top_k or 1))]
 
 
@@ -75,7 +75,7 @@ def _build_intent_suggestions(rows: list[dict[str, Any]], *, top_k: int) -> list
                 samples.setdefault(intent, []).append(query)
                 break
     out = [
-        {"intent": intent, "count": int(count), "sample_queries": samples.get(intent, [])[:3]}
+        {"intent": intent, "count": count, "sample_queries": samples.get(intent, [])[:3]}
         for intent, count in counts.most_common(max(1, int(top_k or 1)))
     ]
     return out

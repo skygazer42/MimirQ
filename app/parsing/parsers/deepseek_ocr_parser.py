@@ -11,7 +11,7 @@ import re
 import shutil
 import threading
 import time
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import unquote
@@ -39,6 +39,70 @@ _MARKDOWN_IMAGE_REF_RE = re.compile(
     flags=re.IGNORECASE,
 )
 _HTML_IMAGE_REF_RE = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IGNORECASE)
+
+
+def _normalize_image_ext(ext: str) -> str:
+    normalized = (ext or "").strip().lower()
+    return "jpg" if normalized == "jpeg" else normalized
+
+
+def _digest_bytes(data: bytes) -> str | None:
+    try:
+        return hashlib.sha256(data).hexdigest()
+    except Exception:
+        return None
+
+
+def _referenced_image_refs(markdown_text: str) -> list[str]:
+    found: list[str] = []
+    seen: set[str] = set()
+    for pattern in (_MARKDOWN_IMAGE_REF_RE, _HTML_IMAGE_REF_RE):
+        for match in pattern.finditer(markdown_text):
+            ref = (match.group(1) or "").strip()
+            if not ref or ref in seen:
+                continue
+            seen.add(ref)
+            found.append(ref)
+    return found
+
+
+def _build_documents(
+    *,
+    file_path: Path,
+    artifact_root: Path,
+    total_pages: int,
+    include_page_images: bool,
+    max_page_images: int,
+    page_image_format: str,
+    extracted_images: int,
+    concurrency: int,
+    results: dict[int, str],
+) -> list[Document]:
+    docs: list[Document] = []
+    ext = "png" if page_image_format == "png" else "jpg"
+    for idx in range(1, total_pages + 1):
+        text = (results.get(idx) or "").strip()
+        page_parts: list[str] = []
+        if include_page_images and (max_page_images <= 0 or idx <= max_page_images):
+            page_parts.append(f"![page {idx}](images/page_{idx:04d}.{ext})")
+        if text:
+            page_parts.append(text)
+        page_content = "\n\n".join(page_parts).strip()
+        if not page_content:
+            continue
+        meta = {
+            "source": file_path.name,
+            "file_type": "pdf",
+            "page": idx,
+            "total_pages": total_pages,
+            "parser_backend": "deepseek_ocr",
+            "asset_base_dir": str(artifact_root),
+            "artifact_dir": str(artifact_root),
+            "deepseek_ocr_extracted_images": extracted_images,
+            "deepseek_ocr_concurrency": concurrency,
+        }
+        docs.append(Document(page_content=page_content, metadata=meta))
+    return docs
 
 
 class DeepSeekOCRParser:
@@ -93,11 +157,6 @@ class DeepSeekOCRParser:
         return (file_path.parent / ".deepseek_ocr" / run_id).absolute()
 
     @staticmethod
-    def _normalize_image_ext(ext: str) -> str:
-        normalized = (ext or "").strip().lower()
-        return "jpg" if normalized == "jpeg" else normalized
-
-    @staticmethod
     def _write_if_missing(path: Path, data: bytes) -> bool:
         if path.exists():
             return True
@@ -135,7 +194,7 @@ class DeepSeekOCRParser:
         raw = extracted.get("image")
         if not raw:
             return None, ""
-        return raw, self._normalize_image_ext(str(extracted.get("ext") or "")) or "bin"
+        return raw, _normalize_image_ext(str(extracted.get("ext") or "")) or "bin"
 
     def _persist_jpeg_aliases(self, *, images_dir: Path, digest: str, jpg_bytes: bytes) -> None:
         for suffix in ("jpg", "jpeg"):
@@ -166,13 +225,6 @@ class DeepSeekOCRParser:
         self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_raw, jpg_bytes=jpg_bytes)
         digest_jpg = hashlib.sha256(jpg_bytes).hexdigest()
         self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_jpg, jpg_bytes=jpg_bytes)
-
-    @staticmethod
-    def _digest_bytes(data: bytes) -> str | None:
-        try:
-            return hashlib.sha256(data).hexdigest()
-        except Exception:
-            return None
 
     @staticmethod
     def _page_image_config(total_pages: int) -> tuple[bool, int, str, int]:
@@ -245,7 +297,7 @@ class DeepSeekOCRParser:
         except Exception:
             return
 
-        digest_png = self._digest_bytes(png_bytes)
+        digest_png = _digest_bytes(png_bytes)
         if digest_png is None:
             return
 
@@ -259,7 +311,7 @@ class DeepSeekOCRParser:
             return
 
         self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_png, jpg_bytes=jpg_bytes)
-        digest_jpg = self._digest_bytes(jpg_bytes)
+        digest_jpg = _digest_bytes(jpg_bytes)
         if digest_jpg is not None:
             self._persist_jpeg_aliases(images_dir=images_dir, digest=digest_jpg, jpg_bytes=jpg_bytes)
 
@@ -324,7 +376,7 @@ class DeepSeekOCRParser:
         - For local refs like `images/<name>.(jpg|png|...)`, ensure the file exists.
         - If missing, write the current page render as a placeholder image.
         """
-        if not isinstance(markdown_text, str) or not markdown_text:
+        if not markdown_text:
             return
 
         try:
@@ -333,7 +385,7 @@ class DeepSeekOCRParser:
             return
 
         images_dir_resolved = images_dir.resolve(strict=False)
-        refs = self._referenced_image_refs(markdown_text)
+        refs = _referenced_image_refs(markdown_text)
         max_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
         if max_images:
             refs = refs[:max_images]
@@ -354,18 +406,6 @@ class DeepSeekOCRParser:
                 page_png_bytes=page_png_bytes,
                 page_jpg_bytes=page_jpg_bytes,
             )
-
-    def _referenced_image_refs(self, markdown_text: str) -> list[str]:
-        found: list[str] = []
-        seen: set[str] = set()
-        for pattern in (_MARKDOWN_IMAGE_REF_RE, _HTML_IMAGE_REF_RE):
-            for match in pattern.finditer(markdown_text):
-                ref = (match.group(1) or "").strip()
-                if not ref or ref in seen:
-                    continue
-                seen.add(ref)
-                found.append(ref)
-        return found
 
     def _resolve_referenced_dest(
         self,
@@ -484,7 +524,7 @@ class DeepSeekOCRParser:
     ) -> None:
         try:
             self._ensure_referenced_images_exist(
-                markdown_text=text or "",
+                markdown_text=text,
                 images_dir=images_dir,
                 page_png_path=png_path,
                 page_jpg_path=jpg_path,
@@ -520,7 +560,7 @@ class DeepSeekOCRParser:
                 png_bytes=img_bytes,
                 jpg_bytes=page_jpg_bytes,
             )
-            results[idx] = text or ""
+            results[idx] = text
         return results, []
 
     def _submit_page(
@@ -532,7 +572,7 @@ class DeepSeekOCRParser:
         total_pages: int,
         file_path: Path,
         images_dir: Path,
-        inflight: dict,
+        inflight: dict[Future[str], int],
         page_named_images: dict[int, tuple[Path, Path]],
     ) -> None:
         pix = page_obj.get_pixmap(dpi=self._pdf_dpi)
@@ -548,8 +588,8 @@ class DeepSeekOCRParser:
     def _collect_parallel_results(
         self,
         *,
-        done,
-        inflight: dict,
+        done: set[Future[str]],
+        inflight: dict[Future[str], int],
         results: dict[int, str],
         errors: list[str],
         page_named_images: dict[int, tuple[Path, Path]],
@@ -560,7 +600,7 @@ class DeepSeekOCRParser:
             if page_idx is None:
                 continue
             try:
-                text = future.result() or ""
+                text = future.result()
                 results[page_idx] = text
                 png_path, jpg_path = page_named_images.get(page_idx, (None, None))
                 self._ensure_page_references(
@@ -581,7 +621,7 @@ class DeepSeekOCRParser:
         images_dir: Path,
         concurrency: int,
     ) -> tuple[dict[int, str], list[str]]:
-        inflight: dict = {}
+        inflight: dict[Future[str], int] = {}
         results: dict[int, str] = {}
         errors: list[str] = []
         page_named_images: dict[int, tuple[Path, Path]] = {}
@@ -619,45 +659,6 @@ class DeepSeekOCRParser:
                 )
         return results, errors
 
-    def _build_documents(
-        self,
-        *,
-        file_path: Path,
-        artifact_root: Path,
-        total_pages: int,
-        include_page_images: bool,
-        max_page_images: int,
-        page_image_format: str,
-        extracted_images: int,
-        concurrency: int,
-        results: dict[int, str],
-    ) -> list[Document]:
-        docs: list[Document] = []
-        ext = "png" if page_image_format == "png" else "jpg"
-        for idx in range(1, total_pages + 1):
-            text = (results.get(idx) or "").strip()
-            page_parts: list[str] = []
-            if include_page_images and (max_page_images <= 0 or idx <= max_page_images):
-                page_parts.append(f"![page {idx}](images/page_{idx:04d}.{ext})")
-            if text:
-                page_parts.append(text)
-            page_content = "\n\n".join(page_parts).strip()
-            if not page_content:
-                continue
-            meta = {
-                "source": file_path.name,
-                "file_type": "pdf",
-                "page": idx,
-                "total_pages": total_pages,
-                "parser_backend": "deepseek_ocr",
-                "asset_base_dir": str(artifact_root),
-                "artifact_dir": str(artifact_root),
-                "deepseek_ocr_extracted_images": int(extracted_images),
-                "deepseek_ocr_concurrency": int(concurrency),
-            }
-            docs.append(Document(page_content=page_content, metadata=meta))
-        return docs
-
     def parse(
         self,
         file_path: Path,
@@ -679,7 +680,7 @@ class DeepSeekOCRParser:
 
         doc = fitz.open(str(file_path))
         try:
-            total_pages = int(len(doc))
+            total_pages = len(doc)
             include_page_images, max_page_images, page_image_format, concurrency = self._page_image_config(total_pages)
 
             extracted_images = 0
@@ -707,7 +708,7 @@ class DeepSeekOCRParser:
             if errors:
                 raise RuntimeError(f"DeepSeek OCR failed: {errors[0]}")
 
-            docs = self._build_documents(
+            docs = _build_documents(
                 file_path=file_path,
                 artifact_root=artifact_root,
                 total_pages=total_pages,

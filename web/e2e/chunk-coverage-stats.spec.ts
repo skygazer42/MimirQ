@@ -31,10 +31,14 @@ test('coverage statistics stay readable in a themed popover without moving the s
   await page.getByRole('menuitem', { name: /深色|暗色/ }).click()
   await trigger.click()
   await expect(panel).toBeVisible()
-  await expect.poll(() => panel.evaluate(element => {
-    const channels = getComputedStyle(element).backgroundColor.match(/\d+/g)?.map(Number) || []
-    return channels.slice(0, 3).every(value => value < 100)
-  })).toBe(true)
+  await expect
+    .poll(() =>
+      panel.evaluate((element) => {
+        const channels = getComputedStyle(element).backgroundColor.match(/\d+/g)?.map(Number) || []
+        return channels.slice(0, 3).every((value) => value < 100)
+      }),
+    )
+    .toBe(true)
   await panel.screenshot({ path: `${evidence}/dark.png` })
   await page.keyboard.press('Escape')
 

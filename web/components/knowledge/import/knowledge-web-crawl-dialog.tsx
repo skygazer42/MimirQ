@@ -1,7 +1,7 @@
 'use client'
 
 import type { ConnectorRunOut, Dataset, DocumentAccessMode } from '@/types'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2 } from '@/components/icons'
 import { toast } from 'sonner'
 
@@ -18,49 +18,13 @@ import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
 import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { formatApiError } from '@/lib/api-errors'
-import { connectorApi } from '@/lib/api'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { connectorApi } from '@/lib/api/connectors'
 import { BRAND_NAME } from '@/lib/brand'
 import { coerceOneOf } from '@/lib/one-of'
 import { detachPromise } from '@/lib/utils'
-
-
-function parseStartUrls(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (!/^https?:\/\//i.test(p)) continue
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 5) break
-  }
-
-  return out
-}
-
-function parseSitemapUrls(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (!/^https?:\/\//i.test(p)) continue
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 10) break
-  }
-
-  return out
-}
+import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
+import { parseAccessMembers, parseHttpUrls } from './knowledge-import-parsers'
 
 function parsePatterns(raw: string, max: number): string[] {
   const parts = (raw || '')
@@ -80,24 +44,6 @@ function parsePatterns(raw: string, max: number): string[] {
   return out
 }
 
-function parseAccessMembers(raw: string): string[] {
-  const parts = (raw || '')
-    .split(/[\n,;]+/g)
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const out: string[] = []
-  const seen = new Set<string>()
-
-  for (const p of parts) {
-    if (seen.has(p)) continue
-    seen.add(p)
-    out.push(p)
-    if (out.length >= 200) break
-  }
-
-  return out
-}
-
 type KnowledgeWebCrawlDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -109,7 +55,7 @@ type KnowledgeWebCrawlDialogProps = {
   datasetDefaultValue: string
 
   loadDocuments: () => void | Promise<void>
-  loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  loadConnectorRuns: LoadConnectorRuns
   onRunCreated?: (run: ConnectorRunOut) => void
 }
 
@@ -154,16 +100,25 @@ export function KnowledgeWebCrawlDialog({
   const [accessMembers, setAccessMembers] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
+  const submissionRef = useRef<{ authRevision: number } | null>(null)
+
+  useEffect(() => {
+    setSubmitting(false)
+    return () => {
+      submissionRef.current = null
+    }
+  }, [open, selectedDatasetId])
 
   useEffect(() => {
     if (!open) return
     setDatasetId(selectedDatasetId || datasetDefaultValue)
   }, [datasetDefaultValue, open, selectedDatasetId])
 
-  const parsedStartUrls = useMemo(() => parseStartUrls(startUrls), [startUrls])
-  const parsedSitemapUrls = useMemo(() => parseSitemapUrls(sitemapUrls), [sitemapUrls])
+  const parsedStartUrls = useMemo(() => parseHttpUrls(startUrls, 5), [startUrls])
+  const parsedSitemapUrls = useMemo(() => parseHttpUrls(sitemapUrls, 10), [sitemapUrls])
 
   const handleSubmit = useCallback(async () => {
+    if (!open || submissionRef.current) return
     if (!parsedStartUrls.length) {
       toast.error('请输入至少 1 个 http(s) 种子 URL（每行一个）')
       return
@@ -201,6 +156,10 @@ export function KnowledgeWebCrawlDialog({
     const nextMaxPages = Number.isFinite(maxPages) ? Math.trunc(maxPages) : 50
     const nextMaxDepth = Number.isFinite(maxDepth) ? Math.trunc(maxDepth) : 3
 
+    const submission = { authRevision: getAuthSessionRevision() }
+    submissionRef.current = submission
+    const ownsSubmission = () =>
+      submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
     setSubmitting(true)
     try {
       const access =
@@ -236,11 +195,17 @@ export function KnowledgeWebCrawlDialog({
         },
       })
 
+      if (submission.authRevision !== getAuthSessionRevision()) return
+      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }, { selectScope: false }))
+      detachPromise(loadDocuments())
+      if (!ownsSubmission()) return
       toast.success(`已创建网页爬取任务：${run.id.slice(0, 8)}`, {
         action: onRunCreated
           ? {
               label: '查看任务',
-              onClick: () => onRunCreated(run),
+              onClick: () => {
+                if (submission.authRevision === getAuthSessionRevision()) onRunCreated(run)
+              },
             }
           : undefined,
       })
@@ -265,12 +230,14 @@ export function KnowledgeWebCrawlDialog({
       setAccessMode('inherit')
       setAccessMembers('')
       setAccessGroupIds([])
-      detachPromise(loadConnectorRuns({ datasetId: selectedDatasetId }))
-      detachPromise(loadDocuments())
     } catch (err: unknown) {
+      if (!ownsSubmission()) return
       toast.error(formatApiError(err, '创建网页爬取任务失败'))
     } finally {
-      setSubmitting(false)
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        setSubmitting(false)
+      }
     }
   }, [
     accessMembers,
@@ -293,6 +260,7 @@ export function KnowledgeWebCrawlDialog({
     maxDepth,
     maxPages,
     onOpenChange,
+    open,
     parsedSitemapUrls,
     parsedStartUrls,
     parserBackend,
@@ -308,7 +276,10 @@ export function KnowledgeWebCrawlDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent onCloseAutoFocus={onCloseAutoFocus} className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto overscroll-contain">
+      <DialogContent
+        onCloseAutoFocus={onCloseAutoFocus}
+        className="max-h-[calc(100dvh-2rem)] max-w-3xl overflow-y-auto overscroll-contain"
+      >
         <DialogHeader>
           <DialogTitle>Website Crawl (Connector)</DialogTitle>
           <DialogDescription>
@@ -350,17 +321,18 @@ export function KnowledgeWebCrawlDialog({
               />
             </div>
             <div className="space-y-2">
-	              <div className="text-sm font-medium text-foreground/80">Constraints</div>
-	              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                <input
-	                  type="checkbox"
-	                  checked={sameHostOnly}
-	                  onChange={(e) => setSameHostOnly(e.target.checked)}
-	                  className="accent-primary h-4 w-4"
-	                /><span>Same host only</span>
-	              </label>
-	            </div>
-	          </div>
+              <div className="text-sm font-medium text-foreground/80">Constraints</div>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={sameHostOnly}
+                  onChange={(e) => setSameHostOnly(e.target.checked)}
+                  className="accent-primary h-4 w-4"
+                />
+                <span>Same host only</span>
+              </label>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -388,34 +360,38 @@ export function KnowledgeWebCrawlDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Discovery options</div>
-	              <div className="space-y-2">
-	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                  <input
-	                    type="checkbox"
-	                    checked={useSitemaps}
-	                    onChange={(e) => setUseSitemaps(e.target.checked)}
-	                    className="accent-primary h-4 w-4"
-	                  /><span>Use sitemap.xml / robots Sitemap hints (faster)</span>
-	                </label>
-	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                  <input
-	                    type="checkbox"
-	                    checked={respectRobots}
-	                    onChange={(e) => setRespectRobots(e.target.checked)}
-	                    className="accent-primary h-4 w-4"
-	                  /><span>Respect robots.txt (best-effort)</span>
-	                </label>
-	                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
-	                  <input
-	                    type="checkbox"
-	                    checked={dedupCanonical}
-	                    onChange={(e) => setDedupCanonical(e.target.checked)}
-	                    className="accent-primary h-4 w-4"
-	                  /><span>Dedup by canonical link (best-effort)</span>
-	                </label>
-	              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={useSitemaps}
+                    onChange={(e) => setUseSitemaps(e.target.checked)}
+                    className="accent-primary h-4 w-4"
+                  />
+                  <span>Use sitemap.xml / robots Sitemap hints (faster)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={respectRobots}
+                    onChange={(e) => setRespectRobots(e.target.checked)}
+                    className="accent-primary h-4 w-4"
+                  />
+                  <span>Respect robots.txt (best-effort)</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={dedupCanonical}
+                    onChange={(e) => setDedupCanonical(e.target.checked)}
+                    className="accent-primary h-4 w-4"
+                  />
+                  <span>Dedup by canonical link (best-effort)</span>
+                </label>
+              </div>
               <div className="text-xs text-muted-foreground">
-                Tip: sitemap mode avoids fetching every page just to discover links; the connector still ingests each URL.
+                Tip: sitemap mode avoids fetching every page just to discover links; the connector still ingests each
+                URL.
               </div>
             </div>
 
@@ -439,7 +415,11 @@ export function KnowledgeWebCrawlDialog({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">User-Agent (optional)</div>
-              <Input value={userAgent} onChange={(e) => setUserAgent(e.target.value)} placeholder={`${BRAND_NAME}/1.0 (+web-crawl)`} />
+              <Input
+                value={userAgent}
+                onChange={(e) => setUserAgent(e.target.value)}
+                placeholder={`${BRAND_NAME}/1.0 (+web-crawl)`}
+              />
             </div>
             <div className="space-y-2">
               <div className="text-sm font-medium text-foreground/80">Auth</div>

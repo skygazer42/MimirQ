@@ -14,7 +14,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
+from app.core.config import Settings, settings
 from app.core.constants import UserRoles
 from app.core.security import hash_password
 from app.models.tenant import Tenant, TenantMember
@@ -54,11 +54,11 @@ def _read_password_file(raw_path: str) -> str:
         raise InitialAdminBootstrapError("INITIAL_ADMIN_PASSWORD_FILE must contain UTF-8 text") from exc
 
 
-def _load_credentials(config: object) -> _InitialAdminCredentials | None:
-    raw_email = str(getattr(config, "INITIAL_ADMIN_EMAIL", "") or "").strip()
-    username = str(getattr(config, "INITIAL_ADMIN_USERNAME", "") or "").strip()
-    inline_password = str(getattr(config, "INITIAL_ADMIN_PASSWORD", "") or "")
-    password_file = str(getattr(config, "INITIAL_ADMIN_PASSWORD_FILE", "") or "").strip()
+def _load_credentials(config: Settings) -> _InitialAdminCredentials | None:
+    raw_email = (config.INITIAL_ADMIN_EMAIL or "").strip()
+    username = (config.INITIAL_ADMIN_USERNAME or "").strip()
+    inline_password = config.INITIAL_ADMIN_PASSWORD or ""
+    password_file = (config.INITIAL_ADMIN_PASSWORD_FILE or "").strip()
 
     if not any((raw_email, username, inline_password, password_file)):
         return None
@@ -76,7 +76,7 @@ def _load_credentials(config: object) -> _InitialAdminCredentials | None:
     return _validated_credentials(config, email=raw_email, username=username, password=password)
 
 
-def _validated_credentials(config: object, *, email: str, username: str, password: str) -> _InitialAdminCredentials:
+def _validated_credentials(config: Settings, *, email: str, username: str, password: str) -> _InitialAdminCredentials:
     try:
         email = validate_email(email, check_deliverability=False).normalized.lower()
     except EmailNotValidError as exc:
@@ -86,7 +86,7 @@ def _validated_credentials(config: object, *, email: str, username: str, passwor
     if not 3 <= len(username) <= 64:
         raise InitialAdminBootstrapError("INITIAL_ADMIN_USERNAME must be between 3 and 64 characters")
 
-    min_length = int(getattr(config, "PASSWORD_MIN_LENGTH", 8) or 8)
+    min_length = config.PASSWORD_MIN_LENGTH or 8
     if len(password) < min_length:
         raise InitialAdminBootstrapError(f"Initial admin password must be at least {min_length} characters")
     if len(password.encode("utf-8")) > 72:
@@ -95,24 +95,33 @@ def _validated_credentials(config: object, *, email: str, username: str, passwor
     return _InitialAdminCredentials(email=email, username=username, password=password)
 
 
-def _default_credentials(config: object) -> _InitialAdminCredentials:
-    path = Path(str(getattr(config, "INITIAL_ADMIN_CREDENTIALS_FILE", "") or "./data/initial-admin.json")).expanduser()
+def _default_credentials(config: Settings) -> _InitialAdminCredentials:
+    path = Path(config.INITIAL_ADMIN_CREDENTIALS_FILE).expanduser()
     temporary_path: Path | None = None
     try:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        password_length = int(getattr(config, "PASSWORD_MIN_LENGTH", 8) or 8)
+        password_length = config.PASSWORD_MIN_LENGTH
         password = secrets.token_urlsafe(max(24, (password_length * 3 + 3) // 4))
         credentials = _validated_credentials(
-            config, email=_DEFAULT_ADMIN_EMAIL, username=_DEFAULT_ADMIN_USERNAME, password=password,
+            config,
+            email=_DEFAULT_ADMIN_EMAIL,
+            username=_DEFAULT_ADMIN_USERNAME,
+            password=password,
         )
         # Complete the private file before publishing it. A failed write must
         # never leave partial credentials at the path read by the next startup.
         with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent,
-            prefix=f".{path.name}.", suffix=".tmp", delete=False,
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
         ) as handle:
             temporary_path = Path(handle.name)
-            json.dump({"username": credentials.username, "email": credentials.email, "password": credentials.password}, handle)
+            json.dump(
+                {"username": credentials.username, "email": credentials.email, "password": credentials.password}, handle
+            )
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
@@ -131,12 +140,17 @@ def _default_credentials(config: object) -> _InitialAdminCredentials:
                 raise InitialAdminBootstrapError("Initial admin credential file is too large") from None
             saved = json.loads(payload)
             if (
-                not isinstance(saved, dict) or saved.get("username") != _DEFAULT_ADMIN_USERNAME
-                or saved.get("email") != _DEFAULT_ADMIN_EMAIL or not isinstance(saved.get("password"), str)
+                not isinstance(saved, dict)
+                or saved.get("username") != _DEFAULT_ADMIN_USERNAME
+                or saved.get("email") != _DEFAULT_ADMIN_EMAIL
+                or not isinstance(saved.get("password"), str)
             ):
                 raise InitialAdminBootstrapError("Initial admin credential file is invalid") from None
             return _validated_credentials(
-                config, email=saved["email"], username=saved["username"], password=saved["password"],
+                config,
+                email=saved["email"],
+                username=saved["username"],
+                password=saved["password"],
             )
         logger.info("Default administrator credentials saved to %s", path.resolve())
         return credentials
@@ -150,8 +164,8 @@ def _default_credentials(config: object) -> _InitialAdminCredentials:
                 logger.warning("Could not remove temporary initial admin credential file %s", temporary_path)
 
 
-def _default_tenant_id(config: object) -> UUID:
-    raw_tenant_id = str(getattr(config, "DEFAULT_TENANT_ID", "") or "").strip()
+def _default_tenant_id(config: Settings) -> UUID:
+    raw_tenant_id = (config.DEFAULT_TENANT_ID or "").strip()
     try:
         return UUID(raw_tenant_id)
     except ValueError as exc:
@@ -165,17 +179,17 @@ def _matching_owner(db: Session, *, tenant_id: UUID, credentials: _InitialAdminC
 
     for member in members:
         try:
-            user_id = UUID(str(member.user_id or ""))
+            user_id = UUID(member.user_id or "")
         except ValueError:
             continue
         user = db.query(User).filter(User.id == user_id).first()
         if (
             user is not None
-            and str(user.email or "").lower() == credentials.email
-            and str(user.username or "") == credentials.username
+            and user.email.lower() == credentials.email
+            and user.username == credentials.username
             and bool(user.is_active)
             and bool(member.is_active)
-            and str(member.role or "").lower() == UserRoles.OWNER
+            and (member.role or "").lower() == UserRoles.OWNER
         ):
             return user
 
@@ -239,7 +253,7 @@ def _bootstrap_once(db: Session, *, tenant_id: UUID, credentials: _InitialAdminC
     return True
 
 
-def bootstrap_initial_admin_if_configured(db: Session, *, config: object = settings) -> bool:
+def bootstrap_initial_admin_if_configured(db: Session, *, config: Settings = settings) -> bool:
     """Create a configured or default first owner without changing existing members."""
     credentials = _load_credentials(config)
     tenant_id = _default_tenant_id(config)

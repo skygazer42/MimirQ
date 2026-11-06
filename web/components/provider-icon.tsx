@@ -6,7 +6,7 @@ import Image from 'next/image'
 import { LocalModel, Model, Reranker } from '@/components/icons'
 import { cn } from '@/lib/utils'
 
-interface ProviderIconProps {
+type ProviderIconProps = {
   providerId: string
   className?: string
 }
@@ -61,11 +61,22 @@ const LOBEHUB_ICON_BY_PROVIDER_ID: Record<string, string> = {
 }
 
 function normalizeProviderId(providerId: string): string {
-  return String(providerId || '').trim().toLowerCase()
+  return String(providerId || '')
+    .trim()
+    .toLowerCase()
 }
 
 // These source marks use black paths and need a light silhouette on dark surfaces.
-const DARK_MONOCHROME_MARKS = new Set(['openai', 'anthropic', 'moonshot', 'ollama', 'openrouter', 'yi', 'jina', 'together'])
+const DARK_MONOCHROME_MARKS = new Set([
+  'openai',
+  'anthropic',
+  'moonshot',
+  'ollama',
+  'openrouter',
+  'yi',
+  'jina',
+  'together',
+])
 
 // 提供商 ID 到图标文件的映射（旧资源兜底）
 const PROVIDER_ICONS: Record<string, { file: string; format: 'svg' | 'png' }> = {

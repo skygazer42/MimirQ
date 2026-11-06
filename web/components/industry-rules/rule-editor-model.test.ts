@@ -4,7 +4,7 @@ import { createRuleRow, parseRuleJson, rowsFromValue, serializeRows } from './ru
 
 describe('industry rule editing payloads', () => {
   it('round-trips glossary arrays without splitting existing punctuation', () => {
-    const source = { PLC: ['PLC, controller', '控制器', '控制器'], '__proto__': ['prototype'] }
+    const source = { PLC: ['PLC, controller', '控制器', '控制器'], __proto__: ['prototype'] }
     expect(serializeRows('glossary', rowsFromValue('glossary', source))).toEqual(source)
   })
 
@@ -29,11 +29,16 @@ describe('industry rule editing payloads', () => {
     expect(serializeRows('patterns', rows)).toEqual([{ ...source[0], followup_template: '请提供设备型号' }])
     rows[0].words = '485，通信\n设备'
     rows[0].enabled = false
-    expect(serializeRows('patterns', rows)).toEqual([{ ...source[0], keywords: ['485', '通信', '设备'], followup_template: '请提供设备型号', enabled: false }])
+    expect(serializeRows('patterns', rows)).toEqual([
+      { ...source[0], keywords: ['485', '通信', '设备'], followup_template: '请提供设备型号', enabled: false },
+    ])
   })
 
   it('keeps custom records without recognized fields intact', () => {
-    const source = [{ condition: { code: 485 }, action: 'rewrite' }, { markers: 'legacy-format', enabled: null }]
+    const source = [
+      { condition: { code: 485 }, action: 'rewrite' },
+      { markers: 'legacy-format', enabled: null },
+    ]
     expect(serializeRows('patterns', rowsFromValue('patterns', source))).toEqual(source)
     const intents = [{ category: 'custom', route: { target: 'search' } }]
     expect(serializeRows('intents', rowsFromValue('intents', intents))).toEqual(intents)
@@ -49,9 +54,9 @@ describe('industry rule editing payloads', () => {
   it('validates new structured rules instead of silently filtering them out', () => {
     expect(() => serializeRows('patterns', [createRuleRow('new')])).toThrow('触发词')
     expect(() => serializeRows('intents', [createRuleRow('new')])).toThrow('名称')
-    expect(serializeRows('patterns', [{ ...createRuleRow('new'), words: '报警, 故障', followup: '设备型号？' }])).toEqual([
-      { markers: ['报警', '故障'], followup: '设备型号？', enabled: true },
-    ])
+    expect(
+      serializeRows('patterns', [{ ...createRuleRow('new'), words: '报警, 故障', followup: '设备型号？' }]),
+    ).toEqual([{ markers: ['报警', '故障'], followup: '设备型号？', enabled: true }])
   })
 
   it('validates JSON shapes and does not coerce empty or malformed input into deletions', () => {

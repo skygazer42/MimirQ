@@ -1,11 +1,8 @@
 """Hard request-body size limit for both fixed and streamed uploads."""
 
-from collections.abc import Awaitable, Callable
-from typing import Any
-
 from starlette.responses import JSONResponse
 from starlette.status import HTTP_413_CONTENT_TOO_LARGE
-from starlette.types import Message, Receive, Scope, Send
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
 class _BodyTooLargeError(Exception):
@@ -13,9 +10,9 @@ class _BodyTooLargeError(Exception):
 
 
 class BodySizeLimitMiddleware:
-    def __init__(self, app: Callable[..., Awaitable[Any]], *, max_body_bytes: int = 0) -> None:
+    def __init__(self, app: ASGIApp, *, max_body_bytes: int = 0) -> None:
         self.app = app
-        self.max_body_bytes = max(0, int(max_body_bytes or 0))
+        self.max_body_bytes = max(0, max_body_bytes or 0)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         limit = self.max_body_bytes

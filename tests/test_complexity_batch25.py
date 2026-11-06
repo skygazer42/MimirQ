@@ -1,4 +1,3 @@
-
 import datetime as dt
 from datetime import timezone
 
@@ -18,13 +17,7 @@ def test_semantic_sentence_chunker_preserves_numeric_runs_and_list_item_boundari
 
     from app.rag.chunking.strategies.semantic import SemanticSentenceChunker
 
-    text = (
-        "Preface.\n"
-        "- first item\n"
-        "  continued detail\n"
-        "- second item\n"
-        "Version 1.2.3 stays together.\n"
-    )
+    text = "Preface.\n- first item\n  continued detail\n- second item\nVersion 1.2.3 stays together.\n"
     chunker = SemanticSentenceChunker(chunk_size=25, chunk_overlap=0, min_chunk_size=0)
 
     chunks = chunker.split_documents([Document(page_content=text, metadata={})])
@@ -49,13 +42,7 @@ def test_markdown_table_chunker_splits_only_on_row_boundaries_and_preserves_head
     from app.rag.chunking.strategies.markdown_table import MarkdownTableChunker
 
     text = (
-        "Lead in\n\n"
-        "| Col A | Col B |\n"
-        "| --- | --- |\n"
-        "| alpha | one |\n"
-        "| beta | two |\n"
-        "| gamma | three |\n"
-        "Tail text\n"
+        "Lead in\n\n| Col A | Col B |\n| --- | --- |\n| alpha | one |\n| beta | two |\n| gamma | three |\nTail text\n"
     )
     chunker = MarkdownTableChunker(chunk_size=52, chunk_overlap=0)
 

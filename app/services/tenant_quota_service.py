@@ -1,16 +1,17 @@
 """
-Tenant quota helpers (best-effort).
+Tenant quota checks and enforcement.
 
-Design goals:
-- Best-effort: quota lookup failures should not take down core flows (fail open).
-- Cheap: single aggregate queries when possible.
-- Deterministic: rolling windows are computed server-side with UTC.
+Visibility checks remain best-effort. Enforcement defaults to fail-open and can
+reject unavailable backends through TENANT_QUOTA_FAIL_CLOSED. Usage comes from
+aggregate queries, with rolling windows computed server-side in UTC.
 """
 
+from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -18,24 +19,31 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.document import Document as DBDocument
 from app.services.audit_log_service import audit_log_event
 from app.services.metrics_logger import log_metrics
+
+if TYPE_CHECKING:
+    from app.api.middleware.rate_limit import RateLimiter, RedisRateLimiter
 
 _QUOTA_GUARD_EVENT = "tenant_quota.guard"
 _QUOTA_BACKEND_UNAVAILABLE_REASON = "tenant_quota_backend_unavailable"
 
 
+class TenantQpsQuotaConfig(TypedDict):
+    enabled: bool
+    mode: str
+    rps: float
+    burst: int
+
+
+class TenantQpsQuotaResult(TenantQpsQuotaConfig):
+    allowed: bool
+    retry_after: float
+
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _tenant_quota_fail_closed_enabled() -> bool:
-    return bool(getattr(settings, "TENANT_QUOTA_FAIL_CLOSED", False))
-
-
-def _quota_error_type(exc: Exception) -> str:
-    error_type = type(exc).__name__.strip()
-    return error_type[:80] if error_type else "Exception"
 
 
 def _emit_quota_guard_evidence(
@@ -51,19 +59,16 @@ def _emit_quota_guard_evidence(
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     details: dict[str, Any] = {
-        "quota": str(quota or "").strip() or "quota",
-        "scope": str(scope or "").strip() or "quota",
-        "outcome": str(outcome or "").strip() or "degraded",
+        "quota": quota,
+        "scope": scope,
+        "outcome": outcome,
         "reason": _QUOTA_BACKEND_UNAVAILABLE_REASON,
-        "backend": str(backend or "").strip() or "unknown",
-        "error_type": _quota_error_type(exc),
-        "fail_closed": bool(fail_closed),
+        "backend": backend,
+        "error_type": type(exc).__name__[:80],
+        "fail_closed": fail_closed,
     }
-    if isinstance(extra, dict):
-        for key, value in extra.items():
-            if value in (None, "", [], {}):
-                continue
-            details[str(key)] = value
+    if extra is not None:
+        details.update(extra)
 
     log_metrics(
         {
@@ -97,18 +102,6 @@ def _quota_backend_unavailable_http(scope: str) -> HTTPException:
     )
 
 
-def _tenant_upload_limit_http(*, message: str, limit: int, scope: str) -> HTTPException:
-    return HTTPException(
-        status_code=429,
-        detail={
-            "message": message,
-            "retry_after_sec": None,
-            "limit": limit,
-            "scope": scope,
-        },
-    )
-
-
 def _enforce_upload_quota_limit(
     db: Session,
     *,
@@ -116,7 +109,7 @@ def _enforce_upload_quota_limit(
     fail_closed: bool,
     enabled: bool,
     limit: int,
-    usage_fn,
+    usage_fn: Callable[[Session, UUID], int],
     quota: str,
     scope: str,
     exceeded_message: str,
@@ -127,7 +120,7 @@ def _enforce_upload_quota_limit(
     if not enabled or limit <= 0:
         return
     try:
-        used = usage_fn(db, tenant_id=tenant_id)
+        used = usage_fn(db, tenant_id)
     except Exception as exc:
         _emit_quota_guard_evidence(
             db=db,
@@ -139,44 +132,36 @@ def _enforce_upload_quota_limit(
             fail_closed=fail_closed,
             exc=exc,
             extra={
-                "additional_docs": int(additional_docs or 0),
-                "additional_bytes": int(additional_bytes or 0),
+                "additional_docs": additional_docs,
+                "additional_bytes": additional_bytes,
             },
         )
         if fail_closed:
             raise _quota_backend_unavailable_http(scope) from exc
         return
-    if limit > 0 and (used + int(additional_usage or 0)) > limit:
-        raise _tenant_upload_limit_http(message=exceeded_message, limit=limit, scope=scope)
+    if used + additional_usage > limit:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": exceeded_message,
+                "retry_after_sec": None,
+                "limit": limit,
+                "scope": scope,
+            },
+        )
 
 
 def _tenant_qps_quota_config() -> tuple[bool, float, int, str]:
-    enabled = bool(getattr(settings, "TENANT_QPS_QUOTA_ENABLED", False))
-    rps = float(getattr(settings, "TENANT_QPS_QUOTA_REQUESTS_PER_SECOND", 0.0) or 0.0)
-    burst = int(getattr(settings, "TENANT_QPS_QUOTA_BURST_SIZE", 0) or 0)
+    enabled = settings.TENANT_QPS_QUOTA_ENABLED
+    rps = settings.TENANT_QPS_QUOTA_REQUESTS_PER_SECOND
+    burst = settings.TENANT_QPS_QUOTA_BURST_SIZE
     if burst <= 0:
         burst = int(rps * 2) if rps > 0 else 1
-    mode = str(getattr(settings, "TENANT_QPS_QUOTA_MODE", "block") or "block").lower()
+    mode = (settings.TENANT_QPS_QUOTA_MODE or "block").lower()
     return enabled, rps, burst, mode
 
 
-def _tenant_qps_disabled_meta(*, mode: str, rps: float, burst: int) -> dict[str, Any]:
-    return {"enabled": False, "mode": mode, "rps": rps, "burst": burst, "allowed": True, "retry_after": 0.0}
-
-
-def _check_tenant_qps_quota_raw(*, tenant_id: UUID, key: str) -> tuple[bool, float]:
-    limiter = _get_tenant_qps_limiter()
-    return limiter.check(f"tenant:{tenant_id}:{key}")
-
-
-async def _check_tenant_qps_quota_raw_async(*, tenant_id: UUID, key: str) -> tuple[bool, float]:
-    limiter = _get_tenant_qps_limiter()
-    return await limiter.acheck(f"tenant:{tenant_id}:{key}")
-
-
-def _document_quota_usage(db: Session, *, tenant_id: UUID) -> int:
-    from app.models.document import Document as DBDocument  # noqa: WPS433
-
+def _document_quota_usage(db: Session, tenant_id: UUID) -> int:
     used_raw = (
         db.query(func.count(DBDocument.id))
         .filter(
@@ -188,9 +173,7 @@ def _document_quota_usage(db: Session, *, tenant_id: UUID) -> int:
     return int(used_raw or 0)
 
 
-def _storage_quota_usage_bytes(db: Session, *, tenant_id: UUID) -> int:
-    from app.models.document import Document as DBDocument  # noqa: WPS433
-
+def _storage_quota_usage_bytes(db: Session, tenant_id: UUID) -> int:
     used_raw = (
         db.query(func.coalesce(func.sum(DBDocument.file_size), 0))
         .filter(
@@ -203,8 +186,6 @@ def _storage_quota_usage_bytes(db: Session, *, tenant_id: UUID) -> int:
 
 
 def _embedding_quota_usage_chars(db: Session, *, tenant_id: UUID, since: datetime) -> int:
-    from app.models.document import Document as DBDocument  # noqa: WPS433
-
     used_raw = (
         db.query(func.coalesce(func.sum(DBDocument.total_characters), 0))
         .filter(
@@ -212,8 +193,7 @@ def _embedding_quota_usage_chars(db: Session, *, tenant_id: UUID, since: datetim
             DBDocument.disabled_at.is_(None),
             func.coalesce(DBDocument.processed_at, DBDocument.updated_at) >= since,
             (
-                (DBDocument.status == "completed")
-                | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+                (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
             ),
         )
         .scalar()
@@ -231,15 +211,15 @@ class TenantQuotaExceededError(RuntimeError):
 
     def __init__(self, quota: str, message: str, *, meta: dict[str, Any] | None = None) -> None:
         super().__init__(message)
-        self.quota = str(quota or "").strip() or "quota"
+        self.quota = quota.strip() or "quota"
         self.meta: dict[str, Any] = dict(meta or {})
 
 
-_tenant_qps_limiter = None
+_tenant_qps_limiter: RateLimiter | RedisRateLimiter | None = None
 _tenant_qps_cfg: tuple[bool, str, float, int, str, int] | None = None
 
 
-def _get_tenant_qps_limiter():
+def _get_tenant_qps_limiter() -> RateLimiter | RedisRateLimiter:
     """
     Return a token-bucket limiter for per-tenant QPS enforcement.
 
@@ -249,18 +229,14 @@ def _get_tenant_qps_limiter():
     """
     global _tenant_qps_limiter, _tenant_qps_cfg
 
-    redis_url = str(getattr(settings, "REDIS_URL", "") or "").strip()
-    use_redis = bool(getattr(settings, "RATE_LIMIT_REDIS_ENABLED", False)) and bool(redis_url)
-    rps = float(getattr(settings, "TENANT_QPS_QUOTA_REQUESTS_PER_SECOND", 0.0) or 0.0)
-    burst = int(getattr(settings, "TENANT_QPS_QUOTA_BURST_SIZE", 0) or 0)
-    if burst <= 0:
-        burst = int(rps * 2) if rps > 0 else 1
+    redis_url = settings.REDIS_URL.strip()
+    use_redis = settings.RATE_LIMIT_REDIS_ENABLED and bool(redis_url)
+    _, rps, burst, _ = _tenant_qps_quota_config()
 
-    key_prefix = str(getattr(settings, "TENANT_QPS_QUOTA_REDIS_PREFIX", "tq") or "tq").strip() or "tq"
-    ttl = int(getattr(settings, "TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC", 600) or 600)
-    ttl = max(30, ttl)
+    key_prefix = settings.TENANT_QPS_QUOTA_REDIS_PREFIX.strip() or "tq"
+    ttl = max(30, settings.TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC or 600)
 
-    cfg = (bool(use_redis), redis_url, float(rps), int(burst), key_prefix, int(ttl))
+    cfg = (use_redis, redis_url, rps, burst, key_prefix, ttl)
     if _tenant_qps_limiter is not None and _tenant_qps_cfg == cfg:
         return _tenant_qps_limiter
 
@@ -271,122 +247,123 @@ def _get_tenant_qps_limiter():
         _tenant_qps_limiter = RedisRateLimiter(
             redis_url=redis_url,
             namespace="tenant_qps",
-            requests_per_second=float(rps),
-            burst_size=int(burst),
+            requests_per_second=rps,
+            burst_size=burst,
             key_prefix=key_prefix,
-            key_ttl_sec=int(ttl),
+            key_ttl_sec=ttl,
         )
     else:
         _tenant_qps_limiter = RateLimiter(
-            requests_per_second=float(rps),
-            burst_size=int(burst),
+            requests_per_second=rps,
+            burst_size=burst,
         )
 
     _tenant_qps_cfg = cfg
     return _tenant_qps_limiter
 
 
-def get_tenant_qps_quota_config() -> dict[str, Any]:
-    """
-    Return QPS quota configuration without consuming quota tokens.
-
-    This is meant for admin dashboards/visibility endpoints.
-    """
+def get_tenant_qps_quota_config() -> TenantQpsQuotaConfig:
+    """Return QPS quota configuration without consuming quota tokens."""
     enabled, rps, burst, mode = _tenant_qps_quota_config()
-    return {"enabled": bool(enabled and rps > 0), "mode": mode, "rps": float(rps), "burst": int(burst)}
+    return {"enabled": enabled and rps > 0, "mode": mode, "rps": rps, "burst": burst}
 
 
-def check_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> dict[str, Any]:
+def check_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
     enabled, rps, burst, mode = _tenant_qps_quota_config()
-    scope_key = str(key or "chat").strip() or "chat"
-
+    scope_key = key.strip() or "chat"
     if not enabled or rps <= 0:
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
+        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
 
     try:
-        allowed, retry_after = _check_tenant_qps_quota_raw(tenant_id=tenant_id, key=scope_key)
-        return {
-            "enabled": True,
-            "mode": mode,
-            "rps": rps,
-            "burst": burst,
-            "allowed": bool(allowed),
-            "retry_after": float(retry_after or 0.0),
-        }
+        limiter = _get_tenant_qps_limiter()
+        allowed, retry_after = limiter.check(f"tenant:{tenant_id}:{scope_key}")
     except Exception:
-        # Fail open.
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
+        # Visibility checks preserve the existing fail-open policy.
+        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
+    return _tenant_qps_meta(enabled=True, mode=mode, rps=rps, burst=burst, allowed=allowed, retry_after=retry_after)
 
 
-async def check_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> dict[str, Any]:
+async def check_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
     enabled, rps, burst, mode = _tenant_qps_quota_config()
-    scope_key = str(key or "chat").strip() or "chat"
-
+    scope_key = key.strip() or "chat"
     if not enabled or rps <= 0:
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
+        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
 
     try:
-        allowed, retry_after = await _check_tenant_qps_quota_raw_async(tenant_id=tenant_id, key=scope_key)
-        return {
-            "enabled": True,
-            "mode": mode,
-            "rps": rps,
-            "burst": burst,
-            "allowed": bool(allowed),
-            "retry_after": float(retry_after or 0.0),
-        }
+        limiter = _get_tenant_qps_limiter()
+        allowed, retry_after = await limiter.acheck(f"tenant:{tenant_id}:{scope_key}")
     except Exception:
-        # Fail open.
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
+        # Visibility checks preserve the existing fail-open policy.
+        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
+    return _tenant_qps_meta(enabled=True, mode=mode, rps=rps, burst=burst, allowed=allowed, retry_after=retry_after)
 
 
-def enforce_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> dict[str, Any]:
-    """
-    Enforce per-tenant QPS quota (best-effort).
-
-    Returns the quota meta for metrics/debugging. Raises HTTPException(429) when exceeded
-    and mode=="block".
-    """
+def enforce_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
+    """Enforce tenant QPS limits, raising HTTP 429 in block mode or 503 when configured to fail closed."""
     enabled, rps, burst, mode = _tenant_qps_quota_config()
-    scope_key = str(key or "chat").strip() or "chat"
+    scope_key = key.strip() or "chat"
     if not enabled or rps <= 0:
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
+        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
 
     try:
-        allowed, retry_after = _check_tenant_qps_quota_raw(tenant_id=tenant_id, key=scope_key)
+        limiter = _get_tenant_qps_limiter()
+        allowed, retry_after = limiter.check(f"tenant:{tenant_id}:{scope_key}")
     except Exception as exc:
-        fail_closed = _tenant_quota_fail_closed_enabled()
-        _emit_quota_guard_evidence(
-            db=None,
-            tenant_id=tenant_id,
-            quota="tenant_qps",
-            scope=f"tenant_qps:{scope_key}",
-            outcome="closed" if fail_closed else "degraded",
-            backend="redis",
-            fail_closed=fail_closed,
-            exc=exc,
+        return _tenant_qps_backend_failure(
+            tenant_id=tenant_id, scope_key=scope_key, mode=mode, rps=rps, burst=burst, exc=exc
         )
-        if fail_closed:
-            raise _quota_backend_unavailable_http(f"tenant_qps:{scope_key}") from exc
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
 
-    meta = {
-        "enabled": True,
+    meta = _tenant_qps_meta(enabled=True, mode=mode, rps=rps, burst=burst, allowed=allowed, retry_after=retry_after)
+    return _enforce_tenant_qps_result(meta, scope_key=scope_key)
+
+
+async def enforce_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> TenantQpsQuotaResult:
+    """Enforce tenant QPS limits through the limiter's asynchronous interface."""
+    enabled, rps, burst, mode = _tenant_qps_quota_config()
+    scope_key = key.strip() or "chat"
+    if not enabled or rps <= 0:
+        return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
+
+    try:
+        limiter = _get_tenant_qps_limiter()
+        allowed, retry_after = await limiter.acheck(f"tenant:{tenant_id}:{scope_key}")
+    except Exception as exc:
+        return _tenant_qps_backend_failure(
+            tenant_id=tenant_id, scope_key=scope_key, mode=mode, rps=rps, burst=burst, exc=exc
+        )
+
+    meta = _tenant_qps_meta(enabled=True, mode=mode, rps=rps, burst=burst, allowed=allowed, retry_after=retry_after)
+    return _enforce_tenant_qps_result(meta, scope_key=scope_key)
+
+
+def _tenant_qps_meta(
+    *,
+    enabled: bool,
+    mode: str,
+    rps: float,
+    burst: int,
+    allowed: bool = True,
+    retry_after: float = 0.0,
+) -> TenantQpsQuotaResult:
+    return {
+        "enabled": enabled,
         "mode": mode,
         "rps": rps,
         "burst": burst,
-        "allowed": bool(allowed),
-        "retry_after": float(retry_after or 0.0),
+        "allowed": allowed,
+        "retry_after": retry_after,
     }
-    if meta.get("enabled") and (not meta.get("allowed")) and str(meta.get("mode") or "block") == "block":
-        retry_after = float(meta.get("retry_after") or 0.0)
-        retry_after_sec = max(1, int(math.ceil(retry_after)))
+
+
+def _enforce_tenant_qps_result(meta: TenantQpsQuotaResult, *, scope_key: str) -> TenantQpsQuotaResult:
+    if not meta["allowed"] and meta["mode"] == "block":
+        retry_after_sec = max(1, math.ceil(meta["retry_after"]))
         raise HTTPException(
             status_code=429,
             detail={
                 "message": "Tenant QPS quota exceeded",
                 "retry_after_sec": retry_after_sec,
-                "limit": float(meta.get("rps") or 0.0),
+                "limit": meta["rps"],
                 "scope": f"tenant_qps:{scope_key}",
             },
             headers={"Retry-After": str(retry_after_sec)},
@@ -394,63 +371,29 @@ def enforce_tenant_qps_quota(*, tenant_id: UUID, key: str = "chat") -> dict[str,
     return meta
 
 
-async def enforce_tenant_qps_quota_async(*, tenant_id: UUID, key: str = "chat") -> dict[str, Any]:
-    """
-    Async variant of per-tenant QPS enforcement for async request paths.
-
-    Returns the quota meta for metrics/debugging. Raises HTTPException(429) when exceeded
-    and mode=="block".
-    """
-    enabled, rps, burst, mode = _tenant_qps_quota_config()
-    scope_key = str(key or "chat").strip() or "chat"
-    if not enabled or rps <= 0:
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
-
-    try:
-        allowed, retry_after = await _check_tenant_qps_quota_raw_async(tenant_id=tenant_id, key=scope_key)
-    except Exception as exc:
-        fail_closed = _tenant_quota_fail_closed_enabled()
-        _emit_quota_guard_evidence(
-            db=None,
-            tenant_id=tenant_id,
-            quota="tenant_qps",
-            scope=f"tenant_qps:{scope_key}",
-            outcome="closed" if fail_closed else "degraded",
-            backend="redis",
-            fail_closed=fail_closed,
-            exc=exc,
-        )
-        if fail_closed:
-            raise _quota_backend_unavailable_http(f"tenant_qps:{scope_key}") from exc
-        return _tenant_qps_disabled_meta(mode=mode, rps=rps, burst=burst)
-
-    meta = {
-        "enabled": True,
-        "mode": mode,
-        "rps": rps,
-        "burst": burst,
-        "allowed": bool(allowed),
-        "retry_after": float(retry_after or 0.0),
-    }
-    if meta.get("enabled") and (not meta.get("allowed")) and str(meta.get("mode") or "block") == "block":
-        retry_after = float(meta.get("retry_after") or 0.0)
-        retry_after_sec = max(1, int(math.ceil(retry_after)))
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "message": "Tenant QPS quota exceeded",
-                "retry_after_sec": retry_after_sec,
-                "limit": float(meta.get("rps") or 0.0),
-                "scope": f"tenant_qps:{scope_key}",
-            },
-            headers={"Retry-After": str(retry_after_sec)},
-        )
-    return meta
+def _tenant_qps_backend_failure(
+    *, tenant_id: UUID, scope_key: str, mode: str, rps: float, burst: int, exc: Exception
+) -> TenantQpsQuotaResult:
+    fail_closed = settings.TENANT_QUOTA_FAIL_CLOSED
+    scope = f"tenant_qps:{scope_key}"
+    _emit_quota_guard_evidence(
+        db=None,
+        tenant_id=tenant_id,
+        quota="tenant_qps",
+        scope=scope,
+        outcome="closed" if fail_closed else "degraded",
+        backend="redis",
+        fail_closed=fail_closed,
+        exc=exc,
+    )
+    if fail_closed:
+        raise _quota_backend_unavailable_http(scope) from exc
+    return _tenant_qps_meta(enabled=False, mode=mode, rps=rps, burst=burst)
 
 
 def check_tenant_document_quota(db: Session, *, tenant_id: UUID) -> dict[str, Any]:
-    enabled = bool(getattr(settings, "TENANT_DOC_QUOTA_ENABLED", False))
-    limit = int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0)
+    enabled = settings.TENANT_DOC_QUOTA_ENABLED
+    limit = settings.TENANT_DOC_QUOTA_LIMIT
     if not enabled or limit <= 0:
         return {"enabled": False, "limit": 0, "used": 0, "exceeded": False}
 
@@ -459,12 +402,12 @@ def check_tenant_document_quota(db: Session, *, tenant_id: UUID) -> dict[str, An
     except Exception:
         return {"enabled": False, "limit": limit, "used": 0, "exceeded": False}
 
-    return {"enabled": True, "limit": limit, "used": used, "exceeded": bool(used >= limit)}
+    return {"enabled": True, "limit": limit, "used": used, "exceeded": used >= limit}
 
 
 def check_tenant_storage_quota(db: Session, *, tenant_id: UUID) -> dict[str, Any]:
-    enabled = bool(getattr(settings, "TENANT_STORAGE_QUOTA_ENABLED", False))
-    limit_bytes = int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0)
+    enabled = settings.TENANT_STORAGE_QUOTA_ENABLED
+    limit_bytes = settings.TENANT_STORAGE_QUOTA_LIMIT_BYTES
     if not enabled or limit_bytes <= 0:
         return {"enabled": False, "limit_bytes": 0, "used_bytes": 0, "exceeded": False}
 
@@ -477,7 +420,7 @@ def check_tenant_storage_quota(db: Session, *, tenant_id: UUID) -> dict[str, Any
         "enabled": True,
         "limit_bytes": limit_bytes,
         "used_bytes": used_bytes,
-        "exceeded": bool(used_bytes >= limit_bytes),
+        "exceeded": used_bytes >= limit_bytes,
     }
 
 
@@ -489,10 +432,10 @@ def check_tenant_embedding_char_quota(db: Session, *, tenant_id: UUID) -> dict[s
     processed in the last N hours. This avoids per-chunk accounting and keeps the
     check cheap in production.
     """
-    enabled = bool(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_ENABLED", False))
-    limit_chars = int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_LIMIT", 0) or 0)
-    window_hours = int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS", 24) or 24)
-    mode = str(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_MODE", "block") or "block").lower()
+    enabled = settings.TENANT_EMBED_CHAR_QUOTA_ENABLED
+    limit_chars = settings.TENANT_EMBED_CHAR_QUOTA_LIMIT
+    window_hours = settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS or 24
+    mode = (settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
 
     if not enabled or limit_chars <= 0:
         return {
@@ -524,7 +467,7 @@ def check_tenant_embedding_char_quota(db: Session, *, tenant_id: UUID) -> dict[s
         "mode": mode,
         "limit_chars": limit_chars,
         "used_chars": used_chars,
-        "exceeded": bool(used_chars >= limit_chars),
+        "exceeded": used_chars >= limit_chars,
         "window_hours": window_hours,
     }
 
@@ -540,11 +483,11 @@ def enforce_tenant_embedding_char_quota(
 
     Raises TenantQuotaExceededError when exceeded and mode=="block".
     """
-    enabled = bool(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_ENABLED", False))
-    limit = int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_LIMIT", 0) or 0)
-    window_hours = max(1, int(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS", 24) or 24))
-    mode = str(getattr(settings, "TENANT_EMBED_CHAR_QUOTA_MODE", "block") or "block").lower()
-    add = max(0, int(additional_chars or 0))
+    enabled = settings.TENANT_EMBED_CHAR_QUOTA_ENABLED
+    limit = settings.TENANT_EMBED_CHAR_QUOTA_LIMIT
+    window_hours = max(1, settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS or 24)
+    mode = (settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
+    add = max(0, additional_chars)
     if not enabled or limit <= 0:
         return {
             "enabled": False,
@@ -561,7 +504,7 @@ def enforce_tenant_embedding_char_quota(
     try:
         used = _embedding_quota_usage_chars(db, tenant_id=tenant_id, since=since)
     except Exception as exc:
-        fail_closed = _tenant_quota_fail_closed_enabled()
+        fail_closed = settings.TENANT_QUOTA_FAIL_CLOSED
         details = _emit_quota_guard_evidence(
             db=db,
             tenant_id=tenant_id,
@@ -590,26 +533,25 @@ def enforce_tenant_embedding_char_quota(
             "would_exceed": False,
         }
 
+    would_exceed = used + add > limit
     meta = {
         "enabled": True,
         "mode": mode,
         "limit_chars": limit,
         "used_chars": used,
-        "exceeded": bool(used >= limit),
+        "exceeded": used >= limit,
         "window_hours": window_hours,
+        "additional_chars": add,
+        "would_exceed": would_exceed,
     }
-    would_exceed = bool(enabled and limit > 0 and (used + add) > limit)
-    out = dict(meta)
-    out["additional_chars"] = add
-    out["would_exceed"] = bool(would_exceed)
 
     if would_exceed and mode == "block":
         raise TenantQuotaExceededError(
             "embedding_chars",
             "Tenant embedding quota exceeded",
-            meta=out,
+            meta=meta,
         )
-    return out
+    return meta
 
 
 def enforce_tenant_upload_quotas(
@@ -624,14 +566,14 @@ def enforce_tenant_upload_quotas(
 
     Raises HTTPException(429) when enforcement is enabled and limits would be exceeded.
     """
-    fail_closed = _tenant_quota_fail_closed_enabled()
+    fail_closed = settings.TENANT_QUOTA_FAIL_CLOSED
 
     _enforce_upload_quota_limit(
         db,
         tenant_id=tenant_id,
         fail_closed=fail_closed,
-        enabled=bool(getattr(settings, "TENANT_DOC_QUOTA_ENABLED", False)),
-        limit=int(getattr(settings, "TENANT_DOC_QUOTA_LIMIT", 0) or 0),
+        enabled=settings.TENANT_DOC_QUOTA_ENABLED,
+        limit=settings.TENANT_DOC_QUOTA_LIMIT,
         usage_fn=_document_quota_usage,
         quota="tenant_documents",
         scope="tenant_documents",
@@ -644,8 +586,8 @@ def enforce_tenant_upload_quotas(
         db,
         tenant_id=tenant_id,
         fail_closed=fail_closed,
-        enabled=bool(getattr(settings, "TENANT_STORAGE_QUOTA_ENABLED", False)),
-        limit=int(getattr(settings, "TENANT_STORAGE_QUOTA_LIMIT_BYTES", 0) or 0),
+        enabled=settings.TENANT_STORAGE_QUOTA_ENABLED,
+        limit=settings.TENANT_STORAGE_QUOTA_LIMIT_BYTES,
         usage_fn=_storage_quota_usage_bytes,
         quota="tenant_storage",
         scope="tenant_storage",

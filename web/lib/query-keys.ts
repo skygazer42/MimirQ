@@ -19,8 +19,7 @@ export const queryKeys = {
     exhaustive: (params?: QueryParams) => ['datasets', 'exhaustive', params] as const,
     detail: (id: string) => ['datasets', 'detail', id] as const,
     profileSummary: (id: string) => ['datasets', 'profile-summary', id] as const,
-    profileScanRuns: (id: string, params?: QueryParams) =>
-      ['datasets', 'profile-scan-runs', id, params] as const,
+    profileScanRuns: (id: string, params?: QueryParams) => ['datasets', 'profile-scan-runs', id, params] as const,
     profileFindingDocuments: (id: string, findingKey: string, params?: QueryParams) =>
       ['datasets', 'profile-finding-documents', id, findingKey, params] as const,
     profileBucketDocuments: (id: string, params?: QueryParams) =>
@@ -28,17 +27,13 @@ export const queryKeys = {
     config: (id: string) => ['datasets', 'config', id] as const,
     health: (id: string) => ['datasets', 'health', id] as const,
     ingestionPolicy: (id: string) => ['datasets', 'ingestion-policy', id] as const,
-    ingestionPolicyVersions: (id: string) =>
-      ['datasets', 'ingestion-policy-versions', id] as const,
+    ingestionPolicyVersions: (id: string) => ['datasets', 'ingestion-policy-versions', id] as const,
     ingestionStats: (id: string) => ['datasets', 'ingestion-stats', id] as const,
-    precheckRuns: (id: string, params?: QueryParams) =>
-      ['datasets', 'precheck-runs', id, params] as const,
-    precheckSummary: (id: string, runId: string) =>
-      ['datasets', 'precheck-summary', id, runId] as const,
+    precheckRuns: (id: string, params?: QueryParams) => ['datasets', 'precheck-runs', id, params] as const,
+    precheckSummary: (id: string, runId: string) => ['datasets', 'precheck-summary', id, runId] as const,
     precheckSamples: (id: string, runId: string, params?: QueryParams) =>
       ['datasets', 'precheck-samples', id, runId, params] as const,
-    precheckNearDups: (id: string, runId: string) =>
-      ['datasets', 'precheck-near-dups', id, runId] as const,
+    precheckNearDups: (id: string, runId: string) => ['datasets', 'precheck-near-dups', id, runId] as const,
     precheckDiff: (id: string, runId: string, params?: QueryParams) =>
       ['datasets', 'precheck-diff', id, runId, params] as const,
     precheckIngestionPolicySuggestion: (id: string, runId: string, params?: QueryParams) =>
@@ -48,8 +43,7 @@ export const queryKeys = {
     categories: (id: string) => ['datasets', 'categories', id] as const,
     tables: (id: string, params?: QueryParams) => ['datasets', 'tables', id, params] as const,
     tableAsset: (id: string, tableId: string) => ['datasets', 'table-asset', id, tableId] as const,
-    dbCatalogTables: (id: string, params?: QueryParams) =>
-      ['datasets', 'db-catalog', id, 'tables', params] as const,
+    dbCatalogTables: (id: string, params?: QueryParams) => ['datasets', 'db-catalog', id, 'tables', params] as const,
     dbCatalogTableDetail: (id: string, tableId: string) =>
       ['datasets', 'db-catalog', id, 'table-detail', tableId] as const,
     dbCatalogProfiles: (id: string, params?: QueryParams) =>
@@ -60,8 +54,7 @@ export const queryKeys = {
     conversationsAll: ['chat', 'conversations'] as const,
     conversations: (params?: QueryParams) => ['chat', 'conversations', params] as const,
     conversationPagesAll: ['chat', 'conversation-pages'] as const,
-    conversationPages: (params?: QueryParams) =>
-      ['chat', 'conversation-pages', params] as const,
+    conversationPages: (params?: QueryParams) => ['chat', 'conversation-pages', params] as const,
     messages: (conversationId: string) => ['chat', 'messages', conversationId] as const,
     summary: (conversationId: string) => ['chat', 'summary', conversationId] as const,
     ragTraces: (conversationId: string, params?: QueryParams) =>
@@ -77,8 +70,7 @@ export const queryKeys = {
     all: ['groups'] as const,
     list: (params?: QueryParams) => ['groups', 'list', params] as const,
     detail: (id: string) => ['groups', 'detail', id] as const,
-    members: (id: string, params?: QueryParams) =>
-      ['groups', 'detail', id, 'members', params] as const,
+    members: (id: string, params?: QueryParams) => ['groups', 'detail', id, 'members', params] as const,
   },
   auth: {
     all: ['auth'] as const,
@@ -113,8 +105,7 @@ export const queryKeys = {
   governance: {
     profiles: (params?: QueryParams) => ['governance', 'profiles', params] as const,
     profile: (profileRef: string) => ['governance', 'profile', profileRef] as const,
-    profileResolved: (profileRef: string) =>
-      ['governance', 'profile-resolved', profileRef] as const,
+    profileResolved: (profileRef: string) => ['governance', 'profile-resolved', profileRef] as const,
   },
   industryRules: {
     rulesets: ['industry-rules', 'rulesets'] as const,
@@ -127,8 +118,7 @@ export const queryKeys = {
   },
   reports: {
     categories: ['reports', 'categories'] as const,
-    dataset: (datasetId: string, params?: QueryParams) =>
-      ['reports', 'dataset', datasetId, params] as const,
+    dataset: (datasetId: string, params?: QueryParams) => ['reports', 'dataset', datasetId, params] as const,
   },
   kg: {
     predicateOntology: ['kg', 'predicate-ontology'] as const,
@@ -138,8 +128,7 @@ export const queryKeys = {
     status: ['settings', 'status'] as const,
   },
   diagnostics: {
-    onlineQuality: (params?: QueryParams) =>
-      ['diagnostics', 'online-quality', params] as const,
+    onlineQuality: (params?: QueryParams) => ['diagnostics', 'online-quality', params] as const,
     ready: ['diagnostics', 'ready'] as const,
     deps: ['diagnostics', 'deps'] as const,
   },
@@ -163,19 +152,14 @@ export const queryKeys = {
       ['evaluations', 'ragas-conversation-readiness', conversationIds] as const,
     ragasRunDetail: (runId: string, params?: QueryParams) =>
       ['evaluations', 'ragas-run-detail', runId, params] as const,
-    regressionRuns: (params?: QueryParams) =>
-      ['evaluations', 'regression-runs', params] as const,
+    regressionRuns: (params?: QueryParams) => ['evaluations', 'regression-runs', params] as const,
     regressionRunDetail: (runId: string, params?: QueryParams) =>
       ['evaluations', 'regression-run-detail', runId, params] as const,
-    querysetHealthRuns: (params?: QueryParams) =>
-      ['evaluations', 'queryset-health-runs', params] as const,
-    querysetHealthDiff: (params?: QueryParams) =>
-      ['evaluations', 'queryset-health-diff', params] as const,
-    regressionLeaderboard: (params?: QueryParams) =>
-      ['evaluations', 'regression-leaderboard', params] as const,
+    querysetHealthRuns: (params?: QueryParams) => ['evaluations', 'queryset-health-runs', params] as const,
+    querysetHealthDiff: (params?: QueryParams) => ['evaluations', 'queryset-health-diff', params] as const,
+    regressionLeaderboard: (params?: QueryParams) => ['evaluations', 'regression-leaderboard', params] as const,
     regressionRunDiff: (targetRunId: string, params?: QueryParams) =>
       ['evaluations', 'regression-run-diff', targetRunId, params] as const,
-    regressionCases: (params?: QueryParams) =>
-      ['evaluations', 'regression-cases', params] as const,
+    regressionCases: (params?: QueryParams) => ['evaluations', 'regression-cases', params] as const,
   },
 } as const

@@ -75,8 +75,8 @@ def _load_tsv_2col(path: Path) -> list[tuple[str, str]]:
             parts = line.split("\t")
             if len(parts) < 2:
                 continue
-            k = str(parts[0]).strip()
-            v = str(parts[1]).strip()
+            k = parts[0].strip()
+            v = parts[1].strip()
             if k and v:
                 out.append((k, v))
     return out
@@ -97,8 +97,8 @@ def _load_qrels_positive_docids(path: Path) -> dict[str, list[str]]:
             parts = line.split("\t")
             if len(parts) < 4:
                 continue
-            qid = str(parts[0]).strip()
-            docid = str(parts[2]).strip()
+            qid = parts[0].strip()
+            docid = parts[2].strip()
             rel_raw = parts[3]
             try:
                 rel = int(rel_raw)
@@ -109,7 +109,7 @@ def _load_qrels_positive_docids(path: Path) -> dict[str, list[str]]:
             out.setdefault(qid, []).append(docid)
     # Dedup deterministically.
     for qid, ids in list(out.items()):
-        uniq = sorted({str(x).strip() for x in ids if str(x).strip()})
+        uniq = sorted({x.strip() for x in ids if x.strip()})
         out[qid] = uniq
     return out
 
@@ -211,7 +211,7 @@ def build_case_items(
             items.append(CaseItem(qid=qid, question=query, positive_docids=picked, split=split))
 
     # Stable ordering: split -> qid.
-    items.sort(key=lambda x: (str(x.split), str(x.qid)))
+    items.sort(key=lambda x: (x.split, x.qid))
 
     if max_cases and int(max_cases) > 0:
         items = items[: int(max_cases)]
@@ -331,7 +331,7 @@ def _delete_dataset_documents(*, tenant_id: UUID, dataset_id: UUID) -> dict[str,
     db = SessionLocal()
     try:
         q = db.query(DBDocument.id).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == dataset_id)
-        doc_ids = [r[0] for r in q.all() if isinstance(r, tuple) and r and isinstance(r[0], UUID)]
+        doc_ids = [doc_id for (doc_id,) in q.all() if isinstance(doc_id, UUID)]
         store = get_vector_store()
         for did in doc_ids:
             try:
@@ -348,7 +348,7 @@ def _delete_dataset_documents(*, tenant_id: UUID, dataset_id: UUID) -> dict[str,
             .delete()
         )
         db.commit()
-        return {"deleted_documents": int(deleted or 0), "deleted_vectors_best_effort": int(len(doc_ids))}
+        return {"deleted_documents": int(deleted or 0), "deleted_vectors_best_effort": len(doc_ids)}
     finally:
         db.close()
 
@@ -377,7 +377,7 @@ def _positive_docids(case_items: Iterable[CaseItem]) -> set[str]:
 
 
 def _resolve_target_counts(*, target_passages: int, positive_docids: set[str]) -> tuple[int, int, int]:
-    pos_cnt = int(len(positive_docids))
+    pos_cnt = len(positive_docids)
     target = max(0, int(target_passages or 0))
     if target <= 0:
         raise ValueError("--target-passages must be > 0")
@@ -435,7 +435,7 @@ def _build_execute_plan(
         "positive_docids": int(pos_cnt),
         "target_passages": int(target),
         "target_negatives": int(neg_target),
-        "negative_sample_rate": round(float(neg_rate), 8),
+        "negative_sample_rate": round(neg_rate, 8),
         "negative_hash_threshold_u64": int(threshold),
         "chunks_per_document": int(chunks_per_document),
         "dry_run": False,
@@ -649,7 +649,7 @@ def seed_pool_corpus(
 
             is_pos = docid in positive_docids
             state.chars += len(content)
-            (state.chunks or []).append(
+            state.chunks.append(
                 _chunk_input_for_doc(
                     dataset_id=dataset_id,
                     docid=docid,
@@ -685,10 +685,10 @@ def seed_pool_corpus(
             "plan": plan,
             "wipe": wipe,
             "seeded": {
-                "passages": int(state.seeded_passages),
-                "positive": int(state.seeded_positive),
-                "negative": int(state.seeded_negative),
-                "documents": int(state.shard_idx),
+                "passages": state.seeded_passages,
+                "positive": state.seeded_positive,
+                "negative": state.seeded_negative,
+                "documents": state.shard_idx,
             },
         }
     finally:
@@ -739,8 +739,7 @@ def verify_reference_integrity(
                 )
                 .all()
             )
-            for r in rows:
-                cid = r[0] if isinstance(r, tuple) else r
+            for (cid,) in rows:
                 if cid is None:
                     continue
                 try:
@@ -751,8 +750,8 @@ def verify_reference_integrity(
         missing = [cid for cid in want if cid not in found]
         return {
             "ok": len(missing) == 0,
-            "checked": int(len(want)),
-            "missing": int(len(missing)),
+            "checked": len(want),
+            "missing": len(missing),
             "missing_sample": [str(x) for x in missing[:20]],
         }
     finally:
@@ -860,7 +859,7 @@ def _warn_unpinned_revisions(*, hf_revision: str | None, hf_revision_corpus: str
 
 def _normalize_splits(raw_splits: str) -> list[str]:
     splits_raw = [s.strip() for s in str(raw_splits or "").split(",") if s.strip()]
-    splits_norm = [str(s).strip().lower() for s in splits_raw if str(s).strip()]
+    splits_norm = [s.strip().lower() for s in splits_raw if s.strip()]
     return splits_norm or ["train", "dev"]
 
 
@@ -910,15 +909,15 @@ def _build_manifest(
         },
         "params": {
             "splits": splits_norm,
-            "max_cases": int(args.max_cases or 0),
-            "max_refs_per_case": int(args.max_refs_per_case or 0),
-            "target_passages": int(args.target_passages or 0),
-            "chunks_per_document": int(args.chunks_per_document or 0),
-            "overwrite": bool(args.overwrite),
+            "max_cases": args.max_cases,
+            "max_refs_per_case": args.max_refs_per_case,
+            "target_passages": args.target_passages,
+            "chunks_per_document": args.chunks_per_document,
+            "overwrite": args.overwrite,
             "dry_run": bool(dry_run),
         },
         "counts": {
-            "cases": int(len(case_items)),
+            "cases": len(case_items),
             "seeded_passages": int((seeded or {}).get("passages") or 0) if not dry_run else None,
         },
         "plan": plan,
@@ -928,7 +927,7 @@ def _build_manifest(
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
-    dry_run = not bool(args.execute)
+    dry_run = not args.execute
 
     from app.core.config import settings
 
@@ -957,8 +956,8 @@ def main(argv: list[str] | None = None) -> int:
     splits_norm = _normalize_splits(args.splits)
     case_items = build_case_items(
         splits=splits_norm,
-        max_cases=int(args.max_cases or 0),
-        max_refs_per_case=int(args.max_refs_per_case or 0),
+        max_cases=args.max_cases,
+        max_refs_per_case=args.max_refs_per_case,
         revision=hf_revision,
     )
     if not case_items:
@@ -966,12 +965,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     # Export cases bundle (always allowed; does not require DB).
-    if str(args.out_cases or "").strip():
+    if args.out_cases.strip():
         export_regression_cases_bundle(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             case_items=case_items,
-            out_path=Path(str(args.out_cases)),
+            out_path=Path(args.out_cases),
         )
 
     # Prepare DB schema and dataset row if we plan to execute.
@@ -989,9 +988,9 @@ def main(argv: list[str] | None = None) -> int:
                     "source": "MIRACL",
                     "lang": LANG,
                     "splits": splits_norm,
-                    "target_passages": int(args.target_passages or 0),
-                    "chunks_per_document": int(args.chunks_per_document or 0),
-                    "max_refs_per_case": int(args.max_refs_per_case or 0),
+                    "target_passages": args.target_passages,
+                    "chunks_per_document": args.chunks_per_document,
+                    "max_refs_per_case": args.max_refs_per_case,
                 }
             },
         )
@@ -1001,10 +1000,10 @@ def main(argv: list[str] | None = None) -> int:
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         case_items=case_items,
-        target_passages=int(args.target_passages or 0),
-        chunks_per_document=int(args.chunks_per_document or 0),
-        overwrite=bool(args.overwrite),
-        dry_run=bool(dry_run),
+        target_passages=args.target_passages,
+        chunks_per_document=args.chunks_per_document,
+        overwrite=args.overwrite,
+        dry_run=dry_run,
         revision=hf_revision_corpus,
     )
 
@@ -1012,7 +1011,7 @@ def main(argv: list[str] | None = None) -> int:
     if not dry_run:
         integrity = verify_reference_integrity(tenant_id=tenant_id, dataset_id=dataset_id, case_items=case_items)
 
-    if str(args.out_manifest or "").strip():
+    if args.out_manifest.strip():
         manifest = _build_manifest(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
@@ -1025,7 +1024,7 @@ def main(argv: list[str] | None = None) -> int:
             dry_run=dry_run,
             integrity=integrity,
         )
-        write_json_file(Path(str(args.out_manifest)), manifest)
+        write_json_file(Path(args.out_manifest), manifest)
         print(f"[public_bench] wrote manifest: {args.out_manifest}", file=sys.stderr)
 
     if integrity and not bool(integrity.get("ok")):
@@ -1046,9 +1045,9 @@ def main(argv: list[str] | None = None) -> int:
                 "bench_key": BENCH_KEY,
                 "tenant_id": str(tenant_id),
                 "dataset_id": str(dataset_id),
-                "dry_run": bool(dry_run),
-                "cases": int(len(case_items)),
-                "elapsed_sec": round(float(time.time() - t0), 2),
+                "dry_run": dry_run,
+                "cases": len(case_items),
+                "elapsed_sec": round(time.time() - t0, 2),
                 "result": res,
             },
             ensure_ascii=False,

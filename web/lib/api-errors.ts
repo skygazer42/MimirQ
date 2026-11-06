@@ -62,9 +62,7 @@ function parseJsonObjectString(value: string): ErrorResponseLike | undefined {
   if (!trimmed?.startsWith('{')) return undefined
   try {
     const parsed = JSON.parse(trimmed)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as ErrorResponseLike)
-      : undefined
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as ErrorResponseLike) : undefined
   } catch {
     return undefined
   }
@@ -79,7 +77,9 @@ function asFiniteNumber(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined
 }
 
-export function extractRateLimitDetail(data: unknown): { retryAfterSec?: number; limit?: number; scope?: string } | undefined {
+export function extractRateLimitDetail(
+  data: unknown,
+): { retryAfterSec?: number; limit?: number; scope?: string } | undefined {
   if (!data || typeof data !== 'object') return undefined
   const detail = (data as ErrorResponseLike).detail
   if (!detail || typeof detail !== 'object') return undefined
@@ -129,9 +129,7 @@ export function extractBackendMessage(data: unknown): string | undefined {
       asNonEmptyString(payload.detail) ||
       // FastAPI default: {"detail":[{...},{...}]}
       (Array.isArray(payload.detail) ? 'Validation error' : undefined) ||
-      (detail
-        ? asNonEmptyString(detail.message) || safeJson(payload.detail)
-        : undefined)
+      (detail ? asNonEmptyString(detail.message) || safeJson(payload.detail) : undefined)
     )
   }
 
@@ -147,11 +145,7 @@ export type ApiErrorInfo = {
 function extractHeaderRequestId(headers: unknown): string | undefined {
   if (!headers) return undefined
   const record = headers as HeaderLike
-  const raw =
-    record['x-request-id'] ??
-    record['X-Request-ID'] ??
-    record['x-request-id'.toLowerCase()] ??
-    record['X-Request-ID'.toLowerCase()]
+  const raw = record['x-request-id'] ?? record['X-Request-ID']
   if (raw == null) return undefined
   return toTrimmedPrimitiveString(raw) || undefined
 }
@@ -159,11 +153,7 @@ function extractHeaderRequestId(headers: unknown): string | undefined {
 function extractHeaderRetryAfterSec(headers: unknown): number | undefined {
   if (!headers) return undefined
   const record = headers as HeaderLike
-  const raw =
-    record['retry-after'] ??
-    record['Retry-After'] ??
-    record['retry-after'.toLowerCase()] ??
-    record['Retry-After'.toLowerCase()]
+  const raw = record['retry-after'] ?? record['Retry-After']
   if (raw == null) return undefined
   const parsed = asFiniteNumber(raw)
   if (parsed == null) return undefined
@@ -246,12 +236,11 @@ export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorI
   const status = typeof axiosResponse?.status === 'number' ? axiosResponse.status : undefined
   const data = axiosResponse?.data
 
-  let message =
-    extractBackendMessage(data) ||
-    toTrimmedPrimitiveString(maybeError?.message) ||
-    fallbackMessage
+  let message = extractBackendMessage(data) || toTrimmedPrimitiveString(maybeError?.message) || fallbackMessage
   const requestId = extractAxiosRequestId(err)
-  const normalizedMessage = String(message || '').trim().toLowerCase()
+  const normalizedMessage = String(message || '')
+    .trim()
+    .toLowerCase()
   const code = toTrimmedPrimitiveString(maybeError?.code).toUpperCase()
 
   if (
@@ -274,7 +263,8 @@ export function toApiErrorInfo(err: unknown, fallbackMessage: string): ApiErrorI
     if (typeof retryAfterSec === 'number' && retryAfterSec > 0) {
       const suffixBits: string[] = []
       if (meta?.scope) suffixBits.push(`scope=${meta.scope}`)
-      if (typeof meta?.limit === 'number' && Number.isFinite(meta.limit) && meta.limit > 0) suffixBits.push(`limit=${meta.limit}`)
+      if (typeof meta?.limit === 'number' && Number.isFinite(meta.limit) && meta.limit > 0)
+        suffixBits.push(`limit=${meta.limit}`)
       const suffix = suffixBits.length ? `（${suffixBits.join('，')}）` : ''
       message = `请求过于频繁，请在 ${retryAfterSec} 秒后重试${suffix}`
     }

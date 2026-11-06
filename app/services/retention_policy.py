@@ -14,7 +14,7 @@ Design goals:
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -29,6 +29,9 @@ from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
 
 logger = get_logger("retention_policy")
 
@@ -93,6 +96,13 @@ class _VersionRow:
     active: bool
 
 
+class _VersionState(TypedDict):
+    pipeline_hash: str
+    chunk_count: int
+    first: datetime | None
+    last: datetime | None
+
+
 def _build_version_row(
     *,
     document_id: UUID,
@@ -153,7 +163,7 @@ def _list_document_versions_from_chunk_rows(
     document_id: UUID,
     active_key: str | None,
 ) -> list[_VersionRow]:
-    by_key: dict[str, dict[str, Any]] = {}
+    by_key: dict[str, _VersionState] = {}
     for meta, created_at in rows:
         metadata = meta if isinstance(meta, dict) else {}
         pipeline_hash = str(metadata.get("pipeline_hash") or "").strip()
@@ -164,7 +174,7 @@ def _list_document_versions_from_chunk_rows(
             key,
             {"pipeline_hash": pipeline_hash, "chunk_count": 0, "first": None, "last": None},
         )
-        state["chunk_count"] = int(state.get("chunk_count") or 0) + 1
+        state["chunk_count"] += 1
         if not isinstance(created_at, datetime):
             continue
         if state["first"] is None or created_at < state["first"]:
@@ -177,11 +187,11 @@ def _list_document_versions_from_chunk_rows(
         version = _build_version_row(
             document_id=document_id,
             active_key=active_key,
-            pipeline_hash=str(state.get("pipeline_hash") or ""),
+            pipeline_hash=state["pipeline_hash"],
             doc_pipeline_key=key,
-            chunk_count=int(state.get("chunk_count") or 0),
-            first_chunk_at=state.get("first"),
-            last_chunk_at=state.get("last"),
+            chunk_count=state["chunk_count"],
+            first_chunk_at=state["first"],
+            last_chunk_at=state["last"],
         )
         if version is not None:
             versions.append(version)
@@ -290,9 +300,9 @@ def _delete_version_search_indexes(
             metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
         )
     with contextlib.suppress(Exception):
-        from app.rag.retriever import hybrid_retriever
+        from app.rag.retrieval.corpus_index import get_corpus_index
 
-        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+        get_corpus_index().remove(
             tenant_id=tenant_id,
             metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
         )
@@ -306,7 +316,7 @@ def _update_document_metadata_after_version_delete(
     current_hash: str,
     active_hash: str,
 ) -> None:
-    doc_meta = dict(getattr(doc, "doc_metadata", None) or {})
+    doc_meta = dict(doc.doc_metadata or {})
     if current_hash and current_hash == pipeline_hash:
         if active_hash:
             doc_meta["pipeline_hash"] = active_hash
@@ -317,7 +327,7 @@ def _update_document_metadata_after_version_delete(
         updated = dict(provenance)
         updated.pop(pipeline_hash, None)
         doc_meta["pipeline_provenance_versions"] = updated
-    if doc_meta != dict(getattr(doc, "doc_metadata", None) or {}):
+    if doc_meta != dict(doc.doc_metadata or {}):
         doc.doc_metadata = doc_meta
 
 
@@ -333,10 +343,6 @@ def _delete_version_chunk_rows(
         DocumentChunk.document_id == document_id,
         DocumentChunk.id.in_(chunk_ids),
     ).delete(synchronize_session=False)
-
-
-def _commit_best_effort(db: Session) -> None:
-    db.commit()
 
 
 def _cleanup_deleted_version_kg_best_effort(
@@ -360,7 +366,7 @@ def _cleanup_deleted_version_kg_best_effort(
             prune_orphan_entities=True,
         )
         if commit:
-            _commit_best_effort(db)
+            db.commit()
     except Exception:
         with contextlib.suppress(Exception):
             db.rollback()
@@ -387,7 +393,7 @@ def _audit_deleted_version_best_effort(
             details={"pipeline_hash": pipeline_hash, "deleted_chunk_count": deleted_chunk_count},
         )
         if commit:
-            _commit_best_effort(db)
+            db.commit()
     except Exception:
         with contextlib.suppress(Exception):
             db.rollback()
@@ -416,8 +422,8 @@ def delete_document_version_best_effort(
     if doc is None:
         return {"ok": False, "reason": "doc_not_found"}
 
-    doc_status = str(getattr(doc, "status", "") or "").lower()
-    doc_meta = dict(getattr(doc, "doc_metadata", None) or {})
+    doc_status = str(doc.status or "").lower()
+    doc_meta = dict(doc.doc_metadata or {})
     current_hash = str(doc_meta.get("pipeline_hash") or "").strip()
     active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
     if active_hash and pipeline_hash_norm == active_hash:
@@ -456,7 +462,7 @@ def delete_document_version_best_effort(
     )
 
     if commit:
-        _commit_best_effort(db)
+        db.commit()
     _cleanup_deleted_version_kg_best_effort(
         db,
         tenant_id=tenant_id,
@@ -473,7 +479,7 @@ def delete_document_version_best_effort(
         commit=commit,
     )
 
-    return {"ok": True, "deleted_chunk_count": int(len(chunk_ids))}
+    return {"ok": True, "deleted_chunk_count": len(chunk_ids)}
 
 
 def _expired_documents_query(
@@ -483,7 +489,7 @@ def _expired_documents_query(
     dataset_id: UUID,
     cutoff_created_at: datetime | None,
     cutoff_updated_at: datetime | None,
-) -> Any:  # noqa: ANN401 - SQLAlchemy query
+) -> "Query[DBDocument]":
     q = (
         db.query(DBDocument)
         .filter(
@@ -569,7 +575,7 @@ def _retention_summary(
 def _archive_expired_documents(
     db: Session,
     *,
-    expired_docs: list[Any],
+    expired_docs: list[DBDocument],
     now: datetime,
     summary: dict[str, Any],
     tenant_id: UUID,
@@ -577,7 +583,7 @@ def _archive_expired_documents(
 ) -> None:
     archived_count = 0
     for doc in expired_docs:
-        if getattr(doc, "archived_at", None) is None:
+        if doc.archived_at is None:
             doc.archived_at = now
             archived_count += 1
     try:
@@ -585,21 +591,25 @@ def _archive_expired_documents(
     except Exception:
         with contextlib.suppress(Exception):
             db.rollback()
-        summary["documents"]["errors"] += int(archived_count)
+        summary["documents"]["errors"] += archived_count
         return
-    summary["documents"]["archived"] += int(archived_count)
-    with contextlib.suppress(Exception):
+    summary["documents"]["archived"] += archived_count
+    try:
         summary["cache_invalidation"] = invalidate_dataset_cache_namespace(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
         )
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        logger.warning("Dataset cache invalidation failed after archive: %s", str(exc)[:200])
 
 
 async def _delete_expired_documents(
     db: Session,
     *,
-    expired_docs: list[Any],
+    expired_docs: list[DBDocument],
     tenant_id: UUID,
     dataset_id: UUID,
     actor_id: str,
@@ -609,7 +619,7 @@ async def _delete_expired_documents(
 
     delete_lifecycle = _resolve_delete_document_lifecycle()
     for doc in expired_docs:
-        document_id = getattr(doc, "id", None)
+        document_id = doc.id
         if document_id is None:
             summary["documents"]["not_found"] += 1
             continue
@@ -631,12 +641,16 @@ async def _delete_expired_documents(
                 summary["documents"]["conflicts"] += 1
             else:
                 summary["documents"]["errors"] += 1
-    with contextlib.suppress(Exception):
+    try:
         summary["cache_invalidation"] = invalidate_dataset_cache_namespace(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
         )
+    except Exception as exc:
+        with contextlib.suppress(Exception):
+            db.rollback()
+        logger.warning("Dataset cache invalidation failed after deletion: %s", str(exc)[:200])
     with contextlib.suppress(Exception):
         db.commit()
 
@@ -644,7 +658,7 @@ async def _delete_expired_documents(
 async def _run_document_retention_action(
     db: Session,
     *,
-    expired_docs: list[Any],
+    expired_docs: list[DBDocument],
     dry_run: bool,
     action: str,
     summary: dict[str, Any],
@@ -741,7 +755,7 @@ def _prune_document_versions(
     doc = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.id == doc_id).first()
     if doc is None:
         return pruned
-    active_hash = get_active_pipeline_hash(dict(getattr(doc, "doc_metadata", None) or {}))
+    active_hash = get_active_pipeline_hash(dict(doc.doc_metadata or {}))
     versions = _list_document_versions_no_acl(db, tenant_id=tenant_id, document_id=doc_id, active_hash=active_hash)
     max_versions = int(policy.max_versions or 0)
     if len(versions) <= max_versions:
@@ -764,7 +778,7 @@ def _prune_document_versions(
             actor_id=str(actor_id),
             commit=True,
         )
-        if bool(result.get("ok")):
+        if result.get("ok"):
             pruned += 1
             summary["versions"]["versions_pruned"] += 1
         else:
@@ -854,7 +868,7 @@ async def run_dataset_retention_sweep(
     ).limit(max_docs)
 
     expired_docs = list(expired_q.all() or [])
-    summary["documents"]["eligible"] = int(len(expired_docs))
+    summary["documents"]["eligible"] = len(expired_docs)
     await _run_document_retention_action(
         db,
         expired_docs=expired_docs,

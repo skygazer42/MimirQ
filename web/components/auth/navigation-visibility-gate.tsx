@@ -21,11 +21,7 @@ type NavigationVisibilityGateProps = {
   children: ReactNode
 }
 
-export function NavigationVisibilityGate({
-  moduleKey,
-  pageName,
-  children,
-}: Readonly<NavigationVisibilityGateProps>) {
+export function NavigationVisibilityGate({ moduleKey, pageName, children }: Readonly<NavigationVisibilityGateProps>) {
   const [hasHydrated, setHasHydrated] = useState(false)
   const { isDevMode } = useAuth()
   const access = useTenantAccess()
@@ -67,8 +63,36 @@ export function NavigationVisibilityGate({
               : `「${pageName}」尚未向当前账号开放，请联系管理员。`
           }
           icon={isUnknown ? <ShieldAlert /> : <LockKeyhole />}
-          actions={<Button variant="outline" className={pageStatusActionClass} disabled={access.isFetching} aria-busy={access.isFetching} onClick={() => { void recheckAccess() }}>{access.isFetching ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="size-4" />}重新校验</Button>}
-          metadata={<details><summary className="cursor-pointer py-1 text-[13px]">入口信息</summary><dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1"><dt>入口标识</dt><dd className="break-all font-mono text-foreground">{moduleKey}</dd><dt>最近读取的角色</dt><dd className="break-all text-foreground">{access.data?.role || '未读取'}</dd></dl><p className="mt-3">管理员可在「设置 → 导航权限」调整。</p></details>}
+          actions={
+            <Button
+              variant="outline"
+              className={pageStatusActionClass}
+              disabled={access.isFetching}
+              aria-busy={access.isFetching}
+              onClick={() => {
+                void recheckAccess()
+              }}
+            >
+              {access.isFetching ? (
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <RefreshCw className="size-4" />
+              )}
+              重新校验
+            </Button>
+          }
+          metadata={
+            <details>
+              <summary className="cursor-pointer py-1 text-[13px]">入口信息</summary>
+              <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1">
+                <dt>入口标识</dt>
+                <dd className="break-all font-mono text-foreground">{moduleKey}</dd>
+                <dt>最近读取的角色</dt>
+                <dd className="break-all text-foreground">{access.data?.role || '未读取'}</dd>
+              </dl>
+              <p className="mt-3">管理员可在「设置 → 导航权限」调整。</p>
+            </details>
+          }
         />
       </AppFrame>
     )

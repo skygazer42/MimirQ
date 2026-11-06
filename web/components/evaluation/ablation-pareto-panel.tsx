@@ -43,7 +43,13 @@ function metricValue(run: RegressionRun, metricKey: string): number | null {
 
 function latency(run: RegressionRun): number | null {
   const summary = asRecord(run.summary)
-  const candidates = [summary.latency_ms, summary.elapsed_ms, summary.duration_ms, summary.p95_latency_ms, summary.elapsed_sec]
+  const candidates = [
+    summary.latency_ms,
+    summary.elapsed_ms,
+    summary.duration_ms,
+    summary.p95_latency_ms,
+    summary.elapsed_sec,
+  ]
 
   for (const candidate of candidates) {
     const n = toNumber(candidate)
@@ -90,7 +96,7 @@ export function AblationParetoPanel({
       if (metric === null || runLatency === null) return null
       return { id: run.id, metric, latency: runLatency }
     })
-    .filter((point): point is Pick<ParetoPoint, 'id' | 'metric' | 'latency'> => point !== null)
+    .filter((point): point is ParetoCandidate => point !== null)
 
   const minMetric = rawPoints.length ? Math.min(...rawPoints.map((point) => point.metric)) : 0
   const maxMetric = rawPoints.length ? Math.max(...rawPoints.map((point) => point.metric)) : 1
@@ -130,8 +136,12 @@ export function AblationParetoPanel({
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
           <div className="rounded-2xl border border-border bg-[radial-gradient(circle_at_18%_20%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--card))_0%,hsl(var(--background))_100%)] p-3">
             <div className="relative h-64 overflow-hidden rounded-xl border border-border bg-background/75">
-              <div className="absolute left-3 top-3 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">低 latency</div>
-              <div className="absolute bottom-3 right-3 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">高 {metricKey}</div>
+              <div className="absolute left-3 top-3 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
+                低 latency
+              </div>
+              <div className="absolute bottom-3 right-3 rounded-full bg-background/90 px-2 py-1 text-[10px] font-medium text-muted-foreground shadow-sm">
+                高 {metricKey}
+              </div>
               <div className="absolute inset-x-8 top-1/2 h-px bg-border/70" />
               <div className="absolute inset-y-8 left-1/2 w-px bg-border/70" />
               {paretoPoints.length > 1 ? (
@@ -151,7 +161,9 @@ export function AblationParetoPanel({
                   key={point.id}
                   className={cn(
                     'absolute -translate-x-1/2 -translate-y-1/2 rounded-full border shadow-sm transition-transform hover:z-10 hover:scale-125',
-                    point.pareto ? 'size-4 border-info bg-info ring-4 ring-info/20' : 'size-3 border-border bg-muted-foreground/70',
+                    point.pareto
+                      ? 'size-4 border-info bg-info ring-4 ring-info/20'
+                      : 'size-3 border-border bg-muted-foreground/70',
                   )}
                   style={{ left: `${point.x}%`, top: `${point.y}%` }}
                   title={`${shortId(point.id)} ${metricKey}=${formatMetric(point.metric)} latency=${formatLatency(point.latency)}`}
@@ -159,7 +171,9 @@ export function AblationParetoPanel({
               ))}
             </div>
             <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span>{metricKey}: {formatMetric(minMetric)}</span>
+              <span>
+                {metricKey}: {formatMetric(minMetric)}
+              </span>
               <span>{formatMetric(maxMetric)}</span>
             </div>
           </div>
@@ -171,7 +185,10 @@ export function AblationParetoPanel({
             </div>
             <div className="mt-3 space-y-2">
               {paretoPoints.slice(0, 6).map((point) => (
-                <div key={point.id} className="rounded-xl border border-border bg-background px-3 py-2 text-xs shadow-sm">
+                <div
+                  key={point.id}
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-xs shadow-sm"
+                >
                   <div className="font-mono font-semibold text-foreground">{shortId(point.id)}</div>
                   <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
                     <span>{metricKey}</span>

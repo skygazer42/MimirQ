@@ -6,11 +6,10 @@ This module:
 - Optionally configures JSON logging when LOG_FORMAT=json
 """
 
-
 import json
 import logging
 import sys
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from datetime import UTC, datetime
 from typing import Any
 
@@ -50,8 +49,10 @@ def _get_otel_trace_context() -> tuple[str, str]:
         return "", ""
 
 
-def bind_request_context(*, request_id: str, tenant_id: str = "", user_id: str = "", route: str = "") -> dict[str, Any]:
-    tokens: dict[str, Any] = {}
+def bind_request_context(
+    *, request_id: str, tenant_id: str = "", user_id: str = "", route: str = ""
+) -> dict[str, Token[str]]:
+    tokens: dict[str, Token[str]] = {}
     tokens["request_id"] = _request_id.set((request_id or "").strip())
     tokens["tenant_id"] = _tenant_id.set((tenant_id or "").strip())
     tokens["user_id"] = _user_id.set((user_id or "").strip())
@@ -77,6 +78,7 @@ def set_request_tenant_id(tenant_id: str) -> None:
     """
     _tenant_id.set((tenant_id or "").strip())
 
+
 def set_request_route(route: str) -> None:
     """
     Update the current request's route template context.
@@ -87,7 +89,7 @@ def set_request_route(route: str) -> None:
     _route.set((route or "").strip())
 
 
-def reset_request_context(tokens: dict[str, Any]) -> None:
+def reset_request_context(tokens: dict[str, Token[str]]) -> None:
     if not tokens:
         return
     try:
@@ -153,7 +155,7 @@ def _install_record_factory() -> None:
 
     old_factory = logging.getLogRecordFactory()
 
-    def record_factory(*args, **kwargs):  # type: ignore[no-untyped-def]
+    def record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         record = old_factory(*args, **kwargs)
         record.request_id = _request_id.get() or ""
         record.tenant_id = _tenant_id.get() or ""
@@ -183,17 +185,17 @@ def configure_logging(
       even when uvicorn pre-configures logging.
     """
     global _include_trace_context
-    _include_trace_context = bool(include_trace_context)
+    _include_trace_context = include_trace_context
 
     _install_record_factory()
 
-    level = int(logging._nameToLevel.get(str(log_level).upper(), logging.INFO))
+    level = logging._nameToLevel.get(log_level.upper(), logging.INFO)
 
-    if str(log_format).lower() != "json":
+    if log_format.lower() != "json":
         # Best-effort: ensure the process respects LOG_LEVEL even when we keep plain logging.
         # Do not forcibly override existing handlers (e.g., uvicorn / pytest log capture).
         root = logging.getLogger()
-        if not getattr(root, "handlers", None):
+        if not root.handlers:
             logging.basicConfig(level=level)
         else:
             root.setLevel(level)

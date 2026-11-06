@@ -298,9 +298,7 @@ def test_get_system_status_without_optional_milvus_client(
     monkeypatch.setattr(settings, "VECTOR_BACKEND", backend)
     monkeypatch.setitem(sys.modules, "pymilvus", None)
 
-    status = asyncio.run(
-        settings_api.get_system_status(tenant_id=uuid4(), account_id="reader", db=SimpleNamespace())
-    )
+    status = asyncio.run(settings_api.get_system_status(tenant_id=uuid4(), account_id="reader", db=SimpleNamespace()))
 
     assert status["database"] == {"connected": True, "message": "connected"}
     assert status["milvus"] == expected_vector_status

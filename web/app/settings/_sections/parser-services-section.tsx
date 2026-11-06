@@ -10,12 +10,10 @@ import type {
   PaddleVLConfig,
   SystemSettings,
   TextInConfig,
-} from '@/lib/api'
+} from '@/types/settings'
 import { cn } from '@/lib/utils'
 import { LayoutGrid, ScanLine, Wand2 } from '@/components/icons'
-import {
-  settingsTextTokens,
-} from '@/components/ui/system-page-tokens'
+import { settingsTextTokens } from '@/components/ui/system-page-tokens'
 
 type DoclingConfig = NonNullable<SystemSettings['docling']>
 
@@ -36,17 +34,13 @@ type ParserServicesSectionProps = {
   updateMagicPDF: (patch: Partial<MagicPDFConfig>) => void
 }
 
-const SECTION_TITLE =
-  'mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground'
-const CARD = cn(
-  'space-y-5'
-)
+const SECTION_TITLE = 'mb-2 flex items-center gap-2 text-[13px] font-semibold text-foreground'
+const CARD = cn('space-y-5')
 const GRID = 'grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3'
 const FIELD_LABEL = 'text-[13px] font-semibold text-muted-foreground'
 const FIELD_HINT = settingsTextTokens.helpText
 const DENSE_INPUT = 'h-11 sm:h-9 rounded-md border-input bg-background text-[13px]'
-const DENSE_SELECT =
-  'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-[13px]'
+const DENSE_SELECT = 'w-full rounded-md border border-input bg-background px-2.5 py-1.5 text-[13px]'
 
 function TogglePill({
   enabled,
@@ -57,14 +51,7 @@ function TogglePill({
   onClick: () => void
   label: string
 }>) {
-  return (
-    <SettingsSwitch
-      checked={enabled}
-      onCheckedChange={onClick}
-      aria-label={label}
-      className="shrink-0"
-    />
-  )
+  return <SettingsSwitch checked={enabled} onCheckedChange={onClick} aria-label={label} className="shrink-0" />
 }
 
 export function ParserServicesSection({
@@ -108,14 +95,10 @@ export function ParserServicesSection({
                 <Input
                   className={DENSE_INPUT}
                   value={mineru.local_server_url}
-                  onChange={(event) =>
-                    updateMinerU({ local_server_url: event.target.value })
-                  }
+                  onChange={(event) => updateMinerU({ local_server_url: event.target.value })}
                   placeholder="http://localhost:30001"
                 />
-                <div className={FIELD_HINT}>
-                  本地部署入口，解析会优先发送到这个服务
-                </div>
+                <div className={FIELD_HINT}>本地部署入口，解析会优先发送到这个服务</div>
               </div>
 
               <details
@@ -125,9 +108,7 @@ export function ParserServicesSection({
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-[13px] font-semibold text-foreground/78">
                   <span>VLM HTTP 后端</span>
                   <span className="text-[13px] font-medium text-muted-foreground">
-                    {mineruBackend === 'vlm-http-client'
-                      ? '当前会使用'
-                      : '默认不会使用'}
+                    {mineruBackend === 'vlm-http-client' ? '当前会使用' : '默认不会使用'}
                   </span>
                 </summary>
                 <div className="mt-3 space-y-2">
@@ -135,14 +116,10 @@ export function ParserServicesSection({
                   <Input
                     className={DENSE_INPUT}
                     value={mineru.vl_server}
-                    onChange={(event) =>
-                      updateMinerU({ vl_server: event.target.value })
-                    }
+                    onChange={(event) => updateMinerU({ vl_server: event.target.value })}
                     placeholder="http://localhost:30002"
                   />
-                  <div className={FIELD_HINT}>
-                    切到 VLM HTTP 模式时需要填写，供本地 MinerU 调用模型服务
-                  </div>
+                  <div className={FIELD_HINT}>切到 VLM HTTP 模式时需要填写，供本地 MinerU 调用模型服务</div>
                 </div>
               </details>
             </div>
@@ -151,17 +128,13 @@ export function ParserServicesSection({
               <div className={FIELD_LABEL}>本地后端模式</div>
               <select
                 value={mineruBackend}
-                onChange={(event) =>
-                  updateMinerU({ backend: event.target.value })
-                }
+                onChange={(event) => updateMinerU({ backend: event.target.value })}
                 className={DENSE_SELECT}
               >
                 <option value="pipeline">Pipeline</option>
                 <option value="vlm-http-client">VLM HTTP</option>
               </select>
-              <div className={FIELD_HINT}>
-                Pipeline 只使用本地 API；VLM HTTP 会额外传入下方模型服务地址
-              </div>
+              <div className={FIELD_HINT}>Pipeline 只使用本地 API；VLM HTTP 会额外传入下方模型服务地址</div>
             </div>
           </div>
 
@@ -171,23 +144,17 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={mineru.api_base}
-                onChange={(event) =>
-                  updateMinerU({ api_base: event.target.value })
-                }
+                onChange={(event) => updateMinerU({ api_base: event.target.value })}
                 placeholder="https://mineru.net/api/v4"
               />
-              <div className={FIELD_HINT}>
-                未配置本地服务时，在线 MinerU 会使用这个 API 地址
-              </div>
+              <div className={FIELD_HINT}>未配置本地服务时，在线 MinerU 会使用这个 API 地址</div>
             </div>
 
             <div className="space-y-2">
               <div className={FIELD_LABEL}>模型版本</div>
               <select
                 value={mineru.model_version}
-                onChange={(event) =>
-                  updateMinerU({ model_version: event.target.value })
-                }
+                onChange={(event) => updateMinerU({ model_version: event.target.value })}
                 className={DENSE_SELECT}
               >
                 <option value="vlm">VLM</option>
@@ -201,14 +168,10 @@ export function ParserServicesSection({
                 className={DENSE_INPUT}
                 type="password"
                 value={mineru.api_token}
-                onChange={(event) =>
-                  updateMinerU({ api_token: event.target.value })
-                }
+                onChange={(event) => updateMinerU({ api_token: event.target.value })}
                 placeholder="本地服务已配置时可留空"
               />
-              <div className={FIELD_HINT}>
-                只用于在线 MinerU，本地部署时可留空
-              </div>
+              <div className={FIELD_HINT}>只用于在线 MinerU，本地部署时可留空</div>
             </div>
           </div>
         </div>
@@ -227,23 +190,17 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={etl4llm.api_url}
-                onChange={(event) =>
-                  updateEtl4Llm({ api_url: event.target.value })
-                }
+                onChange={(event) => updateEtl4Llm({ api_url: event.target.value })}
                 placeholder="http://localhost:10001/v1/etl4llm/predict"
               />
-              <div className={FIELD_HINT}>
-                ETL4LLM 解析服务入口
-              </div>
+              <div className={FIELD_HINT}>ETL4LLM 解析服务入口</div>
             </div>
 
             <div className="space-y-2">
               <div className={FIELD_LABEL}>解析模式（mode）</div>
               <select
                 value={etl4llm.mode}
-                onChange={(event) =>
-                  updateEtl4Llm({ mode: event.target.value })
-                }
+                onChange={(event) => updateEtl4Llm({ mode: event.target.value })}
                 className={DENSE_SELECT}
               >
                 <option value="partition">版面结构（partition）</option>
@@ -260,20 +217,16 @@ export function ParserServicesSection({
                 value={etl4llm.timeout_sec}
                 onChange={(event) =>
                   updateEtl4Llm({
-                    timeout_sec:
-                      Number.parseInt(event.target.value || '0', 10) || 120,
+                    timeout_sec: Number(event.target.value || '0') || 120,
                   })
                 }
               />
             </div>
-
           </div>
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[13px] font-medium text-foreground/80">
-                强制 OCR
-              </div>
+              <div className="text-[13px] font-medium text-foreground/80">强制 OCR</div>
               <div className={FIELD_HINT}>扫描件/图片型 PDF 建议开启</div>
             </div>
             <TogglePill
@@ -285,41 +238,31 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[13px] font-medium text-foreground/80">
-                提取图片
-              </div>
+              <div className="text-[13px] font-medium text-foreground/80">提取图片</div>
               <div className={FIELD_HINT}>输出图片引用用于预览/入库</div>
             </div>
             <TogglePill
               enabled={etl4llm.extract_images}
-              onClick={() =>
-                updateEtl4Llm({ extract_images: !etl4llm.extract_images })
-              }
+              onClick={() => updateEtl4Llm({ extract_images: !etl4llm.extract_images })}
               label="切换提取图片"
             />
           </div>
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[13px] font-medium text-foreground/80">
-                公式识别
-              </div>
+              <div className="text-[13px] font-medium text-foreground/80">公式识别</div>
               <div className={FIELD_HINT}>尽量保留公式/LaTeX 输出</div>
             </div>
             <TogglePill
               enabled={etl4llm.enable_formula}
-              onClick={() =>
-                updateEtl4Llm({ enable_formula: !etl4llm.enable_formula })
-              }
+              onClick={() => updateEtl4Llm({ enable_formula: !etl4llm.enable_formula })}
               label="切换公式识别"
             />
           </div>
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[13px] font-medium text-foreground/80">
-                过滤页眉页脚
-              </div>
+              <div className="text-[13px] font-medium text-foreground/80">过滤页眉页脚</div>
               <div className={FIELD_HINT}>减少检索噪音（若服务支持）</div>
             </div>
             <TogglePill
@@ -370,8 +313,7 @@ export function ParserServicesSection({
                 value={docling.request_timeout_sec}
                 onChange={(event) =>
                   updateDocling({
-                    request_timeout_sec:
-                      Number.parseInt(event.target.value || '0', 10) || 600,
+                    request_timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
@@ -397,8 +339,7 @@ export function ParserServicesSection({
                 value={docling.health_timeout_sec}
                 onChange={(event) =>
                   updateDocling({
-                    health_timeout_sec:
-                      Number.parseInt(event.target.value || '0', 10) || 5,
+                    health_timeout_sec: Number(event.target.value || '0') || 5,
                   })
                 }
               />
@@ -444,14 +385,10 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={marker.api_url}
-                onChange={(event) =>
-                  updateMarker({ api_url: event.target.value })
-                }
+                onChange={(event) => updateMarker({ api_url: event.target.value })}
                 placeholder="http://localhost:2080/convert"
               />
-              <div className={FIELD_HINT}>
-                Marker 解析服务入口
-              </div>
+              <div className={FIELD_HINT}>Marker 解析服务入口</div>
             </div>
 
             <div className="space-y-2">
@@ -463,8 +400,7 @@ export function ParserServicesSection({
                 value={marker.timeout_sec}
                 onChange={(event) =>
                   updateMarker({
-                    timeout_sec:
-                      Number.parseInt(event.target.value || '0', 10) || 600,
+                    timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
@@ -487,14 +423,10 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={paddleVl.api_url}
-                onChange={(event) =>
-                  updatePaddleVL({ api_url: event.target.value })
-                }
+                onChange={(event) => updatePaddleVL({ api_url: event.target.value })}
                 placeholder="http://localhost:9030/convert"
               />
-              <div className={FIELD_HINT}>
-                PaddleOCR-VL 解析服务入口
-              </div>
+              <div className={FIELD_HINT}>PaddleOCR-VL 解析服务入口</div>
             </div>
 
             <div className="space-y-2">
@@ -506,8 +438,7 @@ export function ParserServicesSection({
                 value={paddleVl.timeout_sec}
                 onChange={(event) =>
                   updatePaddleVL({
-                    timeout_sec:
-                      Number.parseInt(event.target.value || '0', 10) || 600,
+                    timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
@@ -530,14 +461,10 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={textIn.api_url}
-                onChange={(event) =>
-                  updateTextIn({ api_url: event.target.value })
-                }
+                onChange={(event) => updateTextIn({ api_url: event.target.value })}
                 placeholder="https://api.textin.com/ai/service/v1/pdf_to_markdown"
               />
-              <div className={FIELD_HINT}>
-                TextIn 文档解析服务入口
-              </div>
+              <div className={FIELD_HINT}>TextIn 文档解析服务入口</div>
             </div>
 
             <div className="space-y-2">
@@ -549,8 +476,7 @@ export function ParserServicesSection({
                 value={textIn.timeout_sec}
                 onChange={(event) =>
                   updateTextIn({
-                    timeout_sec:
-                      Number.parseInt(event.target.value || '0', 10) || 180,
+                    timeout_sec: Number(event.target.value || '0') || 180,
                   })
                 }
               />
@@ -561,9 +487,7 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={textIn.app_id}
-                onChange={(event) =>
-                  updateTextIn({ app_id: event.target.value })
-                }
+                onChange={(event) => updateTextIn({ app_id: event.target.value })}
                 placeholder="你的 TextIn APP ID"
               />
             </div>
@@ -574,9 +498,7 @@ export function ParserServicesSection({
                 className={DENSE_INPUT}
                 type="password"
                 value={textIn.secret_code}
-                onChange={(event) =>
-                  updateTextIn({ secret_code: event.target.value })
-                }
+                onChange={(event) => updateTextIn({ secret_code: event.target.value })}
                 placeholder="你的 TextIn Secret Code"
               />
             </div>
@@ -585,9 +507,7 @@ export function ParserServicesSection({
               <div className={FIELD_LABEL}>解析模式</div>
               <select
                 value={textIn.parse_mode}
-                onChange={(event) =>
-                  updateTextIn({ parse_mode: event.target.value })
-                }
+                onChange={(event) => updateTextIn({ parse_mode: event.target.value })}
                 className={DENSE_SELECT}
               >
                 <option value="auto">auto</option>
@@ -602,9 +522,7 @@ export function ParserServicesSection({
               <div className={FIELD_LABEL}>表格输出</div>
               <select
                 value={textIn.table_flavor}
-                onChange={(event) =>
-                  updateTextIn({ table_flavor: event.target.value })
-                }
+                onChange={(event) => updateTextIn({ table_flavor: event.target.value })}
                 className={DENSE_SELECT}
               >
                 <option value="html">html</option>
@@ -621,7 +539,7 @@ export function ParserServicesSection({
                 value={textIn.dpi}
                 onChange={(event) =>
                   updateTextIn({
-                    dpi: Number.parseInt(event.target.value || '0', 10) || 144,
+                    dpi: Number(event.target.value || '0') || 144,
                   })
                 }
               />
@@ -636,20 +554,16 @@ export function ParserServicesSection({
                 value={textIn.page_count}
                 onChange={(event) =>
                   updateTextIn({
-                    page_count:
-                      Number.parseInt(event.target.value || '0', 10) || 0,
+                    page_count: Number(event.target.value || '0') || 0,
                   })
                 }
               />
             </div>
-
           </div>
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[13px] font-medium text-foreground/80">
-                应用文档树
-              </div>
+              <div className="text-[13px] font-medium text-foreground/80">应用文档树</div>
               <div className={FIELD_HINT}>尽量保留标题层级 / 文档结构</div>
             </div>
             <TogglePill
@@ -665,16 +579,12 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[13px] font-medium text-foreground/80">
-                Markdown 细节增强
-              </div>
+              <div className="text-[13px] font-medium text-foreground/80">Markdown 细节增强</div>
               <div className={FIELD_HINT}>返回更丰富的 Markdown 结构</div>
             </div>
             <TogglePill
               enabled={textIn.markdown_details}
-              onClick={() =>
-                updateTextIn({ markdown_details: !textIn.markdown_details })
-              }
+              onClick={() => updateTextIn({ markdown_details: !textIn.markdown_details })}
               label="切换 Markdown 细节增强"
             />
           </div>
@@ -693,9 +603,7 @@ export function ParserServicesSection({
               <div className={FIELD_LABEL}>解析方法（method）</div>
               <select
                 value={magicPdf.method}
-                onChange={(event) =>
-                  updateMagicPDF({ method: event.target.value })
-                }
+                onChange={(event) => updateMagicPDF({ method: event.target.value })}
                 className={DENSE_SELECT}
               >
                 <option value="auto">自动（auto）</option>
@@ -709,9 +617,7 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={magicPdf.lang}
-                onChange={(event) =>
-                  updateMagicPDF({ lang: event.target.value })
-                }
+                onChange={(event) => updateMagicPDF({ lang: event.target.value })}
                 placeholder='例如"ch"'
               />
             </div>
@@ -725,8 +631,7 @@ export function ParserServicesSection({
                 value={magicPdf.timeout_sec}
                 onChange={(event) =>
                   updateMagicPDF({
-                    timeout_sec:
-                      Number.parseInt(event.target.value || '0', 10) || 600,
+                    timeout_sec: Number(event.target.value || '0') || 600,
                   })
                 }
               />
@@ -737,14 +642,10 @@ export function ParserServicesSection({
               <Input
                 className={DENSE_INPUT}
                 value={magicPdf.models_dir}
-                onChange={(event) =>
-                  updateMagicPDF({ models_dir: event.target.value })
-                }
+                onChange={(event) => updateMagicPDF({ models_dir: event.target.value })}
                 placeholder="/opt/mimirq-model-cache/.../PDF-Extract-Kit-1.0/.../models"
               />
-              <div className={FIELD_HINT}>
-                留空时后端会自动查找 Docker 挂载的 MinerU / PDF-Extract-Kit 模型缓存
-              </div>
+              <div className={FIELD_HINT}>留空时后端会自动查找 Docker 挂载的 MinerU / PDF-Extract-Kit 模型缓存</div>
             </div>
 
             <div className="space-y-2">
@@ -752,9 +653,7 @@ export function ParserServicesSection({
               <select
                 className={DENSE_SELECT}
                 value={magicPdf.device_mode || 'cpu'}
-                onChange={(event) =>
-                  updateMagicPDF({ device_mode: event.target.value })
-                }
+                onChange={(event) => updateMagicPDF({ device_mode: event.target.value })}
               >
                 <option value="cpu">CPU</option>
                 <option value="cuda">CUDA / GPU</option>
@@ -764,18 +663,12 @@ export function ParserServicesSection({
 
           <div className="flex items-center justify-between border-t border-border/70 pt-3">
             <div>
-              <div className="text-[13px] font-medium text-foreground/80">
-                保留解析产物
-              </div>
-              <div className={FIELD_HINT}>
-                默认会在入库流程完成后清理 `.magicpdf/` 目录
-              </div>
+              <div className="text-[13px] font-medium text-foreground/80">保留解析产物</div>
+              <div className={FIELD_HINT}>默认会在入库流程完成后清理 `.magicpdf/` 目录</div>
             </div>
             <TogglePill
               enabled={magicPdf.keep_artifacts}
-              onClick={() =>
-                updateMagicPDF({ keep_artifacts: !magicPdf.keep_artifacts })
-              }
+              onClick={() => updateMagicPDF({ keep_artifacts: !magicPdf.keep_artifacts })}
               label="切换保留解析产物"
             />
           </div>

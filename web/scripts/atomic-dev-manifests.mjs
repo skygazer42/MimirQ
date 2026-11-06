@@ -21,18 +21,27 @@ export function createAtomicManifestFileSystem(fileSystem) {
       return
     }
     const temporary = `${filename}.ragvia-${process.pid}-${randomUUID()}.tmp`
-    fileSystem.writeFile(temporary, content, ...args, error => {
-      if (error) { callback(error); return }
+    fileSystem.writeFile(temporary, content, ...args, (error) => {
+      if (error) {
+        callback(error)
+        return
+      }
       // Both files live in the same directory, so replacement is atomic.
       // Windows static-file readers can briefly hold a sharing lock. Keep the
       // previous complete asset visible while retrying only that measured case.
-      const publish = attempt => fileSystem.rename(temporary, filename, renameError => {
-        if (renameError && process.platform === 'win32' && ['EPERM', 'EBUSY'].includes(renameError.code) && attempt < SHARING_LOCK_DELAYS.length) {
-          setTimeout(() => publish(attempt + 1), SHARING_LOCK_DELAYS[attempt])
-          return
-        }
-        callback(renameError)
-      })
+      const publish = (attempt) =>
+        fileSystem.rename(temporary, filename, (renameError) => {
+          if (
+            renameError &&
+            process.platform === 'win32' &&
+            ['EPERM', 'EBUSY'].includes(renameError.code) &&
+            attempt < SHARING_LOCK_DELAYS.length
+          ) {
+            setTimeout(() => publish(attempt + 1), SHARING_LOCK_DELAYS[attempt])
+            return
+          }
+          callback(renameError)
+        })
       publish(0)
     })
   }

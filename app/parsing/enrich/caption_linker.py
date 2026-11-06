@@ -1,4 +1,3 @@
-
 import re
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -29,19 +28,19 @@ def _bbox(value: Any) -> dict[str, int] | None:
 
 
 def _caption_pattern(media_kind: str) -> re.Pattern[str]:
-    return _TABLE_CAPTION_RE if str(media_kind or "").strip().lower() == "table" else _FIGURE_CAPTION_RE
+    return _TABLE_CAPTION_RE if media_kind.strip().lower() == "table" else _FIGURE_CAPTION_RE
 
 
 def _vertical_gap(a: Mapping[str, int], b: Mapping[str, int]) -> int:
-    if int(a["y1"]) <= int(b["y0"]):
-        return int(b["y0"]) - int(a["y1"])
-    if int(b["y1"]) <= int(a["y0"]):
-        return int(a["y0"]) - int(b["y1"])
+    if a["y1"] <= b["y0"]:
+        return b["y0"] - a["y1"]
+    if b["y1"] <= a["y0"]:
+        return a["y0"] - b["y1"]
     return 0
 
 
 def _horizontal_overlap(a: Mapping[str, int], b: Mapping[str, int]) -> int:
-    return max(0, min(int(a["x1"]), int(b["x1"])) - max(int(a["x0"]), int(b["x0"])))
+    return max(0, min(a["x1"], b["x1"]) - max(a["x0"], b["x0"]))
 
 
 def find_nearest_caption(
@@ -60,7 +59,7 @@ def find_nearest_caption(
     for raw in elements or []:
         if not isinstance(raw, Mapping):
             continue
-        if _coerce_int(raw.get("page")) != int(page):
+        if _coerce_int(raw.get("page")) != page:
             continue
         text = str(raw.get("text") or "").strip()
         if not pattern.match(text):
@@ -69,7 +68,7 @@ def find_nearest_caption(
         if candidate_bbox is None:
             continue
         gap = _vertical_gap(candidate_bbox, media_bbox)
-        if gap > int(max_vertical_gap):
+        if gap > max_vertical_gap:
             continue
         overlap = _horizontal_overlap(candidate_bbox, media_bbox)
         candidates.append((gap, -overlap, raw))
@@ -79,7 +78,7 @@ def find_nearest_caption(
     return {
         "id": str(selected.get("id") or ""),
         "text": str(selected.get("text") or "").strip(),
-        "page": int(page),
+        "page": page,
         "bbox": dict(_bbox(selected.get("bbox")) or {}),
         "source_element_id": selected.get("source_element_id"),
     }

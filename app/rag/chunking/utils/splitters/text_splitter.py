@@ -47,7 +47,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
         length_function: Callable[[list[str]], list[int]] = lambda x: [len(s) for s in x],
         keep_separator: bool = False,
         add_start_index: bool = False,
-    ):
+    ) -> None:
         """Create a new TextSplitter.
 
         Args:
@@ -71,7 +71,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
     def split_text(self, text: str) -> list[str]:
         """Split text into multiple components."""
 
-    def create_documents(self, texts: list[str], metadatas: list[dict] | None = None) -> list[Document]:
+    def create_documents(self, texts: list[str], metadatas: list[dict[str, Any]] | None = None) -> list[Document]:
         """Create documents from a list of texts."""
         _metadatas = metadatas or [{}] * len(texts)
         documents = []
@@ -143,6 +143,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
 
         def _huggingface_tokenizer_length(text: str) -> int:
             return len(tokenizer.encode(text))
+
         return cls(length_function=lambda x: [_huggingface_tokenizer_length(text) for text in x], **kwargs)
 
     def transform_documents(self, documents: Sequence[Document], **kwargs: Any) -> Sequence[Document]:
@@ -157,6 +158,7 @@ class TextSplitter(BaseDocumentTransformer, ABC):
 @dataclass(frozen=True)
 class Tokenizer:
     """Tokenizer configuration for token-based splitting."""
+
     chunk_overlap: int
     tokens_per_chunk: int
     decode: Callable[[list[int]], str]
@@ -188,7 +190,7 @@ class TokenTextSplitter(TextSplitter):
         allowed_special: Literal["all"] | Set[str] | None = None,
         disallowed_special: Literal["all"] | Collection[str] = "all",
         **kwargs: Any,
-    ):
+    ) -> None:
         """Create a new TokenTextSplitter."""
         super().__init__(**kwargs)
         import tiktoken
@@ -231,7 +233,7 @@ class RecursiveCharacterTextSplitter(TextSplitter):
         separators: list[str] | None = None,
         keep_separator: bool = True,
         **kwargs: Any,
-    ):
+    ) -> None:
         """Create a new RecursiveCharacterTextSplitter."""
         super().__init__(keep_separator=keep_separator, **kwargs)
         self._separators = separators or ["\n\n", "\n", " ", ""]

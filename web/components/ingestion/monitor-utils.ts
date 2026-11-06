@@ -1,9 +1,4 @@
-import type {
-  DatasetPrecheckFileOut,
-  DatasetPrecheckNearDupResponse,
-  DatasetPrecheckSummary,
-  Document,
-} from '@/types'
+import type { DatasetPrecheckFileOut, DatasetPrecheckNearDupResponse, DatasetPrecheckSummary, Document } from '@/types'
 
 export type VelocityUnit = 'docs' | 'bytes'
 
@@ -125,13 +120,13 @@ export function computeDocsPerMinute(rows: RealChartRow[]): number | null {
 
   const bucketMs = Math.max(
     1,
-    toFiniteNumber(recent[1]?.t ?? recent[1]?.ts) - toFiniteNumber(recent[0]?.t ?? recent[0]?.ts)
+    toFiniteNumber(recent[1]?.t ?? recent[1]?.ts) - toFiniteNumber(recent[0]?.t ?? recent[0]?.ts),
   )
   if (bucketMs <= 0) return null
 
   const total = recent.reduce(
     (sum, row) => sum + toFiniteNumber(row.completed) + toFiniteNumber(row.failed) + toFiniteNumber(row.quarantined),
-    0
+    0,
   )
   const minutes = (recent.length * bucketMs) / 60_000
   if (minutes <= 0) return null
@@ -193,7 +188,16 @@ function escapeCsvCell(value: unknown): string {
 }
 
 export function serializeDocumentsToCsv(documents: Document[]): string {
-  const header = ['id', 'filename', 'status', 'file_size', 'current_stage', 'error_message', 'created_at', 'processed_at']
+  const header = [
+    'id',
+    'filename',
+    'status',
+    'file_size',
+    'current_stage',
+    'error_message',
+    'created_at',
+    'processed_at',
+  ]
   const rows = documents.map((doc) =>
     [
       doc.id,
@@ -206,7 +210,7 @@ export function serializeDocumentsToCsv(documents: Document[]): string {
       doc.processed_at ?? '',
     ]
       .map(escapeCsvCell)
-      .join(',')
+      .join(','),
   )
 
   return [header.join(','), ...rows].join('\n')
@@ -215,7 +219,7 @@ export function serializeDocumentsToCsv(documents: Document[]): string {
 export async function runWithConcurrencyLimit<TInput, TOutput>(
   items: TInput[],
   limit: number,
-  worker: (item: TInput, index: number) => Promise<TOutput>
+  worker: (item: TInput, index: number) => Promise<TOutput>,
 ): Promise<TOutput[]> {
   if (!items.length) return []
 
@@ -268,7 +272,9 @@ export function getStageTooltip(stage: string | null | undefined): string | null
 }
 
 export function getDocumentKind(filename: string | null | undefined): DocumentKind {
-  const lower = String(filename || '').trim().toLowerCase()
+  const lower = String(filename || '')
+    .trim()
+    .toLowerCase()
   if (lower.endsWith('.pdf')) return 'pdf'
   if (lower.endsWith('.md') || lower.endsWith('.mdx')) return 'markdown'
   if (lower.endsWith('.csv') || lower.endsWith('.xls') || lower.endsWith('.xlsx')) return 'spreadsheet'
@@ -298,19 +304,13 @@ function percentile(sortedValues: number[], percentage: number): number {
   return sortedValues[index]
 }
 
-function getDocumentMetadataNumber(
-  document: Pick<Document, 'metadata'>,
-  key: string
-): number {
+function getDocumentMetadataNumber(document: Pick<Document, 'metadata'>, key: string): number {
   const meta = document.metadata
   if (!meta || typeof meta !== 'object') return 0
   return toFiniteNumber((meta as Record<string, unknown>)[key])
 }
 
-function getDocumentStageDurationMs(
-  document: Pick<Document, 'metadata'>,
-  key: string
-): number {
+function getDocumentStageDurationMs(document: Pick<Document, 'metadata'>, key: string): number {
   const meta = document.metadata
   if (!meta || typeof meta !== 'object') return 0
   const stages = (meta as Record<string, unknown>).ingest_stage_durations_ms
@@ -318,9 +318,7 @@ function getDocumentStageDurationMs(
   return toFiniteNumber((stages as Record<string, unknown>)[key])
 }
 
-function computeDocumentRuntimeDurationMinutes(
-  document: Pick<Document, 'metadata'>
-): number | null {
+function computeDocumentRuntimeDurationMinutes(document: Pick<Document, 'metadata'>): number | null {
   const parseDurationSec = getDocumentMetadataNumber(document, 'parse_duration_sec')
   if (parseDurationSec > 0) return roundTo(parseDurationSec / 60, 2)
 
@@ -331,7 +329,7 @@ function computeDocumentRuntimeDurationMinutes(
 }
 
 function computeDocumentDurationMinutes(
-  document: Pick<Document, 'status' | 'created_at' | 'updated_at' | 'metadata'>
+  document: Pick<Document, 'status' | 'created_at' | 'updated_at' | 'metadata'>,
 ): number | null {
   if (document.status === 'pending' || document.status === 'processing') return null
   const runtimeDuration = computeDocumentRuntimeDurationMinutes(document)
@@ -363,7 +361,7 @@ export function computeDurationPercentiles(documents: Document[]): PercentileSum
   return computePercentiles(
     documents
       .map((document) => computeDocumentDurationMinutes(document))
-      .filter((value): value is number => value != null)
+      .filter((value): value is number => value != null),
   )
 }
 
@@ -432,7 +430,7 @@ export function buildThroughputAreaRows(timeseries: Record<string, unknown[]> | 
 
 export function buildDocumentThroughputAreaRows(
   documents: Document[],
-  options: { bucketMinutes?: number; maxRows?: number } = {}
+  options: { bucketMinutes?: number; maxRows?: number } = {},
 ): ThroughputAreaRow[] {
   const bucketMinutes = Math.max(1, Math.round(toFiniteNumber(options.bucketMinutes) || 60))
   const bucketMs = bucketMinutes * 60_000
@@ -443,9 +441,7 @@ export function buildDocumentThroughputAreaRows(
     const status = String(document.status || '').toLowerCase()
     if (!['completed', 'failed', 'quarantined', 'cancelled'].includes(status)) return
 
-    const timestamp = Date.parse(
-      String(document.processed_at || document.updated_at || document.created_at || '')
-    )
+    const timestamp = Date.parse(String(document.processed_at || document.updated_at || document.created_at || ''))
     if (!Number.isFinite(timestamp)) return
 
     const bucketTs = Math.floor(timestamp / bucketMs) * bucketMs
@@ -476,7 +472,10 @@ export function buildDocumentThroughputAreaRows(
 export function buildLatencyBoxplotRows(documents: Document[]): LatencyBoxplotRows {
   const groups = [
     { label: '已完成', values: documents.filter((document) => document.status === 'completed') },
-    { label: '失败/隔离', values: documents.filter((document) => ['failed', 'quarantined', 'cancelled'].includes(String(document.status))) },
+    {
+      label: '失败/隔离',
+      values: documents.filter((document) => ['failed', 'quarantined', 'cancelled'].includes(String(document.status))),
+    },
   ]
 
   const rows = groups
@@ -527,7 +526,10 @@ export function buildExecutionScatterRows(documents: Document[]): ExecutionScatt
 export function buildFileTypeDistribution(documents: Document[]): Array<{ label: string; count: number }> {
   const counts = new Map<string, number>()
   documents.forEach((doc) => {
-    const label = String(doc.file_type || getDocumentKind(doc.filename) || 'unknown').trim().toUpperCase() || 'UNKNOWN'
+    const label =
+      String(doc.file_type || getDocumentKind(doc.filename) || 'unknown')
+        .trim()
+        .toUpperCase() || 'UNKNOWN'
     counts.set(label, (counts.get(label) ?? 0) + 1)
   })
   return Array.from(counts.entries())
@@ -584,10 +586,13 @@ export function buildPdfDispositionBreakdown(documents: Document[]): Array<{ lab
 
 export function buildSalesAuditProfile(
   summary: DatasetPrecheckSummary,
-  nearDup?: DatasetPrecheckNearDupResponse | null
+  nearDup?: DatasetPrecheckNearDupResponse | null,
 ): SalesAuditProfile {
   const totalFiles = Math.max(1, Number(summary.total_files || 0))
-  const pdfTotal = Number(summary.pdf_scan.scanned || 0) + Number(summary.pdf_scan.not_scanned || 0) + Number(summary.pdf_scan.unknown || 0)
+  const pdfTotal =
+    Number(summary.pdf_scan.scanned || 0) +
+    Number(summary.pdf_scan.not_scanned || 0) +
+    Number(summary.pdf_scan.unknown || 0)
   const ocrCount = Number(summary.pdf_scan.scanned || 0) + Number(summary.pdf_scan.unknown || 0)
   const ocrRatio = pdfTotal > 0 ? ocrCount / pdfTotal : 0
 
@@ -601,7 +606,8 @@ export function buildSalesAuditProfile(
     countFinding(summary, 'pdf_unknown') +
     countFinding(summary, 'pii') +
     countFinding(summary, 'secrets')
-  const dedup = countFinding(summary, 'near_dup') + countFinding(summary, 'exact_dup') + Number(nearDup?.pairs_returned || 0)
+  const dedup =
+    countFinding(summary, 'near_dup') + countFinding(summary, 'exact_dup') + Number(nearDup?.pairs_returned || 0)
 
   const score =
     ocrRatio * 42 +
@@ -638,11 +644,18 @@ export function buildSalesAuditProfile(
 }
 
 export function buildEvidenceSlotTags(file: DatasetPrecheckFileOut): EvidenceSlotTag[] {
-  const findings = new Set((file.findings || []).map((value) => String(value || '').trim().toLowerCase()))
+  const findings = new Set(
+    (file.findings || []).map((value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase(),
+    ),
+  )
   const tags: EvidenceSlotTag[] = []
 
   if (findings.has('parse_failed')) tags.push('PARSE_FAILED')
-  if (file.file_type.toLowerCase() === 'pdf' && (file.pdf_scanned === true || findings.has('pdf_unknown'))) tags.push('OCR_REQUIRED')
+  if (file.file_type.toLowerCase() === 'pdf' && (file.pdf_scanned === true || findings.has('pdf_unknown')))
+    tags.push('OCR_REQUIRED')
   if (
     file.file_type.toLowerCase() === 'csv' ||
     file.file_type.toLowerCase() === 'xls' ||
@@ -656,7 +669,8 @@ export function buildEvidenceSlotTags(file: DatasetPrecheckFileOut): EvidenceSlo
   }
   if (findings.has('pii') || findings.has('secrets')) tags.push('SENSITIVE_REVIEW')
   if (findings.has('near_dup') || findings.has('exact_dup')) tags.push('VERSION_CONFLICT')
-  if (findings.has('low_density_text') || findings.has('pdf_low_density') || findings.has('gibberish_text')) tags.push('LOW_SIGNAL')
+  if (findings.has('low_density_text') || findings.has('pdf_low_density') || findings.has('gibberish_text'))
+    tags.push('LOW_SIGNAL')
 
   if (!tags.length) tags.push('STRAIGHT_THROUGH')
 
@@ -664,7 +678,13 @@ export function buildEvidenceSlotTags(file: DatasetPrecheckFileOut): EvidenceSlo
 }
 
 export function buildEvidenceSlotReason(file: DatasetPrecheckFileOut): string {
-  const findings = new Set((file.findings || []).map((value) => String(value || '').trim().toLowerCase()))
+  const findings = new Set(
+    (file.findings || []).map((value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase(),
+    ),
+  )
 
   if (findings.has('parse_failed')) {
     const message = file.error_message ? `：${file.error_message}` : ''

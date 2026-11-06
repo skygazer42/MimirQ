@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useState } from 'react'
+import type { ChangeEvent as ReactChangeEvent } from 'react'
 
 import { ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 import { useParsingEditorActions } from '@/components/parsing/use-parsing-editor-actions'
@@ -10,7 +11,6 @@ import { useParsingQueueActions } from '@/components/parsing/use-parsing-queue-a
 import { useParsingRunActions } from '@/components/parsing/use-parsing-run-actions'
 import { useParsingViewState } from '@/components/parsing/use-parsing-view-state'
 
-import { bumpParsingProgress, countMarkdownHeadings, mapBackendStatusToLibraryStatus } from './parsing-page-utils'
 import { ParsingWorkbenchShell } from './parsing-workbench-shell'
 import type { ParsedFile } from './parsing-types'
 
@@ -44,14 +44,12 @@ export default function ParsingPage() {
     restoreLibraryFileFromCache,
   } = useParsingLibraryActions({
     activeFolderId,
-    countMarkdownHeadings,
     createFolder,
     fileInputRef: pageState.fileInputRef,
     filesRef: pageState.filesRef,
     folderInputRef: pageState.folderInputRef,
     folders,
     libraryFiles,
-    mapBackendStatusToLibraryStatus,
     parserBackend: pageState.parserBackend,
     selectedDatasetId: pageState.selectedDatasetId,
     rebindInputRef: pageState.rebindInputRef,
@@ -79,7 +77,6 @@ export default function ParsingPage() {
     folders,
     isLibraryLoaded,
     libraryFiles,
-    mapBackendStatusToLibraryStatus,
     mountLibraryFileToQueue,
     rehydratedFolderIdsRef: pageState.rehydratedFolderIdsRef,
     selectedDatasetId: pageState.selectedDatasetId,
@@ -91,7 +88,7 @@ export default function ParsingPage() {
   })
 
   const handleFileSelect = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
+    async (event: ReactChangeEvent<HTMLInputElement>) => {
       const targetFolderId = consumeUploadTargetFolderId()
 
       const selectedFiles = event.target.files ? Array.from(event.target.files) : []
@@ -101,7 +98,7 @@ export default function ParsingPage() {
 
       event.target.value = ''
     },
-    [addFiles, consumeUploadTargetFolderId]
+    [addFiles, consumeUploadTargetFolderId],
   )
 
   const toggleGovernanceFileSelection = useCallback((fileId: string) => {
@@ -135,14 +132,11 @@ export default function ParsingPage() {
   const runActions = useParsingRunActions({
     activeFile: viewState.activeFile,
     autoParseFileId: pageState.autoParseFileId,
-    bumpParsingProgress,
     cancelParse: pageState.cancelParse,
-    countMarkdownHeadings,
     fileIdSetRef: pageState.fileIdSetRef,
     filesRef: pageState.filesRef,
     imageCaptionEnabled: pageState.imageCaptionEnabled,
     imageOcrEnabled: pageState.imageOcrEnabled,
-    mapBackendStatusToLibraryStatus,
     parseControllersRef: pageState.parseControllersRef,
     parseProgressIntervalsRef: pageState.parseProgressIntervalsRef,
     parserBackend: pageState.parserBackend,
@@ -164,7 +158,6 @@ export default function ParsingPage() {
     activeMarkdown: viewState.activeMarkdown,
     activeRun: viewState.activeRun,
     addParsedFile,
-    countMarkdownHeadings,
     editSession: pageState.editSession,
     editedContent: pageState.editedContent,
     files,

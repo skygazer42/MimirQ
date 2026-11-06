@@ -24,15 +24,13 @@ _HTTP2_AVAILABLE = True
 class HTTPClientPool:
     """Global HTTP client pool with connection reuse and concurrency control."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._async_client: httpx.AsyncClient | None = None
         self._async_client_external: httpx.AsyncClient | None = None
         self._sync_client: httpx.Client | None = None
         self._sync_client_external: httpx.Client | None = None
         self._async_lock = threading.Lock()
         self._sync_lock = threading.Lock()
-        # Preserve legacy lock usage for code that expects async locking semantics.
-        self._request_lock = asyncio.Lock()
 
     def _inject_internal_context_headers(self, request: httpx.Request) -> None:
         """
@@ -46,13 +44,13 @@ class HTTPClientPool:
         except Exception:  # noqa: BLE001
             return
 
-        rid = (ctx.get("request_id") or "").strip()
-        tenant_id = (ctx.get("tenant_id") or "").strip()
-        user_id = (ctx.get("user_id") or "").strip()
+        rid = ctx["request_id"].strip()
+        tenant_id = ctx["tenant_id"].strip()
+        user_id = ctx["user_id"].strip()
 
         if rid and "X-Request-ID" not in request.headers:
             request.headers["X-Request-ID"] = rid
-        tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+        tenant_header = (settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
         if tenant_id and tenant_header not in request.headers:
             request.headers[tenant_header] = tenant_id
         if tenant_id and tenant_header.lower() != "x-tenant-id" and "X-Tenant-ID" not in request.headers:
@@ -73,7 +71,7 @@ class HTTPClientPool:
         except Exception:  # noqa: BLE001
             return
 
-        rid = (ctx.get("request_id") or "").strip()
+        rid = ctx["request_id"].strip()
         if rid and "X-Request-ID" not in request.headers:
             request.headers["X-Request-ID"] = rid
 
@@ -87,27 +85,23 @@ class HTTPClientPool:
         await asyncio.sleep(0)
         self._inject_external_context_headers(request)
 
-    # Backwards-compatible name (internal behavior).
-    def _inject_request_context_headers(self, request: httpx.Request) -> None:
-        self._inject_internal_context_headers(request)
-
     def _build_limits(self) -> httpx.Limits:
         return httpx.Limits(
-            max_connections=int(getattr(settings, "HTTP_CLIENT_MAX_CONNECTIONS", 100)),
-            max_keepalive_connections=int(getattr(settings, "HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS", 20)),
-            keepalive_expiry=float(getattr(settings, "HTTP_CLIENT_KEEPALIVE_EXPIRY_SEC", 30.0)),
+            max_connections=settings.HTTP_CLIENT_MAX_CONNECTIONS,
+            max_keepalive_connections=settings.HTTP_CLIENT_MAX_KEEPALIVE_CONNECTIONS,
+            keepalive_expiry=settings.HTTP_CLIENT_KEEPALIVE_EXPIRY_SEC,
         )
 
     def _build_timeout(self) -> httpx.Timeout:
         return httpx.Timeout(
-            connect=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_CONNECT_SEC", 10.0)),
-            read=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_READ_SEC", 60.0)),
-            write=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_WRITE_SEC", 30.0)),
-            pool=float(getattr(settings, "HTTP_CLIENT_TIMEOUT_POOL_SEC", 5.0)),
+            connect=settings.HTTP_CLIENT_TIMEOUT_CONNECT_SEC,
+            read=settings.HTTP_CLIENT_TIMEOUT_READ_SEC,
+            write=settings.HTTP_CLIENT_TIMEOUT_WRITE_SEC,
+            pool=settings.HTTP_CLIENT_TIMEOUT_POOL_SEC,
         )
 
     def _build_http2(self) -> bool:
-        return bool(getattr(settings, "HTTP_CLIENT_HTTP2_ENABLED", True)) and _HTTP2_AVAILABLE
+        return settings.HTTP_CLIENT_HTTP2_ENABLED and _HTTP2_AVAILABLE
 
     def _build_trust_env(self) -> bool:
         return httpx_trust_env(logger=logger)
@@ -252,7 +246,7 @@ class HTTPClientPool:
         await asyncio.sleep(0)
         return self.get_external_async_client()
 
-    async def close(self):
+    async def close(self) -> None:
         """Close the client pool."""
         async_client: httpx.AsyncClient | None
         sync_client: httpx.Client | None
@@ -325,18 +319,14 @@ class HTTPClientPool:
             httpx.HTTPError: Request failure.
         """
         client = await (self.get_external_client() if use_external_client else self.get_client())
-        last_exception = None
+        last_exception: httpx.HTTPError | None = None
 
-        max_retries = int(
-            max_retries if max_retries is not None else getattr(settings, "HTTP_CLIENT_RETRY_MAX_RETRIES", 3)
-        )
-        retry_delay = float(
-            retry_delay if retry_delay is not None else getattr(settings, "HTTP_CLIENT_RETRY_INITIAL_DELAY_SEC", 1.0)
-        )
+        max_retries = max_retries if max_retries is not None else settings.HTTP_CLIENT_RETRY_MAX_RETRIES
+        retry_delay = float(retry_delay if retry_delay is not None else settings.HTTP_CLIENT_RETRY_INITIAL_DELAY_SEC)
         backoff_factor = float(
-            backoff_factor if backoff_factor is not None else getattr(settings, "HTTP_CLIENT_RETRY_BACKOFF_FACTOR", 2.0)
+            backoff_factor if backoff_factor is not None else settings.HTTP_CLIENT_RETRY_BACKOFF_FACTOR
         )
-        jitter = float(jitter if jitter is not None else getattr(settings, "HTTP_CLIENT_RETRY_JITTER_SEC", 0.0))
+        jitter = float(jitter if jitter is not None else settings.HTTP_CLIENT_RETRY_JITTER_SEC)
 
         current_delay = retry_delay
 
@@ -364,7 +354,7 @@ class HTTPClientPool:
 
             except httpx.HTTPStatusError as e:
                 # Retry on 5xx/429; raise other 4xx errors.
-                status = int(getattr(e.response, "status_code", 0) or 0)
+                status = e.response.status_code
                 retryable = status >= 500 or status == 429
                 if retryable and attempt < max_retries:
                     last_exception = e
@@ -402,19 +392,19 @@ class HTTPClientPool:
         # Should not reach here.
         raise RuntimeError("Unexpected error in request_with_retry")
 
-    async def get(self, url: str, **kwargs) -> httpx.Response:
+    async def get(self, url: str, **kwargs: Any) -> httpx.Response:
         """GET request (with retry)."""
         return await self.request_with_retry("GET", url, **kwargs)
 
-    async def post(self, url: str, **kwargs) -> httpx.Response:
+    async def post(self, url: str, **kwargs: Any) -> httpx.Response:
         """POST request (with retry)."""
         return await self.request_with_retry("POST", url, **kwargs)
 
-    async def put(self, url: str, **kwargs) -> httpx.Response:
+    async def put(self, url: str, **kwargs: Any) -> httpx.Response:
         """PUT request (with retry)."""
         return await self.request_with_retry("PUT", url, **kwargs)
 
-    async def delete(self, url: str, **kwargs) -> httpx.Response:
+    async def delete(self, url: str, **kwargs: Any) -> httpx.Response:
         """DELETE request (with retry)."""
         return await self.request_with_retry("DELETE", url, **kwargs)
 
@@ -431,7 +421,7 @@ def get_http_client_pool() -> HTTPClientPool:
     return _http_client_pool
 
 
-async def close_http_client_pool():
+async def close_http_client_pool() -> None:
     """Close the global HTTP client pool."""
     global _http_client_pool
     if _http_client_pool is not None:

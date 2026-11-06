@@ -4,17 +4,14 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { normalizeTags } from '@/lib/document-user-tags'
 
-export function DocumentTags({
-  tags,
-  max = 4,
-  className,
-  dense = false,
-}: Readonly<{
+type DocumentTagsProps = {
   tags: unknown
   max?: number
   className?: string
   dense?: boolean
-}>) {
+}
+
+export function DocumentTags({ tags, max = 4, className, dense = false }: Readonly<DocumentTagsProps>) {
   const normalized = React.useMemo(() => normalizeTags(tags), [tags])
   const cap = Math.max(0, Math.min(50, Number(max || 0)))
   if (!normalized.length) return null

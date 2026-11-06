@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         "reason": "not_triggered",
     }
     exit_code = 0
-    if bool(trigger.get("triggered")) and bool(args.apply_rollback):
+    if trigger.get("triggered") and args.apply_rollback:
         try:
             active = rollback_active_model(actor_id=str(args.actor_id or "").strip() or None)
             rollback_payload = {
@@ -76,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
             "windows_file": str(windows_path),
             "metric_key": str(args.metric_key or "delta.mrr"),
             "max_allowed_delta": float(args.max_allowed_delta),
-            "min_consecutive_windows": int(max(1, int(args.min_consecutive_windows or 1))),
+            "min_consecutive_windows": max(1, int(args.min_consecutive_windows or 1)),
             "apply_rollback": bool(args.apply_rollback),
         },
         "trigger": trigger,
@@ -92,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
         f"[ltr-online-rollback] triggered={bool(trigger.get('triggered'))} "
         f"applied={bool(rollback_payload.get('applied'))}"
     )
-    return int(exit_code)
+    return exit_code
 
 
 if __name__ == "__main__":

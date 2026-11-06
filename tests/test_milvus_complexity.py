@@ -27,7 +27,7 @@ def test_build_milvus_metadata_expr_translates_supported_clauses_and_indexed_fil
     expr = _build_milvus_metadata_expr(supported)
 
     assert expr is not None
-    assert 'page_number >= 3' in expr
+    assert "page_number >= 3" in expr
     assert 'source == "report"' in expr
     assert 'indexed_meta_01_key == "region"' in expr
     assert 'indexed_meta_01_value in ["east", "west"]' in expr

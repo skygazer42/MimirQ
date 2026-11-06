@@ -12,7 +12,6 @@ Usage:
     result = await client.call_tool("search", {"query": "example"})
 """
 
-
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -29,29 +28,33 @@ logger = get_logger("rag.tools.mcp_client")
 
 
 # Configuration
-MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
-MCP_SERVER_URL = getattr(settings, "MCP_SERVER_URL", "")
-MCP_TIMEOUT = getattr(settings, "MCP_TIMEOUT", 30)
-MCP_MAX_RETRIES = getattr(settings, "MCP_MAX_RETRIES", 3)
+MCP_ENABLED = settings.MCP_ENABLED
+MCP_SERVER_URL = settings.MCP_SERVER_URL
+MCP_TIMEOUT = settings.MCP_TIMEOUT
+MCP_MAX_RETRIES = settings.MCP_MAX_RETRIES
 
 
 class MCPError(Exception):
     """Base exception for MCP errors."""
+
     pass
 
 
 class MCPConnectionError(MCPError):
     """Connection error to MCP server."""
+
     pass
 
 
 class MCPToolError(MCPError):
     """Error executing MCP tool."""
+
     pass
 
 
 class ToolType(str, Enum):
     """Types of MCP tools."""
+
     FUNCTION = "function"
     RESOURCE = "resource"
     PROMPT = "prompt"
@@ -60,6 +63,7 @@ class ToolType(str, Enum):
 @dataclass
 class ToolParameter:
     """Tool parameter definition."""
+
     name: str
     type: str
     description: str = ""
@@ -82,6 +86,7 @@ class ToolParameter:
 @dataclass
 class MCPTool:
     """MCP tool definition."""
+
     name: str
     description: str
     type: ToolType = ToolType.FUNCTION
@@ -91,10 +96,7 @@ class MCPTool:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MCPTool":
-        params = [
-            ToolParameter.from_dict(p)
-            for p in data.get("parameters", [])
-        ]
+        params = [ToolParameter.from_dict(p) for p in data.get("parameters", [])]
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
@@ -134,6 +136,7 @@ class MCPTool:
 @dataclass
 class ToolResult:
     """Result from MCP tool execution."""
+
     success: bool
     data: Any = None
     error: str | None = None
@@ -154,7 +157,7 @@ class MCPClient:
         timeout: int = 30,
         max_retries: int = 3,
         headers: dict[str, str] | None = None,
-    ):
+    ) -> None:
         """
         Initialize the MCP client.
 
@@ -219,7 +222,7 @@ class MCPClient:
                     raise MCPConnectionError(f"Connection error: {e}") from e
 
             # Wait before retry
-            await asyncio.sleep(2 ** attempt)
+            await asyncio.sleep(2**attempt)
 
         raise MCPError("Max retries exceeded")
 
@@ -399,7 +402,7 @@ class MCPToolRegistry:
     Manages both remote MCP tools and local tool implementations.
     """
 
-    def __init__(self, mcp_client: MCPClient | None = None):
+    def __init__(self, mcp_client: MCPClient | None = None) -> None:
         """
         Initialize the registry.
 
@@ -407,13 +410,13 @@ class MCPToolRegistry:
             mcp_client: MCP client instance
         """
         self.mcp_client = mcp_client
-        self._local_tools: dict[str, Callable] = {}
+        self._local_tools: dict[str, Callable[..., Any]] = {}
         self._tool_schemas: dict[str, MCPTool] = {}
 
     def register(
         self,
         name: str,
-        func: Callable,
+        func: Callable[..., Any],
         description: str = "",
         parameters: list[ToolParameter] | None = None,
     ) -> "MCPToolRegistry":
@@ -476,7 +479,7 @@ class MCPToolRegistry:
         arguments = arguments or {}
 
         chain = None
-        if bool(getattr(settings, "MIDDLEWARE_ENABLED", True)):
+        if settings.MIDDLEWARE_ENABLED:
             from app.rag.middleware import ToolMiddlewareChain
 
             chain = ToolMiddlewareChain()

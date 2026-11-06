@@ -1,8 +1,4 @@
-import type {
-  DeltaDirection,
-  SnapshotInlineStatTone,
-  SnapshotStudioNode,
-} from './types'
+import type { DeltaDirection, SnapshotInlineStatTone, SnapshotStudioNode } from './types'
 
 export const DIFF_KEYS = ['docs', 'events', 'entities', 'links', 'relations'] as const
 

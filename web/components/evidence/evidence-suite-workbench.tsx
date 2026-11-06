@@ -15,5 +15,20 @@ export function EvidenceSuiteWorkbench({
 }>) {
   const router = useRouter()
   const state = useEvidenceSuiteWorkbenchState(datasetId, { initialFeedbackId })
-  return <OperationalWorkspace title="证据库" icon="knowledge-base" mode="canvas" context={state.dataset?.name ?? (state.datasetLoading ? '正在读取数据集…' : '数据集未取得')} back={() => router.push('/datasets')} actions={<Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/profile`)}>数据画像</Button>}><EvidenceSuiteWorkbenchShell {...state} /></OperationalWorkspace>
+  return (
+    <OperationalWorkspace
+      title="证据库"
+      icon="knowledge-base"
+      mode="canvas"
+      context={state.dataset?.name ?? (state.datasetLoading ? '正在读取数据集…' : '数据集未取得')}
+      back={() => router.push('/datasets')}
+      actions={
+        <Button variant="outline" onClick={() => router.push(`/datasets/${datasetId}/profile`)}>
+          数据画像
+        </Button>
+      }
+    >
+      <EvidenceSuiteWorkbenchShell {...state} />
+    </OperationalWorkspace>
+  )
 }

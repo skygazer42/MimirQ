@@ -5,7 +5,6 @@ These templates store a partial RAG config patch (retrieval/rerank knobs) that c
 selected via template_id / template_key / ab_experiment_key (stable routing).
 """
 
-
 from datetime import datetime
 from uuid import UUID
 
@@ -97,4 +96,3 @@ class RagConfigTemplateOut(OrmModel):
 class RagConfigTemplateList(BaseModel):
     total: int = Field(..., description="Total number of templates matching filters")
     items: list[RagConfigTemplateOut] = Field(..., description="List of RAG config templates")
-

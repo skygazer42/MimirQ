@@ -55,7 +55,7 @@ _SERVER_API_KEY = (
     or ""
 ).strip()
 _MAX_TOKENS = max(256, _get_int_env("QIANFAN_OCR_MAX_TOKENS", 4096))
-_TEMPERATURE = float(_get_float_env("QIANFAN_OCR_TEMPERATURE", 0.0))
+_TEMPERATURE = _get_float_env("QIANFAN_OCR_TEMPERATURE", 0.0)
 _DEFAULT_LAYOUT_AS_THOUGHT = _get_bool_env("QIANFAN_OCR_LAYOUT_AS_THOUGHT", False)
 _LAYOUT_TRIGGER = (os.environ.get("QIANFAN_OCR_LAYOUT_TRIGGER") or "").strip()
 _DEFAULT_MARKDOWN_PROMPT = (
@@ -90,7 +90,7 @@ async def _read_upload(file: UploadFile) -> bytes:
 
 
 def _build_api_url() -> str:
-    base = (_SERVER_URL or "").rstrip("/")
+    base = _SERVER_URL.rstrip("/")
     if not base:
         raise RuntimeError("QIANFAN_OCR_SERVER_URL is empty")
     if base.endswith("/chat/completions"):
@@ -134,7 +134,7 @@ def _extract_message_text(payload: Any) -> str:
 
 
 def _normalize_output(text: str) -> str:
-    out = str(text or "").strip()
+    out = text.strip()
     out = _REF_RE.sub("", out)
     out = _DET_RE.sub("", out)
     if _STRIP_THINK_TAGS:
@@ -171,8 +171,8 @@ def _call_qianfan_ocr(*, image_bytes: bytes, layout_as_thought: bool) -> str:
     if _SERVER_API_KEY:
         headers["Authorization"] = f"Bearer {_SERVER_API_KEY}"
 
-    resp = requests.post(_build_api_url(), headers=headers, json=payload, timeout=float(_TIMEOUT_SEC))
-    if int(getattr(resp, "status_code", 0) or 0) != 200:
+    resp = requests.post(_build_api_url(), headers=headers, json=payload, timeout=_TIMEOUT_SEC)
+    if resp.status_code != 200:
         raise RuntimeError(f"upstream_error {resp.status_code}: {(resp.text or '')[:500]}")
 
     data = resp.json()
@@ -215,11 +215,11 @@ def _ocr_pages_parallel(pages: list[bytes], *, layout_as_thought: bool) -> list[
 
 def _render_page_markdown(results: list[str]) -> tuple[str, int]:
     if len(results) == 1:
-        return (results[0] or "").strip(), 1
+        return results[0].strip(), 1
 
     blocks: list[str] = []
     for index, text in enumerate(results, start=1):
-        text0 = (text or "").strip()
+        text0 = text.strip()
         if not text0:
             continue
         blocks.append(f"<!-- page {index} -->\n{text0}")
@@ -295,6 +295,6 @@ async def convert(
     return {
         "markdown": markdown,
         "output_format": "markdown",
-        "pages": int(page_count),
-        "layout_as_thought": bool(layout),
+        "pages": page_count,
+        "layout_as_thought": layout,
     }

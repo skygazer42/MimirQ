@@ -21,7 +21,7 @@ import json
 import uuid
 from collections.abc import AsyncGenerator, Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, NamedTuple, TypedDict
 from uuid import UUID
 
 import httpx
@@ -30,12 +30,30 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _looks_like_local_image_id
 from app.storage.object.minio import MinIOService
 
 logger = get_logger("rag.multimodal.vision_reader")
 
+
+def select_image_evidence(docs: Iterable[Document]) -> list[Document]:
+    """Keep image references already returned by authorized document retrieval."""
+    return [doc for doc in docs if doc.metadata.get("img_id") or doc.metadata.get("image_id")]
+
+
 _NIL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 _DEFAULT_IMAGE_MIME_TYPE = "image/jpeg"
+
+
+class _VisionImageBlock(TypedDict):
+    type: Literal["image_url"]
+    image_url: dict[str, str]
+
+
+class _VisionReaderLimits(NamedTuple):
+    max_images: int
+    max_image_bytes: int
+    max_output_chars: int
 
 
 def _guess_mime_type(image_bytes: bytes) -> str:
@@ -61,6 +79,13 @@ def _chat_completions_url(api_base: str) -> str:
     if not base:
         return ""
     return f"{base}/chat/completions"
+
+
+def _image_url_block(image_bytes: bytes) -> _VisionImageBlock:
+    mime_type = _guess_mime_type(image_bytes)
+    encoded = base64.b64encode(image_bytes).decode("utf-8")
+    data_url = f"data:{mime_type};base64,{encoded}"
+    return {"type": "image_url", "image_url": {"url": data_url}}
 
 
 def _stable_vision_reader_chunk_id(origin_chunk_id: str) -> str:
@@ -168,6 +193,18 @@ async def _load_image_bytes(
     """
     img_id = str(meta.get("img_id") or "").strip() or None
     image_id = str(meta.get("image_id") or "").strip() or None
+
+    if img_id and _looks_like_local_image_id(img_id):
+        image_id = img_id
+        img_id = None
+
+    if img_id and ":" in img_id:
+        try:
+            image_tenant_id = UUID(img_id.split(":", 1)[0])
+        except ValueError:
+            return None, "invalid_image_tenant"
+        if image_tenant_id != tenant_id:
+            return None, "image_tenant_mismatch"
 
     if img_id:
         data = await asyncio.to_thread(_load_image_bytes_from_minio_sync, img_id=img_id, max_bytes=max_bytes)
@@ -302,9 +339,7 @@ async def _describe_with_vision_llm(
     if not url:
         raise RuntimeError("vision_llm_missing_api_base")
 
-    mime_type = _guess_mime_type(image_bytes)
-    encoded = base64.b64encode(image_bytes).decode("utf-8")
-    data_url = f"data:{mime_type};base64,{encoded}"
+    image_block = _image_url_block(image_bytes)
 
     payload = _vision_llm_payload(
         model=model,
@@ -313,7 +348,7 @@ async def _describe_with_vision_llm(
                 "role": "user",
                 "content": [
                     {"type": "text", "text": str(prompt or "")},
-                    {"type": "image_url", "image_url": {"url": data_url}},
+                    image_block,
                 ],
             }
         ],
@@ -346,7 +381,7 @@ async def build_vision_image_blocks(
     tenant_id: UUID | None,
     max_images: int,
     max_image_bytes: int,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[list[_VisionImageBlock], dict[str, Any]]:
     """
     Build OpenAI-compatible image_url blocks from injected image docs.
 
@@ -359,14 +394,14 @@ async def build_vision_image_blocks(
         "succeeded": 0,
         "skipped": 0,
         "errors": [],
-        "max_images": int(max_images_i),
-        "max_image_bytes": int(max_bytes_i),
+        "max_images": max_images_i,
+        "max_image_bytes": max_bytes_i,
     }
 
     if not image_docs or max_images_i <= 0:
         return [], meta
 
-    blocks: list[dict[str, Any]] = []
+    blocks: list[_VisionImageBlock] = []
     errors: list[str] = []
     attempted = 0
     succeeded = 0
@@ -383,17 +418,14 @@ async def build_vision_image_blocks(
                 errors.append(f"skip:{loader_reason}")
             continue
 
-        mime_type = _guess_mime_type(raw_bytes)
-        encoded = base64.b64encode(raw_bytes).decode("utf-8")
-        data_url = f"data:{mime_type};base64,{encoded}"
-        blocks.append({"type": "image_url", "image_url": {"url": data_url}})
+        blocks.append(_image_url_block(raw_bytes))
         succeeded += 1
 
     meta.update(
         {
-            "attempted": int(attempted),
-            "succeeded": int(succeeded),
-            "skipped": int(skipped),
+            "attempted": attempted,
+            "succeeded": succeeded,
+            "skipped": skipped,
             "errors": errors,
         }
     )
@@ -446,8 +478,8 @@ async def stream_vision_chat_completions_tokens(
             yield token
 
 
-def _vision_reader_limits() -> tuple[int, int, int]:
-    return (
+def _vision_reader_limits() -> _VisionReaderLimits:
+    return _VisionReaderLimits(
         max(0, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGES", 2) or 2)),
         max(1, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGE_BYTES", 3_000_000) or 3_000_000)),
         max(0, int(getattr(settings, "VISION_RAG_READER_MAX_OUTPUT_CHARS", 1500) or 1500)),
@@ -484,7 +516,7 @@ def _build_vision_reader_doc(*, doc: Document, meta: dict[str, Any], text: str) 
 def _vision_reader_preflight(
     *,
     image_docs: list[Document],
-) -> tuple[dict[str, Any], tuple[int, int, int] | None]:
+) -> tuple[dict[str, Any], _VisionReaderLimits | None]:
     enabled = bool(getattr(settings, "VISION_RAG_READER_ENABLED", False))
     meta: dict[str, Any] = {"enabled": enabled, "used": False, "reason": "not_run"}
     if not enabled:
@@ -497,7 +529,7 @@ def _vision_reader_preflight(
         meta["reason"] = "no_image_docs"
         return meta, None
     limits = _vision_reader_limits()
-    if limits[0] <= 0:
+    if limits.max_images <= 0:
         meta["reason"] = "max_images=0"
         return meta, None
     return meta, limits
@@ -616,13 +648,13 @@ async def build_vision_reader_context_docs(
         {
             "used": bool(out),
             "reason": reason,
-            "attempted": int(attempted),
-            "succeeded": int(succeeded),
-            "skipped": int(skipped),
-            "returned": int(len(out)),
-            "max_images": int(max_images),
-            "max_image_bytes": int(max_image_bytes),
-            "max_output_chars": int(max_output_chars),
+            "attempted": attempted,
+            "succeeded": succeeded,
+            "skipped": skipped,
+            "returned": len(out),
+            "max_images": max_images,
+            "max_image_bytes": max_image_bytes,
+            "max_output_chars": max_output_chars,
             "errors": errors,
             "model": str(getattr(settings, "VISION_LLM_MODEL", "") or "").strip() or None,
         }

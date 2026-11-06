@@ -7,10 +7,16 @@ const notifications = (page: Page, type: string) => page.locator(`[data-sonner-t
 
 async function setup(page: Page, options: { gaps?: boolean } = {}) {
   const state = await fixture(page, options)
-  await page.addInitScript(() => { if (!localStorage.getItem('mimirq_pipeline_options')) localStorage.setItem('mimirq_pipeline_options', JSON.stringify({ enabled: true, options: { chunk_size: 1000, chunk_overlap: 200 } })) })
-  await page.route('**/api/v1/pipeline/plugins**', route => json(route, { items: [], total: 0 }))
+  await page.addInitScript(() => {
+    if (!localStorage.getItem('mimirq_pipeline_options'))
+      localStorage.setItem(
+        'mimirq_pipeline_options',
+        JSON.stringify({ enabled: true, options: { chunk_size: 1000, chunk_overlap: 200 } }),
+      )
+  })
+  await page.route('**/api/v1/pipeline/plugins**', (route) => json(route, { items: [], total: 0 }))
   const presets = { fail: false, items: [] as Array<{ id: string; name: string; payload: Record<string, unknown> }> }
-  await page.route('**/api/v1/chunk-presets**', async route => {
+  await page.route('**/api/v1/chunk-presets**', async (route) => {
     if (route.request().method() === 'POST' || route.request().method() === 'PUT') {
       if (presets.fail) return json(route, { detail: '预设保存服务暂不可用' }, 503)
       const item = { ...route.request().postDataJSON(), id: 'saved-preset' }
@@ -29,7 +35,9 @@ async function config(page: Page) {
   return dialog
 }
 
-test('B opens as a centered workbench; changes, failures and retry retain values while notifications expire', async ({ page }) => {
+test('B opens as a centered workbench; changes, failures and retry retain values while notifications expire', async ({
+  page,
+}) => {
   const { state } = await setup(page)
   await open(page)
   const dialog = await config(page)
@@ -51,7 +59,13 @@ test('B opens as a centered workbench; changes, failures and retry retain values
   await expect(dialog.getByRole('spinbutton', { name: '目标长度（字符）', exact: true })).toHaveValue('800')
   await expect(page.getByRole('button', { name: '确认入库', exact: true, includeHidden: true })).toBeDisabled()
   await dialog.getByRole('switch', { name: '切换全文索引 (BM25)', exact: true }).click()
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('mimirq_pipeline_options') || '{}').options?.bm25_index_enabled)).toBe(false)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => JSON.parse(localStorage.getItem('mimirq_pipeline_options') || '{}').options?.bm25_index_enabled,
+      ),
+    )
+    .toBe(false)
   state.failPreview = true
   await dialog.getByRole('button', { name: '生成预览', exact: true }).click()
   await expect(notifications(page, 'error').filter({ hasText: '切块服务暂不可用' })).toBeVisible()
@@ -69,7 +83,9 @@ test('B opens as a centered workbench; changes, failures and retry retain values
   await expect(page.getByRole('spinbutton', { name: '目标长度（字符）', exact: true })).toHaveValue('800')
 })
 
-test('preset editing stays inside B and retains input after failure, then reads the saved preset after reload', async ({ page }) => {
+test('preset editing stays inside B and retains input after failure, then reads the saved preset after reload', async ({
+  page,
+}) => {
   const { presets } = await setup(page)
   await open(page)
   const dialog = await config(page)
@@ -117,7 +133,10 @@ test('B keeps its footer and input state reachable on phone and follows the glob
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'phone-settings.png') })
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.evaluate(() => { localStorage.setItem('theme', 'dark'); localStorage.setItem('mimirq.surfaceTheme', 'earth') })
+  await page.evaluate(() => {
+    localStorage.setItem('theme', 'dark')
+    localStorage.setItem('mimirq.surfaceTheme', 'earth')
+  })
   await page.reload()
   const dark = await config(page)
   await expect(page.locator('html')).toHaveClass(/dark/)
@@ -129,10 +148,15 @@ test('B keeps its footer and input state reachable on phone and follows the glob
 test('a second application page uses the same centered, finite success and error feedback', async ({ page }) => {
   await fixture(page)
   const state = { fail: true, items: [] as Array<Record<string, unknown>> }
-  await page.route('**/api/v1/datasets**', async route => {
+  await page.route('**/api/v1/datasets**', async (route) => {
     if (route.request().method() === 'POST') {
       if (state.fail) return json(route, { detail: '数据集服务暂不可用' }, 503)
-      const item = { ...route.request().postDataJSON(), id: 'created-feedback-dataset', document_count: 0, created_at: '2026-10-25T01:00:00Z' }
+      const item = {
+        ...route.request().postDataJSON(),
+        id: 'created-feedback-dataset',
+        document_count: 0,
+        created_at: '2026-10-25T01:00:00Z',
+      }
       state.items = [item]
       return json(route, item)
     }

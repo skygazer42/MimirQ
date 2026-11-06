@@ -7,7 +7,6 @@ Current scope:
 - Best-effort orientation / unwarping before downstream parsing
 """
 
-
 from functools import lru_cache
 from pathlib import Path
 from typing import Any

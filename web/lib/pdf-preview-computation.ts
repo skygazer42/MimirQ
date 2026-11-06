@@ -20,7 +20,7 @@ export type PdfPreviewBox = {
   position: ParsingPosition
 }
 
-export interface PdfPreviewComputationResult {
+export type PdfPreviewComputationResult = {
   blocksWithPositions: ParsingBlockWithRange[]
   blockRanges: BlockRangeLike[]
   chunkRanges: PdfPreviewChunkRange[]
@@ -43,10 +43,7 @@ function overlap(aStart: number, aEnd: number, bStart: number, bEnd: number): bo
   return a1 > b0 && b1 > a0
 }
 
-function computeBlockRanges(
-  blocks: ParsingBlockWithRange[],
-  mapIndex: (rawIndex: number) => number
-): BlockRangeLike[] {
+function computeBlockRanges(blocks: ParsingBlockWithRange[], mapIndex: (rawIndex: number) => number): BlockRangeLike[] {
   return blocks.map((block) => ({
     id: block.id,
     start: mapIndex(asInt(block.rawStart)),
@@ -56,7 +53,7 @@ function computeBlockRanges(
 
 function computeChunkRanges(
   previewChunks: PdfPreviewChunkLike[],
-  mapIndex: (rawIndex: number) => number
+  mapIndex: (rawIndex: number) => number,
 ): PdfPreviewChunkRange[] {
   return previewChunks.map((chunk, index) => ({
     index,
@@ -148,8 +145,8 @@ export function computePdfPreviewData(params: {
         index: chunk.index,
         start_index: chunk.start,
         end_index: chunk.end,
-      }))
-    ).entries()
+      })),
+    ).entries(),
   )
   const blockIdToPageIndexEntries = computeBlockIdToPageIndexEntries(blocksWithPositions)
   const chunkBlockIdsByIndexEntries = computeChunkBlockIdsByIndexEntries({

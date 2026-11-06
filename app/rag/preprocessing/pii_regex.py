@@ -1,6 +1,5 @@
-
 import re
-from typing import Any
+from typing import Any, TypedDict
 
 # Rule-based PII detection/anonymization. This is a regex + dictionary baseline,
 # NOT the Microsoft Presidio framework. It covers common CN entities (phone,
@@ -8,6 +7,20 @@ from typing import Any
 # pii_anonymizer. Swap in a real NER/Presidio recognizer when higher recall is
 # required.
 from app.rag.preprocessing.pii_anonymizer import find_pii_matches
+
+
+class _PiiEntity(TypedDict):
+    entity_type: str
+    start: int
+    end: int
+    text: str
+    score: float
+
+
+class _PiiAnalysis(TypedDict):
+    schema: str
+    entities: list[_PiiEntity]
+
 
 _CN_PLATE_RE = re.compile(
     r"(?<![A-Z0-9])([京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][A-Z][A-Z0-9]{5,6})(?![A-Z0-9])"
@@ -23,14 +36,14 @@ _KIND_MAP = {
 }
 
 
-def _append_unique(items: list[dict[str, Any]], entry: dict[str, Any]) -> None:
-    key = (entry["entity_type"], int(entry["start"]), int(entry["end"]))
-    if any((it["entity_type"], int(it["start"]), int(it["end"])) == key for it in items):
+def _append_unique(items: list[_PiiEntity], entry: _PiiEntity) -> None:
+    key = (entry["entity_type"], entry["start"], entry["end"])
+    if any((it["entity_type"], it["start"], it["end"]) == key for it in items):
         return
     items.append(entry)
 
 
-def _append_detected_pii_entities(raw: str, entities: list[dict[str, Any]]) -> None:
+def _append_detected_pii_entities(raw: str, entities: list[_PiiEntity]) -> None:
     for match in find_pii_matches(raw, max_matches=100):
         entity_type = _KIND_MAP.get(match.kind)
         if not entity_type:
@@ -39,23 +52,23 @@ def _append_detected_pii_entities(raw: str, entities: list[dict[str, Any]]) -> N
             entities,
             {
                 "entity_type": entity_type,
-                "start": int(match.start),
-                "end": int(match.end),
-                "text": str(match.text),
+                "start": match.start,
+                "end": match.end,
+                "text": match.text,
                 "score": 0.9,
             },
         )
 
 
-def _append_cn_plate_entities(raw: str, entities: list[dict[str, Any]]) -> None:
+def _append_cn_plate_entities(raw: str, entities: list[_PiiEntity]) -> None:
     for found in _CN_PLATE_RE.finditer(raw):
         _append_unique(
             entities,
             {
                 "entity_type": "CN_LICENSE_PLATE",
-                "start": int(found.start(1)),
-                "end": int(found.end(1)),
-                "text": str(found.group(1) or ""),
+                "start": found.start(1),
+                "end": found.end(1),
+                "text": found.group(1) or "",
                 "score": 0.88,
             },
         )
@@ -78,7 +91,7 @@ def _social_security_span_after_label(raw: str, *, label: str, label_start: int)
     return (cursor, end) if 8 <= end - cursor <= 12 else None
 
 
-def _append_cn_social_security_entities(raw: str, entities: list[dict[str, Any]]) -> None:
+def _append_cn_social_security_entities(raw: str, entities: list[_PiiEntity]) -> None:
     for label in _CN_SOCIAL_SECURITY_LABELS:
         offset = 0
         while True:
@@ -101,15 +114,15 @@ def _append_cn_social_security_entities(raw: str, entities: list[dict[str, Any]]
             offset = label_start + len(label)
 
 
-def analyze_pii_text(text: str) -> dict[str, Any]:
+def analyze_pii_text(text: str) -> _PiiAnalysis:
     raw = str(text or "")
-    entities: list[dict[str, Any]] = []
+    entities: list[_PiiEntity] = []
 
     _append_detected_pii_entities(raw, entities)
     _append_cn_plate_entities(raw, entities)
     _append_cn_social_security_entities(raw, entities)
 
-    entities.sort(key=lambda item: (int(item["start"]), int(item["end"]), str(item["entity_type"])))
+    entities.sort(key=lambda item: (item["start"], item["end"], item["entity_type"]))
     return {
         "schema": "mimirq.pii_regex_analysis.v1",
         "entities": entities,
@@ -119,11 +132,11 @@ def analyze_pii_text(text: str) -> dict[str, Any]:
 def anonymize_pii_text(text: str, *, mask: str = "[REDACTED]") -> dict[str, Any]:
     raw = str(text or "")
     analyzed = analyze_pii_text(raw)
-    entities = list(analyzed.get("entities") or [])
+    entities = list(analyzed["entities"])
     current = raw
-    for entity in sorted(entities, key=lambda item: (int(item["start"]), int(item["end"])), reverse=True):
-        start = int(entity["start"])
-        end = int(entity["end"])
+    for entity in sorted(entities, key=lambda item: (item["start"], item["end"]), reverse=True):
+        start = entity["start"]
+        end = entity["end"]
         current = current[:start] + str(mask) + current[end:]
     return {
         "schema": "mimirq.pii_regex_anonymize.v1",

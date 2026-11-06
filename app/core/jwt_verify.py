@@ -11,7 +11,6 @@ This module is intentionally best-effort:
 - Optional OIDC discovery can derive jwks_uri from JWT_ISSUER
 """
 
-
 import asyncio
 import time
 from dataclasses import dataclass
@@ -29,16 +28,16 @@ from app.rag.core.logging import get_logger
 logger = get_logger("core.jwt_verify")
 
 
-def _validate_response_url_chain(*, requested_url: str, response: Any, error_name: str) -> None:
-    requested = str(requested_url or "").strip()
+def _validate_response_url_chain(*, requested_url: str, response: httpx.Response, error_name: str) -> None:
+    requested = (requested_url or "").strip()
     response_urls = [str(getattr(item, "url", "") or "").strip() for item in getattr(response, "history", ())]
     response_urls.append(str(getattr(response, "url", "") or "").strip())
     if not response_urls[-1]:
         raise ValueError(error_name)
 
-    requested_scheme = str(urlparse(requested).scheme or "").strip().lower()
+    requested_scheme = (urlparse(requested).scheme or "").strip().lower()
     for response_url in response_urls:
-        if requested_scheme == "https" and str(urlparse(response_url).scheme or "").lower() != "https":
+        if requested_scheme == "https" and (urlparse(response_url).scheme or "").lower() != "https":
             raise ValueError(error_name)
         try:
             validate_jwt_remote_url(response_url, field_name="JWT_REMOTE_RESPONSE_URL")
@@ -53,15 +52,15 @@ def jwt_secret_key_candidates() -> list[str]:
     - settings.SECRET_KEY is always tried first
     - settings.SECRET_KEY_FALLBACKS can include previous keys (comma-separated)
     """
-    current = str(getattr(settings, "SECRET_KEY", "") or "").strip()
+    current = (settings.SECRET_KEY or "").strip()
     out: list[str] = [current] if current else []
 
-    raw_fallbacks = str(getattr(settings, "SECRET_KEY_FALLBACKS", "") or "").strip()
+    raw_fallbacks = (settings.SECRET_KEY_FALLBACKS or "").strip()
     if not raw_fallbacks:
         return out
 
     for item in raw_fallbacks.split(","):
-        key = str(item or "").strip()
+        key = (item or "").strip()
         if not key or key == current:
             continue
         out.append(key)
@@ -80,6 +79,7 @@ class _JWKSCacheEntry:
 
 _jwks_cache: dict[str, _JWKSCacheEntry] = {}
 _jwks_locks: dict[str, asyncio.Lock] = {}
+
 
 @dataclass(frozen=True)
 class _OIDCDiscoveryEntry:
@@ -109,7 +109,7 @@ def _oidc_lock(issuer: str) -> asyncio.Lock:
 
 
 def _oidc_config_url_for_issuer(issuer: str) -> str | None:
-    raw = str(issuer or "").strip()
+    raw = (issuer or "").strip()
     if not raw:
         return None
     base = raw.rstrip("/")
@@ -120,7 +120,7 @@ def _oidc_config_url_for_issuer(issuer: str) -> str | None:
 
 
 def _normalize_oidc_issuer(raw_issuer: str) -> str:
-    raw = str(raw_issuer or "").strip()
+    raw = (raw_issuer or "").strip()
     if not raw:
         return ""
     parsed = urlparse(raw)
@@ -142,13 +142,13 @@ def _normalize_oidc_issuer(raw_issuer: str) -> str:
 
 
 async def _fetch_oidc_configuration(url: str) -> dict[str, Any]:
-    timeout_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC", 5.0) or 5.0)
+    timeout_sec = float(settings.JWT_OIDC_DISCOVERY_HTTP_TIMEOUT_SEC or 5.0)
     timeout = httpx.Timeout(timeout_sec)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
-        res = await client.get(str(url))
+        res = await client.get(url)
         res.raise_for_status()
         _validate_response_url_chain(
-            requested_url=str(url),
+            requested_url=url,
             response=res,
             error_name="insecure_oidc_discovery_url",
         )
@@ -159,24 +159,24 @@ async def _fetch_oidc_configuration(url: str) -> dict[str, Any]:
 
 
 async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str | None:
-    ttl_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_CACHE_TTL_SEC", 3600) or 3600)
-    max_stale_sec = float(getattr(settings, "JWT_OIDC_DISCOVERY_MAX_STALE_SEC", 86400) or 86400)
+    ttl_sec = float(settings.JWT_OIDC_DISCOVERY_CACHE_TTL_SEC or 3600)
+    max_stale_sec = float(settings.JWT_OIDC_DISCOVERY_MAX_STALE_SEC or 86400)
 
-    issuer = str(issuer or "").strip()
+    issuer = (issuer or "").strip()
     if not issuer:
         return None
 
     now = time.monotonic()
     cached = _oidc_cache.get(issuer)
     if cached and not force_refresh and now < cached.expires_at_monotonic:
-        return str(cached.jwks_uri)
+        return cached.jwks_uri
 
     lock = _oidc_lock(issuer)
     async with lock:
         now = time.monotonic()
         cached = _oidc_cache.get(issuer)
         if cached and not force_refresh and now < cached.expires_at_monotonic:
-            return str(cached.jwks_uri)
+            return cached.jwks_uri
 
         config_url = _oidc_config_url_for_issuer(issuer)
         if not config_url:
@@ -203,7 +203,7 @@ async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str
                     now - cached.fetched_at_monotonic,
                     str(exc)[:200],
                 )
-                return str(cached.jwks_uri)
+                return cached.jwks_uri
             raise
 
         expires_at = now + max(1.0, ttl_sec)
@@ -222,13 +222,13 @@ async def _fetch_jwks_keys(url: str) -> list[dict[str, Any]]:
     Note: this intentionally does NOT reuse the global HTTP client pool to avoid
     propagating internal X-Request-ID/X-Tenant-ID headers to external IdPs.
     """
-    timeout_sec = float(getattr(settings, "JWT_JWKS_HTTP_TIMEOUT_SEC", 5.0) or 5.0)
+    timeout_sec = float(settings.JWT_JWKS_HTTP_TIMEOUT_SEC or 5.0)
     timeout = httpx.Timeout(timeout_sec)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, trust_env=True) as client:
-        res = await client.get(str(url))
+        res = await client.get(url)
         res.raise_for_status()
         _validate_response_url_chain(
-            requested_url=str(url),
+            requested_url=url,
             response=res,
             error_name="insecure_jwks_response_url",
         )
@@ -248,8 +248,8 @@ async def _fetch_jwks_keys(url: str) -> list[dict[str, Any]]:
 
 
 async def _get_jwks_keys(url: str, *, force_refresh: bool = False) -> list[dict[str, Any]]:
-    ttl_sec = float(getattr(settings, "JWT_JWKS_CACHE_TTL_SEC", 300) or 300)
-    max_stale_sec = float(getattr(settings, "JWT_JWKS_MAX_STALE_SEC", 3600) or 3600)
+    ttl_sec = float(settings.JWT_JWKS_CACHE_TTL_SEC or 300)
+    max_stale_sec = float(settings.JWT_JWKS_MAX_STALE_SEC or 3600)
 
     now = time.monotonic()
     cached = _jwks_cache.get(url)
@@ -269,7 +269,7 @@ async def _get_jwks_keys(url: str, *, force_refresh: bool = False) -> list[dict[
             if cached and (now - cached.fetched_at_monotonic) <= max_stale_sec:
                 logger.warning(
                     "JWKS refresh failed for %s; using cached keys (age=%.0fs): %s",
-                    str(url),
+                    url,
                     now - cached.fetched_at_monotonic,
                     str(exc)[:200],
                 )
@@ -285,7 +285,7 @@ def _find_jwk_for_kid(keys: list[dict[str, Any]], kid: str | None) -> dict[str, 
     if not keys:
         return None
     if kid:
-        wanted = str(kid).strip()
+        wanted = kid.strip()
         for key in keys:
             if str(key.get("kid") or "").strip() == wanted:
                 return key
@@ -298,9 +298,9 @@ def _find_jwk_for_kid(keys: list[dict[str, Any]], kid: str | None) -> dict[str, 
 
 
 async def _jwks_key_for_token(token: str) -> dict[str, Any]:
-    urls = parse_csv(str(getattr(settings, "JWT_JWKS_URLS", "") or ""))
-    if not urls and bool(getattr(settings, "JWT_JWKS_DISCOVERY_ENABLED", False)):
-        issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
+    urls = parse_csv(settings.JWT_JWKS_URLS or "")
+    if not urls and settings.JWT_JWKS_DISCOVERY_ENABLED:
+        issuer = (settings.JWT_ISSUER or "").strip()
         jwks_uri = await _get_oidc_jwks_uri(issuer)
         urls = [jwks_uri] if jwks_uri else []
     if not urls:
@@ -329,18 +329,18 @@ async def _jwks_key_for_token(token: str) -> dict[str, Any]:
     raise InvalidTokenError("Unable to find a signing key") from last_exc
 
 
-async def decode_access_token(token: str) -> dict:
+async def decode_access_token(token: str) -> dict[str, Any]:
     """
     Decode and verify an access token according to configured auth settings.
 
     Raises jwt.InvalidTokenError / jwt.ExpiredSignatureError on verification failures.
     """
-    algorithm = str(getattr(settings, "ALGORITHM", "HS256") or "HS256").strip() or "HS256"
+    algorithm = (settings.ALGORITHM or "HS256").strip() or "HS256"
     algorithms = [algorithm]
-    issuer = str(getattr(settings, "JWT_ISSUER", "") or "").strip()
-    audience = str(getattr(settings, "JWT_AUDIENCE", "") or "").strip()
+    issuer = (settings.JWT_ISSUER or "").strip()
+    audience = (settings.JWT_AUDIENCE or "").strip()
 
-    decode_kwargs: dict = {
+    decode_kwargs: dict[str, Any] = {
         "algorithms": algorithms,
         "options": {"verify_exp": True},
     }

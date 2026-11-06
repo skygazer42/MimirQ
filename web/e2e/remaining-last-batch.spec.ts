@@ -2,7 +2,11 @@ import { test, expect } from '@playwright/test'
 import { lastBatchFixture, auditDocumentId } from './remaining-last-batch.helpers'
 import { openRemaining, remainingShot } from './remaining-pages.helpers'
 
-for (const variant of [{ name: 'desktop', width: 1600, height: 1000, theme: 'light' as const }, { name: 'narrow-dark', width: 1120, height: 850, theme: 'dark' as const }, { name: 'phone', width: 390, height: 844, theme: 'light' as const }]) {
+for (const variant of [
+  { name: 'desktop', width: 1600, height: 1000, theme: 'light' as const },
+  { name: 'narrow-dark', width: 1120, height: 850, theme: 'dark' as const },
+  { name: 'phone', width: 390, height: 844, theme: 'light' as const },
+]) {
   test(`last batch ${variant.name} reports, readers and callback recovery`, async ({ page }) => {
     test.setTimeout(600000)
     await lastBatchFixture(page, variant.theme)
@@ -21,8 +25,13 @@ for (const variant of [{ name: 'desktop', width: 1600, height: 1000, theme: 'lig
     await statistics.click()
     await expect(page.getByRole('dialog')).toContainText('query-slow-001')
     if (variant.name === 'phone') {
-      const motion = await page.getByRole('dialog').evaluate(element => ({ name: getComputedStyle(element).animationName, durations: getComputedStyle(element).animationDuration.split(',').map(value => Number.parseFloat(value)) }))
-      expect(motion.name === 'none' || motion.durations.every(duration => duration <= 0.01)).toBe(true)
+      const motion = await page.getByRole('dialog').evaluate((element) => ({
+        name: getComputedStyle(element).animationName,
+        durations: getComputedStyle(element)
+          .animationDuration.split(',')
+          .map((value) => Number.parseFloat(value)),
+      }))
+      expect(motion.name === 'none' || motion.durations.every((duration) => duration <= 0.01)).toBe(true)
     }
     await page.getByRole('dialog').getByRole('button', { name: '完成', exact: true }).click()
     await expect(statistics).toBeFocused()
@@ -35,7 +44,9 @@ for (const variant of [{ name: 'desktop', width: 1600, height: 1000, theme: 'lig
     await openRemaining(page, '/knowledge/nebula', '语义星云')
     await expect(page.getByText('1 文档 · 4 切片', { exact: true })).toBeVisible()
     await expect(page.locator('canvas')).toBeVisible({ timeout: 60000 })
-    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    )
     await remainingShot(page, `after-semantic-nebula-${variant.name}`)
     await page.getByRole('button', { name: '图例与定位', exact: true }).click()
     await page.getByRole('combobox', { name: '定位切片', exact: true }).selectOption(`${auditDocumentId}:chunk-1`)
@@ -44,9 +55,14 @@ for (const variant of [{ name: 'desktop', width: 1600, height: 1000, theme: 'lig
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog')).toHaveCount(0)
     await page.evaluate(() => document.documentElement.style.setProperty('--background', '220 20% 20%'))
-    await expect(page.getByRole('region', { name: '三维切片画布', exact: true })).toHaveAttribute('data-canvas-background', 'hsl(220, 20%, 20%)')
+    await expect(page.getByRole('region', { name: '三维切片画布', exact: true })).toHaveAttribute(
+      'data-canvas-background',
+      'hsl(220, 20%, 20%)',
+    )
     for (const protocol of ['oidc', 'saml']) {
-      await page.goto(`/auth/${protocol}/callback${protocol === 'saml' ? '?error=saml_session_missing' : ''}`, { waitUntil: 'domcontentloaded' })
+      await page.goto(`/auth/${protocol}/callback${protocol === 'saml' ? '?error=saml_session_missing' : ''}`, {
+        waitUntil: 'domcontentloaded',
+      })
       await expect(page.getByRole('heading', { name: '单点登录未完成', exact: true })).toBeVisible({ timeout: 60000 })
       await expect(page.getByRole('button', { name: '返回登录', exact: true })).toBeVisible()
       await remainingShot(page, `after-${protocol}-callback-${variant.name}`)
@@ -72,24 +88,39 @@ test('last-batch read failure and stale evidence cannot appear as another succes
   await expect(query).toHaveValue('设备的维护周期是多久？')
   state.failEvidence = false
   let release!: () => void
-  state.gate = new Promise<void>(resolve => { release = resolve })
+  state.gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
   await page.getByRole('button', { name: '运行检索', exact: true }).click()
   await expect.poll(() => state.evidenceRequests.length).toBe(2)
-  state.gate = null; state.evidenceMode = 'abstain'
+  state.gate = null
+  state.evidenceMode = 'abstain'
   await query.fill('另一问题：有维护证据吗？')
   await page.getByRole('button', { name: '运行检索', exact: true }).click()
   await expect(page.getByRole('heading', { name: '证据不足，已拒答', exact: true })).toBeVisible()
-  const lateResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/v1/rag/retrieve' && response.request().postDataJSON().query === '设备的维护周期是多久？')
+  const lateResponse = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/rag/retrieve' &&
+      response.request().postDataJSON().query === '设备的维护周期是多久？',
+  )
   release()
   await (await lateResponse).finished()
-  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
-  await expect(page.getByRole('heading', { name: '证据不足，已拒答', exact: true }).locator('..').getByText('另一问题：有维护证据吗？', { exact: true })).toBeVisible()
+  await page.evaluate(
+    () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+  )
+  await expect(
+    page
+      .getByRole('heading', { name: '证据不足，已拒答', exact: true })
+      .locator('..')
+      .getByText('另一问题：有维护证据吗？', { exact: true }),
+  ).toBeVisible()
   await expect(page.getByRole('heading', { name: '已找到证据', exact: true })).toHaveCount(0)
   state.emptyChunks = true
   await openRemaining(page, '/knowledge/nebula', '语义星云')
   await expect(page.getByRole('heading', { name: '当前没有可视化切片', exact: true })).toBeVisible()
   await expect(page.getByText('1 文档 · 0 切片', { exact: true })).toBeVisible()
-  state.emptyChunks = false; state.failChunks = true
+  state.emptyChunks = false
+  state.failChunks = true
   await page.getByRole('button', { name: '重新读取', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '切片读取暂不可用' })).toBeVisible()
   await expect(page.getByText('1 文档 · 0 切片', { exact: true })).toBeVisible()

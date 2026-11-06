@@ -1,4 +1,3 @@
-
 from app.rag.safety.input_guard import GuardResult, InputGuard, get_input_guard
 from app.rag.safety.llm_guard import LLMGuard
 from app.rag.safety.llm_guard import LLMGuardResult as CombinedLLMGuardResult

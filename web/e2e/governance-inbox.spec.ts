@@ -2,55 +2,141 @@ import path from 'node:path'
 import { expect, test, type Page, type Route } from '@playwright/test'
 import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
 
-const evidence = process.env.GOVERNANCE_EVIDENCE_DIR || path.resolve(__dirname, '../../artifacts/rebrand/governance-inbox-v1')
+const evidence =
+  process.env.GOVERNANCE_EVIDENCE_DIR || path.resolve(__dirname, '../../artifacts/rebrand/governance-inbox-v1')
 const duplicate = '开始作业前必须确认设备已经停止运行，并核对维护计划与现场记录。'
-const original = ['# 设备维护手册', '', '## 03 日常检查与维护', '', '本章说明设备的日常维护要求、检查记录和异常处理流程。作业人员应先核对设备状态，再按维护周期完成检查。', '', duplicate, duplicate, '', '| 检查项目 | 检查要求 | 周期 |', '| --- | --- | --- |', '| 运行状态 | 检查振动、噪声和指示灯 | 每日 |', '| 润滑系统 | 核对油位，检查管路和密封 | 每周 |', '| 安全装置 | 确认限位、急停和保护装置 | 每月 |', '', '## 维护记录', '', '完成检查后，在台账中记录设备编号、作业时间、检查结果与后续安排。发现异常时，应先暂停作业，确认安全后再进行处理。', '', '联系邮箱 maintenance@example.test，值班电话 13800000000。', '', ...Array.from({ length: 5 }, (_, index) => '记录 ' + (index + 1) + '：完成维护后记录设备状态与维护人员签字，并复核相关资料。')].join('\n')
-async function json(route: Route, body: unknown, status = 200) { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }) }
+const original = [
+  '# 设备维护手册',
+  '',
+  '## 03 日常检查与维护',
+  '',
+  '本章说明设备的日常维护要求、检查记录和异常处理流程。作业人员应先核对设备状态，再按维护周期完成检查。',
+  '',
+  duplicate,
+  duplicate,
+  '',
+  '| 检查项目 | 检查要求 | 周期 |',
+  '| --- | --- | --- |',
+  '| 运行状态 | 检查振动、噪声和指示灯 | 每日 |',
+  '| 润滑系统 | 核对油位，检查管路和密封 | 每周 |',
+  '| 安全装置 | 确认限位、急停和保护装置 | 每月 |',
+  '',
+  '## 维护记录',
+  '',
+  '完成检查后，在台账中记录设备编号、作业时间、检查结果与后续安排。发现异常时，应先暂停作业，确认安全后再进行处理。',
+  '',
+  '联系邮箱 maintenance@example.test，值班电话 13800000000。',
+  '',
+  ...Array.from(
+    { length: 5 },
+    (_, index) => '记录 ' + (index + 1) + '：完成维护后记录设备状态与维护人员签字，并复核相关资料。',
+  ),
+].join('\n')
+async function json(route: Route, body: unknown, status = 200) {
+  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+}
 async function fixture(page: Page) {
   await page.setViewportSize({ width: 1600, height: 1000 })
-  const documents = Array.from({ length: 12 }, (_, index) => ({ id: 'gov-' + (index + 1), filename: index === 0 ? '设备维护手册.pdf' : index === 1 ? '安全操作规范.docx' : '产品资料与维护记录-' + (index + 1) + '.md', file_type: index === 0 ? 'pdf' : index === 1 ? 'docx' : 'md', file_size: index === 0 ? 2516582 : 86120, status: 'completed', created_at: '2026-10-22T02:00:00Z', updated_at: '2026-10-22T02:00:00Z', error_message: null }))
-  const state = { documents, failClean: false, filteredClean: false, failScan: false, failContent: false, holdScan: null as Promise<void> | null, holdClean: null as Promise<void> | null, scanStarted: 0 }
+  const documents = Array.from({ length: 12 }, (_, index) => ({
+    id: 'gov-' + (index + 1),
+    filename:
+      index === 0
+        ? '设备维护手册.pdf'
+        : index === 1
+          ? '安全操作规范.docx'
+          : '产品资料与维护记录-' + (index + 1) + '.md',
+    file_type: index === 0 ? 'pdf' : index === 1 ? 'docx' : 'md',
+    file_size: index === 0 ? 2516582 : 86120,
+    status: 'completed',
+    created_at: '2026-10-22T02:00:00Z',
+    updated_at: '2026-10-22T02:00:00Z',
+    error_message: null,
+  }))
+  const state = {
+    documents,
+    failClean: false,
+    filteredClean: false,
+    failScan: false,
+    failContent: false,
+    holdScan: null as Promise<void> | null,
+    holdClean: null as Promise<void> | null,
+    scanStarted: 0,
+  }
   await installCommonApiMocks(page, { uploaded: false, parsingDocuments: documents })
   await page.addInitScript(() => {
-    document.addEventListener('DOMContentLoaded', () => {
-      const style = document.createElement('style')
-      style.textContent = 'nextjs-portal { display: none !important; }'
-      document.head.appendChild(style)
-    }, { once: true })
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => {
+        const style = document.createElement('style')
+        style.textContent = 'nextjs-portal { display: none !important; }'
+        document.head.appendChild(style)
+      },
+      { once: true },
+    )
     if (!localStorage.getItem('theme')) localStorage.setItem('theme', 'light')
     localStorage.setItem('mimirq.surfaceTheme', 'ocean')
     localStorage.setItem('mimirq.themeColor', '#20262e')
     const put = IDBObjectStore.prototype.put
     IDBObjectStore.prototype.put = function (...args: Parameters<typeof put>) {
-      if ((window as unknown as { failGovernanceSave?: boolean }).failGovernanceSave && this.name === 'doc_contents') throw new DOMException('测试：缓存空间不足', 'QuotaExceededError')
+      if ((window as unknown as { failGovernanceSave?: boolean }).failGovernanceSave && this.name === 'doc_contents')
+        throw new DOMException('测试：缓存空间不足', 'QuotaExceededError')
       return put.apply(this, args)
     }
   })
-  await page.route('**/api/v1/parsing/documents**', async route => {
+  await page.route('**/api/v1/parsing/documents**', async (route) => {
     const url = new URL(route.request().url())
     if (/\/content$/.test(url.pathname)) {
       if (state.failContent) return json(route, { detail: '正文服务暂不可用' }, 503)
       const id = url.pathname.split('/documents/')[1]?.split('/')[0]
       const markdown = id === 'gov-1' ? original : '# 安全操作规范\n\n核对作业范围，确认工具与设备处于安全状态。'
-      return json(route, { document_id: id, parser_backend: 'text', markdown_content: markdown, original_markdown_content: markdown })
+      return json(route, {
+        document_id: id,
+        parser_backend: 'text',
+        markdown_content: markdown,
+        original_markdown_content: markdown,
+      })
     }
-    if (route.request().method() === 'GET' && /\/documents\/?$/.test(url.pathname)) return json(route, { items: state.documents, total: state.documents.length })
+    if (route.request().method() === 'GET' && /\/documents\/?$/.test(url.pathname))
+      return json(route, { items: state.documents, total: state.documents.length })
     return route.fallback()
   })
-  await page.route('**/api/v1/pipeline/**', async route => {
+  await page.route('**/api/v1/pipeline/**', async (route) => {
     const url = new URL(route.request().url())
     if (url.pathname.endsWith('/governance-analyze')) {
       state.scanStarted++
       if (state.holdScan) await state.holdScan
       if (state.failScan) return json(route, { detail: '检测服务暂不可用' }, 503)
-      return json(route, { issues: [{ code: 'pii_email', severity: 'warning', message: '检测到邮箱信息', count: 1 }, { code: 'pii_phone', severity: 'warning', message: '检测到电话信息', count: 1 }], suggested_pipeline_patch: {} })
+      return json(route, {
+        issues: [
+          { code: 'pii_email', severity: 'warning', message: '检测到邮箱信息', count: 1 },
+          { code: 'pii_phone', severity: 'warning', message: '检测到电话信息', count: 1 },
+        ],
+        suggested_pipeline_patch: {},
+      })
     }
     if (url.pathname.endsWith('/clean-preview')) {
       if (state.holdClean) await state.holdClean
       if (state.failClean) return json(route, { detail: '清洗服务暂不可用' }, 503)
-      if (state.filteredClean) return json(route, { markdown: '', issues: [], dropped: true, drop_reason: '正文内容不足', diff_unified: '', rule_stats: [] })
+      if (state.filteredClean)
+        return json(route, {
+          markdown: '',
+          issues: [],
+          dropped: true,
+          drop_reason: '正文内容不足',
+          diff_unified: '',
+          rule_stats: [],
+        })
       const body = route.request().postDataJSON()
-      return json(route, { markdown: body.markdown.replace(duplicate + '\n' + duplicate, duplicate).replace('maintenance@example.test', '[邮箱已脱敏]').replace('13800000000', '[电话已脱敏]'), issues: [], dropped: false, diff_unified: '- maintenance@example.test\n+ [邮箱已脱敏]', rule_stats: [] })
+      return json(route, {
+        markdown: body.markdown
+          .replace(duplicate + '\n' + duplicate, duplicate)
+          .replace('maintenance@example.test', '[邮箱已脱敏]')
+          .replace('13800000000', '[电话已脱敏]'),
+        issues: [],
+        dropped: false,
+        diff_unified: '- maintenance@example.test\n+ [邮箱已脱敏]',
+        rule_stats: [],
+      })
     }
     return route.fallback()
   })
@@ -63,7 +149,9 @@ async function openInbox(page: Page) {
   await expect(page.locator('[data-governance-document]')).toContainText('设备维护手册')
   await page.evaluate(() => document.fonts.ready)
 }
-async function noOverflow(page: Page) { expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1) }
+async function noOverflow(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+}
 
 test('governance checks, cleans, retains failed saves and reloads saved content and tags', async ({ page }) => {
   const state = await fixture(page)
@@ -75,13 +163,15 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
     page.getByRole('complementary', { name: '治理工具箱', exact: true }).boundingBox(),
   ])
   expect(panes.every(Boolean)).toBe(true)
-  const [directory, documentPane, toolbox] = panes as NonNullable<typeof panes[number]>[]
+  const [directory, documentPane, toolbox] = panes as NonNullable<(typeof panes)[number]>[]
   expect(directory.x + directory.width).toBeLessThan(documentPane.x)
   expect(documentPane.x + documentPane.width).toBeLessThan(toolbox.x)
   expect(Math.abs(documentPane.y - toolbox.y)).toBeLessThanOrEqual(1)
   await page.getByRole('button', { name: '收起治理工具', exact: true }).click()
   await expect(page.getByRole('tab', { name: '质量检测', exact: true })).toBeHidden()
-  expect((await page.getByRole('region', { name: '文档正文', exact: true }).boundingBox())!.width).toBeGreaterThan(documentPane.width)
+  expect((await page.getByRole('region', { name: '文档正文', exact: true }).boundingBox())!.width).toBeGreaterThan(
+    documentPane.width,
+  )
   await page.getByRole('button', { name: '展开治理工具', exact: true }).click()
   await expect(reader).toContainText('尚未检测')
   state.failScan = true
@@ -98,7 +188,11 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   await page.screenshot({ path: path.join(evidence, 'issue-detail.png') })
   await page.getByRole('button', { name: '定位到正文', exact: true }).click()
   await expect(page.getByRole('textbox', { name: '编辑文档正文' })).toHaveValue(original)
-  expect(await page.getByRole('textbox', { name: '编辑文档正文' }).evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd))).toBe(duplicate)
+  expect(
+    await page
+      .getByRole('textbox', { name: '编辑文档正文' })
+      .evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd)),
+  ).toBe(duplicate)
   await page.getByRole('button', { name: '预览', exact: true }).click()
   await page.getByRole('tab', { name: '智能清洗' }).click()
   state.failClean = true
@@ -118,13 +212,17 @@ test('governance checks, cleans, retains failed saves and reloads saved content 
   await page.getByLabel('文档分类', { exact: true }).selectOption({ label: '技术文档' })
   await page.getByLabel('文档标签', { exact: true }).fill('维护记录')
   await page.getByRole('button', { name: '添加', exact: true }).click()
-  await page.evaluate(() => { (window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = true })
+  await page.evaluate(() => {
+    ;(window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = true
+  })
   await page.getByRole('button', { name: '保存并继续切块', exact: true }).click()
   await expect(reader.getByRole('alert')).toContainText('保存失败')
   await expect(page).toHaveURL(/data-governance$/)
   await expect(reader).toContainText('维护记录')
   await page.screenshot({ path: path.join(evidence, 'save-error.png') })
-  await page.evaluate(() => { (window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = false })
+  await page.evaluate(() => {
+    ;(window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = false
+  })
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(reader).toContainText('治理结果已保存')
   await page.reload()
@@ -146,7 +244,9 @@ test('governance binds delayed operations to the initiating document and preserv
   const state = await fixture(page)
   await openInbox(page)
   let finishScan!: () => void
-  state.holdScan = new Promise(resolve => { finishScan = resolve })
+  state.holdScan = new Promise((resolve) => {
+    finishScan = resolve
+  })
   await page.getByRole('button', { name: '开始检测', exact: true }).click()
   await expect.poll(() => state.scanStarted).toBe(1)
   await page.locator('[data-governance-file="gov-2"]').click()
@@ -165,14 +265,18 @@ test('governance binds delayed operations to the initiating document and preserv
   await expect(page.locator('[data-governance-document]')).toContainText('文档一的草稿。')
   await expect(page.locator('[data-governance-reader]')).toContainText('修改尚未保存')
   let finishClean!: () => void
-  state.holdClean = new Promise(resolve => { finishClean = resolve })
+  state.holdClean = new Promise((resolve) => {
+    finishClean = resolve
+  })
   await page.getByRole('tab', { name: '智能清洗' }).click()
   await page.getByRole('button', { name: '运行清洗', exact: true }).click()
   await expect(page.getByRole('button', { name: '正在清洗…' })).toBeVisible()
   await page.getByRole('button', { name: '编辑', exact: true }).click()
   await page.getByRole('textbox', { name: '编辑文档正文' }).fill('# 后来的人工编辑\n\n不要被旧请求覆盖。')
   finishClean()
-  await expect(page.getByRole('textbox', { name: '编辑文档正文' })).toHaveValue('# 后来的人工编辑\n\n不要被旧请求覆盖。')
+  await expect(page.getByRole('textbox', { name: '编辑文档正文' })).toHaveValue(
+    '# 后来的人工编辑\n\n不要被旧请求覆盖。',
+  )
 })
 
 test('governance supports phone navigation, themes, search, configuration and content retry', async ({ page }) => {
@@ -191,7 +295,9 @@ test('governance supports phone navigation, themes, search, configuration and co
   await page.screenshot({ path: path.join(evidence, 'laptop.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
-  await expect.poll(async () => page.locator('#mimirq-sidebar').evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0)
+  await expect
+    .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0)
   await expect(page.locator('[data-governance-queue]')).toBeVisible()
   await expect(page.locator('[data-governance-reader]')).toBeHidden()
   await page.screenshot({ path: path.join(evidence, 'phone-queue.png') })
@@ -202,7 +308,9 @@ test('governance supports phone navigation, themes, search, configuration and co
   await page.getByRole('button', { name: '返回文档队列' }).click()
   await expect(page.locator('[data-governance-file="gov-1"]')).toBeFocused()
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.evaluate(() => { localStorage.setItem('theme', 'dark') })
+  await page.evaluate(() => {
+    localStorage.setItem('theme', 'dark')
+  })
   await page.reload()
   await expect(page.locator('[data-governance-document]')).toContainText('设备维护手册')
   await expect(page.locator('html')).toHaveClass(/dark/)
@@ -217,7 +325,9 @@ test('governance supports phone navigation, themes, search, configuration and co
   await expect(page.locator('[data-governance-document]')).toContainText('安全操作规范')
 })
 
-test('annotation results separate document attributes, keywords and long text while retaining saved values', async ({ page }) => {
+test('annotation results separate document attributes, keywords and long text while retaining saved values', async ({
+  page,
+}) => {
   await fixture(page)
   const longTags = [
     '本章说明设备的日常维护要求、检查记录和异常处理流程。作业人员应先核对设备状态，再按维护周期完成检查。',
@@ -225,16 +335,31 @@ test('annotation results separate document attributes, keywords and long text wh
   ]
   const keywords = ['维护计划', '作业人员', '设备状态', '安全装置', '润滑系统', '检查结果', '维护记录']
   const annotationTexts = ['设备维护手册', ...keywords, longTags[1]]
-  await page.route('**/api/v1/pipeline/auto-annotations', route => json(route, {
-    annotations: annotationTexts.map((text, index) => ({ text, type: index === 0 ? 'entity' : 'keyword', label: index === 0 ? '实体' : '关键词', start: original.indexOf(text), end: original.indexOf(text) + text.length })),
-    document_tags: [
-      { type: 'topic', value: '设备维护' }, { type: 'industry', value: '工业制造' },
-      { type: 'doc_type', value: '操作手册' }, { type: 'sensitivity', value: 'internal' },
-      ...[...keywords, ...longTags].map(value => ({ type: 'keyword', value })),
-    ].map(tag => ({ ...tag, label: tag.type, confidence: .85, source: 'rules' })),
-    summary: null, text_chars: original.length, scanned_chars: original.length, truncated: false,
-    strategy: 'rules', providers_used: ['cpu'], warnings: [],
-  }))
+  await page.route('**/api/v1/pipeline/auto-annotations', (route) =>
+    json(route, {
+      annotations: annotationTexts.map((text, index) => ({
+        text,
+        type: index === 0 ? 'entity' : 'keyword',
+        label: index === 0 ? '实体' : '关键词',
+        start: original.indexOf(text),
+        end: original.indexOf(text) + text.length,
+      })),
+      document_tags: [
+        { type: 'topic', value: '设备维护' },
+        { type: 'industry', value: '工业制造' },
+        { type: 'doc_type', value: '操作手册' },
+        { type: 'sensitivity', value: 'internal' },
+        ...[...keywords, ...longTags].map((value) => ({ type: 'keyword', value })),
+      ].map((tag) => ({ ...tag, label: tag.type, confidence: 0.85, source: 'rules' })),
+      summary: null,
+      text_chars: original.length,
+      scanned_chars: original.length,
+      truncated: false,
+      strategy: 'rules',
+      providers_used: ['cpu'],
+      warnings: [],
+    }),
+  )
   await openInbox(page)
   await page.getByRole('tab', { name: '数据标注', exact: true }).click()
   await page.screenshot({ path: path.join(evidence, 'annotation-empty.png') })
@@ -265,7 +390,9 @@ test('annotation results separate document attributes, keywords and long text wh
   await page.screenshot({ path: path.join(evidence, 'annotation-records.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
-  await expect.poll(async () => page.locator('#mimirq-sidebar').evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0)
+  await expect
+    .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0)
   await page.locator('[data-governance-file="gov-1"]').click()
   await longDetails.locator('summary').click()
   await noOverflow(page)
@@ -295,7 +422,9 @@ test('annotation results separate document attributes, keywords and long text wh
   await page.screenshot({ path: path.join(evidence, 'annotation-dark-populated.png') })
 })
 
-test('classification uses tag values, separates long text and retains manual edits through failures and reload', async ({ page }) => {
+test('classification uses tag values, separates long text and retains manual edits through failures and reload', async ({
+  page,
+}) => {
   await fixture(page)
   const longTags = [
     '设备检修前应逐项核对断电、挂牌、保护装置和人员到位情况，确认现场安全后再开始操作。',
@@ -306,17 +435,36 @@ test('classification uses tag values, separates long text and retains manual edi
     { type: 'domain', label: '领域', value: '企业知识库' },
     { type: 'industry', label: '行业', value: '工业制造' },
     { type: 'sensitivity', label: '敏感度', value: 'internal' },
-    ...['维护计划', '作业人员', '设备状态', '安全装置', '润滑系统', '检查结果', '维护记录', '异常处理', '日常检查', '安全操作'].map(value => ({ type: 'keyword', label: '语义关键词', value })),
-    ...longTags.map(value => ({ type: 'quality', label: '质量线索', value })),
+    ...[
+      '维护计划',
+      '作业人员',
+      '设备状态',
+      '安全装置',
+      '润滑系统',
+      '检查结果',
+      '维护记录',
+      '异常处理',
+      '日常检查',
+      '安全操作',
+    ].map((value) => ({ type: 'keyword', label: '语义关键词', value })),
+    ...longTags.map((value) => ({ type: 'quality', label: '质量线索', value })),
   ]
   let failClassification = true
-  await page.route('**/api/v1/pipeline/auto-annotations', route => failClassification
-    ? json(route, { detail: '分类服务暂时不可用' }, 503)
-    : json(route, {
-      annotations: [], document_tags: documentTags.map(tag => ({ ...tag, confidence: .85, source: 'cpu' })),
-      summary: null, text_chars: original.length, scanned_chars: original.length, truncated: false,
-      strategy: 'rules', providers_used: ['cpu'], warnings: [],
-    }))
+  await page.route('**/api/v1/pipeline/auto-annotations', (route) =>
+    failClassification
+      ? json(route, { detail: '分类服务暂时不可用' }, 503)
+      : json(route, {
+          annotations: [],
+          document_tags: documentTags.map((tag) => ({ ...tag, confidence: 0.85, source: 'cpu' })),
+          summary: null,
+          text_chars: original.length,
+          scanned_chars: original.length,
+          truncated: false,
+          strategy: 'rules',
+          providers_used: ['cpu'],
+          warnings: [],
+        }),
+  )
   await openInbox(page)
   await page.getByRole('tab', { name: '分类归档', exact: true }).click()
   await page.screenshot({ path: path.join(evidence, 'classifier-empty.png') })
@@ -352,11 +500,15 @@ test('classification uses tag values, separates long text and retains manual edi
   await expect(suggestions.getByRole('button', { name: '添加推荐标签 指南', exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '删除标签 指南', exact: true })).toBeVisible()
   await suggestions.locator('summary').click()
-  await page.evaluate(() => { (window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = true })
+  await page.evaluate(() => {
+    ;(window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = true
+  })
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.locator('[data-governance-reader]').getByRole('alert')).toContainText('保存失败')
   await expect(page.getByLabel('文档分类', { exact: true })).toHaveValue('维护指南')
-  await page.evaluate(() => { (window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = false })
+  await page.evaluate(() => {
+    ;(window as unknown as { failGovernanceSave: boolean }).failGovernanceSave = false
+  })
   await page.getByRole('button', { name: '保存', exact: true }).click()
   await expect(page.locator('[data-governance-reader]')).toContainText('治理结果已保存')
   await page.reload()
@@ -376,7 +528,9 @@ test('classification uses tag values, separates long text and retains manual edi
   await page.screenshot({ path: path.join(evidence, 'classifier-earth.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
-  await expect.poll(async () => page.locator('#mimirq-sidebar').evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(0)
+  await expect
+    .poll(async () => page.locator('#mimirq-sidebar').evaluate((element) => element.getBoundingClientRect().right))
+    .toBeLessThanOrEqual(0)
   await page.locator('[data-governance-file="gov-1"]').click()
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'classifier-phone.png') })

@@ -9,7 +9,6 @@ Design goals:
 - PII-safe payloads (no raw query/doc content)
 """
 
-
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
@@ -67,4 +66,3 @@ class RagConfigTemplate(Base):
 
 
 __all__ = ["RagConfigTemplate"]
-

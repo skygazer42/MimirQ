@@ -1,4 +1,3 @@
-
 from collections.abc import AsyncIterator
 
 import httpx
@@ -30,7 +29,7 @@ def is_retryable_provider_error(exc: Exception) -> bool:
     if isinstance(exc, httpx.HTTPStatusError):
         return exc.response.status_code >= 500 or exc.response.status_code == 429
     if isinstance(exc, openai.APIStatusError):
-        status_code = int(getattr(exc, "status_code", 0) or 0)
+        status_code = exc.status_code
         return status_code >= 500 or status_code == 429
     return False
 

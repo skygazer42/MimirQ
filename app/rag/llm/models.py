@@ -26,7 +26,7 @@ class LLMMessage:
 class LLMResponse:
     content: str
     raw: Any = None
-    usage: dict | None = None
+    usage: dict[str, Any] | None = None
 
 
 __all__ = ["LLMMessage", "LLMResponse", "LLMRole"]

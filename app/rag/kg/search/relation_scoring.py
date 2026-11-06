@@ -10,8 +10,11 @@ During KG search, we treat different predicates as having different usefulness f
 This keeps relation-driven expansion helpful for RAG recall while limiting query drift.
 """
 
-
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.rag.kg.models import KgRelation
 
 
 @dataclass(frozen=True)
@@ -90,4 +93,19 @@ def relation_multiplier(predicate: str, *, from_is_subject: bool) -> float:
     return max(0.0, float(prior.weight) * direction)
 
 
-__all__ = ["PredicatePrior", "relation_multiplier"]
+def relation_direction(rel: "KgRelation", entity_ids: set[str]) -> tuple[str | None, str | None, str | None]:
+    subject_id = str(rel.subject_entity_id or "")
+    object_id = str(rel.object_entity_id or "")
+    if not subject_id or not object_id:
+        return None, None, None
+    predicate = str(rel.predicate or "").strip()
+    if not predicate or predicate.casefold() == "unknown":
+        return None, None, None
+    if subject_id in entity_ids:
+        return subject_id, object_id, predicate
+    if object_id in entity_ids:
+        return object_id, subject_id, predicate
+    return None, None, None
+
+
+__all__ = ["PredicatePrior", "relation_multiplier", "relation_direction"]

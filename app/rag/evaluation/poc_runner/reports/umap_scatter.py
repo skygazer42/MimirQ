@@ -1,6 +1,5 @@
-
 from collections import Counter
-from typing import Any
+from typing import Any, TypedDict
 
 import numpy as np
 from sklearn.decomposition import TruncatedSVD
@@ -9,7 +8,24 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 _SCHEMA = "mimirq.dataset_analysis.umap_scatter.v1"
 
 
-def _document_records(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
+class _ScatterRecord(TypedDict):
+    label: str
+    kind: str
+    group: str
+    weight: int
+    text: str
+
+
+class _ScatterPoint(TypedDict):
+    label: str
+    kind: str
+    group: str
+    weight: int
+    x: float
+    y: float
+
+
+def _document_records(rows: list[dict[str, Any]], *, limit: int) -> list[_ScatterRecord]:
     counts: Counter[str] = Counter()
     for row in rows or []:
         if not isinstance(row, dict):
@@ -18,22 +34,22 @@ def _document_records(rows: list[dict[str, Any]], *, limit: int) -> list[dict[st
             name = str(filename or "").strip()
             if name:
                 counts[name] += 1
-    out: list[dict[str, Any]] = []
+    out: list[_ScatterRecord] = []
     for filename, count in counts.most_common(max(1, int(limit or 1))):
         out.append(
             {
                 "label": filename,
                 "kind": "document",
                 "group": "document",
-                "weight": int(count),
+                "weight": count,
                 "text": filename,
             }
         )
     return out
 
 
-def _query_records(rows: list[dict[str, Any]], *, limit: int) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
+def _query_records(rows: list[dict[str, Any]], *, limit: int) -> list[_ScatterRecord]:
+    out: list[_ScatterRecord] = []
     for row in list(rows or [])[: max(1, int(limit or 1))]:
         if not isinstance(row, dict):
             continue
@@ -98,16 +114,16 @@ def build_umap_scatter(
     if not records:
         return {"schema": _SCHEMA, "point_count": 0, "points": []}
 
-    texts = [str(item.get("text") or item.get("label") or "").strip() for item in records]
+    texts = [item["text"].strip() for item in records]
     coords = _project_points(texts)
-    points: list[dict[str, Any]] = []
+    points: list[_ScatterPoint] = []
     for idx, item in enumerate(records):
         points.append(
             {
-                "label": str(item.get("label") or ""),
-                "kind": str(item.get("kind") or ""),
-                "group": str(item.get("group") or ""),
-                "weight": int(item.get("weight") or 1),
+                "label": item["label"],
+                "kind": item["kind"],
+                "group": item["group"],
+                "weight": item["weight"],
                 "x": round(float(coords[idx][0]), 6),
                 "y": round(float(coords[idx][1]), 6),
             }
@@ -115,6 +131,6 @@ def build_umap_scatter(
 
     return {
         "schema": _SCHEMA,
-        "point_count": int(len(points)),
+        "point_count": len(points),
         "points": points,
     }

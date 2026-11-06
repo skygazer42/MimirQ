@@ -26,7 +26,8 @@ from app.api.schemas.rag_config_template import (
 )
 from app.core.database import get_db
 from app.models.rag_config_template import RagConfigTemplate
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
+from app.services.rag_config_template_apply import validate_rag_config_patch
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -88,8 +89,10 @@ def create_rag_config_template(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
+
+    validate_rag_config_patch(request.config_patch.model_dump(exclude_none=True))
 
     template_key = request.template_key or _derive_template_key(request.name)
     max_version = (
@@ -131,7 +134,7 @@ def list_rag_config_templates(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplateList:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_read(db, tenant_id, account_id)
 
     query = db.query(RagConfigTemplate).filter(RagConfigTemplate.tenant_id == tenant_id)
@@ -165,7 +168,7 @@ def get_rag_config_template(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_read(db, tenant_id, account_id)
 
     template = (
@@ -187,7 +190,7 @@ def update_rag_config_template(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
 
     template = (
@@ -197,6 +200,15 @@ def update_rag_config_template(
     )
     if not template:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_RAG_CONFIG_TEMPLATE_NOT_FOUND_DETAIL)
+
+    effective_patch = (
+        request.config_patch.model_dump(exclude_none=True)
+        if request.config_patch is not None
+        else (template.config_patch or {})
+    )
+    active_after_update = request.is_active if request.is_active is not None else template.is_active
+    if request.config_patch is not None or active_after_update:
+        validate_rag_config_patch(effective_patch)
 
     _apply_rag_config_template_fields(template, request)
     _apply_rag_config_template_experiment_fields(template, request)
@@ -252,7 +264,7 @@ def create_rag_config_template_version(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ) -> RagConfigTemplate:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     _ensure_write(db, tenant_id, account_id)
 
     current = (
@@ -262,6 +274,13 @@ def create_rag_config_template_version(
     )
     if not current:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=_RAG_CONFIG_TEMPLATE_NOT_FOUND_DETAIL)
+
+    effective_patch = (
+        request.config_patch.model_dump(exclude_none=True)
+        if request.config_patch is not None
+        else (current.config_patch or {})
+    )
+    validate_rag_config_patch(effective_patch)
 
     template_key = current.template_key or _derive_template_key(current.name)
     max_version = (
@@ -284,11 +303,7 @@ def create_rag_config_template_version(
         parent_id=current.id,
         name=request.name or current.name,
         description=request.description if request.description is not None else current.description,
-        config_patch=(
-            request.config_patch.model_dump(exclude_none=True)
-            if request.config_patch is not None
-            else (current.config_patch or {})
-        ),
+        config_patch=effective_patch,
         is_active=bool(request.is_active),
         ab_experiment_key=request.ab_experiment_key
         if request.ab_experiment_key is not None

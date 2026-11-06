@@ -6,7 +6,6 @@ conversation per selected benchmark row: user question, assistant answer, and
 one feedback record on the assistant message.
 """
 
-
 import argparse
 import json
 import random
@@ -14,8 +13,13 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 from uuid import UUID, uuid5
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models.chat import Message
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -155,12 +159,7 @@ def classify_audit_row(row: dict[str, Any]) -> AuditRowQuality:
             issue="未命中知识库",
             tag="quality:missed_context",
         )
-    if (
-        business_score < 0.65
-        or clause_coverage < 0.6
-        or subquestion_coverage < 0.5
-        or wrong_evidence_rate >= 0.35
-    ):
+    if business_score < 0.65 or clause_coverage < 0.6 or subquestion_coverage < 0.5 or wrong_evidence_rate >= 0.35:
         return AuditRowQuality(
             bucket="bad_answer",
             rating=2,
@@ -549,8 +548,8 @@ def _upsert_feedback_records(records: list[FeedbackImportRecord]) -> dict[str, A
 
 def _upsert_message(
     *,
-    db: Any,
-    model: Any,
+    db: "Session",
+    model: "type[Message]",
     message_id: UUID,
     tenant_id: UUID,
     conversation_id: UUID,

@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -43,10 +42,10 @@ def classify_pdf_page_density(
         "schema": "mimirq.pre_poc.pdf_page_classifier.v1",
         "page_types": page_types,
         "summary": {
-            "page_count": int(total),
-            "scan_pages": int(scan_pages),
-            "low_density_pages": int(low_density_pages),
-            "text_pages": int(text_pages),
+            "page_count": total,
+            "scan_pages": scan_pages,
+            "low_density_pages": low_density_pages,
+            "text_pages": text_pages,
             "scan_ratio": scan_ratio,
             "pdf_type": pdf_type,
         },

@@ -6,7 +6,6 @@ stable set of token + latency breakdown fields. Keep this module pure and
 dependency-light so it can be unit-tested without DB/LLM/vector backends.
 """
 
-
 from typing import Any
 
 from app.core.token_utils import num_tokens_from_string
@@ -56,4 +55,3 @@ def compute_prompt_preview_metrics(
 
 
 __all__ = ["compute_prompt_preview_metrics"]
-

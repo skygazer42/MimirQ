@@ -8,6 +8,7 @@ import math
 import os
 import time
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -205,7 +206,7 @@ def _join(base_url: str, path: str) -> str:
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
-def _iter_dicts(value: Any):
+def _iter_dicts(value: Any) -> Iterator[dict[str, Any]]:
     if isinstance(value, dict):
         yield value
         for child in value.values():
@@ -390,7 +391,7 @@ def summarize_dataset_diagnostics(
             "documents": _as_int(kgq_summary.get("documents"), 0) if isinstance(kgq_summary, dict) else 0,
             "events": _as_int(kgq_summary.get("events"), 0) if isinstance(kgq_summary, dict) else 0,
             "entities": _as_int(kgq_summary.get("entities"), 0) if isinstance(kgq_summary, dict) else 0,
-            "links": int(kgq_links),
+            "links": kgq_links,
             "orphan_entities": _as_int(kgq_summary.get("orphan_entities"), 0) if isinstance(kgq_summary, dict) else 0,
         },
     }
@@ -450,14 +451,14 @@ async def collect_dataset_diagnostics(
         kgq_body if 200 <= kgq_status < 300 else {},
     )
     out["status"] = {
-        "ingestion": int(ingestion_status),
-        "kg_stats": int(kg_status),
-        "kg_quality": int(kgq_status),
+        "ingestion": ingestion_status,
+        "kg_stats": kg_status,
+        "kg_quality": kgq_status,
     }
     out["elapsed_ms"] = {
-        "ingestion": round(float(ingestion_ms), 1),
-        "kg_stats": round(float(kg_ms), 1),
-        "kg_quality": round(float(kgq_ms), 1),
+        "ingestion": round(ingestion_ms, 1),
+        "kg_stats": round(kg_ms, 1),
+        "kg_quality": round(kgq_ms, 1),
     }
     return out
 
@@ -510,19 +511,19 @@ async def run_gate(
                         "variant": variant or None,
                         "case_id": case.get("id"),
                         "question": question,
-                        "ok": 200 <= int(status or 0) < 300,
-                        "status": int(status or 0),
-                        "elapsed_ms": round(float(elapsed_ms), 1),
+                        "ok": 200 <= status < 300,
+                        "status": status,
+                        "elapsed_ms": round(elapsed_ms, 1),
                         "expected_doc": source_flags["expected_doc"],
                         "expected_docs": source_flags["expected_docs"],
                         "top1_doc": source_flags["top1_doc"],
                         "source_docs": docs[:50],
                         "source_top1": source_flags["source_top1"],
                         "source_hit": source_flags["source_hit"],
-                        "source_count": int(len(docs)),
-                        "fact_hit": bool(fact_ok),
-                        "fact_hit_count": int(fact_hit_count),
-                        "fact_group_count": int(len(case.get("fact_groups") or [])),
+                        "source_count": len(docs),
+                        "fact_hit": fact_ok,
+                        "fact_hit_count": fact_hit_count,
+                        "fact_group_count": len(case.get("fact_groups") or []),
                         "missed_groups": missed,
                         "answer_excerpt": _excerpt(_direct_answer_text(body)),
                         "fact_text_excerpt": _excerpt(fact_text),
@@ -620,7 +621,7 @@ def summarize_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "kg": {
                 "chunks_injected_total": sum(int(r.get("kg_chunks_injected") or 0) for r in vals),
                 "boost_promoted_total": sum(int(r.get("kg_chunk_boost_promoted") or 0) for r in vals),
-                "query_expansion_used": int(kg_query_expansion_used),
+                "query_expansion_used": kg_query_expansion_used,
                 "query_expansion_used_rate": (kg_query_expansion_used / total) if total else 0.0,
             },
         }
@@ -700,12 +701,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
-    cases_path = Path(str(args.cases)).expanduser().resolve()
+    cases_path = Path(args.cases).expanduser().resolve()
     cases = load_cases(cases_path)
     if not cases:
         raise SystemExit(f"cases_empty: {cases_path}")
 
-    dataset_id = str(args.dataset_id or "").strip()
+    dataset_id = args.dataset_id.strip()
     if not dataset_id:
         payload = _load_json(cases_path)
         if isinstance(payload, dict):
@@ -713,10 +714,10 @@ def main(argv: list[str] | None = None) -> int:
     if not dataset_id:
         raise SystemExit("dataset_id_required")
 
-    modes = {item.strip() for item in str(args.modes or "").split(",") if item.strip()}
-    retrieval_variants = _load_variants(str(args.retrieval_variants or ""))
-    if str(args.chat_rag_config or "").strip():
-        raw = str(args.chat_rag_config)
+    modes = {item.strip() for item in args.modes.split(",") if item.strip()}
+    retrieval_variants = _load_variants(args.retrieval_variants)
+    if args.chat_rag_config.strip():
+        raw = args.chat_rag_config
         path = Path(raw)
         chat_rag_config = _load_json(path) if path.exists() else json.loads(raw)
     else:
@@ -730,7 +731,7 @@ def main(argv: list[str] | None = None) -> int:
             "use_graph": False,
             "answer_mode": "extractive",
         }
-    thresholds = _load_thresholds(str(args.thresholds or ""))
+    thresholds = _load_thresholds(args.thresholds)
 
     if args.dry_run:
         print(
@@ -742,7 +743,7 @@ def main(argv: list[str] | None = None) -> int:
                     "modes": sorted(modes),
                     "retrieval_variants": sorted(retrieval_variants),
                     "thresholds": thresholds,
-                    "include_diagnostics": bool(args.include_diagnostics),
+                    "include_diagnostics": args.include_diagnostics,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -752,16 +753,14 @@ def main(argv: list[str] | None = None) -> int:
 
     rows = asyncio.run(
         run_gate(
-            base_url=str(args.base_url),
+            base_url=args.base_url,
             dataset_id=dataset_id,
             cases=cases,
             modes=modes,
             retrieval_variants=retrieval_variants,
             chat_rag_config=dict(chat_rag_config or {}),
-            concurrency=int(args.concurrency or 1),
-            headers=_headers(
-                tenant_id=str(args.tenant_id or ""), user_id=str(args.user_id or ""), bearer=str(args.bearer or "")
-            ),
+            concurrency=args.concurrency or 1,
+            headers=_headers(tenant_id=args.tenant_id, user_id=args.user_id, bearer=args.bearer),
         )
     )
     summary = summarize_rows(rows)
@@ -769,20 +768,18 @@ def main(argv: list[str] | None = None) -> int:
     diagnostics = (
         asyncio.run(
             collect_dataset_diagnostics(
-                base_url=str(args.base_url),
+                base_url=args.base_url,
                 dataset_id=dataset_id,
-                headers=_headers(
-                    tenant_id=str(args.tenant_id or ""), user_id=str(args.user_id or ""), bearer=str(args.bearer or "")
-                ),
+                headers=_headers(tenant_id=args.tenant_id, user_id=args.user_id, bearer=args.bearer),
             )
         )
-        if bool(args.include_diagnostics)
+        if args.include_diagnostics
         else None
     )
     report = {
         "schema": "mimirq.deepdoc_quality_gate.v1",
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "base_url": _api_v1_url(str(args.base_url)),
+        "base_url": _api_v1_url(args.base_url),
         "dataset_id": dataset_id,
         "case_count": len(cases),
         "modes": sorted(modes),
@@ -791,12 +788,12 @@ def main(argv: list[str] | None = None) -> int:
         "gate": gate,
         "rows": rows,
     }
-    out_path = Path(str(args.out)).expanduser().resolve()
+    out_path = Path(args.out).expanduser().resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[deepdoc-quality-gate] wrote {out_path}")
-    if not bool(gate.get("passed")):
-        for failure in gate.get("failures") or []:
+    if not gate["passed"]:
+        for failure in gate["failures"]:
             print(f"[deepdoc-quality-gate] FAIL: {failure}")
         return 2
     print("[deepdoc-quality-gate] PASS")

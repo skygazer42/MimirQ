@@ -41,7 +41,7 @@ def _normalize_base_urls(raw_base_url: str) -> tuple[str, str]:
 
     Returns: (root_base_url, api_v1_base_url)
     """
-    base = str(raw_base_url or "").strip().rstrip("/")
+    base = raw_base_url.strip().rstrip("/")
     if not base:
         raise ValueError("base_url is required")
     if base.endswith("/api/v1"):
@@ -83,7 +83,7 @@ def _check_ready(client: httpx.Client, *, api_base: str) -> tuple[bool, dict[str
 
     payload = _parse_json(resp)
     ok = resp.status_code == 200 and isinstance(payload, dict) and payload.get("ok") is True
-    return bool(ok), {"url": url, "status_code": resp.status_code, "body": payload}
+    return ok, {"url": url, "status_code": resp.status_code, "body": payload}
 
 
 def _build_smoke_test_command(
@@ -169,13 +169,13 @@ def _run_smoke_test(
         proc = subprocess.run(cmd, cwd=str(repo_root), capture_output=True, text=True, check=False)
         report: dict[str, Any] = {
             "command": _redact_command_args(cmd),
-            "exit_code": int(proc.returncode),
-            "stdout_tail": (proc.stdout or "")[-2000:],
-            "stderr_tail": (proc.stderr or "")[-2000:],
+            "exit_code": proc.returncode,
+            "stdout_tail": proc.stdout[-2000:],
+            "stderr_tail": proc.stderr[-2000:],
         }
         report["report"] = _load_json_file_if_exists(out_path)
 
-        return int(proc.returncode), report
+        return proc.returncode, report
 
 
 def _get_index_audit(
@@ -193,9 +193,9 @@ def _get_index_audit(
         (
             "observability/index-audit"
             f"?dataset_id={dataset_id}"
-            f"&max_check_ids={int(max_check_ids)}"
-            f"&milvus_list_limit={int(milvus_list_limit)}"
-            f"&sample_limit={int(sample_limit)}"
+            f"&max_check_ids={max_check_ids}"
+            f"&milvus_list_limit={milvus_list_limit}"
+            f"&sample_limit={sample_limit}"
         ),
     )
     try:
@@ -205,7 +205,7 @@ def _get_index_audit(
 
     body = _parse_json(resp)
     ok_http = resp.status_code == 200 and isinstance(body, dict)
-    return bool(ok_http), {"url": url, "status_code": resp.status_code, "body": body}
+    return ok_http, {"url": url, "status_code": resp.status_code, "body": body}
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -255,7 +255,7 @@ def _write_report(path_text: str, report: dict[str, Any]) -> None:
 
 
 def _resolve_smoke_dataset_id(args: argparse.Namespace, smoke_report: dict[str, Any] | None) -> str:
-    dataset_id = str(args.dataset_id or "").strip()
+    dataset_id = args.dataset_id.strip()
     if dataset_id or not isinstance(smoke_report, dict):
         return dataset_id
     smoke_payload = smoke_report.get("report")
@@ -291,17 +291,15 @@ def _run_index_audit_step(
             api_base=api_base,
             headers=headers,
             dataset_id=dataset_id,
-            max_check_ids=int(args.max_check_ids),
-            milvus_list_limit=int(args.milvus_list_limit),
-            sample_limit=int(args.sample_limit),
+            max_check_ids=args.max_check_ids,
+            milvus_list_limit=args.milvus_list_limit,
+            sample_limit=args.sample_limit,
         )
     report["steps"]["index_audit"] = audit
     if not ok_http:
         return False
 
-    body = (audit or {}).get("body") if isinstance(audit, dict) else None
-    if not isinstance(body, dict):
-        return False
+    body = audit["body"]
     vector_id_missing = int(body.get("vector_id_missing") or 0)
     missing_in_backend = int(body.get("vector_ids_missing_in_backend") or 0)
     orphan_sample = body.get("milvus_orphan_ids_sample")
@@ -318,10 +316,10 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     started = time.perf_counter()
-    _root_base, api_base = _normalize_base_urls(str(args.base_url or ""))
-    tenant_id = str(args.tenant_id or "").strip()
-    user_id = str(args.user_id or "").strip() or None
-    token = str(args.token or "").strip() or None
+    _root_base, api_base = _normalize_base_urls(args.base_url)
+    tenant_id = args.tenant_id.strip()
+    user_id = args.user_id.strip() or None
+    token = args.token.strip() or None
     report = _build_report(api_base=api_base, tenant_id=tenant_id)
 
     # Readiness check (no auth required).
@@ -332,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         report["steps"]["ready"] = ready
         if not ready_ok:
             report["error"] = "readiness_failed"
-            _write_report(str(args.out or ""), report)
+            _write_report(args.out, report)
             print(json.dumps(report, ensure_ascii=False))
             return 2
 
@@ -346,23 +344,23 @@ def main(argv: list[str] | None = None) -> int:
     # Smoke test (client-side end-to-end verification).
     smoke_ok = True
     smoke_report: dict[str, Any] | None = None
-    if not bool(args.skip_smoke):
+    if not args.skip_smoke:
         exit_code, smoke_report = _run_smoke_test(
             repo_root=repo_root,
-            base_url=str(args.base_url),
+            base_url=args.base_url,
             tenant_id=tenant_id,
-            auth_mode=(str(args.auth_mode).strip() if args.auth_mode else None),
+            auth_mode=args.auth_mode.strip() if args.auth_mode else None,
             user_id=user_id,
             token=token,
-            allow_unstructured=bool(args.allow_unstructured),
-            verbose=bool(args.verbose),
+            allow_unstructured=args.allow_unstructured,
+            verbose=args.verbose,
         )
         smoke_ok = exit_code == 0
         report["steps"]["smoke_test"] = smoke_report
 
     # Index audit (admin-only endpoint).
     audit_ok = True
-    if not bool(args.skip_index_audit):
+    if not args.skip_index_audit:
         audit_ok = _run_index_audit_step(
             args=args,
             timeout=timeout,
@@ -377,7 +375,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report["ok"] = bool(ready_ok and smoke_ok and audit_ok)
     report["elapsed_ms"] = int((time.perf_counter() - started) * 1000)
-    _write_report(str(args.out or ""), report)
+    _write_report(args.out, report)
 
     print(json.dumps(report, ensure_ascii=False))
     return 0 if report["ok"] else 1

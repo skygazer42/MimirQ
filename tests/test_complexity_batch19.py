@@ -1,4 +1,3 @@
-
 import datetime as dt
 from uuid import UUID
 
@@ -16,7 +15,6 @@ from app.rag.kg.extraction.extractor import (
     _canonicalize_entities_for_chunk,
     _uniform_sample_indices,
 )
-from app.rag.kg.extraction.parser import EntityValueParser
 from app.rag.pipeline_plugins.registry import (
     PipelinePluginEntry,
     _manifest_entries,
@@ -142,7 +140,6 @@ def test_canonicalize_entities_for_chunk_splits_parenthetical_aliases_and_keeps_
         entities,
         chunk_text="Large Language Model (LLM) systems are often called LLM systems.",
         max_entities=5,
-        parser=EntityValueParser(),
     )
 
     assert result == [

@@ -6,7 +6,6 @@ sections (stages/variables/include/etc). The chunker splits the document into
 top-level blocks while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -92,7 +91,7 @@ def _build_top_blocks(text: str) -> list[_TopBlock]:
         end = lines[idxs[j + 1]].start if j + 1 < len(idxs) else len(text)
         key = keys[j]
         kind = "config" if key.lower() in _RESERVED_KEYS else "job"
-        blocks.append(_TopBlock(start=start, end=end, key=key, kind=kind, index=int(j)))
+        blocks.append(_TopBlock(start=start, end=end, key=key, kind=kind, index=j))
 
     return blocks
 
@@ -110,7 +109,7 @@ def looks_like_gitlab_ci(text: str) -> bool:
 
 
 class GitLabCIChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -190,8 +189,8 @@ class GitLabCIChunker(BaseChunker):
                     extra_meta={
                         "gitlab_ci_key": blk.key,
                         "gitlab_ci_kind": blk.kind,
-                        "gitlab_ci_index": int(blk.index),
-                        "gitlab_ci_count": int(len(blocks)),
+                        "gitlab_ci_index": blk.index,
+                        "gitlab_ci_count": len(blocks),
                     },
                 )
 

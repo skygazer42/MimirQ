@@ -15,7 +15,7 @@ from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
 
 def _runtime(space: str) -> DatasetEmbeddingRuntimeConfig:
     return DatasetEmbeddingRuntimeConfig(
-        provider="local",
+        provider="openai_compatible",
         model=f"model-{space}",
         api_base="",
         api_key="",
@@ -30,7 +30,6 @@ def _runtime(space: str) -> DatasetEmbeddingRuntimeConfig:
     [
         pytest.param("retrieve_preview", {}, id="retrieve-preview"),
         pytest.param("tree_search", {}, id="tree-search"),
-        pytest.param("image_search", {"dataset_id": uuid.uuid4()}, id="image-search"),
         pytest.param("evidence_retrieve", {}, id="evidence-retrieve"),
         pytest.param("prompt_preview", {}, id="prompt-preview"),
         pytest.param("dify_retrieval", {"knowledge_id": "knowledge-1"}, id="dify-retrieval"),
@@ -44,7 +43,6 @@ def test_retrieval_query_models_share_configured_length_limit(model_type: str, e
     models = {
         "retrieve_preview": rag.RetrievePreviewRequest,
         "tree_search": rag.TreeSearchPreviewRequest,
-        "image_search": rag.ImageSearchRequest,
         "evidence_retrieve": rag.EvidenceRetrieveRequest,
         "prompt_preview": rag.PromptPreviewRequest,
         "dify_retrieval": integrations_dify.DifyExternalKnowledgeRequest,
@@ -60,31 +58,12 @@ def test_retrieval_query_models_share_configured_length_limit(model_type: str, e
 
 
 @pytest.mark.parametrize("model_name", ["RetrievePreviewRequest", "EvidenceRetrieveRequest"])
-def test_explicit_image_queries_share_retrieval_query_length_limit(model_name: str) -> None:
+def test_explicit_image_vector_queries_are_retired(model_name: str) -> None:
     from app.api.v1 import rag
 
     model = getattr(rag, model_name)
-    limit = int(settings.RETRIEVAL_QUERY_MAX_CHARS)
-
-    assert model(query="query", query_image="i" * limit).query_image == "i" * limit
-    with pytest.raises(ValidationError):
-        model(query="query", query_image="i" * (limit + 1))
-
-
-def test_chat_image_context_rejects_oversized_internal_query(monkeypatch: pytest.MonkeyPatch) -> None:
-    from app.services.chat_image_service import build_chat_image_context_docs
-
-    monkeypatch.setattr(settings, "IMAGE_EMBEDDING_ENABLED", True)
-    monkeypatch.setattr(settings, "RETRIEVAL_QUERY_MAX_CHARS", 3)
-
-    with pytest.raises(ValueError, match=r"RETRIEVAL_QUERY_MAX_CHARS=3"):
-        build_chat_image_context_docs(
-            object(),  # type: ignore[arg-type]
-            tenant_id=uuid.uuid4(),
-            account_id="account-1",
-            dataset_id=uuid.uuid4(),
-            question="four",
-        )
+    with pytest.raises(ValidationError, match="retired"):
+        model(query="query", query_image="find image")
 
 
 def test_chat_request_message_limit_is_exposed_and_enforced_by_http_schema() -> None:
@@ -155,7 +134,7 @@ def test_dataset_runtime_resolution_groups_identical_embedding_configs(
 
     tenant_id = uuid.uuid4()
     dataset_ids = (uuid.uuid4(), uuid.uuid4())
-    metadata = {"embedding_defaults": {"provider": "local", "model": "shared-model"}}
+    metadata = {"embedding_defaults": {"provider": "openai_compatible", "model": "shared-model"}}
 
     class _Query:
         def filter(self, *_args, **_kwargs):  # noqa: ANN002, ANN003

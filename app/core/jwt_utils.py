@@ -1,6 +1,7 @@
 """
 JWT helpers for issuing access tokens.
 """
+
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -9,25 +10,25 @@ import jwt
 from app.core.config import settings
 
 
-def _normalize_claim_key(value: Any) -> str:
-    return str(value or "").strip()
+def _normalize_claim_key(value: str) -> str:
+    return (value or "").strip()
 
 
 def _merge_extra_claims(payload: dict[str, Any], extra_claims: dict[str, Any] | None) -> None:
     if not extra_claims:
         return
-    for key, claim_value in dict(extra_claims).items():
+    for key, claim_value in extra_claims.items():
         claim_key = _normalize_claim_key(key)
         if not claim_key or claim_key in payload:
             continue
         payload[claim_key] = claim_value
 
 
-def _set_string_claim(payload: dict[str, Any], key: Any, value: Any) -> None:
+def _set_string_claim(payload: dict[str, Any], key: str, value: str | None) -> None:
     claim_key = _normalize_claim_key(key)
     if not claim_key:
         return
-    claim_value = str(value or "").strip()
+    claim_value = (value or "").strip()
     if claim_value:
         payload[claim_key] = claim_value
 
@@ -44,18 +45,18 @@ def create_access_token(
 
     Returns (token, expires_in_seconds).
     """
-    minutes = int(expires_minutes or getattr(settings, "ACCESS_TOKEN_EXPIRE_MINUTES", 30))
+    minutes = expires_minutes or settings.ACCESS_TOKEN_EXPIRE_MINUTES
     expires_delta = timedelta(minutes=max(1, minutes))
     now = datetime.now(UTC)
     expire_at = now + expires_delta
     payload = {
-        "sub": str(subject),
+        "sub": subject,
         "exp": expire_at,
         "iat": now,
     }
     _merge_extra_claims(payload, extra_claims)
-    _set_string_claim(payload, "iss", getattr(settings, "JWT_ISSUER", ""))
-    _set_string_claim(payload, "aud", getattr(settings, "JWT_AUDIENCE", ""))
-    _set_string_claim(payload, getattr(settings, "JWT_TENANT_CLAIM", ""), tenant_id)
+    _set_string_claim(payload, "iss", settings.JWT_ISSUER)
+    _set_string_claim(payload, "aud", settings.JWT_AUDIENCE)
+    _set_string_claim(payload, settings.JWT_TENANT_CLAIM, tenant_id)
     token = jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return token, int(expires_delta.total_seconds())

@@ -73,7 +73,7 @@ def build_cost_event(
         "model": _clean_text(model),
         "input_tokens": input_t,
         "output_tokens": output_t,
-        "total_tokens": int(input_t + output_t),
+        "total_tokens": input_t + output_t,
         "cost_usd": round(_to_float(cost_usd), 6),
         "tenant_id": _clean_text(tenant_id),
         "dataset_id": _clean_text(dataset_id),
@@ -112,20 +112,20 @@ def summarize_cost_events(events: list[dict[str, Any]]) -> dict[str, Any]:
 
     def _normalize_bucket(bucket: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
-        for key in sorted(bucket.keys()):
+        for key in sorted(bucket):
             item = bucket[key]
             out[key] = {
-                "events": int(item["events"]),
-                "total_tokens": int(item["total_tokens"]),
-                "total_cost_usd": round(float(item["total_cost_usd"]), 6),
+                "events": item["events"],
+                "total_tokens": item["total_tokens"],
+                "total_cost_usd": round(item["total_cost_usd"], 6),
             }
         return out
 
     return {
         "schema": COST_SUMMARY_SCHEMA_V1,
-        "events": int(len(rows)),
-        "total_tokens": int(total_tokens),
-        "total_cost_usd": round(float(total_cost), 6),
+        "events": len(rows),
+        "total_tokens": total_tokens,
+        "total_cost_usd": round(total_cost, 6),
         "by_provider": _normalize_bucket(by_provider),
         "by_tenant": _normalize_bucket(by_tenant),
     }
@@ -155,14 +155,14 @@ def record_cost_event(
         stage=stage,
     )
     labels = {
-        "provider": str(event.get("provider") or "unknown"),
-        "model": str(event.get("model") or "unknown"),
-        "tenant_id": str(event.get("tenant_id") or "unknown"),
-        "stage": str(event.get("stage") or "unknown"),
+        "provider": event["provider"] or "unknown",
+        "model": event["model"] or "unknown",
+        "tenant_id": event["tenant_id"] or "unknown",
+        "stage": event["stage"] or "unknown",
     }
     COST_EVENTS_TOTAL.labels(**labels).inc()
-    COST_TOKENS_TOTAL.labels(**labels).inc(float(event.get("total_tokens") or 0.0))
-    COST_USD_TOTAL.labels(**labels).inc(float(event.get("cost_usd") or 0.0))
+    COST_TOKENS_TOTAL.labels(**labels).inc(event["total_tokens"])
+    COST_USD_TOTAL.labels(**labels).inc(event["cost_usd"])
     log_metrics({"event": "cost_event", **{k: v for k, v in event.items() if k != "schema"}})
     return event
 

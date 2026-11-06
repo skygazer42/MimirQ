@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.text import heuristic_decompose_query

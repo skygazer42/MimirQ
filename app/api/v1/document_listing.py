@@ -2,18 +2,22 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import or_, select
+from sqlalchemy.orm import Query as ORMQuery
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentList
 from app.core.database import get_db
-from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.services.dataset_service import DatasetService
-from app.services.document_access import build_dataset_read_filter, build_document_read_filter
-from app.services.document_runtime_metadata import attach_runtime_document_metadata
+from app.services import dataset_service
+from app.services.document_access import (
+    apply_document_dataset_scope,
+    apply_document_lifecycle_filter,
+    build_document_read_filter,
+)
+from app.services.document_metadata_service import attach_runtime_document_metadata
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -54,7 +58,58 @@ class ListDocumentsQueryFields:
         self.order_dir = order_dir
 
 
-def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
+@router.get("/", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+def list_documents(
+    params: Annotated[ListDocumentsQueryFields, Depends()],
+    *,
+    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
+    account_id: Annotated[str, Depends(get_current_account_id)],
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, int | list[DBDocument]]:
+    """
+    List documents.
+    """
+    dataset_service.ensure_member(db, tenant_id, account_id)
+
+    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+    query = apply_document_dataset_scope(
+        query=query,
+        db=db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        dataset_id=params.dataset_id,
+    )
+    query = query.filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
+    query = _apply_status_filter(query=query, status=params.status)
+    query = apply_document_lifecycle_filter(query, params.lifecycle)
+    query = _apply_optional_listing_filters(
+        query=query,
+        file_type=params.file_type,
+        owner_id=params.owner_id,
+        q=params.q,
+        source_path_prefix=params.source_path_prefix,
+    )
+
+    total = query.count()
+    if params.order_by == "filename":
+        order_col = DBDocument.filename
+    elif params.order_by == "file_size":
+        order_col = DBDocument.file_size
+    else:
+        order_col = DBDocument.created_at
+
+    query = query.order_by(order_col.asc() if params.order_dir == "asc" else order_col.desc(), DBDocument.id.asc())
+    documents = query.offset(params.skip).limit(params.limit).all()
+    for document in documents:
+        attach_runtime_document_metadata(document)
+
+    return {
+        "total": total,
+        "items": documents,
+    }
+
+
+def _source_path_prefix_expr(prefix: str | None) -> ColumnElement[bool] | None:
     """
     Build a SQLAlchemy filter expression for document.metadata.source_path prefix matching.
 
@@ -62,7 +117,7 @@ def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
     - The source_path is optional and stored in JSONB metadata as a directory-preserving upload key.
     - Returns None when prefix is empty, so callers can keep query logic simple.
     """
-    val = str(prefix or "").strip()
+    val = (prefix or "").strip()
     if not val:
         return None
     if len(val) > 500:
@@ -70,66 +125,30 @@ def _source_path_prefix_expr(prefix: str | None):  # noqa: ANN201
     return DBDocument.doc_metadata["source_path"].astext.startswith(val)  # type: ignore[attr-defined]
 
 
-def _apply_dataset_scope(
-    *,
-    query,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    dataset_id: UUID | None,
-):
-    if dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
-        return query.filter(DBDocument.dataset_id == dataset_id)
-
-    allowed_dataset_ids_subq = select(Dataset.id).where(
-        Dataset.tenant_id == tenant_id,
-        build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id),
-    )
-    return query.filter(
-        or_(
-            DBDocument.dataset_id.is_(None),
-            DBDocument.dataset_id.in_(allowed_dataset_ids_subq),
-        )
-    )
-
-
-def _apply_status_filter(*, query, status: str | None):
+def _apply_status_filter(*, query: ORMQuery[DBDocument], status: str | None) -> ORMQuery[DBDocument]:
     if not status or status == "all":
         return query
-    normalized = str(status).strip().lower()
+    normalized = status.strip().lower()
     if normalized == "processing":
         return query.filter(DBDocument.status.in_(["pending", "processing"]))
     return query.filter(DBDocument.status == status)
 
 
-def _apply_lifecycle_filter(*, query, lifecycle: str | None):
-    lifecycle0 = str(lifecycle or "active").strip().lower()
-    if lifecycle0 == "all":
-        return query
-    if lifecycle0 == "archived":
-        return query.filter(DBDocument.archived_at.isnot(None))
-    if lifecycle0 == "disabled":
-        return query.filter(DBDocument.disabled_at.isnot(None))
-    return query.filter(DBDocument.archived_at.is_(None), DBDocument.disabled_at.is_(None))
-
-
 def _apply_optional_listing_filters(
     *,
-    query,
+    query: ORMQuery[DBDocument],
     file_type: str | None,
     owner_id: str | None,
     q: str | None,
     source_path_prefix: str | None,
-):
+) -> ORMQuery[DBDocument]:
     if file_type:
-        file_type_norm = str(file_type or "").strip().lower()
+        file_type_norm = file_type.strip().lower()
         if file_type_norm:
             query = query.filter(DBDocument.file_type == file_type_norm)
 
     if owner_id:
-        owner_id_norm = str(owner_id or "").strip()
+        owner_id_norm = owner_id.strip()
         if owner_id_norm:
             query = query.filter(DBDocument.owner_id == owner_id_norm)
 
@@ -142,69 +161,3 @@ def _apply_optional_listing_filters(
     if sp_expr is not None:
         query = query.filter(sp_expr)
     return query
-
-
-def _resolve_order_column(order_by: str):
-    if order_by == "filename":
-        return DBDocument.filename
-    if order_by == "file_size":
-        return DBDocument.file_size
-    return DBDocument.created_at
-
-
-@router.get("/", response_model=DocumentList, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def list_documents(
-    params: Annotated[ListDocumentsQueryFields, Depends()],
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    List documents.
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-
-    skip = params.skip
-    limit = params.limit
-    status = params.status
-    lifecycle = params.lifecycle
-    dataset_id = params.dataset_id
-    file_type = params.file_type
-    owner_id = params.owner_id
-    q = params.q
-    source_path_prefix = params.source_path_prefix
-    order_by = params.order_by
-    order_dir = params.order_dir
-
-    query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
-    query = _apply_dataset_scope(
-        query=query,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id,
-    )
-    query = query.filter(build_document_read_filter(tenant_id=tenant_id, account_id=account_id))
-    query = _apply_status_filter(query=query, status=status)
-    query = _apply_lifecycle_filter(query=query, lifecycle=lifecycle)
-    query = _apply_optional_listing_filters(
-        query=query,
-        file_type=file_type,
-        owner_id=owner_id,
-        q=q,
-        source_path_prefix=source_path_prefix,
-    )
-
-    total = int(query.count())
-    order_col = _resolve_order_column(order_by)
-
-    query = query.order_by(order_col.asc() if order_dir == "asc" else order_col.desc(), DBDocument.id.asc())
-    documents = query.offset(skip).limit(limit).all()
-    for document in documents:
-        attach_runtime_document_metadata(document)
-
-    return {
-        "total": total,
-        "items": documents,
-    }

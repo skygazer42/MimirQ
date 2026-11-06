@@ -30,7 +30,9 @@ test('独立 UX：手机从健康诊断找到准备资料的下一步', async ({
   await expect(page.getByText('最近扫描', { exact: true })).toBeVisible({ timeout: 60_000 })
   await evidence(page, 'mobile-isolated-profile')
   await page.getByText('扫描历史', { exact: true }).tap()
-  await expect(page.getByText('暂无扫描记录。启动一次深度扫描后，这里会显示快照和可对比版本。', { exact: true })).toBeVisible({ timeout: 60_000 })
+  await expect(
+    page.getByText('暂无扫描记录。启动一次深度扫描后，这里会显示快照和可对比版本。', { exact: true }),
+  ).toBeVisible({ timeout: 60_000 })
   await evidence(page, 'mobile-isolated-profile-history')
   await page.getByRole('button', { name: '数据集操作', exact: true }).tap()
   await page.getByText('表格资产', { exact: true }).tap()
@@ -72,7 +74,10 @@ test('独立 UX：手机读回复核证据集并检查创建表单', async ({ pa
   await page.getByRole('button', { name: '新建', exact: true }).tap()
   await expect(page.getByRole('dialog', { name: '新建证据集' })).toBeVisible()
   await page.getByRole('dialog').getByLabel('名称', { exact: true }).fill('手机复核输入-不提交')
-  await page.getByRole('dialog').getByLabel('描述（可选）', { exact: true }).fill('检查窄屏表单操作，取消后不创建额外记录。')
+  await page
+    .getByRole('dialog')
+    .getByLabel('描述（可选）', { exact: true })
+    .fill('检查窄屏表单操作，取消后不创建额外记录。')
   await evidence(page, 'mobile-isolated-evidence-dialog')
   await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).tap()
   await expect(page.getByRole('dialog')).toBeHidden()

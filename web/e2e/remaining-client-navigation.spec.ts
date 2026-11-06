@@ -4,7 +4,10 @@ test('client navigation resolves each route and its dynamic page module', async 
   test.setTimeout(300000)
   const state = await remainingFixture(page)
   const badScripts: string[] = []
-  page.on('response', response => { if (response.url().includes('/_next/') && response.url().split('?')[0].endsWith('.js') && !response.ok()) badScripts.push(new URL(response.url()).pathname) })
+  page.on('response', (response) => {
+    if (response.url().includes('/_next/') && response.url().split('?')[0].endsWith('.js') && !response.ok())
+      badScripts.push(new URL(response.url()).pathname)
+  })
   await openRemaining(page, datasetRoute('health'), '健康概览')
   await page.getByRole('button', { name: '数据画像', exact: true }).click()
   await expect(page.getByRole('heading', { name: '数据画像', exact: true })).toBeVisible({ timeout: 60000 })

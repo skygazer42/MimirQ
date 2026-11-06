@@ -24,7 +24,12 @@ afterEach(async () => {
 
 describe('state-based application feedback', () => {
   it('shows a finite message once through Strict Mode and ordinary rerenders without adding an inline banner', async () => {
-    const render = () => root.render(<StrictMode><FeedbackToast message="参数已变更" type="warning" id="parameters" /></StrictMode>)
+    const render = () =>
+      root.render(
+        <StrictMode>
+          <FeedbackToast message="参数已变更" type="warning" id="parameters" />
+        </StrictMode>,
+      )
     await act(async () => render())
     await act(async () => render())
     expect(toast.warning).toHaveBeenCalledTimes(1)

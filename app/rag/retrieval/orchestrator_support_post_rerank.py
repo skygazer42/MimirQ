@@ -25,7 +25,7 @@ def _build_reranked_document(
     return Document(
         page_content=doc.page_content,
         metadata=meta,
-        id=getattr(doc, "id", None) or meta.get("chunk_id"),
+        id=doc.id or meta.get("chunk_id"),
     )
 
 
@@ -80,22 +80,22 @@ def post_rerank_settings(
     cache_backend_fn: Callable[[], Any],
     corpus_cache_token_fn: Callable[[dict[str, Any]], str | None],
 ) -> dict[str, Any]:
-    cache_enabled = bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False))
+    cache_enabled = bool(settings.EVIDENCE_POST_RERANK_CACHE_ENABLED)
     try:
-        calibration_alpha = float(getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.7) or 0.7)
+        calibration_alpha = float(settings.EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA or 0.7)
     except (TypeError, ValueError, AttributeError):
         calibration_alpha = 0.7
-    calibration_alpha = min(1.0, max(0.0, float(calibration_alpha)))
+    calibration_alpha = min(1.0, max(0.0, calibration_alpha))
     return {
-        "enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
-        "pipeline_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)),
-        "pipeline_raw": getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", ""),
-        "provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or "ltr").strip().lower(),
-        "top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
+        "enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
+        "pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
+        "pipeline_raw": settings.EVIDENCE_POST_RERANK_PIPELINE,
+        "provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or "ltr").strip().lower(),
+        "top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
         "cache_enabled": cache_enabled,
         "cache_backend": cache_backend_fn(),
         "corpus_cache_token": corpus_cache_token_fn(state),
-        "score_calibration_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", False)),
+        "score_calibration_enabled": bool(settings.EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED),
         "score_calibration_alpha": calibration_alpha,
     }
 
@@ -122,13 +122,13 @@ def run_post_rerank_single_mode(
     governed_n = min(int(top_n), len(docs or []))
     governed_n = max(governed_n, int(top_k or 0))
     governed_n = min(governed_n, len(docs or []))
-    candidates, id_to_doc = build_candidates_fn(docs, limit=int(governed_n))
+    candidates, id_to_doc = build_candidates_fn(docs, limit=governed_n)
     result: dict[str, Any] = {
         "docs": list(docs or []),
         "post_rerank_used": False,
         "post_rerank_provider": provider,
         "post_rerank_model_used": None,
-        "post_rerank_candidates_n": int(governed_n),
+        "post_rerank_candidates_n": governed_n,
         "post_rerank_elapsed": 0.0,
         "post_rerank_cache_hits": 0,
         "post_rerank_cache_misses": 0,
@@ -141,7 +141,7 @@ def run_post_rerank_single_mode(
     cached, cache_key, _, cache_hits, cache_misses = get_cached_result_fn(
         state=state,
         provider=provider,
-        top_n=int(governed_n),
+        top_n=governed_n,
         query_for_retrieval=query_for_retrieval,
         candidates=candidates,
         cache_enabled=cache_enabled,
@@ -150,7 +150,7 @@ def run_post_rerank_single_mode(
     rerank_result, elapsed_sec = execute_post_rerank_fn(
         state=state,
         provider=provider,
-        top_n=int(governed_n),
+        top_n=governed_n,
         query_for_retrieval=query_for_retrieval,
         candidates=candidates,
         cache_enabled=cache_enabled,
@@ -179,7 +179,7 @@ def run_post_rerank_single_mode(
         "post_rerank_used": True,
         "post_rerank_provider": reranker_provider,
         "post_rerank_model_used": model_used,
-        "post_rerank_candidates_n": int(governed_n),
+        "post_rerank_candidates_n": governed_n,
         "post_rerank_elapsed": float(elapsed_sec),
         "post_rerank_cache_hits": int(cache_hits),
         "post_rerank_cache_misses": int(cache_misses),
@@ -202,8 +202,8 @@ def _stage_top_n(
     if stage_n <= 0:
         stage_n = int(previous_n or top_n)
     if previous_n is not None:
-        stage_n = min(int(stage_n), int(previous_n))
-    return min(int(stage_n), docs_count)
+        stage_n = min(stage_n, int(previous_n))
+    return min(stage_n, docs_count)
 
 
 def _pipeline_noop_result(
@@ -242,8 +242,8 @@ def _append_stage_meta(
     stages.append(
         {
             "provider": provider,
-            "top_n": int(stage_n),
-            "candidates": int(candidates_count),
+            "top_n": stage_n,
+            "candidates": candidates_count,
             "elapsed_sec": round(float(elapsed_sec), 3),
             "model_used": model_used,
             "cache_hit": bool(cache_hit),
@@ -293,14 +293,14 @@ def run_post_rerank_pipeline_mode(
         if stage_n <= 0:
             continue
 
-        candidates, id_to_doc = build_candidates_fn(docs_work, limit=int(stage_n))
+        candidates, id_to_doc = build_candidates_fn(docs_work, limit=stage_n)
         if not candidates:
             continue
 
         cached, cache_key, cache_hit, hit_delta, miss_delta = get_cached_result_fn(
             state=state,
             provider=stage_provider,
-            top_n=int(stage_n),
+            top_n=stage_n,
             query_for_retrieval=query_for_retrieval,
             candidates=candidates,
             cache_enabled=cache_enabled,
@@ -311,7 +311,7 @@ def run_post_rerank_pipeline_mode(
         rerank_result, elapsed_i = execute_post_rerank_fn(
             state=state,
             provider=stage_provider,
-            top_n=int(stage_n),
+            top_n=stage_n,
             query_for_retrieval=query_for_retrieval,
             candidates=candidates,
             cache_enabled=cache_enabled,
@@ -325,7 +325,7 @@ def run_post_rerank_pipeline_mode(
         if is_final:
             final_provider = used_provider
             final_model_used = rerank_result.model_used
-            final_n = int(stage_n)
+            final_n = stage_n
 
         ordered_prefix = build_reranked_prefix_fn(
             docs_prefix=list(docs_work[:stage_n]),
@@ -334,7 +334,7 @@ def run_post_rerank_pipeline_mode(
             provider=used_provider,
             elapsed_sec=total_elapsed,
             model_used=rerank_result.model_used,
-            annotate_scores=bool(is_final),
+            annotate_scores=is_final,
         )
         if is_final:
             ordered_prefix, score_calibration_used = calibrate_prefix_fn(
@@ -346,7 +346,7 @@ def run_post_rerank_pipeline_mode(
         else:
             score_calibration_used = False
         docs_work = ordered_prefix + list(docs_work[stage_n:])
-        previous_n = int(stage_n)
+        previous_n = stage_n
         _append_stage_meta(
             stages=stages,
             provider=used_provider,
@@ -374,10 +374,10 @@ def run_post_rerank_pipeline_mode(
         "post_rerank_used": True,
         "post_rerank_provider": final_provider,
         "post_rerank_model_used": final_model_used,
-        "post_rerank_candidates_n": int(final_n),
-        "post_rerank_elapsed": float(total_elapsed),
-        "post_rerank_cache_hits": int(cache_hits),
-        "post_rerank_cache_misses": int(cache_misses),
+        "post_rerank_candidates_n": final_n,
+        "post_rerank_elapsed": total_elapsed,
+        "post_rerank_cache_hits": cache_hits,
+        "post_rerank_cache_misses": cache_misses,
         "post_rerank_score_calibration_used": bool(score_calibration_stats.get("used")),
         "post_rerank_skip_reason": None,
     }

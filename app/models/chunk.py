@@ -3,6 +3,7 @@ RAG chunk and document models.
 
 Defines data models and interfaces for document chunks.
 """
+
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any
@@ -30,29 +31,34 @@ class Document(BaseModel):
 
 class GeneralStructureChunk(BaseModel):
     """General Structure Chunk."""
+
     general_chunks: list[str]
 
 
 class ParentChildChunk(BaseModel):
     """Parent Child Chunk."""
+
     parent_content: str
     child_contents: list[str]
 
 
 class ParentChildStructureChunk(BaseModel):
     """Parent Child Structure Chunk."""
+
     parent_child_chunks: list[ParentChildChunk]
     parent_mode: str = "paragraph"
 
 
 class QAChunk(BaseModel):
     """QA Chunk."""
+
     question: str
     answer: str
 
 
 class QAStructureChunk(BaseModel):
     """QAStructureChunk."""
+
     qa_chunks: list[QAChunk]
 
 
@@ -70,5 +76,6 @@ class BaseDocumentTransformer(ABC):
 
 class DocumentContext(BaseModel):
     """Model class for document context."""
+
     content: str
     score: float | None = None

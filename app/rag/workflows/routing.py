@@ -7,7 +7,6 @@ Routes queries to specialized handlers.
 Pattern: Classify -> Route -> Handler -> Result
 """
 
-
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -29,7 +28,7 @@ class RouteHandler:
         name: str,
         handler: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         description: str = "",
-    ):
+    ) -> None:
         self.name = name
         self.handler = handler
         self.description = description
@@ -57,8 +56,8 @@ class RoutingWorkflow(BaseWorkflow):
         self,
         classifier: Callable[[str], Awaitable[str]] | None = None,
         default_route: str = "default",
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the routing workflow.
 
@@ -216,9 +215,7 @@ def create_llm_classifier(
     Returns:
         Classifier function
     """
-    route_descriptions = "\n".join(
-        f"- {name}: {desc}" for name, desc in routes.items()
-    )
+    route_descriptions = "\n".join(f"- {name}: {desc}" for name, desc in routes.items())
 
     prompt_template = f"""Classify the following query into one of these categories:
 
@@ -232,7 +229,7 @@ Respond with ONLY the category name, nothing else."""
         try:
             prompt = prompt_template.format(query=query)
             response = await llm.ainvoke(prompt)
-            result = response.content.strip().lower() if hasattr(response, 'content') else str(response).strip().lower()
+            result = response.content.strip().lower() if hasattr(response, "content") else str(response).strip().lower()
 
             # Match against known routes
             for route in routes:

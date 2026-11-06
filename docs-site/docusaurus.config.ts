@@ -1,6 +1,6 @@
-import {themes as prismThemes} from 'prism-react-renderer';
-import type {Config} from '@docusaurus/types';
-import type * as Preset from '@docusaurus/preset-classic';
+import { themes as prismThemes } from 'prism-react-renderer'
+import type { Config } from '@docusaurus/types'
+import type * as Preset from '@docusaurus/preset-classic'
 
 const config: Config = {
   title: 'MimirQ Docs',
@@ -89,9 +89,9 @@ const config: Config = {
           position: 'left',
           label: '开发者资源',
           items: [
-            {to: '/docs/backend/welcome', label: '后端契约'},
-            {to: '/docs/frontend/welcome', label: '前端路由'},
-            {to: '/docs/integration/welcome', label: '集成与联调'},
+            { to: '/docs/backend/welcome', label: '后端契约' },
+            { to: '/docs/frontend/welcome', label: '前端路由' },
+            { to: '/docs/integration/welcome', label: '集成与联调' },
           ],
         },
         {
@@ -134,6 +134,6 @@ const config: Config = {
       darkTheme: prismThemes.dracula,
     },
   } satisfies Preset.ThemeConfig,
-};
+}
 
-export default config;
+export default config

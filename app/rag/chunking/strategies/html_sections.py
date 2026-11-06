@@ -8,7 +8,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-
 import html as _html
 import re
 from dataclasses import dataclass
@@ -93,7 +92,7 @@ def _build_sections(text: str, headings: list[HtmlHeading]) -> list[_Section]:
 
 
 def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     while len(stack) >= level:
         stack.pop()
     stack.append(heading_text)
@@ -114,7 +113,7 @@ def looks_like_html_sections(text: str) -> bool:
 
 
 class HTMLSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -151,7 +150,7 @@ class HTMLSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["html_heading"] = section.heading.title
-                meta["html_level"] = int(section.heading.level)
+                meta["html_level"] = section.heading.level
             if path:
                 meta["html_path"] = path
             if path_str:

@@ -5,8 +5,6 @@ We accept a few common aliases from UI / env / user input and map them to the
 canonical backend names used internally.
 """
 
-
-
 _BACKEND_ALIASES: dict[str, str] = {
     # PyMuPDF basic parser aliases
     "pymupdf": "basic",

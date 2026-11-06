@@ -62,13 +62,13 @@ def _report_dirty_artifacts(dirty: list[str]) -> None:
             print("[openapi-check] ...diff truncated...")
 
 
-def _load_spec(repo_root: Path) -> tuple[dict[str, object] | None, bool]:
+def _load_spec(repo_root: Path) -> dict[str, object] | None:
     try:
         spec = json.loads((repo_root / "web/openapi.json").read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         print(f"[openapi-check] FAIL: could not parse web/openapi.json: {exc}")
-        return None, False
-    return spec, True
+        return None
+    return spec
 
 
 def _find_empty_object_paths(spec: dict[str, object]) -> list[str]:
@@ -111,8 +111,8 @@ def main() -> int:
         _report_dirty_artifacts(dirty)
         return 1
 
-    spec, loaded = _load_spec(repo_root)
-    if not loaded or spec is None:
+    spec = _load_spec(repo_root)
+    if spec is None:
         return 1
 
     # Empty object schemas become `Record<string, never>` in openapi-typescript.

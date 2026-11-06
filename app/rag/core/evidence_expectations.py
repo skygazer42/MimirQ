@@ -60,7 +60,7 @@ def evaluate_evidence_anchor_expectations(
         excluded_role = _excluded_retrieval_role(item, prefixes)
         if excluded_role is not None:
             skipped += 1
-            skipped_by_role[excluded_role] = int(skipped_by_role.get(excluded_role, 0) or 0) + 1
+            skipped_by_role[excluded_role] = skipped_by_role.get(excluded_role, 0) + 1
             continue
         considered += 1
         missing_fields = _missing_anchor_fields(item, req)
@@ -77,11 +77,11 @@ def evaluate_evidence_anchor_expectations(
 
     return {
         "required_fields": req,
-        "considered_citations": int(considered),
-        "skipped_citations": int(skipped),
+        "considered_citations": considered,
+        "skipped_citations": skipped,
         "skipped_by_role": dict(skipped_by_role),
         "missing_counts": missing_counts,
-        "missing_any": int(missing_any),
+        "missing_any": missing_any,
         "missing_examples": missing_examples,
         "passed": bool(missing_any == 0),
     }
@@ -90,7 +90,7 @@ def evaluate_evidence_anchor_expectations(
 def _empty_anchor_expectations(citation_count: int) -> dict[str, Any]:
     return {
         "required_fields": [],
-        "considered_citations": int(citation_count),
+        "considered_citations": citation_count,
         "skipped_citations": 0,
         "skipped_by_role": {},
         "missing_counts": {},
@@ -119,7 +119,7 @@ def _missing_anchor_fields(item: dict[str, Any], required_fields: list[str]) -> 
 
 def _increment_missing_counts(missing_counts: dict[str, int], missing_fields: list[str]) -> None:
     for field_name in missing_fields:
-        missing_counts[field_name] = int(missing_counts.get(field_name, 0) or 0) + 1
+        missing_counts[field_name] += 1
 
 
 __all__ = [

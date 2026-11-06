@@ -76,14 +76,14 @@ def test_create_dataset_rolls_back_when_partial_member_acl_update_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.models.dataset import DatasetPermissionEnum
-    from app.services.dataset_service import DatasetGroupPermissionService, DatasetPermissionService, DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     db = _AtomicSession(first_results=[None])
     group_update_calls: list[bool] = []
 
     monkeypatch.setattr(
-        DatasetService,
+        dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="owner"),
         raising=True,
@@ -93,20 +93,20 @@ def test_create_dataset_rolls_back_when_partial_member_acl_update_fails(
         raise HTTPException(status_code=400, detail="Member(s) not in tenant: ghost-user")
 
     monkeypatch.setattr(
-        DatasetPermissionService,
+        dataset_service,
         "update_partial_member_list",
         _fail_partial_member_update,
         raising=True,
     )
     monkeypatch.setattr(
-        DatasetGroupPermissionService,
+        dataset_service,
         "update_partial_group_list",
         lambda *_args, **_kwargs: group_update_calls.append(True),
         raising=True,
     )
 
     with pytest.raises(HTTPException, match="Member\\(s\\) not in tenant: ghost-user") as exc_info:
-        DatasetService.create_dataset(
+        dataset_service.create_dataset(
             db=db,
             tenant_id=tenant_id,
             name="atomic-create",
@@ -130,7 +130,7 @@ def test_update_dataset_rolls_back_dataset_fields_when_group_acl_update_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from app.models.dataset import DatasetPermissionEnum
-    from app.services.dataset_service import DatasetGroupPermissionService, DatasetPermissionService, DatasetService
+    from app.services import dataset_service
 
     tenant_id = uuid.uuid4()
     dataset = SimpleNamespace(
@@ -145,13 +145,13 @@ def test_update_dataset_rolls_back_dataset_fields_when_group_acl_update_fails(
     member_update_calls: list[bool] = []
 
     monkeypatch.setattr(
-        DatasetService,
+        dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="owner"),
         raising=True,
     )
     monkeypatch.setattr(
-        DatasetPermissionService,
+        dataset_service,
         "update_partial_member_list",
         lambda *_args, **_kwargs: member_update_calls.append(True),
         raising=True,
@@ -161,14 +161,14 @@ def test_update_dataset_rolls_back_dataset_fields_when_group_acl_update_fails(
         raise HTTPException(status_code=400, detail="Unknown tenant groups: missing-group")
 
     monkeypatch.setattr(
-        DatasetGroupPermissionService,
+        dataset_service,
         "update_partial_group_list",
         _fail_group_update,
         raising=True,
     )
 
     with pytest.raises(HTTPException, match="Unknown tenant groups: missing-group") as exc_info:
-        DatasetService.update_dataset(
+        dataset_service.update_dataset(
             db=db,
             dataset=dataset,
             updater_id="owner-1",

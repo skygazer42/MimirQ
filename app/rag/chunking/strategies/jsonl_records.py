@@ -5,7 +5,6 @@ Targets newline-delimited JSON where each non-empty line is a JSON object/array.
 The chunker groups whole records together while preserving character offsets.
 """
 
-
 import json
 import re
 from dataclasses import dataclass
@@ -153,9 +152,9 @@ def _build_record_chunk(
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
     meta.setdefault("doc_type_kwd", "jsonl")
-    meta["jsonl_record_count"] = int(end_idx - start_idx)
-    meta["jsonl_first_index"] = int(records[start_idx].index)
-    meta["jsonl_last_index"] = int(records[end_idx - 1].index)
+    meta["jsonl_record_count"] = end_idx - start_idx
+    meta["jsonl_first_index"] = records[start_idx].index
+    meta["jsonl_last_index"] = records[end_idx - 1].index
     keys = _record_keys(records[start_idx:end_idx])
     if keys:
         meta["jsonl_keys"] = keys
@@ -187,7 +186,7 @@ def _assign_chunk_indexes(chunks: list[Document]) -> list[Document]:
 
 
 class JsonlRecordsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

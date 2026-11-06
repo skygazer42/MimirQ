@@ -1,18 +1,26 @@
-"use client"
+'use client'
 
-import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent } from "react"
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+} from 'react'
 
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ChunkEditorDialog } from "@/components/document-viewer/chunk-editor-dialog"
-import { ChunksTabPanel } from "@/components/document-viewer/chunks-tab-panel"
-import { DocumentViewerHeader } from "@/components/document-viewer/document-viewer-header"
-import { FloatingMenu } from "@/components/document-viewer/floating-menu"
-import { PreviewTabPanel } from "@/components/document-viewer/preview-tab-panel"
-import { QAGenerationDialog } from "@/components/document-viewer/qa-generation-dialog"
-import { TextTabPanel } from "@/components/document-viewer/text-tab-panel"
-import { cn, detachPromise } from "@/lib/utils"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ChunkEditorDialog } from '@/components/document-viewer/chunk-editor-dialog'
+import { ChunksTabPanel } from '@/components/document-viewer/chunks-tab-panel'
+import { DocumentViewerHeader } from '@/components/document-viewer/document-viewer-header'
+import { FloatingMenu } from '@/components/document-viewer/floating-menu'
+import { PreviewTabPanel } from '@/components/document-viewer/preview-tab-panel'
+import { QAGenerationDialog } from '@/components/document-viewer/qa-generation-dialog'
+import { TextTabPanel } from '@/components/document-viewer/text-tab-panel'
+import { cn, detachPromise } from '@/lib/utils'
 
-import type { DocumentViewerPanelState } from "./use-document-viewer-panel-state"
+import type { DocumentViewerPanelState } from './use-document-viewer-panel-state'
 
 const MIN_DOCUMENT_VIEWER_PANEL_WIDTH = 360
 const DOCUMENT_VIEWER_PANEL_RESIZE_STEP = 24
@@ -39,6 +47,7 @@ export function DocumentViewerPanelShell({
   chunksListRef,
   chunksLoaded,
   chunksLoading,
+  clearRetrievePreview,
   closeDocument,
   copyChunkContent,
   copyChunkLink,
@@ -102,8 +111,6 @@ export function DocumentViewerPanelShell({
   setQaNumPairs,
   setQaPreferLlm,
   setQaReplaceExisting,
-  setRetrieveCitations,
-  setRetrieveError,
   setRetrieveQuery,
   setTextMode,
   submitChunkEditor,
@@ -118,9 +125,10 @@ export function DocumentViewerPanelShell({
   const panelRef = useRef<HTMLDivElement>(null)
   const resizeStartRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
 
-  const panelStyle = !isExpanded && panelWidthPx
-    ? ({ "--document-viewer-panel-width": `min(${panelWidthPx}px, calc(100vw - 48px))` } as CSSProperties)
-    : undefined
+  const panelStyle =
+    !isExpanded && panelWidthPx
+      ? ({ '--document-viewer-panel-width': `min(${panelWidthPx}px, calc(100vw - 48px))` } as CSSProperties)
+      : undefined
 
   const clampPanelWidth = useCallback((width: number) => {
     if (globalThis.window === undefined) {
@@ -150,47 +158,54 @@ export function DocumentViewerPanelShell({
     }
   }, [])
 
-  const handleResizePointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) return
-    event.preventDefault()
-    const panel = event.currentTarget.parentElement
-    const currentWidth = panelWidthPx ?? panel?.getBoundingClientRect().width ?? 500
-    resizeStartRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startWidth: currentWidth,
-    }
-    setIsResizing(true)
-    event.currentTarget.setPointerCapture(event.pointerId)
-  }, [isExpanded, panelWidthPx])
-
-  const handleResizePointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
-    const current = resizeStartRef.current
-    if (current?.pointerId !== event.pointerId) return
-    event.preventDefault()
-    setPanelWidthPx(clampPanelWidth(current.startWidth + current.startX - event.clientX))
-  }, [clampPanelWidth, setPanelWidthPx])
-
-  const handleResizeKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-    if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) {
-      return
-    }
-
-    const step = event.shiftKey
-      ? DOCUMENT_VIEWER_PANEL_RESIZE_STEP * 2
-      : DOCUMENT_VIEWER_PANEL_RESIZE_STEP
-    const currentWidth = panelWidthPx ?? panelRef.current?.getBoundingClientRect().width ?? effectivePanelWidthPx
-
-    if (event.key === 'ArrowLeft') {
+  const handleResizePointerDown = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) return
       event.preventDefault()
-      setPanelWidthPx(clampPanelWidth(currentWidth + step))
-      return
-    }
-    if (event.key === 'ArrowRight') {
+      const panel = event.currentTarget.parentElement
+      const currentWidth = panelWidthPx ?? panel?.getBoundingClientRect().width ?? 500
+      resizeStartRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: currentWidth,
+      }
+      setIsResizing(true)
+      event.currentTarget.setPointerCapture(event.pointerId)
+    },
+    [isExpanded, panelWidthPx],
+  )
+
+  const handleResizePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      const current = resizeStartRef.current
+      if (current?.pointerId !== event.pointerId) return
       event.preventDefault()
-      setPanelWidthPx(clampPanelWidth(currentWidth - step))
-    }
-  }, [clampPanelWidth, effectivePanelWidthPx, isExpanded, panelWidthPx, setPanelWidthPx])
+      setPanelWidthPx(clampPanelWidth(current.startWidth + current.startX - event.clientX))
+    },
+    [clampPanelWidth, setPanelWidthPx],
+  )
+
+  const handleResizeKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (isExpanded || globalThis.window === undefined || globalThis.window.innerWidth < 768) {
+        return
+      }
+
+      const step = event.shiftKey ? DOCUMENT_VIEWER_PANEL_RESIZE_STEP * 2 : DOCUMENT_VIEWER_PANEL_RESIZE_STEP
+      const currentWidth = panelWidthPx ?? panelRef.current?.getBoundingClientRect().width ?? effectivePanelWidthPx
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        setPanelWidthPx(clampPanelWidth(currentWidth + step))
+        return
+      }
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        setPanelWidthPx(clampPanelWidth(currentWidth - step))
+      }
+    },
+    [clampPanelWidth, effectivePanelWidthPx, isExpanded, panelWidthPx, setPanelWidthPx],
+  )
 
   if (!isOpen) return null
 
@@ -236,13 +251,13 @@ export function DocumentViewerPanelShell({
         ref={panelRef}
         style={panelStyle}
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl shadow-strong",
-          isResizing ? "select-none" : "transition-[width] duration-150 ease-out motion-reduce:transition-none",
+          'fixed inset-y-0 right-0 z-50 flex flex-col border-l border-sidebar-border/70 bg-sidebar/90 backdrop-blur-xl shadow-strong',
+          isResizing ? 'select-none' : 'transition-[width] duration-150 ease-out motion-reduce:transition-none',
           isExpanded
-            ? "w-full md:w-[80vw]"
+            ? 'w-full md:w-[80vw]'
             : panelWidthPx
-              ? "w-full md:w-[var(--document-viewer-panel-width)]"
-              : "w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]"
+              ? 'w-full md:w-[var(--document-viewer-panel-width)]'
+              : 'w-full md:w-[40vw] lg:w-[500px] xl:w-[40vw]',
         )}
       >
         <div
@@ -262,17 +277,17 @@ export function DocumentViewerPanelShell({
           onPointerCancel={finishResize}
           onKeyDown={handleResizeKeyDown}
           className={cn(
-            "group absolute -left-2 top-0 z-20 hidden h-full w-4 cursor-col-resize items-center justify-center md:flex",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60",
-            isExpanded && "pointer-events-none opacity-0",
-            isResizing && "bg-primary/5"
+            'group absolute -left-2 top-0 z-20 hidden h-full w-4 cursor-col-resize items-center justify-center md:flex',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60',
+            isExpanded && 'pointer-events-none opacity-0',
+            isResizing && 'bg-primary/5',
           )}
         >
           <span
             aria-hidden="true"
             className={cn(
-              "h-16 w-1 rounded-full border border-border/70 bg-background/80 shadow-sm transition-colors",
-              isResizing ? "border-primary/50 bg-primary/35" : "group-hover:bg-primary/25"
+              'h-16 w-1 rounded-full border border-border/70 bg-background/80 shadow-sm transition-colors',
+              isResizing ? 'border-primary/50 bg-primary/35' : 'group-hover:bg-primary/25',
             )}
           />
         </div>
@@ -311,7 +326,10 @@ export function DocumentViewerPanelShell({
               </TabsList>
             </div>
 
-            <TabsContent value="preview" className="relative m-0 min-h-0 flex-1 overflow-hidden bg-muted/30 dark:bg-muted/20">
+            <TabsContent
+              value="preview"
+              className="relative m-0 min-h-0 flex-1 overflow-hidden bg-muted/30 dark:bg-muted/20"
+            >
               <PreviewTabPanel
                 isLoading={isLoading}
                 doc={doc}
@@ -322,8 +340,8 @@ export function DocumentViewerPanelShell({
                 previewAnchor={previewAnchor}
                 highlightChunkId={highlightChunkId}
                 highlightRange={highlightRange}
-                onViewText={() => handleActiveTabChange("text")}
-                onViewChunks={() => handleActiveTabChange("chunks")}
+                onViewText={() => handleActiveTabChange('text')}
+                onViewChunks={() => handleActiveTabChange('chunks')}
               />
             </TabsContent>
 
@@ -353,17 +371,14 @@ export function DocumentViewerPanelShell({
                 onLoadAllChunks={() => setLoadAllChunks(true)}
                 onRetrieveQueryChange={setRetrieveQuery}
                 onRunRetrieve={() => detachPromise(runRetrievePreview())}
-                onClearRetrieve={() => {
-                  setRetrieveCitations([])
-                  setRetrieveError(null)
-                }}
+                onClearRetrieve={clearRetrievePreview}
                 onSelectRetrieveChunk={(chunkId) => {
-                  handleActiveTabChange("text")
+                  handleActiveTabChange('text')
                   setHighlightChunk(chunkId)
                 }}
                 onSelectChunkIndex={handleSelectTextChunkIndex}
-                onGoToChunks={() => handleActiveTabChange("chunks")}
-                onGoToPreview={() => handleActiveTabChange("preview")}
+                onGoToChunks={() => handleActiveTabChange('chunks')}
+                onGoToPreview={() => handleActiveTabChange('preview')}
               />
             </TabsContent>
 

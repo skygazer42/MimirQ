@@ -184,7 +184,7 @@ def build_parse_failure_diagnostics(
     pdf_is_scanned: bool | None = None
     if ext == ".pdf":
         pdf_sample = sample_pdf_text_pages(Path(file_path), max_pages=3, max_excerpt_chars=240)
-        pdf_is_scanned = bool(pdf_sample.get("is_scanned")) if isinstance(pdf_sample, dict) else None
+        pdf_is_scanned = bool(pdf_sample["is_scanned"])
         diag["pdf_sample"] = pdf_sample
 
     diag["suggested_backends"] = suggest_parser_backends(

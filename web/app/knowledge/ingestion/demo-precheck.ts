@@ -15,9 +15,7 @@ export function anonymizeEvidenceName(name: string): string {
   return `FILE_${hash.toString(36).toUpperCase().padStart(6, '0').slice(-6)}`
 }
 
-export function buildDemoPrecheckSummary(
-  documents: Document[]
-): DatasetPrecheckSummary {
+export function buildDemoPrecheckSummary(documents: Document[]): DatasetPrecheckSummary {
   return {
     dataset_id: 'demo-dataset',
     scan_run_id: 'demo-run',
@@ -77,9 +75,7 @@ export function buildDemoPrecheckSummary(
   }
 }
 
-export function buildDemoPrecheckSamples(
-  documents: Document[]
-): DatasetPrecheckSamplesResponse {
+export function buildDemoPrecheckSamples(documents: Document[]): DatasetPrecheckSamplesResponse {
   const fileItems: DatasetPrecheckFileOut[] = [
     {
       name: '财务报表_2024Q1.pdf',
@@ -181,20 +177,12 @@ export function buildDemoPrecheckSamples(
     strata_count: 4,
     representative: fileItems.slice(0, 3),
     needs_review: {
-      pdf_scanned: fileItems.filter((file) =>
-        file.findings.includes('pdf_scanned')
-      ),
-      parse_failed: fileItems.filter((file) =>
-        file.findings.includes('parse_failed')
-      ),
+      pdf_scanned: fileItems.filter((file) => file.findings.includes('pdf_scanned')),
+      parse_failed: fileItems.filter((file) => file.findings.includes('parse_failed')),
       pii: fileItems.filter((file) => file.findings.includes('pii')),
     },
-    top_large_files: [...fileItems]
-      .sort((left, right) => right.file_size - left.file_size)
-      .slice(0, 5),
-    top_long_text: [...fileItems]
-      .sort((left, right) => right.text_characters - left.text_characters)
-      .slice(0, 5),
+    top_large_files: [...fileItems].sort((left, right) => right.file_size - left.file_size).slice(0, 5),
+    top_long_text: [...fileItems].sort((left, right) => right.text_characters - left.text_characters).slice(0, 5),
   }
 }
 
@@ -204,9 +192,7 @@ export function buildDemoNearDupResponse(): DatasetPrecheckNearDupResponse {
     max_pairs: 20,
     pairs_returned: 2,
     clusters_returned: 1,
-    clusters: [
-      { id: 'demo-cluster-1', members: ['FILE_00A1BC', 'FILE_00A1BD'] },
-    ],
+    clusters: [{ id: 'demo-cluster-1', members: ['FILE_00A1BC', 'FILE_00A1BD'] }],
     pairs: [
       { a: 'FILE_00A1BC', b: 'FILE_00A1BD', distance: 2 },
       { a: 'FILE_00A1BE', b: 'FILE_00A1BF', distance: 3 },

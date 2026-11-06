@@ -8,7 +8,7 @@ from PIL import Image
 
 from app.parsing.parsers.csv_parser import CsvParser
 from app.parsing.parsers.docx_parser import DocxParser
-from app.parsing.parsers.pdf_parser import PDFParser
+from app.parsing.parsers.pdf_parser import _extract_image_documents
 from app.parsing.preprocess.llm_noise_miner import mine_noise_rule_candidates
 from app.parsing.preprocess.orientation import normalize_pdf_rotation
 from app.parsing.utils.cli import resolve_cli_command
@@ -116,7 +116,7 @@ def test_pdf_parser_extract_image_documents_deduplicates_xrefs_and_keeps_code_me
     )
     monkeypatch.setattr("app.parsing.parsers.pdf_parser.infer_visual_kind_from_pixels", lambda image: "ignored")
 
-    documents = PDFParser()._extract_image_documents(
+    documents = _extract_image_documents(
         pdf_document=_FakePdf(),
         page=_FakePage(),
         file_path=tmp_path / "scan.pdf",

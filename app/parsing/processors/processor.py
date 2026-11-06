@@ -154,12 +154,12 @@ from app.parsing.processors.support.results import (  # noqa: F401
 )
 from app.parsing.processors.support.stages import (  # noqa: F401
     ChunkAssetStage,
-    ChunkDedupStage,
-    ChunkingStage,
-    GovernanceStage,
     InlineAssetStage,
-    NormalizeStage,
     ParsingStage,
+    chunk_documents,
+    deduplicate_chunks,
+    govern_documents,
+    normalize_documents,
 )
 from app.parsing.routing import route_pdf_backend, should_attempt_pdf_fallback  # noqa: F401
 from app.parsing.subprocess_runner import SubprocessCancelled, run_parser_subprocess  # noqa: F401
@@ -188,15 +188,12 @@ from app.services.parse_cache import (
 from app.services.parse_cache import (
     build_parse_cache_key as build_remote_parse_cache_key,  # noqa: F401
 )
-from app.services.parse_cache import (
-    parse_cache_service,  # noqa: F401
-)
 from app.services.pipeline_config import build_indexing_options as _build_indexing_options
 from app.services.pipeline_config import resolve_pipeline_effective as _resolve_pipeline_effective
 from app.services.tenant_quota_service import TenantQuotaExceededError
 from app.storage.object.minio import minio_service
 from app.types.document_analytics import compute_document_analytics  # noqa: F401
-from app.types.indexing import IndexKind, IndexRecord
+from app.types.indexing import IndexingOptions, IndexKind, IndexRecord
 from app.types.pipeline import PipelineEffective
 
 logger = get_logger("parsing.document_processor")
@@ -299,9 +296,9 @@ __all__ = (
     "ChunkAssetResult",
     "ChunkAssetStage",
     "ChunkDedupResult",
-    "ChunkDedupStage",
+    "deduplicate_chunks",
     "ChunkingResult",
-    "ChunkingStage",
+    "chunk_documents",
     "classify_chunk_semantic_role",
     "classify_chunk_type",
     "compute_document_analytics",
@@ -313,9 +310,9 @@ __all__ = (
     "ensure_hierarchy_overlay_metadata",
     "governance_processor",
     "GovernanceResult",
-    "GovernanceStage",
+    "govern_documents",
     "Indexer",
-    "IndexStage",
+    "index_chunks",
     "infer_chunk_structure",
     "InlineAssetResult",
     "LOG_DOC_ID_FMT",
@@ -324,8 +321,7 @@ __all__ = (
     "metrics_span",
     "normalize_image_metadata",
     "normalize_section_metadata",
-    "NormalizeStage",
-    "parse_cache_service",
+    "normalize_documents",
     "ParseResult",
     "ParsingError",
     "ParsingStage",
@@ -355,53 +351,51 @@ def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
     return build_governance_rules(extra_rules, rule_packs=rule_packs) if (extra_rules or rule_packs) else None
 
 
-class IndexStage:
-    def run(
-        self,
-        *,
-        db: Session,
-        tenant_id: UUID,
-        document_id: UUID,
-        file_path: Path,
-        default_source: str,
-        chunks: list[Document],
-        options,
-    ) -> IndexResult:
-        logger.info("Persisting chunks and indexes...")
-        records: list[IndexRecord] = []
-        for chunk in chunks:
-            meta = dict(chunk.metadata or {})
-            content = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
-            records.append(
-                IndexRecord(
-                    kind=IndexKind.CHUNK,
-                    content=content,
-                    metadata=meta,
-                    document_id=document_id,
-                    page_number=meta.get("page") or meta.get("page_number"),
-                    start_char=meta.get("start_char"),
-                    end_char=meta.get("end_char"),
-                )
+def index_chunks(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    document_id: UUID,
+    file_path: Path,
+    default_source: str,
+    chunks: list[Document],
+    options: IndexingOptions,
+) -> IndexResult:
+    logger.info("Persisting chunks and indexes...")
+    records: list[IndexRecord] = []
+    for chunk in chunks:
+        meta = dict(chunk.metadata or {})
+        content = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
+        records.append(
+            IndexRecord(
+                kind=IndexKind.CHUNK,
+                content=content,
+                metadata=meta,
+                document_id=document_id,
+                page_number=meta.get("page") or meta.get("page_number"),
+                start_char=meta.get("start_char"),
+                end_char=meta.get("end_char"),
             )
+        )
 
-        persist_result = (
-            Indexer(db)
-            .upsert(
-                tenant_id=tenant_id,
-                records=records,
-                default_source=str(default_source or "").strip() or str(file_path.name),
-                commit=False,
-                options=options,
-            )
-            .chunk_result
+    persist_result = (
+        Indexer(db)
+        .upsert(
+            tenant_id=tenant_id,
+            records=records,
+            default_source=str(default_source or "").strip() or str(file_path.name),
+            commit=False,
+            options=options,
         )
-        if persist_result is None:
-            raise RuntimeError("Chunk indexing returned no result")
-        return IndexResult(
-            chunk_ids=persist_result.chunk_ids,
-            total_characters=persist_result.total_characters,
-            db_chunks=persist_result.db_chunks,
-        )
+        .chunk_result
+    )
+    if persist_result is None:
+        raise RuntimeError("Chunk indexing returned no result")
+    return IndexResult(
+        chunk_ids=persist_result.chunk_ids,
+        total_characters=persist_result.total_characters,
+        db_chunks=persist_result.db_chunks,
+    )
 
 
 class DocumentProcessorService:
@@ -552,12 +546,12 @@ class DocumentProcessorService:
                 runtime_state=runtime_state,
                 parsing_stage_factory=ParsingStage,
                 inline_asset_stage_factory=InlineAssetStage,
-                normalize_stage_factory=NormalizeStage,
-                governance_stage_factory=GovernanceStage,
-                chunking_stage_factory=ChunkingStage,
-                chunk_dedup_stage_factory=ChunkDedupStage,
+                normalize_stage=normalize_documents,
+                governance_stage=govern_documents,
+                chunking_stage=chunk_documents,
+                chunk_dedup_stage=deduplicate_chunks,
                 chunk_asset_stage_factory=ChunkAssetStage,
-                index_stage_factory=IndexStage,
+                index_stage=index_chunks,
             )
 
         except DocumentCancelledError as e:
@@ -715,10 +709,10 @@ class DocumentProcessorService:
         criticality: str = "best_effort",
     ) -> None:
         try:
-            from app.services.ingestion_run_service import IngestionRunService
+            from app.services import ingestion_run_service
 
             doc_meta = getattr(db_doc, "doc_metadata", None)
-            IngestionRunService.on_document_status_update(
+            ingestion_run_service.on_document_status_update(
                 db,
                 tenant_id=tenant_id,
                 document_id=document_id,
@@ -1816,21 +1810,21 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.doc_metadata or {})
         metadata["chunk_postprocess"] = {
-            "merge_small_enabled": bool(stats.merge_small_enabled),
-            "merge_small_min_chars": int(stats.merge_small_min_chars),
-            "merge_small_before": int(stats.merge_small_before),
-            "merge_small_after": int(stats.merge_small_after),
-            "merge_small_reduced": int(stats.merge_small_reduced),
-            "dedup_enabled": bool(stats.dedup_enabled),
-            "dedup_dropped": int(stats.dedup_dropped),
-            "max_chunks_per_document": int(stats.max_chunks_per_document),
+            "merge_small_enabled": stats.merge_small_enabled,
+            "merge_small_min_chars": stats.merge_small_min_chars,
+            "merge_small_before": stats.merge_small_before,
+            "merge_small_after": stats.merge_small_after,
+            "merge_small_reduced": stats.merge_small_reduced,
+            "dedup_enabled": stats.dedup_enabled,
+            "dedup_dropped": stats.dedup_dropped,
+            "max_chunks_per_document": stats.max_chunks_per_document,
             "max_chunks_strategy": str(stats.max_chunks_strategy or "").strip() or "head",
-            "truncated": bool(int(stats.truncated_dropped) > 0),
-            "truncated_from": int(stats.truncated_from),
-            "truncated_to": int(stats.truncated_to),
-            "truncated_dropped": int(stats.truncated_dropped),
-            "truncated_asset_total": int(stats.truncated_asset_total),
-            "truncated_asset_kept": int(stats.truncated_asset_kept),
+            "truncated": bool(stats.truncated_dropped > 0),
+            "truncated_from": stats.truncated_from,
+            "truncated_to": stats.truncated_to,
+            "truncated_dropped": stats.truncated_dropped,
+            "truncated_asset_total": stats.truncated_asset_total,
+            "truncated_asset_kept": stats.truncated_asset_kept,
         }
         db_doc.doc_metadata = metadata
         db.commit()

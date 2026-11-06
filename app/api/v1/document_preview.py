@@ -3,7 +3,7 @@ import shutil
 import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentParsePreview, ParsedSegment
-from app.api.utils.upload import save_upload_file
+from app.api.utils.pipeline_options import PipelineOptionOverrides, _parse_pipeline_json, to_pipeline_options
+from app.api.utils.upload import _sanitize_filename, save_upload_file
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
@@ -21,12 +22,16 @@ from app.parsing.factory import parser_factory
 from app.parsing.subprocess_runner import (
     SubprocessCancelled,
     SubprocessWorkerError,
+    run_subprocess_worker,
 )
 from app.rag.core.logging import get_logger
+from app.rag.preprocessing.processor import governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
+from app.services.document_governance import build_governance_options
 from app.services.pipeline_config import resolve_pipeline_effective
 from app.types.document_analytics import compute_document_analytics
+from app.types.pipeline import PipelineEffective
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -37,11 +42,10 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger("api.documents")
 
 
 def _strip_preview_nul_chars(value: str) -> str:
-    if not value:
-        return ""
     return value.replace("\x00", "")
 
 
@@ -56,21 +60,21 @@ def _sanitize_preview_value(value: Any) -> Any:
 
 
 def _should_inline_preview_parse(file_ext: str) -> bool:
-    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+    if not settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED:
         return False
-    ext = str(file_ext or "").strip().lower()
+    ext = (file_ext or "").strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
 
 
-def _serialize_inline_preview_documents(documents: list[Any]) -> list[dict[str, Any]]:
+def _serialize_inline_preview_documents(documents: list[Document]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for doc in documents or []:
-        metadata = getattr(doc, "metadata", None) or {}
+    for doc in documents:
+        metadata = doc.metadata or {}
         out.append(
             {
-                "page_content": _strip_preview_nul_chars(str(getattr(doc, "page_content", "") or "")),
-                "metadata": _sanitize_preview_value(metadata if isinstance(metadata, dict) else {}),
-                "id": str(getattr(doc, "id", "") or "") or None,
+                "page_content": _strip_preview_nul_chars(doc.page_content or ""),
+                "metadata": _sanitize_preview_value(metadata),
+                "id": doc.id or None,
             }
         )
     return out
@@ -89,11 +93,10 @@ def _parse_inline_text_preview(
         tenant_id=str(tenant_id),
         document_id=uuid.uuid4().hex,
     )
-    if isinstance(provenance, dict):
-        provenance = dict(provenance)
-        provenance.setdefault("payload_requested_backend", str(requested_backend or ""))
-        provenance.setdefault("effective_backend", str(resolved_backend or ""))
-        provenance.setdefault("execution_mode", "inline_document_preview")
+    provenance = dict(provenance)
+    provenance.setdefault("payload_requested_backend", requested_backend or "")
+    provenance.setdefault("effective_backend", resolved_backend or "")
+    provenance.setdefault("execution_mode", "inline_document_preview")
     return {
         "resolved_backend": inline_backend,
         "pdf_quality": None,
@@ -114,7 +117,6 @@ def _validate_preview_extension(filename: str) -> str:
 
 async def _parse_preview_payload(
     *,
-    documents_module: Any,
     request: Request,
     temp_path: Path,
     tenant_id: UUID,
@@ -130,7 +132,7 @@ async def _parse_preview_payload(
             tenant_id=tenant_id,
             requested_backend=parser_backend,
         )
-    return await documents_module.run_subprocess_worker(
+    return await run_subprocess_worker(
         tenant_id=tenant_id,
         payload={
             "action": "parse_documents",
@@ -141,7 +143,7 @@ async def _parse_preview_payload(
             "mode": "preview",
         },
         disconnect_check=request.is_disconnected,
-        timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
     )
 
 
@@ -179,76 +181,28 @@ def _preview_dataset_metadata(
     if not dataset_id:
         return {}
     try:
-        ds = DatasetService.get_dataset(db, tenant_id, UUID(str(dataset_id)))
-        DatasetService.assert_dataset_readable(db, ds, account_id)
-        return dict(getattr(ds, "dataset_metadata", None) or {})
+        ds = dataset_service.get_dataset(db, tenant_id, UUID(dataset_id))
+        dataset_service.assert_dataset_readable(db, ds, account_id)
+        return dict(ds.dataset_metadata or {})
     except HTTPException:
         raise
     except Exception:
         return {}
 
 
-def _build_preview_governance_kwargs(pipeline_effective: Any) -> dict[str, Any]:
-    extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
-    combined_rules = build_governance_rules(extra_rules) if extra_rules else None
-    return {
-        **({"rules": combined_rules} if combined_rules else {}),
-        "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
-        "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
-        "unwrap_lines": pipeline_effective.governance_unwrap_lines,
-        "remove_common_lines": pipeline_effective.governance_remove_common_lines,
-        "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
-        "remove_images": pipeline_effective.governance_remove_images,
-        "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
-        "strip_frontmatter": pipeline_effective.governance_strip_frontmatter,
-        "detect_language": pipeline_effective.governance_detect_language,
-        "language_min_chars": pipeline_effective.governance_language_min_chars,
-        "normalize_urls": pipeline_effective.governance_normalize_urls,
-        "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
-        "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
-        "drop_duplicate_paragraphs_min_occurrences": (
-            pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences
-        ),
-        "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
-        "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
-        "trim_references": pipeline_effective.governance_trim_references,
-        "extract_keywords": pipeline_effective.governance_extract_keywords,
-        "keywords_provider": pipeline_effective.governance_keywords_provider,
-        "keywords_top_k": pipeline_effective.governance_keywords_top_k,
-        "keywords_max_chars": pipeline_effective.governance_keywords_max_chars,
-        "normalize_tables": pipeline_effective.governance_normalize_tables,
-        "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
-        "pii_anonymize": pipeline_effective.governance_pii_anonymize,
-        "pii_mode": pipeline_effective.governance_pii_mode,
-        "pii_mask": pipeline_effective.governance_pii_mask,
-        "secrets_redact": pipeline_effective.governance_secrets_redact,
-        "secrets_mode": pipeline_effective.governance_secrets_mode,
-        "secrets_mask": pipeline_effective.governance_secrets_mask,
-        "max_blank_lines": pipeline_effective.governance_max_blank_lines,
-        "drop_outline_only": pipeline_effective.governance_drop_outline_only,
-        "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
-        "drop_outline_max_heading_ratio": pipeline_effective.governance_drop_outline_max_heading_ratio,
-        "drop_low_density": pipeline_effective.governance_drop_low_density,
-        "drop_low_density_threshold": pipeline_effective.governance_drop_low_density_threshold,
-        "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
-        "noise_min_chars": pipeline_effective.governance_noise_min_chars,
-        "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
-        "common_lines_min_docs": pipeline_effective.governance_common_lines_min_docs,
-        "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
-    }
-
-
 def _apply_preview_governance(
     *,
-    documents_module: Any,
     documents: list[Document],
-    pipeline_effective: Any,
+    pipeline_effective: PipelineEffective,
 ) -> list[Document]:
     if not pipeline_effective.governance_enabled:
         return documents
-    cleaned_documents, _stats = documents_module.governance_processor.clean_documents(
+    extra_rules = list(pipeline_effective.governance_regex_rules or [])
+    combined_rules = build_governance_rules(extra_rules) if extra_rules else None
+    cleaned_documents, _stats = governance_processor.clean_documents(
         documents,
-        **_build_preview_governance_kwargs(pipeline_effective),
+        rules=combined_rules or None,
+        options=build_governance_options(pipeline_effective),
     )
     return cleaned_documents
 
@@ -257,15 +211,15 @@ def _compute_preview_analytics(
     *,
     documents: list[Document],
     pdf_quality: dict[str, Any] | None,
-    pipeline_effective: Any,
+    pipeline_effective: PipelineEffective,
 ) -> dict[str, Any]:
-    markdown = "\n\n".join([(d.page_content or "") for d in documents])
+    markdown = "\n\n".join(d.page_content or "" for d in documents)
     return compute_document_analytics(
         markdown=markdown,
         documents=documents,
         pdf_quality=pdf_quality,
-        detect_language=bool(pipeline_effective.governance_detect_language),
-        language_min_chars=int(pipeline_effective.governance_language_min_chars or 0),
+        detect_language=pipeline_effective.governance_detect_language,
+        language_min_chars=pipeline_effective.governance_language_min_chars or 0,
     ).to_dict()
 
 
@@ -282,7 +236,7 @@ def _build_preview_segments(documents: list[Document]) -> list[ParsedSegment]:
 
 
 def _cleanup_preview_artifacts(*, tenant_id: UUID, artifact_dirs: set[str]) -> None:
-    if not artifact_dirs or bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)):
+    if not artifact_dirs or settings.MAGIC_PDF_KEEP_ARTIFACTS:
         return
     upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
     tenant_root = (upload_root / str(tenant_id)).resolve(strict=False)
@@ -312,14 +266,14 @@ def _cleanup_preview_artifacts(*, tenant_id: UUID, artifact_dirs: set[str]) -> N
             shutil.rmtree(path, ignore_errors=True)
 
 
-def _raise_preview_http_exception(documents_module: Any, exc: Exception) -> None:
+def _raise_preview_http_exception(exc: Exception) -> NoReturn:
     if isinstance(exc, SubprocessCancelled):
         raise HTTPException(status_code=499, detail="Client closed request") from None
     if isinstance(exc, SubprocessWorkerError):
         err_type = (exc.details or {}).get("type")
         if err_type == "ValueError":
             raise HTTPException(status_code=400, detail=f"Invalid input: {str(exc)[:100]}") from exc
-        documents_module.logger.error("Subprocess worker failed during preview: %s", str(exc)[:200])
+        logger.error("Subprocess worker failed during preview: %s", str(exc)[:200])
         msg = (str(exc) or "").strip()
         if not msg:
             details = exc.details or {}
@@ -330,11 +284,11 @@ def _raise_preview_http_exception(documents_module: Any, exc: Exception) -> None
     if isinstance(exc, ValueError):
         raise HTTPException(status_code=400, detail=f"Invalid input: {str(exc)[:100]}") from exc
     if isinstance(exc, IOError):
-        documents_module.logger.error("File read error during preview: %s", str(exc)[:200])
+        logger.error("File read error during preview: %s", str(exc)[:200])
         raise HTTPException(status_code=500, detail="File read error") from exc
     if isinstance(exc, HTTPException):
         raise exc
-    documents_module.logger.error("Unexpected error during document preview: %s", str(exc)[:200])
+    logger.error("Unexpected error during document preview: %s", str(exc)[:200])
     msg = (str(exc) or "").strip() or exc.__class__.__name__
     msg = msg[:200]
     detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
@@ -373,22 +327,20 @@ async def preview_document(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DocumentParsePreview:
     """
     Document parse preview endpoint.
 
     Only parses the document and returns structured segments; does not create
     a document record or persist data. Useful for frontend custom chunking.
     """
-    from app.api.v1 import documents as documents_module  # Local import to avoid router circular import.
-
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    file.filename = documents_module._sanitize_filename(file.filename)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    file.filename = _sanitize_filename(file.filename)
 
     parser_backend = form.parser_backend
     dataset_id = form.dataset_id
     pipeline = form.pipeline
-    pipeline_overrides = documents_module.PipelineOptionOverrides(**asdict(gov_overrides_form))
+    pipeline_overrides = PipelineOptionOverrides(**asdict(gov_overrides_form))
     file_ext = _validate_preview_extension(file.filename)
 
     upload_dir = Path(settings.UPLOAD_DIR) / str(tenant_id) / "preview"
@@ -402,7 +354,6 @@ async def preview_document(
     try:
         file_size = await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
         parsed = await _parse_preview_payload(
-            documents_module=documents_module,
             request=request,
             temp_path=temp_path,
             tenant_id=tenant_id,
@@ -420,8 +371,8 @@ async def preview_document(
             account_id=account_id,
             dataset_id=dataset_id,
         )
-        pipeline_options = documents_module._to_pipeline_options(
-            pipeline=documents_module._parse_pipeline_json(pipeline),
+        pipeline_options = to_pipeline_options(
+            pipeline=_parse_pipeline_json(pipeline),
             overrides=pipeline_overrides,
         )
         pipeline_effective = resolve_pipeline_effective(
@@ -429,13 +380,15 @@ async def preview_document(
             document_metadata={},
             request_overrides=pipeline_options,
         )
+        from app.services.pipeline_config import validate_pipeline_execution
+
+        validate_pipeline_execution(pipeline_effective)
         raw_analytics = _compute_preview_analytics(
             documents=documents,
             pdf_quality=pdf_quality,
             pipeline_effective=pipeline_effective,
         )
         documents = _apply_preview_governance(
-            documents_module=documents_module,
             documents=documents,
             pipeline_effective=pipeline_effective,
         )
@@ -453,11 +406,11 @@ async def preview_document(
             analytics={"raw": raw_analytics, "cleaned": cleaned_analytics},
         )
     except Exception as exc:
-        _raise_preview_http_exception(documents_module, exc)
+        _raise_preview_http_exception(exc)
     finally:
         try:
             if run_dir.exists():
                 shutil.rmtree(run_dir, ignore_errors=True)
         except OSError as exc:
-            documents_module.logger.warning("Failed to clean up preview directory %s: %s", run_dir, exc)
+            logger.warning("Failed to clean up preview directory %s: %s", run_dir, exc)
         _cleanup_preview_artifacts(tenant_id=tenant_id, artifact_dirs=artifact_dirs)

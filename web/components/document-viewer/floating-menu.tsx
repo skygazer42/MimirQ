@@ -1,11 +1,11 @@
-"use client"
+'use client'
 
-import { useEffect, useRef, useState } from "react"
-import { Sparkles, Languages, FileText } from "@/components/icons"
-import { Button } from "@/components/ui/button"
-import { useRouter } from "@/i18n/navigation"
-import { globalEventBus } from "@/lib/event-bus"
-import { useDocumentView } from "@/store/document-view"
+import { useEffect, useRef, useState } from 'react'
+import { Sparkles, Languages, FileText } from '@/components/icons'
+import { Button } from '@/components/ui/button'
+import { useRouter } from '@/i18n/navigation'
+import { globalEventBus } from '@/lib/event-bus'
+import { useDocumentView } from '@/store/document-view'
 
 export function FloatingMenu() {
   const router = useRouter()
@@ -13,7 +13,7 @@ export function FloatingMenu() {
   const chunkId = useDocumentView((state) => state.highlightChunkId)
   const [visible, setVisible] = useState(false)
   const [position, setPosition] = useState({ top: 0, left: 0 })
-  const [selection, setSelection] = useState("")
+  const [selection, setSelection] = useState('')
   const [anchor, setAnchor] = useState<{ x: number; top: number; bottom: number } | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -37,7 +37,7 @@ export function FloatingMenu() {
 
       const range = sel.getRangeAt(0)
       const rect = range.getBoundingClientRect()
-      
+
       // Calculate relative to viewport, but we need to handle scroll offsets if inside iframe/div
       // For simplicity, we assume fixed positioning relative to viewport
       const x = rect.left + rect.width / 2
@@ -47,8 +47,8 @@ export function FloatingMenu() {
       setVisible(true)
     }
 
-    document.addEventListener("mouseup", handleMouseUp)
-    return () => document.removeEventListener("mouseup", handleMouseUp)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => document.removeEventListener('mouseup', handleMouseUp)
   }, [])
 
   useEffect(() => {
@@ -82,30 +82,30 @@ export function FloatingMenu() {
     return () => globalThis.window.cancelAnimationFrame(raf)
   }, [anchor, visible])
 
-  const handleAction = (action: string) => {
-    let prompt = ""
+  const handleAction = (action: 'explain' | 'translate' | 'summarize') => {
+    let prompt = ''
     switch (action) {
-        case "explain":
-            prompt = `请解释这段文字：\n> ${selection}`
-            break
-        case "translate":
-            prompt = `请翻译这段文字：\n> ${selection}`
-            break
-        case "summarize":
-            prompt = `请总结这段文字：\n> ${selection}`
-            break
+      case 'explain':
+        prompt = `请解释这段文字：\n> ${selection}`
+        break
+      case 'translate':
+        prompt = `请翻译这段文字：\n> ${selection}`
+        break
+      case 'summarize':
+        prompt = `请总结这段文字：\n> ${selection}`
+        break
     }
-    
-    const handled = globalEventBus.emit("chat:submit", prompt)
+
+    const handled = globalEventBus.emit('chat:submit', prompt)
     if (handled === 0) {
       const currentParams = new URLSearchParams(globalThis.window.location.search)
       const params = new URLSearchParams()
-      const conversationId = (currentParams.get("id") || currentParams.get("conversation") || "").trim()
-      if (conversationId) params.set("conversation", conversationId)
-      if (documentId) params.set("doc", documentId)
-      if (chunkId) params.set("chunk", chunkId)
-      params.set("prompt", prompt)
-      params.set("autorun", "1")
+      const conversationId = (currentParams.get('id') || currentParams.get('conversation') || '').trim()
+      if (conversationId) params.set('conversation', conversationId)
+      if (documentId) params.set('doc', documentId)
+      if (chunkId) params.set('chunk', chunkId)
+      params.set('prompt', prompt)
+      params.set('autorun', '1')
       router.push(`/?${params.toString()}`)
     }
     setVisible(false)
@@ -116,25 +116,40 @@ export function FloatingMenu() {
 
   return (
     <div
-        ref={menuRef}
-        className="fixed z-60 flex gap-1 p-1 bg-popover text-popover-foreground rounded-lg shadow-strong border border-border/40 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
-        style={{
-          top: `max(${position.top}px, calc(env(safe-area-inset-top) + 8px))`,
-          left: position.left,
-          transform: "translateX(-50%)",
-        }}
+      ref={menuRef}
+      className="fixed z-60 flex gap-1 p-1 bg-popover text-popover-foreground rounded-lg shadow-strong border border-border/40 animate-in fade-in zoom-in-95 duration-200 motion-reduce:animate-none"
+      style={{
+        top: `max(${position.top}px, calc(env(safe-area-inset-top) + 8px))`,
+        left: position.left,
+        transform: 'translateX(-50%)',
+      }}
     >
-      <Button variant="ghost" size="sm" className="h-8 text-xs text-foreground hover:bg-accent/40" onClick={() => handleAction("explain")}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 text-xs text-foreground hover:bg-accent/40"
+        onClick={() => handleAction('explain')}
+      >
         <Sparkles className="size-3 mr-1.5 text-primary" />
         解释
       </Button>
       <div className="w-px bg-border/60 my-1" />
-      <Button variant="ghost" size="sm" className="h-8 text-xs text-foreground hover:bg-accent/40" onClick={() => handleAction("translate")}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 text-xs text-foreground hover:bg-accent/40"
+        onClick={() => handleAction('translate')}
+      >
         <Languages className="size-3 mr-1.5 text-info" />
         翻译
       </Button>
       <div className="w-px bg-border/60 my-1" />
-      <Button variant="ghost" size="sm" className="h-8 text-xs text-foreground hover:bg-accent/40" onClick={() => handleAction("summarize")}>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-8 text-xs text-foreground hover:bg-accent/40"
+        onClick={() => handleAction('summarize')}
+      >
         <FileText className="size-3 mr-1.5 text-warning" />
         摘要
       </Button>

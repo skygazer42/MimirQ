@@ -15,19 +15,19 @@ from typing import Any, Literal
 def _as_int(v: Any, default: int = 0) -> int:
     try:
         if v is None or isinstance(v, bool):
-            return int(default)
+            return default
         return int(v)
     except Exception:
-        return int(default)
+        return default
 
 
 def _as_float(v: Any, default: float = 0.0) -> float:
     try:
         if v is None or isinstance(v, bool):
-            return float(default)
+            return default
         return float(v)
     except Exception:
-        return float(default)
+        return default
 
 
 class _ChunkQualityGateAccumulator:
@@ -44,17 +44,14 @@ class _ChunkQualityGateAccumulator:
         message: str,
         meta: dict[str, Any] | None = None,
     ) -> None:
-        try:
-            self.reason_items.append(
-                {
-                    "code": str(code)[:80],
-                    "severity": str(severity),
-                    "message": str(message)[:200],
-                    "meta": dict(meta or {}),
-                }
-            )
-        except Exception:
-            return
+        self.reason_items.append(
+            {
+                "code": code[:80],
+                "severity": severity,
+                "message": message[:200],
+                "meta": dict(meta or {}),
+            }
+        )
 
     def add_patch(
         self,
@@ -67,22 +64,19 @@ class _ChunkQualityGateAccumulator:
     ) -> None:
         if not patch:
             return
-        try:
-            self.patches.append(
-                {
-                    "id": str(id)[:80],
-                    "title": str(title)[:120],
-                    "description": str(description)[:400],
-                    "target": str(target),
-                    "patch": dict(patch),
-                }
-            )
-        except Exception:
-            return
+        self.patches.append(
+            {
+                "id": id[:80],
+                "title": title[:120],
+                "description": description[:400],
+                "target": target,
+                "patch": dict(patch),
+            }
+        )
 
 
 def _bounded_overlap_target(*, chunk_size: int, ratio: float) -> int:
-    target_overlap = int(round(chunk_size * ratio))
+    target_overlap = round(chunk_size * ratio)
     target_overlap = max(0, min(1000, target_overlap))
     if target_overlap >= chunk_size:
         return max(0, chunk_size - 1)
@@ -244,11 +238,11 @@ def _chunk_count_patch(
 ) -> dict[str, int] | None:
     if chunk_size <= 0:
         return None
-    target_size = min(4000, int(round(chunk_size * growth)))
+    target_size = min(4000, round(chunk_size * growth))
     if target_size == chunk_size:
         return None
-    ratio = (chunk_overlap / chunk_size) if chunk_size > 0 else 0.2
-    target_overlap = int(round(target_size * ratio))
+    ratio = chunk_overlap / chunk_size
+    target_overlap = round(target_size * ratio)
     target_overlap = max(0, min(1000, min(target_overlap, target_size - 1)))
     return {"chunk_size": target_size, "chunk_overlap": target_overlap}
 
@@ -312,7 +306,7 @@ def _evaluate_original_text_signals(
         title="Increase original_text_max_chars",
         description="Original text was omitted; increase the max to enable precise highlighting.",
         target="perf",
-        patch={"original_text_max_chars": int(target_max), "include_original_text": True},
+        patch={"original_text_max_chars": target_max, "include_original_text": True},
     )
 
 
@@ -320,7 +314,7 @@ def _dedupe_recommendations(recommendations: list[str]) -> list[str]:
     deduped: list[str] = []
     seen: set[str] = set()
     for recommendation in recommendations:
-        key = (recommendation or "").strip()
+        key = recommendation.strip()
         if not key or key in seen:
             continue
         seen.add(key)
@@ -329,7 +323,7 @@ def _dedupe_recommendations(recommendations: list[str]) -> list[str]:
 
 
 def _gate_grade(reason_items: list[dict[str, Any]]) -> Literal["pass", "warn", "fail"]:
-    if any(str(item.get("severity")) == "error" for item in reason_items):
+    if any(item["severity"] == "error" for item in reason_items):
         return "fail"
     if reason_items:
         return "warn"
@@ -355,7 +349,7 @@ def compute_chunk_quality_gate(
       - recommendations: list[str]
       - patches: list[ { id, title, description, target, patch } ]
     """
-    count = _as_int(stats.get("count"), 0) or _as_int(total_chunks, 0)
+    count = _as_int(stats.get("count"), 0) or total_chunks
     short_count = _as_int(stats.get("short_count"), 0)
     dup_count = _as_int(stats.get("duplicate_count"), 0)
 
@@ -375,7 +369,7 @@ def compute_chunk_quality_gate(
 
     _evaluate_coverage_signals(
         acc,
-        total_characters=_as_int(total_characters, 0),
+        total_characters=total_characters,
         covered_chars=covered_chars,
         coverage_ratio=coverage_ratio,
         gap_count=gap_count,
@@ -385,20 +379,20 @@ def compute_chunk_quality_gate(
     _evaluate_overlap_waste_signals(
         acc,
         waste_ratio=waste_ratio,
-        chunk_size=_as_int(chunk_size, 0),
-        chunk_overlap=_as_int(chunk_overlap, 0),
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
     _evaluate_chunk_count_signals(
         acc,
-        total_chunks=_as_int(total_chunks, 0),
-        chunk_size=_as_int(chunk_size, 0),
-        chunk_overlap=_as_int(chunk_overlap, 0),
+        total_chunks=total_chunks,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
     _evaluate_original_text_signals(
         acc,
-        original_text_included=bool(original_text_included),
-        original_text_truncated=bool(original_text_truncated),
-        original_text_max_chars=_as_int(original_text_max_chars, 0),
+        original_text_included=original_text_included,
+        original_text_truncated=original_text_truncated,
+        original_text_max_chars=original_text_max_chars,
     )
 
     # Best-effort extra patch: duplicates -> suggest governance-based dedup.
@@ -413,11 +407,9 @@ def compute_chunk_quality_gate(
             patch={"governance_enabled": True, "governance_drop_duplicate_paragraphs": True},
         )
 
-    legacy_reasons = [
-        str(reason.get("message", "")).strip() for reason in acc.reason_items if str(reason.get("message", "")).strip()
-    ]
+    legacy_reasons = [reason["message"].strip() for reason in acc.reason_items if reason["message"].strip()]
     gate = {
-        "grade": str(_gate_grade(acc.reason_items)),
+        "grade": _gate_grade(acc.reason_items),
         "reasons": legacy_reasons[:10],
         "reason_items": acc.reason_items[:10],
     }

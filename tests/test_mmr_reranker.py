@@ -1,4 +1,3 @@
-
 from app.rag.reranker.types import RerankCandidate
 
 

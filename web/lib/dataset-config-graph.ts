@@ -15,10 +15,6 @@ function truthyCount(obj: JsonRecord, prefix: string) {
   return Object.entries(obj).filter(([k, v]) => k.startsWith(prefix) && !!v).length
 }
 
-function withSummary(summary: Array<string>) {
-  return summary.map((s) => String(s || '').trim()).filter(Boolean)
-}
-
 function formatInherit(value: unknown) {
   const s = toTrimmedPrimitiveString(value)
   return s || '(inherit)'
@@ -29,20 +25,6 @@ type NodeMeta = {
   configured?: boolean
   summary?: string[]
   json?: unknown
-}
-
-function makeNode(id: string, label: string, configured: boolean, json: unknown, summary: string[] = [], color?: string): GraphNode {
-  return {
-    id,
-    label,
-    color: color ?? (configured ? '#3b82f6' : '#cbd5e1'),
-    meta: {
-      kind: 'group',
-      configured,
-      summary,
-      json,
-    } satisfies NodeMeta,
-  }
 }
 
 function makeLink(source: string, target: string, label?: string): GraphLink {
@@ -68,7 +50,12 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   const links: GraphLink[] = []
 
   const addGroup = (id: string, label: string, configured: boolean, json: unknown, summary: string[] = []) => {
-    nodes.push(makeNode(id, label, configured, json, summary))
+    nodes.push({
+      id,
+      label,
+      color: configured ? '#3b82f6' : '#cbd5e1',
+      meta: { kind: 'group', configured, summary, json } satisfies NodeMeta,
+    })
     links.push(makeLink('bundle', id))
   }
 
@@ -93,18 +80,14 @@ export function buildDatasetConfigGraph(config: object): GraphData {
       default_parser_backend: cfg.default_parser_backend ?? null,
       default_chunk_strategy: cfg.default_chunk_strategy ?? null,
     },
-    withSummary([`parser_backend: ${formatInherit(parserBackend)}`, `chunk_strategy: ${formatInherit(chunkStrategy)}`])
+    [`parser_backend: ${formatInherit(parserBackend)}`, `chunk_strategy: ${formatInherit(chunkStrategy)}`],
   )
 
   // Pipeline (and sub-blocks)
   const pipeline = isNonEmptyObject(cfg.pipeline) ? cfg.pipeline : null
-  addGroup(
-    'pipeline',
-    '处理流程',
-    isNonEmptyObject(pipeline),
-    pipeline,
-    withSummary([pipeline ? `governance_enabled: ${String(!!pipeline.governance_enabled)}` : 'governance_enabled: (inherit)'])
-  )
+  addGroup('pipeline', '处理流程', isNonEmptyObject(pipeline), pipeline, [
+    pipeline ? `governance_enabled: ${String(!!pipeline.governance_enabled)}` : 'governance_enabled: (inherit)',
+  ])
 
   if (isNonEmptyObject(pipeline)) {
     const govConfigured = truthyCount(pipeline, 'governance_') > 0
@@ -114,11 +97,16 @@ export function buildDatasetConfigGraph(config: object): GraphData {
         '数据治理',
         true,
         Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('governance_'))),
-        withSummary([`rules: ${truthyCount(pipeline, 'governance_')}`])
+        [`rules: ${truthyCount(pipeline, 'governance_')}`],
       )
     }
 
-    const chunkConfigured = ['chunk_size', 'chunk_overlap', 'chunk_merge_small_min_chars', 'chunk_strategy_params'].some((k) => pipeline[k] != null)
+    const chunkConfigured = [
+      'chunk_size',
+      'chunk_overlap',
+      'chunk_merge_small_min_chars',
+      'chunk_strategy_params',
+    ].some((k) => pipeline[k] != null)
     if (chunkConfigured) {
       addSub('pipeline_chunking', '文档切片', true, {
         chunk_size: pipeline.chunk_size ?? null,
@@ -151,7 +139,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
         'pipeline_tables',
         '表格检索',
         true,
-        Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('table_store_')))
+        Object.fromEntries(Object.entries(pipeline).filter(([k]) => k.startsWith('table_store_'))),
       )
     }
   }
@@ -160,13 +148,9 @@ export function buildDatasetConfigGraph(config: object): GraphData {
   const ingestionPolicy = isRecord(cfg.ingestion_policy) ? cfg.ingestion_policy : null
   const policyRules = Array.isArray(ingestionPolicy?.rules) ? ingestionPolicy.rules : null
   const policyRuleCount = policyRules?.length
-  addGroup(
-    'ingestion_policy',
-    '入库策略',
-    isNonEmptyObject(ingestionPolicy),
-    ingestionPolicy,
-    withSummary([typeof policyRuleCount === 'number' ? `rules: ${policyRuleCount}` : 'rules: (none)'])
-  )
+  addGroup('ingestion_policy', '入库策略', isNonEmptyObject(ingestionPolicy), ingestionPolicy, [
+    typeof policyRuleCount === 'number' ? `rules: ${policyRuleCount}` : 'rules: (none)',
+  ])
 
   // RAG defaults
   const ragDefaults = cfg.rag_defaults || null
@@ -182,7 +166,7 @@ export function buildDatasetConfigGraph(config: object): GraphData {
     'prompt_defaults',
     '提示词',
     Object.values(promptDefaults).some((v) => v != null && toTrimmedPrimitiveString(v)),
-    promptDefaults
+    promptDefaults,
   )
 
   // Optional nodes (backend may include these even if web TS types don't yet)

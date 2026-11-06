@@ -93,7 +93,7 @@ def _run_handwriting_cleanup_stage(
     warnings: list[str],
 ) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
     t0 = time.perf_counter()
-    if not bool(getattr(settings, "HANDWRITING_CLEANUP_ENABLED", False)):
+    if not bool(settings.HANDWRITING_CLEANUP_ENABLED):
         return (
             current,
             False,
@@ -111,10 +111,10 @@ def _run_handwriting_cleanup_stage(
     changed, note, info = cleanup_handwriting_document(
         input_path=current,
         output_path=output_path,
-        backend=str(getattr(settings, "HANDWRITING_CLEANUP_BACKEND", "auto") or "auto"),
-        model_path=str(getattr(settings, "HANDWRITING_CLEANUP_MODEL_PATH", "") or ""),
-        api_url=str(getattr(settings, "HANDWRITING_CLEANUP_API_URL", "") or ""),
-        timeout_sec=float(getattr(settings, "HANDWRITING_CLEANUP_TIMEOUT_SEC", 60) or 60),
+        backend=str(settings.HANDWRITING_CLEANUP_BACKEND or "auto"),
+        model_path=str(settings.HANDWRITING_CLEANUP_MODEL_PATH or ""),
+        api_url=str(settings.HANDWRITING_CLEANUP_API_URL or ""),
+        timeout_sec=float(settings.HANDWRITING_CLEANUP_TIMEOUT_SEC or 60),
     )
     warning = _handwriting_warning(note)
     if warning:
@@ -141,7 +141,7 @@ def _run_paddle_doc_preprocess_stage(
     warnings: list[str],
 ) -> "tuple[Path, bool, ImagePreprocessStepLog, dict[str, Any] | None]":
     t0 = time.perf_counter()
-    if not bool(getattr(settings, "PADDLE_OCR_PREPROCESS_ENABLED", False)):
+    if not bool(settings.PADDLE_OCR_PREPROCESS_ENABLED):
         return (
             current,
             False,
@@ -159,12 +159,12 @@ def _run_paddle_doc_preprocess_stage(
     changed, note, info = preprocess_with_paddle_doc(
         input_path=current,
         output_path=output_path,
-        backend=str(getattr(settings, "PADDLE_OCR_PREPROCESS_BACKEND", "local") or "local"),
-        device=str(getattr(settings, "PADDLE_OCR_PREPROCESS_DEVICE", "cpu") or "cpu"),
-        lang=str(getattr(settings, "PADDLE_OCR_PREPROCESS_LANG", "ch") or "ch"),
-        use_doc_orientation_classify=bool(getattr(settings, "PADDLE_OCR_USE_DOC_ORIENTATION_CLASSIFY", True)),
-        use_doc_unwarping=bool(getattr(settings, "PADDLE_OCR_USE_DOC_UNWARPING", True)),
-        use_textline_orientation=bool(getattr(settings, "PADDLE_OCR_USE_TEXTLINE_ORIENTATION", False)),
+        backend=str(settings.PADDLE_OCR_PREPROCESS_BACKEND or "local"),
+        device=str(settings.PADDLE_OCR_PREPROCESS_DEVICE or "cpu"),
+        lang=str(settings.PADDLE_OCR_PREPROCESS_LANG or "ch"),
+        use_doc_orientation_classify=bool(settings.PADDLE_OCR_USE_DOC_ORIENTATION_CLASSIFY),
+        use_doc_unwarping=bool(settings.PADDLE_OCR_USE_DOC_UNWARPING),
+        use_textline_orientation=bool(settings.PADDLE_OCR_USE_TEXTLINE_ORIENTATION),
     )
     warning = _paddle_warning(note)
     if warning:
@@ -330,7 +330,7 @@ def _append_orientation_step(
     is_pdf: bool,
 ) -> tuple[Path, bool]:
     t0 = time.perf_counter()
-    if not bool(getattr(settings, "ORIENTATION_ENABLED", False)):
+    if not bool(settings.ORIENTATION_ENABLED):
         steps.append(
             ImagePreprocessStepLog(
                 id="orientation",
@@ -373,7 +373,7 @@ def _append_deskew_step(
     is_pdf: bool,
 ) -> tuple[Path, bool]:
     t0 = time.perf_counter()
-    if not bool(getattr(settings, "DESKEW_ENABLED", False)):
+    if not bool(settings.DESKEW_ENABLED):
         steps.append(
             ImagePreprocessStepLog(
                 id="deskew",
@@ -385,9 +385,9 @@ def _append_deskew_step(
         )
         return current, False
 
-    backend = str(getattr(settings, "DESKEW_BACKEND", "auto") or "auto").strip().lower()
-    url = str(getattr(settings, "DESKEW_PADDLE_URL", "") or "").strip()
-    timeout_sec = float(getattr(settings, "DESKEW_TIMEOUT_SEC", 60) or 60)
+    backend = str(settings.DESKEW_BACKEND or "auto").strip().lower()
+    url = str(settings.DESKEW_PADDLE_URL or "").strip()
+    timeout_sec = float(settings.DESKEW_TIMEOUT_SEC or 60)
     note = "missing_backend_or_url"
     changed = False
     if backend in {"auto", "paddle"} and url:
@@ -423,7 +423,7 @@ def _append_pdf_watermark_steps(
     steps: list[ImagePreprocessStepLog],
     meta: dict[str, Any],
 ) -> tuple[Path, bool]:
-    if not bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
+    if not bool(settings.WATERMARK_REMOVAL_ENABLED):
         t0 = time.perf_counter()
         steps.append(
             ImagePreprocessStepLog(
@@ -438,7 +438,7 @@ def _append_pdf_watermark_steps(
 
     changed_any = False
     t0 = time.perf_counter()
-    if bool(getattr(settings, "WATERMARK_PDF_ANNOT_STRIP_ENABLED", True)):
+    if bool(settings.WATERMARK_PDF_ANNOT_STRIP_ENABLED):
         annots_out = artifact_root / f"{input_path.stem}.dewatermark_annots.pdf"
         changed, note, info = strip_pdf_watermark_annotations(
             input_path=current,
@@ -470,10 +470,10 @@ def _append_pdf_watermark_steps(
         )
 
     t1 = time.perf_counter()
-    api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
-    timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
-    backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
+    api_url = str(settings.WATERMARK_REMOVAL_API_URL or "").strip()
+    timeout_sec = float(settings.WATERMARK_TIMEOUT_SEC or 120)
+    backend = str(settings.WATERMARK_REMOVAL_BACKEND or "auto").strip().lower() or "auto"
+    model_path = str(settings.WATERMARK_REMOVAL_MODEL_PATH or "")
     out_path = artifact_root / f"{input_path.stem}.dewatermark.pdf"
     if backend in {"local", "auto"} and str(model_path or "").strip():
         changed, note, info = _preprocess_pdf_pages_via_raster(
@@ -521,7 +521,7 @@ def _append_image_watermark_step(
     meta: dict[str, Any],
 ) -> tuple[Path, bool]:
     t0 = time.perf_counter()
-    if not bool(getattr(settings, "WATERMARK_REMOVAL_ENABLED", False)):
+    if not bool(settings.WATERMARK_REMOVAL_ENABLED):
         steps.append(
             ImagePreprocessStepLog(
                 id="watermark_removal",
@@ -533,10 +533,10 @@ def _append_image_watermark_step(
         )
         return current, False
 
-    api_url = str(getattr(settings, "WATERMARK_REMOVAL_API_URL", "") or "").strip()
-    timeout_sec = float(getattr(settings, "WATERMARK_TIMEOUT_SEC", 120) or 120)
-    backend = str(getattr(settings, "WATERMARK_REMOVAL_BACKEND", "auto") or "auto").strip().lower() or "auto"
-    model_path = str(getattr(settings, "WATERMARK_REMOVAL_MODEL_PATH", "") or "")
+    api_url = str(settings.WATERMARK_REMOVAL_API_URL or "").strip()
+    timeout_sec = float(settings.WATERMARK_TIMEOUT_SEC or 120)
+    backend = str(settings.WATERMARK_REMOVAL_BACKEND or "auto").strip().lower() or "auto"
+    model_path = str(settings.WATERMARK_REMOVAL_MODEL_PATH or "")
     out_path = artifact_root / f"{input_path.stem}.dewatermark{input_path.suffix.lower()}"
     changed, note, info = cleanup_watermark_document(
         input_path=current,
@@ -757,7 +757,7 @@ def preprocess_image_document(
     """
     input_path = Path(input_path)
     ext = input_path.suffix.lower()
-    enabled = bool(getattr(settings, "IMAGE_PREPROCESS_ENABLED", False))
+    enabled = bool(settings.IMAGE_PREPROCESS_ENABLED)
 
     if not enabled:
         return _disabled_preprocess_result(input_path)
@@ -766,8 +766,8 @@ def preprocess_image_document(
     steps: list[ImagePreprocessStepLog] = []
     meta: dict[str, Any] = {"enabled": True}
 
-    sample_pages = int(getattr(settings, "PREPROCESS_SAMPLE_PAGES", 3) or 3)
-    skip_high_quality = bool(getattr(settings, "PREPROCESS_SKIP_HIGH_QUALITY", True))
+    sample_pages = int(settings.PREPROCESS_SAMPLE_PAGES or 3)
+    skip_high_quality = bool(settings.PREPROCESS_SKIP_HIGH_QUALITY)
 
     # Best-effort: allow caller to pass pdf_quality for skip logic / meta.
     if isinstance(pdf_quality, dict):

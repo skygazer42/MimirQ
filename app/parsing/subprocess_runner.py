@@ -180,8 +180,8 @@ def _write_payload_file(*, payload_path: Path, payload: dict[str, Any]) -> None:
             raise SubprocessWorkerError(
                 "payload_too_large",
                 details={
-                    "max_bytes": int(max_payload_bytes),
-                    "actual_bytes": int(len(payload_bytes)),
+                    "max_bytes": max_payload_bytes,
+                    "actual_bytes": len(payload_bytes),
                 },
             )
         payload_path.write_bytes(payload_bytes)
@@ -247,7 +247,7 @@ def _enforce_worker_log_limit(*, log_path: Path, max_log_bytes: int) -> None:
         return
     raise SubprocessWorkerError(
         "worker_log_too_large",
-        details={"max_bytes": int(max_log_bytes), "actual_bytes": int(log_size)},
+        details={"max_bytes": max_log_bytes, "actual_bytes": log_size},
         log_tail=_read_log_tail(log_path),
     )
 
@@ -300,12 +300,12 @@ def _load_worker_result(*, process: Any, result_path: Path, log_path: Path) -> d
             size = int(result_path.stat().st_size)
         except Exception:
             size = 0
-        if size > int(max_result_bytes):
+        if size > max_result_bytes:
             raise SubprocessWorkerError(
                 "worker_result_too_large",
                 details={
-                    "max_bytes": int(max_result_bytes),
-                    "actual_bytes": int(size),
+                    "max_bytes": max_result_bytes,
+                    "actual_bytes": size,
                 },
                 log_tail=_read_log_tail(log_path),
             )
@@ -456,7 +456,7 @@ async def run_parser_subprocess(
             typed = classify_parser_subprocess_error(exc)
             last_typed = typed
 
-            if not bool(getattr(typed, "retryable", False)) or attempt >= attempts:
+            if not typed.retryable or attempt >= attempts:
                 raise typed from exc
 
             delay = _compute_retry_delay_sec(

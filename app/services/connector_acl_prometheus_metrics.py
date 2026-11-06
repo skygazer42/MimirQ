@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter
@@ -40,7 +39,7 @@ CONNECTOR_ACL_APPLY_ERRORS_TOTAL = Counter(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return settings.PROMETHEUS_ENABLED
 
 
 def _norm_connector_id(value: str | None) -> str:
@@ -68,13 +67,11 @@ def _shape(*, mode: str, member_count: int, group_count: int) -> str:
     if mode == "all_team_members":
         return "all_team_members"
     if mode == "partial_members":
-        m = max(0, int(member_count or 0))
-        g = max(0, int(group_count or 0))
-        if m > 0 and g > 0:
+        if member_count > 0 and group_count > 0:
             return "members_and_groups"
-        if m > 0:
+        if member_count > 0:
             return "members_only"
-        if g > 0:
+        if group_count > 0:
             return "groups_only"
         return "partial_empty"
     return "unknown_mode"
@@ -115,4 +112,3 @@ __all__ = [
     "observe_connector_acl_apply",
     "observe_connector_acl_apply_error",
 ]
-

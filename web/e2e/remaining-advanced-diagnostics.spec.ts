@@ -21,7 +21,9 @@ test('diagnostics retain failed configuration, expose results and reject a late 
   await page.getByRole('button', { name: '读取质量报告', exact: true }).click()
   await expect(page.getByText('43', { exact: true })).toBeVisible()
   let release!: () => void
-  state.gate = new Promise<void>(resolve => { release = resolve })
+  state.gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
   await page.getByRole('button', { name: '开始评测', exact: true }).click()
   await expect.poll(() => state.requests.length).toBe(3)
   await dataset.selectOption(secondDataset)
@@ -30,7 +32,10 @@ test('diagnostics retain failed configuration, expose results and reject a late 
   await expect(page.getByText('维护周期是多久？', { exact: true })).toHaveCount(0)
 })
 
-for (const variant of [{ name: 'narrow-dark', width: 1120, height: 850, theme: 'dark' as const }, { name: 'phone', width: 390, height: 844, theme: 'light' as const }]) {
+for (const variant of [
+  { name: 'narrow-dark', width: 1120, height: 850, theme: 'dark' as const },
+  { name: 'phone', width: 390, height: 844, theme: 'light' as const },
+]) {
   test(`diagnostics ${variant.name} configuration and reader remain usable`, async ({ page }) => {
     await diagnosticsFixture(page, variant.theme)
     await page.setViewportSize(variant)

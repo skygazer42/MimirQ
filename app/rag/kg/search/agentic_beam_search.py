@@ -1,4 +1,3 @@
-
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,9 +35,9 @@ class _BeamBudget:
         return {
             "max_llm_calls": self.max_calls or None,
             "budget_seconds": self.budget_sec or None,
-            "llm_calls_used": int(self.calls_used),
-            "elapsed_sec": round(float(time.perf_counter() - self.started), 6),
-            "exhausted": bool(self.exhausted),
+            "llm_calls_used": self.calls_used,
+            "elapsed_sec": round(time.perf_counter() - self.started, 6),
+            "exhausted": self.exhausted,
         }
 
 

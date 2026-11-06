@@ -1,17 +1,8 @@
-export interface ParserBackendOption {
+export type ParserBackendOption = {
   value: string
   label: string
   description: string
-  icon:
-    | 'auto'
-    | 'basic'
-    | 'layout'
-    | 'mineru'
-    | 'deepdoc'
-    | 'deepseekocr'
-    | 'markitdown'
-    | 'docling'
-    | 'magicpdf'
+  icon: 'auto' | 'basic' | 'layout' | 'mineru' | 'deepdoc' | 'deepseekocr' | 'markitdown' | 'docling' | 'magicpdf'
   badge?: string
 }
 
@@ -177,7 +168,7 @@ export const PARSER_BACKEND_REGISTRY_OPTIONS: ParserBackendOption[] = [
 
 function normalizeParserValue(value?: string) {
   const raw = (value || '').toLowerCase().trim()
-  const normalized = raw.replaceAll("_", '-')
+  const normalized = raw.replaceAll('_', '-')
   if (normalized === 'magic-pdf') return 'magicpdf'
   if (normalized === 'marker-pdf') return 'marker'
   if (normalized === 'paddle-vl') return 'paddle_vl'
@@ -199,9 +190,7 @@ function normalizeParserValue(value?: string) {
 
 export function getParserOption(value?: string) {
   return (
-    PARSER_BACKEND_OPTIONS.find(
-      (option) => option.value === normalizeParserValue(value)
-    ) || PARSER_BACKEND_OPTIONS[0]
+    PARSER_BACKEND_OPTIONS.find((option) => option.value === normalizeParserValue(value)) || PARSER_BACKEND_OPTIONS[0]
   )
 }
 

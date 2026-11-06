@@ -25,8 +25,8 @@ from app.api.schemas.db_catalog import (
 from app.connectors.db.profile_privacy import sanitize_db_profile_snapshot
 from app.core.database import get_db
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.db_catalog_profile_cache import (
     build_db_profile_cache_key,
     get_cached_db_profile,
@@ -58,7 +58,7 @@ def _audit_fls_redaction(
     redacted_columns: list[str],
 ) -> None:
     try:
-        cols = [str(c)[:500] for c in (redacted_columns or []) if str(c or "").strip()][:50]
+        cols = [column[:500] for column in redacted_columns if column.strip()][:50]
         audit_log_event(
             db,
             tenant_id=tenant_id,
@@ -71,7 +71,7 @@ def _audit_fls_redaction(
                 "source": "db_catalog",
                 "table_id": str(table_id),
                 "columns": cols,
-                "column_count": int(len(cols)),
+                "column_count": len(cols),
             },
         )
     except Exception:
@@ -98,21 +98,21 @@ def list_db_catalog_tables(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> DbCatalogTablesListResponse:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     query = db.query(DbCatalogTable).filter(
         DbCatalogTable.tenant_id == tenant_id, DbCatalogTable.dataset_id == dataset_id
     )
 
-    eng = str(engine or "").strip().lower()
+    eng = (engine or "").strip().lower()
     if eng:
         if eng not in {"mysql", "sqlserver"}:
             raise HTTPException(status_code=400, detail="invalid engine")
         query = query.filter(DbCatalogTable.engine == eng)
 
-    needle = str(q or "").strip()
+    needle = (q or "").strip()
     if needle:
         needle = needle[:200]
         like = f"%{needle}%"
@@ -124,13 +124,8 @@ def list_db_catalog_tables(
             )
         )
 
-    total = int(query.count())
-    rows = (
-        query.order_by(DbCatalogTable.updated_at.desc(), DbCatalogTable.id.asc())
-        .offset(int(skip))
-        .limit(int(limit))
-        .all()
-    )
+    total = query.count()
+    rows = query.order_by(DbCatalogTable.updated_at.desc(), DbCatalogTable.id.asc()).offset(skip).limit(limit).all()
 
     items = [DbCatalogTableSummaryOut.model_validate(r) for r in rows]
     return DbCatalogTablesListResponse(total=total, items=items)
@@ -149,13 +144,13 @@ def get_db_catalog_table(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> DbCatalogTableDetailOut:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    role = str(getattr(member, "role", "") or "").strip().lower()
-    fls_policy = parse_fls_policy_from_metadata(getattr(dataset, "dataset_metadata", None) or {})
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
+    role = (member.role or "").strip().lower()
+    fls_policy = parse_fls_policy_from_metadata(dataset.dataset_metadata or {})
     fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
     table = (
@@ -184,7 +179,7 @@ def get_db_catalog_table(
         mask_map = build_fls_column_mask_map(
             fls_policy,
             source="db_catalog",
-            columns=[str(getattr(c, "name", "") or "") for c in cols],
+            columns=[c.name for c in cols],
             ctx=fls_ctx,
         )
     else:
@@ -192,9 +187,9 @@ def get_db_catalog_table(
 
     for c in cols:
         out = DbCatalogColumnOut.model_validate(c)
-        mask = mask_map.get(str(getattr(c, "name", "") or ""))
+        mask = mask_map.get(c.name)
         if mask:
-            redacted.append(str(getattr(c, "name", "") or ""))
+            redacted.append(c.name)
             out = out.model_copy(update={"name": str(mask), "comment": str(mask)})
         out_cols.append(out)
 
@@ -229,9 +224,9 @@ def list_db_catalog_profiles(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+) -> DbProfileSnapshotListResponse:
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     # Defense-in-depth: ensure table belongs to dataset/tenant before returning snapshots.
     table = (
@@ -246,19 +241,19 @@ def list_db_catalog_profiles(
     if table is None:
         raise HTTPException(status_code=404, detail="table not found")
 
-    ent = str(entitlement_hash or "").strip()
+    ent = (entitlement_hash or "").strip()
     if ent:
         ent = ent[:255]
 
     # Cache: common UI path fetches the latest snapshot repeatedly while browsing tables.
-    use_cache = int(skip or 0) == 0 and int(limit or 0) == 1
+    use_cache = (skip or 0) == 0 and (limit or 0) == 1
     cache_key = None
     if use_cache:
         cache_key = build_db_profile_cache_key(
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
             entitlement_hash=(ent or "any"),
-            table_fingerprint=str(getattr(table, "fingerprint", "") or ""),
+            table_fingerprint=table.fingerprint,
             profile_version=_DB_PROFILE_VERSION,
         )
         cached = get_cached_db_profile(cache_key, ttl_sec=_DB_PROFILE_CACHE_TTL_SEC)
@@ -268,12 +263,9 @@ def list_db_catalog_profiles(
     query = db.query(DbProfileSnapshot).filter(DbProfileSnapshot.table_id == table_id)
     if ent:
         query = query.filter(DbProfileSnapshot.entitlement_hash == ent)
-    total = int(query.count())
+    total = query.count()
     rows = (
-        query.order_by(DbProfileSnapshot.created_at.desc(), DbProfileSnapshot.id.asc())
-        .offset(int(skip))
-        .limit(int(limit))
-        .all()
+        query.order_by(DbProfileSnapshot.created_at.desc(), DbProfileSnapshot.id.asc()).offset(skip).limit(limit).all()
     )
 
     items: list[DbProfileSnapshotOut] = []

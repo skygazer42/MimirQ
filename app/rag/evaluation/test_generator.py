@@ -65,7 +65,7 @@ def _build_testgen_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     so LangChain/OpenAI does not re-read the unsupported proxy from env.
     """
     trust_env = httpx_trust_env(logger=logger)
-    timeout = float(getattr(settings, "LLM_TIMEOUT", 60) or 60)
+    timeout = float(settings.LLM_TIMEOUT or 60)
     return httpx.Client(trust_env=trust_env, timeout=timeout), httpx.AsyncClient(
         trust_env=trust_env,
         timeout=timeout,
@@ -234,15 +234,15 @@ def _resolve_document_scope_ids(
     if document_ids:
         return filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
     if dataset_id:
-        from app.services.dataset_service import DatasetService
+        from app.services import dataset_service
 
-        DatasetService.ensure_member(db, tenant_id, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
         query = db.query(DBDocument).filter(
             DBDocument.tenant_id == tenant_id,
             DBDocument.dataset_id == dataset_id,
             DBDocument.status == "completed",
         )
-        return [doc.id for doc in query.all()]
+        return filter_allowed_document_ids(db, tenant_id, account_id, [doc.id for doc in query.all()])
     from app.services.document_access import list_accessible_document_ids
 
     return list_accessible_document_ids(db, tenant_id, account_id)
@@ -272,31 +272,25 @@ def _resolve_testgen_prompt_selection(
             logger.warning("Failed to resolve test generator prompt template: %s", exc)
             selected_template = None
     prompt_template_text = (
-        str(getattr(selected_template, "content", "") or "").strip()
+        str(selected_template.content or "").strip()
         if selected_template is not None
         else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
     )
-    prompt_variables = list(getattr(selected_template, "variables", None) or [])
+    prompt_variables = list((selected_template.variables if selected_template is not None else None) or [])
     if not prompt_variables:
         prompt_variables = ["text", "num_questions", "question_types"]
     return TestGeneratorPromptSelection(
         prompt_template_text=prompt_template_text,
         prompt_variables=prompt_variables,
-        prompt_template_id=(
-            (str(getattr(selected_template, "id", "") or "") or None) if selected_template is not None else None
-        ),
+        prompt_template_id=((str(selected_template.id or "") or None) if selected_template is not None else None),
         prompt_template_key=(
-            (str(getattr(selected_template, "template_key", "") or "").strip() or None)
-            if selected_template is not None
-            else None
+            (str(selected_template.template_key or "").strip() or None) if selected_template is not None else None
         ),
-        prompt_ab_experiment_key=(str(getattr(selected_template, "ab_experiment_key", "") or "").strip() or None)
+        prompt_ab_experiment_key=(str(selected_template.ab_experiment_key or "").strip() or None)
         if selected_template is not None
         else None,
         prompt_ab_variant=(
-            (str(getattr(selected_template, "ab_variant", "") or "").strip() or None)
-            if selected_template is not None
-            else None
+            (str(selected_template.ab_variant or "").strip() or None) if selected_template is not None else None
         ),
     )
 
@@ -349,20 +343,18 @@ def _calculate_text_diversity_scores(texts: list[str]) -> list[float]:
         return [w.lower() for w in re.findall(r"\w+", text) if len(w) > 1]
 
     # Count token frequency.
-    all_tokens = []
-    text_tokens = []
+    text_tokens: list[list[str]] = []
     for text in texts:
         tokens = tokenize(text)
         text_tokens.append(tokens)
-        all_tokens.extend(tokens)
 
     # Compute document frequency.
-    doc_freq = Counter()
+    doc_freq: Counter[str] = Counter()
     for tokens in text_tokens:
         doc_freq.update(set(tokens))
 
     # Compute diversity score for each text.
-    scores = []
+    scores: list[float] = []
     for tokens in text_tokens:
         if not tokens:
             scores.append(0.0)
@@ -472,6 +464,8 @@ def generate_questions_from_documents(
 
     num_chunks_needed = max(3, (num_questions + 2) // 3)
     sampled_chunks = _sample_diverse_chunks(chunks, num_chunks_needed)
+    if not sampled_chunks:
+        return []
 
     http_client, http_async_client = _build_testgen_http_clients()
     try:

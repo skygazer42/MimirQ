@@ -896,7 +896,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    output_root = Path(str(args.output_root)).resolve()
+    output_root = Path(args.output_root).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     if args.profile in {"smoke", "all"}:
         generate_assets(output_root)

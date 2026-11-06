@@ -274,8 +274,6 @@ def classify_chunk_type(*, content: str, meta: Mapping[str, Any] | None = None) 
         return ChunkType.TABLE.value
     if visual_kind in {"chart", "diagram", "figure"} or doc_type == "image":
         return ChunkType.FIGURE.value
-    if semantic_role == ChunkSemanticRole.TABLE.value:
-        return ChunkType.TABLE.value
     return ChunkType.TEXT.value
 
 

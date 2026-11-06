@@ -25,24 +25,37 @@ describe('graph directory and neighborhood projection', () => {
     const index = buildDirectoryIndex(graph)
     expect(index.neighbors.get('a')?.size).toBe(2)
     expect(index.neighbors.get('isolated')?.size).toBe(0)
-    expect(index.groups.flatMap(group => group.nodes).map(node => node.id).sort()).toEqual(graph.nodes.map(node => node.id).sort())
-    expect(index.groups.find(group => group.label === '事件')?.nodes.map(node => node.id)).toEqual(['event-1'])
+    expect(
+      index.groups
+        .flatMap((group) => group.nodes)
+        .map((node) => node.id)
+        .sort(),
+    ).toEqual(graph.nodes.map((node) => node.id).sort())
+    expect(index.groups.find((group) => group.label === '事件')?.nodes.map((node) => node.id)).toEqual(['event-1'])
   })
 
   it('searches aliases and keeps original groups and degree counts intact', () => {
     const index = buildDirectoryIndex(graph)
-    expect(searchDirectory(index.groups, ' d2 ').flatMap(group => group.nodes).map(node => node.id)).toEqual(['a'])
+    expect(
+      searchDirectory(index.groups, ' d2 ')
+        .flatMap((group) => group.nodes)
+        .map((node) => node.id),
+    ).toEqual(['a'])
     expect(searchDirectory(index.groups, '不存在')).toEqual([])
-    expect(index.groups.flatMap(group => group.nodes)).toHaveLength(5)
+    expect(index.groups.flatMap((group) => group.nodes)).toHaveLength(5)
   })
 
   it('projects one or two hops, retaining directed parallel edges and excluding missing endpoints', () => {
     const index = buildDirectoryIndex(graph)
     const one = getNeighborhood(graph, index, 'a', 1)
-    expect(one.nodes.map(node => node.id).sort()).toEqual(['a', 'b', 'event-1'])
-    expect(one.links.map(link => link.label)).toEqual(['包含', '关联', '涉及', '自引用'])
+    expect(one.nodes.map((node) => node.id).sort()).toEqual(['a', 'b', 'event-1'])
+    expect(one.links.map((link) => link.label)).toEqual(['包含', '关联', '涉及', '自引用'])
     expect(one.links[0]).toMatchObject({ source: 'a', target: 'b' })
-    expect(getNeighborhood(graph, index, 'a', 2).nodes.map(node => node.id).sort()).toEqual(['a', 'b', 'c', 'event-1'])
+    expect(
+      getNeighborhood(graph, index, 'a', 2)
+        .nodes.map((node) => node.id)
+        .sort(),
+    ).toEqual(['a', 'b', 'c', 'event-1'])
     expect(graph.links[1].source).toEqual({ id: 'a' })
   })
 

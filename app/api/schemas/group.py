@@ -6,7 +6,6 @@ Groups are tenant-scoped and are intended to support enterprise directory needs:
 - optional IdP-driven provisioning (OIDC group claims / SCIM)
 """
 
-
 from datetime import datetime
 from uuid import UUID
 
@@ -33,12 +32,11 @@ class TenantGroupCreateRequest(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "TenantGroupCreateRequest":
-        self.name = str(self.name or "").strip()
+        self.name = self.name.strip()
         if not self.name:
             raise ValueError("name is required")
         if self.external_id is not None:
-            v = str(self.external_id or "").strip()
-            self.external_id = v or None
+            self.external_id = self.external_id.strip() or None
         return self
 
 
@@ -49,11 +47,9 @@ class TenantGroupUpdateRequest(BaseModel):
     @model_validator(mode="after")
     def _normalize(self) -> "TenantGroupUpdateRequest":
         if self.name is not None:
-            v = str(self.name or "").strip()
-            self.name = v or None
+            self.name = self.name.strip() or None
         if self.external_id is not None:
-            v = str(self.external_id or "").strip()
-            self.external_id = v or None
+            self.external_id = self.external_id.strip() or None
         return self
 
 
@@ -74,20 +70,17 @@ class TenantGroupMembersUpdateRequest(BaseModel):
     def _normalize(self) -> "TenantGroupMembersUpdateRequest":
         seen: set[str] = set()
         out: list[str] = []
-        for raw in self.member_ids or []:
-            mid = str(raw or "").strip()
-            if not mid or mid in seen:
+        for raw in self.member_ids:
+            member_id = raw.strip()
+            if not member_id or member_id in seen:
                 continue
-            seen.add(mid)
-            if len(mid) > 255:
+            seen.add(member_id)
+            if len(member_id) > 255:
                 raise ValueError("member id too long (max=255)")
-            out.append(mid)
-            if len(out) >= 200:
-                break
+            out.append(member_id)
         self.member_ids = out
         return self
 
 
 class TenantGroupMembersUpdateResponse(BaseModel):
     updated: int
-

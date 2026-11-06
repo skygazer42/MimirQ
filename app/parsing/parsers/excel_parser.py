@@ -7,7 +7,6 @@ Supports .xlsx via openpyxl; .xls uses pandas engines and may fail.
 Outputs Markdown tables (best-effort) for better fidelity in downstream preview/RAG.
 """
 
-
 import io
 from pathlib import Path
 from typing import Any
@@ -51,6 +50,67 @@ def _md_table(rows: list[list[str]]) -> str:
     return "\n".join(out).strip()
 
 
+def _build_cell_grid(ws: Any, *, max_rows: int, max_cols: int) -> list[list[object]]:
+    grid: list[list[object]] = [[None for _ in range(max_cols)] for _ in range(max_rows)]
+    for r in range(1, max_rows + 1):
+        for c in range(1, max_cols + 1):
+            try:
+                grid[r - 1][c - 1] = ws.cell(row=r, column=c).value
+            except Exception:
+                grid[r - 1][c - 1] = None
+    return grid
+
+
+def _merged_ranges(ws: Any) -> list[object]:
+    try:
+        return list(getattr(getattr(ws, "merged_cells", None), "ranges", []) or [])
+    except Exception:
+        return []
+
+
+def _fill_merged_ranges(ws: Any, *, grid: list[list[object]], max_rows: int, max_cols: int) -> None:
+    for merged in _merged_ranges(ws):
+        try:
+            bounds = getattr(merged, "bounds", None)
+            if not isinstance(bounds, tuple) or len(bounds) != 4:
+                raise ValueError("missing_bounds")
+            min_col, min_row, max_col, max_row = bounds
+        except Exception:
+            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+            continue
+        if min_row > max_rows or min_col > max_cols:
+            continue
+        try:
+            top_left = ws.cell(row=min_row, column=min_col).value
+        except Exception:
+            top_left = None
+        for r in range(min_row, min(max_row, max_rows) + 1):
+            for c in range(min_col, min(max_col, max_cols) + 1):
+                grid[r - 1][c - 1] = top_left
+
+
+def _row_has_data(row: list[object]) -> bool:
+    return any(str(v).strip() for v in row if v is not None)
+
+
+def _trim_grid(grid: list[list[object]], *, max_cols: int) -> list[list[object]]:
+    last_row = 0
+    for index, row in enumerate(grid, start=1):
+        if _row_has_data(row):
+            last_row = index
+    if last_row <= 0:
+        return []
+    trimmed = grid[:last_row]
+
+    last_col = 0
+    for col_index in range(1, max_cols + 1):
+        if any(row[col_index - 1] is not None and str(row[col_index - 1]).strip() for row in trimmed):
+            last_col = col_index
+    if last_col <= 0:
+        return []
+    return [row[:last_col] for row in trimmed]
+
+
 class ExcelParser:
     """Parse Excel into a row-oriented, chunk-friendly text representation."""
 
@@ -79,74 +139,13 @@ class ExcelParser:
     def _sheet_limits(self, ws: Any) -> tuple[int, int]:
         max_rows = self.max_rows if self.max_rows > 0 else int(getattr(ws, "max_row", 0) or 0)
         max_cols = self.max_cols if self.max_cols > 0 else int(getattr(ws, "max_column", 0) or 0)
-        return max(0, int(max_rows)), max(0, int(max_cols))
-
-    @staticmethod
-    def _build_cell_grid(ws: Any, *, max_rows: int, max_cols: int) -> list[list[object]]:
-        grid: list[list[object]] = [[None for _ in range(max_cols)] for _ in range(max_rows)]
-        for r in range(1, max_rows + 1):
-            for c in range(1, max_cols + 1):
-                try:
-                    grid[r - 1][c - 1] = ws.cell(row=r, column=c).value
-                except Exception:
-                    grid[r - 1][c - 1] = None
-        return grid
-
-    @staticmethod
-    def _merged_ranges(ws: Any) -> list[object]:
-        try:
-            return list(getattr(getattr(ws, "merged_cells", None), "ranges", []) or [])
-        except Exception:
-            return []
-
-    @staticmethod
-    def _fill_merged_ranges(ws: Any, *, grid: list[list[object]], max_rows: int, max_cols: int) -> None:
-        for merged in ExcelParser._merged_ranges(ws):
-            try:
-                bounds = getattr(merged, "bounds", None)
-                if not isinstance(bounds, tuple) or len(bounds) != 4:
-                    raise ValueError("missing_bounds")
-                min_col, min_row, max_col, max_row = bounds
-            except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-                continue
-            if min_row > max_rows or min_col > max_cols:
-                continue
-            try:
-                top_left = ws.cell(row=min_row, column=min_col).value
-            except Exception:
-                top_left = None
-            for r in range(min_row, min(max_row, max_rows) + 1):
-                for c in range(min_col, min(max_col, max_cols) + 1):
-                    grid[r - 1][c - 1] = top_left
-
-    @staticmethod
-    def _row_has_data(row: list[object]) -> bool:
-        return any(str(v).strip() for v in row if v is not None)
-
-    @classmethod
-    def _trim_grid(cls, grid: list[list[object]], *, max_cols: int) -> list[list[object]]:
-        last_row = 0
-        for index, row in enumerate(grid, start=1):
-            if cls._row_has_data(row):
-                last_row = index
-        if last_row <= 0:
-            return []
-        trimmed = grid[:last_row]
-
-        last_col = 0
-        for col_index in range(1, max_cols + 1):
-            if any(row[col_index - 1] is not None and str(row[col_index - 1]).strip() for row in trimmed):
-                last_col = col_index
-        if last_col <= 0:
-            return []
-        return [row[:last_col] for row in trimmed]
+        return max(0, max_rows), max(0, max_cols)
 
     def _markdown_rows(self, grid: list[list[object]]) -> tuple[list[list[str]], int]:
         rows_md: list[list[str]] = []
         emitted_rows = 0
         for row in grid:
-            cells = [_escape_md_cell(_safe_cell(value, max_chars=self.max_cell_chars)) for value in (row or [])]
+            cells = [_escape_md_cell(_safe_cell(value, max_chars=self.max_cell_chars)) for value in row]
             if not any(cells):
                 continue
             emitted_rows += 1
@@ -158,9 +157,9 @@ class ExcelParser:
         if max_rows <= 0 or max_cols <= 0:
             return _EMPTY_SHEET_MARKDOWN, 0, False
 
-        grid = self._build_cell_grid(ws, max_rows=max_rows, max_cols=max_cols)
-        self._fill_merged_ranges(ws, grid=grid, max_rows=max_rows, max_cols=max_cols)
-        grid = self._trim_grid(grid, max_cols=max_cols)
+        grid = _build_cell_grid(ws, max_rows=max_rows, max_cols=max_cols)
+        _fill_merged_ranges(ws, grid=grid, max_rows=max_rows, max_cols=max_cols)
+        grid = _trim_grid(grid, max_cols=max_cols)
         if not grid:
             return _EMPTY_SHEET_MARKDOWN, 0, False
 
@@ -169,9 +168,8 @@ class ExcelParser:
             return _EMPTY_SHEET_MARKDOWN, 0, False
 
         try:
-            truncated = (
-                (self.max_rows > 0 and int(getattr(ws, "max_row", 0) or 0) > self.max_rows)
-                or (self.max_cols > 0 and int(getattr(ws, "max_column", 0) or 0) > self.max_cols)
+            truncated = (self.max_rows > 0 and int(getattr(ws, "max_row", 0) or 0) > self.max_rows) or (
+                self.max_cols > 0 and int(getattr(ws, "max_column", 0) or 0) > self.max_cols
             )
         except Exception as exc:
             logger.debug("Ignoring Excel truncation metadata failure: %s", exc)
@@ -205,7 +203,7 @@ class ExcelParser:
                 "source": str(file_path.name),
                 "file_type": "xlsx",
                 "excel_sheets": limited,
-                "excel_rows_emitted": int(emitted_rows),
+                "excel_rows_emitted": emitted_rows,
             }
             if truncated_any:
                 metadata["excel_truncated"] = True

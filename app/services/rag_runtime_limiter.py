@@ -1,6 +1,5 @@
 """Runtime limiters for blocking RAG work executed from async API routes."""
 
-
 import asyncio
 import contextlib
 import logging
@@ -10,7 +9,7 @@ import time
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from uuid import uuid4
 
 from fastapi import HTTPException
@@ -19,6 +18,9 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.redis_client import LazyRedisClient
 from app.core.redis_lease import extend_redis_lease, release_redis_lease, try_acquire_redis_lease
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -56,40 +58,35 @@ class _DistributedAdmissionLease:
 
 
 def _configured_limit() -> int:
-    return max(0, int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1) or 0))
+    return max(0, int(settings.RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY or 0))
 
 
 def _configured_admission_timeout_sec() -> float:
-    return max(0.0, float(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 0.0))
+    return max(0.0, float(settings.RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC or 0.0))
 
 
 def _configured_distributed_limit(limit: int) -> int:
-    configured = int(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY", limit) or 0)
+    configured = int(settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY or 0)
     return max(0, limit if configured <= 0 else configured)
 
 
 def _configured_backend_limit() -> int:
-    configured = int(getattr(settings, "RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY", 0) or 0)
+    configured = int(settings.RAG_VECTOR_SHARD_GLOBAL_MAX_CONCURRENCY or 0)
     if configured > 0:
         return configured
     return _configured_limit()
 
 
 def _distributed_admission_enabled(limit: int) -> bool:
-    return bool(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", False)) and (
-        _configured_distributed_limit(limit) > 0
-    )
+    return bool(settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED) and (_configured_distributed_limit(limit) > 0)
 
 
 def _distributed_admission_prefix() -> str:
-    return (
-        str(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", "ragadm") or "ragadm").strip()
-        or "ragadm"
-    )
+    return str(settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX or "ragadm").strip() or "ragadm"
 
 
 def _distributed_backend_admission_enabled(limit: int) -> bool:
-    return bool(getattr(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED", False)) and limit > 0
+    return bool(settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED) and limit > 0
 
 
 def _distributed_backend_admission_prefix() -> str:
@@ -385,11 +382,10 @@ def _run_with_managed_session(
         worker_db.close()
 
 
-def _release_request_session(request_db: Any | None) -> None:
-    rollback = getattr(request_db, "rollback", None)
-    if callable(rollback):
+def _release_request_session(request_db: "Session | None") -> None:
+    if request_db is not None:
         with contextlib.suppress(Exception):
-            rollback()
+            request_db.rollback()
 
 
 async def run_blocking_retrieval_call(
@@ -465,14 +461,14 @@ async def run_blocking_retrieval_call(
     finished_at = time.perf_counter()
 
     metrics = {
-        "rag_offload_limit": int(limit),
+        "rag_offload_limit": limit,
         "rag_offload_queue_ms": round(max(0.0, (acquired_at - queued_at) * 1000.0), 1),
         "rag_offload_exec_ms": round(max(0.0, (finished_at - acquired_at) * 1000.0), 1),
-        "rag_distributed_admission_enabled": bool(_distributed_admission_enabled(limit)),
+        "rag_distributed_admission_enabled": _distributed_admission_enabled(limit),
         "rag_distributed_admission_active": distributed_lease is not None,
-        "rag_distributed_admission_limit": int(_configured_distributed_limit(limit)),
+        "rag_distributed_admission_limit": _configured_distributed_limit(limit),
         "rag_distributed_admission_state": distributed_state,
-        "rag_offload_global_budget": int(_configured_distributed_limit(limit)),
+        "rag_offload_global_budget": _configured_distributed_limit(limit),
     }
     if runtime_metrics is not None:
         runtime_metrics.update(metrics)
@@ -520,11 +516,7 @@ def run_blocking_retrieval_call_sync(
             )
         acquired_at = time.perf_counter()
         with _distributed_admission_scope(distributed_lease):
-            result = (
-                func(*args, **kwargs)
-                if already_admitted or gate is None
-                else _run_admitted(func, args, kwargs)
-            )
+            result = func(*args, **kwargs) if already_admitted or gate is None else _run_admitted(func, args, kwargs)
     finally:
         if acquired:
             gate.release()
@@ -534,14 +526,14 @@ def run_blocking_retrieval_call_sync(
     if runtime_metrics is not None:
         runtime_metrics.update(
             {
-                "rag_offload_limit": int(limit),
+                "rag_offload_limit": limit,
                 "rag_offload_queue_ms": round(max(0.0, (acquired_at - queued_at) * 1000.0), 1),
                 "rag_offload_exec_ms": round(max(0.0, (finished_at - acquired_at) * 1000.0), 1),
-                "rag_distributed_admission_enabled": bool(_distributed_admission_enabled(limit)),
+                "rag_distributed_admission_enabled": _distributed_admission_enabled(limit),
                 "rag_distributed_admission_active": distributed_lease is not None or already_distributed_admitted,
-                "rag_distributed_admission_limit": int(_configured_distributed_limit(limit)),
+                "rag_distributed_admission_limit": _configured_distributed_limit(limit),
                 "rag_distributed_admission_state": distributed_state,
-                "rag_offload_global_budget": int(_configured_distributed_limit(limit)),
+                "rag_offload_global_budget": _configured_distributed_limit(limit),
             }
         )
     return result
@@ -624,9 +616,7 @@ def run_with_retrieval_backend_budget_sync(
             return func(*args, **kwargs)
 
     wait_timeout_sec = (
-        _configured_admission_timeout_sec()
-        if timeout_sec is None
-        else max(0.0, float(timeout_sec or 0.0))
+        _configured_admission_timeout_sec() if timeout_sec is None else max(0.0, float(timeout_sec or 0.0))
     )
     deadline = _admission_deadline(wait_timeout_sec)
     distributed_ttl_sec = _distributed_admission_ttl_sec(wait_timeout_sec)
@@ -676,7 +666,7 @@ def run_with_retrieval_backend_budget_sync(
 async def run_blocking_retrieval_call_with_managed_session(
     func: Callable[..., T],
     *args: Any,
-    request_db: Any | None,
+    request_db: "Session | None",
     runtime_metrics: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> T:
@@ -695,7 +685,7 @@ async def run_blocking_retrieval_call_with_managed_session(
 async def run_blocking_call_with_managed_session(
     func: Callable[..., T],
     *args: Any,
-    request_db: Any | None,
+    request_db: "Session | None",
     **kwargs: Any,
 ) -> T:
     """Offload non-retrieval work with a thread-owned database session."""

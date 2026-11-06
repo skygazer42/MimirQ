@@ -738,14 +738,6 @@ def _declared_metadata_fields(metadata_schema: dict[str, Any] | None) -> dict[st
     return {field.name: field for field in parse_metadata_schema(metadata_schema)}
 
 
-def _policy_string_list(raw: Any, *, key: str) -> tuple[str, ...]:
-    if raw is None:
-        return ()
-    if not isinstance(raw, list):
-        raise PipelinePluginContractError(f"retrieval_policy.{key} must be a list")
-    return _as_string_list(raw, field_label=f"retrieval_policy.{key}")
-
-
 def _validate_declared_policy_fields(
     field_names: tuple[str, ...],
     *,
@@ -1229,7 +1221,7 @@ def _validate_policy_metadata_field_list(
     declared_fields: dict[str, MetadataField],
     key: str,
 ) -> None:
-    field_names = _policy_string_list(retrieval_policy.get(key), key=key)
+    field_names = _validate_optional_string_list(retrieval_policy.get(key), key=key)
     _validate_declared_policy_fields(field_names, declared_fields=declared_fields, key=key)
     _validate_policy_chunk_stage_fields(field_names, declared_fields=declared_fields, key=key)
     if key != "filter_fields":

@@ -19,7 +19,8 @@ test('profile separates problems, distribution and scan history with explicit fa
 })
 
 test('health presents actual exceptions and a failed read can recover without reporting zero', async ({ page }) => {
-  const state = await remainingFixture(page); state.failHealth = true
+  const state = await remainingFixture(page)
+  state.failHealth = true
   await openRemaining(page, datasetRoute('health'), '健康概览')
   await expect(page.getByRole('button', { name: '重新读取健康概览', exact: true })).toBeVisible({ timeout: 30000 })
   await expect(page.locator('[data-health-document-count]')).toHaveCount(0)
@@ -32,7 +33,10 @@ test('health presents actual exceptions and a failed read can recover without re
 
 test('capture current profile and health workspaces', async ({ page }) => {
   await remainingFixture(page)
-  for (const [name, title] of [['profile', '数据画像'], ['health', '健康概览']]) {
+  for (const [name, title] of [
+    ['profile', '数据画像'],
+    ['health', '健康概览'],
+  ]) {
     await openRemaining(page, datasetRoute(name), title)
     await expect(page.getByText('产品知识库', { exact: true }).first()).toBeVisible({ timeout: 30000 })
     await remainingShot(page, `after-${name}`)

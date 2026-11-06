@@ -12,7 +12,7 @@ import { IconButton } from '@/components/ui/icon-button'
 import { cn, formatDate } from '@/lib/utils'
 import type { DocumentVersionList } from '@/types'
 
-interface DocumentVersionsDialogProps {
+type DocumentVersionsDialogProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   activePipelineHash: string | null | undefined
@@ -45,14 +45,12 @@ export function DocumentVersionsDialog({
       <DialogTrigger asChild>
         <Button variant="outline" className="w-full gap-2 sm:w-auto">
           <Hash className="h-4 w-4" />
-          {t("trigger")}
+          {t('trigger')}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl">
         <DialogTitle>{t('title')}</DialogTitle>
-        <DialogDescription className="text-xs">
-          {t('description')}
-        </DialogDescription>
+        <DialogDescription className="text-xs">{t('description')}</DialogDescription>
 
         <div className="mt-4 space-y-3">
           {isLoading ? (
@@ -98,7 +96,7 @@ export function DocumentVersionsDialog({
                     key={version.pipeline_hash}
                     className={cn(
                       'flex items-start justify-between gap-3 rounded-xl border border-border/60 bg-card p-3',
-                      version.active ? 'border-primary/30 bg-primary/5' : 'bg-card'
+                      version.active ? 'border-primary/30 bg-primary/5' : 'bg-card',
                     )}
                   >
                     <div className="min-w-0">
@@ -112,7 +110,9 @@ export function DocumentVersionsDialog({
                       </div>
                       <div className="mt-1 text-xs text-muted-foreground">
                         {t('meta.chunkCount', { count: version.chunk_count })}
-                        {version.last_chunk_at ? ` · ${t('meta.updatedAt', { date: formatDate(version.last_chunk_at) })}` : ''}
+                        {version.last_chunk_at
+                          ? ` · ${t('meta.updatedAt', { date: formatDate(version.last_chunk_at) })}`
+                          : ''}
                       </div>
                     </div>
 
@@ -133,8 +133,10 @@ export function DocumentVersionsDialog({
                       ) : (
                         <>
                           <ConfirmDialog
-                            title={t("dialogs.activate.title")}
-                            description={t('dialogs.activate.description', { hash: `${version.pipeline_hash.slice(0, 12)}…` })}
+                            title={t('dialogs.activate.title')}
+                            description={t('dialogs.activate.description', {
+                              hash: `${version.pipeline_hash.slice(0, 12)}…`,
+                            })}
                             confirmLabel={t('dialogs.activate.confirm')}
                             cancelLabel={t('dialogs.activate.cancel')}
                             confirmVariant="default"
@@ -147,7 +149,9 @@ export function DocumentVersionsDialog({
                           </ConfirmDialog>
                           <ConfirmDialog
                             title={t('dialogs.delete.title')}
-                            description={t('dialogs.delete.description', { hash: `${version.pipeline_hash.slice(0, 12)}…` })}
+                            description={t('dialogs.delete.description', {
+                              hash: `${version.pipeline_hash.slice(0, 12)}…`,
+                            })}
                             confirmLabel={t('dialogs.delete.confirm')}
                             cancelLabel={t('dialogs.delete.cancel')}
                             confirmVariant="destructive"
@@ -172,16 +176,14 @@ export function DocumentVersionsDialog({
             ) : (
               <EmptyState
                 icon={Hash}
-                title={t("empty.title")}
+                title={t('empty.title')}
                 description={t('empty.description')}
                 className="min-h-[240px]"
               />
             )
           ) : null}
 
-          <div className="text-xs text-muted-foreground">
-            {t('hint')}
-          </div>
+          <div className="text-xs text-muted-foreground">{t('hint')}</div>
         </div>
       </DialogContent>
     </Dialog>

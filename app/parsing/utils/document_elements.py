@@ -1,7 +1,7 @@
 import re
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from langchain_core.documents import Document
 
@@ -33,6 +33,11 @@ _SKIP_ATTRIBUTE_KEYS = {
 }
 
 
+class _MarkdownImageRef(TypedDict):
+    alt: str
+    src: str
+
+
 def _coerce_int(value: Any) -> int | None:
     try:
         if value is None or isinstance(value, bool):
@@ -49,7 +54,7 @@ def _coerce_float(value: Any) -> float | None:
         number = float(value)
         if number != number:
             return None
-        return float(number)
+        return number
     except Exception:
         return None
 
@@ -91,12 +96,12 @@ def _coerce_bbox(value: Any) -> dict[str, int] | None:
         x1 = _coerce_int(value.get("x1"))
         y1 = _coerce_int(value.get("y1"))
         if None not in {x0, y0, x1, y1}:
-            return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
+            return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
         return None
     if isinstance(value, (list, tuple)) and len(value) == 4:
         x0, y0, x1, y1 = (_coerce_int(part) for part in value)
         if None not in {x0, y0, x1, y1}:
-            return {"x0": int(x0), "y0": int(y0), "x1": int(x1), "y1": int(y1)}
+            return {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
     return None
 
 
@@ -105,10 +110,10 @@ def _coerce_position_bbox(parts: tuple[str, str, str, str]) -> dict[str, int] | 
     if None in {left, right, top, bottom}:
         return None
     return {
-        "x0": int(round(float(left))),
-        "y0": int(round(float(top))),
-        "x1": int(round(float(right))),
-        "y1": int(round(float(bottom))),
+        "x0": int(round(left)),
+        "y0": int(round(top)),
+        "x1": int(round(right)),
+        "y1": int(round(bottom)),
     }
 
 
@@ -136,19 +141,19 @@ def _extract_bbox(meta: Mapping[str, Any]) -> dict[str, int] | None:
 def _extract_page(meta: Mapping[str, Any]) -> int | None:
     value = _coerce_int(meta.get("element_page"))
     if value is not None:
-        return int(value)
+        return value
     for key in ("page", "page_number", "page_index"):
         value = _coerce_int(meta.get(key))
         if value is None:
             continue
         if key == "page_index":
-            return int(value) + 1
-        return int(value)
+            return value + 1
+        return value
     pages = meta.get("pages")
     if isinstance(pages, list) and pages:
         first = _coerce_int(pages[0])
         if first is not None:
-            return int(first) + 1 if int(first) == 0 else int(first)
+            return first + 1 if first == 0 else first
     return None
 
 
@@ -161,9 +166,9 @@ def _extract_pages(meta: Mapping[str, Any]) -> list[int] | None:
     pages: list[int] = []
     for item in raw:
         value = _coerce_int(item)
-        if value is None or int(value) <= 0:
+        if value is None or value <= 0:
             continue
-        page = int(value)
+        page = value
         if page not in pages:
             pages.append(page)
     return pages or None
@@ -280,8 +285,8 @@ def _prefer_image_code_text(
     return code_text or text
 
 
-def _extract_markdown_image_refs(markdown: str) -> list[dict[str, str]]:
-    refs: list[dict[str, str]] = []
+def _extract_markdown_image_refs(markdown: str) -> list[_MarkdownImageRef]:
+    refs: list[_MarkdownImageRef] = []
     for match in _MD_IMAGE_RE.finditer(markdown or ""):
         refs.append({"alt": str(match.group(1) or "").strip(), "src": str(match.group(2) or "").strip()})
     for match in _HTML_IMAGE_RE.finditer(markdown or ""):
@@ -293,7 +298,7 @@ def _extract_markdown_image_refs(markdown: str) -> list[dict[str, str]]:
                 "src": str(match.group(1) or "").strip(),
             }
         )
-    return [ref for ref in refs if ref.get("src")]
+    return [ref for ref in refs if ref["src"]]
 
 
 def _extract_positioned_image_blocks(markdown: str) -> list[dict[str, Any]]:
@@ -336,11 +341,11 @@ def _normalize_markdown_image_elements(
     for index, ref in enumerate(image_refs):
         position = positioned[index] if index < len(positioned) else {}
         attrs = {
-            "src": ref.get("src"),
-            "alt": ref.get("alt") or None,
+            "src": ref["src"],
+            "alt": ref["alt"] or None,
             "source_content_type": "markdown_image",
         }
-        text_value = ref.get("alt") or Path(str(ref.get("src") or "")).name or "Image"
+        text_value = ref["alt"] or Path(ref["src"]).name or "Image"
         visual_kind = _infer_visual_kind(kind="image", text=text_value, attributes=attrs)
         if visual_kind:
             attrs["visual_kind"] = visual_kind

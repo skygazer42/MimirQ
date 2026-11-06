@@ -7,7 +7,6 @@ Enterprise baseline:
 - When a feature is enabled/selected, use require_dependency() to fail-fast with a clear hint.
 """
 
-
 import importlib
 import logging
 from types import ModuleType
@@ -42,8 +41,8 @@ def optional_import(
         remediation = _remediation_hint(module, pip_name=pip_name, extra=extra)
         logger.warning(
             "Optional dependency missing; feature degraded: feature=%s dependency=%s reason=%s remediation=%s",
-            str(feature or "unknown"),
-            str(module or "unknown"),
+            feature or "unknown",
+            module or "unknown",
             "dependency_missing",
             remediation,
         )

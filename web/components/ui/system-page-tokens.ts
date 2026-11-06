@@ -36,7 +36,8 @@ export const settingsTextTokens = {
 
 export const settingsLayoutTokens = {
   row: 'flex min-w-0 items-start justify-between gap-4 py-3',
-  group: 'grid min-w-0 gap-4 border-t border-border/60 py-5 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)] lg:gap-8',
+  group:
+    'grid min-w-0 gap-4 border-t border-border/60 py-5 first:border-t-0 first:pt-0 last:pb-0 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.5fr)] lg:gap-8',
   input: 'h-11 min-w-0 rounded-lg border-input bg-background text-base sm:h-10 sm:text-sm',
 } as const
 

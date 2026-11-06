@@ -180,15 +180,15 @@ def _qa_chunk_document(
     meta["chunk_strategy"] = "qa_pairs"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["qa_pair_count"] = int(end_idx - start_idx)
-    meta["qa_answered_count"] = int(answered)
+    meta["qa_pair_count"] = end_idx - start_idx
+    meta["qa_answered_count"] = answered
     if previews:
         meta["qa_question_previews"] = previews
     return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
 
 
 class QAPairsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

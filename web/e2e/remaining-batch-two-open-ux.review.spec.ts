@@ -12,17 +12,32 @@ async function snapshot(page: Page, name: string) {
   await page.screenshot({ path: path.join(root, `${name}.png`), animations: 'disabled' })
   await page.screenshot({ path: path.join(root, `${name}-full.png`), fullPage: true, animations: 'disabled' })
   fs.writeFileSync(path.join(root, `${name}.txt`), await page.locator('body').ariaSnapshot())
-  fs.writeFileSync(path.join(root, `${name}.metadata.json`), JSON.stringify({ url: page.url(), viewport: page.viewportSize(), captured_at: new Date().toISOString() }, null, 2))
+  fs.writeFileSync(
+    path.join(root, `${name}.metadata.json`),
+    JSON.stringify({ url: page.url(), viewport: page.viewportSize(), captured_at: new Date().toISOString() }, null, 2),
+  )
 }
 
 test('independent initial rendered surfaces', async ({ browser }) => {
   test.setTimeout(420_000)
-  for (const [device, viewport] of [['desktop', { width: 1600, height: 1000 }], ['mobile', { width: 390, height: 844 }]] as const) {
-    for (const [surface, url] of [['ingestion', '/knowledge/ingestion?mode=execution-monitor'], ['common-lines', '/data-governance/common-lines'], ['industry-rules', '/governance/industry-rules']] as const) {
+  for (const [device, viewport] of [
+    ['desktop', { width: 1600, height: 1000 }],
+    ['mobile', { width: 390, height: 844 }],
+  ] as const) {
+    for (const [surface, url] of [
+      ['ingestion', '/knowledge/ingestion?mode=execution-monitor'],
+      ['common-lines', '/data-governance/common-lines'],
+      ['industry-rules', '/governance/industry-rules'],
+    ] as const) {
       const context = await browser.newContext({ viewport })
       const page = await context.newPage()
-      await page.route('**/api/v1/**', async route => {
-        if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method())) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }) })
+      await page.route('**/api/v1/**', async (route) => {
+        if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method()))
+          return route.fulfill({
+            status: 409,
+            contentType: 'application/json',
+            body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }),
+          })
         return route.continue()
       })
       await batchTwoFixture(page)
@@ -37,11 +52,19 @@ test('independent initial rendered surfaces', async ({ browser }) => {
 
 test('independent chosen task first actions', async ({ browser }) => {
   test.setTimeout(420_000)
-  for (const [device, viewport] of [['desktop', { width: 1600, height: 1000 }], ['mobile', { width: 390, height: 844 }]] as const) {
+  for (const [device, viewport] of [
+    ['desktop', { width: 1600, height: 1000 }],
+    ['mobile', { width: 390, height: 844 }],
+  ] as const) {
     const context = await browser.newContext({ viewport })
     const page = await context.newPage()
-    await page.route('**/api/v1/**', async route => {
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method())) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }) })
+    await page.route('**/api/v1/**', async (route) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method()))
+        return route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }),
+        })
       return route.continue()
     })
     await batchTwoFixture(page)
@@ -50,7 +73,10 @@ test('independent chosen task first actions', async ({ browser }) => {
     await expect(page.getByRole('heading', { name: '入库执行监控', exact: true })).toBeVisible({ timeout: 90_000 })
     await page.getByRole('button', { name: '失败 6', exact: true }).click()
     await snapshot(page, `task-${device}-failed-filter`)
-    await page.getByRole('button', { name: /^查看任务 / }).first().click()
+    await page
+      .getByRole('button', { name: /^查看任务 / })
+      .first()
+      .click()
     await snapshot(page, `task-${device}-failed-detail`)
 
     await page.goto('/data-governance/common-lines', { waitUntil: 'domcontentloaded', timeout: 90_000 })
@@ -71,11 +97,19 @@ test('independent chosen task first actions', async ({ browser }) => {
 
 test('independent repeated-content and glossary outcomes', async ({ browser }) => {
   test.setTimeout(300_000)
-  for (const [device, viewport] of [['desktop', { width: 1600, height: 1000 }], ['mobile', { width: 390, height: 844 }]] as const) {
+  for (const [device, viewport] of [
+    ['desktop', { width: 1600, height: 1000 }],
+    ['mobile', { width: 390, height: 844 }],
+  ] as const) {
     const context = await browser.newContext({ viewport })
     const page = await context.newPage()
-    await page.route('**/api/v1/**', async route => {
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method())) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }) })
+    await page.route('**/api/v1/**', async (route) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method()))
+        return route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }),
+        })
       return route.continue()
     })
     const state = await batchTwoFixture(page)
@@ -93,7 +127,7 @@ test('independent repeated-content and glossary outcomes', async ({ browser }) =
     await snapshot(page, `outcome-${device}-common-save-failed`)
     state.failSave = false
     await page.getByRole('button', { name: /^写入配置/ }).click()
-    await expect.poll(() => state.writes.filter(write => write.path.endsWith('/ui-profile')).length).toBe(2)
+    await expect.poll(() => state.writes.filter((write) => write.path.endsWith('/ui-profile')).length).toBe(2)
     await expect(page.getByText('已写入治理配置：新增 1 条规则', { exact: true })).toBeVisible()
     await snapshot(page, `outcome-${device}-common-saved`)
     await page.goto('/data-governance/common-lines', { waitUntil: 'domcontentloaded', timeout: 90_000 })
@@ -121,7 +155,9 @@ test('independent repeated-content and glossary outcomes', async ({ browser }) =
     await snapshot(page, `outcome-${device}-glossary-save-failed`)
     state.failSave = false
     await page.getByRole('button', { name: '保存术语', exact: true }).click()
-    await expect.poll(() => state.writes.filter(write => write.path.includes('/industry-rules/rulesets/')).length).toBe(2)
+    await expect
+      .poll(() => state.writes.filter((write) => write.path.includes('/industry-rules/rulesets/')).length)
+      .toBe(2)
     await snapshot(page, `outcome-${device}-glossary-saved`)
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('cell', { name: '文档治理', exact: true })).toBeVisible({ timeout: 90_000 })
@@ -135,11 +171,19 @@ test('independent repeated-content and glossary outcomes', async ({ browser }) =
 
 test('independent draft and live-query risk probes', async ({ browser }) => {
   test.setTimeout(240_000)
-  for (const [device, viewport] of [['desktop', { width: 1600, height: 1000 }], ['mobile', { width: 390, height: 844 }]] as const) {
+  for (const [device, viewport] of [
+    ['desktop', { width: 1600, height: 1000 }],
+    ['mobile', { width: 390, height: 844 }],
+  ] as const) {
     const context = await browser.newContext({ viewport })
     const page = await context.newPage()
-    await page.route('**/api/v1/**', async route => {
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method())) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }) })
+    await page.route('**/api/v1/**', async (route) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method()))
+        return route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }),
+        })
       return route.continue()
     })
     const state = await batchTwoFixture(page)
@@ -160,14 +204,20 @@ test('independent draft and live-query risk probes', async ({ browser }) => {
     await expect(page.getByText('已补全：SSO 无法连接', { exact: true })).toBeVisible()
     await snapshot(page, `risk-${device}-query-result`)
     let releaseOld: () => void = () => {}
-    state.previewGate = new Promise<void>(resolve => { releaseOld = resolve })
-    const oldRequest = page.waitForRequest(request => request.url().includes('/preview-rewrite') && request.postDataJSON().query === '旧问题')
+    state.previewGate = new Promise<void>((resolve) => {
+      releaseOld = resolve
+    })
+    const oldRequest = page.waitForRequest(
+      (request) => request.url().includes('/preview-rewrite') && request.postDataJSON().query === '旧问题',
+    )
     await query.fill('旧问题')
     await oldRequest
     await snapshot(page, `risk-${device}-query-pending`)
     await query.fill('新的SSO问题')
     await expect(page.getByText('已补全：新的SSO问题', { exact: true })).toBeVisible()
-    const oldResponse = page.waitForResponse(response => response.url().includes('/preview-rewrite') && response.request().postDataJSON().query === '旧问题')
+    const oldResponse = page.waitForResponse(
+      (response) => response.url().includes('/preview-rewrite') && response.request().postDataJSON().query === '旧问题',
+    )
     releaseOld()
     await oldResponse
     await expect(page.getByText('已补全：新的SSO问题', { exact: true })).toBeVisible()
@@ -185,11 +235,19 @@ test('independent draft and live-query risk probes', async ({ browser }) => {
 
 test('independent write-result recheck and narrow table discovery', async ({ browser }) => {
   test.setTimeout(180_000)
-  for (const [device, viewport] of [['desktop', { width: 1600, height: 1000 }], ['mobile', { width: 390, height: 844 }]] as const) {
+  for (const [device, viewport] of [
+    ['desktop', { width: 1600, height: 1000 }],
+    ['mobile', { width: 390, height: 844 }],
+  ] as const) {
     const context = await browser.newContext({ viewport })
     const page = await context.newPage()
-    await page.route('**/api/v1/**', async route => {
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method())) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }) })
+    await page.route('**/api/v1/**', async (route) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method()))
+        return route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: '独立走查未覆盖的写入已隔离' }),
+        })
       return route.continue()
     })
     await batchTwoFixture(page)
@@ -205,10 +263,16 @@ test('independent write-result recheck and narrow table discovery', async ({ bro
     await expect(page.getByRole('cell').filter({ hasText: '版权所有，未经许可不得转载' })).toBeVisible()
     if (device === 'mobile') {
       await page.getByRole('button', { name: '治理配置', exact: true }).click()
-      await expect(page.getByRole('button', { name: '产品内容清洗 ui-profile', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByRole('button', { name: '产品内容清洗 ui-profile', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
       await page.getByRole('button', { name: '规则与样本', exact: true }).click()
     } else {
-      await expect(page.getByRole('button', { name: '产品内容清洗 ui-profile', exact: true })).toHaveAttribute('aria-pressed', 'true')
+      await expect(page.getByRole('button', { name: '产品内容清洗 ui-profile', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
     }
     await snapshot(page, `recheck-${device}-common-success-in-place`)
     await page.reload({ waitUntil: 'domcontentloaded' })
@@ -245,12 +309,20 @@ test('independent write-result recheck and narrow table discovery', async ({ bro
 
 test('independent real API read-only surfaces', async ({ browser }) => {
   test.setTimeout(300_000)
-  for (const [device, viewport] of [['desktop', { width: 1600, height: 1000 }], ['mobile', { width: 390, height: 844 }]] as const) {
+  for (const [device, viewport] of [
+    ['desktop', { width: 1600, height: 1000 }],
+    ['mobile', { width: 390, height: 844 }],
+  ] as const) {
     const context = await browser.newContext({ viewport })
     const page = await context.newPage()
     const state = await realDatasetFixture(page)
-    await page.route('**/api/v1/**', async route => {
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method())) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ detail: '独立走查的真实 API 操作仅限读取' }) })
+    await page.route('**/api/v1/**', async (route) => {
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(route.request().method()))
+        return route.fulfill({
+          status: 409,
+          contentType: 'application/json',
+          body: JSON.stringify({ detail: '独立走查的真实 API 操作仅限读取' }),
+        })
       return route.fallback()
     })
     await page.setViewportSize(viewport)

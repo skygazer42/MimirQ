@@ -7,13 +7,10 @@ import styles from '@/components/chunk-preview/components/workbench/compare.modu
 import '@/components/chunk-preview/components/workbench/config-dialog.module.css'
 import '@/components/pipeline-options-panel.module.css'
 
-const ChunkPreview = dynamic(
-  () => import('@/components/chunk-preview').then((mod) => mod.ChunkPreview),
-  {
-    ssr: false,
-    loading: () => <PageLoading message="正在加载切块预览…" srMessage="正在加载切块预览页面" />,
-  }
-)
+const ChunkPreview = dynamic(() => import('@/components/chunk-preview').then((mod) => mod.ChunkPreview), {
+  ssr: false,
+  loading: () => <PageLoading message="正在加载切块预览…" srMessage="正在加载切块预览页面" />,
+})
 
 export default function ChunkPreviewPage() {
   return (

@@ -40,7 +40,8 @@ class ClaimVerificationResult:
     diagnostics: dict[str, Any]
 
 
-def _token_set(text: str) -> set[str]:
+def claim_token_set(text: str) -> set[str]:
+    """Return the shared claim tokens used for verification and evidence ranking."""
     tokens: set[str] = set()
     for m in _CLAIM_TOKEN_RE.finditer(text or ""):
         t = (m.group(0) or "").strip()
@@ -54,6 +55,10 @@ def _token_set(text: str) -> set[str]:
         else:
             tokens.add(t)
     return tokens
+
+
+def is_uncertainty_claim(claim: str) -> bool:
+    return bool(_UNCERTAINTY_RE.search(claim))
 
 
 def _numbers(text: str) -> set[str]:
@@ -102,7 +107,7 @@ def _result(mode: str, *, supported: bool, reason_code: str, contradiction_type:
 def _early_result(mode: str, claim: str, evidence: str) -> ClaimVerificationResult | None:
     if not claim:
         return _result(mode, supported=True, reason_code="empty_claim", contradiction_type=None)
-    if _UNCERTAINTY_RE.search(claim):
+    if is_uncertainty_claim(claim):
         return _result(mode, supported=True, reason_code="uncertainty_claim", contradiction_type=None)
     if not evidence:
         return _result(mode, supported=False, reason_code="empty_evidence", contradiction_type=None)
@@ -173,16 +178,16 @@ def verify_claim(
     if early is not None:
         return early
 
-    c_tokens = _token_set(c)
-    e_tokens = _token_set(e)
+    c_tokens = claim_token_set(c)
+    e_tokens = claim_token_set(e)
     token_result = _token_result(m, claim_tokens=c_tokens, evidence_tokens=e_tokens)
     if token_result is not None:
         return token_result
 
     shared = c_tokens.intersection(e_tokens)
-    shared_n = int(len(shared))
-    claim_n = int(len(c_tokens))
-    overlap_ratio = float(shared_n) / float(max(1, claim_n))
+    shared_n = len(shared)
+    claim_n = len(c_tokens)
+    overlap_ratio = shared_n / claim_n
     overlap_ok = _overlap_supported(c_tokens, e_tokens, mode=m)
 
     numeric_mismatch, negation_conflict = _contradiction_flags(
@@ -213,9 +218,9 @@ def verify_claim(
         "reason_code": reason_code,
         "contradiction_type": contradiction_type,
         "claim_tokens": claim_n,
-        "evidence_tokens": int(len(e_tokens)),
+        "evidence_tokens": len(e_tokens),
         "shared_tokens": shared_n,
-        "overlap_ratio": round(float(overlap_ratio), 4),
+        "overlap_ratio": round(overlap_ratio, 4),
         "numeric_mismatch": bool(numeric_mismatch),
         "negation_conflict": bool(negation_conflict),
         "contradiction_check_enabled": bool(enable_contradiction_check),
@@ -223,4 +228,4 @@ def verify_claim(
     return ClaimVerificationResult(supported=bool(supported), mode=m, diagnostics=diagnostics)
 
 
-__all__ = ["ClaimVerificationResult", "verify_claim"]
+__all__ = ["ClaimVerificationResult", "claim_token_set", "is_uncertainty_claim", "verify_claim"]

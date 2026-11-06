@@ -16,7 +16,7 @@ const DataGovernancePanel = dynamic(
   {
     ssr: false,
     loading: () => <DataGovernancePageLoading />,
-  }
+  },
 )
 
 export default function DataGovernancePage() {

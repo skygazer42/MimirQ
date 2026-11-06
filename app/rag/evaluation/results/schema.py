@@ -1,4 +1,3 @@
-
 from typing import Any
 
 EVAL_RESULT_SCHEMA_V1 = "mimirq.eval.result.v1"

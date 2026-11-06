@@ -265,11 +265,7 @@ def _fallback_section_header(meta: dict[str, Any]) -> str | None:
     if table_title:
         return table_title[:200]
 
-    parts = [
-        value
-        for index in range(1, 7)
-        if (value := _stringified_metadata_text(meta, f"header_{index}"))
-    ]
+    parts = [value for index in range(1, 7) if (value := _stringified_metadata_text(meta, f"header_{index}"))]
     return " > ".join(parts) or None
 
 

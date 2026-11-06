@@ -7,7 +7,6 @@ via a contextvar, without threading a `Request` object through every call.
 Primary use-case: request-scoped caches (e.g. tenant group membership lookups).
 """
 
-
 import contextvars
 from typing import Any
 
@@ -31,4 +30,3 @@ def get_request_state() -> Any | None:
 
 
 __all__ = ["bind_request_state", "reset_request_state", "get_request_state"]
-

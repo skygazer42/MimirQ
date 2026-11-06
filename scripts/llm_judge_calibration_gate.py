@@ -21,16 +21,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--min-kappa", type=float, default=0.6)
     args = parser.parse_args(argv)
 
-    input_path = Path(str(args.input)).expanduser().resolve()
-    out_path = Path(str(args.out)).expanduser().resolve()
+    input_path = Path(args.input).expanduser().resolve()
+    out_path = Path(args.out).expanduser().resolve()
     if not input_path.exists():
         raise SystemExit(f"input_not_found:{input_path}")
 
     try:
         report = build_calibration_report(
             _load_json(input_path),
-            min_items=max(1, int(args.min_items)),
-            min_kappa=float(args.min_kappa),
+            min_items=max(1, args.min_items),
+            min_kappa=args.min_kappa,
         )
     except ValueError as exc:
         report = {

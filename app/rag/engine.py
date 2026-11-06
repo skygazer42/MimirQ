@@ -396,7 +396,7 @@ Requirements:
         attempt: int | None = None,
         max_attempts: int | None = None,
     ) -> dict[str, Any] | None:
-        if not bool(getattr(settings, "RAG_STREAM_STATUS_EVENTS_ENABLED", False)):
+        if not bool(settings.RAG_STREAM_STATUS_EVENTS_ENABLED):
             return None
 
         data: dict[str, Any] = {"stage": str(stage), "state": str(state)}
@@ -418,7 +418,7 @@ Requirements:
         abstain_triggered: bool,
         retrieval_profile: str | None,
     ) -> dict[str, Any] | None:
-        if not bool(getattr(settings, "RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED", False)):
+        if not bool(settings.RAG_STREAM_RETRIEVAL_PROGRESS_ENABLED):
             return None
 
         return {
@@ -512,8 +512,8 @@ Requirements:
         must_recall_required_anchor_fields = rag_config.must_recall_required_anchor_fields
         intent_router = rag_config.intent_router
         intent_router_policy = rag_config.intent_router_policy
-        industry_rules_enabled = getattr(rag_config, "industry_rules_enabled", None)
-        industry_rules_rulesets = getattr(rag_config, "industry_rules_rulesets", None)
+        industry_rules_enabled = rag_config.industry_rules_enabled
+        industry_rules_rulesets = rag_config.industry_rules_rulesets
         enable_query_alias_expansion = rag_config.enable_query_alias_expansion
         query_aliases = rag_config.query_aliases
         query_alias_max_queries = rag_config.query_alias_max_queries
@@ -523,28 +523,20 @@ Requirements:
         multi_query_max_chars = rag_config.multi_query_max_chars
         enable_hyde = rag_config.enable_hyde
         enable_query_decomposition = rag_config.enable_query_decomposition
-        enable_kg_query_expansion = getattr(rag_config, "enable_kg_query_expansion", None)
-        enable_kg_chunk_injection = getattr(rag_config, "enable_kg_chunk_injection", None)
-        kg_chunk_injection_max_chunks = getattr(rag_config, "kg_chunk_injection_max_chunks", None)
-        enable_kg_chunk_boost = getattr(rag_config, "enable_kg_chunk_boost", None)
-        kg_chunk_boost_weight = getattr(rag_config, "kg_chunk_boost_weight", None)
-        kg_chunk_boost_max_promoted = getattr(rag_config, "kg_chunk_boost_max_promoted", None)
-        lexical_db_hybrid_metadata_exact_fallback_enabled = getattr(
-            rag_config,
-            "lexical_db_hybrid_metadata_exact_fallback_enabled",
-            None,
-        )
-        lexical_db_hybrid_fallback_only = getattr(
-            rag_config,
-            "lexical_db_hybrid_fallback_only",
-            None,
-        )
-        metadata_exact_db_fallback_enabled = getattr(rag_config, "metadata_exact_db_fallback_enabled", None)
+        enable_kg_query_expansion = rag_config.enable_kg_query_expansion
+        enable_kg_chunk_injection = rag_config.enable_kg_chunk_injection
+        kg_chunk_injection_max_chunks = rag_config.kg_chunk_injection_max_chunks
+        enable_kg_chunk_boost = rag_config.enable_kg_chunk_boost
+        kg_chunk_boost_weight = rag_config.kg_chunk_boost_weight
+        kg_chunk_boost_max_promoted = rag_config.kg_chunk_boost_max_promoted
+        lexical_db_hybrid_metadata_exact_fallback_enabled = rag_config.lexical_db_hybrid_metadata_exact_fallback_enabled
+        lexical_db_hybrid_fallback_only = rag_config.lexical_db_hybrid_fallback_only
+        metadata_exact_db_fallback_enabled = rag_config.metadata_exact_db_fallback_enabled
         enable_hierarchy_recall = rag_config.enable_hierarchy_recall
         hierarchy_family_collapse = (
             rag_config.hierarchy_family_collapse
             if rag_config.hierarchy_family_collapse is not None
-            else bool(getattr(settings, "HIERARCHY_RECALL_FAMILY_COLLAPSE", True))
+            else bool(settings.HIERARCHY_RECALL_FAMILY_COLLAPSE)
         )
         hierarchy_family_aggregation = rag_config.hierarchy_family_aggregation
         hierarchy_tree_dedup = rag_config.hierarchy_tree_dedup
@@ -556,10 +548,10 @@ Requirements:
         fusion_budgets = rag_config.fusion_budgets
         fusion_min_scores = rag_config.fusion_min_scores
         fusion_weights = rag_config.fusion_weights
-        retrieval_overfetch_multiplier = getattr(rag_config, "retrieval_overfetch_multiplier", None)
-        retrieval_overfetch_max_k = getattr(rag_config, "retrieval_overfetch_max_k", None)
-        sparse_retrieval_enabled = getattr(rag_config, "sparse_retrieval_enabled", None)
-        sparse_retrieval_provider = getattr(rag_config, "sparse_retrieval_provider", None)
+        retrieval_overfetch_multiplier = rag_config.retrieval_overfetch_multiplier
+        retrieval_overfetch_max_k = rag_config.retrieval_overfetch_max_k
+        sparse_retrieval_enabled = rag_config.sparse_retrieval_enabled
+        sparse_retrieval_provider = rag_config.sparse_retrieval_provider
         enable_weight_rerank = rag_config.enable_weight_rerank
         vector_weight = rag_config.vector_weight
         keyword_weight = rag_config.keyword_weight
@@ -567,7 +559,7 @@ Requirements:
         enable_reranker = rag_config.enable_reranker
         reranker_provider = rag_config.reranker_provider
         reranker_top_n = rag_config.reranker_top_n
-        generation_max_tokens = max(0, int(getattr(rag_config, "max_tokens", 0) or 0))
+        generation_max_tokens = max(0, int(rag_config.max_tokens or 0))
 
         structured_output = response_options.structured_output
         structured_preset = response_options.structured_preset
@@ -579,7 +571,7 @@ Requirements:
         ab_user_key = prompt_selection.ab_user_key
 
         input_guard_result: dict[str, Any] = {
-            "enabled": bool(getattr(settings, "INPUT_GUARD_ENABLED", False)),
+            "enabled": bool(settings.INPUT_GUARD_ENABLED),
             "action": "allow",
             "score": 0.0,
             "matched_rules": [],
@@ -591,7 +583,7 @@ Requirements:
             "blocked_docs": 0,
             "masked_docs": 0,
         }
-        output_guard_enabled = bool(getattr(settings, "OUTPUT_GUARD_ENABLED", False))
+        output_guard_enabled = bool(settings.OUTPUT_GUARD_ENABLED)
         output_guard_result: dict[str, Any] = {
             "enabled": bool(output_guard_enabled),
             "action": "allow",
@@ -599,7 +591,7 @@ Requirements:
             "matched_rules": [],
         }
 
-        if bool(getattr(settings, "INPUT_GUARD_ENABLED", False)):
+        if bool(settings.INPUT_GUARD_ENABLED):
             try:
                 from app.rag.safety import get_input_guard
 
@@ -626,8 +618,8 @@ Requirements:
 
         try:
             complexity_score = self._score_question_complexity(question, history)
-            agentic_threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
-            if bool(getattr(settings, "RAG_AGENTIC_MODE_ENABLED", False)) and complexity_score >= agentic_threshold:
+            agentic_threshold = float(settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD or 250.0)
+            if bool(settings.RAG_AGENTIC_MODE_ENABLED) and complexity_score >= agentic_threshold:
                 runner = get_agentic_runner(engine=self)
                 async for event in runner.stream(
                     question=question,
@@ -735,23 +727,23 @@ _rag_engine_lock: threading.Lock = threading.Lock()
 
 def _rag_engine_settings_signature() -> str:
     """Return a PII-safe signature for runtime settings captured by RAGEngine."""
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+    api_key = str(settings.LLM_API_KEY or "").strip()
     api_key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
     payload = {
-        "llm_api_base": str(getattr(settings, "LLM_API_BASE", "") or "").strip(),
-        "llm_model": str(getattr(settings, "LLM_MODEL", "") or "").strip(),
-        "llm_model_fast": str(getattr(settings, "LLM_MODEL_FAST", "") or "").strip(),
-        "llm_model_heavy": str(getattr(settings, "LLM_MODEL_HEAVY", "") or "").strip(),
+        "llm_api_base": str(settings.LLM_API_BASE or "").strip(),
+        "llm_model": str(settings.LLM_MODEL or "").strip(),
+        "llm_model_fast": str(settings.LLM_MODEL_FAST or "").strip(),
+        "llm_model_heavy": str(settings.LLM_MODEL_HEAVY or "").strip(),
         "llm_api_key_hash": api_key_hash,
-        "llm_temperature": float(getattr(settings, "LLM_TEMPERATURE", 0.0) or 0.0),
-        "llm_timeout": float(getattr(settings, "LLM_TIMEOUT", 0.0) or 0.0),
-        "llm_max_retries": int(getattr(settings, "LLM_MAX_RETRIES", 0) or 0),
-        "llm_pooled_async_http_client": bool(getattr(settings, "LLM_USE_POOLED_ASYNC_HTTP_CLIENT", False)),
-        "llm_fallback_enabled": bool(getattr(settings, "LLM_FALLBACK_ENABLED", False)),
-        "llm_fallback_models": str(getattr(settings, "LLM_FALLBACK_MODELS", "") or "").strip(),
-        "llm_mock_enabled": bool(getattr(settings, "LLM_MOCK_ENABLED", False)),
-        "llm_mock_response": str(getattr(settings, "LLM_MOCK_RESPONSE", "") or ""),
-        "dynamic_model_routing": bool(getattr(settings, "ENABLE_DYNAMIC_MODEL_ROUTING", False)),
+        "llm_temperature": float(settings.LLM_TEMPERATURE or 0.0),
+        "llm_timeout": float(settings.LLM_TIMEOUT or 0.0),
+        "llm_max_retries": int(settings.LLM_MAX_RETRIES or 0),
+        "llm_pooled_async_http_client": bool(settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT),
+        "llm_fallback_enabled": bool(settings.LLM_FALLBACK_ENABLED),
+        "llm_fallback_models": str(settings.LLM_FALLBACK_MODELS or "").strip(),
+        "llm_mock_enabled": bool(settings.LLM_MOCK_ENABLED),
+        "llm_mock_response": str(settings.LLM_MOCK_RESPONSE or ""),
+        "dynamic_model_routing": bool(settings.ENABLE_DYNAMIC_MODEL_ROUTING),
     }
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
 

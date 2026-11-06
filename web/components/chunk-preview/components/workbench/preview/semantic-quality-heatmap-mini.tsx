@@ -28,7 +28,9 @@ function clamp01(value: number) {
   return n
 }
 
-export function SemanticQualityHeatmapMini(props: Readonly<{ chunks: ChunkPreviewItem[]; bins?: number; className?: string }>) {
+export function SemanticQualityHeatmapMini(
+  props: Readonly<{ chunks: ChunkPreviewItem[]; bins?: number; className?: string }>,
+) {
   const { chunks, bins, className } = props
 
   const model = useMemo(() => {
@@ -109,10 +111,7 @@ export function SemanticQualityHeatmapMini(props: Readonly<{ chunks: ChunkPrevie
 
   return (
     <div
-      className={cn(
-        'flex flex-col gap-[1px] rounded bg-muted/30 border border-border/60 px-1 py-1',
-        className
-      )}
+      className={cn('flex flex-col gap-[1px] rounded bg-muted/30 border border-border/60 px-1 py-1', className)}
       role="img"
       aria-label={aria}
       title={title}
@@ -124,7 +123,9 @@ export function SemanticQualityHeatmapMini(props: Readonly<{ chunks: ChunkPrevie
             const good = v >= 0.55
             const alpha = good ? Math.min(0.9, 0.15 + 0.75 * v) : Math.min(0.9, 0.15 + 0.75 * (1 - v))
             const bg = good ? `hsl(var(--primary) / ${alpha})` : `hsl(var(--destructive) / ${alpha})`
-            return <span key={`${row.key}-${idx}`} className="h-2 w-[2px] rounded-[1px]" style={{ backgroundColor: bg }} />
+            return (
+              <span key={`${row.key}-${idx}`} className="h-2 w-[2px] rounded-[1px]" style={{ backgroundColor: bg }} />
+            )
           })}
         </div>
       ))}

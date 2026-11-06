@@ -7,6 +7,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useDatasets } from '@/hooks/use-datasets'
 import { cn } from '@/lib/utils'
 
+type DatasetSelectFieldProps = {
+  value: string
+  onChange: (value: string) => void
+  label?: string
+  placeholder?: string
+  allLabel?: string
+  allowAll?: boolean
+  autoSelectFirst?: boolean
+  className?: string
+  labelClassName?: string
+  triggerClassName?: string
+}
+
 const ALL_DATASETS_VALUE = '__all_datasets__'
 
 export function DatasetSelectField({
@@ -20,18 +33,7 @@ export function DatasetSelectField({
   className,
   labelClassName,
   triggerClassName,
-}: Readonly<{
-  value: string
-  onChange: (value: string) => void
-  label?: string
-  placeholder?: string
-  allLabel?: string
-  allowAll?: boolean
-  autoSelectFirst?: boolean
-  className?: string
-  labelClassName?: string
-  triggerClassName?: string
-}>) {
+}: Readonly<DatasetSelectFieldProps>) {
   const { datasets, isLoading } = useDatasets()
 
   const selectedValue = value || (allowAll ? ALL_DATASETS_VALUE : '')

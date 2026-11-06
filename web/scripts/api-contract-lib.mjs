@@ -42,8 +42,7 @@ function parsePythonStringConstants(pyText) {
   //   NAME = "value"
   //   NAME: str = "value"
   // with optional trailing comment.
-  const re =
-    /^([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*(?:\"([^\"]*)\"|'([^']*)')\s*(?:#.*)?$/gm
+  const re = /^([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^=]+)?=\s*(?:\"([^\"]*)\"|'([^']*)')\s*(?:#.*)?$/gm
   let m
   while ((m = re.exec(pyText))) {
     const name = m[1]
@@ -66,7 +65,7 @@ export function parseBackendPrefixes() {
     const mod = m[1]
     const args = m[2] || ''
     const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
-    let prefix = prefixMatch ? (prefixMatch[1] || prefixMatch[2] || '') : ''
+    let prefix = prefixMatch ? prefixMatch[1] || prefixMatch[2] || '' : ''
     if (!prefix) {
       const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
       const constName = constMatch ? constMatch[1] : ''
@@ -104,7 +103,7 @@ function parseRouterIncludes(pyText) {
     const mod = m[1]
     const args = m[2] || ''
     const prefixMatch = args.match(/prefix\s*=\s*(?:\"([^\"]*)\"|'([^']*)')/)
-    let prefix = prefixMatch ? (prefixMatch[1] || prefixMatch[2] || '') : ''
+    let prefix = prefixMatch ? prefixMatch[1] || prefixMatch[2] || '' : ''
     if (!prefix) {
       const constMatch = args.match(/prefix\s*=\s*([A-Za-z_][A-Za-z0-9_]*)/)
       const constName = constMatch ? constMatch[1] : ''
@@ -115,8 +114,7 @@ function parseRouterIncludes(pyText) {
     includes.push({ mod, prefix })
   }
 
-  const routesExtendRe =
-    /_?router\.routes\.extend\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\.routes\s*\)/g
+  const routesExtendRe = /_?router\.routes\.extend\(\s*([A-Za-z_][A-Za-z0-9_]*)\.router\.routes\s*\)/g
   while ((m = routesExtendRe.exec(pyText))) {
     includes.push({ mod: m[1], prefix: '' })
   }
@@ -267,7 +265,7 @@ export function listFrontendSourceFiles() {
       if (!ent.isFile()) continue
       const ext = path.extname(ent.name)
       if (!exts.has(ext)) continue
-      const rel = path.relative(ROOT, abs)
+      const rel = path.relative(ROOT, abs).replaceAll(path.sep, '/')
       files.push(rel)
     }
   }

@@ -1,4 +1,3 @@
-
 KB_ASSISTANT_ONESHOT = {
     "question": "What does the deployment guide require before starting the service?",
     "answer": "The guide requires configuring the environment variables before starting the service.",

@@ -1,14 +1,19 @@
-
 import math
 import re
 from collections import Counter, defaultdict
-from typing import Any
+from typing import Any, TypedDict
 
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_-]+|[\u4e00-\u9fff]{1,8}")
 
 
+class _KeywordScore(TypedDict):
+    token: str
+    score: float
+    count: int
+
+
 def _tokenize(text: str) -> list[str]:
-    return [token for token in _TOKEN_RE.findall(text or "") if token]
+    return _TOKEN_RE.findall(text or "")
 
 
 def _is_abbreviation(token: str) -> bool:
@@ -57,8 +62,8 @@ def _build_keyword_scores(
     token_counts: Counter[str],
     token_doc_counts: defaultdict[str, int],
     total_docs: int,
-) -> list[dict[str, Any]]:
-    keyword_scores = []
+) -> list[_KeywordScore]:
+    keyword_scores: list[_KeywordScore] = []
     for token, count in token_counts.items():
         doc_freq = max(1, token_doc_counts[token])
         score = round(float(count) * (1.0 + math.log((total_docs + 1) / doc_freq)), 4)
@@ -120,10 +125,7 @@ def mine_query_patterns(
         total_docs=total_docs,
     )
 
-    document_heat = [
-        {"filename": filename, "count": count}
-        for filename, count in doc_counts.most_common()
-    ]
+    document_heat = [{"filename": filename, "count": count} for filename, count in doc_counts.most_common()]
 
     return {
         "abbreviations": abbreviations,

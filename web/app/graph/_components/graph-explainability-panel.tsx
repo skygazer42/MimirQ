@@ -51,7 +51,10 @@ export function GraphExplainabilityPanel({
           return (
             <div
               key={`${step.node}-${step.reason}`}
-              className={cn('relative pl-4 border-l-2 transition-colors duration-150 motion-reduce:transition-none', borderClass)}
+              className={cn(
+                'relative pl-4 border-l-2 transition-colors duration-150 motion-reduce:transition-none',
+                borderClass,
+              )}
             >
               <div className={cn('absolute -left-[5px] top-0 w-2 h-2 rounded-full transition-colors', dotClass)} />
               <p className="text-xs font-semibold text-foreground mb-0.5">{node?.label || step.node}</p>

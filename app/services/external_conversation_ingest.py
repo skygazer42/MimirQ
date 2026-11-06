@@ -1,4 +1,3 @@
-
 import ast
 import json
 from datetime import UTC, datetime, timedelta
@@ -14,6 +13,7 @@ from app.api.schemas.external_conversation import (
 )
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.chat_conversation_titles import (
@@ -21,7 +21,6 @@ from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_MANUAL,
     apply_auto_conversation_title,
 )
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids
 
 EXTERNAL_CONVERSATION_METADATA_KEY = "external_conversation"
@@ -62,12 +61,12 @@ def _resolve_document_scope(
         return None, allowed_doc_ids
 
     if request.dataset_id is not None:
-        DatasetService.ensure_member(db, tenant_id, account_id)
-        dataset = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
         return request.dataset_id, []
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return None, []
 
 
@@ -219,10 +218,6 @@ def _external_message_metadata(
     }
 
 
-def _is_mimirq_citation(value: Any) -> bool:
-    return _normalize_mimirq_citation(value) is not None
-
-
 _CITATION_CONTENT_KEYS = ("chunk_content", "content", "text", "quote", "snippet", "page_content")
 _CITATION_TITLE_KEYS = ("document_name", "title", "filename", "source", "source_path", "document_id")
 _CITATION_SCORE_KEYS = (
@@ -298,7 +293,7 @@ def _first_non_empty(mapping: dict[str, Any], keys: tuple[str, ...]) -> Any:
 def _normalize_uuid_text(value: Any) -> str:
     try:
         return str(UUID(str(value)))
-    except Exception:
+    except ValueError:
         return ""
 
 
@@ -311,18 +306,14 @@ def _normalize_mimirq_citation(value: Any) -> dict[str, Any] | None:
     document_id = _normalize_uuid_text(value.get("document_id") or metadata.get("document_id"))
     chunk_id = _normalize_uuid_text(value.get("chunk_id") or metadata.get("chunk_id"))
     chunk_content = str(
-        _first_non_empty(value, _CITATION_CONTENT_KEYS)
-        or _first_non_empty(metadata, _CITATION_CONTENT_KEYS)
-        or ""
+        _first_non_empty(value, _CITATION_CONTENT_KEYS) or _first_non_empty(metadata, _CITATION_CONTENT_KEYS) or ""
     ).strip()
 
     if not document_id or not chunk_id or not chunk_content:
         return None
 
     document_name = str(
-        _first_non_empty(value, _CITATION_TITLE_KEYS)
-        or _first_non_empty(metadata, _CITATION_TITLE_KEYS)
-        or "Document"
+        _first_non_empty(value, _CITATION_TITLE_KEYS) or _first_non_empty(metadata, _CITATION_TITLE_KEYS) or "Document"
     ).strip()
 
     out: dict[str, Any] = {
@@ -343,7 +334,7 @@ def _normalize_mimirq_citation(value: Any) -> dict[str, Any] | None:
     if score is not None:
         try:
             out["relevance_score"] = float(score)
-        except Exception:
+        except (OverflowError, TypeError, ValueError):
             pass
 
     return out
@@ -362,10 +353,10 @@ def _citation_items_from_value(value: Any) -> list[dict[str, Any]]:
     parsed: Any
     try:
         parsed = json.loads(text)
-    except Exception:
+    except (json.JSONDecodeError, RecursionError):
         try:
             parsed = ast.literal_eval(text)
-        except Exception:
+        except (RecursionError, SyntaxError, TypeError, ValueError):
             return []
     if not isinstance(parsed, list):
         return []
@@ -404,7 +395,7 @@ def _mimirq_citations_for_storage(citations: list[dict[str, Any]]) -> list[dict[
         normalized = _normalize_mimirq_citation(item)
         if normalized is None:
             continue
-        key = (str(normalized.get("document_id") or ""), str(normalized.get("chunk_id") or ""))
+        key = (normalized["document_id"], normalized["chunk_id"])
         if key in seen:
             continue
         seen.add(key)

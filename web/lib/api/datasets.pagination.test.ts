@@ -42,19 +42,19 @@ describe('listAllDatasets', () => {
         path: '/api/v1/datasets/',
         method: 'get',
         query: { skip: 0, limit: 200 },
-      })
+      }),
     )
     expect(openapi.request).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         query: { skip: 200, limit: 200 },
-      })
+      }),
     )
     expect(openapi.request).toHaveBeenNthCalledWith(
       3,
       expect.objectContaining({
         query: { skip: 400, limit: 200 },
-      })
+      }),
     )
   })
 
@@ -85,7 +85,7 @@ describe('listAllDatasets', () => {
           include_descendants: true,
           q: 'finance',
         },
-      })
+      }),
     )
     expect(openapi.request).toHaveBeenNthCalledWith(
       2,
@@ -97,7 +97,7 @@ describe('listAllDatasets', () => {
           include_descendants: true,
           q: 'finance',
         },
-      })
+      }),
     )
   })
 

@@ -22,7 +22,7 @@ def _as_float(value: Any, default: float = 0.0) -> float:
 
 
 def _delta(current: float, baseline: float, *, digits: int = 6) -> float:
-    return round(float(current) - float(baseline), int(digits))
+    return round(current - baseline, int(digits))
 
 
 def _hard_case_ids(snapshot: Mapping[str, Any], *, max_ids: int) -> list[str]:

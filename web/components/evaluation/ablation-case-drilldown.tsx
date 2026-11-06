@@ -15,9 +15,7 @@ function toRecord(value: unknown): Record<string, unknown> {
 function scoreValue(item: RegressionItem | undefined, metricKeys: string[]): number | null {
   if (!item) return null
   const scores = toRecord(item.scores)
-  const values = metricKeys
-    .map((key) => Number(scores[key]))
-    .filter((value) => Number.isFinite(value))
+  const values = metricKeys.map((key) => Number(scores[key])).filter((value) => Number.isFinite(value))
   if (!values.length) return null
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
@@ -132,14 +130,27 @@ export function AblationCaseDrilldown({
             Per-case 失败钻取
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            拉取 base/target 的 case 级结果，对齐 case_id 后标注改善、退化和无变化。聚合指标看方向，case diff 才能解释原因。
+            拉取 base/target 的 case 级结果，对齐 case_id 后标注改善、退化和无变化。聚合指标看方向，case diff
+            才能解释原因。
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <Button type="button" variant="outline" disabled={loading || !baseRunId || !targetRunId || baseRunId === targetRunId} onClick={() => void loadDetails()} className="rounded-xl">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loading || !baseRunId || !targetRunId || baseRunId === targetRunId}
+            onClick={() => void loadDetails()}
+            className="rounded-xl"
+          >
             加载 Cases
           </Button>
-          <Button type="button" variant="outline" disabled={!rows.length} onClick={() => downloadCsv(rows)} className="gap-2 rounded-xl">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={!rows.length}
+            onClick={() => downloadCsv(rows)}
+            className="gap-2 rounded-xl"
+          >
             <FileDown className="size-4" />
             导出 CSV
           </Button>
@@ -154,41 +165,65 @@ export function AblationCaseDrilldown({
           <div className="text-right">Delta</div>
           <div className="text-right">标签</div>
         </div>
-        {rows.length ? rows.map((row) => (
-          <button
-            key={row.case_id}
-            type="button"
-            className="block w-full border-t border-border/50 text-left"
-            onClick={() => setExpandedCaseId((prev) => (prev === row.case_id ? '' : row.case_id))}
-          >
-            <div className="grid grid-cols-[minmax(180px,1fr)_82px_82px_82px_88px] px-3 py-2 text-xs">
-              <div className="min-w-0">
-                <div className="font-mono text-[11px] text-muted-foreground">{row.case_id.slice(0, 8)}…</div>
-                <div className="truncate text-foreground">{row.question}</div>
+        {rows.length ? (
+          rows.map((row) => (
+            <button
+              key={row.case_id}
+              type="button"
+              className="block w-full border-t border-border/50 text-left"
+              onClick={() => setExpandedCaseId((prev) => (prev === row.case_id ? '' : row.case_id))}
+            >
+              <div className="grid grid-cols-[minmax(180px,1fr)_82px_82px_82px_88px] px-3 py-2 text-xs">
+                <div className="min-w-0">
+                  <div className="font-mono text-[11px] text-muted-foreground">{row.case_id.slice(0, 8)}…</div>
+                  <div className="truncate text-foreground">{row.question}</div>
+                </div>
+                <div className="text-right font-mono text-muted-foreground">
+                  {row.base_score === null ? '-' : row.base_score.toFixed(3)}
+                </div>
+                <div className="text-right font-mono text-muted-foreground">
+                  {row.target_score === null ? '-' : row.target_score.toFixed(3)}
+                </div>
+                <div
+                  className={cn(
+                    'text-right font-mono',
+                    row.delta && row.delta > 0
+                      ? 'text-success'
+                      : row.delta && row.delta < 0
+                        ? 'text-destructive'
+                        : 'text-muted-foreground',
+                  )}
+                >
+                  {row.delta === null ? '-' : row.delta >= 0 ? `+${row.delta.toFixed(3)}` : row.delta.toFixed(3)}
+                </div>
+                <div className="text-right text-foreground/85">{row.label}</div>
               </div>
-              <div className="text-right font-mono text-muted-foreground">{row.base_score === null ? '-' : row.base_score.toFixed(3)}</div>
-              <div className="text-right font-mono text-muted-foreground">{row.target_score === null ? '-' : row.target_score.toFixed(3)}</div>
-              <div className={cn('text-right font-mono', row.delta && row.delta > 0 ? 'text-success' : row.delta && row.delta < 0 ? 'text-destructive' : 'text-muted-foreground')}>
-                {row.delta === null ? '-' : row.delta >= 0 ? `+${row.delta.toFixed(3)}` : row.delta.toFixed(3)}
-              </div>
-              <div className="text-right text-foreground/85">{row.label}</div>
-            </div>
-            {expandedCaseId === row.case_id ? (
-              <div className="grid gap-2 border-t border-border/50 bg-muted/50 px-3 py-3 text-xs md:grid-cols-2">
-                <div>
-                  <div className="mb-1 font-medium text-foreground/85">Base answer</div>
-                  <div className="line-clamp-5 rounded-lg bg-background p-2 text-muted-foreground">
-                    {row.base_response || (row.metric_diffs.length ? row.metric_diffs.map((item) => `${item.key}: ${primitiveText(item.before)} -> ${primitiveText(item.after)}`).join(' / ') : '-')}
+              {expandedCaseId === row.case_id ? (
+                <div className="grid gap-2 border-t border-border/50 bg-muted/50 px-3 py-3 text-xs md:grid-cols-2">
+                  <div>
+                    <div className="mb-1 font-medium text-foreground/85">Base answer</div>
+                    <div className="line-clamp-5 rounded-lg bg-background p-2 text-muted-foreground">
+                      {row.base_response ||
+                        (row.metric_diffs.length
+                          ? row.metric_diffs
+                              .map(
+                                (item) => `${item.key}: ${primitiveText(item.before)} -> ${primitiveText(item.after)}`,
+                              )
+                              .join(' / ')
+                          : '-')}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-1 font-medium text-foreground/85">Target answer</div>
+                    <div className="line-clamp-5 rounded-lg bg-background p-2 text-muted-foreground">
+                      {row.target_response || '-'}
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="mb-1 font-medium text-foreground/85">Target answer</div>
-                  <div className="line-clamp-5 rounded-lg bg-background p-2 text-muted-foreground">{row.target_response || '-'}</div>
-                </div>
-              </div>
-            ) : null}
-          </button>
-        )) : (
+              ) : null}
+            </button>
+          ))
+        ) : (
           <div className="px-3 py-8 text-center text-xs text-muted-foreground">选择 base/target 后加载 case 明细。</div>
         )}
       </div>

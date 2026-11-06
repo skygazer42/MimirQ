@@ -74,12 +74,12 @@ def main() -> int:
         bundle = build_pipeline_plugin_golden_draft_from_sample(
             args.plugin_dir,
             input_path=args.input_path,
-            dataset_id=UUID(str(args.dataset_id)),
+            dataset_id=UUID(args.dataset_id),
             stages=args.stages,
             max_items=args.max_items,
         )
         text = json.dumps(bundle, ensure_ascii=False, indent=2)
-        if str(args.out or "-") == "-":
+        if (args.out or "-") == "-":
             print(text)
         else:
             Path(args.out).write_text(text + "\n", encoding="utf-8")

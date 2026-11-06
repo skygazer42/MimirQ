@@ -1,4 +1,4 @@
-export interface ParsingPosition {
+export type ParsingPosition = {
   pages: number[]
   left: number
   right: number
@@ -7,7 +7,7 @@ export interface ParsingPosition {
   raw: string
 }
 
-export interface ParsingBlock {
+export type ParsingBlock = {
   id: string
   text: string
   positions: ParsingPosition[]
@@ -18,7 +18,7 @@ export type PositionTagRange = {
   end: number
 }
 
-export interface ParsingBlockWithRange extends ParsingBlock {
+export type ParsingBlockWithRange = ParsingBlock & {
   rawStart: number
   rawEnd: number
 }
@@ -86,7 +86,7 @@ function upperBound(values: number[], target: number): number {
 
 export function createPositionTagIndexMapper(
   markdown: string,
-  ranges?: PositionTagRange[]
+  ranges?: PositionTagRange[],
 ): (rawIndex: number) => number {
   const raw = markdown || ''
   const tagRanges = (ranges || findPositionTagRanges(raw))
@@ -132,65 +132,10 @@ export function extractBlocksFromMarkdown(markdown: string): {
   cleanedMarkdown: string
   blocks: ParsingBlock[]
 } {
-  if (!markdown) {
-    return { cleanedMarkdown: '', blocks: [] }
-  }
-
-  const blocks: ParsingBlock[] = []
-  let lastIndex = 0
-  let blockId = 0
-  let lastBlock: ParsingBlock | null = null
-
-  POSITION_TAG_RE.lastIndex = 0
-  let match = POSITION_TAG_RE.exec(markdown)
-  while (match) {
-    const textChunk = markdown.slice(lastIndex, match.index)
-    const position = parsePosition(match)
-    const text = textChunk.trim()
-
-    if (text) {
-      const block: ParsingBlock = {
-        id: `block-${blockId++}`,
-        text,
-        positions: position ? [position] : [],
-      }
-      blocks.push(block)
-      lastBlock = block
-    } else if (position) {
-      if (lastBlock) {
-        lastBlock.positions.push(position)
-      } else {
-        const block: ParsingBlock = {
-          id: `block-${blockId++}`,
-          text: '',
-          positions: [position],
-        }
-        blocks.push(block)
-        lastBlock = block
-      }
-    }
-
-    lastIndex = match.index + match[0].length
-    match = POSITION_TAG_RE.exec(markdown)
-  }
-
-  const trailing = markdown.slice(lastIndex)
-  const trailingText = trailing.trim()
-  if (trailingText) {
-    if (lastBlock) {
-      lastBlock.text = lastBlock.text ? `${lastBlock.text}\n\n${trailingText}` : trailingText
-    } else {
-      blocks.push({
-        id: `block-${blockId++}`,
-        text: trailingText,
-        positions: [],
-      })
-    }
-  }
-
+  const { cleanedMarkdown, blocks } = extractBlocksFromMarkdownWithRanges(markdown)
   return {
-    cleanedMarkdown: stripPositionTags(markdown),
-    blocks,
+    cleanedMarkdown,
+    blocks: blocks.map(({ id, text, positions }) => ({ id, text, positions })),
   }
 }
 

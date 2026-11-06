@@ -30,8 +30,8 @@ class ChatResponseFinalizationInput:
     question: str
     document_count: int
     full_response: str
-    citations: list
-    metrics: dict
+    citations: list[Any]
+    metrics: dict[str, Any]
     structured_data: object | None
     dataset_id_used: UUID | None
     cache_eligible: bool
@@ -78,7 +78,7 @@ def _safe_non_negative_int(value: Any) -> int:
         return 0
 
 
-def _fallback_rerank_elapsed_seconds(citations: list) -> float | None:
+def _fallback_rerank_elapsed_seconds(citations: list[Any]) -> float | None:
     values: list[float] = []
     for citation in citations or []:
         if not isinstance(citation, dict):
@@ -95,7 +95,7 @@ def _fallback_rerank_elapsed_seconds(citations: list) -> float | None:
 def _extractive_fallback_cost_attribution(
     *,
     metrics: dict[str, Any],
-    citations: list,
+    citations: list[Any],
     question: str,
 ) -> dict[str, Any]:
     per_query = [item for item in (metrics.get("retrieval_per_query") or []) if isinstance(item, dict)]
@@ -120,8 +120,8 @@ def _extractive_fallback_cost_attribution(
             "source": "extractive_fallback",
         },
         "embeddings": {
-            "provider": str(getattr(settings, "EMBEDDING_PROVIDER", "") or ""),
-            "model": str(getattr(settings, "EMBEDDING_MODEL", "") or ""),
+            "provider": str(settings.EMBEDDING_PROVIDER or ""),
+            "model": str(settings.EMBEDDING_MODEL or ""),
             "query_count": int(query_count),
             "query_chars": int(query_chars),
             "query_tokens": int(query_tokens),
@@ -136,7 +136,7 @@ def _extractive_fallback_cost_attribution(
     }
 
 
-def _online_eval_contexts(citations: list) -> list[str]:
+def _online_eval_contexts(citations: list[Any]) -> list[str]:
     contexts: list[str] = []
     for citation in citations or []:
         if hasattr(citation, "model_dump"):
@@ -178,6 +178,7 @@ def _chat_turn_persist_input(
         tenant_id=options.tenant_id,
         conversation_id=options.conversation_id,
         account_id=options.account_id,
+        audit_action="chat.ask",
         assistant_message_id=options.assistant_message_id,
         request_id=options.request_id,
         question=options.question,
@@ -218,7 +219,7 @@ def _log_extractive_fallback_rag_trace(
     conversation_id: UUID,
     request_id: str,
     question: str,
-    citations: list,
+    citations: list[Any],
     metrics: dict[str, Any],
     retrieval_mode_default: str | None,
 ) -> None:

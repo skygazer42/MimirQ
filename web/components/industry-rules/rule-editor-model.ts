@@ -21,10 +21,16 @@ export type RuleDraft = { rows: RuleRow[]; json: string | null; saved: string }
 export type RulesetDraft = Record<RuleSection, RuleDraft>
 
 const defaults: RowFields = { term: '', words: '', followup: '', name: '', route: 'default', enabled: true }
-const asText = (value: unknown) => typeof value === 'string' ? value : ''
-const asList = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').join(', ') : ''
-const splitWords = (value: string) => value.split(/[,，、;；\n]+/).map(word => word.trim()).filter(Boolean)
-const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+const asText = (value: unknown) => (typeof value === 'string' ? value : '')
+const asList = (value: unknown) =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').join(', ') : ''
+const splitWords = (value: string) =>
+  value
+    .split(/[,，、;；\n]+/)
+    .map((word) => word.trim())
+    .filter(Boolean)
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
 export function createRuleRow(id: string): RuleRow {
   return { ...defaults, id, source: null, original: { ...defaults } }
@@ -40,7 +46,7 @@ export function rowsFromValue(section: RuleSection, value: RuleValues[RuleSectio
   return (value as RuleValues['patterns']).map((source, index) => {
     const fields = {
       ...defaults,
-      words: asList(section === 'patterns' ? source.markers ?? source.keywords : source.keywords),
+      words: asList(section === 'patterns' ? (source.markers ?? source.keywords) : source.keywords),
       followup: asText(source.followup ?? source.followup_template),
       name: asText(source.name),
       route: asText(source.route) || 'default',
@@ -74,10 +80,17 @@ export function serializeRows<T extends RuleSection>(section: T, rows: RuleRow[]
       if (changed('words')) {
         const words = splitWords(row.words)
         if (!words.length) throw new Error(`第 ${index + 1} 条：请填写触发词。`)
-        record[source && 'markers' in source ? 'markers' : source && 'keywords' in source ? 'keywords' : 'markers'] = words
+        record[source && 'markers' in source ? 'markers' : source && 'keywords' in source ? 'keywords' : 'markers'] =
+          words
       }
       if (changed('followup')) {
-        record[source && 'followup' in source ? 'followup' : source && 'followup_template' in source ? 'followup_template' : 'followup'] = row.followup
+        record[
+          source && 'followup' in source
+            ? 'followup'
+            : source && 'followup_template' in source
+              ? 'followup_template'
+              : 'followup'
+        ] = row.followup
       }
       if (changed('enabled')) record.enabled = row.enabled
     } else {
@@ -95,12 +108,19 @@ export function serializeRows<T extends RuleSection>(section: T, rows: RuleRow[]
 
 export function parseRuleJson<T extends RuleSection>(section: T, raw: string): RuleValues[T] {
   let value: unknown
-  try { value = JSON.parse(raw) } catch { throw new Error('JSON 格式有误，请检查引号、逗号和括号。') }
+  try {
+    value = JSON.parse(raw)
+  } catch {
+    throw new Error('JSON 格式有误，请检查引号、逗号和括号。')
+  }
   if (section === 'glossary') {
-    if (!isRecord(value) || Object.values(value).some(words => !Array.isArray(words) || words.some(word => typeof word !== 'string'))) {
+    if (
+      !isRecord(value) ||
+      Object.values(value).some((words) => !Array.isArray(words) || words.some((word) => typeof word !== 'string'))
+    ) {
       throw new Error('术语词库需要是对象，每个术语对应一组扩展词。')
     }
-  } else if (!Array.isArray(value) || value.some(item => !isRecord(item))) {
+  } else if (!Array.isArray(value) || value.some((item) => !isRecord(item))) {
     throw new Error('规则需要是数组，每条规则需要是对象。')
   }
   return value as RuleValues[T]
@@ -123,5 +143,9 @@ export function draftValue<T extends RuleSection>(section: T, draft: RuleDraft):
 }
 
 export function isRuleDraftDirty(section: RuleSection, draft: RuleDraft): boolean {
-  try { return JSON.stringify(draftValue(section, draft)) !== draft.saved } catch { return true }
+  try {
+    return JSON.stringify(draftValue(section, draft)) !== draft.saved
+  } catch {
+    return true
+  }
 }

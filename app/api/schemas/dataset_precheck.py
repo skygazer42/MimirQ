@@ -6,7 +6,6 @@ These schemas are used to:
 - Return summary statistics + actionable finding buckets
 """
 
-
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID

@@ -15,6 +15,7 @@ class OrmModel(BaseModel):
     All schemas that need to convert from database models should inherit this class.
     Automatically enables from_attributes configuration.
     """
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -24,6 +25,7 @@ class TimestampMixin(BaseModel):
 
     Provides created_at and updated_at fields.
     """
+
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -34,6 +36,7 @@ class OrmTimestampModel(OrmModel):
 
     Combines OrmModel and TimestampMixin functionality.
     """
+
     created_at: datetime
     updated_at: datetime | None = None
 

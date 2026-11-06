@@ -1,12 +1,4 @@
-import {
-  Box,
-  Brain,
-  FolderOpen,
-  Network,
-  Sparkles,
-  Star,
-  User,
-} from '@/components/icons'
+import { Box, Brain, FolderOpen, Network, Sparkles, Star, User } from '@/components/icons'
 import type { ReactNode } from 'react'
 
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
@@ -23,14 +15,18 @@ export function layoutSnapshotCanvas(nodes: SnapshotStudioNode[], layout: string
   const width = Math.max(640, columns * 160 + 64)
   const height = Math.max(420, rows * 120 + 64)
   const slots = Array.from({ length: columns * rows }, (_, index) => ({
-    x: ((index % columns + 0.5) * (width - 64) / columns + 32) / width * 100,
-    y: ((Math.floor(index / columns) + 0.5) * (height - 64) / rows + 32) / height * 100,
+    x: (((((index % columns) + 0.5) * (width - 64)) / columns + 32) / width) * 100,
+    y: ((((Math.floor(index / columns) + 0.5) * (height - 64)) / rows + 32) / height) * 100,
   }))
-  const positioned = layoutSnapshotStudioNodes(nodes, layout).map(node => {
-    let nearest = 0, distance = Number.POSITIVE_INFINITY
+  const positioned = layoutSnapshotStudioNodes(nodes, layout).map((node) => {
+    let nearest = 0,
+      distance = Number.POSITIVE_INFINITY
     slots.forEach((slot, index) => {
       const candidate = ((slot.x - node.x) * width) ** 2 + ((slot.y - node.y) * height) ** 2
-      if (candidate < distance) { nearest = index; distance = candidate }
+      if (candidate < distance) {
+        nearest = index
+        distance = candidate
+      }
     })
     const slot = slots.splice(nearest, 1)[0]
     return { ...node, x: slot.x, y: slot.y }
@@ -39,8 +35,7 @@ export function layoutSnapshotCanvas(nodes: SnapshotStudioNode[], layout: string
 }
 
 export function getLinkEndpointId(value: unknown): string {
-  if (typeof value === 'string' || typeof value === 'number')
-    return String(value)
+  if (typeof value === 'string' || typeof value === 'number') return String(value)
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>
     return firstDisplayString(record.id, record.name, record.label)
@@ -61,10 +56,7 @@ export function getNodeMetaValue(node: KGGraphNode, ...keys: string[]): unknown 
 }
 
 export function getNodeType(node: KGGraphNode): string {
-  return (
-    firstDisplayString(getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type')) ||
-    '节点'
-  )
+  return firstDisplayString(getNodeMetaValue(node, 'type', 'entity_type', 'kind', 'node_type')) || '节点'
 }
 
 export function getLinkValue(link: KGGraphLink, ...keys: string[]): unknown {
@@ -81,22 +73,12 @@ export function getLinkValue(link: KGGraphLink, ...keys: string[]): unknown {
 
 export function toneForNodeType(type: string): SnapshotStudioNode['tone'] {
   const normalized = type.toLowerCase()
-  if (normalized.includes('event') || normalized.includes('事件'))
-    return 'orange'
-  if (normalized.includes('document') || normalized.includes('文档'))
-    return 'amber'
-  if (normalized.includes('model') || normalized.includes('模型'))
-    return 'purple'
-  if (
-    normalized.includes('person') ||
-    normalized.includes('用户') ||
-    normalized.includes('人员')
-  )
-    return 'green'
-  if (normalized.includes('feedback') || normalized.includes('评价'))
-    return 'rose'
-  if (normalized.includes('technology') || normalized.includes('技术'))
-    return 'teal'
+  if (normalized.includes('event') || normalized.includes('事件')) return 'orange'
+  if (normalized.includes('document') || normalized.includes('文档')) return 'amber'
+  if (normalized.includes('model') || normalized.includes('模型')) return 'purple'
+  if (normalized.includes('person') || normalized.includes('用户') || normalized.includes('人员')) return 'green'
+  if (normalized.includes('feedback') || normalized.includes('评价')) return 'rose'
+  if (normalized.includes('technology') || normalized.includes('技术')) return 'teal'
   return 'blue'
 }
 
@@ -108,11 +90,7 @@ export function iconForNodeType(type: string): ReactNode {
     return <FolderOpen className="h-5 w-5" aria-hidden="true" />
   if (normalized.includes('model') || normalized.includes('模型'))
     return <Brain className="h-5 w-5" aria-hidden="true" />
-  if (
-    normalized.includes('person') ||
-    normalized.includes('用户') ||
-    normalized.includes('人员')
-  )
+  if (normalized.includes('person') || normalized.includes('用户') || normalized.includes('人员'))
     return <User className="h-5 w-5" aria-hidden="true" />
   if (normalized.includes('feedback') || normalized.includes('评价'))
     return <Star className="h-5 w-5" aria-hidden="true" />
@@ -124,7 +102,7 @@ export function iconForNodeType(type: string): ReactNode {
 export function strengthForWeight(weight: unknown): SnapshotStudioLink['strength'] {
   const value = Number(weight ?? 1)
   if (!Number.isFinite(value)) return 'medium'
-  if (value >= 0.75 || value >= 3) return 'strong'
+  if (value >= 0.75) return 'strong'
   if (value <= 0.25) return 'weak'
   return 'medium'
 }
@@ -139,7 +117,7 @@ export function getLinkBaseOpacity(
   hasFilter: boolean,
   sourceVisible: boolean,
   targetVisible: boolean,
-  strength: SnapshotStudioLink['strength']
+  strength: SnapshotStudioLink['strength'],
 ): number {
   if (hasFilter && (!sourceVisible || !targetVisible)) return 0.08
   if (strength === 'strong') return 0.85
@@ -184,59 +162,43 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
   const radiusX = 31
   const radiusY = 25
 
-  const nodes: SnapshotStudioNode[] = rawNodes.map(
-    (node, index): SnapshotStudioNode => {
-      const type = getNodeType(node)
-      const angle = (index / total) * Math.PI * 2 - Math.PI / 2
-      const id = String(node.id || node.label || `node-${index}`)
-      const occurrences = Number(
-        getNodeMetaValue(
-          node,
-          'occurrences',
-          'count',
-          'event_count',
-          'degree',
-          'val'
-        ) ??
-          node.val ??
-          0
-      )
-      return {
-        id,
-        label: String(node.label || id),
-        type,
-        kind: firstDisplayString(getNodeMetaValue(node, 'kind', 'node_type', 'source')) || type,
-        description:
-          firstDisplayString(getNodeMetaValue(node, 'description', 'summary', 'content')) ||
-          '来自 KG 图谱接口的真实节点。',
-        x: Math.round((50 + Math.cos(angle) * radiusX) * 10) / 10,
-        y: Math.round((50 + Math.sin(angle) * radiusY) * 10) / 10,
-        tone: toneForNodeType(type),
-        icon: iconForNodeType(type),
-        occurrences: Number.isFinite(occurrences)
-          ? Math.max(0, occurrences)
-          : 0,
-        status: '一致' as const,
-        relations: [],
-      }
+  const nodes: SnapshotStudioNode[] = rawNodes.map((node, index): SnapshotStudioNode => {
+    const type = getNodeType(node)
+    const angle = (index / total) * Math.PI * 2 - Math.PI / 2
+    const id = String(node.id || node.label || `node-${index}`)
+    const occurrences = Number(
+      getNodeMetaValue(node, 'occurrences', 'count', 'event_count', 'degree', 'val') ?? node.val ?? 0,
+    )
+    return {
+      id,
+      label: String(node.label || id),
+      type,
+      kind: firstDisplayString(getNodeMetaValue(node, 'kind', 'node_type', 'source')) || type,
+      description:
+        firstDisplayString(getNodeMetaValue(node, 'description', 'summary', 'content')) ||
+        '来自 KG 图谱接口的真实节点。',
+      x: Math.round((50 + Math.cos(angle) * radiusX) * 10) / 10,
+      y: Math.round((50 + Math.sin(angle) * radiusY) * 10) / 10,
+      tone: toneForNodeType(type),
+      icon: iconForNodeType(type),
+      occurrences: Number.isFinite(occurrences) ? Math.max(0, occurrences) : 0,
+      status: '一致' as const,
+      relations: [],
     }
-  )
+  })
 
   const nodeById = new Map(nodes.map((node) => [node.id, node]))
   const links = rawLinks
     .map((link) => {
       const source = getLinkEndpointId(link.source)
       const target = getLinkEndpointId(link.target)
-      if (!source || !target || !nodeById.has(source) || !nodeById.has(target))
-        return null
+      if (!source || !target || !nodeById.has(source) || !nodeById.has(target)) return null
       const label = toTrimmedPrimitiveString(getLinkValue(link, 'label', 'predicate', 'relation', 'type'), '关联')
       return {
         source,
         target,
         label,
-        strength: strengthForWeight(
-          getLinkValue(link, 'weight', 'confidence', 'score')
-        ),
+        strength: strengthForWeight(getLinkValue(link, 'weight', 'confidence', 'score')),
       } satisfies SnapshotStudioLink
     })
     .filter((link): link is SnapshotStudioLink => Boolean(link))
@@ -244,10 +206,8 @@ export function buildSnapshotStudioGraphFromKgGraph(graph: KGGraphResponse | nul
   for (const link of links) {
     const source = nodeById.get(link.source)
     const target = nodeById.get(link.target)
-    if (source && target)
-      source.relations.push({ label: link.label, target: target.label, targetId: target.id })
-    if (target && source)
-      target.relations.push({ label: link.label, target: source.label, targetId: source.id })
+    if (source && target) source.relations.push({ label: link.label, target: target.label, targetId: target.id })
+    if (target && source) target.relations.push({ label: link.label, target: source.label, targetId: source.id })
   }
 
   for (const node of nodes) {
@@ -261,10 +221,7 @@ export function clampPercent(value: number, min = 7, max = 93): number {
   return Math.min(max, Math.max(min, Math.round(value * 10) / 10))
 }
 
-export function layoutSnapshotStudioNodes(
-  nodes: SnapshotStudioNode[],
-  layout: string
-): SnapshotStudioNode[] {
+export function layoutSnapshotStudioNodes(nodes: SnapshotStudioNode[], layout: string): SnapshotStudioNode[] {
   const total = nodes.length
   if (total === 0 || layout === 'radial') return nodes
 
@@ -276,9 +233,7 @@ export function layoutSnapshotStudioNodes(
       groups.set(node.type, group)
     }
 
-    const orderedGroups = Array.from(groups.values()).sort(
-      (a, b) => b.length - a.length
-    )
+    const orderedGroups = Array.from(groups.values()).sort((a, b) => b.length - a.length)
     const columnCount = Math.max(1, orderedGroups.length)
     const xStep = columnCount > 1 ? 76 / (columnCount - 1) : 0
 
@@ -308,13 +263,7 @@ export function layoutSnapshotStudioNodes(
   })
 }
 
-export function snapshotToneClassName(
-  tone: SnapshotStudioNode['tone'],
-  selected: boolean
-) {
+export function snapshotToneClassName(tone: SnapshotStudioNode['tone'], selected: boolean) {
   const base = SNAPSHOT_NODE_TONE_CLASSES[tone]
-  return cn(
-    base,
-    selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1'
-  )
+  return cn(base, selected ? 'ring-4 ring-offset-4 ring-offset-background' : 'ring-1')
 }

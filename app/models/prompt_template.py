@@ -3,6 +3,7 @@ Customizable RAG prompt template data model
 
 Defines prompt template table structure, supports version management and A/B testing.
 """
+
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
@@ -74,11 +75,7 @@ class PromptTemplate(Base):
 
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now()
-    )
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Composite indexes for common query patterns
     __table_args__ = (

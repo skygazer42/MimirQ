@@ -33,7 +33,11 @@ test('common-line candidates can be edited and failed saves keep selection and e
   await page.getByRole('button', { name: '扫描重复内容', exact: true }).click()
   const check = page.getByRole('checkbox', { name: '选择重复行 版权所有，未经许可不得转载', exact: true })
   await check.check()
-  await page.getByRole('row').filter({ hasText: '版权所有，未经许可不得转载' }).getByRole('button', { name: '预览与编辑' }).click()
+  await page
+    .getByRole('row')
+    .filter({ hasText: '版权所有，未经许可不得转载' })
+    .getByRole('button', { name: '预览与编辑' })
+    .click()
   await page.getByLabel('正则表达式', { exact: true }).fill('(?mi)^版权所有.*$')
   await page.getByRole('dialog').getByRole('button', { name: '完成', exact: true }).click()
   state.failSave = true
@@ -72,11 +76,16 @@ test('industry tables preserve failed edits, reload saved data and ignore a late
   await expect(page.getByRole('cell', { name: '知识治理', exact: true })).toBeVisible({ timeout: 60000 })
   await remainingShot(page, 'after-industry-rules-filled')
   let release!: () => void
-  state.previewGate = new Promise<void>(resolve => { release = resolve })
+  state.previewGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
   await page.getByRole('button', { name: '查询预览', exact: true }).click()
   const query = page.getByRole('textbox', { name: '输入问题', exact: true })
-  const first = page.waitForRequest(request => request.url().endsWith('/industry-rules/preview-rewrite') && request.postDataJSON().query === '旧问题')
-  await query.fill('旧问题'); await first
+  const first = page.waitForRequest(
+    (request) => request.url().endsWith('/industry-rules/preview-rewrite') && request.postDataJSON().query === '旧问题',
+  )
+  await query.fill('旧问题')
+  await first
   await query.fill('新问题')
   await expect(page.getByText('已补全：新问题', { exact: true })).toBeVisible()
   release()

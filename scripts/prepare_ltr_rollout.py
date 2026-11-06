@@ -7,7 +7,8 @@ import sys
 import time
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from types import ModuleType
+from typing import Any, NoReturn
 from uuid import UUID
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -36,14 +37,14 @@ from app.services.ltr_rollout_workflow import (  # noqa: E402
 from app.services.rag_trace_service import list_rag_traces  # noqa: E402
 
 
-def activate_model(*_args, **_kwargs):  # pragma: no cover
+def activate_model(*_args: Any, **_kwargs: Any) -> NoReturn:  # pragma: no cover
     raise RuntimeError("activation remains manual; prepare_ltr_rollout must not activate models")
 
 
 _DEFAULT_LTR_OBJECTIVE = "rank:pairwise"
 
 
-def _load_script_module(*, name: str, filename: str):
+def _load_script_module(*, name: str, filename: str) -> ModuleType:
     path = Path(__file__).resolve().with_name(filename)
     spec = importlib.util.spec_from_file_location(name, str(path))
     if spec is None or spec.loader is None:
@@ -570,7 +571,7 @@ def main(argv: list[str] | None = None) -> int:
         metrics_overrides[metric] = {"min": float(value)}
     if metrics_overrides:
         merged = normalize_ltr_rollout_gate_thresholds(gate_thresholds)
-        merged_metrics = dict(merged.get("metrics") or {})
+        merged_metrics = dict(merged["metrics"])
         merged_metrics.update(metrics_overrides)
         merged["metrics"] = merged_metrics
         gate_thresholds = merged
@@ -597,7 +598,7 @@ def main(argv: list[str] | None = None) -> int:
         evidence_items=evidence_items,
         feedback_cases=feedback_cases,
         bearer=str(args.bearer),
-        register_candidate=not bool(args.skip_register),
+        register_candidate=not args.skip_register,
         feature_spec_version=int(args.feature_spec_version or 1),
         retrieval_profile=str(args.retrieval_profile),
         retrieval_mode=str(args.retrieval_mode),

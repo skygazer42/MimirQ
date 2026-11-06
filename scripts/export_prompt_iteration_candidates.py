@@ -1,4 +1,3 @@
-
 import argparse
 import json
 from collections import Counter
@@ -28,10 +27,7 @@ def _suggested_action(group_key: str) -> str:
 
 
 def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    negative_rows = [
-        row for row in (feedback_rows or [])
-        if isinstance(row, dict) and int(row.get("rating") or 0) <= 2
-    ]
+    negative_rows = [row for row in (feedback_rows or []) if isinstance(row, dict) and int(row.get("rating") or 0) <= 2]
     counts: Counter[str] = Counter(_group_key(row) for row in negative_rows)
     groups: list[dict[str, Any]] = []
     for group_key, count in counts.most_common():
@@ -58,7 +54,7 @@ def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -
         groups.append(
             {
                 "group_key": group_key,
-                "count": int(count),
+                "count": count,
                 "suggested_prompt_action": _suggested_action(group_key),
                 "samples": samples,
             }
@@ -67,8 +63,8 @@ def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -
     return {
         "schema": "mimirq.prompt_iteration_candidates.v1",
         "summary": {
-            "negative_feedback_count": int(len(negative_rows)),
-            "groups_count": int(len(groups)),
+            "negative_feedback_count": len(negative_rows),
+            "groups_count": len(groups),
         },
         "groups": groups,
     }

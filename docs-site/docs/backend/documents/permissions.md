@@ -83,13 +83,13 @@ Security Trimming 是**后过滤**：先从 Milvus 检索，再按权限过滤�
 sequenceDiagram
     participant Client
     participant API
-    participant DS as DatasetService
-    participant DocPerm as DocumentPermissionService
+    participant DS as dataset_service
+    participant DocPerm as document_access_service
 
     Client->>API: GET /documents/{id}
-    API->>DS: check_dataset_access(dataset, user)
+    API->>DS: assert_dataset_readable(db, dataset, account_id)
     DS-->>API: 数据集层通过
-    API->>DocPerm: check_document_access(doc, user)
+    API->>DocPerm: assert_document_acl_readable(db, document, account_id)
     alt access_mode = inherit/NULL
         DocPerm-->>API: 使用数据集权限（已通过）
     else access_mode = only_me

@@ -25,7 +25,12 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PageLoading } from '@/components/ui/page-loading'
-import { OperationalWorkspace, DirectoryWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import {
+  OperationalWorkspace,
+  DirectoryWorkspace,
+  WorkspaceNotice,
+  workspaceStyles as ws,
+} from '@/components/ui/operational-workspace'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Panel } from '@/components/ui/panel'
@@ -41,7 +46,7 @@ import type { GraphClusterResult } from '@/lib/graph-clustering'
 import type { GraphData } from '@/lib/graph-parser'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
-import { GraphService } from '@/lib/graph-service'
+import { fetchInitialGraph } from '@/lib/graph-service'
 import type { GraphClusteringWorkerApi } from '@/workers/graph-clustering.worker'
 
 import type { Document, KGExtractResponse, KGGraphNode, KGStatsResponse } from '@/types'
@@ -69,7 +74,7 @@ function primitiveText(value: unknown, fallback = ''): string {
 async function runWithConcurrency<T>(
   items: T[],
   concurrency: number,
-  worker: (item: T, index: number) => Promise<void>
+  worker: (item: T, index: number) => Promise<void>,
 ): Promise<void> {
   const resolvedConcurrency = Math.max(1, Math.floor(concurrency))
   let nextIndex = 0
@@ -88,7 +93,12 @@ async function runWithConcurrency<T>(
 
 const DOCS_LOADING_SKELETON_KEYS = ['docs-loading-1', 'docs-loading-2', 'docs-loading-3', 'docs-loading-4']
 const SEARCH_RESULTS_SKELETON_KEYS = ['search-loading-1', 'search-loading-2', 'search-loading-3']
-const GRAPH_STATS_SKELETON_KEYS = ['graph-stat-loading-1', 'graph-stat-loading-2', 'graph-stat-loading-3', 'graph-stat-loading-4']
+const GRAPH_STATS_SKELETON_KEYS = [
+  'graph-stat-loading-1',
+  'graph-stat-loading-2',
+  'graph-stat-loading-3',
+  'graph-stat-loading-4',
+]
 const KG_WORKBENCH_DOCUMENT_PARAMS = {
   skip: 0,
   limit: 100,
@@ -197,7 +207,9 @@ export default function DatasetKGWorkbenchPage() {
   const [extractRunning, setExtractRunning] = useState(false)
   const [singleExtractingDocId, setSingleExtractingDocId] = useState<string | null>(null)
   const [extractProgress, setExtractProgress] = useState<{ done: number; total: number } | null>(null)
-  const [extractResults, setExtractResults] = useState<Record<string, { ok: true; res: KGExtractResponse } | { ok: false; error: string }>>({})
+  const [extractResults, setExtractResults] = useState<
+    Record<string, { ok: true; res: KGExtractResponse } | { ok: false; error: string }>
+  >({})
 
   // Step 3: Graph preview
   const [graphLoading, setGraphLoading] = useState(false)
@@ -247,7 +259,26 @@ export default function DatasetKGWorkbenchPage() {
 
   const scopedDocIds = useMemo(() => Array.from(selectedDocIds), [selectedDocIds])
   const effectivePipelineHash = useMemo(() => pipelineHash.trim() || undefined, [pipelineHash])
-  const previewScope = useMemo(() => ({ datasetId, selectedDocIds, effectivePipelineHash, includeEntityLinks, includeRelationLinks, minSharedEvents, graphMaxDocs }), [datasetId, selectedDocIds, effectivePipelineHash, includeEntityLinks, includeRelationLinks, minSharedEvents, graphMaxDocs])
+  const previewScope = useMemo(
+    () => ({
+      datasetId,
+      selectedDocIds,
+      effectivePipelineHash,
+      includeEntityLinks,
+      includeRelationLinks,
+      minSharedEvents,
+      graphMaxDocs,
+    }),
+    [
+      datasetId,
+      selectedDocIds,
+      effectivePipelineHash,
+      includeEntityLinks,
+      includeRelationLinks,
+      minSharedEvents,
+      graphMaxDocs,
+    ],
+  )
   const previewScopeRef = useRef(previewScope)
   useLayoutEffect(() => {
     previewScopeRef.current = previewScope
@@ -284,12 +315,14 @@ export default function DatasetKGWorkbenchPage() {
 
     let degree = 0
     for (const link of graphData.links) {
-      const source = typeof link.source === 'object' && link.source
-        ? String((link.source as { id?: string }).id ?? '')
-        : String(link.source ?? '')
-      const target = typeof link.target === 'object' && link.target
-        ? String((link.target as { id?: string }).id ?? '')
-        : String(link.target ?? '')
+      const source =
+        typeof link.source === 'object' && link.source
+          ? String((link.source as { id?: string }).id ?? '')
+          : String(link.source ?? '')
+      const target =
+        typeof link.target === 'object' && link.target
+          ? String((link.target as { id?: string }).id ?? '')
+          : String(link.target ?? '')
       if (source === selectedGraphNodeId || target === selectedGraphNodeId) {
         degree += 1
       }
@@ -313,7 +346,7 @@ export default function DatasetKGWorkbenchPage() {
       { label: 'Preview', description: '图预览' },
       { label: 'Search', description: '快速检索' },
     ],
-    []
+    [],
   )
 
   const currentStep = useMemo(() => {
@@ -364,30 +397,32 @@ export default function DatasetKGWorkbenchPage() {
       }
     }
 
-    detachPromise((async () => {
-      try {
-        let api = graphClusteringApiRef.current
-        if (!graphClusteringWorkerRef.current || !api) {
-          const { wrap } = await import('comlink')
-          if (cancelled) return
-          graphClusteringWorkerRef.current = new Worker(
-            new URL('../../workers/graph-clustering.worker.ts', import.meta.url),
-            { type: 'module' }
-          )
-          api = wrap<GraphClusteringWorkerApi>(graphClusteringWorkerRef.current)
-          graphClusteringApiRef.current = api
-        }
+    detachPromise(
+      (async () => {
+        try {
+          let api = graphClusteringApiRef.current
+          if (!graphClusteringWorkerRef.current || !api) {
+            const { wrap } = await import('comlink')
+            if (cancelled) return
+            graphClusteringWorkerRef.current = new Worker(
+              new URL('../../workers/graph-clustering.worker.ts', import.meta.url),
+              { type: 'module' },
+            )
+            api = wrap<GraphClusteringWorkerApi>(graphClusteringWorkerRef.current)
+            graphClusteringApiRef.current = api
+          }
 
-        const result = await api.computeConnectedComponents({ nodes, links })
-        if (cancelled) return
-        if (graphClusteringSeqRef.current !== seq) return
-        setGraphClusterResult(result)
-      } catch (e) {
-        reportClientWarning('Dataset graph clustering worker failed; falling back to main thread', e)
-        graphClusteringDisabledRef.current = true
-        detachPromise(computeOnMainThread())
-      }
-    })())
+          const result = await api.computeConnectedComponents({ nodes, links })
+          if (cancelled) return
+          if (graphClusteringSeqRef.current !== seq) return
+          setGraphClusterResult(result)
+        } catch (e) {
+          reportClientWarning('Dataset graph clustering worker failed; falling back to main thread', e)
+          graphClusteringDisabledRef.current = true
+          detachPromise(computeOnMainThread())
+        }
+      })(),
+    )
 
     return () => {
       cancelled = true
@@ -437,29 +472,32 @@ export default function DatasetKGWorkbenchPage() {
 
   const clearSelection = useCallback(() => setSelectedDocIds(new Set()), [])
 
-  const extractOneDoc = useCallback(async (docId: string) => {
-    const id = String(docId || '').trim()
-    if (!id) return
-    if (singleExtractingDocId) return
+  const extractOneDoc = useCallback(
+    async (docId: string) => {
+      const id = String(docId || '').trim()
+      if (!id) return
+      if (singleExtractingDocId) return
 
-    setSingleExtractingDocId(id)
-    try {
-      const res = await kgApi.extract(id, {
-        async: false,
-        pipeline_hash: effectivePipelineHash,
-        replace_existing: replaceExisting,
-        prune_orphan_entities: pruneOrphans,
-      })
-      setExtractResults((prev) => ({ ...prev, [id]: { ok: true, res } }))
-      toast.success(`KG 抽取完成：events=${Number(res?.event_count || 0)}`)
-    } catch (e: unknown) {
-      const msg = formatApiError(e, 'KG 抽取失败')
-      setExtractResults((prev) => ({ ...prev, [id]: { ok: false, error: msg } }))
-      toast.error(msg)
-    } finally {
-      setSingleExtractingDocId(null)
-    }
-  }, [effectivePipelineHash, pruneOrphans, replaceExisting, singleExtractingDocId])
+      setSingleExtractingDocId(id)
+      try {
+        const res = await kgApi.extract(id, {
+          async: false,
+          pipeline_hash: effectivePipelineHash,
+          replace_existing: replaceExisting,
+          prune_orphan_entities: pruneOrphans,
+        })
+        setExtractResults((prev) => ({ ...prev, [id]: { ok: true, res } }))
+        toast.success(`KG 抽取完成：events=${Number(res?.event_count || 0)}`)
+      } catch (e: unknown) {
+        const msg = formatApiError(e, 'KG 抽取失败')
+        setExtractResults((prev) => ({ ...prev, [id]: { ok: false, error: msg } }))
+        toast.error(msg)
+      } finally {
+        setSingleExtractingDocId(null)
+      }
+    },
+    [effectivePipelineHash, pruneOrphans, replaceExisting, singleExtractingDocId],
+  )
 
   const extractSelected = useCallback(async () => {
     if (extractRunning) return
@@ -509,15 +547,7 @@ export default function DatasetKGWorkbenchPage() {
     } finally {
       setExtractRunning(false)
     }
-  }, [
-    bulkConcurrency,
-    bulkMaxDocs,
-    effectivePipelineHash,
-    extractRunning,
-    pruneOrphans,
-    replaceExisting,
-    scopedDocIds,
-  ])
+  }, [bulkConcurrency, bulkMaxDocs, effectivePipelineHash, extractRunning, pruneOrphans, replaceExisting, scopedDocIds])
 
   const loadGraphPreview = useCallback(async () => {
     if (!datasetId) return
@@ -541,7 +571,7 @@ export default function DatasetKGWorkbenchPage() {
     setSelectedGraphNodeId(null)
     try {
       const [graph, stats] = await Promise.all([
-        GraphService.fetchInitialGraph({
+        fetchInitialGraph({
           includeEntityLinks,
           includeRelationLinks,
           minSharedEvents: includeRelationLinks ? minSharedEvents : undefined,
@@ -549,7 +579,7 @@ export default function DatasetKGWorkbenchPage() {
           documentIds: docIds,
           pipelineHash: effectivePipelineHash,
         }),
-        kgApi.getStats({ document_ids: docIds, pipeline_hash: effectivePipelineHash }).catch(error => {
+        kgApi.getStats({ document_ids: docIds, pipeline_hash: effectivePipelineHash }).catch((error) => {
           if (previewScopeRef.current === requestScope) setStatsError(formatApiError(error, '图谱统计暂不可用'))
           return null
         }),
@@ -581,15 +611,15 @@ export default function DatasetKGWorkbenchPage() {
     previewScope,
   ])
 
-	  const scopedGraphUrl = useMemo(() => {
-	    const maxDocs = limitPositiveInt(graphMaxDocs, 50, { min: 1, max: 200 })
-	    const docIds = scopedDocIds.slice(0, maxDocs)
-	    const qs = new URLSearchParams()
-	    if (docIds.length) qs.set('document_ids', docIds.join(','))
-	    if (effectivePipelineHash) qs.set('pipeline_hash', effectivePipelineHash)
-	    const query = qs.toString()
-	    return query ? `/graph?${query}` : '/graph'
-	  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds])
+  const scopedGraphUrl = useMemo(() => {
+    const maxDocs = limitPositiveInt(graphMaxDocs, 50, { min: 1, max: 200 })
+    const docIds = scopedDocIds.slice(0, maxDocs)
+    const qs = new URLSearchParams()
+    if (docIds.length) qs.set('document_ids', docIds.join(','))
+    if (effectivePipelineHash) qs.set('pipeline_hash', effectivePipelineHash)
+    const query = qs.toString()
+    return query ? `/graph?${query}` : '/graph'
+  }, [effectivePipelineHash, graphMaxDocs, scopedDocIds])
 
   const runQuickSearch = useCallback(async () => {
     const q = searchQuery.trim()
@@ -628,8 +658,51 @@ export default function DatasetKGWorkbenchPage() {
     }
   }, [effectivePipelineHash, graphMaxDocs, scopedDocIds, searchKind, searchLoading, searchQuery, previewScope])
 
-  return <AppFrame><OperationalWorkspace title="数据集图谱" icon="knowledge-graph" mode="canvas" context={dataset?.name ?? '正在读取数据集…'} back={() => router.push('/datasets')} actions={<><Button variant="outline" onClick={() => setSearchOpen(true)}><Search />搜索节点</Button><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="图谱工具"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => setGraphOptionsOpen(true)}>预览参数</DropdownMenuItem><DropdownMenuItem onSelect={() => router.push(`/datasets/${datasetId}/ingestion`)}>入库策略</DropdownMenuItem><DropdownMenuItem onSelect={() => router.push('/graph/diagnostics')}>图谱诊断</DropdownMenuItem><DropdownMenuItem onSelect={() => router.push('/graph/snapshots')}>图谱快照</DropdownMenuItem><DropdownMenuItem onSelect={() => setActiveDocQuery(docQuery.trim())}>重新读取文档</DropdownMenuItem></DropdownMenuContent></DropdownMenu><Button onClick={() => setExtractOpen(true)}><Sparkles />{extractRunning && extractProgress ? `抽取 ${extractProgress.done}/${extractProgress.total}` : '抽取配置'}</Button></>}>
-    <DirectoryWorkspace pane={pane} onPaneChange={setPane} directoryLabel="文档范围" detailLabel="图谱预览" directory={<div className="p-4"><Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
+  return (
+    <AppFrame>
+      <OperationalWorkspace
+        title="数据集图谱"
+        icon="knowledge-graph"
+        mode="canvas"
+        context={dataset?.name ?? '正在读取数据集…'}
+        back={() => router.push('/datasets')}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setSearchOpen(true)}>
+              <Search />
+              搜索节点
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="图谱工具">
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setGraphOptionsOpen(true)}>预览参数</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/datasets/${datasetId}/ingestion`)}>
+                  入库策略
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push('/graph/diagnostics')}>图谱诊断</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push('/graph/snapshots')}>图谱快照</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setActiveDocQuery(docQuery.trim())}>重新读取文档</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button onClick={() => setExtractOpen(true)}>
+              <Sparkles />
+              {extractRunning && extractProgress ? `抽取 ${extractProgress.done}/${extractProgress.total}` : '抽取配置'}
+            </Button>
+          </>
+        }
+      >
+        <DirectoryWorkspace
+          pane={pane}
+          onPaneChange={setPane}
+          directoryLabel="文档范围"
+          detailLabel="图谱预览"
+          directory={
+            <div className="p-4">
+              <Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
                 <div className="space-y-3">
                   <div className="min-w-0">
                     <div className={ws.sectionTitle}>文档范围</div>
@@ -647,7 +720,8 @@ export default function DatasetKGWorkbenchPage() {
                 <div className="flex items-center gap-2">
                   <div className="flex-1">
                     <Label className="text-xs text-muted-foreground">文档搜索</Label>
-                    <Input aria-label="文档搜索"
+                    <Input
+                      aria-label="文档搜索"
                       value={docQuery}
                       onChange={(e) => setDocQuery(e.target.value)}
                       placeholder="按文件名搜索"
@@ -661,7 +735,11 @@ export default function DatasetKGWorkbenchPage() {
                       onClick={() => setActiveDocQuery(docQuery.trim())}
                       disabled={docsLoading}
                     >
-                      {docsLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Search className="w-4 h-4" />}
+                      {docsLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <Search className="w-4 h-4" />
+                      )}
                       搜索
                     </Button>
                   </div>
@@ -670,8 +748,29 @@ export default function DatasetKGWorkbenchPage() {
                 <div className="max-h-[420px] overflow-y-auto overscroll-contain pr-1 space-y-1">
                   {docsLoading ? (
                     <DocsLoadingSkeleton />
-                  ) : docsQuery.isError ? <WorkspaceNotice retry={() => { void docsQuery.refetch() }}>{formatApiError(docsQuery.error, '文档目录读取失败')}</WorkspaceNotice> : docs.length === 0 ? (
-                    <div className="space-y-3 py-5 text-sm text-muted-foreground"><p>{activeDocQuery ? '没有匹配的文档' : '当前数据集还没有文档'}</p><Button variant="outline" onClick={() => { if (activeDocQuery) { setDocQuery(''); setActiveDocQuery('') } else router.push(`/knowledge/ingestion?datasetId=${datasetId}`) }}>{activeDocQuery ? '清除搜索' : '去入库操作'}</Button></div>
+                  ) : docsQuery.isError ? (
+                    <WorkspaceNotice
+                      retry={() => {
+                        void docsQuery.refetch()
+                      }}
+                    >
+                      {formatApiError(docsQuery.error, '文档目录读取失败')}
+                    </WorkspaceNotice>
+                  ) : docs.length === 0 ? (
+                    <div className="space-y-3 py-5 text-sm text-muted-foreground">
+                      <p>{activeDocQuery ? '没有匹配的文档' : '当前数据集还没有文档'}</p>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (activeDocQuery) {
+                            setDocQuery('')
+                            setActiveDocQuery('')
+                          } else router.push(`/knowledge/ingestion?datasetId=${datasetId}`)
+                        }}
+                      >
+                        {activeDocQuery ? '清除搜索' : '去入库操作'}
+                      </Button>
+                    </div>
                   ) : (
                     docs.map((doc) => {
                       const id = String(doc.id || '')
@@ -685,7 +784,7 @@ export default function DatasetKGWorkbenchPage() {
                           key={id}
                           className={cn(
                             'flex items-start gap-2 border-b border-border/60 px-2 py-3 cursor-pointer transition-colors',
-                            checked ? 'bg-primary/5' : 'hover:bg-muted/40'
+                            checked ? 'bg-primary/5' : 'hover:bg-muted/40',
                           )}
                         >
                           <Checkbox
@@ -704,8 +803,8 @@ export default function DatasetKGWorkbenchPage() {
                                 </Badge>
                               ) : null}
                             </div>
-	                          </div>
-	                          <div className="flex-shrink-0">
+                          </div>
+                          <div className="flex-shrink-0">
                             <Button
                               variant="outline"
                               size="sm"
@@ -725,61 +824,135 @@ export default function DatasetKGWorkbenchPage() {
                               抽取
                             </Button>
                           </div>
-	                        </label>
-	                      )
+                        </label>
+                      )
                     })
                   )}
                 </div>
-              </Panel></div>}><div className="flex min-h-full flex-col"><div className={ws.sectionHeading}><h2 className={ws.sectionTitle}>图谱预览</h2><div className="flex gap-2"><Button variant="outline" disabled={graphLoading || !scopedDocIds.length} onClick={() => { void loadGraphPreview() }}>{graphLoading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}加载图谱</Button><Button variant="ghost" disabled={!scopedDocIds.length} onClick={() => router.push(scopedGraphUrl)}>打开全图</Button></div></div>{graphError ? <WorkspaceNotice retry={() => { void loadGraphPreview() }} retryLabel="重试加载图谱" pending={graphLoading}>{graphError}</WorkspaceNotice> : null}{statsError ? <p role="status" className={ws.muted}>{statsError}</p> : null}{selectedNodeDetail ? <Panel variant="seamless" className={ws.section}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-semibold">选中节点</div>
-                    <Badge variant="secondary" className="font-mono text-xs">
-                      cluster={selectedNodeDetail.cluster}
-                    </Badge>
+              </Panel>
+            </div>
+          }
+        >
+          <div className="flex min-h-full flex-col">
+            <div className={ws.sectionHeading}>
+              <h2 className={ws.sectionTitle}>图谱预览</h2>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  disabled={graphLoading || !scopedDocIds.length}
+                  onClick={() => {
+                    void loadGraphPreview()
+                  }}
+                >
+                  {graphLoading ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <RefreshCw />}
+                  加载图谱
+                </Button>
+                <Button variant="ghost" disabled={!scopedDocIds.length} onClick={() => router.push(scopedGraphUrl)}>
+                  打开全图
+                </Button>
+              </div>
+            </div>
+            {graphError ? (
+              <WorkspaceNotice
+                retry={() => {
+                  void loadGraphPreview()
+                }}
+                retryLabel="重试加载图谱"
+                pending={graphLoading}
+              >
+                {graphError}
+              </WorkspaceNotice>
+            ) : null}
+            {statsError ? (
+              <p role="status" className={ws.muted}>
+                {statsError}
+              </p>
+            ) : null}
+            {selectedNodeDetail ? (
+              <Panel variant="seamless" className={ws.section}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold">选中节点</div>
+                  <Badge variant="secondary" className="font-mono text-xs">
+                    cluster={selectedNodeDetail.cluster}
+                  </Badge>
+                </div>
+                <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
+                  <div className="truncate">
+                    label=<span className="font-medium text-foreground">{selectedNodeDetail.label}</span>
                   </div>
-                  <div className="grid gap-1 text-xs text-muted-foreground md:grid-cols-2">
-                    <div className="truncate">
-                      label=<span className="font-medium text-foreground">{selectedNodeDetail.label}</span>
-                    </div>
-                    <div className="font-mono truncate">id={selectedNodeDetail.id}</div>
-                    <div className="font-mono truncate">type={selectedNodeDetail.type}</div>
-                    <div className="font-mono truncate">kind={selectedNodeDetail.kind}</div>
-                    <div className="font-mono truncate">degree={selectedNodeDetail.degree}</div>
-                  </div>
-                </Panel> : null}<Panel padding="none" variant="seamless" className="relative min-h-[360px] flex-1 overflow-hidden border-0 bg-transparent">
-                {graphData && graphPreviewData && graphData.nodes.length > 0 ? (
-                  <GraphViewer
-                    ref={graphRef}
-                    data={graphPreviewData}
-                    onNodeClick={(node) => {
-                      const nodeId = String(node?.id || '').trim()
-                      if (!nodeId) return
-                      setSelectedGraphNodeId(nodeId)
-                    }}
-                    selectedNodeId={selectedGraphNodeId}
-                    onBackgroundClick={() => setSelectedGraphNodeId(null)}
-                  />
-                ) : graphLoading ? null : (
-                  <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                    {graphError ? '' : graphData ? '当前范围暂无图谱数据' : docsQuery.isError ? '文档读取失败，请先重试。' : !docsQuery.isLoading && !docs.length ? activeDocQuery ? '当前筛选下没有文档。' : '当前数据集暂无可预览文档。' : scopedDocIds.length ? '点击“加载图谱”查看当前范围。' : '先从目录选择文档，再加载图谱。'}
-                  </div>
-                )}
-                {graphLoading ? (
-                  <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm">
-                    <GraphPreviewSkeleton />
-                  </div>
-                ) : null}
-              </Panel></div></DirectoryWorkspace>
-    <Dialog open={extractOpen} onOpenChange={setExtractOpen}><DialogContent className={ws.dialog}><DialogHeader className={ws.dialogHeader}><DialogTitle>抽取配置</DialogTitle><DialogDescription>当前范围 {scopedDocIds.length} 份文档，结果写入这些文档的图谱。</DialogDescription></DialogHeader><div className={ws.dialogBody}><Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
+                  <div className="font-mono truncate">id={selectedNodeDetail.id}</div>
+                  <div className="font-mono truncate">type={selectedNodeDetail.type}</div>
+                  <div className="font-mono truncate">kind={selectedNodeDetail.kind}</div>
+                  <div className="font-mono truncate">degree={selectedNodeDetail.degree}</div>
+                </div>
+              </Panel>
+            ) : null}
+            <Panel
+              padding="none"
+              variant="seamless"
+              className="relative min-h-[360px] flex-1 overflow-hidden border-0 bg-transparent"
+            >
+              {graphData && graphPreviewData && graphData.nodes.length > 0 ? (
+                <GraphViewer
+                  ref={graphRef}
+                  data={graphPreviewData}
+                  onNodeClick={(node) => {
+                    const nodeId = String(node?.id || '').trim()
+                    if (!nodeId) return
+                    setSelectedGraphNodeId(nodeId)
+                  }}
+                  selectedNodeId={selectedGraphNodeId}
+                  onBackgroundClick={() => setSelectedGraphNodeId(null)}
+                />
+              ) : graphLoading ? null : (
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                  {graphError
+                    ? ''
+                    : graphData
+                      ? '当前范围暂无图谱数据'
+                      : docsQuery.isError
+                        ? '文档读取失败，请先重试。'
+                        : !docsQuery.isLoading && !docs.length
+                          ? activeDocQuery
+                            ? '当前筛选下没有文档。'
+                            : '当前数据集暂无可预览文档。'
+                          : scopedDocIds.length
+                            ? '点击“加载图谱”查看当前范围。'
+                            : '先从目录选择文档，再加载图谱。'}
+                </div>
+              )}
+              {graphLoading ? (
+                <div className="absolute inset-0 z-10 bg-background/80 backdrop-blur-sm">
+                  <GraphPreviewSkeleton />
+                </div>
+              ) : null}
+            </Panel>
+          </div>
+        </DirectoryWorkspace>
+        <Dialog open={extractOpen} onOpenChange={setExtractOpen}>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>抽取配置</DialogTitle>
+              <DialogDescription>当前范围 {scopedDocIds.length} 份文档，结果写入这些文档的图谱。</DialogDescription>
+            </DialogHeader>
+            <div className={ws.dialogBody}>
+              <Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
                 <div className="font-semibold">抽取选中文档</div>
                 <div className="grid gap-3 grid-cols-2">
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">流程版本（选填）</Label>
-                    <Input aria-label="流程版本" value={pipelineHash} onChange={(e) => setPipelineHash(e.target.value)} placeholder="e.g. 9f8a…" className="h-9 font-mono text-xs" />
+                    <Input
+                      aria-label="流程版本"
+                      value={pipelineHash}
+                      onChange={(e) => setPipelineHash(e.target.value)}
+                      placeholder="e.g. 9f8a…"
+                      className="h-9 font-mono text-xs"
+                    />
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">最大文档数</Label>
-                    <Input aria-label="最大抽取文档数"
+                    <Input
+                      aria-label="最大抽取文档数"
                       value={String(bulkMaxDocs)}
                       onChange={(e) => setBulkMaxDocs(limitPositiveInt(e.target.value, 20, { min: 1, max: 200 }))}
                       className="h-9 font-mono text-xs"
@@ -787,14 +960,24 @@ export default function DatasetKGWorkbenchPage() {
                     />
                   </div>
                   <div className="flex items-center gap-2 col-span-2">
-                    <Checkbox aria-label="覆盖已有图谱" checked={replaceExisting} onCheckedChange={(v) => setReplaceExisting(Boolean(v))} />
+                    <Checkbox
+                      aria-label="覆盖已有图谱"
+                      checked={replaceExisting}
+                      onCheckedChange={(v) => setReplaceExisting(Boolean(v))}
+                    />
                     <span className="text-xs">覆盖已有图谱</span>
-                    <Checkbox aria-label="清理孤立节点" checked={pruneOrphans} onCheckedChange={(v) => setPruneOrphans(Boolean(v))} className="ml-4" />
+                    <Checkbox
+                      aria-label="清理孤立节点"
+                      checked={pruneOrphans}
+                      onCheckedChange={(v) => setPruneOrphans(Boolean(v))}
+                      className="ml-4"
+                    />
                     <span className="text-xs">清理孤立节点</span>
                   </div>
                   <div className="space-y-1 col-span-2">
                     <Label className="text-xs text-muted-foreground">并发数</Label>
-                    <Input aria-label="并发数"
+                    <Input
+                      aria-label="并发数"
                       value={String(bulkConcurrency)}
                       onChange={(e) => setBulkConcurrency(limitPositiveInt(e.target.value, 3, { min: 1, max: 8 }))}
                       className="h-9 font-mono text-xs"
@@ -809,7 +992,11 @@ export default function DatasetKGWorkbenchPage() {
                     onClick={() => detachPromise(extractSelected())}
                     disabled={extractRunning || scopedDocIds.length === 0}
                   >
-                    {extractRunning ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
+                    {extractRunning ? (
+                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <Sparkles className="w-4 h-4" />
+                    )}
                     抽取选中文档
                   </Button>
                   {extractProgress ? (
@@ -826,7 +1013,10 @@ export default function DatasetKGWorkbenchPage() {
                       {Object.entries(extractResults)
                         .slice(0, 50)
                         .map(([docId, r]) => (
-                          <div key={docId} className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1">
+                          <div
+                            key={docId}
+                            className="flex items-center justify-between gap-2 rounded-md border border-border/60 px-2 py-1"
+                          >
                             <span className="font-mono text-xs truncate">{docId}</span>
                             {r.ok ? (
                               <Badge variant="outline" className="font-mono text-xs">
@@ -842,8 +1032,18 @@ export default function DatasetKGWorkbenchPage() {
                     </div>
                   </div>
                 ) : null}
-              </Panel></div></DialogContent></Dialog>
-    <Dialog open={graphOptionsOpen} onOpenChange={setGraphOptionsOpen}><DialogContent className={ws.dialog}><DialogHeader className={ws.dialogHeader}><DialogTitle>图谱参数</DialogTitle><DialogDescription>调整预览范围和连线。</DialogDescription></DialogHeader><div className={ws.dialogBody}><Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
+              </Panel>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={graphOptionsOpen} onOpenChange={setGraphOptionsOpen}>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>图谱参数</DialogTitle>
+              <DialogDescription>调整预览范围和连线。</DialogDescription>
+            </DialogHeader>
+            <div className={ws.dialogBody}>
+              <Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-semibold">图谱预览参数</div>
@@ -852,11 +1052,27 @@ export default function DatasetKGWorkbenchPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <Button variant="outline" size="sm" className="gap-2" onClick={() => detachPromise(loadGraphPreview())} disabled={graphLoading}>
-                      {graphLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <RefreshCw className="w-4 h-4" />}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => detachPromise(loadGraphPreview())}
+                      disabled={graphLoading}
+                    >
+                      {graphLoading ? (
+                        <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
                       加载预览
                     </Button>
-                    <Button variant="outline" size="sm" className="gap-2" onClick={() => router.push(scopedGraphUrl)} disabled={scopedDocIds.length === 0}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      onClick={() => router.push(scopedGraphUrl)}
+                      disabled={scopedDocIds.length === 0}
+                    >
                       <Network className="w-4 h-4" />
                       全屏
                     </Button>
@@ -866,7 +1082,8 @@ export default function DatasetKGWorkbenchPage() {
                 <div className="grid gap-3 md:grid-cols-4">
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">最大预览文档数</Label>
-                    <Input aria-label="最大预览文档数"
+                    <Input
+                      aria-label="最大预览文档数"
                       value={String(graphMaxDocs)}
                       onChange={(e) => setGraphMaxDocs(limitPositiveInt(e.target.value, 50, { min: 1, max: 200 }))}
                       className="h-9 font-mono text-xs"
@@ -874,16 +1091,25 @@ export default function DatasetKGWorkbenchPage() {
                     />
                   </div>
                   <div className="flex items-center gap-2 pt-5">
-                    <Checkbox aria-label="实体连线" checked={includeEntityLinks} onCheckedChange={(v) => setIncludeEntityLinks(Boolean(v))} />
+                    <Checkbox
+                      aria-label="实体连线"
+                      checked={includeEntityLinks}
+                      onCheckedChange={(v) => setIncludeEntityLinks(Boolean(v))}
+                    />
                     <span className="text-xs">实体连线</span>
                   </div>
                   <div className="flex items-center gap-2 pt-5">
-                    <Checkbox aria-label="关系连线" checked={includeRelationLinks} onCheckedChange={(v) => setIncludeRelationLinks(Boolean(v))} />
+                    <Checkbox
+                      aria-label="关系连线"
+                      checked={includeRelationLinks}
+                      onCheckedChange={(v) => setIncludeRelationLinks(Boolean(v))}
+                    />
                     <span className="text-xs">关系连线</span>
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">最小共享事件数</Label>
-                    <Input aria-label="最小共享事件数"
+                    <Input
+                      aria-label="最小共享事件数"
                       value={String(minSharedEvents)}
                       onChange={(e) => setMinSharedEvents(limitPositiveInt(e.target.value, 2, { min: 1, max: 10 }))}
                       className="h-9 font-mono text-xs"
@@ -925,8 +1151,18 @@ export default function DatasetKGWorkbenchPage() {
                     ) : null}
                   </div>
                 ) : null}
-              </Panel></div></DialogContent></Dialog>
-    <Dialog open={searchOpen} onOpenChange={setSearchOpen}><DialogContent className={ws.dialog}><DialogHeader className={ws.dialogHeader}><DialogTitle>搜索节点</DialogTitle><DialogDescription>在当前文档范围搜索实体或事件。</DialogDescription></DialogHeader><div className={ws.dialogBody}><Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
+              </Panel>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={searchOpen} onOpenChange={setSearchOpen}>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>搜索节点</DialogTitle>
+              <DialogDescription>在当前文档范围搜索实体或事件。</DialogDescription>
+            </DialogHeader>
+            <div className={ws.dialogBody}>
+              <Panel variant="seamless" className="space-y-3 border-0 bg-transparent p-0">
                 <div className="font-semibold">搜索图谱节点</div>
                 <div className="grid gap-2 grid-cols-[1fr_110px]">
                   <Input
@@ -938,8 +1174,17 @@ export default function DatasetKGWorkbenchPage() {
                       if (e.key === 'Enter') detachPromise(runQuickSearch())
                     }}
                   />
-                  <Button variant="outline" className="gap-2" onClick={() => detachPromise(runQuickSearch())} disabled={searchLoading}>
-                    {searchLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Search className="w-4 h-4" />}
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => detachPromise(runQuickSearch())}
+                    disabled={searchLoading}
+                  >
+                    {searchLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    ) : (
+                      <Search className="w-4 h-4" />
+                    )}
                     搜索
                   </Button>
                 </div>
@@ -959,7 +1204,11 @@ export default function DatasetKGWorkbenchPage() {
                   >
                     event
                   </Button>
-                  <Button variant={searchKind === 'all' ? 'secondary' : 'outline'} size="sm" onClick={() => setSearchKind('all')}>
+                  <Button
+                    variant={searchKind === 'all' ? 'secondary' : 'outline'}
+                    size="sm"
+                    onClick={() => setSearchKind('all')}
+                  >
                     all
                   </Button>
                 </div>
@@ -975,7 +1224,8 @@ export default function DatasetKGWorkbenchPage() {
                         className="w-full text-left rounded-lg border border-border/60 px-2 py-2 hover:bg-muted/40 transition-colors"
                         onClick={() => {
                           const nodeId = String(n.id || '')
-                          setSearchOpen(false); setSelectedGraphNodeId(nodeId)
+                          setSearchOpen(false)
+                          setSelectedGraphNodeId(nodeId)
                           graphRef.current?.focusNode(nodeId)
                           toast.message(`聚焦节点：${String(n.label || n.id)}`)
                         }}
@@ -988,6 +1238,11 @@ export default function DatasetKGWorkbenchPage() {
                 ) : (
                   <div className="text-xs text-muted-foreground">输入关键词后点击搜索。</div>
                 )}
-              </Panel></div></DialogContent></Dialog>
-  </OperationalWorkspace></AppFrame>
+              </Panel>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </OperationalWorkspace>
+    </AppFrame>
+  )
 }

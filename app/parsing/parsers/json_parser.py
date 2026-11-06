@@ -6,7 +6,6 @@ basic structural metadata. This is useful as a fallback when MarkItDown is not
 available or fails.
 """
 
-
 import json
 from pathlib import Path
 from typing import Any
@@ -70,7 +69,7 @@ class JsonParser:
         metadata: dict[str, Any] = {
             "source": str(file_path.name),
             "file_type": "json",
-            "json_valid": bool(json_valid),
+            "json_valid": json_valid,
             "json_mode": json_mode,
             "encoding": decoded.encoding,
             "encoding_confidence": decoded.confidence,
@@ -88,4 +87,3 @@ class JsonParser:
                 metadata["json_top_level"] = type(data).__name__
 
         return [Document(page_content=content, metadata=metadata)]
-

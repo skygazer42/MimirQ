@@ -66,8 +66,6 @@ export function DocumentDetailTagsPanel({
 
           <div className="space-y-3">
             <TagInput value={tagsDraft} onValueChange={onTagsDraftChange} disabled={isSaving} />
-
-
           </div>
         </form>
       ) : (
@@ -97,8 +95,6 @@ export function DocumentDetailTagsPanel({
             ) : (
               <div className="text-xs text-muted-foreground">{t('tags.empty')}</div>
             )}
-
-
           </div>
         </>
       )}

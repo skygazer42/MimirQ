@@ -1,13 +1,10 @@
-import type { RAGConfig } from '@/lib/api/settings'
-import type { DatasetRagDefaults } from '@/types'
+import type { DatasetRagDefaults, DatasetRagViewConfig } from '@/types/datasets'
 
 const MANAGED_DATASET_RAG_FIELDS = [
   ['retrieval_top_k', 'top_k'],
   ['similarity_threshold', 'score_threshold'],
   ['retrieval_mode', 'retrieval_mode'],
-] as const satisfies ReadonlyArray<
-  readonly [keyof RAGConfig, keyof DatasetRagDefaults]
->
+] as const satisfies ReadonlyArray<readonly [keyof DatasetRagViewConfig, keyof DatasetRagDefaults]>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -31,79 +28,54 @@ function toOptionalString(value: unknown): string | undefined {
 }
 
 export function hasDatasetRagContract(
-  value: DatasetRagDefaults | Record<string, unknown> | null | undefined
+  value: DatasetRagDefaults | Record<string, unknown> | null | undefined,
 ): value is DatasetRagDefaults {
   return isRecord(value) && Object.keys(value).length > 0
 }
 
 export function mergeDatasetRagDefaultsIntoRagConfig(
-  base: RAGConfig,
-  datasetRagDefaults?: DatasetRagDefaults | null
-): RAGConfig {
+  base: DatasetRagViewConfig,
+  datasetRagDefaults?: DatasetRagDefaults | null,
+): DatasetRagViewConfig {
   if (!hasDatasetRagContract(datasetRagDefaults)) return { ...base }
 
   return {
     ...base,
-    retrieval_top_k:
-      toFiniteNumber(datasetRagDefaults.top_k) ?? base.retrieval_top_k,
-    similarity_threshold:
-      toFiniteNumber(datasetRagDefaults.score_threshold) ??
-      base.similarity_threshold,
-    retrieval_profile:
-      toOptionalString(datasetRagDefaults.retrieval_profile) ??
-      base.retrieval_profile,
-    retrieval_mode:
-      toOptionalString(datasetRagDefaults.retrieval_mode) ??
-      base.retrieval_mode,
+    retrieval_top_k: toFiniteNumber(datasetRagDefaults.top_k) ?? base.retrieval_top_k,
+    similarity_threshold: toFiniteNumber(datasetRagDefaults.score_threshold) ?? base.similarity_threshold,
+    retrieval_profile: toOptionalString(datasetRagDefaults.retrieval_profile) ?? base.retrieval_profile,
+    retrieval_mode: toOptionalString(datasetRagDefaults.retrieval_mode) ?? base.retrieval_mode,
     retrieval_contract_mode:
-      toOptionalString(datasetRagDefaults.retrieval_contract_mode) ??
-      base.retrieval_contract_mode,
+      toOptionalString(datasetRagDefaults.retrieval_contract_mode) ?? base.retrieval_contract_mode,
     alpha: toFiniteNumber(datasetRagDefaults.alpha) ?? base.alpha,
-    fusion_strategy:
-      toOptionalString(datasetRagDefaults.fusion_strategy) ??
-      base.fusion_strategy,
+    fusion_strategy: toOptionalString(datasetRagDefaults.fusion_strategy) ?? base.fusion_strategy,
     fusion_budgets: isRecord(datasetRagDefaults.fusion_budgets)
-      ? (datasetRagDefaults.fusion_budgets as Record<string, number>)
+      ? datasetRagDefaults.fusion_budgets
       : base.fusion_budgets,
     fusion_min_scores: isRecord(datasetRagDefaults.fusion_min_scores)
-      ? (datasetRagDefaults.fusion_min_scores as Record<string, number>)
+      ? datasetRagDefaults.fusion_min_scores
       : base.fusion_min_scores,
     fusion_weights: isRecord(datasetRagDefaults.fusion_weights)
-      ? (datasetRagDefaults.fusion_weights as Record<string, number>)
+      ? datasetRagDefaults.fusion_weights
       : base.fusion_weights,
-    enable_weight_rerank:
-      toOptionalBoolean(datasetRagDefaults.enable_weight_rerank) ??
-      base.enable_weight_rerank,
-    vector_weight:
-      toFiniteNumber(datasetRagDefaults.vector_weight) ?? base.vector_weight,
-    keyword_weight:
-      toFiniteNumber(datasetRagDefaults.keyword_weight) ?? base.keyword_weight,
-    mmr_lambda:
-      toFiniteNumber(datasetRagDefaults.mmr_lambda) ?? base.mmr_lambda,
-    enable_reranker:
-      toOptionalBoolean(datasetRagDefaults.enable_reranker) ??
-      base.enable_reranker,
-    reranker_provider:
-      toOptionalString(datasetRagDefaults.reranker_provider) ??
-      base.reranker_provider,
-    reranker_top_n:
-      toFiniteNumber(datasetRagDefaults.reranker_top_n) ??
-      base.reranker_top_n,
-    visible_evidence_only:
-      toOptionalBoolean(datasetRagDefaults.visible_evidence_only) ??
-      base.visible_evidence_only,
+    enable_weight_rerank: toOptionalBoolean(datasetRagDefaults.enable_weight_rerank) ?? base.enable_weight_rerank,
+    vector_weight: toFiniteNumber(datasetRagDefaults.vector_weight) ?? base.vector_weight,
+    keyword_weight: toFiniteNumber(datasetRagDefaults.keyword_weight) ?? base.keyword_weight,
+    mmr_lambda: toFiniteNumber(datasetRagDefaults.mmr_lambda) ?? base.mmr_lambda,
+    enable_reranker: toOptionalBoolean(datasetRagDefaults.enable_reranker) ?? base.enable_reranker,
+    reranker_provider: toOptionalString(datasetRagDefaults.reranker_provider) ?? base.reranker_provider,
+    reranker_top_n: toFiniteNumber(datasetRagDefaults.reranker_top_n) ?? base.reranker_top_n,
+    visible_evidence_only: toOptionalBoolean(datasetRagDefaults.visible_evidence_only) ?? base.visible_evidence_only,
   }
 }
 
 export function buildDatasetRagDefaultsForUpdate(args: {
   currentDefaults?: DatasetRagDefaults | null
-  savedRag: RAGConfig
-  draftRag: RAGConfig
+  savedRag: DatasetRagViewConfig
+  draftRag: DatasetRagViewConfig
 }): DatasetRagDefaults | null {
   const { currentDefaults, draftRag, savedRag } = args
-  const base = hasDatasetRagContract(currentDefaults)
-    ? ({ ...currentDefaults } as DatasetRagDefaults)
-    : null
+  const base = hasDatasetRagContract(currentDefaults) ? { ...currentDefaults } : null
 
   let changed = false
   const next: DatasetRagDefaults = { ...(base ?? {}) }
@@ -117,8 +89,7 @@ export function buildDatasetRagDefaultsForUpdate(args: {
     } else if (datasetKey === 'score_threshold') {
       next.score_threshold = typeof draftValue === 'number' ? draftValue : null
     } else {
-      next.retrieval_mode =
-        typeof draftValue === 'string' ? draftValue : null
+      next.retrieval_mode = typeof draftValue === 'string' ? draftValue : null
     }
     changed = true
   }
@@ -128,7 +99,7 @@ export function buildDatasetRagDefaultsForUpdate(args: {
 }
 
 export function buildRetrievalConfigHashRequest(
-  defaults?: DatasetRagDefaults | null
+  defaults?: DatasetRagDefaults | null,
 ): { rag_config: Record<string, unknown>; include_runtime_defaults: true } | null {
   if (!hasDatasetRagContract(defaults)) return null
   return {
@@ -137,9 +108,7 @@ export function buildRetrievalConfigHashRequest(
   }
 }
 
-export function datasetRagContractModeLabel(
-  defaults?: DatasetRagDefaults | null
-): string {
+export function datasetRagContractModeLabel(defaults?: DatasetRagDefaults | null): string {
   if (!hasDatasetRagContract(defaults)) return '未配置'
 
   const profile = toOptionalString(defaults.retrieval_profile)

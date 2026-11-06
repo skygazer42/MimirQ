@@ -8,7 +8,6 @@ Targets subtitle documents with timecode cue lines, e.g.:
 The chunker keeps whole cues together and uses cue-level overlap.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -35,9 +34,7 @@ class _Cue:
     end_ts: str
 
 
-_TIMECODE_RE = re.compile(
-    r"^\s*(?P<start>\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,\.]\d{3})\b"
-)
+_TIMECODE_RE = re.compile(r"^\s*(?P<start>\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(?P<end>\d{2}:\d{2}:\d{2}[,\.]\d{3})\b")
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -163,9 +160,9 @@ def _cue_chunk(
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
     meta.setdefault("doc_type_kwd", "subtitles")
-    meta["cue_count"] = int(end_idx - start_idx)
-    meta["cue_start_index"] = int(start_idx)
-    meta["cue_end_index"] = int(end_idx - 1)
+    meta["cue_count"] = end_idx - start_idx
+    meta["cue_start_index"] = start_idx
+    meta["cue_end_index"] = end_idx - 1
     meta["first_timecode"] = cues[start_idx].start_ts
     meta["last_timecode"] = cues[end_idx - 1].end_ts
     return Document(page_content=text[chunk_start:chunk_end], metadata=meta)
@@ -214,7 +211,7 @@ def _split_subtitle_document(
 
 
 class SubtitlesChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

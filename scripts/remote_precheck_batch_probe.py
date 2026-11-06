@@ -27,18 +27,7 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
 ensure_repo_root_on_sys_path(__file__)
 
 
-def _load_remote_kb_boundary_matrix() -> tuple[Any, ...]:
-    from scripts.remote_kb_boundary_matrix import (
-        LiveApi,
-        ensure_success,
-        record_step,
-    )
-
-    return LiveApi, ensure_success, record_step
-
-
-LiveApi, ensure_success, record_step = _load_remote_kb_boundary_matrix()
-
+from scripts.remote_kb_boundary_matrix import ApiResponse, LiveApi, ensure_success, record_step  # noqa: E402
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 
@@ -162,12 +151,8 @@ def upload_batch_precheck(
         upload_body = response.json()
     except Exception:
         upload_body = response.text
-    upload_resp = type(
-        "UploadResp",
-        (),
-        {"status": int(response.status_code), "body": upload_body, "elapsed_sec": 0.0},
-    )()
-    record_step(steps, "upload_batch_precheck", upload_resp)  # type: ignore[arg-type]
+    upload_resp = ApiResponse(status=int(response.status_code), body=upload_body, elapsed_sec=0.0)
+    record_step(steps, "upload_batch_precheck", upload_resp)
     if not (200 <= response.status_code < 300):
         raise RuntimeError(f"upload_batch_precheck failed: {response.status_code}: {upload_body}")
     return dict(upload_body or {}) if isinstance(upload_body, dict) else {}

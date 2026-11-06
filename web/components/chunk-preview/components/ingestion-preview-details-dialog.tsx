@@ -64,8 +64,8 @@ export function IngestionPreviewDetailsDialog({
   const t = useTranslations('ChunkPreview')
   const ruleTitle = useMemo(() => {
     if (!preview) return ''
-    if (!preview.rule?.matched) return t("ingestionPreview.rule.unmatched")
-    return preview.rule?.rule_name || preview.rule?.rule_id || t("ingestionPreview.rule.matched")
+    if (!preview.rule?.matched) return t('ingestionPreview.rule.unmatched')
+    return preview.rule?.rule_name || preview.rule?.rule_id || t('ingestionPreview.rule.matched')
   }, [preview, t])
 
   const preprocessSummary = useMemo(() => {
@@ -122,7 +122,7 @@ export function IngestionPreviewDetailsDialog({
           <DialogTitle className="flex items-center justify-between gap-2">
             <span className="flex items-center gap-2">
               <Settings2 className="w-5 h-5 text-primary" />
-              {t("ingestionPreview.title")}
+              {t('ingestionPreview.title')}
             </span>
             <Button
               type="button"
@@ -142,7 +142,7 @@ export function IngestionPreviewDetailsDialog({
               }}
               disabled={!preview}
             >
-              {t("ingestionPreview.actions.openGovernance")}
+              {t('ingestionPreview.actions.openGovernance')}
             </Button>
           </DialogTitle>
           <DialogDescription className="space-y-1">
@@ -151,26 +151,26 @@ export function IngestionPreviewDetailsDialog({
               {preview?.rule?.parser_backend ? (
                 <span className="text-muted-foreground">
                   {' '}
-                  · {t("ingestionPreview.meta.parserLabel")}: {preview.rule.parser_backend}
+                  · {t('ingestionPreview.meta.parserLabel')}: {preview.rule.parser_backend}
                 </span>
               ) : null}
               {preview?.rule?.chunk_strategy ? (
                 <span className="text-muted-foreground">
                   {' '}
-                  · {t("ingestionPreview.meta.strategyLabel")}: {preview.rule.chunk_strategy}
+                  · {t('ingestionPreview.meta.strategyLabel')}: {preview.rule.chunk_strategy}
                 </span>
               ) : null}
             </div>
             {preview?.rule?.governance_profile_ref ? (
               <div className="text-[11px] text-muted-foreground">
-                {t("ingestionPreview.meta.governanceProfileLabel")}:{' '}
+                {t('ingestionPreview.meta.governanceProfileLabel')}:{' '}
                 <span className="font-mono">{preview.rule.governance_profile_ref}</span>
               </div>
             ) : null}
             <div className="text-[11px] text-muted-foreground">
-              {t("ingestionPreview.meta.previewSourcePrefix")}{' '}
+              {t('ingestionPreview.meta.previewSourcePrefix')}{' '}
               <span className="font-mono">/pipeline/ingestion-preview</span>
-              {t("ingestionPreview.meta.previewSourceSuffix")}
+              {t('ingestionPreview.meta.previewSourceSuffix')}
             </div>
           </DialogDescription>
         </DialogHeader>
@@ -178,21 +178,21 @@ export function IngestionPreviewDetailsDialog({
         <Tabs defaultValue="preprocess" className="w-full">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="preprocess" disabled={!hasPreview}>
-              {t("ingestionPreview.tabs.preprocess")}
+              {t('ingestionPreview.tabs.preprocess')}
             </TabsTrigger>
             <TabsTrigger value="clean" disabled={!hasPreview}>
-              {t("ingestionPreview.tabs.governance")}
+              {t('ingestionPreview.tabs.governance')}
             </TabsTrigger>
             <TabsTrigger value="diff" disabled={!hasPreview}>
-              {t("ingestionPreview.tabs.diff")}
+              {t('ingestionPreview.tabs.diff')}
             </TabsTrigger>
             <TabsTrigger value="issues" disabled={!hasPreview}>
               {issues.length
-                ? t("ingestionPreview.tabs.issuesWithCount", { count: issues.length })
-                : t("ingestionPreview.tabs.issues")}
+                ? t('ingestionPreview.tabs.issuesWithCount', { count: issues.length })
+                : t('ingestionPreview.tabs.issues')}
             </TabsTrigger>
             <TabsTrigger value="explain" disabled={!hasPreview}>
-              {t("ingestionPreview.tabs.explain")}
+              {t('ingestionPreview.tabs.explain')}
             </TabsTrigger>
           </TabsList>
 
@@ -201,28 +201,28 @@ export function IngestionPreviewDetailsDialog({
               <div className="space-y-3">
                 <div className="rounded-xl border border-border/60 bg-card p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium text-foreground">{t("ingestionPreview.preprocess.title")}</div>
+                    <div className="text-sm font-medium text-foreground">{t('ingestionPreview.preprocess.title')}</div>
                     <span
                       className={cn(
                         'text-[11px] px-2 py-0.5 rounded-full border',
                         preprocessSummary.changed
                           ? 'bg-warning/10 text-warning border-warning/25'
-                          : 'bg-success/10 text-success border-success/25'
+                          : 'bg-success/10 text-success border-success/25',
                       )}
                     >
                       {preprocessSummary.changed
-                        ? t("ingestionPreview.preprocess.status.changed")
-                        : t("ingestionPreview.preprocess.status.noChange")}
+                        ? t('ingestionPreview.preprocess.status.changed')
+                        : t('ingestionPreview.preprocess.status.noChange')}
                     </span>
                   </div>
                   <div className="mt-2 text-[11px] text-muted-foreground">
-                    {t("ingestionPreview.preprocess.sizeLabel")}:{' '}
+                    {t('ingestionPreview.preprocess.sizeLabel')}:{' '}
                     <span className="font-mono">{formatFileSize(preprocessSummary.sizeBefore)}</span> →{' '}
                     <span className="font-mono">{formatFileSize(preprocessSummary.sizeAfter)}</span>
                   </div>
                   {preprocessSummary.warnings.length ? (
                     <div className="mt-2 text-[11px] text-warning">
-                      {t("ingestionPreview.preprocess.warningsLabel")}:{' '}
+                      {t('ingestionPreview.preprocess.warningsLabel')}:{' '}
                       <span className="font-mono">{preprocessSummary.warnings.length}</span>
                     </div>
                   ) : null}
@@ -231,7 +231,7 @@ export function IngestionPreviewDetailsDialog({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl border border-border/60 bg-card p-3">
                     <div className="text-[11px] font-medium text-muted-foreground">
-                      {t("ingestionPreview.preprocess.stepsTitle")}
+                      {t('ingestionPreview.preprocess.stepsTitle')}
                     </div>
                     <ScrollArea className="h-[240px] mt-2 pr-2">
                       {preprocessSummary.steps.length ? (
@@ -241,29 +241,33 @@ export function IngestionPreviewDetailsDialog({
                             const applied = Boolean(step.applied)
                             const changed = Boolean(step.changed)
                             return (
-                            <div key={id} className="rounded-lg border border-border/60 bg-background p-2">
+                              <div key={id} className="rounded-lg border border-border/60 bg-background p-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <div className="text-[11px] font-mono text-foreground/90">{id}</div>
                                   <div className="flex items-center gap-1.5">
                                     <span
                                       className={cn(
                                         'text-[11px] px-1.5 py-0.5 rounded border',
-                                        applied ? 'bg-success/10 text-success border-success/25' : 'bg-muted text-muted-foreground border-border/60'
+                                        applied
+                                          ? 'bg-success/10 text-success border-success/25'
+                                          : 'bg-muted text-muted-foreground border-border/60',
                                       )}
                                     >
                                       {applied
-                                        ? t("ingestionPreview.preprocess.stepStatus.applied")
-                                        : t("ingestionPreview.preprocess.stepStatus.skipped")}
+                                        ? t('ingestionPreview.preprocess.stepStatus.applied')
+                                        : t('ingestionPreview.preprocess.stepStatus.skipped')}
                                     </span>
                                     <span
                                       className={cn(
                                         'text-[11px] px-1.5 py-0.5 rounded border',
-                                        changed ? 'bg-warning/10 text-warning border-warning/25' : 'bg-muted text-muted-foreground border-border/60'
+                                        changed
+                                          ? 'bg-warning/10 text-warning border-warning/25'
+                                          : 'bg-muted text-muted-foreground border-border/60',
                                       )}
                                     >
                                       {changed
-                                        ? t("ingestionPreview.preprocess.stepChange.changed")
-                                        : t("ingestionPreview.preprocess.stepChange.same")}
+                                        ? t('ingestionPreview.preprocess.stepChange.changed')
+                                        : t('ingestionPreview.preprocess.stepChange.same')}
                                     </span>
                                   </div>
                                 </div>
@@ -275,27 +279,32 @@ export function IngestionPreviewDetailsDialog({
                           })}
                         </div>
                       ) : (
-                        <div className="text-[11px] text-muted-foreground">{t("ingestionPreview.preprocess.emptySteps")}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {t('ingestionPreview.preprocess.emptySteps')}
+                        </div>
                       )}
                     </ScrollArea>
                   </div>
 
                   <div className="rounded-xl border border-border/60 bg-card p-3">
                     <div className="text-[11px] font-medium text-muted-foreground">
-                      {t("ingestionPreview.preprocess.warningsTitle")}
+                      {t('ingestionPreview.preprocess.warningsTitle')}
                     </div>
                     <ScrollArea className="h-[240px] mt-2 pr-2">
                       {preprocessSummary.warnings.length ? (
                         <div className="space-y-1">
                           {preprocessSummary.warnings.map((w) => (
-                            <div key={w} className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[11px] text-warning">
+                            <div
+                              key={w}
+                              className="rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[11px] text-warning"
+                            >
                               {w}
                             </div>
                           ))}
                         </div>
                       ) : (
                         <div className="text-[11px] text-muted-foreground">
-                          {t("ingestionPreview.preprocess.emptyWarnings")}
+                          {t('ingestionPreview.preprocess.emptyWarnings')}
                         </div>
                       )}
                     </ScrollArea>
@@ -303,7 +312,7 @@ export function IngestionPreviewDetailsDialog({
                 </div>
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">{t("ingestionPreview.states.noPreviewData")}</div>
+              <div className="text-sm text-muted-foreground">{t('ingestionPreview.states.noPreviewData')}</div>
             )}
           </TabsContent>
 
@@ -312,7 +321,7 @@ export function IngestionPreviewDetailsDialog({
               <div className="space-y-3">
                 <div className="rounded-xl border border-border/60 bg-card p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="text-sm font-medium text-foreground">{t("ingestionPreview.clean.title")}</div>
+                    <div className="text-sm font-medium text-foreground">{t('ingestionPreview.clean.title')}</div>
                     <span
                       className={cn(
                         'text-[11px] px-2 py-0.5 rounded-full border',
@@ -320,55 +329,57 @@ export function IngestionPreviewDetailsDialog({
                           ? 'bg-destructive/10 text-destructive border-destructive/25'
                           : cleanSummary.changed
                             ? 'bg-warning/10 text-warning border-warning/25'
-                            : 'bg-success/10 text-success border-success/25'
+                            : 'bg-success/10 text-success border-success/25',
                       )}
                     >
                       {cleanSummary.dropped
-                        ? t("ingestionPreview.clean.status.dropped")
+                        ? t('ingestionPreview.clean.status.dropped')
                         : cleanSummary.changed
-                          ? t("ingestionPreview.clean.status.changed")
-                          : t("ingestionPreview.clean.status.noChange")}
+                          ? t('ingestionPreview.clean.status.changed')
+                          : t('ingestionPreview.clean.status.noChange')}
                     </span>
                   </div>
                   {cleanSummary.dropReason ? (
                     <div className="mt-2 text-[11px] text-destructive">
-                      {t("ingestionPreview.clean.dropReasonLabel")}:{' '}
+                      {t('ingestionPreview.clean.dropReasonLabel')}:{' '}
                       <span className="font-mono">{cleanSummary.dropReason}</span>
                     </div>
                   ) : null}
                   <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
                     <div>
-                      {t("ingestionPreview.clean.metrics.chars")}:{' '}
+                      {t('ingestionPreview.clean.metrics.chars')}:{' '}
                       <span className="font-mono">{cleanSummary.inputChars}</span> →{' '}
                       <span className="font-mono">{cleanSummary.outputChars}</span>
                     </div>
                     <div>
-                      {t("ingestionPreview.clean.metrics.lines")}:{' '}
+                      {t('ingestionPreview.clean.metrics.lines')}:{' '}
                       <span className="font-mono">{cleanSummary.inputLines}</span> →{' '}
                       <span className="font-mono">{cleanSummary.outputLines}</span>
                     </div>
                     <div>
-                      {t("ingestionPreview.clean.metrics.rules")}:{' '}
-                      <span className="font-mono">{cleanSummary.appliedRules}</span> · {t("ingestionPreview.clean.metrics.urls")}:{' '}
+                      {t('ingestionPreview.clean.metrics.rules')}:{' '}
+                      <span className="font-mono">{cleanSummary.appliedRules}</span> ·{' '}
+                      {t('ingestionPreview.clean.metrics.urls')}:{' '}
                       <span className="font-mono">{cleanSummary.urlsChanged}</span>
                     </div>
                     <div>
-                      {t("ingestionPreview.clean.metrics.dropped")}:{' '}
-                      <span className="font-mono">{cleanSummary.paragraphsDropped}</span> · {t("ingestionPreview.clean.metrics.refs")}:{' '}
+                      {t('ingestionPreview.clean.metrics.dropped')}:{' '}
+                      <span className="font-mono">{cleanSummary.paragraphsDropped}</span> ·{' '}
+                      {t('ingestionPreview.clean.metrics.refs')}:{' '}
                       <span className="font-mono">{cleanSummary.referencesRemovedLines}</span>
                     </div>
                     <div>
-                      <span>+</span><span className="font-mono">{cleanSummary.added}</span>{' '}
-                      <span>-</span><span className="font-mono">{cleanSummary.removed}</span>{' '}
-                      <span>~</span>
+                      <span>+</span>
+                      <span className="font-mono">{cleanSummary.added}</span> <span>-</span>
+                      <span className="font-mono">{cleanSummary.removed}</span> <span>~</span>
                       <span className="font-mono">{cleanSummary.changedLines}</span>
                     </div>
                     <div>
-                      {t("ingestionPreview.clean.metrics.diff")}:{' '}
+                      {t('ingestionPreview.clean.metrics.diff')}:{' '}
                       <span className="font-mono">
                         {cleanSummary.diffTruncated
-                          ? t("ingestionPreview.clean.metrics.diffTruncated")
-                          : t("ingestionPreview.clean.metrics.diffFull")}
+                          ? t('ingestionPreview.clean.metrics.diffTruncated')
+                          : t('ingestionPreview.clean.metrics.diffFull')}
                       </span>
                     </div>
                   </div>
@@ -377,27 +388,30 @@ export function IngestionPreviewDetailsDialog({
                     <div className="mt-2 rounded-lg border border-warning/25 bg-warning/10 px-2 py-1 text-[11px] text-warning">
                       {cleanSummary.piiTotal > 0 ? (
                         <div>
-                          {t("ingestionPreview.clean.alerts.piiHits")}:{' '}
+                          {t('ingestionPreview.clean.alerts.piiHits')}:{' '}
                           <span className="font-mono">{cleanSummary.piiTotal}</span>
                         </div>
                       ) : null}
                       {cleanSummary.secretsTotal > 0 ? (
                         <div>
-                          {t("ingestionPreview.clean.alerts.secretsHits")}:{' '}
+                          {t('ingestionPreview.clean.alerts.secretsHits')}:{' '}
                           <span className="font-mono">{cleanSummary.secretsTotal}</span>
                         </div>
                       ) : null}
                       <div className="text-[11px] text-muted-foreground mt-1">
-                        {t("ingestionPreview.clean.alerts.maskingHint")}
+                        {t('ingestionPreview.clean.alerts.maskingHint')}
                       </div>
                     </div>
                   )}
                 </div>
 
-                {preview?.clean?.suggested_pipeline_patch && Object.keys(preview.clean.suggested_pipeline_patch || {}).length ? (
+                {preview?.clean?.suggested_pipeline_patch &&
+                Object.keys(preview.clean.suggested_pipeline_patch || {}).length ? (
                   <div className="rounded-xl border border-border/60 bg-card p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="text-[11px] font-medium text-muted-foreground">{t("ingestionPreview.clean.patch.title")}</div>
+                      <div className="text-[11px] font-medium text-muted-foreground">
+                        {t('ingestionPreview.clean.patch.title')}
+                      </div>
                       <Button
                         type="button"
                         size="sm"
@@ -405,15 +419,15 @@ export function IngestionPreviewDetailsDialog({
                         onClick={() => {
                           const patch = preview?.clean?.suggested_pipeline_patch || {}
                           if (!onApplyPipelinePatch) {
-                            toast.message(t("ingestionPreview.clean.patch.missingHandler"))
+                            toast.message(t('ingestionPreview.clean.patch.missingHandler'))
                             return
                           }
                           onApplyPipelinePatch(patch)
-                          toast.success(t("ingestionPreview.clean.patch.applied"))
+                          toast.success(t('ingestionPreview.clean.patch.applied'))
                         }}
                         disabled={!onApplyPipelinePatch}
                       >
-                        {t("ingestionPreview.clean.patch.apply")}
+                        {t('ingestionPreview.clean.patch.apply')}
                       </Button>
                     </div>
                     <pre className="mt-2 max-h-[160px] overflow-auto rounded-lg border border-border/60 bg-background p-2 text-[11px] text-muted-foreground">
@@ -423,7 +437,7 @@ export function IngestionPreviewDetailsDialog({
                 ) : null}
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">{t("ingestionPreview.states.noPreviewData")}</div>
+              <div className="text-sm text-muted-foreground">{t('ingestionPreview.states.noPreviewData')}</div>
             )}
           </TabsContent>
 
@@ -432,7 +446,7 @@ export function IngestionPreviewDetailsDialog({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4 text-primary" />
-                  <div className="text-sm font-medium text-foreground">{t("ingestionPreview.diff.title")}</div>
+                  <div className="text-sm font-medium text-foreground">{t('ingestionPreview.diff.title')}</div>
                 </div>
                 {preview?.clean?.diff_unified ? (
                   <Button
@@ -443,13 +457,13 @@ export function IngestionPreviewDetailsDialog({
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(String(preview?.clean?.diff_unified || ''))
-                        toast.success(t("ingestionPreview.diff.copySuccess"))
+                        toast.success(t('ingestionPreview.diff.copySuccess'))
                       } catch {
-                        toast.error(t("ingestionPreview.diff.copyError"))
+                        toast.error(t('ingestionPreview.diff.copyError'))
                       }
                     }}
                   >
-                    {t("ingestionPreview.diff.copy")}
+                    {t('ingestionPreview.diff.copy')}
                   </Button>
                 ) : null}
               </div>
@@ -457,13 +471,13 @@ export function IngestionPreviewDetailsDialog({
                 {preview?.clean?.diff_unified ? (
                   <span>
                     {preview.clean.diff_truncated ? (
-                      <span className="text-warning">{t("ingestionPreview.diff.diffTruncated")}</span>
+                      <span className="text-warning">{t('ingestionPreview.diff.diffTruncated')}</span>
                     ) : (
-                      <span className="text-muted-foreground">{t("ingestionPreview.diff.diffFull")}</span>
+                      <span className="text-muted-foreground">{t('ingestionPreview.diff.diffFull')}</span>
                     )}
                   </span>
                 ) : (
-                  <span>{t("ingestionPreview.diff.noDiff")}</span>
+                  <span>{t('ingestionPreview.diff.noDiff')}</span>
                 )}
               </div>
               {preview?.clean?.diff_unified ? (
@@ -474,11 +488,12 @@ export function IngestionPreviewDetailsDialog({
             </div>
           </TabsContent>
 
-	          <TabsContent value="issues" className="mt-4">
-	            <div className="rounded-xl border border-border/60 bg-card p-3">
+          <TabsContent value="issues" className="mt-4">
+            <div className="rounded-xl border border-border/60 bg-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium text-foreground">{t("ingestionPreview.issues.title")}</div>
-                {preview?.clean?.suggested_pipeline_patch && Object.keys(preview.clean.suggested_pipeline_patch || {}).length ? (
+                <div className="text-sm font-medium text-foreground">{t('ingestionPreview.issues.title')}</div>
+                {preview?.clean?.suggested_pipeline_patch &&
+                Object.keys(preview.clean.suggested_pipeline_patch || {}).length ? (
                   <Button
                     type="button"
                     size="sm"
@@ -486,15 +501,15 @@ export function IngestionPreviewDetailsDialog({
                     onClick={() => {
                       const patch = preview?.clean?.suggested_pipeline_patch || {}
                       if (!onApplyPipelinePatch) {
-                        toast.message(t("ingestionPreview.issues.toasts.missingHandler"))
+                        toast.message(t('ingestionPreview.issues.toasts.missingHandler'))
                         return
                       }
                       onApplyPipelinePatch(patch)
-                      toast.success(t("ingestionPreview.issues.toasts.appliedAll"))
+                      toast.success(t('ingestionPreview.issues.toasts.appliedAll'))
                     }}
                     disabled={!onApplyPipelinePatch}
                   >
-                    {t("ingestionPreview.issues.actions.applyAll")}
+                    {t('ingestionPreview.issues.actions.applyAll')}
                   </Button>
                 ) : null}
               </div>
@@ -510,29 +525,32 @@ export function IngestionPreviewDetailsDialog({
                       const samples = Array.isArray(issue.samples) ? issue.samples.filter(Boolean).map(String) : []
                       const patch = issue.suggested_pipeline_patch ?? null
                       const patchKeys = patch ? Object.keys(patch || {}) : []
-                      const badgeCls =
-                        (() => {
-    if (severity === 'error') {
-        return 'bg-destructive/10 text-destructive border-destructive/25';
-    }
-    else if (severity === 'warning') {
-            return 'bg-warning/10 text-warning border-warning/25';
-        }
-        else {
-            return 'bg-muted text-muted-foreground border-border/60';
-        }
-})()
+                      const badgeCls = (() => {
+                        if (severity === 'error') {
+                          return 'bg-destructive/10 text-destructive border-destructive/25'
+                        } else if (severity === 'warning') {
+                          return 'bg-warning/10 text-warning border-warning/25'
+                        } else {
+                          return 'bg-muted text-muted-foreground border-border/60'
+                        }
+                      })()
                       return (
-                        <div key={`${code}-${message}`} className="rounded-xl border border-border/60 bg-background p-3">
+                        <div
+                          key={`${code}-${message}`}
+                          className="rounded-xl border border-border/60 bg-background p-3"
+                        >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className={cn('text-[11px] px-2 py-0.5 rounded-full border font-medium', badgeCls)}>
+                                <span
+                                  className={cn('text-[11px] px-2 py-0.5 rounded-full border font-medium', badgeCls)}
+                                >
                                   {severity}
                                 </span>
                                 <span className="text-[11px] font-mono text-muted-foreground">{code}</span>
                                 <span className="text-[11px] text-muted-foreground">
-                                  {t("ingestionPreview.issues.labels.count")}: <span className="font-mono">{count}</span>
+                                  {t('ingestionPreview.issues.labels.count')}:{' '}
+                                  <span className="font-mono">{count}</span>
                                 </span>
                               </div>
                               <div className="mt-1 text-[12px] text-foreground/90">{message}</div>
@@ -545,22 +563,24 @@ export function IngestionPreviewDetailsDialog({
                                 className="h-8 px-3 text-[11px]"
                                 onClick={() => {
                                   if (!onApplyPipelinePatch) {
-                                    toast.message(t("ingestionPreview.issues.toasts.missingHandler"))
+                                    toast.message(t('ingestionPreview.issues.toasts.missingHandler'))
                                     return
                                   }
                                   onApplyPipelinePatch(patch)
-                                  toast.success(t("ingestionPreview.issues.toasts.appliedSuggestion", { code }))
+                                  toast.success(t('ingestionPreview.issues.toasts.appliedSuggestion', { code }))
                                 }}
                                 disabled={!onApplyPipelinePatch}
                               >
-                                {t("ingestionPreview.issues.actions.applySuggestion")}
+                                {t('ingestionPreview.issues.actions.applySuggestion')}
                               </Button>
                             ) : null}
                           </div>
 
                           {samples.length ? (
                             <div className="mt-2">
-                              <div className="text-[11px] text-muted-foreground">{t("ingestionPreview.issues.labels.samples")}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                {t('ingestionPreview.issues.labels.samples')}
+                              </div>
                               <div className="mt-1 space-y-1">
                                 {samples.slice(0, 4).map((s: string) => (
                                   <div
@@ -577,7 +597,9 @@ export function IngestionPreviewDetailsDialog({
                           {patch && patchKeys.length ? (
                             <details className="mt-2">
                               <summary className="cursor-pointer select-none text-[11px] text-muted-foreground hover:text-foreground">
-                                {t("ingestionPreview.issues.labels.suggestedPatchWithCount", { count: patchKeys.length })}
+                                {t('ingestionPreview.issues.labels.suggestedPatchWithCount', {
+                                  count: patchKeys.length,
+                                })}
                               </summary>
                               <pre className="mt-2 max-h-[180px] overflow-auto rounded-lg border border-border/60 bg-muted/30 p-2 text-[11px] text-muted-foreground">
                                 {JSON.stringify(patch, null, 2)}
@@ -590,15 +612,15 @@ export function IngestionPreviewDetailsDialog({
                   </div>
                 </ScrollArea>
               ) : (
-                <div className="mt-3 text-[12px] text-muted-foreground">{t("ingestionPreview.issues.empty")}</div>
+                <div className="mt-3 text-[12px] text-muted-foreground">{t('ingestionPreview.issues.empty')}</div>
               )}
-	            </div>
-	          </TabsContent>
+            </div>
+          </TabsContent>
 
           <TabsContent value="explain" className="mt-4">
             <div className="rounded-xl border border-border/60 bg-card p-3">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-sm font-medium text-foreground">{t("ingestionPreview.explain.title")}</div>
+                <div className="text-sm font-medium text-foreground">{t('ingestionPreview.explain.title')}</div>
                 <Button
                   type="button"
                   size="sm"
@@ -607,44 +629,42 @@ export function IngestionPreviewDetailsDialog({
                   onClick={() => {
                     const exp = preview?.explain
                     if (!exp) {
-                      toast.error(t("ingestionPreview.explain.missingData"))
+                      toast.error(t('ingestionPreview.explain.missingData'))
                       return
                     }
-                    const snapshotValue = isJsonObject(exp) && 'snapshot' in exp ? exp.snapshot ?? exp : exp
+                    const snapshotValue = isJsonObject(exp) && 'snapshot' in exp ? (exp.snapshot ?? exp) : exp
                     const snapshotRecord = isJsonObject(snapshotValue) ? snapshotValue : null
                     const filename = snapshotRecord?.filename
                     const rawName = (typeof filename === 'string' ? filename : 'ingestion-preview')
                       .trim()
-                       .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
-                       .slice(0, 64)
-                     downloadJsonObject(snapshotValue, `${rawName}.ingestion-preview.explain.json`)
-                     toast.success(t("ingestionPreview.explain.exportSuccess"))
-                   }}
-                   disabled={!preview?.explain}
-                 >
-                   <Download className="w-4 h-4" />
-                   {t("ingestionPreview.explain.exportJson")}
-                 </Button>
-               </div>
+                      .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+                      .slice(0, 64)
+                    downloadJsonObject(snapshotValue, `${rawName}.ingestion-preview.explain.json`)
+                    toast.success(t('ingestionPreview.explain.exportSuccess'))
+                  }}
+                  disabled={!preview?.explain}
+                >
+                  <Download className="w-4 h-4" />
+                  {t('ingestionPreview.explain.exportJson')}
+                </Button>
+              </div>
 
-               <div className="mt-2 text-[11px] text-muted-foreground">
-                 {t("ingestionPreview.explain.description")}
-               </div>
+              <div className="mt-2 text-[11px] text-muted-foreground">{t('ingestionPreview.explain.description')}</div>
 
-               <div className="mt-3 rounded-lg border border-border/60 bg-background">
-                 <div className="px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border/60">
-                   {t("ingestionPreview.explain.payloadLabel")}
-                 </div>
-                 <ScrollArea className="h-[420px]">
-                   <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
-                     {JSON.stringify(preview?.explain ?? null, null, 2)}
-                   </pre>
+              <div className="mt-3 rounded-lg border border-border/60 bg-background">
+                <div className="px-3 py-2 text-[11px] font-medium text-muted-foreground border-b border-border/60">
+                  {t('ingestionPreview.explain.payloadLabel')}
+                </div>
+                <ScrollArea className="h-[420px]">
+                  <pre className="p-3 text-xs font-mono whitespace-pre-wrap break-words text-foreground/80">
+                    {JSON.stringify(preview?.explain ?? null, null, 2)}
+                  </pre>
                 </ScrollArea>
               </div>
             </div>
           </TabsContent>
-	        </Tabs>
-	      </DialogContent>
-	    </Dialog>
-	  )
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  )
 }

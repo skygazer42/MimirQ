@@ -2,11 +2,11 @@ import { forwardRef, type SVGProps } from 'react'
 
 import { cn } from '@/lib/utils'
 
-export interface PlatformIconProps extends SVGProps<SVGSVGElement> {
+export type PlatformIconProps = {
   size?: number | string
   absoluteStrokeWidth?: boolean
   appearance?: 'monochrome' | 'color'
-}
+} & SVGProps<SVGSVGElement>
 
 export type PlatformIcon = ReturnType<typeof createPlatformIcon>
 
@@ -17,7 +17,15 @@ export function createPlatformIcon(
   colored?: { tone: string; fill: React.ReactNode },
 ) {
   const Icon = forwardRef<SVGSVGElement, PlatformIconProps>(function PlatformGlyph(
-    { size = 24, strokeWidth = 1.7, absoluteStrokeWidth = false, appearance = 'monochrome', className, children, ...props },
+    {
+      size = 24,
+      strokeWidth = 1.7,
+      absoluteStrokeWidth = false,
+      appearance = 'monochrome',
+      className,
+      children,
+      ...props
+    },
     ref,
   ) {
     const named = Boolean(props['aria-label'] || props['aria-labelledby'])
@@ -31,7 +39,7 @@ export function createPlatformIcon(
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth={absoluteStrokeWidth ? Number(strokeWidth) * 24 / (Number(size) || 24) : strokeWidth}
+        strokeWidth={absoluteStrokeWidth ? (Number(strokeWidth) * 24) / (Number(size) || 24) : strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
         focusable="false"
@@ -44,7 +52,9 @@ export function createPlatformIcon(
         {...props}
       >
         {colored && appearance === 'color' ? (
-          <g data-icon-fill="true" opacity="0.12" stroke="none">{colored.fill}</g>
+          <g data-icon-fill="true" opacity="0.12" stroke="none">
+            {colored.fill}
+          </g>
         ) : null}
         {geometry}
         {children}

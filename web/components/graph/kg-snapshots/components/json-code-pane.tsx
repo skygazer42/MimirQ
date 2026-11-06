@@ -34,24 +34,18 @@ export function JsonLine({
     <div
       className={cn(
         'grid min-w-0 grid-cols-[52px_minmax(0,1fr)] border-b border-border/60 text-[12px] leading-6',
-        jsonLineSurfaceClass(status, side)
+        jsonLineSurfaceClass(status, side),
       )}
     >
       <div
-        className={cn(
-          'select-none border-r border-border/70 px-3 text-right font-mono tabular-nums',
-          lineNumberClass
-        )}
+        className={cn('select-none border-r border-border/70 px-3 text-right font-mono tabular-nums', lineNumberClass)}
       >
         {lineNumber ?? ''}
       </div>
       <div className="px-3 font-mono">
         <span className="inline-block min-w-full whitespace-pre">
           {tokens.map((token, index) => (
-            <span
-              key={`${lineNumber ?? 'x'}:${index}:${token.kind}`}
-              className={tokenClassName(token.kind)}
-            >
+            <span key={`${lineNumber ?? 'x'}:${index}:${token.kind}`} className={tokenClassName(token.kind)}>
               {token.text}
             </span>
           ))}
@@ -77,23 +71,15 @@ export function JsonDiffCell({
         className={cn(
           'select-none border-r border-border/70 px-3 py-0.5 text-right font-mono text-[12px] leading-6 tabular-nums',
           cellSurfaceClass(cell.status, side),
-          lineNumberClass
+          lineNumberClass,
         )}
       >
         {cell.lineNumber ?? ''}
       </div>
-      <div
-        className={cn(
-          'px-3 py-0.5 font-mono text-[12px] leading-6',
-          cellSurfaceClass(cell.status, side)
-        )}
-      >
+      <div className={cn('px-3 py-0.5 font-mono text-[12px] leading-6', cellSurfaceClass(cell.status, side))}>
         <span className="inline-block min-w-full whitespace-pre">
           {tokens.map((token, index) => (
-            <span
-              key={`${cell.lineNumber ?? side}:${index}:${token.kind}`}
-              className={tokenClassName(token.kind)}
-            >
+            <span key={`${cell.lineNumber ?? side}:${index}:${token.kind}`} className={tokenClassName(token.kind)}>
               {token.text}
             </span>
           ))}
@@ -132,14 +118,8 @@ export function JsonCodePane({
             <FileJson className="h-3 w-3 text-primary/70" aria-hidden="true" />
             {label}
           </div>
-          <div className="mt-1 truncate text-[13px] font-semibold text-foreground">
-            {title}
-          </div>
-          {subtitle ? (
-            <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
-              {subtitle}
-            </div>
-          ) : null}
+          <div className="mt-1 truncate text-[13px] font-semibold text-foreground">{title}</div>
+          {subtitle ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{subtitle}</div> : null}
         </div>
         <div className="ml-4 flex shrink-0 items-center gap-1 rounded-md border border-border/70 bg-card p-0.5">
           <Button
@@ -171,12 +151,7 @@ export function JsonCodePane({
         ) : (
           <div className="min-w-max">
             {lines.map((line, index) => (
-              <JsonLine
-                key={`${title}:${index + 1}`}
-                lineNumber={index + 1}
-                text={line}
-                status="single"
-              />
+              <JsonLine key={`${title}:${index + 1}`} lineNumber={index + 1} text={line} status="single" />
             ))}
           </div>
         )}

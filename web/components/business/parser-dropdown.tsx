@@ -42,7 +42,7 @@ const ICON_MAP = {
   magicpdf: Wand2,
 }
 
-interface ParserDropdownProps {
+type ParserDropdownProps = {
   value: string
   onChange: (value: string) => void
   className?: string
@@ -129,7 +129,7 @@ export function ParserDropdown({
   }, [])
 
   // 常规菜单保留在原容器内，兼容对话框的焦点与点击范围。
-  const renderMenu = (content: ReactNode) => side === 'top' ? createPortal(content, document.body) : content
+  const renderMenu = (content: ReactNode) => (side === 'top' ? createPortal(content, document.body) : content)
 
   return (
     <div ref={dropdownRef} className={cn('relative select-none', className)}>
@@ -142,19 +142,23 @@ export function ParserDropdown({
         className={cn(
           'w-full flex items-center border transition-colors duration-150 motion-reduce:transition-none focus-ring',
           compact ? 'gap-2 px-2.5 py-1.5 rounded-full' : 'h-[60px] gap-2.5 rounded-lg px-3 py-2',
-          surface === 'ocean'
-            ? 'bg-info/[0.045] hover:bg-info/[0.075]'
-            : pipelinePickerTokens.trigger,
+          surface === 'ocean' ? 'bg-info/[0.045] hover:bg-info/[0.075]' : pipelinePickerTokens.trigger,
           isOpen
             ? surface === 'ocean'
               ? 'border-info/35 ring-2 ring-info/10'
               : 'border-input ring-2 ring-foreground/10'
             : surface === 'ocean'
               ? 'border-info/20 hover:border-info/30'
-              : 'hover:border-border'
+              : 'hover:border-border',
         )}
       >
-        <div className={cn('grid shrink-0 place-items-center rounded-md', compact ? 'size-6' : 'size-7', resolvedSelectedColor.bg)}>
+        <div
+          className={cn(
+            'grid shrink-0 place-items-center rounded-md',
+            compact ? 'size-6' : 'size-7',
+            resolvedSelectedColor.bg,
+          )}
+        >
           <SelectedIcon className={cn('size-3.5', resolvedSelectedColor.text)} />
         </div>
         <div className="flex-1 text-left min-w-0">
@@ -169,162 +173,163 @@ export function ParserDropdown({
             ) : null}
           </div>
           {!compact && (
-            <p title={selectedOption.description} className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">{selectedOption.description}</p>
+            <p title={selectedOption.description} className="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
+              {selectedOption.description}
+            </p>
           )}
         </div>
         <ChevronDown
-          className={cn(
-            'size-3.5 text-muted-foreground transition-transform flex-shrink-0',
-            isOpen && 'rotate-180'
-          )}
+          className={cn('size-3.5 text-muted-foreground transition-transform flex-shrink-0', isOpen && 'rotate-180')}
         />
       </button>
 
       {/* 下拉菜单 */}
-      {isOpen && (side === 'bottom' || placement) && renderMenu(
-        <div
-          ref={menuRef}
-          data-dropdown-menu="parser"
-          data-side={side === 'top' ? placement?.side : 'bottom'}
-          style={side === 'top' ? placement?.style : undefined}
-          className={cn(
-            'select-none overflow-y-auto overscroll-contain border no-scrollbar',
-            side === 'top' ? 'fixed z-[1000]' : 'absolute z-50 mt-2 max-h-[min(440px,70vh)]',
-            surface === 'ocean'
-              ? 'rounded-lg border-info/30 bg-[linear-gradient(hsl(var(--info)/0.10),hsl(var(--info)/0.10)),linear-gradient(hsl(var(--popover)),hsl(var(--popover)))] text-popover-foreground shadow-strong'
-              : pipelinePickerTokens.menu,
-            side === 'bottom' && (compact ? 'right-0 w-[min(420px,calc(100vw-2rem))]' : 'w-full min-w-[360px]')
-          )}
-        >
-          {(loading || error) && (
-            <div
-              className={cn(
-                'px-3 py-2 text-xs border-b',
-                error
-                  ? 'bg-destructive/10 text-destructive border-destructive/25'
-                  : 'bg-muted text-muted-foreground border-border'
-              )}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  {loading ? '正在加载后端解析器能力…' : '无法获取后端解析器能力，部分选项可能不可用'}
+      {isOpen &&
+        (side === 'bottom' || placement) &&
+        renderMenu(
+          <div
+            ref={menuRef}
+            data-dropdown-menu="parser"
+            data-side={side === 'top' ? placement?.side : 'bottom'}
+            style={side === 'top' ? placement?.style : undefined}
+            className={cn(
+              'select-none overflow-y-auto overscroll-contain border no-scrollbar',
+              side === 'top' ? 'fixed z-[1000]' : 'absolute z-50 mt-2 max-h-[min(440px,70vh)]',
+              surface === 'ocean'
+                ? 'rounded-lg border-info/30 bg-[linear-gradient(hsl(var(--info)/0.10),hsl(var(--info)/0.10)),linear-gradient(hsl(var(--popover)),hsl(var(--popover)))] text-popover-foreground shadow-strong'
+                : pipelinePickerTokens.menu,
+              side === 'bottom' && (compact ? 'right-0 w-[min(420px,calc(100vw-2rem))]' : 'w-full min-w-[360px]'),
+            )}
+          >
+            {(loading || error) && (
+              <div
+                className={cn(
+                  'px-3 py-2 text-xs border-b',
+                  error
+                    ? 'bg-destructive/10 text-destructive border-destructive/25'
+                    : 'bg-muted text-muted-foreground border-border',
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    {loading ? '正在加载后端解析器能力…' : '无法获取后端解析器能力，部分选项可能不可用'}
+                  </div>
+                  {error ? (
+                    <button
+                      type="button"
+                      className="flex-shrink-0 text-xs text-destructive hover:text-destructive/80 underline underline-offset-2"
+                      onClick={() => {
+                        detachPromise(refresh())
+                      }}
+                    >
+                      重试
+                    </button>
+                  ) : null}
                 </div>
                 {error ? (
-                  <button
-                    type="button"
-                    className="flex-shrink-0 text-xs text-destructive hover:text-destructive/80 underline underline-offset-2"
-                    onClick={() => {
-                      detachPromise(refresh())
-                    }}
-                  >
-                    重试
-                  </button>
+                  <div className="mt-1 truncate text-[11px] text-destructive/80" title={error}>
+                    {error}
+                  </div>
                 ) : null}
               </div>
-              {error ? (
-                <div className="mt-1 truncate text-[11px] text-destructive/80" title={error}>
-                  {error}
-                </div>
-              ) : null}
-            </div>
-          )}
-          <div className="p-1">
-            {PARSER_BACKEND_OPTIONS.map((option) => {
-              const Icon = ICON_MAP[option.icon]
-              const resolvedColor =
-                surface === 'ocean'
-                  ? { bg: 'bg-info/[0.08]', text: 'text-info' }
-                  : { bg: pipelinePickerTokens.iconFrame, text: 'text-muted-foreground' }
-              const isSelected = option.value === selectedOption.value
-              const availability = parserBackendAvailable(option.value)
-              const isDisabledByFile =
-                Boolean(filename) &&
-                option.value !== 'auto' &&
-                resolveParserBackendForFilename(filename || '', option.value).backend !== option.value
-              const isDisabledByCapabilities = option.value !== 'auto' && option.value !== 'basic' && availability !== true
-              const isDisabled = isDisabledByFile || isDisabledByCapabilities
-              const notes = parserNotesByName.get(normalizeParserBackendName(option.value))
-              const disabledTitle = isDisabledByFile
-                ? '该文件类型不支持此解析器'
-                : (notes || '后端未启用该解析器（可到“设置”开启/配置）')
-              const disabledLabel = isDisabledByFile ? '不适用' : '未启用'
+            )}
+            <div className="p-1">
+              {PARSER_BACKEND_OPTIONS.map((option) => {
+                const Icon = ICON_MAP[option.icon]
+                const resolvedColor =
+                  surface === 'ocean'
+                    ? { bg: 'bg-info/[0.08]', text: 'text-info' }
+                    : { bg: pipelinePickerTokens.iconFrame, text: 'text-muted-foreground' }
+                const isSelected = option.value === selectedOption.value
+                const availability = parserBackendAvailable(option.value)
+                const isDisabledByFile =
+                  Boolean(filename) &&
+                  option.value !== 'auto' &&
+                  resolveParserBackendForFilename(filename || '', option.value).backend !== option.value
+                const isDisabledByCapabilities =
+                  option.value !== 'auto' && option.value !== 'basic' && availability !== true
+                const isDisabled = isDisabledByFile || isDisabledByCapabilities
+                const notes = parserNotesByName.get(normalizeParserBackendName(option.value))
+                const disabledTitle = isDisabledByFile
+                  ? '该文件类型不支持此解析器'
+                  : notes || '后端未启用该解析器（可到“设置”开启/配置）'
+                const disabledLabel = isDisabledByFile ? '不适用' : '未启用'
 
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  disabled={isDisabled}
-                  title={isDisabled ? disabledTitle : undefined}
-                  onClick={() => {
-                    if (isDisabled) return
-                    onChange(option.value)
-                    setIsOpen(false)
-                  }}
-                  className={cn(
-                    pipelinePickerTokens.row,
-                    isSelected
-                      ? surface === 'ocean' ? 'bg-info/[0.10]' : pipelinePickerTokens.selectedRow
-                      : !isDisabled && (surface === 'ocean' ? 'hover:bg-info/[0.06]' : pipelinePickerTokens.idleRow),
-                    isDisabled && 'cursor-not-allowed'
-                  )}
-                >
-                  <div className={cn('grid size-7 shrink-0 place-items-center rounded-md', resolvedColor.bg)}>
-                    <Icon className={cn('size-3.5', resolvedColor.text)} />
-                  </div>
-                  <div className="flex-1 text-left min-w-0">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span
-                        className={cn(
-                          'text-[13px] font-medium leading-5',
-                          isDisabled ? 'text-muted-foreground' : isSelected && surface === 'ocean' ? 'text-info' : 'text-foreground'
-                        )}
-                      >
-                        {option.label}
-                      </span>
-                      {option.badge && (
-                        <span
-                          className={cn(
-                            'rounded px-1.5 py-px text-[10px] font-medium leading-4',
-                            surface === 'ocean' ? 'bg-info/[0.08] text-info' : pipelinePickerTokens.badge
-                          )}
-                        >
-                          {option.badge}
-                        </span>
-                      )}
-                      {option.value === 'paddle_vl' && availability === true && paddleVlVersionBadge ? (
-                        <span
-                          className={cn(
-                            'text-[11px] font-medium px-1.5 py-0.5 rounded',
-                            isSelected
-                              ? 'bg-success/10 text-success'
-                              : 'bg-success/8 text-success'
-                          )}
-                        >
-                          {paddleVlVersionBadge}
-                        </span>
-                      ) : null}
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={isDisabled}
+                    title={isDisabled ? disabledTitle : undefined}
+                    onClick={() => {
+                      if (isDisabled) return
+                      onChange(option.value)
+                      setIsOpen(false)
+                    }}
+                    className={cn(
+                      pipelinePickerTokens.row,
+                      isSelected
+                        ? surface === 'ocean'
+                          ? 'bg-info/[0.10]'
+                          : pipelinePickerTokens.selectedRow
+                        : !isDisabled && (surface === 'ocean' ? 'hover:bg-info/[0.06]' : pipelinePickerTokens.idleRow),
+                      isDisabled && 'cursor-not-allowed',
+                    )}
+                  >
+                    <div className={cn('grid size-7 shrink-0 place-items-center rounded-md', resolvedColor.bg)}>
+                      <Icon className={cn('size-3.5', resolvedColor.text)} />
                     </div>
-                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{option.description}</p>
-                  </div>
-                  {isDisabled && (
-                    <span className="shrink-0 text-[11px] leading-5 text-muted-foreground">
-                      {disabledLabel}
-                    </span>
-                  )}
-                  {isSelected && (
-                    <Check
-                      className={cn(
-                        'size-4 flex-shrink-0',
-                        surface === 'ocean' ? 'text-info' : 'text-foreground'
-                      )}
-                    />
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
+                    <div className="flex-1 text-left min-w-0">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span
+                          className={cn(
+                            'text-[13px] font-medium leading-5',
+                            isDisabled
+                              ? 'text-muted-foreground'
+                              : isSelected && surface === 'ocean'
+                                ? 'text-info'
+                                : 'text-foreground',
+                          )}
+                        >
+                          {option.label}
+                        </span>
+                        {option.badge && (
+                          <span
+                            className={cn(
+                              'rounded px-1.5 py-px text-[10px] font-medium leading-4',
+                              surface === 'ocean' ? 'bg-info/[0.08] text-info' : pipelinePickerTokens.badge,
+                            )}
+                          >
+                            {option.badge}
+                          </span>
+                        )}
+                        {option.value === 'paddle_vl' && availability === true && paddleVlVersionBadge ? (
+                          <span
+                            className={cn(
+                              'text-[11px] font-medium px-1.5 py-0.5 rounded',
+                              isSelected ? 'bg-success/10 text-success' : 'bg-success/8 text-success',
+                            )}
+                          >
+                            {paddleVlVersionBadge}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{option.description}</p>
+                    </div>
+                    {isDisabled && (
+                      <span className="shrink-0 text-[11px] leading-5 text-muted-foreground">{disabledLabel}</span>
+                    )}
+                    {isSelected && (
+                      <Check
+                        className={cn('size-4 flex-shrink-0', surface === 'ocean' ? 'text-info' : 'text-foreground')}
+                      />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </div>,
+        )}
     </div>
   )
 }

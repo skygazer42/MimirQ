@@ -9,11 +9,14 @@ Provides the following capabilities:
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langgraph.graph.state import CompiledStateGraph
 
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from langgraph.types import StateSnapshot
 
 logger = get_logger("rag.checkpointer.time_travel")
 
@@ -66,6 +69,27 @@ class ForkResult:
         }
 
 
+def _checkpoint_info_from_state(*, state: "StateSnapshot", thread_id: str, checkpoint_id: str) -> CheckpointInfo:
+    parent_id = state.parent_config.get("configurable", {}).get("checkpoint_id") if state.parent_config else None
+
+    created_at = None
+    if state.metadata and "created_at" in state.metadata:
+        try:
+            created_at = datetime.fromisoformat(state.metadata["created_at"])
+        except (ValueError, TypeError) as exc:
+            logger.debug("Ignoring non-critical time-travel fallback failure: %s", exc)
+
+    return CheckpointInfo(
+        checkpoint_id=checkpoint_id,
+        thread_id=thread_id,
+        parent_checkpoint_id=parent_id,
+        created_at=created_at,
+        values=dict(state.values) if state.values else {},
+        next_nodes=list(state.next) if state.next else [],
+        metadata=dict(state.metadata) if state.metadata else {},
+    )
+
+
 class TimeTravel:
     """
     Time Travel interface for LangGraph workflows.
@@ -76,7 +100,7 @@ class TimeTravel:
     - Fork and modify state
     """
 
-    def __init__(self, graph: CompiledStateGraph):
+    def __init__(self, graph: CompiledStateGraph) -> None:
         """
         Initialize TimeTravel with a compiled graph.
 
@@ -120,26 +144,10 @@ class TimeTravel:
 
             for state in states:
                 checkpoint_id = state.config.get("configurable", {}).get("checkpoint_id")
-                parent_id = (
-                    state.parent_config.get("configurable", {}).get("checkpoint_id") if state.parent_config else None
-                )
-
-                # Extract timestamp from metadata if available
-                created_at = None
-                if state.metadata and "created_at" in state.metadata:
-                    try:
-                        created_at = datetime.fromisoformat(state.metadata["created_at"])
-                    except (ValueError, TypeError) as exc:
-                        logger.debug("Ignoring non-critical time-travel fallback failure: %s", exc)
-
-                info = CheckpointInfo(
+                info = _checkpoint_info_from_state(
+                    state=state,
                     checkpoint_id=checkpoint_id or "",
                     thread_id=thread_id,
-                    parent_checkpoint_id=parent_id,
-                    created_at=created_at,
-                    values=dict(state.values) if state.values else {},
-                    next_nodes=list(state.next) if state.next else [],
-                    metadata=dict(state.metadata) if state.metadata else {},
                 )
                 history.append(info)
 
@@ -175,25 +183,10 @@ class TimeTravel:
             if state is None:
                 return None
 
-            parent_id = (
-                state.parent_config.get("configurable", {}).get("checkpoint_id") if state.parent_config else None
-            )
-
-            created_at = None
-            if state.metadata and "created_at" in state.metadata:
-                try:
-                    created_at = datetime.fromisoformat(state.metadata["created_at"])
-                except (ValueError, TypeError) as exc:
-                    logger.debug("Ignoring non-critical time-travel fallback failure: %s", exc)
-
-            return CheckpointInfo(
+            return _checkpoint_info_from_state(
+                state=state,
                 checkpoint_id=checkpoint_id,
                 thread_id=thread_id,
-                parent_checkpoint_id=parent_id,
-                created_at=created_at,
-                values=dict(state.values) if state.values else {},
-                next_nodes=list(state.next) if state.next else [],
-                metadata=dict(state.metadata) if state.metadata else {},
             )
 
         except Exception as e:

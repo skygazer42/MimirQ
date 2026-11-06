@@ -27,11 +27,13 @@ const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: stri
 type ModelProvidersSectionProps = {
   groupedProviders: Record<ProviderCategory, ModelProvider[]>
   onConfigure: (provider: ModelProvider) => void
+  retiredEmbeddingModel?: string | null
 }
 
 export function ModelProvidersSection({
   groupedProviders,
   onConfigure,
+  retiredEmbeddingModel,
 }: Readonly<ModelProvidersSectionProps>) {
   return (
     <section>
@@ -41,10 +43,7 @@ export function ModelProvidersSection({
           const InfoIcon = info.icon
 
           return (
-            <div
-              key={category}
-              className="min-w-0"
-            >
+            <div key={category} className="min-w-0">
               <div className="mb-1 flex items-start gap-2">
                 <div className="mt-1 shrink-0">
                   <InfoIcon className="h-4 w-4 text-muted-foreground" />
@@ -57,11 +56,7 @@ export function ModelProvidersSection({
 
               <div className="grid grid-cols-1 gap-x-8 xl:grid-cols-2">
                 {groupedProviders[category].map((provider) => (
-                  <ModelProviderCard
-                    key={provider.id}
-                    provider={provider}
-                    onConfigure={onConfigure}
-                  />
+                  <ModelProviderCard key={provider.id} provider={provider} onConfigure={onConfigure} />
                 ))}
               </div>
             </div>

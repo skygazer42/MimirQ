@@ -1,7 +1,7 @@
-
 import asyncio
 import threading
 import time
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -117,9 +117,11 @@ class MultiAgentRAGRunner:
         max_sub_questions = max(1, int(max_sub_questions or 1))
         planner_llm = self._engine.models.get("fast") or llm
         try:
-            plan_chain = self._engine.decompose_prompt | planner_llm.bind(
-                temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2)
-            ) | StrOutputParser()
+            plan_chain = (
+                self._engine.decompose_prompt
+                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE or 0.2)
+                | StrOutputParser()
+            )
             raw = await plan_chain.ainvoke({"query": question, "n": max_sub_questions})
             data, _meta = parse_json_from_text(raw, expected="array")
             if isinstance(data, list):
@@ -202,9 +204,7 @@ class MultiAgentRAGRunner:
     @staticmethod
     def _base_state_overrides(stream_request: AgenticStreamRequest) -> dict[str, Any]:
         return {
-            key: value
-            for key, value in (stream_request.state_overrides or {}).items()
-            if key in _RAG_STATE_BUILD_KEYS
+            key: value for key, value in (stream_request.state_overrides or {}).items() if key in _RAG_STATE_BUILD_KEYS
         }
 
     def _build_base_state(
@@ -251,7 +251,7 @@ class MultiAgentRAGRunner:
             "data": {
                 "step": "retrieving",
                 "status": "started",
-                "round": int(index),
+                "round": index,
                 "query": query,
                 "rationale": rationale,
             },
@@ -265,10 +265,10 @@ class MultiAgentRAGRunner:
             "data": {
                 "step": "retrieving",
                 "status": "completed",
-                "round": int(sub_result.index),
+                "round": sub_result.index,
                 "query": sub_result.query,
-                "docs_count": int(len(sub_result.result.get("docs") or [])),
-                "citations_count": int(len(sub_result.result.get("citations") or [])),
+                "docs_count": len(sub_result.result.get("docs") or []),
+                "citations_count": len(sub_result.result.get("citations") or []),
                 "top_relevance_score": float(sub_metrics.get("top_relevance_score") or 0.0),
             },
         }
@@ -287,7 +287,7 @@ class MultiAgentRAGRunner:
         question: str,
         base_state: dict[str, Any],
         results: list[_SubAgentResult],
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         tasks: list[asyncio.Task[_SubAgentResult]] = []
         try:
             for idx, step in enumerate(plan_steps[:max_sub_questions], 1):
@@ -352,7 +352,7 @@ class MultiAgentRAGRunner:
         llm: Any,
         structured_output: bool,
         answer_state: dict[str, Any],
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         if not collected_docs:
             full_response = _UNABLE_TO_ANSWER_MESSAGE
             answer_state.update(
@@ -425,15 +425,15 @@ class MultiAgentRAGRunner:
             "retrieval_mode": final_retrieval_mode,
             "complexity_score": round(float(complexity_score), 3),
             "agentic_used": True,
-            "agentic_rounds": int(tasks_count),
-            "agentic_planned_steps": int(len(plan_steps)),
+            "agentic_rounds": tasks_count,
+            "agentic_planned_steps": len(plan_steps),
             "agentic_queries": [step.query for step in plan_steps[:max_sub_questions]],
             "agentic_route_reason": f"complexity {complexity_score:.1f} >= threshold {threshold}",
             "model_route": model_route,
             "abstain_triggered": bool(not collected_docs),
             "abstain_reason": "no_docs" if not collected_docs else None,
-            "docs_returned": int(len(collected_docs)),
-            "multi_agent_parallel_tasks": int(tasks_count),
+            "docs_returned": len(collected_docs),
+            "multi_agent_parallel_tasks": tasks_count,
         }
 
     async def stream(
@@ -441,7 +441,7 @@ class MultiAgentRAGRunner:
         *,
         request: AgenticStreamRequest | None = None,
         **_kwargs: Any,
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         stream_request = resolve_agentic_stream_request(
             request=request,
             legacy_overrides=_kwargs,
@@ -453,9 +453,9 @@ class MultiAgentRAGRunner:
         retrieval_mode = stream_request.retrieval_mode
         structured_output = stream_request.structured_output
         complexity_score = self._engine._score_question_complexity(question, history)
-        threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
+        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD or 250.0
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
-        max_sub_questions = max(1, int(getattr(settings, "RAG_MULTI_AGENT_MAX_SUB_AGENTS", 4) or 4))
+        max_sub_questions = max(1, settings.RAG_MULTI_AGENT_MAX_SUB_AGENTS or 4)
         base_state = self._build_base_state(stream_request=stream_request, question=question, history=history)
 
         yield self._stream_route_event(

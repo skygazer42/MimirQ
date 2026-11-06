@@ -8,7 +8,6 @@ Security/PII notes:
 - Keep all actions tenant-scoped.
 """
 
-
 import contextlib
 import threading
 import time
@@ -34,7 +33,7 @@ def _nested_get(payload: dict[str, Any], path: str) -> Any:
     if not path:
         return None
     cur: Any = payload
-    for part in str(path).split("."):
+    for part in path.split("."):
         if not part:
             continue
         if not isinstance(cur, dict):
@@ -51,8 +50,7 @@ def parse_group_names_from_jwt_payload(payload: dict[str, Any], *, claim: str, m
     - Skips empty/oversized items
     - Caps list size
     """
-    max_items = int(max_groups or 0)
-    if max_items <= 0:
+    if max_groups <= 0:
         return []
 
     raw = _nested_get(payload, claim)
@@ -75,7 +73,7 @@ def parse_group_names_from_jwt_payload(payload: dict[str, Any], *, claim: str, m
             continue
         seen.add(name)
         out.append(name)
-        if len(out) >= max_items:
+        if len(out) >= max_groups:
             break
     return out
 
@@ -86,11 +84,10 @@ def _should_sync(*, tenant_id: UUID, account_id: str, ttl_sec: float) -> bool:
 
     Note: key is stringified to avoid UUID hash/version edge cases across reloads.
     """
-    ttl = float(ttl_sec or 0)
-    if ttl <= 0:
+    if ttl_sec <= 0:
         return True
 
-    uid = str(account_id or "").strip()
+    uid = account_id.strip()
     if not uid:
         return False
 
@@ -98,7 +95,7 @@ def _should_sync(*, tenant_id: UUID, account_id: str, ttl_sec: float) -> bool:
     key = (str(tenant_id), uid)
     with _sync_lock:
         last = _last_sync_ts.get(key)
-        if last is not None and (now - last) < ttl:
+        if last is not None and (now - last) < ttl_sec:
             return False
         _last_sync_ts[key] = now
         return True
@@ -108,7 +105,7 @@ def maybe_sync_jwt_groups(*, tenant_id: UUID, account_id: str, jwt_payload: dict
     """
     Throttled wrapper. Safe to call on every request.
     """
-    if not bool(getattr(settings, "JWT_GROUPS_SYNC_ENABLED", False)):
+    if not settings.JWT_GROUPS_SYNC_ENABLED:
         return
     ttl = float(settings.JWT_GROUPS_SYNC_TTL_SEC)
     if not _should_sync(tenant_id=tenant_id, account_id=account_id, ttl_sec=ttl):
@@ -126,8 +123,8 @@ def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload
     - tenant_groups (by name)
     - tenant_group_members (by tenant_id + group_id + user_id)
     """
-    claim = str(getattr(settings, "JWT_GROUPS_CLAIM", "") or "groups").strip()
-    max_groups = int(getattr(settings, "JWT_GROUPS_MAX_GROUPS", 200) or 200)
+    claim = (settings.JWT_GROUPS_CLAIM or "groups").strip()
+    max_groups = settings.JWT_GROUPS_MAX_GROUPS or 200
     max_groups = max(0, min(max_groups, 2000))
 
     group_names = parse_group_names_from_jwt_payload(jwt_payload, claim=claim, max_groups=max_groups)
@@ -145,24 +142,20 @@ def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload
             )
             .all()
         )
-        existing_by_name = {str(getattr(g, "name", "") or ""): g for g in existing}
+        existing_names = {group.name for group in existing}
         to_create: list[TenantGroup] = []
         for name in group_names:
-            if name in existing_by_name:
+            if name in existing_names:
                 continue
             to_create.append(TenantGroup(tenant_id=tenant_id, name=name))
         if to_create:
             db.add_all(to_create)
             db.flush()
 
-        all_groups = list(existing) + list(to_create)
-        group_ids = {g.id for g in all_groups if getattr(g, "id", None) is not None}
-        if not group_ids:
-            db.commit()
-            return
+        group_ids = {group.id for group in existing + to_create}
 
         # 2) Ensure memberships exist (add-only; no removals in this wave).
-        uid = str(account_id or "").strip()
+        uid = account_id.strip()
         rows = (
             db.query(TenantGroupMember.group_id)
             .filter(
@@ -172,7 +165,7 @@ def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload
             )
             .all()
         )
-        existing_member_gids = {row[0] for row in rows if row and row[0]}
+        existing_member_gids = {row[0] for row in rows}
         to_add_gids = [gid for gid in group_ids if gid not in existing_member_gids]
         if to_add_gids:
             db.add_all(

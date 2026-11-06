@@ -38,14 +38,16 @@ function sourceContent(markdown: string, original?: string | null) {
 }
 
 export async function readPreviewDocument(document: PreviewDocument, scope: string) {
-  const assertScope = () => { if (getAuthCacheScope() !== scope) throw new Error('账户已切换，请重新选择文档') }
+  const assertScope = () => {
+    if (getAuthCacheScope() !== scope) throw new Error('账户已切换，请重新选择文档')
+  }
   assertScope()
   if (document.remote) {
     const response = await parsingApi.getContent(document.id)
     assertScope()
     return sourceContent(response.markdown_content || '', response.original_markdown_content)
   }
-  const local = useParsedFiles.getState().files.find(file => file.id === document.id)
+  const local = useParsedFiles.getState().files.find((file) => file.id === document.id)
   if (local?.originalMarkdownContent || local?.markdownContent) {
     return sourceContent(local.markdownContent, local.originalMarkdownContent)
   }
@@ -54,9 +56,10 @@ export async function readPreviewDocument(document: PreviewDocument, scope: stri
   if (cached && (cached.originalMarkdownContent || cached.markdownContent)) {
     return sourceContent(cached.markdownContent, cached.originalMarkdownContent)
   }
-  const response = document.source === 'knowledge_base'
-    ? await documentApi.getParsedContent(document.id, { max_chars: 2_000_000 })
-    : await parsingApi.getContent(document.id)
+  const response =
+    document.source === 'knowledge_base'
+      ? await documentApi.getParsedContent(document.id, { max_chars: 2_000_000 })
+      : await parsingApi.getContent(document.id)
   assertScope()
   return sourceContent(response.markdown_content || '', response.original_markdown_content)
 }

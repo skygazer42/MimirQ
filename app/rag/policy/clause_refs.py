@@ -1,4 +1,3 @@
-
 import re
 
 _CN_ARTICLE = re.compile(r"(第[0-9一二三四五六七八九十百千]+条)")
@@ -73,4 +72,3 @@ def extract_clause_refs(text: str) -> list[str]:
         _add(m.group(0))
 
     return out
-

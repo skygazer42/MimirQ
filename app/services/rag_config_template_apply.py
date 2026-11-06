@@ -8,11 +8,20 @@ We apply template patches as *fallback overrides*:
 This keeps debug/probe callers in control while enabling safe rollout for default traffic.
 """
 
-
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from app.api.schemas.chat import ChatRAGConfig
+from app.core.model_execution import validate_rag_execution_selection
+
+
+def validate_rag_config_patch(patch: Mapping[str, Any]) -> None:
+    """Reject retired selections before schema errors can be wrapped or discarded."""
+    validate_rag_execution_selection(
+        reranker_provider=str(patch.get("reranker_provider") or ""),
+        sparse_provider=str(patch.get("sparse_retrieval_provider") or ""),
+        retrieval_profile=str(patch.get("retrieval_profile") or ""),
+    )
 
 
 def apply_rag_config_patch(
@@ -42,8 +51,8 @@ def apply_rag_config_patch(
         return rag_config, []
 
     # Re-validate invariants after merge (normalizes retrieval_mode/fusion_strategy, etc).
+    validate_rag_config_patch(merged)
     return ChatRAGConfig(**merged), applied
 
 
-__all__ = ["apply_rag_config_patch"]
-
+__all__ = ["apply_rag_config_patch", "validate_rag_config_patch"]

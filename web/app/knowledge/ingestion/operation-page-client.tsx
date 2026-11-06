@@ -23,7 +23,7 @@ import {
   X,
   type PlatformIcon,
 } from '@/components/icons'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 
@@ -31,16 +31,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PageTitleIcon } from '@/components/ui/page-title-icon'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
-import { connectorApi, datasetApi, documentApi, settingsApi } from '@/lib/api'
+import { connectorApi } from '@/lib/api/connectors'
+import { datasetApi } from '@/lib/api/datasets'
+import { documentApi } from '@/lib/api/documents'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
 import { readClientStorage } from '@/lib/client-storage'
 import { getParserOption, PARSER_BACKEND_REGISTRY_OPTIONS } from '@/lib/parser-options'
 import { cn, detachPromise, formatFileSize } from '@/lib/utils'
@@ -266,21 +265,17 @@ function normalizeListText(value: string) {
     .filter(Boolean)
 }
 
-function getSelectOptionTitle<T extends string>(
-  options: Array<SelectOption<T>>,
-  value: T
-) {
+function getSelectOptionTitle<T extends string>(options: Array<SelectOption<T>>, value: T) {
   return options.find((option) => option.value === value)?.title ?? value
 }
 
-function SelectOptionBody({
-  description,
-  title,
-}: Readonly<{
+type SelectOptionBodyProps = {
   badge?: string
   description: string
   title: string
-}>) {
+}
+
+function SelectOptionBody({ description, title }: Readonly<SelectOptionBodyProps>) {
   return (
     <span className={styles.optionBody}>
       <strong>{title}</strong>
@@ -289,7 +284,9 @@ function SelectOptionBody({
   )
 }
 
-function DatasetOptionBody({ dataset }: Readonly<{ dataset: Dataset }>) {
+type DatasetOptionBodyProps = { dataset: Dataset }
+
+function DatasetOptionBody({ dataset }: Readonly<DatasetOptionBodyProps>) {
   return (
     <span className={styles.optionBody}>
       <strong>{dataset.name}</strong>
@@ -336,7 +333,7 @@ function collectFolderPaths(root?: DocumentFolderNode | null): string[] {
 function collectCollectionOptions(
   root: DocumentFolderNode | null | undefined,
   files: File[],
-  currentCollection: string
+  currentCollection: string,
 ): string[] {
   const options = new Set<string>([DEFAULT_COLLECTION])
   for (const path of collectFolderPaths(root)) options.add(path)
@@ -418,11 +415,15 @@ function apiPayloadFileType(filename: string) {
 
 export default function KnowledgeIngestionOperationPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const routeDatasetId = searchParams.get('datasetId') || ''
   const inputRef = useRef<HTMLInputElement | null>(null)
   const folderInputRef = useRef<HTMLInputElement | null>(null)
   const previousDatasetIdRef = useRef<string | null>(null)
+  const observedRouteDatasetIdRef = useRef(routeDatasetId)
+  const appliedRouteDatasetIdRef = useRef<string | null>(null)
+  const submissionRef = useRef<{ authRevision: number } | null>(null)
   const [draft, setDraft] = useState<DraftState>(DEFAULT_DRAFT)
   const [datasetIngestContextById, setDatasetIngestContextById] = useState<Record<string, DatasetIngestContext>>({})
   const [source, setSource] = useState<UploadSource>('local')
@@ -463,10 +464,16 @@ export default function KnowledgeIngestionOperationPage() {
   const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
 
   useEffect(() => {
+    if (observedRouteDatasetIdRef.current !== routeDatasetId) {
+      observedRouteDatasetIdRef.current = routeDatasetId
+      appliedRouteDatasetIdRef.current = null
+    }
     const routeDatasetExists = routeDatasetId && datasets.some((dataset) => dataset.id === routeDatasetId)
     const fallbackDatasetId = datasets[0]?.id
+    const applyRoute = routeDatasetExists && appliedRouteDatasetIdRef.current !== routeDatasetId
+    if (!routeDatasetId || applyRoute) appliedRouteDatasetIdRef.current = routeDatasetId
     setDraft((current) => {
-      if (routeDatasetExists && current.datasetId !== routeDatasetId) return { ...current, datasetId: routeDatasetId }
+      if (applyRoute && current.datasetId !== routeDatasetId) return { ...current, datasetId: routeDatasetId }
       if (current.datasetId || !fallbackDatasetId) return current
       return { ...current, datasetId: fallbackDatasetId }
     })
@@ -474,10 +481,16 @@ export default function KnowledgeIngestionOperationPage() {
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === draft.datasetId) ?? null,
-    [datasets, draft.datasetId]
+    [datasets, draft.datasetId],
   )
   const activeFileBucketKey = draft.datasetId || NO_DATASET_FILE_BUCKET
   const files = filesByDatasetId[activeFileBucketKey] ?? EMPTY_FILES
+
+  useEffect(() => {
+    return () => {
+      submissionRef.current = null
+    }
+  }, [draft.datasetId])
 
   useEffect(() => {
     if (previousDatasetIdRef.current === null) {
@@ -534,13 +547,10 @@ export default function KnowledgeIngestionOperationPage() {
     staleTime: 10_000,
   })
 
-  const tagOptions = useMemo(
-    () => collectTagOptions(documents, draft.tags),
-    [documents, draft.tags]
-  )
+  const tagOptions = useMemo(() => collectTagOptions(documents, draft.tags), [documents, draft.tags])
   const collectionOptions = useMemo(
     () => collectCollectionOptions(foldersQuery.data?.root, files, draft.collection),
-    [draft.collection, files, foldersQuery.data?.root]
+    [draft.collection, files, foldersQuery.data?.root],
   )
 
   const settingsQuery = useQuery({
@@ -551,10 +561,21 @@ export default function KnowledgeIngestionOperationPage() {
 
   const urlIngestEnabled = Boolean(settingsQuery.data?.url_ingest?.enabled)
 
-  const selectedTotalBytes = useMemo(
-    () => files.reduce((sum, file) => sum + file.size, 0),
-    [files]
+  const refreshDataset = useCallback(
+    (datasetId: string, includeDocuments = true) =>
+      Promise.all(
+        [
+          ...(includeDocuments ? ['knowledge-ingestion-operation-documents'] : []),
+          'knowledge-ingestion-operation-folders',
+          'knowledge-ingestion-operation-stats',
+        ].map((prefix) =>
+          queryClient.invalidateQueries({ queryKey: [prefix, datasetId], exact: true, refetchType: 'all' }),
+        ),
+      ),
+    [queryClient],
   )
+
+  const selectedTotalBytes = useMemo(() => files.reduce((sum, file) => sum + file.size, 0), [files])
 
   const parsedUrls = useMemo(() => parseUrlList(urlList), [urlList])
   const parsedObjectExtensions = useMemo(() => parseExtensions(objectExtensions), [objectExtensions])
@@ -567,10 +588,7 @@ export default function KnowledgeIngestionOperationPage() {
 
   const connectorSourceBlocked = (source === 'url' || source === 'object') && !urlIngestEnabled
   const canStartIngest =
-    Boolean(selectedDataset) &&
-    status !== 'uploading' &&
-    pendingSourceCount > 0 &&
-    !connectorSourceBlocked
+    Boolean(selectedDataset) && status !== 'uploading' && pendingSourceCount > 0 && !connectorSourceBlocked
 
   const totalDocuments = ingestionStats?.total_documents ?? documents.length
 
@@ -580,48 +598,54 @@ export default function KnowledgeIngestionOperationPage() {
         const Icon = getFileIcon(file)
         return { file, Icon, key: fileKey(file) }
       }),
-    [files]
+    [files],
   )
   const activeSource = SOURCE_OPTIONS.find((item) => item.value === source) ?? SOURCE_OPTIONS[0]
 
-  const updateDraft = useCallback(<K extends keyof DraftState>(key: K, value: DraftState[K]) => {
-    if ((key === 'tags' || key === 'collection') && draft.datasetId) {
-      setDatasetIngestContextById((current) => {
-        const previous = current[draft.datasetId] ?? {
-          tags: DEFAULT_DRAFT.tags,
-          collection: DEFAULT_COLLECTION,
-        }
+  const updateDraft = useCallback(
+    <K extends keyof DraftState>(key: K, value: DraftState[K]) => {
+      if ((key === 'tags' || key === 'collection') && draft.datasetId) {
+        setDatasetIngestContextById((current) => {
+          const previous = current[draft.datasetId] ?? {
+            tags: DEFAULT_DRAFT.tags,
+            collection: DEFAULT_COLLECTION,
+          }
+          return {
+            ...current,
+            [draft.datasetId]: {
+              ...previous,
+              [key]: String(value || ''),
+            },
+          }
+        })
+      }
+      setDraft((current) => ({ ...current, [key]: value }))
+    },
+    [draft.datasetId],
+  )
+
+  const addFiles = useCallback(
+    (incoming: File[]) => {
+      const supported = incoming.filter((file) => {
+        const lower = file.name.toLowerCase()
+        return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
+      })
+      const rejected = incoming.length - supported.length
+      setFilesByDatasetId((current) => {
+        const activeFiles = current[activeFileBucketKey] ?? []
+        const byKey = new Map(activeFiles.map((file) => [fileKey(file), file]))
+        for (const file of supported) byKey.set(fileKey(file), file)
         return {
           ...current,
-          [draft.datasetId]: {
-            ...previous,
-            [key]: String(value || ''),
-          },
+          [activeFileBucketKey]: Array.from(byKey.values()),
         }
       })
-    }
-    setDraft((current) => ({ ...current, [key]: value }))
-  }, [draft.datasetId])
-
-  const addFiles = useCallback((incoming: File[]) => {
-    const supported = incoming.filter((file) => {
-      const lower = file.name.toLowerCase()
-      return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext))
-    })
-    const rejected = incoming.length - supported.length
-    setFilesByDatasetId((current) => {
-      const activeFiles = current[activeFileBucketKey] ?? []
-      const byKey = new Map(activeFiles.map((file) => [fileKey(file), file]))
-      for (const file of supported) byKey.set(fileKey(file), file)
-      return {
-        ...current,
-        [activeFileBucketKey]: Array.from(byKey.values()),
+      if (rejected > 0) {
+        toast.warning(`${rejected} 个文件格式未在允许列表中，已跳过`)
       }
-    })
-    if (rejected > 0) {
-      toast.warning(`${rejected} 个文件格式未在允许列表中，已跳过`)
-    }
-  }, [activeFileBucketKey])
+    },
+    [activeFileBucketKey],
+  )
 
   const clearFiles = useCallback(() => {
     setFilesByDatasetId((current) => ({
@@ -633,14 +657,18 @@ export default function KnowledgeIngestionOperationPage() {
     setStatus('idle')
   }, [activeFileBucketKey])
 
-  const removeFile = useCallback((key: string) => {
-    setFilesByDatasetId((current) => ({
-      ...current,
-      [activeFileBucketKey]: (current[activeFileBucketKey] ?? []).filter((file) => fileKey(file) !== key),
-    }))
-  }, [activeFileBucketKey])
+  const removeFile = useCallback(
+    (key: string) => {
+      setFilesByDatasetId((current) => ({
+        ...current,
+        [activeFileBucketKey]: (current[activeFileBucketKey] ?? []).filter((file) => fileKey(file) !== key),
+      }))
+    },
+    [activeFileBucketKey],
+  )
 
   const submitConnectorRun = useCallback(async () => {
+    if (submissionRef.current) return
     if (!draft.datasetId) {
       toast.error('请先选择目标数据集')
       return
@@ -649,6 +677,10 @@ export default function KnowledgeIngestionOperationPage() {
       toast.error('URL 导入未启用，请联系管理员启用后重试。')
       return
     }
+    const submission = { authRevision: getAuthSessionRevision() }
+    submissionRef.current = submission
+    const ownsSubmission = () =>
+      submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
     setStatus('uploading')
     setUploadResponse(null)
     setSubmissionError(null)
@@ -680,42 +712,66 @@ export default function KnowledgeIngestionOperationPage() {
                 ...sharedConfig,
               },
             })
-      setStatus(run.status === 'failed' ? 'failed' : run.status === 'completed' ? 'completed' : 'uploading')
-      await Promise.all([foldersQuery.refetch(), ingestionStatsQuery.refetch()])
+      if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId, false)
+      if (!ownsSubmission()) return
+      setStatus(run.status === 'failed' || run.status === 'cancelled' ? 'failed' : 'completed')
       toast.success(`连接器任务已创建：${String(run.id).slice(0, 8)}`)
       if (run.status !== 'failed' && shouldOpenExecutionMonitor(draft, 'ingest')) {
         router.push('/knowledge/ingestion?mode=execution-monitor')
       }
     } catch (error) {
+      if (!ownsSubmission()) return
       setStatus('failed')
       const message = formatApiError(error, '连接器任务创建失败')
       setSubmissionError(message)
+    } finally {
+      if (submissionRef.current === submission) {
+        submissionRef.current = null
+        if (submission.authRevision !== getAuthSessionRevision()) setStatus('idle')
+      }
     }
   }, [
     draft,
-    foldersQuery,
-    ingestionStatsQuery,
     objectBucket,
     objectMaxObjects,
     objectPrefix,
     parsedObjectExtensions,
     parsedUrls,
     router,
+    refreshDataset,
     source,
     urlIngestEnabled,
     urlFilename,
   ])
 
   const handleSyncDatasets = useCallback(async () => {
-    await datasetsQuery.refetch()
-    if (draft.datasetId) {
-      await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
+    const authRevision = getAuthSessionRevision()
+    try {
+      await datasetsQuery.refetch({ throwOnError: true })
+      if (authRevision !== getAuthSessionRevision()) return
+      if (draft.datasetId) {
+        await Promise.all(
+          [
+            'knowledge-ingestion-operation-documents',
+            'knowledge-ingestion-operation-folders',
+            'knowledge-ingestion-operation-stats',
+          ].map((prefix) =>
+            queryClient.refetchQueries(
+              { queryKey: [prefix, draft.datasetId], exact: true, type: 'all' },
+              { throwOnError: true },
+            ),
+          ),
+        )
+      }
+      if (authRevision === getAuthSessionRevision()) toast.success('数据集状态已同步')
+    } catch (error) {
+      if (authRevision === getAuthSessionRevision()) toast.error(formatApiError(error, '数据集状态同步失败'))
     }
-    toast.success('数据集状态已同步')
-  }, [datasetsQuery, documentsQuery, draft.datasetId, foldersQuery, ingestionStatsQuery])
+  }, [datasetsQuery, draft.datasetId, queryClient])
 
   const uploadFiles = useCallback(
     async (mode: 'upload_only' | 'ingest') => {
+      if (submissionRef.current) return
       if (!draft.datasetId) {
         toast.error('请先选择目标数据集')
         return
@@ -745,6 +801,10 @@ export default function KnowledgeIngestionOperationPage() {
         return
       }
       const uploadTargets = files
+      const submission = { authRevision: getAuthSessionRevision() }
+      submissionRef.current = submission
+      const ownsSubmission = () =>
+        submissionRef.current === submission && submission.authRevision === getAuthSessionRevision()
       setStatus('uploading')
       setUploadResponse(null)
       setSubmissionError(null)
@@ -779,6 +839,8 @@ export default function KnowledgeIngestionOperationPage() {
               },
             ],
           })
+          if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId)
+          if (!ownsSubmission()) return
           setUploadResponse({
             total: 1,
             successful_count: 1,
@@ -793,7 +855,6 @@ export default function KnowledgeIngestionOperationPage() {
             failed: [],
           })
           setStatus('completed')
-          await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
           toast.success(`API 导入已写入：${filename}`)
           return
         }
@@ -816,28 +877,35 @@ export default function KnowledgeIngestionOperationPage() {
                 ingest_mode: draft.ingestMode,
                 source,
               },
-            ])
+            ]),
           ),
         }
         const response = await documentApi.uploadBatch(files, uploadOptions)
+        if (submission.authRevision === getAuthSessionRevision()) await refreshDataset(draft.datasetId)
+        if (!ownsSubmission()) return
         setUploadResponse(response)
         setStatus(response.failed_count > 0 ? 'failed' : 'completed')
-        await Promise.all([documentsQuery.refetch(), foldersQuery.refetch(), ingestionStatsQuery.refetch()])
         toast.success(
           mode === 'upload_only'
             ? `已登记到知识库：成功 ${response.successful_count} / 失败 ${response.failed_count}`
-            : `入库任务已提交：成功 ${response.successful_count} / 失败 ${response.failed_count}`
+            : `入库任务已提交：成功 ${response.successful_count} / 失败 ${response.failed_count}`,
         )
         if (response.successful_count > 0 && shouldOpenExecutionMonitor(draft, mode)) {
           router.push('/knowledge/ingestion?mode=execution-monitor')
         }
       } catch (error) {
+        if (!ownsSubmission()) return
         setStatus('failed')
         const message = formatApiError(error, '入库任务提交失败')
         setSubmissionError(message)
+      } finally {
+        if (submissionRef.current === submission) {
+          submissionRef.current = null
+          if (submission.authRevision !== getAuthSessionRevision()) setStatus('idle')
+        }
       }
     },
-    [apiContent, apiFilename, documentsQuery, draft, files, foldersQuery, ingestionStatsQuery, parsedUrls.length, router, source, submitConnectorRun]
+    [apiContent, apiFilename, draft, files, parsedUrls.length, router, refreshDataset, source, submitConnectorRun],
   )
 
   const sourceConfigurationProps = {
@@ -865,14 +933,9 @@ export default function KnowledgeIngestionOperationPage() {
   }
 
   const activeStageCount =
-    draft.executionMode === 'upload_only'
-      ? 1
-      : draft.executionMode === 'parse_only'
-        ? 2
-        : OPERATION_STAGES.length
+    draft.executionMode === 'upload_only' ? 1 : draft.executionMode === 'parse_only' ? 2 : OPERATION_STAGES.length
   const sourceExecutionBlocked =
-    draft.executionMode === 'upload_only' &&
-    (source === 'url' || source === 'object' || source === 'api')
+    draft.executionMode === 'upload_only' && (source === 'url' || source === 'object' || source === 'api')
   const operationReady = canStartIngest && !sourceExecutionBlocked
   const actionLabel =
     draft.executionMode === 'upload_only'
@@ -905,7 +968,9 @@ export default function KnowledgeIngestionOperationPage() {
 
   const isSubmitting = status === 'uploading'
   const isFileSource = source === 'local' || source === 'folder'
-  const executionPath = OPERATION_STAGES.slice(0, activeStageCount).map((stage) => stage.label).join(' → ')
+  const executionPath = OPERATION_STAGES.slice(0, activeStageCount)
+    .map((stage) => stage.label)
+    .join(' → ')
   const configurationProps = {
     draft,
     updateDraft,
@@ -976,13 +1041,13 @@ export default function KnowledgeIngestionOperationPage() {
 
           <fieldset disabled={isSubmitting} className={styles.sourceContent} data-ingestion-file-stage="true">
             {source === 'local' ? (
-                <UploadDropArea
-                  dragging={dragging}
-                  onDragState={setDragging}
-                  onClick={() => inputRef.current?.click()}
-                  onFiles={addFiles}
-                  disabled={isSubmitting}
-                />
+              <UploadDropArea
+                dragging={dragging}
+                onDragState={setDragging}
+                onClick={() => inputRef.current?.click()}
+                onFiles={addFiles}
+                disabled={isSubmitting}
+              />
             ) : null}
             {source === 'folder' ? <SourceConfiguration source="folder" {...sourceConfigurationProps} /> : null}
             {source === 'url' ? <SourceConfiguration source="url" {...sourceConfigurationProps} /> : null}
@@ -1019,8 +1084,16 @@ export default function KnowledgeIngestionOperationPage() {
           ) : (
             <div className={styles.emptyQueue}>
               <activeSource.icon aria-hidden="true" />
-              <strong>{source === 'url' ? '从文件地址导入' : source === 'object' ? '从对象存储导入' : '将内容导入知识库'}</strong>
-              <p>{source === 'url' ? '填写文件链接后，确认右侧处理方式并提交。' : source === 'object' ? '按上方的前缀和扩展名选择待导入对象。' : '提交上方内容，在目标数据集中创建文档。'}</p>
+              <strong>
+                {source === 'url' ? '从文件地址导入' : source === 'object' ? '从对象存储导入' : '将内容导入知识库'}
+              </strong>
+              <p>
+                {source === 'url'
+                  ? '填写文件链接后，确认右侧处理方式并提交。'
+                  : source === 'object'
+                    ? '按上方的前缀和扩展名选择待导入对象。'
+                    : '提交上方内容，在目标数据集中创建文档。'}
+              </p>
             </div>
           )}
         </section>
@@ -1030,16 +1103,28 @@ export default function KnowledgeIngestionOperationPage() {
         </aside>
       </div>
 
-      <FeedbackToast type="error" message={submissionError ? `${submissionError}。文件和配置已保留，可再次提交。` : null} id="ingestion-submit-feedback" />
+      <FeedbackToast
+        type="error"
+        message={submissionError ? `${submissionError}。文件和配置已保留，可再次提交。` : null}
+        id="ingestion-submit-feedback"
+      />
 
       <footer data-ingestion-action-bar="true" data-task-center-dock="true" className={styles.submitBar}>
         <div className={styles.submitSummary} aria-live="polite">
-          <strong>{uploadResponse ? submissionSummary : pendingSourceCount > 0 ? (
-            isFileSource ? pendingSourceCount + ' 个文件 · ' + formatFileSize(selectedTotalBytes) : pendingSourceCount + ' 项内容'
-          ) : '尚未添加内容'}</strong>
-          <span>{!operationReady && !isSubmitting ? preflightMessage : (
-            '目标：' + (selectedDataset?.name ?? '未选择') + ' · ' + executionPath
-          )}</span>
+          <strong>
+            {uploadResponse
+              ? submissionSummary
+              : pendingSourceCount > 0
+                ? isFileSource
+                  ? pendingSourceCount + ' 个文件 · ' + formatFileSize(selectedTotalBytes)
+                  : pendingSourceCount + ' 项内容'
+                : '尚未添加内容'}
+          </strong>
+          <span>
+            {!operationReady && !isSubmitting
+              ? preflightMessage
+              : '目标：' + (selectedDataset?.name ?? '未选择') + ' · ' + executionPath}
+          </span>
         </div>
         <Button
           data-ingestion-submit="true"
@@ -1055,15 +1140,13 @@ export default function KnowledgeIngestionOperationPage() {
   )
 }
 
-function FieldBlock({
-  label,
-  required,
-  children,
-}: Readonly<{
+type FieldBlockProps = {
   label: string
   required?: boolean
   children: ReactNode
-}>) {
+}
+
+function FieldBlock({ label, required, children }: Readonly<FieldBlockProps>) {
   return (
     <label className={styles.fieldBlock}>
       <span className={styles.fieldBlockLabel}>
@@ -1115,9 +1198,37 @@ function UploadDropArea({
         <strong>添加文件到本次任务</strong>
         <span>拖入或选择 PDF、Word、表格等文件，单文件 ≤ 2 GB</span>
       </span>
-      <span className={styles.addFiles}><Plus aria-hidden="true" />添加文件</span>
+      <span className={styles.addFiles}>
+        <Plus aria-hidden="true" />
+        添加文件
+      </span>
     </button>
   )
+}
+
+type SourceConfigurationProps = {
+  source: Exclude<UploadSource, 'local'>
+  folderInputRef: RefObject<HTMLInputElement | null>
+  onFiles: (files: File[]) => void
+  urlList: string
+  setUrlList: (value: string) => void
+  urlFilename: string
+  setUrlFilename: (value: string) => void
+  parsedUrls: string[]
+  objectBucket: string
+  setObjectBucket: (value: string) => void
+  objectPrefix: string
+  setObjectPrefix: (value: string) => void
+  objectExtensions: string
+  setObjectExtensions: (value: string) => void
+  objectMaxObjects: number
+  setObjectMaxObjects: (value: number) => void
+  parsedObjectExtensions: string[]
+  urlIngestEnabled: boolean
+  apiFilename: string
+  setApiFilename: (value: string) => void
+  apiContent: string
+  setApiContent: (value: string) => void
 }
 
 function SourceConfiguration({
@@ -1143,30 +1254,7 @@ function SourceConfiguration({
   setApiFilename,
   apiContent,
   setApiContent,
-}: Readonly<{
-  source: Exclude<UploadSource, 'local'>
-  folderInputRef: RefObject<HTMLInputElement | null>
-  onFiles: (files: File[]) => void
-  urlList: string
-  setUrlList: (value: string) => void
-  urlFilename: string
-  setUrlFilename: (value: string) => void
-  parsedUrls: string[]
-  objectBucket: string
-  setObjectBucket: (value: string) => void
-  objectPrefix: string
-  setObjectPrefix: (value: string) => void
-  objectExtensions: string
-  setObjectExtensions: (value: string) => void
-  objectMaxObjects: number
-  setObjectMaxObjects: (value: number) => void
-  parsedObjectExtensions: string[]
-  urlIngestEnabled: boolean
-  apiFilename: string
-  setApiFilename: (value: string) => void
-  apiContent: string
-  setApiContent: (value: string) => void
-}>) {
+}: Readonly<SourceConfigurationProps>) {
   if (source === 'folder') {
     return (
       <div className={styles.folderSource}>
@@ -1175,7 +1263,8 @@ function SourceConfiguration({
           <p>批量添加文件，保留文件夹中的相对路径。</p>
         </div>
         <Button variant="outline" className={styles.addFiles} onClick={() => folderInputRef.current?.click()}>
-          <Folder className="size-4" />选择文件夹
+          <Folder className="size-4" />
+          选择文件夹
         </Button>
         <input
           ref={(element) => {
@@ -1207,10 +1296,19 @@ function SourceConfiguration({
             onChange={(event) => setUrlList(event.target.value)}
             placeholder="https://example.com/manual.pdf&#10;https://example.com/guide.md"
           />
-          <p>{urlIngestEnabled ? '每行一个文件地址，已识别 ' + parsedUrls.length + ' 个有效链接。' : 'URL 导入未启用，请联系管理员启用后重试。'}</p>
+          <p>
+            {urlIngestEnabled
+              ? '每行一个文件地址，已识别 ' + parsedUrls.length + ' 个有效链接。'
+              : 'URL 导入未启用，请联系管理员启用后重试。'}
+          </p>
         </FieldBlock>
         <FieldBlock label="统一文件名（可选）">
-          <Input className={CONFIG_INPUT_CLASS} value={urlFilename} onChange={(event) => setUrlFilename(event.target.value)} placeholder="remote-documents.md" />
+          <Input
+            className={CONFIG_INPUT_CLASS}
+            value={urlFilename}
+            onChange={(event) => setUrlFilename(event.target.value)}
+            placeholder="remote-documents.md"
+          />
         </FieldBlock>
       </div>
     )
@@ -1219,15 +1317,32 @@ function SourceConfiguration({
   if (source === 'object') {
     return (
       <div className={cn(styles.sourceForm, styles.sourceFormColumns)}>
-        {!urlIngestEnabled ? <p className={styles.sourceNotice}>对象存储导入需要通过文件地址拉取内容，请联系管理员启用 URL 导入。</p> : null}
+        {!urlIngestEnabled ? (
+          <p className={styles.sourceNotice}>对象存储导入需要通过文件地址拉取内容，请联系管理员启用 URL 导入。</p>
+        ) : null}
         <FieldBlock label="Bucket（可选）">
-          <Input className={CONFIG_INPUT_CLASS} value={objectBucket} onChange={(event) => setObjectBucket(event.target.value)} placeholder="使用已配置的存储桶" />
+          <Input
+            className={CONFIG_INPUT_CLASS}
+            value={objectBucket}
+            onChange={(event) => setObjectBucket(event.target.value)}
+            placeholder="使用已配置的存储桶"
+          />
         </FieldBlock>
         <FieldBlock label="对象前缀">
-          <Input className={CONFIG_INPUT_CLASS} value={objectPrefix} onChange={(event) => setObjectPrefix(event.target.value)} placeholder="manuals/2026/" />
+          <Input
+            className={CONFIG_INPUT_CLASS}
+            value={objectPrefix}
+            onChange={(event) => setObjectPrefix(event.target.value)}
+            placeholder="manuals/2026/"
+          />
         </FieldBlock>
         <FieldBlock label="扩展名">
-          <Input className={CONFIG_INPUT_CLASS} value={objectExtensions} onChange={(event) => setObjectExtensions(event.target.value)} placeholder=".pdf, .md, .txt" />
+          <Input
+            className={CONFIG_INPUT_CLASS}
+            value={objectExtensions}
+            onChange={(event) => setObjectExtensions(event.target.value)}
+            placeholder=".pdf, .md, .txt"
+          />
           <p>导入格式：{parsedObjectExtensions.join(', ')}</p>
         </FieldBlock>
         <FieldBlock label="最大对象数">
@@ -1247,7 +1362,12 @@ function SourceConfiguration({
   return (
     <div className={styles.sourceForm}>
       <FieldBlock label="生成文件名">
-        <Input className={CONFIG_INPUT_CLASS} value={apiFilename} onChange={(event) => setApiFilename(event.target.value)} placeholder="api-payload.json" />
+        <Input
+          className={CONFIG_INPUT_CLASS}
+          value={apiFilename}
+          onChange={(event) => setApiFilename(event.target.value)}
+          placeholder="api-payload.json"
+        />
       </FieldBlock>
       <FieldBlock label="API Payload">
         <Textarea
@@ -1260,6 +1380,18 @@ function SourceConfiguration({
       </FieldBlock>
     </div>
   )
+}
+
+type SelectedFilesTableProps = {
+  rows: Array<{ file: File; Icon: PlatformIcon; key: string }>
+  totalBytes: number
+  sourceName: string
+  dragging: boolean
+  onDragState: (dragging: boolean) => void
+  onFiles: (files: File[]) => void
+  onChoose: () => void
+  onClear: () => void
+  onRemove: (key: string) => void
 }
 
 function SelectedFilesTable({
@@ -1296,7 +1428,8 @@ function SelectedFilesTable({
         {rows.length > 0 ? <span className={styles.queueSize}>共 {formatFileSize(totalBytes)}</span> : null}
         {rows.length > 0 ? (
           <Button variant="ghost" className={styles.quietButton} onClick={onClear} disabled={disabled}>
-            <Trash2 className="size-3.5" />清空
+            <Trash2 className="size-3.5" />
+            清空
           </Button>
         ) : null}
       </div>
@@ -1304,17 +1437,29 @@ function SelectedFilesTable({
         <div className={styles.tableWrap}>
           <table className={styles.fileTable} aria-label="本次待入库文件">
             <colgroup>
-              <col className={styles.indexCol} /><col /><col className={styles.typeCol} />
-              <col className={styles.sizeCol} /><col className={styles.statusCol} /><col className={styles.actionCol} />
+              <col className={styles.indexCol} />
+              <col />
+              <col className={styles.typeCol} />
+              <col className={styles.sizeCol} />
+              <col className={styles.statusCol} />
+              <col className={styles.actionCol} />
             </colgroup>
             <thead>
               <tr>
-                <th className={styles.rowIndex} scope="col">#</th>
+                <th className={styles.rowIndex} scope="col">
+                  #
+                </th>
                 <th scope="col">文件名称</th>
-                <th className={styles.fileFormat} scope="col">格式</th>
-                <th className={styles.numeric} scope="col">大小</th>
+                <th className={styles.fileFormat} scope="col">
+                  格式
+                </th>
+                <th className={styles.numeric} scope="col">
+                  大小
+                </th>
                 <th scope="col">状态</th>
-                <th scope="col"><span className="sr-only">移除</span></th>
+                <th scope="col">
+                  <span className="sr-only">移除</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1331,13 +1476,22 @@ function SelectedFilesTable({
                         <Icon appearance="color" aria-hidden="true" />
                         <div>
                           <strong title={sourceName + ' · ' + uploadName}>{file.name}</strong>
-                          <span className={styles.fileMobileMeta}>{formatFileSize(file.size)} · {formatFileType(file)}</span>
+                          <span className={styles.fileMobileMeta}>
+                            {formatFileSize(file.size)} · {formatFileType(file)}
+                          </span>
                         </div>
                       </div>
                     </td>
                     <td className={styles.fileFormat}>{formatFileType(file)}</td>
                     <td className={styles.numeric}>{formatFileSize(file.size)}</td>
-                    <td><span className={styles.fileState} data-state={failed ? 'failed' : submitted ? 'submitted' : 'pending'}>{label}</span></td>
+                    <td>
+                      <span
+                        className={styles.fileState}
+                        data-state={failed ? 'failed' : submitted ? 'submitted' : 'pending'}
+                      >
+                        {label}
+                      </span>
+                    </td>
                     <td>
                       <Button
                         variant="ghost"
@@ -1346,7 +1500,9 @@ function SelectedFilesTable({
                         title={'移除文件 ' + file.name}
                         disabled={disabled}
                         onClick={() => onRemove(key)}
-                      ><X aria-hidden="true" /></Button>
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
                     </td>
                   </tr>
                 )
@@ -1396,7 +1552,7 @@ type IngestionConfigurationProps = Readonly<{
 }>
 
 const INGESTION_PARSERS = PARSER_BACKEND_REGISTRY_OPTIONS.filter((option) =>
-  ['auto', 'docling', 'markitdown', 'deepdoc', 'csv', 'json', 'markdown'].includes(option.value)
+  ['auto', 'docling', 'markitdown', 'deepdoc', 'csv', 'json', 'markdown'].includes(option.value),
 )
 
 function IngestionConfiguration({
@@ -1428,25 +1584,49 @@ function IngestionConfiguration({
         <div className={styles.destination}>
           <div className={styles.fieldHeading}>
             <label htmlFor={datasetId}>目标数据集</label>
-            <Button variant="ghost" className={styles.quietButton} onClick={onCreate}>新建</Button>
+            <Button variant="ghost" className={styles.quietButton} onClick={onCreate}>
+              新建
+            </Button>
           </div>
-          <Select value={draft.datasetId} onValueChange={(value) => updateDraft('datasetId', value)} disabled={locked || loading || datasets.length === 0}>
+          <Select
+            value={draft.datasetId}
+            onValueChange={(value) => updateDraft('datasetId', value)}
+            disabled={locked || loading || datasets.length === 0}
+          >
             <SelectTrigger id={datasetId} className={SOFT_CONTROL_CLASS}>
-              <span className={styles.controlText}><DatasetIcon aria-hidden="true" /><span>{selectedDataset?.name ?? (loading ? '正在加载数据集' : datasets.length ? '选择目标数据集' : '暂无数据集')}</span></span>
+              <span className={styles.controlText}>
+                <DatasetIcon aria-hidden="true" />
+                <span>
+                  {selectedDataset?.name ??
+                    (loading ? '正在加载数据集' : datasets.length ? '选择目标数据集' : '暂无数据集')}
+                </span>
+              </span>
             </SelectTrigger>
             <SelectContent className={SELECT_MENU_CLASS}>
               {datasets.map((dataset) => (
-                <SelectItem key={dataset.id} value={dataset.id} textValue={dataset.name} className={SELECT_OPTION_CLASS}>
+                <SelectItem
+                  key={dataset.id}
+                  value={dataset.id}
+                  textValue={dataset.name}
+                  className={SELECT_OPTION_CLASS}
+                >
                   <DatasetOptionBody dataset={dataset} />
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {loadError ? (
-            <p role="alert" className={styles.datasetError}>数据集加载失败。<button type="button" onClick={onRetry}>重试</button></p>
+            <p role="alert" className={styles.datasetError}>
+              数据集加载失败。
+              <button type="button" onClick={onRetry}>
+                重试
+              </button>
+            </p>
           ) : !loading && datasets.length === 0 ? (
             <p className={styles.destinationMeta}>先新建一个数据集，再添加文件。</p>
-          ) : selectedDataset && documentCount !== undefined ? <p className={styles.destinationMeta}>已有 {documentCount.toLocaleString()} 个文档</p> : null}
+          ) : selectedDataset && documentCount !== undefined ? (
+            <p className={styles.destinationMeta}>已有 {documentCount.toLocaleString()} 个文档</p>
+          ) : null}
         </div>
 
         <fieldset className={styles.modeGroup} disabled={locked}>
@@ -1463,7 +1643,10 @@ function IngestionConfiguration({
                     checked={selected}
                     onChange={() => updateDraft('executionMode', option.value)}
                   />
-                  <span><strong>{option.title}</strong><small>{option.description}</small></span>
+                  <span>
+                    <strong>{option.title}</strong>
+                    <small>{option.description}</small>
+                  </span>
                 </label>
               )
             })}
@@ -1473,13 +1656,26 @@ function IngestionConfiguration({
         <div className={styles.processFields}>
           <div className={styles.inlineField}>
             <label htmlFor={parserId}>解析器</label>
-            <Select value={draft.parserBackend} onValueChange={(value) => updateDraft('parserBackend', value as ParserBackend)} disabled={locked || !parsing}>
-              <SelectTrigger id={parserId} className={SOFT_CONTROL_CLASS} title={!parsing ? '仅登记时不使用解析器' : getParserOption(draft.parserBackend).label}>
+            <Select
+              value={draft.parserBackend}
+              onValueChange={(value) => updateDraft('parserBackend', value as ParserBackend)}
+              disabled={locked || !parsing}
+            >
+              <SelectTrigger
+                id={parserId}
+                className={SOFT_CONTROL_CLASS}
+                title={!parsing ? '仅登记时不使用解析器' : getParserOption(draft.parserBackend).label}
+              >
                 <span className="truncate">{getParserOption(draft.parserBackend).label}</span>
               </SelectTrigger>
               <SelectContent className={SELECT_MENU_CLASS}>
                 {INGESTION_PARSERS.map((option) => (
-                  <SelectItem key={option.value} value={option.value} textValue={option.label} className={SELECT_OPTION_CLASS}>
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    textValue={option.label}
+                    className={SELECT_OPTION_CLASS}
+                  >
                     <SelectOptionBody title={option.label} description={option.description} />
                   </SelectItem>
                 ))}
@@ -1488,18 +1684,36 @@ function IngestionConfiguration({
           </div>
           <div className={styles.inlineField}>
             <label htmlFor={dedupId}>重复处理</label>
-            <Select value={draft.dedupStrategy} onValueChange={(value) => updateDraft('dedupStrategy', value)} disabled={locked}>
-              <SelectTrigger id={dedupId} className={SOFT_CONTROL_CLASS}><span className="truncate">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span></SelectTrigger>
+            <Select
+              value={draft.dedupStrategy}
+              onValueChange={(value) => updateDraft('dedupStrategy', value)}
+              disabled={locked}
+            >
+              <SelectTrigger id={dedupId} className={SOFT_CONTROL_CLASS}>
+                <span className="truncate">{getSelectOptionTitle(DEDUP_OPTIONS, draft.dedupStrategy)}</span>
+              </SelectTrigger>
               <SelectContent className={SELECT_MENU_CLASS}>
                 {DEDUP_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}><SelectOptionBody {...option} /></SelectItem>
+                  <SelectItem
+                    key={option.value}
+                    value={option.value}
+                    textValue={option.title}
+                    className={SELECT_OPTION_CLASS}
+                  >
+                    <SelectOptionBody {...option} />
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         </div>
 
-        <AdvancedIngestSettings draft={draft} updateDraft={updateDraft} tagOptions={tagOptions} collectionOptions={collectionOptions} />
+        <AdvancedIngestSettings
+          draft={draft}
+          updateDraft={updateDraft}
+          tagOptions={tagOptions}
+          collectionOptions={collectionOptions}
+        />
       </fieldset>
     </div>
   )
@@ -1523,27 +1737,59 @@ function AdvancedIngestSettings({
   return (
     <details data-ingestion-advanced-settings="true" className={styles.advanced}>
       <summary>
-        <span><strong>高级设置</strong><small>导入方式、标签与目录</small></span>
+        <span>
+          <strong>高级设置</strong>
+          <small>导入方式、标签与目录</small>
+        </span>
         <ChevronDown aria-hidden="true" />
       </summary>
       <div className={styles.advancedFields}>
         <FieldBlock label="入库模式">
           <Select value={draft.ingestMode} onValueChange={(value) => updateDraft('ingestMode', value as IngestMode)}>
-            <SelectTrigger className={SOFT_CONTROL_CLASS} aria-label="入库模式"><span className="truncate">{getSelectOptionTitle(INGEST_MODE_OPTIONS, draft.ingestMode)}</span></SelectTrigger>
+            <SelectTrigger className={SOFT_CONTROL_CLASS} aria-label="入库模式">
+              <span className="truncate">{getSelectOptionTitle(INGEST_MODE_OPTIONS, draft.ingestMode)}</span>
+            </SelectTrigger>
             <SelectContent className={SELECT_MENU_CLASS}>
               {INGEST_MODE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} textValue={option.title} className={SELECT_OPTION_CLASS}><SelectOptionBody {...option} /></SelectItem>
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  textValue={option.title}
+                  className={SELECT_OPTION_CLASS}
+                >
+                  <SelectOptionBody {...option} />
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </FieldBlock>
         <FieldBlock label="标签">
-          <Input list={tagListId} className={CONFIG_INPUT_CLASS} value={draft.tags} onChange={(event) => updateDraft('tags', event.target.value)} placeholder="选择或输入标签" />
-          <datalist id={tagListId}>{tagOptions.map((tag) => <option key={tag} value={tag} />)}</datalist>
+          <Input
+            list={tagListId}
+            className={CONFIG_INPUT_CLASS}
+            value={draft.tags}
+            onChange={(event) => updateDraft('tags', event.target.value)}
+            placeholder="选择或输入标签"
+          />
+          <datalist id={tagListId}>
+            {tagOptions.map((tag) => (
+              <option key={tag} value={tag} />
+            ))}
+          </datalist>
         </FieldBlock>
         <FieldBlock label="目标目录">
-          <Input list={collectionListId} className={CONFIG_INPUT_CLASS} value={draft.collection} onChange={(event) => updateDraft('collection', event.target.value)} placeholder="default" />
-          <datalist id={collectionListId}>{collectionOptions.map((collection) => <option key={collection} value={collection} />)}</datalist>
+          <Input
+            list={collectionListId}
+            className={CONFIG_INPUT_CLASS}
+            value={draft.collection}
+            onChange={(event) => updateDraft('collection', event.target.value)}
+            placeholder="default"
+          />
+          <datalist id={collectionListId}>
+            {collectionOptions.map((collection) => (
+              <option key={collection} value={collection} />
+            ))}
+          </datalist>
         </FieldBlock>
       </div>
     </details>

@@ -1,6 +1,49 @@
-
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
+
+from app.rag.retrieval.planner import (
+    retrieval_policy_mixed_intent_leading_noise_terms,
+    retrieval_policy_mixed_intent_subject_terms,
+    retrieval_policy_service_anchor_noise_terms,
+    retrieval_policy_service_anchor_priority_terms,
+    retrieval_policy_service_anchor_query_rewrite_terms,
+)
+from app.services.dify_integration.common import (
+    _MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS,
+    _metadata_terms,
+    _normalize_match_term,
+)
+from app.services.dify_integration.scoring import _record_plugin_ref, _response_hint_dict_list
+
+record_plugin_ref = _record_plugin_ref
+
+
+@lru_cache(maxsize=128)
+def retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
+    ref = plugin_ref.strip()
+    if not ref.startswith("plugin:"):
+        return {}
+    try:
+        from app.rag.pipeline_plugins.registry import resolve_registered_plugin_descriptor
+
+        descriptor = resolve_registered_plugin_descriptor(ref)
+    except Exception:
+        return {}
+    policy = descriptor.retrieval_policy
+    if isinstance(policy, dict) and policy.get("schema") == "mimirq.retrieval_policy.v1":
+        return dict(policy)
+    return {}
+
+
+def fast_response_always_labels_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return policy_string_terms_for_policy_refs(
+        policy_plugin_refs,
+        "fast_response_always_labels",
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        metadata_terms=_metadata_terms,
+        normalize_term=_normalize_match_term,
+    )
 
 
 def knowledge_mapping_plugin_refs(mapping: Any) -> tuple[str, ...]:
@@ -55,14 +98,12 @@ def response_hints_for_record(
     record: dict[str, Any],
     *,
     policy_plugin_refs: tuple[str, ...] = (),
-    record_plugin_ref: Callable[[dict[str, Any], tuple[str, ...]], str],
-    policy_resolver: Callable[[str], dict[str, Any]],
 ) -> dict[str, Any]:
-    plugin_ref = record_plugin_ref(record, policy_plugin_refs)
+    plugin_ref = _record_plugin_ref(record, fallback_plugin_refs=policy_plugin_refs)
     if not plugin_ref:
         return {}
-    policy = policy_resolver(plugin_ref)
-    raw = policy.get("response_hints") if isinstance(policy, dict) else None
+    policy = retrieval_policy_for_plugin_ref(plugin_ref)
+    raw = policy.get("response_hints")
     return dict(raw) if isinstance(raw, dict) else {}
 
 
@@ -70,9 +111,8 @@ def response_hints_for_metadata(
     metadata: dict[str, Any],
     *,
     policy_plugin_refs: tuple[str, ...] = (),
-    response_hints_for_record: Callable[[dict[str, Any], tuple[str, ...]], dict[str, Any]],
 ) -> dict[str, Any]:
-    return response_hints_for_record({"metadata": metadata}, policy_plugin_refs)
+    return response_hints_for_record({"metadata": metadata}, policy_plugin_refs=policy_plugin_refs)
 
 
 def policy_string_terms_for_policy_refs(
@@ -101,15 +141,11 @@ def policy_string_terms_for_policy_refs(
 
 def service_anchor_admin_aliases_for_policy_refs(
     policy_plugin_refs: tuple[str, ...],
-    *,
-    policy_resolver: Callable[[str], dict[str, Any]],
-    metadata_terms: Callable[[Any], tuple[str, ...] | list[str]],
-    normalize_term: Callable[[str], str],
 ) -> tuple[str, ...]:
     aliases: list[str] = []
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
-        policy = policy_resolver(plugin_ref)
+        policy = retrieval_policy_for_plugin_ref(plugin_ref)
         for raw_field in policy.get("anchor_fields") or ():
             field = dict(raw_field) if isinstance(raw_field, dict) else {}
             if str(field.get("role") or "").strip() != "administrative_area":
@@ -118,9 +154,9 @@ def service_anchor_admin_aliases_for_policy_refs(
             if not isinstance(raw_aliases, dict):
                 continue
             for canonical, values in raw_aliases.items():
-                for raw_value in (canonical, *metadata_terms(values)):
+                for raw_value in (canonical, *_metadata_terms(values)):
                     value = str(raw_value or "").strip()
-                    normalized = normalize_term(value)
+                    normalized = _normalize_match_term(value)
                     if not value or not normalized or normalized in seen:
                         continue
                     seen.add(normalized)
@@ -130,22 +166,19 @@ def service_anchor_admin_aliases_for_policy_refs(
 
 def fast_response_field_rules_for_policy_refs(
     policy_plugin_refs: tuple[str, ...],
-    *,
-    policy_resolver: Callable[[str], dict[str, Any]],
-    metadata_terms: Callable[[Any], tuple[str, ...] | list[str]],
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
     rules: list[tuple[str, tuple[str, ...]]] = []
     seen_labels: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
-        policy = policy_resolver(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        policy = retrieval_policy_for_plugin_ref(plugin_ref)
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_rule in policy.get("fast_response_field_rules") or ():
             rule = dict(raw_rule) if isinstance(raw_rule, dict) else {}
             label = str(rule.get("label") or "").strip()
             if not label or label in seen_labels:
                 continue
-            markers = tuple(marker for marker in metadata_terms(rule.get("markers")) if str(marker or "").strip())
+            markers = tuple(marker for marker in _metadata_terms(rule.get("markers")) if str(marker or "").strip())
             if not markers:
                 continue
             seen_labels.add(label)
@@ -155,20 +188,17 @@ def fast_response_field_rules_for_policy_refs(
 
 def requested_label_prefixes_for_policy_refs(
     policy_plugin_refs: tuple[str, ...],
-    *,
-    policy_resolver: Callable[[str], dict[str, Any]],
-    response_hint_dict_list: Callable[[dict[str, Any], str], list[dict[str, Any]]],
 ) -> tuple[str, ...]:
     prefixes: list[str] = []
     seen: set[str] = set()
     for plugin_ref in policy_plugin_refs or ():
-        policy = policy_resolver(plugin_ref)
-        if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
+        policy = retrieval_policy_for_plugin_ref(plugin_ref)
+        if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         response_hints = policy.get("response_hints")
         if not isinstance(response_hints, dict):
             continue
-        for field_spec in response_hint_dict_list(response_hints, "answer_highlight_metadata_fields"):
+        for field_spec in _response_hint_dict_list(response_hints, "answer_highlight_metadata_fields"):
             prefix = str(field_spec.get("requested_labels_prefix") or "").strip()
             if not prefix or prefix in seen:
                 continue
@@ -198,28 +228,100 @@ def resolved_policy_terms_for_plugin_refs(
     return tuple(terms)
 
 
+def service_anchor_entity_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return policy_string_terms_for_policy_refs(
+        policy_plugin_refs,
+        "service_anchor_entity_terms",
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        metadata_terms=_metadata_terms,
+        normalize_term=_normalize_match_term,
+    )
+
+
+def service_anchor_leading_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return policy_string_terms_for_policy_refs(
+        policy_plugin_refs,
+        "service_anchor_leading_noise_terms",
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        metadata_terms=_metadata_terms,
+        normalize_term=_normalize_match_term,
+    )
+
+
+def service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return policy_string_terms_for_policy_refs(
+        policy_plugin_refs,
+        "service_anchor_cutoff_terms",
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        metadata_terms=_metadata_terms,
+        normalize_term=_normalize_match_term,
+    )
+
+
+def question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return policy_string_terms_for_policy_refs(
+        policy_plugin_refs,
+        "question_anchor_generic_subject_terms",
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        metadata_terms=_metadata_terms,
+        normalize_term=_normalize_match_term,
+    )
+
+
+def service_anchor_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return resolved_policy_terms_for_plugin_refs(
+        policy_plugin_refs,
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        terms_resolver=retrieval_policy_service_anchor_noise_terms,
+    )
+
+
+def service_anchor_priority_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return resolved_policy_terms_for_plugin_refs(
+        policy_plugin_refs,
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        terms_resolver=retrieval_policy_service_anchor_priority_terms,
+    )
+
+
+def service_anchor_query_rewrite_terms_for_policy_refs(
+    query: str,
+    policy_plugin_refs: tuple[str, ...],
+) -> tuple[str, ...]:
+    return resolved_policy_terms_for_plugin_refs(
+        policy_plugin_refs,
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        terms_resolver=lambda policy: retrieval_policy_service_anchor_query_rewrite_terms(policy, query=query),
+        normalize_term=_normalize_match_term,
+    )
+
+
+def mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
+    return resolved_policy_terms_for_plugin_refs(
+        policy_plugin_refs,
+        policy_resolver=retrieval_policy_for_plugin_ref,
+        terms_resolver=retrieval_policy_mixed_intent_subject_terms,
+        normalize_term=_normalize_match_term,
+    )
+
+
 def mixed_intent_leading_noise_terms_for_policy_refs(
     policy_plugin_refs: tuple[str, ...],
-    *,
-    default_terms: tuple[str, ...],
-    policy_resolver: Callable[[str], dict[str, Any]],
-    terms_resolver: Callable[[dict[str, Any]], tuple[str, ...] | list[str]],
-    normalize_term: Callable[[str], str],
 ) -> tuple[str, ...]:
     terms: list[str] = []
     seen: set[str] = set()
-    for raw_term in default_terms:
+    for raw_term in _MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS:
         term = str(raw_term or "").strip()
-        normalized = normalize_term(term)
+        normalized = _normalize_match_term(term)
         if not term or not normalized or normalized in seen:
             continue
         seen.add(normalized)
         terms.append(term)
     for plugin_ref in policy_plugin_refs or ():
-        policy = policy_resolver(plugin_ref)
-        for raw_term in terms_resolver(policy):
+        policy = retrieval_policy_for_plugin_ref(plugin_ref)
+        for raw_term in retrieval_policy_mixed_intent_leading_noise_terms(policy):
             term = str(raw_term or "").strip()
-            normalized = normalize_term(term)
+            normalized = _normalize_match_term(term)
             if not term or not normalized or normalized in seen:
                 continue
             seen.add(normalized)

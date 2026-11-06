@@ -1,7 +1,7 @@
 'use client'
-import { useMemo } from 'react';
-import { Button } from '@/components/ui/button';
-import { ChevronDown, Minus, Plus } from '@/components/icons';
+import { useMemo } from 'react'
+import { Button } from '@/components/ui/button'
+import { ChevronDown, Minus, Plus } from '@/components/icons'
 
 export type SelectOption = {
   value: string
@@ -55,9 +55,7 @@ export function CollectionSelectorBlock({
   return (
     <div className="space-y-1.5">
       {showLabel ? (
-        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">
-          {label}
-        </div>
+        <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-foreground/72">{label}</div>
       ) : null}
       <div className="space-y-1.5">
         {keyedSelections.map(({ value, key }, idx) => (
@@ -75,11 +73,7 @@ export function CollectionSelectorBlock({
               >
                 <option value="">请选择...</option>
                 {options.map((opt) => (
-                  <option
-                    key={opt.value}
-                    value={opt.value}
-                    disabled={isEmptyCollectionOption(opt)}
-                  >
+                  <option key={opt.value} value={opt.value} disabled={isEmptyCollectionOption(opt)}>
                     {collectionOptionLabel(opt)}
                   </option>
                 ))}
@@ -137,9 +131,7 @@ export function NumberField({
   return (
     <div className="space-y-1.5 block">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[13px] font-medium text-foreground">
-          {label}
-        </div>
+        <div className="text-[13px] font-medium text-foreground">{label}</div>
         <div className="text-xs text-muted-foreground">
           {min}-{max}
         </div>

@@ -10,11 +10,7 @@ type PageTitleIconProps = {
   className?: string
 }
 
-export function PageTitleIcon({
-  name,
-  compact = true,
-  className,
-}: Readonly<PageTitleIconProps>) {
+export function PageTitleIcon({ name, compact = true, className }: Readonly<PageTitleIconProps>) {
   const Icon = PAGE_TITLE_ICONS[name]
   return (
     <Icon

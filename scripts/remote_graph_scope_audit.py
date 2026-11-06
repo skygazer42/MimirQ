@@ -24,27 +24,14 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
 ensure_repo_root_on_sys_path(__file__)
 
 
-def _load_remote_real_pdf_chain() -> tuple[Any, ...]:
-    from scripts.remote_real_pdf_chain import (
-        DEFAULT_TENANT_ID,
-        LiveApi,
-        ok_status,
-        perform_cleanup,
-        record_step,
-        snippet,
-    )
-
-    return DEFAULT_TENANT_ID, LiveApi, ok_status, perform_cleanup, record_step, snippet
-
-
-(
+from scripts.remote_real_pdf_chain import (  # noqa: E402
     DEFAULT_TENANT_ID,
     LiveApi,
     ok_status,
     perform_cleanup,
     record_step,
     snippet,
-) = _load_remote_real_pdf_chain()
+)
 
 
 def build_repeated_query(key: str, values: list[str]) -> str:

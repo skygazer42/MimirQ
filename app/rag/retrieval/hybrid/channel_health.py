@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,13 +23,10 @@ class RetrievalChannelHealth:
 
     def publish(self, metrics: dict[str, Any]) -> None:
         reasons = [
-            {"channel": channel, "error_type": error_type}
-            for channel, error_type in sorted(self._failures.items())
+            {"channel": channel, "error_type": error_type} for channel, error_type in sorted(self._failures.items())
         ]
         metrics["retrieval_degraded"] = bool(reasons)
         metrics["degraded_reasons"] = reasons
         metrics["attempted_channels"] = sorted(self._attempted)
         metrics["successful_channels"] = sorted(self._successful)
-        metrics["all_retrieval_channels_failed"] = bool(
-            self._attempted and not self._successful
-        )
+        metrics["all_retrieval_channels_failed"] = bool(self._attempted and not self._successful)

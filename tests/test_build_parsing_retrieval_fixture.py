@@ -1,4 +1,3 @@
-
 from scripts.build_parsing_retrieval_fixture import build_retrieval_fixture
 
 

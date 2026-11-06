@@ -131,7 +131,7 @@ def compute_walkhash_embeddings(
     Returns:
         np.ndarray shape (N, dim), L2-normalized rows (rows may be all zeros if isolated).
     """
-    node_count = int(len(neighbors))
+    node_count = len(neighbors)
     dim, num_walks, walk_length, window_size, seed = _walkhash_config(
         node_count=node_count,
         params=params,

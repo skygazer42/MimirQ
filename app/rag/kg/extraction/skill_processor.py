@@ -8,10 +8,9 @@ This complements event/entity extraction by capturing process knowledge:
 - tags
 """
 
-
-import math
 from typing import Any
 
+from app.rag.kg.extraction.evidence import clamp_confidence
 from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
@@ -61,16 +60,6 @@ def _coerce_str_list(value: object, *, max_items: int = 50) -> list[str]:
     if not text:
         return []
     return [text][:lim]
-
-
-def _clamp01(value: object, *, default: float) -> float:
-    try:
-        f = float(value)  # type: ignore[arg-type]
-    except Exception:
-        return float(default)
-    if math.isnan(f):
-        return float(default)
-    return max(0.0, min(1.0, float(f)))
 
 
 class SkillProcessor:
@@ -169,7 +158,7 @@ class SkillProcessor:
                     "outputs": outputs,
                     "tools": tools,
                     "tags": tags,
-                    "confidence": _clamp01(raw.get("confidence"), default=0.6),
+                    "confidence": clamp_confidence(raw.get("confidence"), default=0.6),
                 }
             )
 

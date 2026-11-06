@@ -4,7 +4,6 @@ Dataset health dashboard schemas.
 This is a thin aggregation layer over existing dataset profile/precheck/ingestion signals.
 """
 
-
 from datetime import datetime
 from uuid import UUID
 
@@ -30,4 +29,3 @@ class DatasetHealthResponse(BaseModel):
     generated_at: datetime
     profile: DatasetProfileSummary
     ingestion: DatasetHealthIngestionSummary
-

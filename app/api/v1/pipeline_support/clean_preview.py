@@ -26,8 +26,9 @@ from app.rag.core.logging import get_logger
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.rag.preprocessing.boilerplate import remove_markdown_boilerplate
-from app.rag.preprocessing.cleaning import RegexRule
+from app.rag.preprocessing.cleaning import CleaningResult, RegexRule
 from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
+from app.rag.preprocessing.diagnostics import GovernanceIssue as GovernanceAnalysisIssue
 from app.rag.preprocessing.diagnostics import analyze_governance
 from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter, extract_markdown_title
 from app.rag.preprocessing.html_xpath import extract_text_from_html
@@ -90,7 +91,7 @@ def _extract_governance_input_text(body: CleanPreviewRequest | GovernanceAnalyze
     return extracted.text or ""
 
 
-def _governance_issue_models(raw_issues: list[Any]) -> list[GovernanceIssue]:
+def _governance_issue_models(raw_issues: list[GovernanceAnalysisIssue]) -> list[GovernanceIssue]:
     out: list[GovernanceIssue] = []
     for it in raw_issues:
         out.append(
@@ -98,9 +99,9 @@ def _governance_issue_models(raw_issues: list[Any]) -> list[GovernanceIssue]:
                 code=str(it.code),
                 severity=it.severity,  # type: ignore[arg-type]
                 message=str(it.message),
-                count=int(getattr(it, "count", 0) or 0),
-                samples=list(getattr(it, "samples", None) or []),
-                suggested_pipeline_patch=dict(getattr(it, "suggested_pipeline_patch", None) or {}),
+                count=int(it.count or 0),
+                samples=list(it.samples or []),
+                suggested_pipeline_patch=dict(it.suggested_pipeline_patch or {}),
             )
         )
     return out
@@ -156,7 +157,7 @@ def _extract_clean_preview_frontmatter(
     if fm is None:
         return input_text, None, None, None
 
-    data = getattr(fm, "data", None)
+    data = fm.data
     frontmatter = dict(data) if isinstance(data, dict) and data else None
     title = None
     tags = None
@@ -168,7 +169,7 @@ def _extract_clean_preview_frontmatter(
         tags = _normalize_frontmatter_tags(raw_tags)
 
     if body.strip_frontmatter:
-        input_text = getattr(fm, "stripped_text", input_text) or ""
+        input_text = fm.stripped_text or ""
     return input_text, frontmatter, title, tags
 
 
@@ -287,7 +288,7 @@ def _try_drop_duplicate_paragraphs(text: str, body: CleanPreviewRequest) -> tupl
             min_paragraph_chars=int(body.drop_duplicate_paragraphs_min_chars or 0),
             max_paragraph_chars=int(body.drop_duplicate_paragraphs_max_chars or 0),
         )
-        return para.text, int(getattr(para, "paragraphs_dropped", 0) or 0)
+        return para.text, int(para.paragraphs_dropped or 0)
     except Exception as exc:
         logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
         return text, 0
@@ -298,7 +299,7 @@ def _try_trim_references(text: str, body: CleanPreviewRequest) -> tuple[str, int
         return text, 0
     try:
         ref = trim_references_section(text)
-        return ref.text, int(getattr(ref, "removed_lines", 0) or 0)
+        return ref.text, int(ref.removed_lines or 0)
     except Exception as exc:
         logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
         return text, 0
@@ -309,7 +310,7 @@ def _try_normalize_urls(text: str, body: CleanPreviewRequest) -> tuple[str, int]
         return text, 0
     try:
         url = normalize_urls(text, strip_tracking=bool(body.normalize_urls_strip_tracking))
-        return url.text, int(getattr(url, "urls_changed", 0) or 0)
+        return url.text, int(url.urls_changed or 0)
     except Exception as exc:
         logger.debug(_PIPELINE_FALLBACK_LOG_MESSAGE, exc)
         return text, 0
@@ -352,8 +353,8 @@ def _detect_preview_language(text: str, body: CleanPreviewRequest) -> tuple[str 
         return None, None
     try:
         lang = detect_language(text, min_chars=int(body.language_min_chars or 0))
-        language = str(getattr(lang, "language", "") or "").strip() or None
-        confidence = float(getattr(lang, "confidence", 0.0) or 0.0)
+        language = str(lang.language or "").strip() or None
+        confidence = float(lang.confidence or 0.0)
         return language, confidence
     except Exception:
         return None, None
@@ -379,7 +380,7 @@ def _extract_preview_keywords(text: str, body: CleanPreviewRequest) -> list[str]
 class _CleanPreviewResponseContext:
     baseline_text: str
     body: CleanPreviewRequest
-    clean_result: Any
+    clean_result: CleaningResult
     rule_stats: list[dict[str, object]]
     pii_hits: dict[str, int] | None
     secrets_hits: dict[str, int] | None
@@ -431,9 +432,9 @@ def _build_clean_preview_response(
         language=context.language,
         language_confidence=context.language_confidence,
         keywords=context.keywords,
-        urls_changed=int(context.urls_changed),
-        paragraphs_dropped=int(context.paragraphs_dropped),
-        references_removed_lines=int(context.references_removed_lines),
+        urls_changed=context.urls_changed,
+        paragraphs_dropped=context.paragraphs_dropped,
+        references_removed_lines=context.references_removed_lines,
         input_chars=len(context.baseline_text),
         output_chars=len(markdown or ""),
         input_lines=len((context.baseline_text or "").splitlines()),
@@ -442,7 +443,7 @@ def _build_clean_preview_response(
         removed_lines=removed,
         changed_lines=changed_lines,
         diff_unified=diff_unified,
-        diff_truncated=bool(diff_truncated),
+        diff_truncated=diff_truncated,
         issues=issues_out,
         suggested_pipeline_patch=suggested_patch,
     )
@@ -549,9 +550,9 @@ def _resolve_llm_clean_prompt_selection(
 
     selection.system_prompt = str(chosen.content or "").strip() or selection.system_prompt
     selection.prompt_template_id = str(chosen.id)
-    selection.template_key = getattr(chosen, "template_key", None)
-    selection.ab_experiment_key = getattr(chosen, "ab_experiment_key", None)
-    selection.ab_variant = getattr(chosen, "ab_variant", None)
+    selection.template_key = chosen.template_key
+    selection.ab_experiment_key = chosen.ab_experiment_key
+    selection.ab_variant = chosen.ab_variant
     chosen.usage_count += 1
     db.commit()
     return selection
@@ -578,7 +579,7 @@ async def _request_llm_clean_preview(
             [
                 LLMMessage(role=LLMRole.SYSTEM, content=system_prompt),
                 LLMMessage(
-                    role=LLMRole.HUMAN,
+                    role=LLMRole.USER,
                     content=f"Input Markdown:\n```markdown\n{markdown}\n```",
                 ),
             ],

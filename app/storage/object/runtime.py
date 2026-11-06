@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 from uuid import UUID
 
 from app.core.config import parse_object_storage_region_profiles, settings
@@ -6,7 +7,7 @@ from app.storage.object.factory import (
     get_object_store,
     normalize_object_store_provider,
 )
-from app.storage.object.minio import minio_service
+from app.storage.object.minio import MinIOService, minio_service
 
 _OBJECT_STORAGE_SCHEMES = {"minio", "s3", "s3_compatible", "s3compat", "oss", "cos"}
 SOURCE_STORAGE_BACKEND_KEY = "source_storage_backend"
@@ -49,11 +50,11 @@ def parse_object_storage_uri(uri: str) -> ObjectStorageRef:
     return ObjectStorageRef(provider=provider, bucket=bucket, object_name=object_name)
 
 
-def _build_generic_object_store(provider: str, *, region: str | None = None):
+def _build_generic_object_store(provider: str, *, region: str | None = None) -> MinIOService:
     return get_object_store(provider=provider, region=region, prefer_legacy_minio=False)
 
 
-def get_document_object_store(*, region: str | None = None):
+def get_document_object_store(*, region: str | None = None) -> MinIOService | None:
     provider = normalize_object_store_provider(getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or "minio")
     generic_store = _build_generic_object_store(provider, region=region)
     generic_backend = object_store_backend_config(generic_store)
@@ -104,7 +105,7 @@ def _resolve_stored_object_region(
 
 def get_object_store_for_uri(
     uri: str, *, region: str | None = None, document_metadata: dict[str, object] | None = None
-):
+) -> MinIOService:
     ref = parse_object_storage_uri(uri)
     metadata = document_metadata if isinstance(document_metadata, dict) else {}
     resolved_region = _resolve_stored_object_region(ref, region=region, document_metadata=metadata)
@@ -118,7 +119,7 @@ def get_object_store_for_uri(
     return get_object_store(provider=ref.provider, region=resolved_region)
 
 
-def object_store_backend_config(store) -> dict[str, object]:
+def object_store_backend_config(store: object) -> dict[str, Any]:
     describe = getattr(store, "describe_backend", None)
     if callable(describe):
         try:
@@ -135,7 +136,7 @@ def object_store_backend_config(store) -> dict[str, object]:
     }
 
 
-def document_object_store_metadata(store) -> dict[str, str]:
+def document_object_store_metadata(store: object) -> dict[str, str]:
     backend = SOURCE_STORAGE_BACKEND_LEGACY_MINIO if store is minio_service else SOURCE_STORAGE_BACKEND_OBJECT_STORAGE
     backend_config = object_store_backend_config(store)
     provider = str(backend_config.get("provider") or "minio").strip().lower() or "minio"
@@ -158,7 +159,7 @@ def resolve_document_object_reference(
     file_type: str | None,
     document_metadata: dict[str, object] | None = None,
     region: str | None = None,
-):
+) -> tuple[MinIOService, ObjectStorageRef]:
     ref = parse_object_storage_uri(raw_path)
     store = get_object_store_for_uri(raw_path, region=region, document_metadata=document_metadata)
     backend = object_store_backend_config(store)

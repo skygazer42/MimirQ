@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,12 +34,19 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 _DEFAULT_RAG_METRICS_LOG_PATH = "./logs/rag_metrics.jsonl"
 
 
+class _ChunkLineageDependencies(TypedDict):
+    chunk: DocumentChunk
+    document: DBDocument
+    permissions: list[DocumentPermission]
+    retrieval_usage: dict[str, Any]
+
+
 def _load_chunk_lineage_dependencies(
     db: Session,
     *,
     tenant_id: UUID,
     chunk_id: UUID,
-) -> dict[str, Any] | None:
+) -> _ChunkLineageDependencies | None:
     row = (
         db.query(DocumentChunk, DBDocument)
         .join(DBDocument, DBDocument.id == DocumentChunk.document_id)
@@ -73,10 +80,8 @@ def _load_chunk_lineage_dependencies(
         "retrieval_modes": {},
         "hits": [],
     }
-    if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
-        path = Path(
-            str(getattr(settings, "METRICS_LOG_PATH", _DEFAULT_RAG_METRICS_LOG_PATH) or _DEFAULT_RAG_METRICS_LOG_PATH)
-        )
+    if bool(settings.ENABLE_METRICS_LOG):
+        path = Path(str(settings.METRICS_LOG_PATH or _DEFAULT_RAG_METRICS_LOG_PATH))
         if path.exists():
             from app.services.lineage_service import _read_jsonl_tail  # noqa: WPS433
 

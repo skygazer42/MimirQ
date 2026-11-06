@@ -1,8 +1,25 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { ArrowRightLeft, ChevronDown, ChevronRight, Folder, FolderOpen, MoreHorizontal, Pencil, Plus, Trash2, AlertCircle, Paperclip, FolderUp, RotateCcw, Loader2, Clock3, Play } from '@/components/icons'
+import type { KeyboardEvent as ReactKeyboardEvent, DragEvent as ReactDragEvent, ReactNode } from 'react'
+import {
+  ArrowRightLeft,
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderOpen,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2,
+  AlertCircle,
+  Paperclip,
+  FolderUp,
+  RotateCcw,
+  Loader2,
+  Clock3,
+  Play,
+} from '@/components/icons'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { toast } from 'sonner'
 import { collectFolderDescendantIds } from '@/lib/folder-tree-index'
@@ -10,21 +27,10 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { FolderNode, ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
+import { type FolderNode, ROOT_FOLDER_ID, useParsedFiles } from '@/store/use-parsed-files-store'
 
 type FolderDialogState =
   | { open: false }
@@ -67,25 +73,23 @@ export function getFileIcon(filename: string, className?: string) {
   )
 }
 
-function getFolderIconElement(depth: number, isOpen: boolean) {
-  const className = "w-4 h-4 flex-shrink-0"
+function getFolderIconElement(isOpen: boolean) {
+  const className = 'w-4 h-4 flex-shrink-0'
 
-  return isOpen
-    ? <FolderOpen className={cn(className, "text-muted-foreground/90")} />
-    : <Folder className={cn(className, "text-muted-foreground/80")} />
+  return isOpen ? (
+    <FolderOpen className={cn(className, 'text-muted-foreground/90')} />
+  ) : (
+    <Folder className={cn(className, 'text-muted-foreground/80')} />
+  )
 }
 
-function getGovernanceStatusLabel(
-  governanceStatus?: DocumentTreeFileItem['governanceStatus']
-): string {
+function getGovernanceStatusLabel(governanceStatus?: DocumentTreeFileItem['governanceStatus']): string {
   if (governanceStatus === 'ready') return '待提交'
   if (governanceStatus === 'submitted') return '已提交'
   return ''
 }
 
-function getGovernanceStatusBadgeClass(
-  governanceStatus?: DocumentTreeFileItem['governanceStatus']
-): string {
+function getGovernanceStatusBadgeClass(governanceStatus?: DocumentTreeFileItem['governanceStatus']): string {
   if (governanceStatus === 'ready') {
     return 'border-warning/25 bg-warning/[0.10] text-warning'
   }
@@ -118,6 +122,21 @@ function getParsingProgressTitle(progress: number | null): string {
   return `处理中 ${Math.round(progress)}%`
 }
 
+type DocumentFolderTreeProps = {
+  className?: string
+  onRequestUpload?: (folderId: string) => void
+  onRequestUploadFolder?: (folderId: string) => void
+  fileItems?: DocumentTreeFileItem[]
+  showFiles?: FolderFileVisibility
+  onSelectFile?: (fileId: string) => void
+  onDeleteFolder?: (folderIds: string[]) => void
+  onFileDrop?: (fileId: string, folderId: string) => void
+  onRetryFile?: (fileId: string) => void
+  onRemoveFile?: (fileId: string) => void
+  onFileDragStart?: (event: ReactDragEvent<HTMLElement>, fileId: string) => void
+  onToggleFileSelected?: (fileId: string) => void
+}
+
 export function DocumentFolderTree({
   className,
   onRequestUpload,
@@ -131,20 +150,7 @@ export function DocumentFolderTree({
   onRemoveFile,
   onFileDragStart,
   onToggleFileSelected,
-}: Readonly<{
-  className?: string
-  onRequestUpload?: (folderId: string) => void
-  onRequestUploadFolder?: (folderId: string) => void
-  fileItems?: DocumentTreeFileItem[]
-  showFiles?: FolderFileVisibility
-  onSelectFile?: (fileId: string) => void
-  onDeleteFolder?: (folderIds: string[]) => void
-  onFileDrop?: (fileId: string, folderId: string) => void
-  onRetryFile?: (fileId: string) => void
-  onRemoveFile?: (fileId: string) => void
-  onFileDragStart?: (event: React.DragEvent<HTMLElement>, fileId: string) => void
-  onToggleFileSelected?: (fileId: string) => void
-}>) {
+}: Readonly<DocumentFolderTreeProps>) {
   const libraryFiles = useParsedFiles((state) => state.files)
   const folders = useParsedFiles((state) => state.folders)
   const activeFolderId = useParsedFiles((state) => state.activeFolderId)
@@ -175,7 +181,7 @@ export function DocumentFolderTree({
       onDeleteFolder?.(idsToDelete)
       toast.success('文件夹已删除')
     },
-    [deleteFolder, folders, onDeleteFolder]
+    [deleteFolder, folders, onDeleteFolder],
   )
 
   const displayFiles = useMemo(() => {
@@ -267,7 +273,7 @@ export function DocumentFolderTree({
       }
       return false
     },
-    [moveFolder, folders]
+    [moveFolder, folders],
   )
 
   const childrenByParentId = useMemo(() => {
@@ -345,23 +351,9 @@ export function DocumentFolderTree({
   const handleMoveSubmit = useCallback(() => {
     if (!(dialog.open && dialog.mode === 'move')) return
     const targetParentId = moveParentId || ROOT_FOLDER_ID
-    const ok = moveFolder(dialog.folderId, targetParentId)
-    if (ok) {
-      toast.success('文件夹已移动')
-      closeDialog()
-      return
-    }
-    // Provide accurate feedback instead of always reporting success.
-    const currentParentId = folders.find((f) => f.id === dialog.folderId)?.parentId || ROOT_FOLDER_ID
-    if ((currentParentId || ROOT_FOLDER_ID) === (targetParentId || ROOT_FOLDER_ID)) {
-      toast.info('该文件夹已在目标目录')
-    } else {
-      toast.error('移动失败：目标目录不合法（可能是自身/子目录/不存在）')
-    }
+    moveFolderWithToast(dialog.folderId, targetParentId)
     closeDialog()
-  }, [dialog, moveFolder, moveParentId, closeDialog, folders])
-
-
+  }, [dialog, moveParentId, moveFolderWithToast, closeDialog])
 
   const moveTargetOptions = useMemo(() => {
     if (!(dialog.open && dialog.mode === 'move')) return []
@@ -391,22 +383,25 @@ export function DocumentFolderTree({
     return options
   }, [dialog, folders, childrenByParentId, folderPathById])
 
-  const requestExpand = useCallback((targetId: string) => {
-    if (showFiles !== 'expanded') return
-    if (expandedFileFolderIds.has(targetId)) return
-    const existing = dragExpandTimersRef.current.get(targetId)
-    if (existing) return
-    const timer = setTimeout(() => {
-      dragExpandTimersRef.current.delete(targetId)
-      setExpandedFileFolderIds((prev) => {
-        if (prev.has(targetId)) return prev
-        const next = new Set(prev)
-        next.add(targetId)
-        return next
-      })
-    }, 350)
-    dragExpandTimersRef.current.set(targetId, timer)
-  }, [expandedFileFolderIds, showFiles])
+  const requestExpand = useCallback(
+    (targetId: string) => {
+      if (showFiles !== 'expanded') return
+      if (expandedFileFolderIds.has(targetId)) return
+      const existing = dragExpandTimersRef.current.get(targetId)
+      if (existing) return
+      const timer = setTimeout(() => {
+        dragExpandTimersRef.current.delete(targetId)
+        setExpandedFileFolderIds((prev) => {
+          if (prev.has(targetId)) return prev
+          const next = new Set(prev)
+          next.add(targetId)
+          return next
+        })
+      }, 350)
+      dragExpandTimersRef.current.set(targetId, timer)
+    },
+    [expandedFileFolderIds, showFiles],
+  )
 
   const clearExpandTimer = useCallback((targetId: string) => {
     const timer = dragExpandTimersRef.current.get(targetId)
@@ -416,15 +411,18 @@ export function DocumentFolderTree({
     }
   }, [])
 
-  const requestActivate = useCallback((targetId: string) => {
-    const existing = dragActivateTimersRef.current.get(targetId)
-    if (existing) return
-    const timer = setTimeout(() => {
-      dragActivateTimersRef.current.delete(targetId)
-      setActiveFolderId(targetId)
-    }, 220)
-    dragActivateTimersRef.current.set(targetId, timer)
-  }, [setActiveFolderId])
+  const requestActivate = useCallback(
+    (targetId: string) => {
+      const existing = dragActivateTimersRef.current.get(targetId)
+      if (existing) return
+      const timer = setTimeout(() => {
+        dragActivateTimersRef.current.delete(targetId)
+        setActiveFolderId(targetId)
+      }, 220)
+      dragActivateTimersRef.current.set(targetId, timer)
+    },
+    [setActiveFolderId],
+  )
 
   const clearActivateTimer = useCallback((targetId: string) => {
     const timer = dragActivateTimersRef.current.get(targetId)
@@ -434,7 +432,7 @@ export function DocumentFolderTree({
     }
   }, [])
 
-  const autoScrollOnDrag = useCallback((e: React.DragEvent) => {
+  const autoScrollOnDrag = useCallback((e: ReactDragEvent) => {
     const container = scrollContainerRef.current
     if (!container) return
     const rect = container.getBoundingClientRect()
@@ -488,7 +486,7 @@ export function DocumentFolderTree({
       const canRemoveFile = Boolean(onRemoveFile)
       const hasInlineActions = canRunFile || canRemoveFile
       const progressTitle = getParsingProgressTitle(progress)
-      let selectableControl: React.ReactNode = null
+      let selectableControl: ReactNode = null
       if (file.isSelectable) {
         selectableControl = (
           <button
@@ -496,7 +494,7 @@ export function DocumentFolderTree({
             aria-label={file.isSelected ? '取消选择待提交文档' : '选择待提交文档'}
             className={cn(
               'flex size-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold transition-colors focus-ring',
-              getSelectableFileClass(Boolean(file.isSelected))
+              getSelectableFileClass(Boolean(file.isSelected)),
             )}
             onClick={(event) => {
               event.stopPropagation()
@@ -508,9 +506,9 @@ export function DocumentFolderTree({
         )
       }
 
-      let inlineActions: React.ReactNode = null
+      let inlineActions: ReactNode = null
       if (hasInlineActions) {
-        let runAction: React.ReactNode = null
+        let runAction: ReactNode = null
         if (canRunFile && onRetryFile) {
           const actionLabel = isPending ? '解析' : '重试'
           const ActionIcon = isPending ? Play : RotateCcw
@@ -530,7 +528,7 @@ export function DocumentFolderTree({
           )
         }
 
-        let removeAction: React.ReactNode = null
+        let removeAction: ReactNode = null
         if (canRemoveFile && onRemoveFile) {
           removeAction = (
             <ConfirmDialog
@@ -564,7 +562,7 @@ export function DocumentFolderTree({
         )
       }
 
-      let parsingProgressBar: React.ReactNode = null
+      let parsingProgressBar: ReactNode = null
       if (isParsing) {
         parsingProgressBar = (
           <div className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 overflow-hidden rounded-full bg-primary/12">
@@ -593,7 +591,7 @@ export function DocumentFolderTree({
           key={file.id}
           className={cn(
             'group/file relative overflow-hidden rounded-xl before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
-            getFileRowShellClass(Boolean(file.isActive), isError)
+            getFileRowShellClass(Boolean(file.isActive), isError),
           )}
         >
           {renderIndentGuides(level)}
@@ -605,7 +603,7 @@ export function DocumentFolderTree({
             className={cn(
               'focus-ring flex h-9 w-full cursor-pointer items-center gap-2 pr-2 text-left',
               hasInlineActions && 'pr-10',
-              file.isSelectable && 'pl-1'
+              file.isSelectable && 'pl-1',
             )}
             style={{ paddingLeft: `${TREE_ROW_BASE_PADDING + level * TREE_INDENT_STEP}px` }}
             title={getDocumentTreeFileTitle(file)}
@@ -626,7 +624,7 @@ export function DocumentFolderTree({
                   <span
                     className={cn(
                       'shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-medium',
-                      getGovernanceStatusBadgeClass(file.governanceStatus)
+                      getGovernanceStatusBadgeClass(file.governanceStatus),
                     )}
                   >
                     {governanceStatusLabel}
@@ -653,308 +651,312 @@ export function DocumentFolderTree({
         </div>
       )
     },
-    [onFileDragStart, onRemoveFile, onRetryFile, onSelectFile, onToggleFileSelected, setActiveFolderId]
+    [onFileDragStart, onRemoveFile, onRetryFile, onSelectFile, onToggleFileSelected, setActiveFolderId],
   )
 
-  const expandVisibleFolder = useCallback((folderId: string) => {
-    if (showFiles !== 'expanded') return
-    setExpandedFileFolderIds((prev) => {
-      if (prev.has(folderId)) return prev
-      const next = new Set(prev)
-      next.add(folderId)
-      return next
-    })
-  }, [showFiles])
+  const expandVisibleFolder = useCallback(
+    (folderId: string) => {
+      if (showFiles !== 'expanded') return
+      setExpandedFileFolderIds((prev) => {
+        if (prev.has(folderId)) return prev
+        const next = new Set(prev)
+        next.add(folderId)
+        return next
+      })
+    },
+    [showFiles],
+  )
 
-  const collapseVisibleFolder = useCallback((folderId: string) => {
-    if (showFiles !== 'expanded') return
-    setExpandedFileFolderIds((prev) => {
-      if (!prev.has(folderId)) return prev
-      const next = new Set(prev)
-      next.delete(folderId)
-      return next
-    })
-  }, [showFiles])
+  const collapseVisibleFolder = useCallback(
+    (folderId: string) => {
+      if (showFiles !== 'expanded') return
+      setExpandedFileFolderIds((prev) => {
+        if (!prev.has(folderId)) return prev
+        const next = new Set(prev)
+        next.delete(folderId)
+        return next
+      })
+    },
+    [showFiles],
+  )
 
-  const selectFolder = useCallback((folderId: string) => {
-    setActiveFolderId(folderId)
-    expandVisibleFolder(folderId)
-  }, [expandVisibleFolder, setActiveFolderId])
-
-  const handleFolderRowKeyDown = useCallback((
-    event: ReactKeyboardEvent<HTMLDivElement>,
-    folderId: string,
-    hasContent: boolean
-  ) => {
-    if (event.target !== event.currentTarget) return
-
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      selectFolder(folderId)
-      return
-    }
-
-    if (!hasContent || showFiles !== 'expanded') return
-
-    if (event.key === 'ArrowRight') {
-      event.preventDefault()
+  const selectFolder = useCallback(
+    (folderId: string) => {
+      setActiveFolderId(folderId)
       expandVisibleFolder(folderId)
-      return
-    }
+    },
+    [expandVisibleFolder, setActiveFolderId],
+  )
 
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      collapseVisibleFolder(folderId)
-    }
-  }, [collapseVisibleFolder, expandVisibleFolder, selectFolder, showFiles])
+  const handleFolderRowKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>, folderId: string, hasContent: boolean) => {
+      if (event.target !== event.currentTarget) return
+
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        selectFolder(folderId)
+        return
+      }
+
+      if (!hasContent || showFiles !== 'expanded') return
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        expandVisibleFolder(folderId)
+        return
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        collapseVisibleFolder(folderId)
+      }
+    },
+    [collapseVisibleFolder, expandVisibleFolder, selectFolder, showFiles],
+  )
 
   function renderFolder(folder: FolderNode, depth: number) {
-      const isActive = activeFolderId === folder.id
-      const count = directCountByFolderId[folder.id] || 0
-      const children = childrenByParentId.get(folder.id) || []
+    const isActive = activeFolderId === folder.id
+    const count = directCountByFolderId[folder.id] || 0
+    const children = childrenByParentId.get(folder.id) || []
 
-      const isExpanded =
-        showFiles === 'all'
-        || (showFiles === 'active' && isActive)
-        || (showFiles === 'expanded' && expandedFileFolderIds.has(folder.id))
+    const isExpanded =
+      showFiles === 'all' ||
+      (showFiles === 'active' && isActive) ||
+      (showFiles === 'expanded' && expandedFileFolderIds.has(folder.id))
 
-      const hasContent = count > 0 || children.length > 0
-      const directFiles = isExpanded ? directFilesByFolderId.get(folder.id) || [] : []
+    const hasContent = count > 0 || children.length > 0
+    const directFiles = isExpanded ? directFilesByFolderId.get(folder.id) || [] : []
 
-      return (
-        <div key={folder.id}>
-          <div
-            role="treeitem"
-            tabIndex={0}
-            aria-selected={isActive}
-            aria-expanded={hasContent ? isExpanded : undefined}
-            className={cn(
-              'group relative flex items-center gap-1 rounded-xl py-1.5 transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
-              isActive
-                ? 'text-foreground before:bg-muted-foreground/35'
-                : 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88',
-              dragOverId === folder.id && 'bg-info/[0.08] before:bg-info/50'
-            )}
-            style={{
-              paddingLeft: `${TREE_ROW_BASE_PADDING + depth * TREE_INDENT_STEP}px`,
-              paddingRight: '0.5rem',
-            }}
-            draggable
-            onKeyDown={(e) => handleFolderRowKeyDown(e, folder.id, hasContent)}
-            onDragStart={(e) => {
-              // Folder drag
-              draggedFolderIdRef.current = folder.id
-              try {
-                e.dataTransfer.setData(DND_FOLDER_MIME, folder.id)
-              } catch {
-                // ignore
-              }
-              e.dataTransfer.effectAllowed = 'move'
-            }}
-            onDragEnd={() => {
-              draggedFolderIdRef.current = null
-              setDragOverId(null)
-              dragScrollDirRef.current = 0
-            }}
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragOverId(folder.id)
-              requestExpand(folder.id)
-              autoScrollOnDrag(e)
-              requestActivate(folder.id)
-            }}
-            onDragLeave={() => {
-              setDragOverId((prev) => (prev === folder.id ? null : prev))
-              clearExpandTimer(folder.id)
-              clearActivateTimer(folder.id)
-            }}
-            onDrop={(e) => {
-              e.preventDefault()
-              // Folder drop has priority over file drop.
-              const draggedFolderId =
-                e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
-              if (draggedFolderId) {
-                moveFolderWithToast(draggedFolderId, folder.id)
-              } else {
-                const fileId = e.dataTransfer.getData('text/plain')
-                if (fileId) onFileDrop?.(fileId, folder.id)
-              }
-              setDragOverId(null)
-              clearExpandTimer(folder.id)
-              clearActivateTimer(folder.id)
-              dragScrollDirRef.current = 0
-            }}
-          >
-            {renderIndentGuides(depth)}
-            {dragOverId === folder.id && (
-              <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-primary rounded-full" />
-            )}
-            {showFiles === 'expanded' && hasContent && (
-              <button
-                type="button"
-                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/75 hover:bg-muted/40 hover:text-foreground focus-ring"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleFileList(folder.id)
-                }}
-                aria-label={isExpanded ? 'Collapse' : 'Expand'}
-              >
-                {isExpanded ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronRight className="h-3.5 w-3.5" />
-                )}
-              </button>
-            )}
+    return (
+      <div key={folder.id}>
+        <div
+          role="treeitem"
+          tabIndex={0}
+          aria-selected={isActive}
+          aria-expanded={hasContent ? isExpanded : undefined}
+          className={cn(
+            'group relative flex items-center gap-1 rounded-xl py-1.5 transition-colors before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary/0 before:transition-colors',
+            isActive
+              ? 'text-foreground before:bg-muted-foreground/35'
+              : 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88',
+            dragOverId === folder.id && 'bg-info/[0.08] before:bg-info/50',
+          )}
+          style={{
+            paddingLeft: `${TREE_ROW_BASE_PADDING + depth * TREE_INDENT_STEP}px`,
+            paddingRight: '0.5rem',
+          }}
+          draggable
+          onKeyDown={(e) => handleFolderRowKeyDown(e, folder.id, hasContent)}
+          onDragStart={(e) => {
+            // Folder drag
+            draggedFolderIdRef.current = folder.id
+            try {
+              e.dataTransfer.setData(DND_FOLDER_MIME, folder.id)
+            } catch {
+              // ignore
+            }
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          onDragEnd={() => {
+            draggedFolderIdRef.current = null
+            setDragOverId(null)
+            dragScrollDirRef.current = 0
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setDragOverId(folder.id)
+            requestExpand(folder.id)
+            autoScrollOnDrag(e)
+            requestActivate(folder.id)
+          }}
+          onDragLeave={() => {
+            setDragOverId((prev) => (prev === folder.id ? null : prev))
+            clearExpandTimer(folder.id)
+            clearActivateTimer(folder.id)
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            // Folder drop has priority over file drop.
+            const draggedFolderId = e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
+            if (draggedFolderId) {
+              moveFolderWithToast(draggedFolderId, folder.id)
+            } else {
+              const fileId = e.dataTransfer.getData('text/plain')
+              if (fileId) onFileDrop?.(fileId, folder.id)
+            }
+            setDragOverId(null)
+            clearExpandTimer(folder.id)
+            clearActivateTimer(folder.id)
+            dragScrollDirRef.current = 0
+          }}
+        >
+          {renderIndentGuides(depth)}
+          {dragOverId === folder.id && (
+            <div className="absolute left-2 right-2 bottom-0 h-0.5 bg-primary rounded-full" />
+          )}
+          {showFiles === 'expanded' && hasContent && (
             <button
-              className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-              onClick={() => selectFolder(folder.id)}
               type="button"
-              title={folder.name}
+              className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/75 hover:bg-muted/40 hover:text-foreground focus-ring"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleFileList(folder.id)
+              }}
+              aria-label={isExpanded ? 'Collapse' : 'Expand'}
             >
-              {getFolderIconElement(depth, isActive)}
-              <span className="truncate text-[12px] font-medium leading-4">{folder.name}</span>
-              <span className="ml-auto rounded-md bg-muted/55 px-1.5 py-0.5 text-[9px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
-                {count}
-              </span>
+              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </button>
+          )}
+          <button
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            onClick={() => selectFolder(folder.id)}
+            type="button"
+            title={folder.name}
+          >
+            {getFolderIconElement(isActive)}
+            <span className="truncate text-[12px] font-medium leading-4">{folder.name}</span>
+            <span className="ml-auto rounded-md bg-muted/55 px-1.5 py-0.5 text-[9px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+              {count}
+            </span>
+          </button>
 
-            {onRequestUpload && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-muted/60 hover:text-foreground"
-                    aria-label="Add content"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-48 p-1">
-                  <DropdownMenuItem
-                    className="py-2"
-                    onClick={() => {
-                      setActiveFolderId(folder.id)
-                      onRequestUpload(folder.id)
-                    }}
-                  >
-                    <Paperclip className="w-4 h-4 mr-2 text-muted-foreground" />
-                    上传文件
-                  </DropdownMenuItem>
-                  {onRequestUploadFolder && (
-                    <DropdownMenuItem
-                      className="py-2"
-                      onClick={() => {
-                        setActiveFolderId(folder.id)
-                        onRequestUploadFolder(folder.id)
-                      }}
-                    >
-                      <FolderUp className="w-4 h-4 mr-2 text-muted-foreground" />
-                      上传文件夹
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem className="py-2" onClick={() => openCreate(folder.id)}>
-                    <Folder className="w-4 h-4 mr-2 text-muted-foreground" />
-                    新建文件夹
-                  </DropdownMenuItem>
-                  <DropdownMenuItem className="py-2" onClick={() => openMove(folder)}>
-                    <ArrowRightLeft className="w-4 h-4 mr-2 text-muted-foreground" />
-                    移动目录
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-
+          {onRequestUpload && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-muted/40 hover:text-foreground"
-                  aria-label="Folder actions"
+                  className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-muted/60 hover:text-foreground"
+                  aria-label="Add content"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <MoreHorizontal className="h-3.5 w-3.5" />
+                  <Plus className="h-3.5 w-3.5" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {onRequestUpload && (
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setActiveFolderId(folder.id)
-                      onRequestUpload(folder.id)
-                    }}
-                  >
-                    <Paperclip className="w-4 h-4 mr-2" />
-                    上传文件
-                  </DropdownMenuItem>
-                )}
+              <DropdownMenuContent align="start" className="w-48 p-1">
+                <DropdownMenuItem
+                  className="py-2"
+                  onClick={() => {
+                    setActiveFolderId(folder.id)
+                    onRequestUpload(folder.id)
+                  }}
+                >
+                  <Paperclip className="w-4 h-4 mr-2 text-muted-foreground" />
+                  上传文件
+                </DropdownMenuItem>
                 {onRequestUploadFolder && (
                   <DropdownMenuItem
+                    className="py-2"
                     onClick={() => {
                       setActiveFolderId(folder.id)
                       onRequestUploadFolder(folder.id)
                     }}
                   >
-                    <FolderUp className="w-4 h-4 mr-2" />
+                    <FolderUp className="w-4 h-4 mr-2 text-muted-foreground" />
                     上传文件夹
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => openCreate(folder.id)}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  新建子文件夹
+                <DropdownMenuItem className="py-2" onClick={() => openCreate(folder.id)}>
+                  <Folder className="w-4 h-4 mr-2 text-muted-foreground" />
+                  新建文件夹
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openMove(folder)}>
-                  <ArrowRightLeft className="w-4 h-4 mr-2" />
-                  移动到…
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => openRename(folder)}>
-                  <Pencil className="w-4 h-4 mr-2" />
-                  重命名
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive dark:focus:text-destructive"
-                  onSelect={() => setConfirmingFolderId(folder.id)}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  删除
+                <DropdownMenuItem className="py-2" onClick={() => openMove(folder)}>
+                  <ArrowRightLeft className="w-4 h-4 mr-2 text-muted-foreground" />
+                  移动目录
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
 
-            <ConfirmDialog
-              open={confirmingFolderId === folder.id}
-              onOpenChange={(open) => {
-                setConfirmingFolderId(open ? folder.id : null)
-              }}
-              title="删除该文件夹？"
-              description="将删除该文件夹及其子文件夹，且所有内容将被永久删除。此操作不可恢复。"
-              confirmLabel="删除"
-              cancelLabel="返回"
-              confirmVariant="destructive"
-              onConfirm={() => {
-                handleDelete(folder.id)
-                setConfirmingFolderId(null)
-              }}
-            >
-              <span className="sr-only">删除该文件夹</span>
-            </ConfirmDialog>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 rounded-md text-muted-foreground opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:bg-muted/40 hover:text-foreground"
+                aria-label="Folder actions"
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onRequestUpload && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setActiveFolderId(folder.id)
+                    onRequestUpload(folder.id)
+                  }}
+                >
+                  <Paperclip className="w-4 h-4 mr-2" />
+                  上传文件
+                </DropdownMenuItem>
+              )}
+              {onRequestUploadFolder && (
+                <DropdownMenuItem
+                  onClick={() => {
+                    setActiveFolderId(folder.id)
+                    onRequestUploadFolder(folder.id)
+                  }}
+                >
+                  <FolderUp className="w-4 h-4 mr-2" />
+                  上传文件夹
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => openCreate(folder.id)}>
+                <Plus className="w-4 h-4 mr-2" />
+                新建子文件夹
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openMove(folder)}>
+                <ArrowRightLeft className="w-4 h-4 mr-2" />
+                移动到…
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openRename(folder)}>
+                <Pencil className="w-4 h-4 mr-2" />
+                重命名
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive dark:focus:text-destructive"
+                onSelect={() => setConfirmingFolderId(folder.id)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                删除
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-          {isExpanded && directFiles.map((f) => renderFileRow(f, folder.id, depth + 1))}
-          {isExpanded && children.map((c) => renderFolder(c, depth + 1))}
+          <ConfirmDialog
+            open={confirmingFolderId === folder.id}
+            onOpenChange={(open) => {
+              setConfirmingFolderId(open ? folder.id : null)
+            }}
+            title="删除该文件夹？"
+            description="将删除该文件夹及其子文件夹，且所有内容将被永久删除。此操作不可恢复。"
+            confirmLabel="删除"
+            cancelLabel="返回"
+            confirmVariant="destructive"
+            onConfirm={() => {
+              handleDelete(folder.id)
+              setConfirmingFolderId(null)
+            }}
+          >
+            <span className="sr-only">删除该文件夹</span>
+          </ConfirmDialog>
         </div>
-      )
+
+        {isExpanded && directFiles.map((f) => renderFileRow(f, folder.id, depth + 1))}
+        {isExpanded && children.map((c) => renderFolder(c, depth + 1))}
+      </div>
+    )
   }
 
   const rootCount = displayFiles.length
   const rootChildren = childrenByParentId.get(ROOT_FOLDER_ID) || []
-  const rootDirectFiles = (showFiles === 'all'
-    || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID)
-    || (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID)))
-    ? directFilesByFolderId.get(ROOT_FOLDER_ID) || []
-    : []
+  const rootDirectFiles =
+    showFiles === 'all' ||
+    (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) ||
+    (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))
+      ? directFilesByFolderId.get(ROOT_FOLDER_ID) || []
+      : []
   const rootDirectCount = directCountByFolderId[ROOT_FOLDER_ID] || 0
   const rootHasContent = rootDirectCount > 0 || rootChildren.length > 0
   const isRootExpanded = expandedFileFolderIds.has(ROOT_FOLDER_ID)
@@ -972,7 +974,7 @@ export function DocumentFolderTree({
             activeFolderId === ROOT_FOLDER_ID
               ? 'text-foreground before:bg-muted-foreground/35'
               : 'text-foreground/72 hover:bg-muted/36 hover:text-foreground/88',
-            dragOverId === ROOT_FOLDER_ID && 'bg-info/[0.08] before:bg-info/50'
+            dragOverId === ROOT_FOLDER_ID && 'bg-info/[0.08] before:bg-info/50',
           )}
           style={{ paddingLeft: `${TREE_ROW_BASE_PADDING}px`, paddingRight: '0.5rem' }}
           onKeyDown={(e) => handleFolderRowKeyDown(e, ROOT_FOLDER_ID, rootHasContent)}
@@ -996,8 +998,7 @@ export function DocumentFolderTree({
           }}
           onDrop={(e) => {
             e.preventDefault()
-            const draggedFolderId =
-              e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
+            const draggedFolderId = e.dataTransfer.getData(DND_FOLDER_MIME) || draggedFolderIdRef.current || ''
             if (draggedFolderId) {
               moveFolderWithToast(draggedFolderId, ROOT_FOLDER_ID)
             } else {
@@ -1022,11 +1023,7 @@ export function DocumentFolderTree({
               }}
               aria-label={isRootExpanded ? 'Collapse' : 'Expand'}
             >
-              {isRootExpanded ? (
-                <ChevronDown className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5" />
-              )}
+              {isRootExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
             </button>
           )}
           <button
@@ -1034,7 +1031,7 @@ export function DocumentFolderTree({
             onClick={() => selectFolder(ROOT_FOLDER_ID)}
             type="button"
           >
-            {getFolderIconElement(0, activeFolderId === ROOT_FOLDER_ID)}
+            {getFolderIconElement(activeFolderId === ROOT_FOLDER_ID)}
             <span className="truncate text-[12px] font-medium leading-4">根目录</span>
             <span className="ml-auto rounded-md bg-muted/55 px-1.5 py-0.5 text-[9px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
               {rootCount}
@@ -1086,8 +1083,14 @@ export function DocumentFolderTree({
           )}
         </div>
 
-        {(showFiles === 'all' || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) || (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) && rootDirectFiles.map((f) => renderFileRow(f, ROOT_FOLDER_ID, 1))}
-        {(showFiles === 'all' || (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) || (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) && rootChildren.map((folder) => renderFolder(folder, 1))}
+        {(showFiles === 'all' ||
+          (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) ||
+          (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) &&
+          rootDirectFiles.map((f) => renderFileRow(f, ROOT_FOLDER_ID, 1))}
+        {(showFiles === 'all' ||
+          (showFiles === 'active' && activeFolderId === ROOT_FOLDER_ID) ||
+          (showFiles === 'expanded' && expandedFileFolderIds.has(ROOT_FOLDER_ID))) &&
+          rootChildren.map((folder) => renderFolder(folder, 1))}
       </div>
 
       <Dialog
@@ -1100,23 +1103,23 @@ export function DocumentFolderTree({
           <DialogHeader>
             <DialogTitle>
               {(() => {
-    if (dialog.open && dialog.mode === 'rename') {
-        return '重命名文件夹';
-    }
-    else if (dialog.open && dialog.mode === 'move') {
-            return '移动文件夹';
-        }
-        else {
-            return '新建文件夹';
-        }
-})()}
+                if (dialog.open && dialog.mode === 'rename') {
+                  return '重命名文件夹'
+                } else if (dialog.open && dialog.mode === 'move') {
+                  return '移动文件夹'
+                } else {
+                  return '新建文件夹'
+                }
+              })()}
             </DialogTitle>
           </DialogHeader>
 
           {dialog.open && dialog.mode === 'move' ? (
             <div className="space-y-3">
               <div className="text-sm text-foreground">
-                将 <span className="font-medium">{folders.find((f) => f.id === dialog.folderId)?.name || '文件夹'}</span> 移动到：
+                将{' '}
+                <span className="font-medium">{folders.find((f) => f.id === dialog.folderId)?.name || '文件夹'}</span>{' '}
+                移动到：
               </div>
               <Select value={moveParentId || ROOT_FOLDER_ID} onValueChange={setMoveParentId}>
                 <SelectTrigger>

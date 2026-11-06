@@ -4,11 +4,11 @@ import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { Input } from '@/components/ui/input'
 import { settingsLayoutTokens, settingsTextTokens } from '@/components/ui/system-page-tokens'
-import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { Database, EyeOff, Network, Server } from '@/components/icons'
 import type { PlatformIcon } from '@/components/icons'
 import type { ReactNode } from 'react'
+import type { CacheConfig, ChatConfig, LangGraphConfig, SafetyConfig } from '@/types/settings'
 
 type RuntimeControlsSectionProps = {
   chat: ChatConfig
@@ -30,14 +30,7 @@ function RuntimeToggle({
   onToggle,
   label,
 }: Readonly<{ checked: boolean; onToggle: () => void; label: string }>) {
-  return (
-    <SettingsSwitch
-      checked={checked}
-      onCheckedChange={() => onToggle()}
-      className="shrink-0"
-      aria-label={label}
-    />
-  )
+  return <SettingsSwitch checked={checked} onCheckedChange={() => onToggle()} className="shrink-0" aria-label={label} />
 }
 
 function RuntimeGroup({
@@ -94,11 +87,7 @@ function OptionRow({
   )
 }
 
-function Field({
-  label,
-  children,
-  hint,
-}: Readonly<{ label: string; children: ReactNode; hint?: string }>) {
+function Field({ label, children, hint }: Readonly<{ label: string; children: ReactNode; hint?: string }>) {
   return (
     <div className="space-y-1.5">
       <label className="block space-y-1.5">
@@ -136,164 +125,151 @@ export function RuntimeControlsSection({
       icon="help"
     >
       <section>
-      <RuntimeGroup
-        icon={Server}
-        title="对话流式稳定性"
-        description="心跳保活连接，断连后自动释放资源"
-        action={
-          <RuntimeToggle
-            checked={isCancelOnDisconnectEnabled}
-            onToggle={() =>
-              updateChat({
-                stream_cancel_on_disconnect: !isCancelOnDisconnectEnabled,
-              })
-            }
-            label="切换断连自动取消"
-          />
-        }
-      >
-        <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
-          <Field label="心跳间隔" hint="0 表示禁用，不推荐">
-            <Input
-              type="number"
-              min={0}
-              max={120}
-              step={1}
-              value={chat.stream_heartbeat_sec ?? 10}
-              onChange={(event) =>
-                updateChat({ stream_heartbeat_sec: Number.parseFloat(event.target.value || '0') })
+        <RuntimeGroup
+          icon={Server}
+          title="对话流式稳定性"
+          description="心跳保活连接，断连后自动释放资源"
+          action={
+            <RuntimeToggle
+              checked={isCancelOnDisconnectEnabled}
+              onToggle={() =>
+                updateChat({
+                  stream_cancel_on_disconnect: !isCancelOnDisconnectEnabled,
+                })
               }
-              className={RUNTIME_INPUT}
+              label="切换断连自动取消"
             />
-          </Field>
-          <div className={cn('sm:pt-7', settingsTextTokens.helpText)}>
-            适合经过代理或负载均衡的长连接场景，避免空闲连接被误断
-          </div>
-        </div>
-      </RuntimeGroup>
-
-      <RuntimeGroup
-        icon={Database}
-        title="性能与缓存"
-        description="去重与缓存为尽力而为，Redis 不可用时放行主流程"
-      >
-        <div className="divide-y divide-border/60">
-          <OptionRow
-            title="上传去重"
-            description="同文件指纹和管线配置时复用已有文档"
-            checked={isUploadDedupEnabled}
-            onToggle={() => updateCache({ upload_dedup_enabled: !isUploadDedupEnabled })}
-            label="切换上传去重"
-          />
-          <OptionRow
-            title="对话响应缓存"
-            description="相同问题、范围和配置命中后直接返回"
-            checked={isChatResponseCacheEnabled}
-            onToggle={() =>
-              updateCache({ chat_response_cache_enabled: !isChatResponseCacheEnabled })
-            }
-            label="切换对话响应缓存"
-          />
-        </div>
-
-        {isChatResponseCacheEnabled ? (
-          <div className="grid gap-4 border-l border-border/60 pl-4 md:grid-cols-2">
-            <Field label="缓存时长（秒）">
+          }
+        >
+          <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+            <Field label="心跳间隔" hint="0 表示禁用，不推荐">
               <Input
                 type="number"
                 min={0}
-                max={86400}
-                value={cache.chat_response_cache_ttl_sec ?? 300}
-                onChange={(event) =>
-                  updateCache({
-                    chat_response_cache_ttl_sec: Number.parseInt(event.target.value || '0', 10),
-                  })
-                }
+                max={120}
+                step={1}
+                value={chat.stream_heartbeat_sec ?? 10}
+                onChange={(event) => updateChat({ stream_heartbeat_sec: Number.parseFloat(event.target.value || '0') })}
                 className={RUNTIME_INPUT}
               />
             </Field>
-            <Field label="最大字节">
-              <Input
-                type="number"
-                min={0}
-                max={5000000}
-                value={cache.chat_response_cache_max_value_bytes ?? 200000}
-                onChange={(event) =>
-                  updateCache({
-                    chat_response_cache_max_value_bytes: Number.parseInt(
-                      event.target.value || '0',
-                      10
-                    ),
-                  })
-                }
-                className={RUNTIME_INPUT}
-              />
-            </Field>
-            <div className="flex items-center justify-between gap-3 text-[13px] font-medium text-foreground md:col-span-2">
-              <span>仅无历史</span>
-              <SettingsSwitch
-                checked={cache.chat_response_cache_require_empty_history ?? true}
-                onCheckedChange={(checked) =>
-                  updateCache({ chat_response_cache_require_empty_history: checked })
-                }
-                aria-label="切换仅缓存无历史对话"
-              />
+            <div className={cn('sm:pt-7', settingsTextTokens.helpText)}>
+              适合经过代理或负载均衡的长连接场景，避免空闲连接被误断
             </div>
           </div>
-        ) : null}
-      </RuntimeGroup>
+        </RuntimeGroup>
 
-      <RuntimeGroup
-        icon={EyeOff}
-        title="敏感信息脱敏"
-        description="对模型输入、输出和工具调用做敏感信息遮蔽"
-        action={
-          <RuntimeToggle
-            checked={isPiiRedactionEnabled}
-            onToggle={() => updateSafety({ pii_redaction_enabled: !isPiiRedactionEnabled })}
-            label="切换敏感信息脱敏"
-          />
-        }
-      >
-        {isPiiRedactionEnabled ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="脱敏占位符">
-              <Input
-                value={safety.pii_redaction_mask ?? '[REDACTED]'}
-                onChange={(event) => updateSafety({ pii_redaction_mask: event.target.value })}
-                className={RUNTIME_INPUT}
-              />
-            </Field>
-            <Field label="流式缓冲字符">
-              <Input
-                type="number"
-                min={0}
-                max={2048}
-                value={safety.pii_stream_holdback_chars ?? 128}
-                onChange={(event) =>
-                  updateSafety({
-                    pii_stream_holdback_chars: Number.parseInt(event.target.value || '0', 10),
-                  })
-                }
-                className={RUNTIME_INPUT}
-              />
-            </Field>
+        <RuntimeGroup icon={Database} title="性能与缓存" description="去重与缓存为尽力而为，Redis 不可用时放行主流程">
+          <div className="divide-y divide-border/60">
+            <OptionRow
+              title="上传去重"
+              description="同文件指纹和管线配置时复用已有文档"
+              checked={isUploadDedupEnabled}
+              onToggle={() => updateCache({ upload_dedup_enabled: !isUploadDedupEnabled })}
+              label="切换上传去重"
+            />
+            <OptionRow
+              title="对话响应缓存"
+              description="相同问题、范围和配置命中后直接返回"
+              checked={isChatResponseCacheEnabled}
+              onToggle={() => updateCache({ chat_response_cache_enabled: !isChatResponseCacheEnabled })}
+              label="切换对话响应缓存"
+            />
           </div>
-        ) : null}
-      </RuntimeGroup>
 
-      <RuntimeGroup
-        icon={Network}
-        title="子图编排"
-        description="将检索和生成拆成子图节点，便于后续扩展编排"
-        action={
-          <RuntimeToggle
-            checked={isSubgraphEnabled}
-            onToggle={() => updateLangGraph({ use_subgraphs: !isSubgraphEnabled })}
-            label="切换子图编排"
-          />
-        }
-      />
+          {isChatResponseCacheEnabled ? (
+            <div className="grid gap-4 border-l border-border/60 pl-4 md:grid-cols-2">
+              <Field label="缓存时长（秒）">
+                <Input
+                  type="number"
+                  min={0}
+                  max={86400}
+                  value={cache.chat_response_cache_ttl_sec ?? 300}
+                  onChange={(event) =>
+                    updateCache({
+                      chat_response_cache_ttl_sec: Number(event.target.value || '0'),
+                    })
+                  }
+                  className={RUNTIME_INPUT}
+                />
+              </Field>
+              <Field label="最大字节">
+                <Input
+                  type="number"
+                  min={0}
+                  max={5000000}
+                  value={cache.chat_response_cache_max_value_bytes ?? 200000}
+                  onChange={(event) =>
+                    updateCache({
+                      chat_response_cache_max_value_bytes: Number(event.target.value || '0'),
+                    })
+                  }
+                  className={RUNTIME_INPUT}
+                />
+              </Field>
+              <div className="flex items-center justify-between gap-3 text-[13px] font-medium text-foreground md:col-span-2">
+                <span>仅无历史</span>
+                <SettingsSwitch
+                  checked={cache.chat_response_cache_require_empty_history ?? true}
+                  onCheckedChange={(checked) => updateCache({ chat_response_cache_require_empty_history: checked })}
+                  aria-label="切换仅缓存无历史对话"
+                />
+              </div>
+            </div>
+          ) : null}
+        </RuntimeGroup>
+
+        <RuntimeGroup
+          icon={EyeOff}
+          title="敏感信息脱敏"
+          description="对模型输入、输出和工具调用做敏感信息遮蔽"
+          action={
+            <RuntimeToggle
+              checked={isPiiRedactionEnabled}
+              onToggle={() => updateSafety({ pii_redaction_enabled: !isPiiRedactionEnabled })}
+              label="切换敏感信息脱敏"
+            />
+          }
+        >
+          {isPiiRedactionEnabled ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="脱敏占位符">
+                <Input
+                  value={safety.pii_redaction_mask ?? '[REDACTED]'}
+                  onChange={(event) => updateSafety({ pii_redaction_mask: event.target.value })}
+                  className={RUNTIME_INPUT}
+                />
+              </Field>
+              <Field label="流式缓冲字符">
+                <Input
+                  type="number"
+                  min={0}
+                  max={2048}
+                  value={safety.pii_stream_holdback_chars ?? 128}
+                  onChange={(event) =>
+                    updateSafety({
+                      pii_stream_holdback_chars: Number(event.target.value || '0'),
+                    })
+                  }
+                  className={RUNTIME_INPUT}
+                />
+              </Field>
+            </div>
+          ) : null}
+        </RuntimeGroup>
+
+        <RuntimeGroup
+          icon={Network}
+          title="子图编排"
+          description="将检索和生成拆成子图节点，便于后续扩展编排"
+          action={
+            <RuntimeToggle
+              checked={isSubgraphEnabled}
+              onToggle={() => updateLangGraph({ use_subgraphs: !isSubgraphEnabled })}
+              label="切换子图编排"
+            />
+          }
+        />
       </section>
     </DangerZonePanel>
   )

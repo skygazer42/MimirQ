@@ -142,11 +142,11 @@ def _apply_registered_plugin_contracts(
         raise PythonPipelinePluginError(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise PythonPipelinePluginError(f"failed to validate plugin contract: {exc}") from exc
-    if not validation.get("ok"):
-        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+    if not validation["ok"]:
+        errors = validation["errors"]
         first = errors[0] if errors else {}
-        field = first.get("field") if isinstance(first, dict) else None
-        reason = first.get("reason") if isinstance(first, dict) else None
+        field = first.get("field")
+        reason = first.get("reason")
         raise PythonPipelinePluginError(
             f"plugin metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
         )
@@ -184,11 +184,11 @@ def _apply_registered_kg_plugin_contracts(
         raise PythonPipelinePluginError(str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
         raise PythonPipelinePluginError(f"failed to validate plugin KG contract: {exc}") from exc
-    if not validation.get("ok"):
-        errors = validation.get("errors") if isinstance(validation.get("errors"), list) else []
+    if not validation["ok"]:
+        errors = validation["errors"]
         first = errors[0] if errors else {}
-        field = first.get("field") if isinstance(first, dict) else None
-        reason = first.get("reason") if isinstance(first, dict) else None
+        field = first.get("field")
+        reason = first.get("reason")
         raise PythonPipelinePluginError(
             f"plugin KG metadata contract failed for {field or 'metadata'}: {reason or 'invalid'}"
         )

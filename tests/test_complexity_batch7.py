@@ -366,9 +366,9 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
     db = _DB(base_run)
     add_calls: list[dict[str, object]] = []
 
-    monkeypatch.setattr(ingestion_runs.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(ingestion_runs.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
-    monkeypatch.setattr(ingestion_runs.DatasetService, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         ingestion_runs,
         "audit_log_event",
@@ -376,7 +376,7 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
         raising=True,
     )
     monkeypatch.setattr(
-        ingestion_runs.IngestionRunService,
+        ingestion_runs.ingestion_run_service,
         "create_run",
         lambda *_a, **_k: new_run,
         raising=True,
@@ -385,7 +385,7 @@ def test_replay_ingestion_run_creates_new_run_and_schedules_background_work(monk
     def _add_document(*_args, **kwargs):
         add_calls.append(kwargs)
 
-    monkeypatch.setattr(ingestion_runs.IngestionRunService, "add_document", _add_document, raising=True)
+    monkeypatch.setattr(ingestion_runs.ingestion_run_service, "add_document", _add_document, raising=True)
 
     background_tasks = BackgroundTasks()
     result = ingestion_runs.replay_ingestion_run(
@@ -429,7 +429,7 @@ def test_replay_ingestion_run_rejects_runs_without_documents(monkeypatch: pytest
         def query(self, _model):
             return _Query()
 
-    monkeypatch.setattr(ingestion_runs.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ingestion_runs.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException, match="No documents to replay") as exc_info:
         ingestion_runs.replay_ingestion_run(

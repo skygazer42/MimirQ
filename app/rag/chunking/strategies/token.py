@@ -4,7 +4,6 @@ LangChain TokenTextSplitter wrapper.
 Splits text by token count using tiktoken encoding.
 """
 
-
 from langchain_core.documents import Document
 from langchain_text_splitters import TokenTextSplitter
 
@@ -23,7 +22,7 @@ class LangChainTokenChunker(BaseChunker):
         chunk_size: int,
         chunk_overlap: int,
         encoding_name: str = "cl100k_base",
-    ):
+    ) -> None:
         # NOTE: For langchain_token strategy, the UI/docs treat chunk_size/chunk_overlap as *tokens*.
         # Keep this strategy token-native (unlike other strategies which use chars).
         self.chunk_size_tokens = max(1, int(chunk_size) or 1)

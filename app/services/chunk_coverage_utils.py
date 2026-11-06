@@ -7,7 +7,6 @@ Used by:
 - offline evaluators
 """
 
-
 from collections.abc import Iterable
 
 from app.rag.core.logging import get_logger
@@ -20,7 +19,7 @@ def _empty_chunk_coverage_metrics(*, largest_gap: int = 0) -> dict[str, float | 
         "coverage_ratio": 0.0,
         "overlap_waste_ratio": 0.0,
         "gap_count": 0,
-        "largest_gap": int(largest_gap),
+        "largest_gap": largest_gap,
     }
 
 
@@ -46,7 +45,7 @@ def _clip_chunk_ranges(
         if e2 <= s2:
             continue
         clipped.append((s2, e2))
-        sum_chunk_chars += max(0, e2 - s2)
+        sum_chunk_chars += e2 - s2
     return sum_chunk_chars, clipped
 
 
@@ -81,17 +80,15 @@ def _merge_chunk_ranges(
         gap_count += 1
         largest_gap = max(largest_gap, total - cur_e)
 
-    sum_chars = int(sum_chunk_chars)
-    covered_chars = int(max(0, covered))
-    coverage_ratio = float(covered_chars / total) if total > 0 else 0.0
-    overlap_waste_ratio = float(max(0, sum_chars - covered_chars) / sum_chars) if sum_chars > 0 else 0.0
+    coverage_ratio = covered / total
+    overlap_waste_ratio = (sum_chunk_chars - covered) / sum_chunk_chars
     return {
-        "sum_chunk_chars": sum_chars,
-        "covered_chars": covered_chars,
+        "sum_chunk_chars": sum_chunk_chars,
+        "covered_chars": covered,
         "coverage_ratio": coverage_ratio,
         "overlap_waste_ratio": overlap_waste_ratio,
-        "gap_count": int(gap_count),
-        "largest_gap": int(largest_gap),
+        "gap_count": gap_count,
+        "largest_gap": largest_gap,
     }
 
 
@@ -108,7 +105,7 @@ def compute_chunk_coverage_metrics_from_ranges(
     - gap_count / largest_gap: uncovered segments within [0, total_characters]
     - overlap_waste_ratio: duplicated chars ratio due to overlap (0-1)
     """
-    total = int(total_characters or 0)
+    total = total_characters
     if total <= 0:
         return _empty_chunk_coverage_metrics()
 

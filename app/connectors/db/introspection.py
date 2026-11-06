@@ -9,7 +9,6 @@ Important:
 """
 
 
-
 def mysql_list_tables_sql(*, database: str) -> str:
     # Use information_schema; `table_schema` is the database name in MySQL.
     # Named parameter is used so callers can bind safely.

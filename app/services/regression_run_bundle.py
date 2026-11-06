@@ -1,11 +1,13 @@
-
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.rag.core.hashing import stable_hash
 from app.rag.evaluation.replay_capture import sanitize_citations_for_capture
+
+if TYPE_CHECKING:
+    from app.models.evaluation import RagasRegressionItem, RagasRegressionRun
 
 REGRESSION_RUN_BUNDLE_SCHEMA_V1 = "mimirq.ragas_regression_run_bundle.v1"
 
@@ -51,8 +53,8 @@ def _coerce_list(v: Any) -> list[Any]:
 
 
 def export_regression_run_bundle(
-    run: Any,
-    items: Sequence[Any],
+    run: "RagasRegressionRun",
+    items: "Sequence[RagasRegressionItem]",
     *,
     include_text: bool = False,
     include_contexts: bool = False,
@@ -86,38 +88,38 @@ def export_regression_run_bundle(
     except Exception:
         max_citations_i = 80
 
-    run_id = _coerce_uuid_str(getattr(run, "id", None))
-    tenant_id = _coerce_uuid_str(getattr(run, "tenant_id", None))
-    dataset_id = _coerce_uuid_str(getattr(run, "dataset_id", None))
+    run_id = _coerce_uuid_str(run.id)
+    tenant_id = _coerce_uuid_str(run.tenant_id)
+    dataset_id = _coerce_uuid_str(run.dataset_id)
     run_id_hash = _hash_uuid_str(run_id)
     tenant_id_hash = _hash_uuid_str(tenant_id)
     dataset_id_hash = _hash_uuid_str(dataset_id)
 
     out_items: list[dict[str, Any]] = []
     for raw in list(items or [])[:max_items_i]:
-        case_id = _coerce_uuid_str(getattr(raw, "case_id", None))
+        case_id = _coerce_uuid_str(raw.case_id)
         case_id_hash = _hash_uuid_str(case_id)
-        question = str(getattr(raw, "question", "") or "")
-        response = str(getattr(raw, "response", "") or "")
+        question = str(raw.question or "")
+        response = str(raw.response or "")
 
         rec: dict[str, Any] = {
             "case_id": case_id if not redact_ids else None,
             "case_id_hash": case_id_hash if redact_ids else None,
             "question_hash": stable_hash(question, length=16) if question else None,
-            "question_chars": int(len(question)) if question else 0,
+            "question_chars": len(question) if question else 0,
             "response_hash": stable_hash(response, length=16) if response else None,
-            "response_chars": int(len(response)) if response else 0,
-            "scores": _coerce_dict(getattr(raw, "scores", None)),
-            "meta": _coerce_dict(getattr(raw, "meta", None)),
-            "citations": sanitize_citations_for_capture(getattr(raw, "citations", None), max_items=max_citations_i),
-            "created_at": _dt_to_json(getattr(raw, "created_at", None)),
+            "response_chars": len(response) if response else 0,
+            "scores": _coerce_dict(raw.scores),
+            "meta": _coerce_dict(raw.meta),
+            "citations": sanitize_citations_for_capture(raw.citations, max_items=max_citations_i),
+            "created_at": _dt_to_json(raw.created_at),
         }
 
         if include_text:
             rec["question"] = question
             rec["response"] = response
         if include_contexts:
-            rec["retrieved_contexts"] = _coerce_list(getattr(raw, "retrieved_contexts", None))
+            rec["retrieved_contexts"] = _coerce_list(raw.retrieved_contexts)
 
         # Drop None keys to keep the payload compact.
         out_items.append({k: v for k, v in rec.items() if v is not None})
@@ -137,14 +139,14 @@ def export_regression_run_bundle(
         "tenant_id_hash": tenant_id_hash if redact_ids else None,
         "dataset_id": dataset_id if not redact_ids else None,
         "dataset_id_hash": dataset_id_hash if redact_ids else None,
-        "status": str(getattr(run, "status", "") or ""),
-        "metrics": _coerce_list(getattr(run, "metrics", None)),
-        "params": _coerce_dict(getattr(run, "params", None)),
-        "summary": _coerce_dict(getattr(run, "summary", None)),
-        "error_message": getattr(run, "error_message", None),
-        "created_at": _dt_to_json(getattr(run, "created_at", None)),
-        "started_at": _dt_to_json(getattr(run, "started_at", None)),
-        "finished_at": _dt_to_json(getattr(run, "finished_at", None)),
+        "status": str(run.status or ""),
+        "metrics": _coerce_list(run.metrics),
+        "params": _coerce_dict(run.params),
+        "summary": _coerce_dict(run.summary),
+        "error_message": run.error_message,
+        "created_at": _dt_to_json(run.created_at),
+        "started_at": _dt_to_json(run.started_at),
+        "finished_at": _dt_to_json(run.finished_at),
     }
     run_payload = {k: v for k, v in run_payload.items() if v is not None}
 

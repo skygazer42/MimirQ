@@ -23,7 +23,7 @@ def _log_orchestrator_fallback(context: str, exc: BaseException) -> None:
 def _safe_int(value: Any, *, default: int = 0, minimum: int | None = None, maximum: int | None = None) -> int:
     try:
         out = int(value) if value is not None else int(default)
-    except (TypeError, ValueError, AttributeError):
+    except (OverflowError, TypeError, ValueError):
         out = int(default)
     if minimum is not None:
         out = max(int(minimum), out)
@@ -37,7 +37,7 @@ def _safe_float(
 ) -> float:
     try:
         out = float(value) if value is not None else float(default)
-    except (TypeError, ValueError, AttributeError):
+    except (OverflowError, TypeError, ValueError):
         out = float(default)
     if minimum is not None:
         out = max(float(minimum), out)
@@ -52,7 +52,7 @@ def _doc_key(doc: Document) -> str:
     chunk_index = meta.get("chunk_index")
     if doc_id is not None and chunk_index is not None:
         return f"{doc_id}:{chunk_index}"
-    cid = getattr(doc, "id", None) or meta.get("chunk_id")
+    cid = doc.id or meta.get("chunk_id")
     if cid:
         return str(cid)
     content = (doc.page_content or "").strip()
@@ -70,25 +70,3 @@ def _coerce_optional_bool(value: Any, *, default: bool) -> bool:
     if text in {"0", "false", "no", "off"}:
         return False
     return bool(default)
-
-
-def _coerce_optional_int(value: Any, *, default: int, minimum: int = 0, maximum: int | None = None) -> int:
-    try:
-        out = int(value) if value is not None else int(default)
-    except (TypeError, ValueError, AttributeError):
-        out = int(default)
-    out = max(int(minimum), int(out))
-    if maximum is not None:
-        out = min(int(maximum), int(out))
-    return out
-
-
-def _coerce_optional_float(value: Any, *, default: float, minimum: float = 0.0, maximum: float | None = None) -> float:
-    try:
-        out = float(value) if value is not None else float(default)
-    except (TypeError, ValueError, AttributeError):
-        out = float(default)
-    out = max(float(minimum), float(out))
-    if maximum is not None:
-        out = min(float(maximum), float(out))
-    return out

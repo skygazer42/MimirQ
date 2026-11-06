@@ -1,6 +1,7 @@
 """
 Text splitter implementations.
 """
+
 from app.rag.chunking.utils.splitters.fixed_text_splitter import (
     EnhanceRecursiveCharacterTextSplitter,
     FixedRecursiveCharacterTextSplitter,

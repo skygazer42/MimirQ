@@ -6,17 +6,17 @@ import time
 from collections.abc import AsyncIterator
 from typing import Any
 
+from app.api.schemas.connector import MySQLCatalogConnectorConfig, SQLServerCatalogConnectorConfig
 from app.connectors.base import ConnectorBase
 from app.connectors.registry import registry
 from app.connectors.types import ConnectionTestResult, RawDocument
-from app.rag.core.logging import get_logger
 from app.services.connector_egress_policy import validate_db_connector_config
 
-logger = get_logger(__name__)
+DbCatalogConfig = dict[str, Any] | MySQLCatalogConnectorConfig | SQLServerCatalogConnectorConfig
 
 
 def _has_write_privileges_from_text(text: str) -> bool:
-    lowered = str(text or "").lower()
+    lowered = text.lower()
     if not lowered:
         return False
     tokens = (
@@ -37,26 +37,16 @@ def _has_write_privileges_from_text(text: str) -> bool:
 
 
 def _safe_error_str(exc: Exception) -> str:
-    msg = str(exc or "").replace("\r", " ").replace("\n", " ").strip()
+    msg = str(exc).replace("\r", " ").replace("\n", " ").strip()
     if not msg:
         msg = exc.__class__.__name__
     return msg[:200] if len(msg) > 200 else msg
 
 
-def _extract_cfg(config: dict[str, Any] | Any) -> dict[str, Any]:
+def _extract_cfg(config: DbCatalogConfig) -> dict[str, Any]:
     if isinstance(config, dict):
         return dict(config)
-    if hasattr(config, "model_dump"):
-        try:
-            return dict(config.model_dump(mode="json", exclude_none=True))
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("Failed to extract DB catalog connector config via model_dump: %s", exc)
-
-    out: dict[str, Any] = {}
-    for key in ("host", "port", "database", "username", "password"):
-        if hasattr(config, key):
-            out[key] = getattr(config, key)
-    return out
+    return config.model_dump(mode="json", exclude_none=True)
 
 
 class _BaseCatalogConnector(ConnectorBase):
@@ -67,7 +57,7 @@ class _BaseCatalogConnector(ConnectorBase):
         raise NotImplementedError
 
     async def connect(self, config: dict[str, Any]) -> None:
-        self._config = dict(config or {})
+        self._config = dict(config)
         validate_db_connector_config(self._config)
 
     async def fetch_documents(self, **kwargs: Any) -> AsyncIterator[RawDocument]:
@@ -84,7 +74,7 @@ class MySQLCatalogConnector(_BaseCatalogConnector):
     def connector_type(self) -> str:
         return "mysql_catalog"
 
-    async def test_connection(self, config: dict[str, Any] | Any) -> ConnectionTestResult:
+    async def test_connection(self, config: DbCatalogConfig) -> ConnectionTestResult:
         # PyMySQL connect/cursor APIs are synchronous, so keep them off the event loop.
         return await asyncio.to_thread(self._test_connection_sync, _extract_cfg(config))
 
@@ -151,7 +141,7 @@ class SQLServerCatalogConnector(_BaseCatalogConnector):
     def connector_type(self) -> str:
         return "sqlserver_catalog"
 
-    async def test_connection(self, config: dict[str, Any] | Any) -> ConnectionTestResult:
+    async def test_connection(self, config: DbCatalogConfig) -> ConnectionTestResult:
         # pyodbc connect/cursor APIs are synchronous, so keep them off the event loop.
         return await asyncio.to_thread(self._test_connection_sync, _extract_cfg(config))
 

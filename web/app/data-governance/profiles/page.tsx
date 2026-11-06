@@ -10,14 +10,11 @@ import { PageLoading } from '@/components/ui/page-loading'
 import styles from '@/components/governance-profiles/profiles.module.css'
 
 const GovernanceProfilesPage = dynamic(
-  () =>
-    import('@/components/governance-profiles/governance-profiles-page').then(
-      (mod) => mod.GovernanceProfilesPage
-    ),
+  () => import('@/components/governance-profiles/governance-profiles-page').then((mod) => mod.GovernanceProfilesPage),
   {
     ssr: false,
     loading: () => <GovernanceProfilesRouteLoading />,
-  }
+  },
 )
 
 export default function GovernanceProfilesRoutePage() {

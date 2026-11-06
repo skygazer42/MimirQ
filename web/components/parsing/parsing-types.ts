@@ -1,11 +1,22 @@
 'use client'
 
-import type { ParseCompareRun } from '@/components/parsing/parse-compare-dialog'
 import type { ParsingElement } from '@/lib/api/parsing'
 import type { FileQueueItemData } from '@/components/ui/file-queue-item'
 import type { ParsingBlock } from '@/lib/parsing-positions'
 
-export interface ParseRun extends ParseCompareRun {
+export type ParseCompareRun = {
+  id: string
+  parserBackend?: string
+  parserLabel?: string
+  rawMarkdown: string
+  cleanedMarkdown?: string
+  createdAt?: number
+  elements?: ParsingElement[]
+}
+
+export type ParsingLibrarySourceStatus = 'unknown' | 'available' | 'missing'
+
+export type ParseRun = ParseCompareRun & {
   parserBackend: string
   parserLabel: string
   rawMarkdown: string
@@ -17,7 +28,7 @@ export interface ParseRun extends ParseCompareRun {
   qualityGate?: unknown
 }
 
-export interface ParseFailureDiagnostics {
+export type ParseFailureDiagnostics = {
   file_type?: string
   parser_backend_requested?: string
   parser_backend?: string
@@ -31,7 +42,7 @@ export interface ParseFailureDiagnostics {
   suggested_backends?: string[]
 }
 
-export interface ParsedFile extends FileQueueItemData {
+export type ParsedFile = FileQueueItemData & {
   file: File
   folderId: string
   sourcePath?: string

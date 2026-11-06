@@ -13,7 +13,6 @@ Security posture:
 - Best-effort fail-open: cache errors never break retrieval
 """
 
-
 import concurrent.futures
 import copy
 import hashlib
@@ -66,7 +65,7 @@ _distributed_candidate_lease_heartbeats_lock = threading.Lock()
 class RetrievalCandidateSingleflightTimeoutError(HTTPException):
     """A follower waited for identical retrieval work past its deadline."""
 
-    def __init__(self, timeout_sec: float):
+    def __init__(self, timeout_sec: float) -> None:
         super().__init__(
             status_code=503,
             detail="Retrieval singleflight timed out. Retry later.",
@@ -112,7 +111,7 @@ def build_retrieval_candidate_cache_key(
     Note: We hash the full signature to avoid leaking query text or other potentially
     sensitive information in Redis key names.
     """
-    prefix = str(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_PREFIX", "rcand") or "rcand").strip() or "rcand"
+    prefix = str(settings.RETRIEVAL_CANDIDATE_CACHE_PREFIX or "rcand").strip() or "rcand"
 
     signature: dict[str, Any] = {
         "v": 1,
@@ -123,7 +122,7 @@ def build_retrieval_candidate_cache_key(
         "corpus_cache_token": str(corpus_cache_token or "") or None,
         "behavior_hash": str(behavior_hash or "") or None,
         "doc_scope": _hash_doc_scope(document_ids),
-        "doc_count": int(len([d for d in document_ids if d])),
+        "doc_count": len([d for d in document_ids if d]),
         "query": (query or "").strip(),
         "top_k": int(top_k or 0),
         "score_threshold": float(score_threshold or 0.0),
@@ -217,7 +216,7 @@ def wait_for_inflight_retrieval_candidates(
 def _retrieval_candidate_singleflight_lease_ttl_sec(cache_ttl_sec: int) -> int:
     wait_timeout_sec = max(
         1,
-        int(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 60.0),
+        int(settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 60.0),
     )
     response_ttl_sec = max(60, int(cache_ttl_sec or 0))
     return max(60, min(300, max(response_ttl_sec, wait_timeout_sec)))
@@ -226,18 +225,18 @@ def _retrieval_candidate_singleflight_lease_ttl_sec(cache_ttl_sec: int) -> int:
 def _retrieval_candidate_singleflight_wait_timeout_sec() -> float:
     return max(
         1.0,
-        float(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 60.0),
+        float(settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 60.0),
     )
 
 
 def _distributed_result_encryption_available() -> bool:
-    return len(str(getattr(settings, "SECRET_KEY", "") or "").strip()) >= 32
+    return len(str(settings.SECRET_KEY or "").strip()) >= 32
 
 
 def _retrieval_candidate_singleflight_result_ttl_sec() -> int:
     return max(
         5,
-        min(30, int(getattr(settings, "RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC", 15.0) or 15.0)),
+        min(30, int(settings.RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC or 15.0)),
     )
 
 
@@ -298,7 +297,7 @@ def _write_retrieval_candidate_payload(
     if client is None:
         return False
 
-    max_bytes = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES", 400_000) or 0)
+    max_bytes = int(settings.RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES or 0)
     try:
         raw_text = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str)
         if encrypted:
@@ -434,12 +433,12 @@ def _raise_distributed_retrieval_wait_timeout(key: str, *, wait_timeout_sec: flo
 def acquire_or_wait_for_distributed_inflight_retrieval_candidates(
     key: str,
 ) -> tuple[bool, list[dict[str, Any]] | None, _DistributedRetrievalLease | None]:
-    if not key or not bool(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)):
+    if not key or not settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED:
         return True, None, None
     if not _distributed_result_encryption_available():
         return True, None, None
 
-    cache_ttl_sec = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 0) or 0)
+    cache_ttl_sec = int(settings.RETRIEVAL_CANDIDATE_CACHE_TTL_SEC or 0)
     client = _get_redis_client()
     if client is None:
         return True, None, None
@@ -507,7 +506,7 @@ def release_current_distributed_inflight_retrieval_candidates() -> None:
 
 
 def get_cached_retrieval_candidates(key: str) -> list[dict[str, Any]] | None:
-    if not bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)):
+    if not settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED:
         return None
     return _read_retrieval_candidate_payload(key)
 
@@ -520,10 +519,10 @@ def get_distributed_inflight_retrieval_candidates(key: str) -> list[dict[str, An
 
 
 def set_cached_retrieval_candidates(key: str, payload: list[dict[str, Any]]) -> bool:
-    if not bool(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_ENABLED", False)):
+    if not settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED:
         return False
 
-    ttl = int(getattr(settings, "RETRIEVAL_CANDIDATE_CACHE_TTL_SEC", 30) or 0)
+    ttl = int(settings.RETRIEVAL_CANDIDATE_CACHE_TTL_SEC or 0)
     return _write_retrieval_candidate_payload(key, payload, ttl_sec=ttl)
 
 

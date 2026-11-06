@@ -4,15 +4,38 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, BarChart3, Database, Download, FileUp, Layers, Loader2, Save, Settings2, Table2 } from '@/components/icons'
+import {
+  ArrowLeft,
+  BarChart3,
+  Database,
+  Download,
+  FileUp,
+  Layers,
+  Loader2,
+  Save,
+  Settings2,
+  Table2,
+} from '@/components/icons'
 
 import { AppFrame } from '@/components/app-frame'
-import { OperationalWorkspace, DirectoryWorkspace, WorkspaceNotice, workspaceStyles as ws } from '@/components/ui/operational-workspace'
+import {
+  OperationalWorkspace,
+  DirectoryWorkspace,
+  WorkspaceNotice,
+  workspaceStyles as ws,
+} from '@/components/ui/operational-workspace'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Panel } from '@/components/ui/panel'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 
 import { WorkflowEditor } from '@/components/workflow/workflow-editor'
@@ -25,7 +48,7 @@ import { queryKeys } from '@/lib/query-keys'
 import { useRouter } from '@/i18n/navigation'
 import { cn, detachPromise } from '@/lib/utils'
 
-import type { Dataset, DatasetConfigBundle, DatasetConfigExport, DatasetConfigImportRequest } from '@/types'
+import type { DatasetConfigBundle, DatasetConfigImportRequest } from '@/types'
 
 type DatasetWorkflowGraphNode = GraphNode & {
   meta?: {
@@ -96,14 +119,11 @@ export default function DatasetWorkflowPage() {
     },
     enabled: Boolean(datasetId),
   })
-  const dataset = (datasetQuery.data ?? null) as Dataset | null
-  const exportRes = (configQuery.data ?? null) as DatasetConfigExport | null
+  const dataset = datasetQuery.data ?? null
+  const exportRes = configQuery.data ?? null
   const loading = datasetQuery.isFetching || configQuery.isFetching
   const loadError = datasetQuery.error ?? configQuery.error
-  const loadErrorUpdatedAt = Math.max(
-    datasetQuery.errorUpdatedAt,
-    configQuery.errorUpdatedAt
-  )
+  const loadErrorUpdatedAt = Math.max(datasetQuery.errorUpdatedAt, configQuery.errorUpdatedAt)
   const { refetch: refetchDataset } = datasetQuery
   const { refetch: refetchConfig } = configQuery
   const refreshWorkflow = useCallback(async () => {
@@ -144,10 +164,10 @@ export default function DatasetWorkflowPage() {
       return JSON.stringify(selectedJson, null, 2)
     } catch {
       if (
-        typeof selectedJson === 'string'
-        || typeof selectedJson === 'number'
-        || typeof selectedJson === 'boolean'
-        || typeof selectedJson === 'bigint'
+        typeof selectedJson === 'string' ||
+        typeof selectedJson === 'number' ||
+        typeof selectedJson === 'boolean' ||
+        typeof selectedJson === 'bigint'
       ) {
         return String(selectedJson)
       }
@@ -225,14 +245,17 @@ export default function DatasetWorkflowPage() {
     }
   }, [datasetId, importBundle, refreshWorkflow])
 
-  const onWorkflowLayoutChange = useCallback((workflowLayout: Record<string, unknown>) => {
-    startTransition(() => {
-      setWorkingConfig((prev) => ({
-        ...(prev ?? exportRes?.config),
-        workflow_layout: workflowLayout,
-      }))
-    })
-  }, [exportRes?.config])
+  const onWorkflowLayoutChange = useCallback(
+    (workflowLayout: Record<string, unknown>) => {
+      startTransition(() => {
+        setWorkingConfig((prev) => ({
+          ...(prev ?? exportRes?.config),
+          workflow_layout: workflowLayout,
+        }))
+      })
+    },
+    [exportRes?.config],
+  )
 
   const doSaveLayout = useCallback(async () => {
     if (!datasetId || !workingConfig) return
@@ -262,30 +285,114 @@ export default function DatasetWorkflowPage() {
     }
   }, [selectedJsonText])
 
-  return <AppFrame><OperationalWorkspace title="工作流配置" icon="ingestion-operation" mode="canvas" context={dataset?.name ?? '正在读取数据集…'} back={() => router.push('/datasets')} actions={<><Button className={ws.inspectorTrigger} variant="outline" onClick={() => setNodeDetailOpen(true)}>节点详情</Button><Button disabled={saving || !datasetId || !workingConfig || !hasUnsavedLayoutChanges} onClick={() => { void doSaveLayout() }}>{saving ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Save />}{saving ? '正在保存…' : '保存布局'}</Button><Button variant="outline" size="icon" disabled={exporting} onClick={() => { void doExport() }} aria-label="导出工作流配置"><Download /></Button><Button variant="outline" size="icon" disabled={importing} onClick={() => importInputRef.current?.click()} aria-label="导入工作流配置"><FileUp /></Button><input ref={importInputRef} type="file" accept="application/json" className="hidden" onChange={event => { void onPickImportFile(event.target.files?.[0] ?? null) }} /></>}>
-    <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-5 py-3 text-xs text-muted-foreground"><span>拖动节点只改变布局，不修改业务配置。</span><span className="ml-auto">{layoutStatusLabel}</span></div>
-    {datasetQuery.error || configQuery.error ? <div className="px-5"><WorkspaceNotice retry={() => { void refreshWorkflow() }}>{formatApiError(datasetQuery.error || configQuery.error, '工作流读取失败')}</WorkspaceNotice></div> : null}
-    {saveError ? <div className="px-5"><WorkspaceNotice retry={() => { void doSaveLayout() }} retryLabel="重试保存" pending={saving}>{saveError}</WorkspaceNotice></div> : null}
-    <div className={ws.canvasSplit}><Panel variant="seamless" padding="none" className={cn(workflowPanelClass, 'flex min-h-0 min-w-0 flex-col')}>
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-2.5 dark:border-border/60 dark:bg-muted/20">
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground dark:text-foreground">配置链路图</div>
-
-                </div>
-                <div className="hidden shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground md:flex">
-                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">version {configVersionLabel}</span>
-                  <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">{graph.nodes.length} nodes</span>
-                </div>
+  return (
+    <AppFrame>
+      <OperationalWorkspace
+        title="工作流配置"
+        icon="ingestion-operation"
+        mode="canvas"
+        context={dataset?.name ?? '正在读取数据集…'}
+        back={() => router.push('/datasets')}
+        actions={
+          <>
+            <Button className={ws.inspectorTrigger} variant="outline" onClick={() => setNodeDetailOpen(true)}>
+              节点详情
+            </Button>
+            <Button
+              disabled={saving || !datasetId || !workingConfig || !hasUnsavedLayoutChanges}
+              onClick={() => {
+                void doSaveLayout()
+              }}
+            >
+              {saving ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Save />}
+              {saving ? '正在保存…' : '保存布局'}
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={exporting}
+              onClick={() => {
+                void doExport()
+              }}
+              aria-label="导出工作流配置"
+            >
+              <Download />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              disabled={importing}
+              onClick={() => importInputRef.current?.click()}
+              aria-label="导入工作流配置"
+            >
+              <FileUp />
+            </Button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json"
+              className="hidden"
+              onChange={(event) => {
+                void onPickImportFile(event.target.files?.[0] ?? null)
+              }}
+            />
+          </>
+        }
+      >
+        <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-5 py-3 text-xs text-muted-foreground">
+          <span>拖动节点只改变布局，不修改业务配置。</span>
+          <span className="ml-auto">{layoutStatusLabel}</span>
+        </div>
+        {datasetQuery.error || configQuery.error ? (
+          <div className="px-5">
+            <WorkspaceNotice
+              retry={() => {
+                void refreshWorkflow()
+              }}
+            >
+              {formatApiError(datasetQuery.error || configQuery.error, '工作流读取失败')}
+            </WorkspaceNotice>
+          </div>
+        ) : null}
+        {saveError ? (
+          <div className="px-5">
+            <WorkspaceNotice
+              retry={() => {
+                void doSaveLayout()
+              }}
+              retryLabel="重试保存"
+              pending={saving}
+            >
+              {saveError}
+            </WorkspaceNotice>
+          </div>
+        ) : null}
+        <div className={ws.canvasSplit}>
+          <Panel variant="seamless" padding="none" className={cn(workflowPanelClass, 'flex min-h-0 min-w-0 flex-col')}>
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-2.5 dark:border-border/60 dark:bg-muted/20">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-foreground dark:text-foreground">配置链路图</div>
               </div>
-              <div className="min-h-0 flex-1">
-                <WorkflowEditor
-                  graph={graph}
-                  workflowLayout={workingConfig?.workflow_layout ?? null}
-                  onWorkflowLayoutChange={onWorkflowLayoutChange}
-                  onNodeSelect={(node) => setSelectedNode(node)}
-                />
+              <div className="hidden shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground md:flex">
+                <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">
+                  version {configVersionLabel}
+                </span>
+                <span className="rounded-full border border-border/60 bg-card/70 px-2 py-1 dark:border-border/60 dark:bg-muted/30">
+                  {graph.nodes.length} nodes
+                </span>
               </div>
-            </Panel><div className={cn(ws.canvasPanel, ws.inspector)}><Panel variant="seamless" className={cn(workflowPanelClass, 'flex min-h-0 flex-col p-0')}>
+            </div>
+            <div className="min-h-0 flex-1">
+              <WorkflowEditor
+                graph={graph}
+                workflowLayout={workingConfig?.workflow_layout ?? null}
+                onWorkflowLayoutChange={onWorkflowLayoutChange}
+                onNodeSelect={(node) => setSelectedNode(node)}
+              />
+            </div>
+          </Panel>
+          <div className={cn(ws.canvasPanel, ws.inspector)}>
+            <Panel variant="seamless" className={cn(workflowPanelClass, 'flex min-h-0 flex-col p-0')}>
               <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold text-foreground dark:text-foreground">
@@ -294,7 +401,12 @@ export default function DatasetWorkflowPage() {
                   <div className="mt-0.5 text-xs leading-4 text-muted-foreground">{selectedMetaStatusText}</div>
                 </div>
                 {selectedJsonText.trim() ? (
-                  <Button variant="outline" size="sm" onClick={() => detachPromise(copySelectedJson())} className="h-8 shrink-0 rounded-lg px-2.5 text-xs">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => detachPromise(copySelectedJson())}
+                    className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
+                  >
                     复制 JSON
                   </Button>
                 ) : null}
@@ -306,7 +418,11 @@ export default function DatasetWorkflowPage() {
                     <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground/70">摘要</div>
                     <div className="flex flex-wrap gap-1.5">
                       {selectedSummary.slice(0, 20).map((s) => (
-                        <Badge key={s} variant="outline" className="rounded-lg border-border/60 bg-card/70 font-mono text-xs dark:border-border/60 dark:bg-muted/30">
+                        <Badge
+                          key={s}
+                          variant="outline"
+                          className="rounded-lg border-border/60 bg-card/70 font-mono text-xs dark:border-border/60 dark:bg-muted/30"
+                        >
                           {String(s)}
                         </Badge>
                       ))}
@@ -326,90 +442,115 @@ export default function DatasetWorkflowPage() {
               </div>
 
               <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-xs text-muted-foreground dark:border-border/60">
-                <span>导出版本 <span className="font-mono text-foreground">{configVersionLabel}</span></span>
+                <span>
+                  导出版本 <span className="font-mono text-foreground">{configVersionLabel}</span>
+                </span>
                 <span className="font-medium text-foreground">{layoutStatusLabel}</span>
               </div>
-            </Panel></div></div>
-    <Dialog open={nodeDetailOpen} onOpenChange={setNodeDetailOpen}><DialogContent className={ws.dialog}><DialogHeader className={ws.dialogHeader}><DialogTitle>节点详情</DialogTitle><DialogDescription>查看选中节点的配置。</DialogDescription></DialogHeader><div className={ws.dialogBody}><Panel variant="seamless" className={cn(workflowPanelClass, 'flex min-h-0 flex-col p-0')}>
-              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-foreground dark:text-foreground">
-                    {selectedNode?.label ? String(selectedNode.label) : '节点详情'}
-                  </div>
-                  <div className="mt-0.5 text-xs leading-4 text-muted-foreground">{selectedMetaStatusText}</div>
-                </div>
-                {selectedJsonText.trim() ? (
-                  <Button variant="outline" size="sm" onClick={() => detachPromise(copySelectedJson())} className="h-8 shrink-0 rounded-lg px-2.5 text-xs">
-                    复制 JSON
-                  </Button>
-                ) : null}
-              </div>
-
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 no-scrollbar">
-                {selectedSummary.length > 0 ? (
-                  <div className="space-y-2">
-                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground/70">摘要</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {selectedSummary.slice(0, 20).map((s) => (
-                        <Badge key={s} variant="outline" className="rounded-lg border-border/60 bg-card/70 font-mono text-xs dark:border-border/60 dark:bg-muted/30">
-                          {String(s)}
-                        </Badge>
-                      ))}
+            </Panel>
+          </div>
+        </div>
+        <Dialog open={nodeDetailOpen} onOpenChange={setNodeDetailOpen}>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>节点详情</DialogTitle>
+              <DialogDescription>查看选中节点的配置。</DialogDescription>
+            </DialogHeader>
+            <div className={ws.dialogBody}>
+              <Panel variant="seamless" className={cn(workflowPanelClass, 'flex min-h-0 flex-col p-0')}>
+                <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/60 bg-card/65 px-3.5 py-3 dark:border-border/60 dark:bg-muted/20">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-foreground dark:text-foreground">
+                      {selectedNode?.label ? String(selectedNode.label) : '节点详情'}
                     </div>
+                    <div className="mt-0.5 text-xs leading-4 text-muted-foreground">{selectedMetaStatusText}</div>
                   </div>
-                ) : null}
-
-                <div className="space-y-2">
-                  <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground/70">JSON</div>
-                  <Textarea
-                    value={selectedJsonText || ''}
-                    readOnly
-                    className="min-h-[200px] resize-none rounded-md border-border bg-muted/20 font-mono text-xs leading-5 shadow-none dark:border-border/60 dark:bg-muted/20"
-                    placeholder="选择左侧节点后查看 JSON..."
-                  />
+                  {selectedJsonText.trim() ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => detachPromise(copySelectedJson())}
+                      className="h-8 shrink-0 rounded-lg px-2.5 text-xs"
+                    >
+                      复制 JSON
+                    </Button>
+                  ) : null}
                 </div>
-              </div>
 
-              <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-xs text-muted-foreground dark:border-border/60">
-                <span>导出版本 <span className="font-mono text-foreground">{configVersionLabel}</span></span>
-                <span className="font-medium text-foreground">{layoutStatusLabel}</span>
-              </div>
-            </Panel></div></DialogContent></Dialog>
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-3 no-scrollbar">
+                  {selectedSummary.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground/70">
+                        摘要
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedSummary.slice(0, 20).map((s) => (
+                          <Badge
+                            key={s}
+                            variant="outline"
+                            className="rounded-lg border-border/60 bg-card/70 font-mono text-xs dark:border-border/60 dark:bg-muted/30"
+                          >
+                            {String(s)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground/70">JSON</div>
+                    <Textarea
+                      value={selectedJsonText || ''}
+                      readOnly
+                      className="min-h-[200px] resize-none rounded-md border-border bg-muted/20 font-mono text-xs leading-5 shadow-none dark:border-border/60 dark:bg-muted/20"
+                      placeholder="选择左侧节点后查看 JSON..."
+                    />
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border/60 px-3.5 py-2.5 text-xs text-muted-foreground dark:border-border/60">
+                  <span>
+                    导出版本 <span className="font-mono text-foreground">{configVersionLabel}</span>
+                  </span>
+                  <span className="font-medium text-foreground">{layoutStatusLabel}</span>
+                </div>
+              </Panel>
+            </div>
+          </DialogContent>
+        </Dialog>
         <Dialog open={importOpen} onOpenChange={(open) => setImportOpen(open)}>
-          <DialogContent  className={ws.dialog}>
-<DialogHeader  className={ws.dialogHeader}>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
               <DialogTitle>导入工作流配置？</DialogTitle>
               <DialogDescription>
                 将使用 <span className="font-mono">replace=true</span> 覆盖当前数据集配置。请确认 JSON 来源可靠。
               </DialogDescription>
             </DialogHeader>
-<div className={ws.dialogBody}>
-
-<div className="space-y-3">
-              <div className="text-sm">
-                文件：<span className="font-mono">{importFileName || 'config.json'}</span>
-              </div>
-              {importKeys.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">顶层配置键</div>
-                  <div className="flex flex-wrap gap-2">
-                    {importKeys.slice(0, 24).map((k) => (
-                      <Badge key={k} variant="outline" className="font-mono text-[11px]">
-                        {k}
-                      </Badge>
-                    ))}
-                    {importKeys.length > 24 ? (
-                      <Badge variant="secondary" className="font-mono text-[11px]">
-                        +{importKeys.length - 24} 项
-                      </Badge>
-                    ) : null}
-                  </div>
+            <div className={ws.dialogBody}>
+              <div className="space-y-3">
+                <div className="text-sm">
+                  文件：<span className="font-mono">{importFileName || 'config.json'}</span>
                 </div>
-              ) : null}
+                {importKeys.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">顶层配置键</div>
+                    <div className="flex flex-wrap gap-2">
+                      {importKeys.slice(0, 24).map((k) => (
+                        <Badge key={k} variant="outline" className="font-mono text-[11px]">
+                          {k}
+                        </Badge>
+                      ))}
+                      {importKeys.length > 24 ? (
+                        <Badge variant="secondary" className="font-mono text-[11px]">
+                          +{importKeys.length - 24} 项
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
-
-</div>
-<DialogFooter  className={ws.dialogFooter}>
+            <DialogFooter className={ws.dialogFooter}>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -421,12 +562,18 @@ export default function DatasetWorkflowPage() {
               >
                 取消
               </Button>
-              <Button onClick={() => detachPromise(doImport())} disabled={importing || !importBundle || !datasetId} className="gap-2">
+              <Button
+                onClick={() => detachPromise(doImport())}
+                disabled={importing || !importBundle || !datasetId}
+                className="gap-2"
+              >
                 {importing ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
                 导入并覆盖
               </Button>
             </DialogFooter>
-</DialogContent>
+          </DialogContent>
         </Dialog>
-</OperationalWorkspace></AppFrame>
+      </OperationalWorkspace>
+    </AppFrame>
+  )
 }

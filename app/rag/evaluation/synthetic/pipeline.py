@@ -1,4 +1,3 @@
-
 from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
@@ -57,9 +56,9 @@ def generate_stage2_synthetic_dataset(
     query_counts = Counter(str(row.get("query_type") or "") for row in generated)
     source_counts = Counter(str(row.get("source_type") or "") for row in generated)
     critique_summary = {
-        "attempted": int(attempted),
-        "accepted": int(len(generated)),
-        "rejected": int(max(0, attempted - len(generated))),
+        "attempted": attempted,
+        "accepted": len(generated),
+        "rejected": max(0, attempted - len(generated)),
         "rejection_reasons": dict(sorted(rejection_reasons.items(), key=lambda kv: kv[0])),
     }
     manifest = {

@@ -1,6 +1,7 @@
 'use client'
 
 import { Layers, Route } from '@/components/icons'
+import type { ReactNode } from 'react'
 import { getFileTypeMeta } from '@/components/knowledge/file-type'
 import { Button } from '@/components/ui/button'
 import { Link } from '@/i18n/navigation'
@@ -15,17 +16,27 @@ import styles from './knowledge-page.module.css'
 type KnowledgeInspectorProps = {
   selectedDocs: Document[]
   datasetLabel?: string
-  children?: React.ReactNode
+  children?: ReactNode
   className?: string
   embedded?: boolean
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  completed: '已就绪', pending: '等待处理', processing: '处理中',
-  failed: '失败', quarantined: '已隔离', cancelled: '已取消', deleting: '删除中',
+  completed: '已就绪',
+  pending: '等待处理',
+  processing: '处理中',
+  failed: '失败',
+  quarantined: '已隔离',
+  cancelled: '已取消',
+  deleting: '删除中',
 }
 
-export function KnowledgeInspector({ selectedDocs, datasetLabel, children, className }: Readonly<KnowledgeInspectorProps>) {
+export function KnowledgeInspector({
+  selectedDocs,
+  datasetLabel,
+  children,
+  className,
+}: Readonly<KnowledgeInspectorProps>) {
   const selected = selectedDocs.length === 1 ? selectedDocs[0] : null
   if (!selected) return <div className={cn(styles.inspector, className)}>选择一份文档以查看详情。</div>
 
@@ -52,7 +63,10 @@ export function KnowledgeInspector({ selectedDocs, datasetLabel, children, class
     <div className={cn(styles.inspector, className)}>
       <div className={styles.inspectorIdentity}>
         <TypeIcon appearance="color" aria-hidden="true" />
-        <div><h3>{selected.filename}</h3><p>{fileType.label}</p></div>
+        <div>
+          <h3>{selected.filename}</h3>
+          <p>{fileType.label}</p>
+        </div>
       </div>
       {selected.error_message ? (
         <div className={styles.inspectorError}>
@@ -60,11 +74,33 @@ export function KnowledgeInspector({ selectedDocs, datasetLabel, children, class
           <p>{selected.error_message}</p>
         </div>
       ) : null}
-      <dl>{details.map(([label, value]) => <div key={label} className="contents"><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
-      {sourcePath ? <div className={styles.inspectorSource}><h4>来源路径</h4><p>{sourcePath}</p></div> : null}
+      <dl>
+        {details.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
+        ))}
+      </dl>
+      {sourcePath ? (
+        <div className={styles.inspectorSource}>
+          <h4>来源路径</h4>
+          <p>{sourcePath}</p>
+        </div>
+      ) : null}
       <div className={styles.inspectorActions}>
-        <Button asChild variant="outline" size="sm"><Link href={buildChunkPreviewDocumentHref(selected.id)} target="_blank" rel="noopener noreferrer"><Layers className="size-4" />切片管理</Link></Button>
-        <Button asChild variant="ghost" size="sm"><Link href={'/knowledge/' + selected.id + '/health'}><Route className="size-4" />健康卡片</Link></Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href={buildChunkPreviewDocumentHref(selected.id)} target="_blank" rel="noopener noreferrer">
+            <Layers className="size-4" />
+            切片管理
+          </Link>
+        </Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link href={'/knowledge/' + selected.id + '/health'}>
+            <Route className="size-4" />
+            健康卡片
+          </Link>
+        </Button>
       </div>
       {children}
     </div>

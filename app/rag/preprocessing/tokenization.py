@@ -103,7 +103,7 @@ def _camel_subtokens(raw_token: str) -> list[str]:
         if not (any(c.islower() for c in segment) and any(c.isupper() for c in segment)):
             continue
         for part in _split_camel_alnum_segment(segment):
-            norm = str(part).strip().casefold()
+            norm = part.strip().casefold()
             if _keep_token(norm):
                 out.append(norm)
     return out
@@ -123,7 +123,7 @@ def _version_subtokens(norm_token: str) -> list[str]:
     m = re.match(r"^v?(\d+(?:\.\d+){1,6})$", norm_token, flags=re.IGNORECASE)
     if not m:
         return []
-    ver = str(m.group(1))
+    ver = m.group(1)
     parts = ver.split(".")
     out: list[str] = []
     if _keep_token(ver):
@@ -137,18 +137,18 @@ def _version_subtokens(norm_token: str) -> list[str]:
 
 
 def _numeric_normalization_tokens(text: str) -> list[str]:
-    if not bool(getattr(settings, "BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED", True)):
+    if not settings.BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED:
         return []
     raw = text or ""
     out: list[str] = []
     # 1) Plain digit sequences (>= 2 chars), e.g. 2024, 42.
     for m in _NUM_SEQ_RE.findall(raw):
-        norm = str(m)
+        norm = m
         if _keep_token(norm):
             out.append(norm)
     # 2) Comma/underscore separated numbers, e.g. 1,234 or 12_345 -> 1234/12345.
     for m in _NUM_COMMA_UNDER_RE.findall(raw):
-        norm = str(m).replace(",", "").replace("_", "")
+        norm = m.replace(",", "").replace("_", "")
         if _keep_token(norm):
             out.append(norm)
     return out
@@ -163,11 +163,11 @@ def _append_unique_token(tokens: list[str], seen: set[str], token: str) -> None:
 
 def _expand_ascii_parts(norm: str, *, tokens: list[str], seen: set[str]) -> None:
     for seg in _ASCII_PATH_SPLIT_RE.split(norm):
-        segment = str(seg).strip()
+        segment = seg.strip()
         if segment and segment != norm:
             _append_unique_token(tokens, seen, segment)
         for part in _ASCII_PART_SPLIT_RE.split(segment):
-            _append_unique_token(tokens, seen, str(part).strip())
+            _append_unique_token(tokens, seen, part.strip())
 
 
 def _expand_ascii_subtokens(raw_tok: str, norm: str, *, tokens: list[str], seen: set[str]) -> None:
@@ -182,7 +182,7 @@ def _tokenize_for_bm25_ascii(text: str) -> list[str]:
     tokens: list[str] = []
     extra: set[str] = set()
     for token in _ASCII_TOKEN_RE.findall(text or ""):
-        raw_tok = str(token).strip()
+        raw_tok = token.strip()
         if not raw_tok:
             continue
         norm = raw_tok.casefold()
@@ -192,7 +192,7 @@ def _tokenize_for_bm25_ascii(text: str) -> list[str]:
         # Treat the base token as already emitted so expansion logic doesn't duplicate it.
         extra.add(norm)
 
-        if not bool(getattr(settings, "BM25_TOKENIZE_ASCII_EXPAND_ENABLED", True)):
+        if not settings.BM25_TOKENIZE_ASCII_EXPAND_ENABLED:
             continue
         _expand_ascii_subtokens(raw_tok, norm, tokens=tokens, seen=extra)
 
@@ -235,10 +235,10 @@ def _flush_cjk_oov_buffer(buf: list[str], out_tokens: list[str], *, extra_budget
     s = "".join(buf)
     buf.clear()
 
-    if not bool(getattr(settings, "BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED", True)):
+    if not settings.BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED:
         return
 
-    max_term_chars = int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS", 8) or 8)
+    max_term_chars = settings.BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS or 8
     if 2 <= len(s) <= max_term_chars and _keep_token(s):
         out_tokens.append(s)
         extra_budget[0] = max(0, extra_budget[0] - 1)
@@ -265,7 +265,7 @@ def _tokenize_for_bm25_impl(text: str) -> list[str]:
 
     tokens: list[str] = []
     # Keep a small expansion budget to avoid pathological token explosion on weird inputs.
-    extra_budget = [int(getattr(settings, "BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS", 128) or 128)]
+    extra_budget = [settings.BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS or 128]
     cjk_oov_buf: list[str] = []
 
     for token in jieba.cut_for_search(raw):

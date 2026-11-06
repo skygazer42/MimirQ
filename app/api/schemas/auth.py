@@ -1,6 +1,7 @@
 """
 Auth schemas for user registration and login.
 """
+
 from datetime import datetime
 from uuid import UUID
 

@@ -15,7 +15,22 @@ import {
   type ReactNode,
 } from 'react'
 import { useTranslations } from 'next-intl'
-import { ArrowUp, StopCircle, Dataset as Database, FileText, Settings2, Mic, ArrowDown, Route, ChevronDown, ChevronLeft, Check, X, GripHorizontal, ArrowRight } from '@/components/icons'
+import {
+  ArrowUp,
+  StopCircle,
+  Dataset as Database,
+  FileText,
+  Settings2,
+  Mic,
+  ArrowDown,
+  Route,
+  ChevronDown,
+  ChevronLeft,
+  Check,
+  X,
+  GripHorizontal,
+  ArrowRight,
+} from '@/components/icons'
 import { toast } from 'sonner'
 import { useQuery } from '@tanstack/react-query'
 import { useChat } from '@/hooks/use-chat'
@@ -24,21 +39,13 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import { datasetApi, promptTemplateApi, settingsApi } from '@/lib/api'
+import { datasetApi } from '@/lib/api/datasets'
+import { promptTemplateApi } from '@/lib/api/prompts'
+import { settingsApi } from '@/lib/api/settings'
 import { ChatMessageItem } from '@/components/chat/message-item'
 import { BrandLogo } from '@/components/brand-logo'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { VoiceModeOverlay } from '@/components/chat/voice-mode-overlay'
 import { ConversationSummaryDialog } from '@/components/chat/conversation-summary-dialog'
 import { RagTraceDialog } from '@/components/rag-trace/rag-trace-dialog'
@@ -155,15 +162,12 @@ export function ChatArea({
   const scrollEventRafRef = useRef<number | null>(null)
   const focusMessageTimerRef = useRef<number | null>(null)
   const pendingPrependScrollRef = useRef<{ top: number; height: number } | null>(null)
-  const autoSendPromptRef = useRef(false)
+  const autoSendPromptRef = useRef<string | null>(null)
   // Slash Menu State
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashPos, setSlashPos] = useState({ top: 0, left: 0 })
   const [voiceModeOpen, setVoiceModeOpen] = useState(false)
-  const activeDocumentIds = useMemo(
-    () => (activeDocumentId ? [activeDocumentId] : undefined),
-    [activeDocumentId]
-  )
+  const activeDocumentIds = useMemo(() => (activeDocumentId ? [activeDocumentId] : undefined), [activeDocumentId])
 
   const settingsQuery = useQuery({
     queryKey: queryKeys.settings.snapshot,
@@ -186,19 +190,14 @@ export function ChatArea({
     staleTime: 60_000,
   })
 
-  const datasets = useMemo(
-    () => datasetsQuery.data ?? [],
-    [datasetsQuery.data]
-  )
+  const datasets = useMemo(() => datasetsQuery.data ?? [], [datasetsQuery.data])
   const promptTemplates = useMemo(() => promptTemplatesQuery.data || [], [promptTemplatesQuery.data])
   const datasetsLoading = datasetsQuery.isLoading
   const focusMessageById = useCallback((messageId: string) => {
     const container = scrollContainerRef.current
     if (!container) return false
 
-    const node = container.querySelector<HTMLElement>(
-      `[data-chat-message-id="${escapeAttributeSelector(messageId)}"]`
-    )
+    const node = container.querySelector<HTMLElement>(`[data-chat-message-id="${escapeAttributeSelector(messageId)}"]`)
     if (!node) return false
 
     node.scrollIntoView({ behavior: 'smooth', block: 'center' })
@@ -219,12 +218,10 @@ export function ChatArea({
     if (!system || hasSystemRagDefaults) return
 
     setHasSystemRagDefaults(true)
+    if (ragConfigDirty) return
     setRagConfig((prev) => {
       const isDefault =
-        prev.top_k === 5 &&
-        prev.score_threshold === 0.7 &&
-        prev.retrieval_mode === 'hybrid' &&
-        prev.use_graph === false
+        prev.top_k === 5 && prev.score_threshold === 0.7 && prev.retrieval_mode === 'hybrid' && prev.use_graph === false
       if (!isDefault) return prev
       return {
         ...prev,
@@ -232,7 +229,7 @@ export function ChatArea({
         score_threshold: system.rag?.similarity_threshold ?? prev.score_threshold,
       }
     })
-  }, [hasSystemRagDefaults, settingsQuery.data])
+  }, [hasSystemRagDefaults, ragConfigDirty, settingsQuery.data])
 
   useEffect(() => {
     setSelectedDatasetId((current) => {
@@ -244,27 +241,16 @@ export function ChatArea({
 
   const selectedDataset = useMemo(
     () => datasets.find((dataset) => dataset.id === selectedDatasetId),
-    [datasets, selectedDatasetId]
+    [datasets, selectedDatasetId],
   )
 
   const clampRagSettingsOffset = useCallback(
-    (
-      offset: RagSettingsOffset,
-      baseRect: RagSettingsDragState['baseRect']
-    ): RagSettingsOffset => {
+    (offset: RagSettingsOffset, baseRect: RagSettingsDragState['baseRect']): RagSettingsOffset => {
       if (globalThis.window === undefined) return offset
 
-      const maxX =
-        globalThis.window.innerWidth -
-        RAG_SETTINGS_VIEWPORT_MARGIN -
-        baseRect.left -
-        baseRect.width
+      const maxX = globalThis.window.innerWidth - RAG_SETTINGS_VIEWPORT_MARGIN - baseRect.left - baseRect.width
       const minX = RAG_SETTINGS_VIEWPORT_MARGIN - baseRect.left
-      const maxY =
-        globalThis.window.innerHeight -
-        RAG_SETTINGS_VIEWPORT_MARGIN -
-        baseRect.top -
-        baseRect.height
+      const maxY = globalThis.window.innerHeight - RAG_SETTINGS_VIEWPORT_MARGIN - baseRect.top - baseRect.height
       const minY = RAG_SETTINGS_VIEWPORT_MARGIN - baseRect.top
       const safeMaxX = Math.max(minX, maxX)
       const safeMaxY = Math.max(minY, maxY)
@@ -274,7 +260,7 @@ export function ChatArea({
         y: Math.min(Math.max(offset.y, minY), safeMaxY),
       }
     },
-    []
+    [],
   )
 
   const getRagSettingsBaseRect = useCallback(() => {
@@ -312,7 +298,7 @@ export function ChatArea({
       event.currentTarget.setPointerCapture(event.pointerId)
       event.preventDefault()
     },
-    [getRagSettingsBaseRect, ragSettingsOffset]
+    [getRagSettingsBaseRect, ragSettingsOffset],
   )
 
   const moveRagSettingsDrag = useCallback(
@@ -327,7 +313,7 @@ export function ChatArea({
       setRagSettingsOffset(clampRagSettingsOffset(nextOffset, drag.baseRect))
       event.preventDefault()
     },
-    [clampRagSettingsOffset]
+    [clampRagSettingsOffset],
   )
 
   const endRagSettingsDrag = useCallback((event: PointerEvent<HTMLButtonElement>) => {
@@ -365,12 +351,12 @@ export function ChatArea({
             x: current.x + delta.x * multiplier,
             y: current.y + delta.y * multiplier,
           },
-          baseRect
-        )
+          baseRect,
+        ),
       )
       event.preventDefault()
     },
-    [clampRagSettingsOffset, getRagSettingsBaseRect, resetRagSettingsPosition]
+    [clampRagSettingsOffset, getRagSettingsBaseRect, resetRagSettingsPosition],
   )
 
   useEffect(() => {
@@ -404,35 +390,32 @@ export function ChatArea({
     return () => globalThis.window.removeEventListener('resize', handleResize)
   }, [clampRagSettingsOffset, getRagSettingsBaseRect, showRagSettings])
 
-  const applyMetadataFilterPreset = useCallback(
-    (mode: 'all' | 'exclude_qa' | 'qa_only' | 'custom') => {
-      setMetadataFilterMode(mode)
-      setRagConfigDirty(true)
-      setMetadataFilterError(null)
+  const applyMetadataFilterPreset = useCallback((mode: 'all' | 'exclude_qa' | 'qa_only' | 'custom') => {
+    setMetadataFilterMode(mode)
+    setRagConfigDirty(true)
+    setMetadataFilterError(null)
 
-      if (mode === 'all') {
-        setMetadataFilterText('')
-        setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
-        return
-      }
+    if (mode === 'all') {
+      setMetadataFilterText('')
+      setRagConfig((prev) => ({ ...prev, metadata_filter: undefined }))
+      return
+    }
 
-      if (mode === 'exclude_qa') {
-        const filter = { file_type: { $ne: 'qa' } }
-        setMetadataFilterText(JSON.stringify(filter, null, 2))
-        setRagConfig((prev) => ({ ...prev, metadata_filter: filter }))
-        return
-      }
+    if (mode === 'exclude_qa') {
+      const filter = { file_type: { $ne: 'qa' } }
+      setMetadataFilterText(JSON.stringify(filter, null, 2))
+      setRagConfig((prev) => ({ ...prev, metadata_filter: filter }))
+      return
+    }
 
-      if (mode === 'qa_only') {
-        const filter = { file_type: { $eq: 'qa' } }
-        setMetadataFilterText(JSON.stringify(filter, null, 2))
-        setRagConfig((prev) => ({ ...prev, metadata_filter: filter }))
-      }
+    if (mode === 'qa_only') {
+      const filter = { file_type: { $eq: 'qa' } }
+      setMetadataFilterText(JSON.stringify(filter, null, 2))
+      setRagConfig((prev) => ({ ...prev, metadata_filter: filter }))
+    }
 
-      // custom: keep current JSON text; parsing happens in an effect.
-    },
-    []
-  )
+    // custom: keep current JSON text; parsing happens in an effect.
+  }, [])
 
   useEffect(() => {
     if (metadataFilterMode !== 'custom') return
@@ -466,7 +449,7 @@ export function ChatArea({
       const rect = el.getBoundingClientRect()
       setSlashPos({
         top: rect.top + caret.top + 20, // offset
-        left: rect.left + caret.left
+        left: rect.left + caret.left,
       })
       setSlashOpen(true)
     }
@@ -488,41 +471,44 @@ export function ChatArea({
     })
   }, [])
 
-  const handleSlashSelect = useCallback((cmd: string) => {
-    setSlashOpen(false)
+  const handleSlashSelect = useCallback(
+    (cmd: string) => {
+      setSlashOpen(false)
 
-    if (cmd === 'knowledge') {
-      router.push('/knowledge')
-      return
-    }
+      if (cmd === 'knowledge') {
+        router.push('/knowledge')
+        return
+      }
 
-    if (cmd === 'history') {
-      router.push('/history')
-      return
-    }
+      if (cmd === 'history') {
+        router.push('/history')
+        return
+      }
 
-    if (cmd === 'prompt') {
-      handlePrefillInput(t('slashPromptSummary'))
-      return
-    }
+      if (cmd === 'prompt') {
+        handlePrefillInput(t('slashPromptSummary'))
+        return
+      }
 
-    if (cmd === 'cite_analysis') {
-      handlePrefillInput(t('slashPromptCiteAnalysis'))
-      return
-    }
+      if (cmd === 'cite_analysis') {
+        handlePrefillInput(t('slashPromptCiteAnalysis'))
+        return
+      }
 
-    if (cmd === 'config') {
-      setShowConversationTools(true)
-      setShowRagSettings(true)
-      toast.info(t('openRagConfig'))
-      return
-    }
+      if (cmd === 'config') {
+        setShowConversationTools(true)
+        setShowRagSettings(true)
+        toast.info(t('openRagConfig'))
+        return
+      }
 
-    if (cmd === 'clear') {
-      setInputValue('')
-      toast.info(t('clearInput'))
-    }
-  }, [handlePrefillInput, router, t])
+      if (cmd === 'clear') {
+        setInputValue('')
+        toast.info(t('clearInput'))
+      }
+    },
+    [handlePrefillInput, router, t],
+  )
 
   useEffect(() => {
     const unsubscribe = globalEventBus.on('chat:send', (prompt: string) => {
@@ -541,10 +527,13 @@ export function ChatArea({
   }, [])
 
   const effectiveChatRagConfig = useMemo(() => {
-    const baseConfig = ragConfigDirty || hasSystemRagDefaults ? ragConfig : {
-      enable_multi_query: ragConfig.enable_multi_query,
-      enable_hyde: ragConfig.enable_hyde,
-    }
+    const baseConfig =
+      ragConfigDirty || hasSystemRagDefaults
+        ? ragConfig
+        : {
+            enable_multi_query: ragConfig.enable_multi_query,
+            enable_hyde: ragConfig.enable_hyde,
+          }
 
     if (!deepReasoningEnabled) return baseConfig
 
@@ -731,7 +720,7 @@ export function ChatArea({
 
   const selectedPromptTemplate = useMemo(
     () => promptTemplates.find((template) => template.id === promptTemplateId),
-    [promptTemplates, promptTemplateId]
+    [promptTemplates, promptTemplateId],
   )
   const hasDocumentScope = Boolean(activeDocumentIds?.length)
   const hasChatScope = hasDocumentScope || Boolean(selectedDatasetId)
@@ -741,38 +730,37 @@ export function ChatArea({
     : selectedDataset?.name || (datasetsLoading ? t('datasetScopeLoading') : t('selectDataset'))
 
   const hiddenCount = Math.max(0, messages.length - visibleCount)
-  const visibleMessages = useMemo(
-    () => messages.slice(-visibleCount),
-    [messages, visibleCount]
+  const visibleMessages = useMemo(() => messages.slice(-visibleCount), [messages, visibleCount])
+
+  const submitMessage = useCallback(
+    (nextMessage: string) => {
+      if (!nextMessage.trim() || isLoading) return false
+      if (metadataFilterError) {
+        toast.error(metadataFilterError)
+        return false
+      }
+      if (!hasChatScope) {
+        setShowRagSettings(false)
+        setShowConversationTools(true)
+        toast.error(datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))
+        return false
+      }
+      sendMessage(nextMessage)
+      setInputValue((current) => (current.trim() === nextMessage.trim() ? '' : current))
+      return true
+    },
+    [datasetsLoading, hasChatScope, isLoading, metadataFilterError, sendMessage, t],
   )
 
-  const submitMessage = useCallback((nextMessage: string) => {
-    if (!nextMessage.trim() || isLoading) return false
-    if (!hasChatScope) {
-      setShowRagSettings(false)
-      setShowConversationTools(true)
-      toast.error(datasetsLoading ? t('datasetScopeLoading') : t('datasetScopeRequired'))
-      return false
-    }
-    sendMessage(nextMessage)
-    return true
-  }, [datasetsLoading, hasChatScope, isLoading, sendMessage, t])
-
   const handleSend = useCallback(() => {
-    if (!submitMessage(inputValue)) return
-    setInputValue('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    submitMessage(inputValue)
   }, [inputValue, submitMessage])
 
   useEffect(() => {
     const unsubscribe = globalEventBus.on('chat:submit', (payload: string) => {
       const prompt = payload.trim()
       if (!prompt) return
-      if (submitMessage(prompt)) {
-        setInputValue('')
-        if (textareaRef.current) textareaRef.current.style.height = 'auto'
-        return
-      }
+      if (submitMessage(prompt)) return
       setInputValue(prompt)
     })
 
@@ -781,27 +769,37 @@ export function ChatArea({
 
   useEffect(() => {
     const p = (initialPrompt || '').trim()
-    if (!initialAutoSendPrompt || !p) return
-    if (autoSendPromptRef.current) return
+    if (!initialAutoSendPrompt || !p) {
+      autoSendPromptRef.current = null
+      return
+    }
+    if (autoSendPromptRef.current === p) return
     if (isLoading) return
     if (!datasetScopeReady || !hasChatScope) return
 
     if (!submitMessage(p)) return
-    autoSendPromptRef.current = true
-    setInputValue('')
+    autoSendPromptRef.current = p
     onPromptConsumed?.()
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
-  }, [datasetScopeReady, hasChatScope, initialAutoSendPrompt, initialPrompt, isLoading, onPromptConsumed, submitMessage])
+  }, [
+    datasetScopeReady,
+    hasChatScope,
+    initialAutoSendPrompt,
+    initialPrompt,
+    isLoading,
+    onPromptConsumed,
+    submitMessage,
+  ])
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }, [handleSend])
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        handleSend()
+      }
+    },
+    [handleSend],
+  )
 
   const isWelcomeState = messages.length === 0 && !isLoading
 
@@ -812,7 +810,7 @@ export function ChatArea({
         onScroll={handleScroll}
         className={cn(
           'flex-1 overflow-y-auto overscroll-contain px-4 pb-4 scroll-smooth no-scrollbar md:px-6',
-          isWelcomeState && 'hidden'
+          isWelcomeState && 'hidden',
         )}
         role="log"
         aria-live="polite"
@@ -821,7 +819,7 @@ export function ChatArea({
         <div
           className={cn(
             'mx-auto flex min-h-full w-full flex-col py-8 md:py-10',
-            isWelcomeState ? 'max-w-6xl' : 'max-w-[44rem]'
+            isWelcomeState ? 'max-w-6xl' : 'max-w-[44rem]',
           )}
         >
           {hiddenCount > 0 && (
@@ -845,7 +843,8 @@ export function ChatArea({
                 tabIndex={-1}
                 className={cn(
                   'rounded-3xl outline-none transition-shadow duration-300 motion-reduce:transition-none motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-200 motion-safe:ease-out',
-                  focusedMessageId === message.id && 'ring-2 ring-primary/35 ring-offset-2 ring-offset-background shadow-lg shadow-primary/10'
+                  focusedMessageId === message.id &&
+                    'ring-2 ring-primary/35 ring-offset-2 ring-offset-background shadow-lg shadow-primary/10',
                 )}
               >
                 <ChatMessageItem message={message} />
@@ -893,13 +892,13 @@ export function ChatArea({
           'z-10',
           isWelcomeState
             ? 'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-5 py-8 sm:px-8 sm:pb-24 sm:pt-12 md:px-10'
-            : 'px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:px-6'
+            : 'px-4 pt-2 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] md:px-6',
         )}
       >
         <div
           className={cn(
             'mx-auto w-full',
-            isWelcomeState ? 'my-auto max-w-3xl xl:max-w-4xl' : 'max-w-[44rem] space-y-2.5'
+            isWelcomeState ? 'my-auto max-w-3xl xl:max-w-4xl' : 'max-w-[44rem] space-y-2.5',
           )}
         >
           <Popover
@@ -920,125 +919,155 @@ export function ChatArea({
               className={cn(
                 showRagSettings
                   ? 'w-[min(23rem,calc(100vw-1.5rem))] overflow-visible border-0 bg-transparent p-0 shadow-none [box-shadow:none]'
-                  : 'max-h-[var(--radix-popover-content-available-height)] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl p-2'
+                  : 'max-h-[var(--radix-popover-content-available-height)] w-72 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl p-2',
               )}
             >
               {!showRagSettings ? (
-              <>
-              <div className="px-2 pb-2 pt-1 text-xs font-medium text-muted-foreground">{t('datasetMenuTitle')}</div>
-              {hasDocumentScope ? (
-                <p className="px-2 pb-2 text-xs leading-5 text-muted-foreground">{t('datasetScopeHint')}</p>
-              ) : null}
-              <div className="max-h-60 space-y-1 overflow-y-auto overscroll-contain">
-                {datasetsLoading ? (
-                  <div role="status" className="px-2 py-3 text-sm text-muted-foreground">{t('datasetScopeLoading')}</div>
-                ) : datasetsQuery.isError && datasets.length === 0 ? (
-                  <div className="flex items-center justify-between gap-3 px-2 py-2">
-                    <p role="status" className="text-sm text-muted-foreground">{t('datasetScopeFailed')}</p>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => void datasetsQuery.refetch()}>{t('retryDatasets')}</Button>
+                <>
+                  <div className="px-2 pb-2 pt-1 text-xs font-medium text-muted-foreground">
+                    {t('datasetMenuTitle')}
                   </div>
-                ) : datasets.length === 0 ? (
-                  <div className="px-2 py-3">
-                    <p role="status" className="text-sm text-muted-foreground">{t('datasetScopeEmpty')}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="mt-2 h-11 gap-2 px-0 text-sm shadow-none hover:bg-transparent hover:underline"
-                      onClick={() => router.push('/datasets')}
-                    >
-                      {t('openDatasets')}
-                      <ArrowRight className="size-3.5" aria-hidden="true" />
-                    </Button>
-                  </div>
-                ) : (
-                  datasets.map((dataset) => (
-                    <button
-                      type="button"
-                      key={dataset.id}
-                      aria-pressed={selectedDatasetId === dataset.id}
-                      className={cn(
-                        'flex min-h-11 w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
-                        selectedDatasetId === dataset.id && 'bg-muted'
-                      )}
-                      onClick={() => {
-                        setSelectedDatasetId(dataset.id)
-                        setShowConversationTools(false)
-                        setShowRagSettings(false)
-                      }}
-                    >
-                      <Database className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">{dataset.name}</span>
-                        {dataset.description ? (
-                          <span className="block truncate text-xs text-muted-foreground">{dataset.description}</span>
-                        ) : null}
-                      </span>
-                      {selectedDatasetId === dataset.id ? <Check className="size-4 shrink-0" aria-hidden="true" /> : null}
-                    </button>
-                  ))
-                )}
-              </div>
-              <div className="mt-2 space-y-1 border-t border-border pt-2">
-              {promptTemplates.length > 0 && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-11 w-full justify-start gap-3 rounded-lg px-2 text-sm font-normal text-foreground shadow-none hover:bg-muted">
-                      <FileText className="size-3.5 text-muted-foreground" />
-                      <span className="max-w-[16rem] truncate text-xs">{selectedPromptTemplate?.name || t('defaultTemplate')}</span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2" align="start">
-                    <div className="text-xs font-medium text-muted-foreground mb-2 px-2">{t('selectPromptTemplate')}</div>
-                    <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
-                      <button
-                        type="button"
-                        className={cn('px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors', !promptTemplateId && 'bg-secondary/50 font-medium text-primary')}
-                        onClick={() => setPromptTemplateId('')}
-                      >
-                        {t('defaultTemplate')}
-                      </button>
-                      {promptTemplates.map((t) => (
+                  {hasDocumentScope ? (
+                    <p className="px-2 pb-2 text-xs leading-5 text-muted-foreground">{t('datasetScopeHint')}</p>
+                  ) : null}
+                  <div className="max-h-60 space-y-1 overflow-y-auto overscroll-contain">
+                    {datasetsLoading ? (
+                      <div role="status" className="px-2 py-3 text-sm text-muted-foreground">
+                        {t('datasetScopeLoading')}
+                      </div>
+                    ) : datasetsQuery.isError && datasets.length === 0 ? (
+                      <div className="flex items-center justify-between gap-3 px-2 py-2">
+                        <p role="status" className="text-sm text-muted-foreground">
+                          {t('datasetScopeFailed')}
+                        </p>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => void datasetsQuery.refetch()}>
+                          {t('retryDatasets')}
+                        </Button>
+                      </div>
+                    ) : datasets.length === 0 ? (
+                      <div className="px-2 py-3">
+                        <p role="status" className="text-sm text-muted-foreground">
+                          {t('datasetScopeEmpty')}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="mt-2 h-11 gap-2 px-0 text-sm shadow-none hover:bg-transparent hover:underline"
+                          onClick={() => router.push('/datasets')}
+                        >
+                          {t('openDatasets')}
+                          <ArrowRight className="size-3.5" aria-hidden="true" />
+                        </Button>
+                      </div>
+                    ) : (
+                      datasets.map((dataset) => (
                         <button
                           type="button"
-                          key={t.id}
-                          className={cn('px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors flex flex-col gap-0.5', promptTemplateId === t.id && 'bg-secondary/50 font-medium text-primary')}
-                          onClick={() => setPromptTemplateId(t.id)}
+                          key={dataset.id}
+                          aria-pressed={selectedDatasetId === dataset.id}
+                          className={cn(
+                            'flex min-h-11 w-full items-center gap-3 rounded-lg px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring',
+                            selectedDatasetId === dataset.id && 'bg-muted',
+                          )}
+                          onClick={() => {
+                            setSelectedDatasetId(dataset.id)
+                            setShowConversationTools(false)
+                            setShowRagSettings(false)
+                          }}
                         >
-                          <span>{t.name}</span>
-                          {t.description ? <span className="text-[11px] text-muted-foreground/70 truncate">{t.description}</span> : null}
+                          <Database className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate">{dataset.name}</span>
+                            {dataset.description ? (
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {dataset.description}
+                              </span>
+                            ) : null}
+                          </span>
+                          {selectedDatasetId === dataset.id ? (
+                            <Check className="size-4 shrink-0" aria-hidden="true" />
+                          ) : null}
                         </button>
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
-
-                  <Button
-                    ref={ragSettingsTriggerRef}
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-11 w-full justify-start gap-3 rounded-lg px-2 text-sm font-normal text-foreground shadow-none hover:bg-muted"
-                    onClick={() => setShowRagSettings(true)}
-                  >
-                    <Settings2 className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                    <span className="flex-1 text-left">{t('ragSettings')}</span>
-                    <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                  </Button>
-              </div>
-              </>
-              ) : (
-                  <div
-                    ref={ragSettingsPanelRef}
-                    className={cn(
-                      'flex max-h-[min(calc(100dvh-1.5rem),var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-strong transition-shadow duration-200 motion-reduce:transition-none',
-                      isRagSettingsDragging && 'shadow-[0_28px_68px_-34px_rgba(15,23,42,0.72)]'
+                      ))
                     )}
-                    style={{
-                      transform: `translate3d(${ragSettingsOffset.x}px, ${ragSettingsOffset.y}px, 0)`,
-                    }}
-                  >
-                    <div className="flex shrink-0 items-center justify-between gap-1 px-5 pb-3 pt-3">
+                  </div>
+                  <div className="mt-2 space-y-1 border-t border-border pt-2">
+                    {promptTemplates.length > 0 && (
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-11 w-full justify-start gap-3 rounded-lg px-2 text-sm font-normal text-foreground shadow-none hover:bg-muted"
+                          >
+                            <FileText className="size-3.5 text-muted-foreground" />
+                            <span className="max-w-[16rem] truncate text-xs">
+                              {selectedPromptTemplate?.name || t('defaultTemplate')}
+                            </span>
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-64 p-2" align="start">
+                          <div className="text-xs font-medium text-muted-foreground mb-2 px-2">
+                            {t('selectPromptTemplate')}
+                          </div>
+                          <div className="max-h-60 overflow-y-auto overscroll-contain no-scrollbar space-y-1">
+                            <button
+                              type="button"
+                              className={cn(
+                                'px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors',
+                                !promptTemplateId && 'bg-secondary/50 font-medium text-primary',
+                              )}
+                              onClick={() => setPromptTemplateId('')}
+                            >
+                              {t('defaultTemplate')}
+                            </button>
+                            {promptTemplates.map((t) => (
+                              <button
+                                type="button"
+                                key={t.id}
+                                className={cn(
+                                  'px-2 py-1.5 rounded-md cursor-pointer text-sm hover:bg-secondary transition-colors flex flex-col gap-0.5',
+                                  promptTemplateId === t.id && 'bg-secondary/50 font-medium text-primary',
+                                )}
+                                onClick={() => setPromptTemplateId(t.id)}
+                              >
+                                <span>{t.name}</span>
+                                {t.description ? (
+                                  <span className="text-[11px] text-muted-foreground/70 truncate">{t.description}</span>
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+
+                    <Button
+                      ref={ragSettingsTriggerRef}
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-11 w-full justify-start gap-3 rounded-lg px-2 text-sm font-normal text-foreground shadow-none hover:bg-muted"
+                      onClick={() => setShowRagSettings(true)}
+                    >
+                      <Settings2 className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                      <span className="flex-1 text-left">{t('ragSettings')}</span>
+                      <ArrowRight className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div
+                  ref={ragSettingsPanelRef}
+                  className={cn(
+                    'flex max-h-[min(calc(100dvh-1.5rem),var(--radix-popover-content-available-height))] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-strong transition-shadow duration-200 motion-reduce:transition-none',
+                    isRagSettingsDragging && 'shadow-[0_28px_68px_-34px_rgba(15,23,42,0.72)]',
+                  )}
+                  style={{
+                    transform: `translate3d(${ragSettingsOffset.x}px, ${ragSettingsOffset.y}px, 0)`,
+                  }}
+                >
+                  <div className="flex shrink-0 items-center justify-between gap-1 px-5 pb-3 pt-3">
                     <Button
                       ref={ragSettingsBackRef}
                       type="button"
@@ -1057,9 +1086,7 @@ export function ChatArea({
                       title={t('dragRagSettingsPanelHint')}
                       className={cn(
                         'flex min-h-11 min-w-0 flex-1 touch-none select-none items-center gap-2 rounded-md border-0 bg-transparent px-1 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/70',
-                        isRagSettingsDragging
-                          ? 'cursor-grabbing bg-muted'
-                          : 'cursor-grab hover:bg-muted'
+                        isRagSettingsDragging ? 'cursor-grabbing bg-muted' : 'cursor-grab hover:bg-muted',
                       )}
                       onPointerDown={beginRagSettingsDrag}
                       onPointerMove={moveRagSettingsDrag}
@@ -1085,12 +1112,14 @@ export function ChatArea({
                     >
                       <X className="size-4" aria-hidden="true" />
                     </Button>
-                    </div>
+                  </div>
 
                   <div className="min-h-0 space-y-5 overflow-y-auto overscroll-contain px-5 pb-5">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
-                        <Label htmlFor="chat-retrieval-mode" className="text-sm font-normal">{t('retrievalMode')}</Label>
+                        <Label htmlFor="chat-retrieval-mode" className="text-sm font-normal">
+                          {t('retrievalMode')}
+                        </Label>
                         <Select
                           value={deepReasoningEnabled ? 'hybrid' : ragConfig.retrieval_mode}
                           disabled={deepReasoningEnabled}
@@ -1112,14 +1141,20 @@ export function ChatArea({
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="chat-retrieval-count" className="text-sm font-normal">{t('topK')}</Label>
+                        <Label htmlFor="chat-retrieval-count" className="text-sm font-normal">
+                          {t('topK')}
+                        </Label>
                         <Input
                           id="chat-retrieval-count"
                           type="number"
                           min={1}
                           max={50}
                           title={t('topKHint')}
-                          value={deepReasoningEnabled ? Math.max(Number.isFinite(ragConfig.top_k) ? ragConfig.top_k : 5, 8) : ragConfig.top_k}
+                          value={
+                            deepReasoningEnabled
+                              ? Math.max(Number.isFinite(ragConfig.top_k) ? ragConfig.top_k : 5, 8)
+                              : ragConfig.top_k
+                          }
                           disabled={deepReasoningEnabled}
                           onChange={(e) => {
                             setRagConfigDirty(true)
@@ -1131,10 +1166,14 @@ export function ChatArea({
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="chat-metadata-filter" className="text-sm font-normal">{t('metadataFilter')}</Label>
+                      <Label htmlFor="chat-metadata-filter" className="text-sm font-normal">
+                        {t('metadataFilter')}
+                      </Label>
                       <Select
                         value={metadataFilterMode}
-                        onValueChange={(value) => applyMetadataFilterPreset(coerceOneOf(METADATA_FILTER_MODE_VALUES, value, 'all'))}
+                        onValueChange={(value) =>
+                          applyMetadataFilterPreset(coerceOneOf(METADATA_FILTER_MODE_VALUES, value, 'all'))
+                        }
                       >
                         <SelectTrigger id="chat-metadata-filter" className="h-11 text-base shadow-none sm:text-sm">
                           <SelectValue placeholder={t('metadataFilterPlaceholder')} />
@@ -1149,7 +1188,9 @@ export function ChatArea({
 
                       {metadataFilterMode === 'custom' ? (
                         <div className="space-y-1.5">
-                          <Label htmlFor="chat-custom-filter" className="sr-only">{t('customMetadataFilter')}</Label>
+                          <Label htmlFor="chat-custom-filter" className="sr-only">
+                            {t('customMetadataFilter')}
+                          </Label>
                           <textarea
                             id="chat-custom-filter"
                             value={metadataFilterText}
@@ -1163,7 +1204,13 @@ export function ChatArea({
                             className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-base leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30 aria-[invalid=true]:border-destructive/60 sm:text-sm"
                           />
                           {metadataFilterError ? (
-                            <p id="chat-custom-filter-error" role="alert" className="text-xs leading-5 text-destructive">{metadataFilterError}</p>
+                            <p
+                              id="chat-custom-filter-error"
+                              role="alert"
+                              className="text-xs leading-5 text-destructive"
+                            >
+                              {metadataFilterError}
+                            </p>
                           ) : null}
                           <details className="group/details">
                             <summary className="cursor-pointer select-none py-2 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
@@ -1173,7 +1220,9 @@ export function ChatArea({
                               <div className="font-mono text-foreground/80">{t('supportedOperatorsList')}</div>
                               <div>{t('supportedOperatorsHint')}</div>
                               <div className="font-mono text-foreground/80">{t.raw('metadataFilterExampleQa')}</div>
-                              <div className="font-mono text-foreground/80">{t.raw('metadataFilterExampleHandbook')}</div>
+                              <div className="font-mono text-foreground/80">
+                                {t.raw('metadataFilterExampleHandbook')}
+                              </div>
                             </div>
                           </details>
                         </div>
@@ -1183,7 +1232,10 @@ export function ChatArea({
                     <details className="group/advanced border-t border-border pt-2">
                       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md text-sm font-medium outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                         {t('advancedSettings')}
-                        <ChevronDown className="size-4 text-muted-foreground transition-transform duration-150 group-open/advanced:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
+                        <ChevronDown
+                          className="size-4 text-muted-foreground transition-transform duration-150 group-open/advanced:rotate-180 motion-reduce:transition-none"
+                          aria-hidden="true"
+                        />
                       </summary>
                       <div className="space-y-3 pt-2">
                         <RetrievalSettingToggle
@@ -1238,7 +1290,9 @@ export function ChatArea({
                         />
                         {structuredOutput && (
                           <div className="space-y-2 pb-1">
-                            <Label htmlFor="chat-output-preset" className="text-sm font-normal">{t('structuredPresetLabel')}</Label>
+                            <Label htmlFor="chat-output-preset" className="text-sm font-normal">
+                              {t('structuredPresetLabel')}
+                            </Label>
                             <Select
                               value={structuredPreset || SELECT_DEFAULT_VALUE}
                               onValueChange={(v) => setStructuredPreset(v === SELECT_DEFAULT_VALUE ? '' : v)}
@@ -1273,136 +1327,140 @@ export function ChatArea({
                               {t('viewTrace')}
                             </Button>
                           </div>
-                          {!conversationId ? <p className="text-xs leading-5 text-muted-foreground">{t('conversationRecordsHint')}</p> : null}
+                          {!conversationId ? (
+                            <p className="text-xs leading-5 text-muted-foreground">{t('conversationRecordsHint')}</p>
+                          ) : null}
                         </div>
                       </div>
                     </details>
-                </div>
+                  </div>
                 </div>
               )}
             </PopoverContent>
-          {!isWelcomeState ? (
-            <div className="flex justify-end">
-              <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="h-9 max-w-full gap-2 rounded-md px-2 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
-                aria-expanded={showConversationTools}
-                aria-controls="chat-conversation-tools"
-                title={t('scopeAndRetrieval')}
-              >
-                <Database className="size-3.5" aria-hidden="true" />
-                <span className="max-w-[13rem] truncate text-xs">{conversationToolsScopeLabel}</span>
-                <ChevronDown className="size-3.5" aria-hidden="true" />
-              </Button>
-              </PopoverTrigger>
-            </div>
-          ) : null}
-
-          <div
-            className={cn(
-              'relative border transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none',
-              isWelcomeState
-                ? 'rounded-3xl border-border/80 bg-card shadow-subtle focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/15'
-                : 'rounded-xl border-input bg-card focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/15'
-            )}
-          >
-            <Label htmlFor="chat-composer" className="sr-only">
-              {t('messageInput')}
-            </Label>
-            <textarea
-              id="chat-composer"
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onKeyUp={handleKeyUp}
-              placeholder={t('composerPlaceholder')}
-              aria-describedby={!hasChatScope && inputValue.trim() ? 'chat-composer-scope-hint' : undefined}
-              autoFocus
-              className={cn(
-                'block w-full resize-none outline-none max-h-[200px] bg-transparent text-base leading-7 placeholder:text-muted-foreground no-scrollbar text-foreground',
-                isWelcomeState
-                  ? 'min-h-[72px] rounded-t-3xl px-5 pb-3 pt-4 sm:min-h-[88px] sm:px-6 sm:pb-4 sm:pt-5'
-                  : 'min-h-[88px] rounded-t-xl px-5 pb-3 pt-4'
-              )}
-              rows={1}
-            />
-
-            <div className={cn(
-              'flex items-center gap-2',
-              isWelcomeState ? 'px-2 pb-2 sm:px-3 sm:pb-3' : 'px-3 pb-3 pt-1 sm:px-4'
-            )}>
-              {isWelcomeState ? (
-              <div className="min-w-0 max-w-[calc(100%-6.5rem)] sm:max-w-[60%]">
+            {!isWelcomeState ? (
+              <div className="flex justify-end">
                 <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-11 max-w-full gap-2 rounded-full bg-muted/70 px-3 text-sm font-medium text-foreground shadow-none hover:bg-muted data-[state=open]:bg-muted sm:h-10"
-                  aria-expanded={showConversationTools}
-                  aria-controls="chat-conversation-tools"
-                  title={t('scopeAndRetrieval')}
-                >
-                  <Database className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                  <span className="truncate">
-                    {conversationToolsScopeLabel}
-                  </span>
-                  <ChevronDown
-                    className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none', showConversationTools && 'rotate-180')}
-                    aria-hidden="true"
-                  />
-                </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 max-w-full gap-2 rounded-md px-2 text-muted-foreground shadow-none hover:bg-muted hover:text-foreground"
+                    aria-expanded={showConversationTools}
+                    aria-controls="chat-conversation-tools"
+                    title={t('scopeAndRetrieval')}
+                  >
+                    <Database className="size-3.5" aria-hidden="true" />
+                    <span className="max-w-[13rem] truncate text-xs">{conversationToolsScopeLabel}</span>
+                    <ChevronDown className="size-3.5" aria-hidden="true" />
+                  </Button>
                 </PopoverTrigger>
               </div>
-              ) : null}
+            ) : null}
 
-            <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setVoiceModeOpen(true)}
-                className="size-11 rounded-full text-muted-foreground shadow-none hover:bg-muted hover:text-foreground sm:size-10"
-                title={t('voiceMode')}
-                aria-label={t('voiceMode')}
-              >
-                <Mic className="size-5" aria-hidden="true" />
-              </Button>
-
-              {isLoading ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  onClick={stopGeneration}
-                  className="size-11 rounded-full bg-destructive/10 text-destructive shadow-none hover:bg-destructive/20 hover:text-destructive sm:size-10"
-                  title={t('stopGeneration')}
-                  aria-label={t('stopGeneration')}
-                >
-                  <StopCircle className="size-4" aria-hidden="true" />
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={!inputValue.trim()}
-                  className="size-11 rounded-full shadow-none transition-colors duration-150 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100 motion-reduce:transition-none sm:size-10"
-                  title={t('composerSendHint')}
-                  aria-label={t('send')}
-                  aria-describedby={!hasChatScope && inputValue.trim() ? 'chat-composer-scope-hint' : undefined}
-                >
-                  <ArrowUp className="size-5" aria-hidden="true" />
-                </Button>
+            <div
+              className={cn(
+                'relative border transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none',
+                isWelcomeState
+                  ? 'rounded-3xl border-border/80 bg-card shadow-subtle focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/15'
+                  : 'rounded-xl border-input bg-card focus-within:border-foreground/40 focus-within:ring-2 focus-within:ring-ring/15',
               )}
-            </div>
+            >
+              <Label htmlFor="chat-composer" className="sr-only">
+                {t('messageInput')}
+              </Label>
+              <textarea
+                id="chat-composer"
+                ref={textareaRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onKeyUp={handleKeyUp}
+                placeholder={t('composerPlaceholder')}
+                aria-describedby={!hasChatScope && inputValue.trim() ? 'chat-composer-scope-hint' : undefined}
+                autoFocus
+                className={cn(
+                  'block w-full resize-none outline-none max-h-[200px] bg-transparent text-base leading-7 placeholder:text-muted-foreground no-scrollbar text-foreground',
+                  isWelcomeState
+                    ? 'min-h-[72px] rounded-t-3xl px-5 pb-3 pt-4 sm:min-h-[88px] sm:px-6 sm:pb-4 sm:pt-5'
+                    : 'min-h-[88px] rounded-t-xl px-5 pb-3 pt-4',
+                )}
+                rows={1}
+              />
+
+              <div
+                className={cn(
+                  'flex items-center gap-2',
+                  isWelcomeState ? 'px-2 pb-2 sm:px-3 sm:pb-3' : 'px-3 pb-3 pt-1 sm:px-4',
+                )}
+              >
+                {isWelcomeState ? (
+                  <div className="min-w-0 max-w-[calc(100%-6.5rem)] sm:max-w-[60%]">
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-11 max-w-full gap-2 rounded-full bg-muted/70 px-3 text-sm font-medium text-foreground shadow-none hover:bg-muted data-[state=open]:bg-muted sm:h-10"
+                        aria-expanded={showConversationTools}
+                        aria-controls="chat-conversation-tools"
+                        title={t('scopeAndRetrieval')}
+                      >
+                        <Database className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span className="truncate">{conversationToolsScopeLabel}</span>
+                        <ChevronDown
+                          className={cn(
+                            'size-3.5 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none',
+                            showConversationTools && 'rotate-180',
+                          )}
+                          aria-hidden="true"
+                        />
+                      </Button>
+                    </PopoverTrigger>
+                  </div>
+                ) : null}
+
+                <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setVoiceModeOpen(true)}
+                    className="size-11 rounded-full text-muted-foreground shadow-none hover:bg-muted hover:text-foreground sm:size-10"
+                    title={t('voiceMode')}
+                    aria-label={t('voiceMode')}
+                  >
+                    <Mic className="size-5" aria-hidden="true" />
+                  </Button>
+
+                  {isLoading ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      onClick={stopGeneration}
+                      className="size-11 rounded-full bg-destructive/10 text-destructive shadow-none hover:bg-destructive/20 hover:text-destructive sm:size-10"
+                      title={t('stopGeneration')}
+                      aria-label={t('stopGeneration')}
+                    >
+                      <StopCircle className="size-4" aria-hidden="true" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      size="icon"
+                      onClick={handleSend}
+                      disabled={!inputValue.trim() || Boolean(metadataFilterError)}
+                      className="size-11 rounded-full shadow-none transition-colors duration-150 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100 motion-reduce:transition-none sm:size-10"
+                      title={t('composerSendHint')}
+                      aria-label={t('send')}
+                      aria-describedby={!hasChatScope && inputValue.trim() ? 'chat-composer-scope-hint' : undefined}
+                    >
+                      <ArrowUp className="size-5" aria-hidden="true" />
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
 
-          </div>
-
-          {!hasChatScope && inputValue.trim() ? (
+            {!hasChatScope && inputValue.trim() ? (
               <p id="chat-composer-scope-hint" role="status" className="sr-only">
                 {datasetsLoading
                   ? t('datasetScopeLoading')
@@ -1412,27 +1470,22 @@ export function ChatArea({
                       ? t('composerScopeEmpty')
                       : t('composerScopeRequired')}
               </p>
-          ) : null}
+            ) : null}
 
-          {!isWelcomeState ? (
-            <p className="text-[11px] text-center text-muted-foreground/75">
-              {t.rich('composerHelpText', {
-                slash: renderComposerSlash,
-                enter: renderComposerEnter,
-                shiftEnter: renderComposerEnter,
-              })}
-            </p>
-          ) : null}
+            {!isWelcomeState ? (
+              <p className="text-[11px] text-center text-muted-foreground/75">
+                {t.rich('composerHelpText', {
+                  slash: renderComposerSlash,
+                  enter: renderComposerEnter,
+                  shiftEnter: renderComposerEnter,
+                })}
+              </p>
+            ) : null}
           </Popover>
         </div>
       </div>
 
-      <SlashMenu
-        open={slashOpen}
-        onOpenChange={setSlashOpen}
-        onSelect={handleSlashSelect}
-        position={slashPos}
-      />
+      <SlashMenu open={slashOpen} onOpenChange={setSlashOpen} onSelect={handleSlashSelect} position={slashPos} />
 
       <VoiceModeOverlay
         isOpen={voiceModeOpen}
@@ -1475,9 +1528,16 @@ function RetrievalSettingToggle({
 }>) {
   return (
     <div className="flex min-h-11 items-center gap-2">
-      <Label htmlFor={id} className="flex min-h-11 min-w-0 flex-1 cursor-pointer flex-col justify-center gap-1 py-1 text-sm font-normal leading-5">
+      <Label
+        htmlFor={id}
+        className="flex min-h-11 min-w-0 flex-1 cursor-pointer flex-col justify-center gap-1 py-1 text-sm font-normal leading-5"
+      >
         <span id={`${id}-label`}>{label}</span>
-        {description ? <span id={`${id}-hint`} className="text-xs font-normal leading-5 text-muted-foreground">{description}</span> : null}
+        {description ? (
+          <span id={`${id}-hint`} className="text-xs font-normal leading-5 text-muted-foreground">
+            {description}
+          </span>
+        ) : null}
       </Label>
       {action}
       <Switch

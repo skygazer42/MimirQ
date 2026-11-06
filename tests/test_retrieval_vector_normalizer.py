@@ -1,4 +1,3 @@
-
 from app.rag.retrieval.hybrid.vector_normalizer import normalize_vector_channel_results
 
 

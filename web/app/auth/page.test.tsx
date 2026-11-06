@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import React, { act } from 'react'
+import React, { act, type ComponentProps } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { toast } from 'sonner'
@@ -26,8 +26,7 @@ vi.mock('next/image', () => ({
     priority: _priority,
     unoptimized: _unoptimized,
     ...props
-  }: React.ComponentProps<'img'> & { priority?: boolean; unoptimized?: boolean }) =>
-    React.createElement('img', props),
+  }: ComponentProps<'img'> & { priority?: boolean; unoptimized?: boolean }) => React.createElement('img', props),
 }))
 vi.mock('@/i18n/navigation', () => ({
   useRouter: () => routerMock,
@@ -35,7 +34,11 @@ vi.mock('@/i18n/navigation', () => ({
 vi.mock('@/lib/api/auth', () => ({
   authApi: authApiMock,
 }))
-vi.mock('@/lib/auth-storage', () => ({
+vi.mock('@/lib/api/auth', () => ({
+  authApi: authApiMock,
+}))
+vi.mock('@/lib/auth-storage', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/auth-storage')>()),
   setAuthSession: sessionMock.setAuthSession,
 }))
 vi.mock('@/lib/oidc', () => ({
@@ -58,7 +61,7 @@ function setInputValue(input: HTMLInputElement | null, value: string) {
 
 function findButtonByText(container: HTMLElement, text: string) {
   const button = Array.from(container.querySelectorAll('button')).find((candidate) =>
-    candidate.textContent?.includes(text)
+    candidate.textContent?.includes(text),
   )
   expect(button).not.toBeUndefined()
   return button as HTMLButtonElement
@@ -71,9 +74,7 @@ function clickButtonByText(container: HTMLElement, text: string) {
 
 async function submitForm(container: HTMLElement) {
   await act(async () => {
-    container
-      .querySelector('form')
-      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+    container.querySelector('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
     await Promise.resolve()
   })
 }
@@ -87,8 +88,11 @@ describe('auth page registration', () => {
     authApiMock.register.mockReset()
     authApiMock.signup.mockReset()
     authApiMock.policy.mockReset().mockResolvedValue({
-      initialized: true, registration_enabled: true, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
+      initialized: true,
+      registration_enabled: true,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 8,
     })
     routerMock.push.mockReset()
     routerMock.replace.mockReset()
@@ -107,8 +111,11 @@ describe('auth page registration', () => {
   it('renders contact administrator as a safe clickable link', async () => {
     process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL = 'mailto:ops@example.com'
     authApiMock.policy.mockResolvedValue({
-      initialized: true, registration_enabled: false, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
+      initialized: true,
+      registration_enabled: false,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 8,
     })
 
     const container = document.createElement('div')
@@ -128,8 +135,11 @@ describe('auth page registration', () => {
   it('falls back to the project support page for an unsafe contact target', async () => {
     process.env.NEXT_PUBLIC_ADMIN_CONTACT_URL = 'javascript:alert(1)'
     authApiMock.policy.mockResolvedValue({
-      initialized: true, registration_enabled: false, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
+      initialized: true,
+      registration_enabled: false,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 8,
     })
 
     const container = document.createElement('div')
@@ -141,18 +151,12 @@ describe('auth page registration', () => {
     })
 
     const contact = Array.from(container.querySelectorAll<HTMLAnchorElement>('a')).find((link) =>
-      link.textContent?.includes('联系管理员')
+      link.textContent?.includes('联系管理员'),
     )
     expect(contact?.href).toBe('https://github.com/skygazer42/MimirQ/issues')
 
     act(() => root.unmount())
   })
-
-
-
-
-
-
 
   it('clears a login error when switching to ordinary registration', async () => {
     authApiMock.login.mockRejectedValue({
@@ -175,7 +179,10 @@ describe('auth page registration', () => {
     await submitForm(container)
 
     await vi.waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('账号或密码不正确，请重试。', expect.objectContaining({ duration: 4000 }))
+      expect(toast.error).toHaveBeenCalledWith(
+        '账号或密码不正确，请重试。',
+        expect.objectContaining({ duration: 4000 }),
+      )
     })
 
     clickButtonByText(container, '注册')
@@ -227,8 +234,11 @@ describe('auth page registration', () => {
 
   it('registers through signup and returns to login without creating a session', async () => {
     authApiMock.policy.mockResolvedValue({
-      initialized: true, registration_enabled: true, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 12,
+      initialized: true,
+      registration_enabled: true,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 12,
     })
     const session = {
       token: { access_token: 'reader-token', token_type: 'bearer', expires_in: 3600 },
@@ -238,7 +248,9 @@ describe('auth page registration', () => {
     const container = document.createElement('div')
     document.body.appendChild(container)
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
 
     expect(container.textContent).not.toContain('首次设置')
     clickButtonByText(container, '注册')
@@ -251,7 +263,9 @@ describe('auth page registration', () => {
     await submitForm(container)
 
     expect(authApiMock.signup).toHaveBeenCalledWith({
-      email: 'reader@example.com', username: 'reader', password: 'valid-reader-password',
+      email: 'reader@example.com',
+      username: 'reader',
+      password: 'valid-reader-password',
     })
     expect(authApiMock.register).not.toHaveBeenCalled()
     expect(sessionMock.setAuthSession).not.toHaveBeenCalled()
@@ -274,7 +288,9 @@ describe('auth page registration', () => {
     authApiMock.signup.mockResolvedValue(session)
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
 
     expect(container.querySelector('h1')?.textContent).toBe('创建账号')
     setInputValue(container.querySelector('#email'), 'reader@example.com')
@@ -284,7 +300,9 @@ describe('auth page registration', () => {
     await submitForm(container)
 
     expect(authApiMock.signup).toHaveBeenCalledWith({
-      email: 'reader@example.com', username: 'reader', password: 'valid-reader-password',
+      email: 'reader@example.com',
+      username: 'reader',
+      password: 'valid-reader-password',
     })
     expect(sessionMock.setAuthSession).not.toHaveBeenCalled()
     expect(routerMock.push).not.toHaveBeenCalled()
@@ -297,7 +315,8 @@ describe('auth page registration', () => {
     setInputValue(container.querySelector('#password'), 'valid-reader-password')
     await submitForm(container)
     expect(authApiMock.login).toHaveBeenCalledWith({
-      identifier: 'reader@example.com', password: 'valid-reader-password',
+      identifier: 'reader@example.com',
+      password: 'valid-reader-password',
     })
     expect(sessionMock.setAuthSession).toHaveBeenCalledWith(session)
     expect(routerMock.push).toHaveBeenCalledWith('/')
@@ -309,7 +328,9 @@ describe('auth page registration', () => {
     authApiMock.signup.mockRejectedValue(new Error('注册失败'))
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     clickButtonByText(container, '注册')
     setInputValue(container.querySelector('#email'), 'reader@example.com')
     setInputValue(container.querySelector('#username'), 'reader')
@@ -327,12 +348,17 @@ describe('auth page registration', () => {
   it('keeps a registration link on login when the server closes registration', async () => {
     window.history.replaceState(null, '', '/auth?mode=register')
     authApiMock.policy.mockResolvedValue({
-      initialized: true, registration_enabled: false, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
+      initialized: true,
+      registration_enabled: false,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 8,
     })
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     expect(container.querySelector('h1')?.textContent).toBe('欢迎回来')
     expect(container.querySelector('#email')).toBeNull()
     expect(authApiMock.signup).not.toHaveBeenCalled()
@@ -341,12 +367,17 @@ describe('auth page registration', () => {
 
   it('offers only login when registration is closed on an initialized deployment', async () => {
     authApiMock.policy.mockResolvedValue({
-      initialized: true, registration_enabled: false, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
+      initialized: true,
+      registration_enabled: false,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 8,
     })
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     expect(container.querySelector('[data-auth-mode-switch]')).toBeNull()
     expect(container.querySelector('#identifier')).not.toBeNull()
     expect(container.querySelector('#email')).toBeNull()
@@ -356,12 +387,17 @@ describe('auth page registration', () => {
 
   it('does not expose legacy owner setup even if an older backend advertises it', async () => {
     authApiMock.policy.mockResolvedValue({
-      initialized: false, registration_enabled: false, bootstrap_enabled: true,
-      bootstrap_token_required: true, password_min_length: 8,
+      initialized: false,
+      registration_enabled: false,
+      bootstrap_enabled: true,
+      bootstrap_token_required: true,
+      password_min_length: 8,
     })
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     expect(container.textContent).not.toContain('首次设置')
     expect(container.textContent).not.toContain('创建初始管理员')
     expect(container.querySelector('#bootstrapToken')).toBeNull()
@@ -372,33 +408,51 @@ describe('auth page registration', () => {
 
   it('keeps login usable and registration closed while policy is loading', async () => {
     let resolvePolicy!: (value: unknown) => void
-    authApiMock.policy.mockReturnValue(new Promise((resolve) => { resolvePolicy = resolve }))
+    authApiMock.policy.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePolicy = resolve
+      }),
+    )
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     expect(container.querySelector('[data-auth-mode-switch]')).toBeNull()
     expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false)
-    await act(async () => { resolvePolicy({
-      initialized: true, registration_enabled: true, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
-    }) })
+    await act(async () => {
+      resolvePolicy({
+        initialized: true,
+        registration_enabled: true,
+        bootstrap_enabled: false,
+        bootstrap_token_required: false,
+        password_min_length: 8,
+      })
+    })
     expect(container.querySelector('[data-auth-mode-switch]')).not.toBeNull()
     act(() => root.unmount())
   })
 
   it('lets the user retry a failed policy request while retaining account login', async () => {
     authApiMock.policy.mockRejectedValueOnce(new Error('Network error')).mockResolvedValue({
-      initialized: true, registration_enabled: true, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
+      initialized: true,
+      registration_enabled: true,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 8,
     })
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     expect(container.querySelector('[data-auth-mode-switch]')).toBeNull()
     expect(container.querySelector('button[type="submit"]')?.hasAttribute('disabled')).toBe(false)
     setInputValue(container.querySelector('#identifier'), 'reader@example.com')
     setInputValue(container.querySelector('#password'), 'retained-password')
-    await act(async () => { clickButtonByText(container, '重试') })
+    await act(async () => {
+      clickButtonByText(container, '重试')
+    })
     expect(container.querySelector('[data-auth-mode-switch]')).not.toBeNull()
     expect(container.textContent).not.toContain('服务暂时不可用')
     expect(container.querySelector<HTMLInputElement>('#identifier')?.value).toBe('reader@example.com')
@@ -418,12 +472,17 @@ describe('auth page registration', () => {
     })
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     setInputValue(container.querySelector('#identifier'), 'reader@example.com')
     setInputValue(container.querySelector('#password'), 'retained-password')
     await submitForm(container)
 
-    expect(toast.error).toHaveBeenCalledWith('服务暂时不可用，请稍后重试。', expect.objectContaining({ duration: 4000 }))
+    expect(toast.error).toHaveBeenCalledWith(
+      '服务暂时不可用，请稍后重试。',
+      expect.objectContaining({ duration: 4000 }),
+    )
     expect(container.querySelectorAll('[role="alert"], [role="status"]')).toHaveLength(0)
     expect(container.textContent).not.toContain('Internal Server Error')
     expect(container.textContent).not.toContain('暂时无法获取注册方式')
@@ -439,26 +498,35 @@ describe('auth page registration', () => {
     act(() => root.unmount())
   })
 
-
-
   it('explains closed ordinary registration without asking users for a bootstrap token', async () => {
     authApiMock.policy.mockResolvedValue({
-      initialized: true, registration_enabled: true, bootstrap_enabled: false,
-      bootstrap_token_required: false, password_min_length: 8,
+      initialized: true,
+      registration_enabled: true,
+      bootstrap_enabled: false,
+      bootstrap_token_required: false,
+      password_min_length: 8,
     })
-    authApiMock.signup.mockRejectedValue({ response: {
-      status: 403, data: { detail: 'Account registration is disabled; contact an administrator' },
-    } })
+    authApiMock.signup.mockRejectedValue({
+      response: {
+        status: 403,
+        data: { detail: 'Account registration is disabled; contact an administrator' },
+      },
+    })
     const container = document.createElement('div')
     const root = createRoot(container)
-    await act(async () => { root.render(<AuthPage />) })
+    await act(async () => {
+      root.render(<AuthPage />)
+    })
     clickButtonByText(container, '注册')
     setInputValue(container.querySelector('#email'), 'reader@example.com')
     setInputValue(container.querySelector('#username'), 'reader')
     setInputValue(container.querySelector('#password'), 'valid-reader-password')
     setInputValue(container.querySelector('#confirmPassword'), 'valid-reader-password')
     await submitForm(container)
-    expect(toast.error).toHaveBeenCalledWith('当前暂未开放注册，请联系管理员。', expect.objectContaining({ duration: 4000 }))
+    expect(toast.error).toHaveBeenCalledWith(
+      '当前暂未开放注册，请联系管理员。',
+      expect.objectContaining({ duration: 4000 }),
+    )
     expect(container.querySelector('#auth-error')?.textContent).not.toContain('令牌')
     expect(container.querySelector('#bootstrapToken')).toBeNull()
     act(() => root.unmount())

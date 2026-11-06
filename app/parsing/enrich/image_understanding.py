@@ -1,4 +1,3 @@
-
 import base64
 import re
 from io import BytesIO
@@ -16,7 +15,7 @@ logger = get_logger(__name__)
 
 
 def _clean_single_line(s: str, *, max_chars: int) -> str:
-    s0 = re.sub(r"\s+", " ", str(s or "")).strip()
+    s0 = re.sub(r"\s+", " ", s).strip()
     if not s0:
         return ""
     if max_chars > 0 and len(s0) > max_chars:
@@ -32,7 +31,7 @@ def derive_image_caption(text: str, meta: dict[str, Any], *, max_chars: int = 20
     - Prefer existing chunk text if it's not a generic placeholder.
     - Fallback to "Page {n} image" when page info exists.
     """
-    raw = (text or "").strip()
+    raw = text.strip()
     if raw and not _PAGE_ONLY_RE.match(raw) and not _GENERIC_IMAGE_TEXT_RE.match(raw):
         return _clean_single_line(raw, max_chars=max_chars)
 
@@ -48,7 +47,7 @@ def derive_image_caption(text: str, meta: dict[str, Any], *, max_chars: int = 20
 
 
 def _b64_to_bytes(s: str) -> bytes:
-    s0 = (s or "").strip()
+    s0 = s.strip()
     if not s0:
         return b""
     if s0.startswith("data:"):
@@ -540,24 +539,24 @@ def append_image_understanding_text(
     """
     Append caption/OCR text into chunk content so it becomes retrievable.
     """
-    base = (text or "").rstrip()
+    base = text.rstrip()
     blocks: list[str] = []
     if base:
         blocks.append(base)
 
-    caption0 = (caption or "").strip()
+    caption0 = caption.strip()
     if caption0 and "image caption:" not in base.lower():
         blocks.append(f"Image caption: {caption0}")
 
-    ocr0 = (ocr_text or "").strip()
+    ocr0 = ocr_text.strip()
     if ocr0 and "image ocr:" not in base.lower():
         blocks.append(f"Image OCR:\n{ocr0}")
 
-    code0 = (code_text or "").strip()
+    code0 = code_text.strip()
     if code0 and "image code:" not in base.lower():
         blocks.append(f"Image code:\n{code0}")
 
-    return "\n\n".join(blocks).strip() + ("\n" if (text or "").endswith("\n") else "")
+    return "\n\n".join(blocks).strip() + ("\n" if text.endswith("\n") else "")
 
 
 __all__ = [

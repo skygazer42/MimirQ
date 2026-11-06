@@ -3,7 +3,9 @@ import { expect, test } from '@playwright/test'
 import { fixture, open, original, noOverflow } from './chunk-compare.helpers'
 
 const evidence = path.resolve(__dirname, '../../artifacts/rebrand/chunk-compare-v1/tests')
-test('equal columns link actual source positions and preserve edited, reviewed and skipped chunks through export and failed ingestion', async ({ page }) => {
+test('equal columns link actual source positions and preserve edited, reviewed and skipped chunks through export and failed ingestion', async ({
+  page,
+}) => {
   const state = await fixture(page)
   await open(page)
   const before = await page.locator('[data-compare-original]').boundingBox()
@@ -16,11 +18,15 @@ test('equal columns link actual source positions and preserve edited, reviewed a
   await page.locator('[data-chunk-index="0"]').hover()
   await expect(page.locator('[data-compare-original] mark')).toContainText('作业前检查紧固件')
   await page.getByRole('button', { name: '阅读', exact: true }).click()
-  await expect(page.locator('[data-compare-original] [data-source-selected=true]').filter({ hasText: '作业前检查紧固件' })).toBeVisible()
+  await expect(
+    page.locator('[data-compare-original] [data-source-selected=true]').filter({ hasText: '作业前检查紧固件' }),
+  ).toBeVisible()
   await page.getByRole('button', { name: '源码', exact: true }).click()
   await selected.getByRole('button', { name: '编辑内容', exact: true }).click()
   const editor = page.getByRole('dialog', { name: '切块编辑器', exact: true })
-  await editor.getByRole('textbox', { name: '切块内容', exact: true }).fill('## 日常检查\n\n已修订：确认电源关闭，再检查防护装置。')
+  await editor
+    .getByRole('textbox', { name: '切块内容', exact: true })
+    .fill('## 日常检查\n\n已修订：确认电源关闭，再检查防护装置。')
   await editor.getByRole('button', { name: '保存', exact: true }).click()
   await expect(editor).toBeHidden()
   await expect(selected).toContainText('已修订：确认电源关闭')
@@ -36,10 +42,15 @@ test('equal columns link actual source positions and preserve edited, reviewed a
   expect((await download).suggestedFilename()).toContain('chunks.json')
   state.failIngest = true
   await page.getByRole('button', { name: '确认入库', exact: true }).click()
-  await expect(page.locator('[data-sonner-toast][data-type=error]').filter({ hasText: '入库服务暂不可用' })).toBeVisible()
+  await expect(
+    page.locator('[data-sonner-toast][data-type=error]').filter({ hasText: '入库服务暂不可用' }),
+  ).toBeVisible()
   await expect(selected).toContainText('已修订：确认电源关闭')
   expect(state.ingestBodies.at(-1)?.chunks).toHaveLength(2)
-  expect(state.ingestBodies.at(-1)?.chunks[1]).toMatchObject({ content: '## 日常检查\n\n已修订：确认电源关闭，再检查防护装置。', metadata: { reviewed: true } })
+  expect(state.ingestBodies.at(-1)?.chunks[1]).toMatchObject({
+    content: '## 日常检查\n\n已修订：确认电源关闭，再检查防护装置。',
+    metadata: { reviewed: true },
+  })
   state.failIngest = false
   await page.getByRole('button', { name: '确认入库', exact: true }).click()
   await expect(page.getByRole('button', { name: '已完成', exact: true })).toBeVisible()
@@ -50,7 +61,9 @@ test('equal columns link actual source positions and preserve edited, reviewed a
   expect(saved.chunks[1].metadata.reviewed).toBe(true)
 })
 
-test('parameter requests use the edited values, block stale ingestion including the shortcut, recover from errors and read saved settings after reload', async ({ page }) => {
+test('parameter requests use the edited values, block stale ingestion including the shortcut, recover from errors and read saved settings after reload', async ({
+  page,
+}) => {
   const state = await fixture(page)
   await open(page)
   await page.getByRole('spinbutton', { name: '目标长度（字符）', exact: true }).fill('800')
@@ -60,13 +73,19 @@ test('parameter requests use the edited values, block stale ingestion including 
   expect(state.ingestBodies).toHaveLength(0)
   state.failPreview = true
   await page.getByRole('button', { name: '生成预览', exact: true }).click()
-  await expect(page.locator('[data-sonner-toast][data-type=error]').filter({ hasText: '切块服务暂不可用' })).toBeVisible()
+  await expect(
+    page.locator('[data-sonner-toast][data-type=error]').filter({ hasText: '切块服务暂不可用' }),
+  ).toBeVisible()
   await expect(page.getByRole('spinbutton', { name: '目标长度（字符）', exact: true })).toHaveValue('800')
   state.failPreview = false
   await page.getByRole('button', { name: '生成预览', exact: true }).click()
   await expect(page.getByRole('button', { name: '确认入库', exact: true })).toBeEnabled()
   expect(state.previewQueries.at(-1)).toMatchObject({ chunk_size: '800', chunk_overlap: '120' })
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('mimirq_pipeline_options') || '{}').options?.chunk_size)).toBe(800)
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem('mimirq_pipeline_options') || '{}').options?.chunk_size),
+    )
+    .toBe(800)
   await page.reload()
   await expect(page.getByRole('spinbutton', { name: '目标长度（字符）', exact: true })).toHaveValue('800')
   await expect(page.getByRole('spinbutton', { name: '重叠长度（字符）', exact: true })).toHaveValue('120')
@@ -79,11 +98,15 @@ test('parameter requests use the edited values, block stale ingestion including 
   await expect.poll(() => state.previewBodies.at(-1)).toContain('langchain_token')
 })
 
-test('switching documents while previewing rejects the late old response and keeps the new source and selection consistent', async ({ page }) => {
+test('switching documents while previewing rejects the late old response and keeps the new source and selection consistent', async ({
+  page,
+}) => {
   const state = await fixture(page)
   await open(page)
   let release!: () => void
-  state.holdPreview = new Promise(resolve => { release = resolve })
+  state.holdPreview = new Promise((resolve) => {
+    release = resolve
+  })
   const started = state.previewStarted
   await page.getByRole('button', { name: '生成预览', exact: true }).click()
   await expect.poll(() => state.previewStarted).toBe(started + 1)
@@ -98,7 +121,9 @@ test('switching documents while previewing rejects the late old response and kee
   await expect(page.locator('[data-compare-results]')).not.toContainText('紧固件')
 })
 
-test('documents and advanced controls remain reachable, while narrow views and theme changes keep the same document and selected chunk', async ({ page }) => {
+test('documents and advanced controls remain reachable, while narrow views and theme changes keep the same document and selected chunk', async ({
+  page,
+}) => {
   await fixture(page)
   await open(page)
   await noOverflow(page)
@@ -123,10 +148,13 @@ test('documents and advanced controls remain reachable, while narrow views and t
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'phone-original.png') })
   await page.getByRole('button', { name: '切块结果', exact: true }).click()
-  await expect(page.locator('[data-chunk-card][data-selected=true]')).toHaveAttribute('data-chunk-index','1')
+  await expect(page.locator('[data-chunk-card][data-selected=true]')).toHaveAttribute('data-chunk-index', '1')
   await page.screenshot({ path: path.join(evidence, 'phone-result.png') })
   await page.setViewportSize({ width: 1600, height: 1000 })
-  await page.evaluate(() => { localStorage.setItem('theme','dark'); localStorage.setItem('mimirq.surfaceTheme','earth') })
+  await page.evaluate(() => {
+    localStorage.setItem('theme', 'dark')
+    localStorage.setItem('mimirq.surfaceTheme', 'earth')
+  })
   await page.reload()
   await expect(page.locator('html')).toHaveClass(/dark/)
   await expect(page.locator('[data-chunk-card]')).toHaveCount(3)
@@ -134,7 +162,9 @@ test('documents and advanced controls remain reachable, while narrow views and t
   await page.screenshot({ path: path.join(evidence, 'dark-earth.png') })
 })
 
-test('empty workspace offers both existing documents and upload, then reaches preview without extra parsing or model endpoints', async ({ page }) => {
+test('empty workspace offers both existing documents and upload, then reaches preview without extra parsing or model endpoints', async ({
+  page,
+}) => {
   const state = await fixture(page, { empty: true })
   await open(page, true)
   await expect(page.getByRole('heading', { name: '选择文档，查看切块结果', exact: true })).toBeVisible()
@@ -142,12 +172,16 @@ test('empty workspace offers both existing documents and upload, then reaches pr
   await page.getByRole('button', { name: '选择已有文档', exact: true }).click()
   await expect(page.getByRole('dialog', { name: '文档与数据范围', exact: true })).toBeVisible()
   await page.getByRole('button', { name: '返回预览', exact: true }).click()
-  await page.getByLabel('上传切块预览文档', { exact: true }).setInputFiles({ name: '设备维护手册.md', mimeType: 'text/markdown', buffer: Buffer.from(original) })
+  await page
+    .getByLabel('上传切块预览文档', { exact: true })
+    .setInputFiles({ name: '设备维护手册.md', mimeType: 'text/markdown', buffer: Buffer.from(original) })
   await expect(page.locator('[data-chunk-card]')).toHaveCount(3)
   expect(state.previewBodies).toHaveLength(1)
 })
 
-test('reading mode locates a late source range and preserves it across mobile source/result switches', async ({ page }) => {
+test('reading mode locates a late source range and preserves it across mobile source/result switches', async ({
+  page,
+}) => {
   await fixture(page, { long: true })
   await page.goto('/chunk-preview', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: '切块预览', exact: true })).toBeVisible({ timeout: 60_000 })
@@ -158,7 +192,11 @@ test('reading mode locates a late source range and preserves it across mobile so
   const marker = page.locator('[data-compare-original] [data-source-selection-start]')
   await expect(marker).toHaveText(/检查项目 13/)
   await expect(marker).toBeInViewport()
-  await expect(page.locator('[data-compare-original] tr[data-source-selected=true]')).toContainText(['检查项','项目 13','复核要求'])
+  await expect(page.locator('[data-compare-original] tr[data-source-selected=true]')).toContainText([
+    '检查项',
+    '项目 13',
+    '复核要求',
+  ])
   await page.screenshot({ path: path.join(evidence, 'reading-linked.png') })
   await page.getByRole('button', { name: '源码', exact: true }).click()
   await expect(page.locator('[data-compare-original] mark')).toBeInViewport()
@@ -173,7 +211,9 @@ test('reading mode locates a late source range and preserves it across mobile so
   const scrollArea = page.locator('[data-compare-results] [data-page-scroll-container]')
   const area = await scrollArea.boundingBox()
   expect(area!.height).toBeGreaterThan(844 / 2)
-  await expect(page.locator('[data-chunk-card][data-selected=true]').getByRole('button', { name: '编辑内容', exact: true })).toBeInViewport()
+  await expect(
+    page.locator('[data-chunk-card][data-selected=true]').getByRole('button', { name: '编辑内容', exact: true }),
+  ).toBeInViewport()
   await page.getByRole('button', { name: '文档原文', exact: true }).click()
   await expect(marker).toBeInViewport()
   await noOverflow(page)

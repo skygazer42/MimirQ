@@ -19,11 +19,10 @@ Usage:
         ...
 """
 
-
 import functools
 import os
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -38,10 +37,10 @@ logger = get_logger("rag.tracing.langsmith")
 
 
 # Configuration
-LANGSMITH_API_KEY = getattr(settings, "LANGSMITH_API_KEY", "")
-LANGSMITH_PROJECT = getattr(settings, "LANGSMITH_PROJECT", "mimirq")
-LANGSMITH_ENDPOINT = getattr(settings, "LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
-LANGSMITH_TRACING_ENABLED = getattr(settings, "LANGSMITH_TRACING_ENABLED", False)
+LANGSMITH_API_KEY = settings.LANGSMITH_API_KEY
+LANGSMITH_PROJECT = settings.LANGSMITH_PROJECT
+LANGSMITH_ENDPOINT = settings.LANGSMITH_ENDPOINT
+LANGSMITH_TRACING_ENABLED = settings.LANGSMITH_TRACING_ENABLED
 
 # Import langsmith if tracing is enabled
 LangSmithClient = None  # type: ignore
@@ -59,6 +58,7 @@ F = TypeVar("F", bound=Callable)
 @dataclass
 class SpanContext:
     """Context for a trace span."""
+
     run_id: str = field(default_factory=lambda: str(uuid4()))
     parent_id: str | None = None
     name: str = ""
@@ -91,7 +91,7 @@ class TracingClient:
         api_key: str | None = None,
         project: str | None = None,
         endpoint: str | None = None,
-    ):
+    ) -> None:
         """
         Initialize the tracing client.
 
@@ -236,7 +236,7 @@ class TracingClient:
         inputs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         tags: list[str] | None = None,
-    ):
+    ) -> Iterator[SpanContext]:
         """
         Context manager for tracing.
 
@@ -273,7 +273,7 @@ class TracingClient:
         inputs: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
         tags: list[str] | None = None,
-    ):
+    ) -> AsyncIterator[SpanContext]:
         """
         Async context manager for tracing.
 
@@ -381,6 +381,7 @@ def trace_function(
     Returns:
         Decorated function
     """
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -418,6 +419,7 @@ def trace_async_function(
     Returns:
         Decorated function
     """
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -451,6 +453,7 @@ def trace_rag_query(func: F) -> F:
     Returns:
         Decorated function
     """
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         client = get_tracing_client()
@@ -496,6 +499,7 @@ def trace_retrieval(func: F) -> F:
     Returns:
         Decorated function
     """
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         client = get_tracing_client()
@@ -534,6 +538,7 @@ def trace_llm_call(func: F) -> F:
     Returns:
         Decorated function
     """
+
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
         client = get_tracing_client()
@@ -541,10 +546,7 @@ def trace_llm_call(func: F) -> F:
         async with client.atrace(
             name="llm_call",
             run_type="llm",
-            inputs={
-                "model": kwargs.get("model", "unknown"),
-                "prompt_length": len(str(kwargs.get("prompt", "")))
-            },
+            inputs={"model": kwargs.get("model", "unknown"), "prompt_length": len(str(kwargs.get("prompt", "")))},
             tags=["llm"],
         ) as span:
             result = await func(*args, **kwargs)

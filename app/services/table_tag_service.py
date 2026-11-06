@@ -7,8 +7,9 @@ This is intentionally conservative:
 """
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypedDict
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -30,26 +31,20 @@ from app.services.table_sql_fingerprint import fingerprint_sql
 _SCHEMA_TERM_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
 _QUOTED_LITERAL_RE = re.compile(r"[\"“”'‘’]([^\"“”'‘’]{1,80})[\"“”'‘’]")
 _NUMERIC_LITERAL_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
-_NON_IDENT_RE = re.compile(r"[^a-z0-9]+")
 _NUMERIC_DTYPE_HINTS = ("int", "float", "double", "decimal", "number", "numeric", "real")
 _TABLE_PICK_SUM_INTENT_RE = re.compile(r"(?i)\b(sum|total|amount|gmv|revenue)\b|合计|总和|求和|金额|销售额")
 _TABLE_PICK_COUNT_INTENT_RE = re.compile(r"(?i)\b(count|how many)\b|多少|几条|几行|总数|数量")
 _QUESTION_REQUIRED = "question is required"
-_GENERIC_NON_KEY_COLUMNS = {
-    "name",
-    "title",
-    "type",
-    "status",
-    "state",
-    "value",
-    "amount",
-    "price",
-    "date",
-    "time",
-    "timestamp",
-    "region",
-    "category",
-}
+
+
+class _SchemaLinkDiagnostics(TypedDict):
+    matched_columns: list[str]
+    matched_values: list[str]
+    matched_tables: list[str]
+    score: float
+    raw_score: int
+    strategy: str
+    reason: str
 
 
 def _table_column_names(columns: list[dict[str, Any]]) -> list[str]:
@@ -65,7 +60,7 @@ def _column_is_numeric(column: dict[str, Any]) -> bool:
     return any(hint in dtype for hint in _NUMERIC_DTYPE_HINTS)
 
 
-def _iter_named_columns(columns: list[dict[str, Any]]):
+def _iter_named_columns(columns: list[dict[str, Any]]) -> Iterator[tuple[dict[str, Any], str]]:
     for column in columns or []:
         if not isinstance(column, dict):
             continue
@@ -75,16 +70,16 @@ def _iter_named_columns(columns: list[dict[str, Any]]):
 
 
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
-    model_name = (getattr(settings, "LLM_MODEL_FAST", None) or getattr(settings, "LLM_MODEL", None) or "").strip()
+    model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL or "").strip()
     if not model_name:
         model_name = "gpt-5.4-mini"
     return ChatOpenAI(
         model=model_name,
-        api_key=getattr(settings, "LLM_API_KEY", None),
-        base_url=normalize_openai_compatible_base_url(getattr(settings, "LLM_API_BASE", None)),
+        api_key=settings.LLM_API_KEY,
+        base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=float(temperature),
-        timeout=float(getattr(settings, "LLM_TIMEOUT", 60) or 60),
-        max_retries=int(getattr(settings, "LLM_MAX_RETRIES", 2) or 2),
+        timeout=float(settings.LLM_TIMEOUT or 60),
+        max_retries=settings.LLM_MAX_RETRIES or 2,
         streaming=False,
     )
 
@@ -126,7 +121,9 @@ def _norm_key(value: str) -> str:
     return s.casefold() if s.isascii() else s
 
 
-def _iter_filtered_named_columns(columns: list[dict[str, Any]], *, exclude: str | None = None):
+def _iter_filtered_named_columns(
+    columns: list[dict[str, Any]], *, exclude: str | None = None
+) -> Iterator[tuple[dict[str, Any], str]]:
     excluded_key = _norm_key(exclude) if exclude else None
     for column, name in _iter_named_columns(columns):
         if excluded_key and _norm_key(name) == excluded_key:
@@ -134,7 +131,9 @@ def _iter_filtered_named_columns(columns: list[dict[str, Any]], *, exclude: str 
         yield column, name
 
 
-def _iter_table_named_columns(tables: list[dict[str, Any]], *, numeric: bool | None = None):
+def _iter_table_named_columns(
+    tables: list[dict[str, Any]], *, numeric: bool | None = None
+) -> Iterator[tuple[str, dict[str, Any], str]]:
     for table in tables or []:
         if not isinstance(table, dict):
             continue
@@ -306,7 +305,7 @@ def score_schema_link_diagnostics(
     columns: list[dict[str, Any]],
     sample_rows: list[dict[str, Any]] | None = None,
     table_aliases: list[str] | None = None,
-) -> dict[str, Any]:
+) -> _SchemaLinkDiagnostics:
     """
     Heuristic schema-link scorer for TAG requests.
 
@@ -321,7 +320,7 @@ def score_schema_link_diagnostics(
     matched_columns, matched_tables = _schema_link_matches(terms, col_names=col_names, table_names=table_names)
     matched_values = _schema_matched_values(q, sample_values=_schema_sample_values(sample_rows), terms=terms)
 
-    raw_score = int(len(matched_columns) * 3 + len(matched_tables) * 2 + len(matched_values))
+    raw_score = len(matched_columns) * 3 + len(matched_tables) * 2 + len(matched_values)
     score = round(min(float(raw_score) / 10.0, 1.0), 3)
 
     strategy, reason = _schema_link_strategy(
@@ -348,155 +347,6 @@ def score_schema_link_diagnostics(
         "strategy": strategy,
         "reason": reason,
     }
-
-
-def _normalize_ident(value: str) -> str:
-    raw = str(value or "").strip().casefold()
-    if not raw:
-        return ""
-    return _NON_IDENT_RE.sub("_", raw).strip("_")
-
-
-def _singularize(token: str) -> str:
-    t = str(token or "").strip()
-    if not t:
-        return ""
-    if t.endswith("ies") and len(t) > 3:
-        return t[:-3] + "y"
-    if t.endswith("ses") and len(t) > 3:
-        return t[:-2]
-    if t.endswith("s") and len(t) > 3 and not t.endswith("ss"):
-        return t[:-1]
-    return t
-
-
-def _alias_bases(table_name: str, aliases: list[str] | None) -> set[str]:
-    out: set[str] = set()
-    for raw in [table_name, *list(aliases or [])]:
-        s = str(raw or "").strip()
-        if not s:
-            continue
-        # Remove extensions and schema prefixes.
-        s = s.split(".")[0] if s.count(".") == 1 and s.lower().endswith((".csv", ".xls", ".xlsx")) else s
-        s = s.split(".")[-1]
-        norm = _normalize_ident(s)
-        if not norm:
-            continue
-        parts = [p for p in norm.split("_") if p]
-        for p in parts:
-            out.add(p)
-            out.add(_singularize(p))
-        out.add(norm)
-        out.add(_singularize(norm))
-    return {v for v in out if v}
-
-
-def _is_likely_key_column(col_name: str) -> bool:
-    n = _normalize_ident(col_name)
-    if not n:
-        return False
-    if n in {"id", "uuid"}:
-        return True
-    if n.endswith("_id"):
-        return True
-    if n.startswith("id_"):
-        return True
-    return False
-
-
-@dataclass(frozen=True)
-class _RelationshipSide:
-    table: str
-    column: str
-    norm: str
-    bases: set[str]
-
-
-def _relationship_candidate(
-    *,
-    left: _RelationshipSide,
-    right: _RelationshipSide,
-    confidence: float,
-    reason: str,
-) -> dict[str, Any]:
-    return {
-        "left_table": left.table,
-        "left_column": left.column,
-        "right_table": right.table,
-        "right_column": right.column,
-        "confidence": confidence,
-        "reason": reason,
-    }
-
-
-def _same_key_relationship(left: _RelationshipSide, right: _RelationshipSide) -> dict[str, Any] | None:
-    if left.norm == right.norm and _is_likely_key_column(left.norm):
-        return _relationship_candidate(
-            left=left,
-            right=right,
-            confidence=0.96,
-            reason="same_key_name",
-        )
-    return None
-
-
-def _fk_relationship(fk_side: _RelationshipSide, id_side: _RelationshipSide) -> dict[str, Any] | None:
-    if not fk_side.norm.endswith("_id"):
-        return None
-    base = fk_side.norm[: -len("_id")]
-    if not base or id_side.norm not in {"id", f"{base}_id"}:
-        return None
-    confidence = 0.95 if base in id_side.bases else 0.90
-    reason = "fk_to_table_id" if base in id_side.bases else "fk_to_id"
-    return _relationship_candidate(
-        left=fk_side,
-        right=id_side,
-        confidence=confidence,
-        reason=reason,
-    )
-
-
-def _relationship_candidates_for_columns(left: _RelationshipSide, right: _RelationshipSide) -> list[dict[str, Any]]:
-    if not left.norm or not right.norm:
-        return []
-    if left.norm == right.norm and left.norm in _GENERIC_NON_KEY_COLUMNS:
-        return []
-
-    candidates = [
-        _same_key_relationship(left, right),
-        _fk_relationship(left, right),
-        _fk_relationship(right, left),
-    ]
-    return [candidate for candidate in candidates if candidate is not None]
-
-
-def _pick_best_relationship_between(  # noqa: PLR0913 - pairwise relationship boundary mirrors two table schemas.
-    *,
-    left_table: str,
-    left_aliases: list[str] | None,
-    left_columns: list[dict[str, Any]],
-    right_table: str,
-    right_aliases: list[str] | None,
-    right_columns: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    left_col_names = _table_column_names(left_columns)
-    right_col_names = _table_column_names(right_columns)
-    if not left_col_names or not right_col_names:
-        return None
-
-    left_bases = _alias_bases(left_table, left_aliases)
-    right_bases = _alias_bases(right_table, right_aliases)
-
-    best: dict[str, Any] | None = None
-    for l_raw in left_col_names:
-        for r_raw in right_col_names:
-            left = _RelationshipSide(table=left_table, column=l_raw, norm=_normalize_ident(l_raw), bases=left_bases)
-            right = _RelationshipSide(table=right_table, column=r_raw, norm=_normalize_ident(r_raw), bases=right_bases)
-            for candidate in _relationship_candidates_for_columns(left, right):
-                if best is None or float(candidate.get("confidence") or 0.0) > float(best.get("confidence") or 0.0):
-                    best = candidate
-
-    return best
 
 
 def infer_schema_relationships_for_tables(*, tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -559,7 +409,7 @@ def _build_join_plan_risk_contract(
     left_sel = cost_signals.get("left_selectivity")
     right_sel = cost_signals.get("right_selectivity")
     selectivity_unknown = left_sel is None or right_sel is None
-    fanout_explosive = bool(fanout_ratio >= 20.0 or bool((dry_run_cardinality or {}).get("explosive")))
+    fanout_explosive = fanout_ratio >= 20.0 or bool((dry_run_cardinality or {}).get("explosive"))
 
     reason_codes: list[str] = []
     if fanout_explosive:
@@ -569,8 +419,8 @@ def _build_join_plan_risk_contract(
 
     return {
         "schema": "mimirq.tag_join_plan_risk.v1",
-        "fanout_explosive": bool(fanout_explosive),
-        "selectivity_unknown": bool(selectivity_unknown),
+        "fanout_explosive": fanout_explosive,
+        "selectivity_unknown": selectivity_unknown,
         "reason_codes": reason_codes,
     }
 
@@ -592,22 +442,22 @@ def _dry_run_join_cardinality(
     right_sel_v = _to_float(right_sel, -1.0)
     selectivity_known = left_sel_v >= 0.0 and right_sel_v >= 0.0
     min_sel = min(left_sel_v, right_sel_v) if selectivity_known else 0.1
-    min_sel = min(1.0, max(0.001, float(min_sel)))
+    min_sel = min(1.0, max(0.001, min_sel))
 
     base_rows = max(left_rows, right_rows, int(max_rows or 1))
-    estimated_upper_rows = int(max(1.0, float(base_rows) * max(1.0, fanout_ratio) / float(min_sel)))
-    explosive = bool(estimated_upper_rows > int(max(1, int(max_rows or 1))) * 10)
+    estimated_upper_rows = int(max(1.0, float(base_rows) * max(1.0, fanout_ratio) / min_sel))
+    explosive = estimated_upper_rows > max(1, int(max_rows or 1)) * 10
 
     return {
         "schema": "mimirq.tag_join_cardinality_dryrun.v1",
-        "left_row_count": int(left_rows),
-        "right_row_count": int(right_rows),
-        "fanout_ratio": round(float(fanout_ratio), 6),
-        "left_selectivity": (round(float(left_sel_v), 6) if left_sel_v >= 0.0 else None),
-        "right_selectivity": (round(float(right_sel_v), 6) if right_sel_v >= 0.0 else None),
-        "estimated_upper_rows": int(estimated_upper_rows),
-        "max_rows_budget": int(max(1, int(max_rows or 1))),
-        "explosive": bool(explosive),
+        "left_row_count": left_rows,
+        "right_row_count": right_rows,
+        "fanout_ratio": round(fanout_ratio, 6),
+        "left_selectivity": (round(left_sel_v, 6) if left_sel_v >= 0.0 else None),
+        "right_selectivity": (round(right_sel_v, 6) if right_sel_v >= 0.0 else None),
+        "estimated_upper_rows": estimated_upper_rows,
+        "max_rows_budget": max(1, int(max_rows or 1)),
+        "explosive": explosive,
     }
 
 
@@ -651,7 +501,7 @@ def _normalize_join_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "table_name": table_name,
                 "table_aliases": [str(v) for v in (raw.get("table_aliases") or []) if str(v).strip()],
                 "columns": [column for column in columns if isinstance(column, dict)],
-                "row_count": max(0, int(row_count)),
+                "row_count": max(0, row_count),
                 "sample_rows": sample_rows[:50],
             }
         )
@@ -659,10 +509,10 @@ def _normalize_join_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def _build_join_planning_state(valid_tables: list[dict[str, Any]]) -> _JoinPlanningState:
-    top_n = max(1, int(getattr(settings, "TABLE_TAG_PLAN_CANDIDATES_TOP_N", 3) or 3))
-    ambiguity_gap = float(getattr(settings, "TABLE_TAG_AMBIGUITY_SCORE_GAP", 0.03) or 0.03)
-    strict_ambiguity = bool(getattr(settings, "TABLE_TAG_AMBIGUITY_STRICT_ENABLED", True))
-    max_join_tables = max(2, int(getattr(settings, "TABLE_QUERY_MAX_JOIN_TABLES", 4) or 4))
+    top_n = max(1, settings.TABLE_TAG_PLAN_CANDIDATES_TOP_N or 3)
+    ambiguity_gap = settings.TABLE_TAG_AMBIGUITY_SCORE_GAP or 0.03
+    strict_ambiguity = settings.TABLE_TAG_AMBIGUITY_STRICT_ENABLED
+    max_join_tables = max(2, settings.TABLE_QUERY_MAX_JOIN_TABLES or 4)
     plan_candidates = score_join_plan_candidates(
         tables=valid_tables,
         top_n=top_n,
@@ -674,12 +524,8 @@ def _build_join_planning_state(valid_tables: list[dict[str, Any]]) -> _JoinPlann
         ambiguity_score_gap=ambiguity_gap,
         max_states=max(8, max_join_tables * 8),
     )
-    candidate_rows = [
-        candidate for candidate in (plan_candidates.get("candidates") or []) if isinstance(candidate, dict)
-    ]
-    multi_candidate_rows = [
-        candidate for candidate in (multi_plan_candidates.get("candidates") or []) if isinstance(candidate, dict)
-    ]
+    candidate_rows = list(plan_candidates["candidates"])
+    multi_candidate_rows = list(multi_plan_candidates["candidates"])
     return _JoinPlanningState(
         top_n=top_n,
         ambiguity_gap=ambiguity_gap,
@@ -732,10 +578,10 @@ def _selected_plan_candidates(
 
 def _join_confidence_state(selected_candidate: dict[str, Any]) -> tuple[float, float, bool, bool]:
     selected_score = float(selected_candidate.get("score") or 0.0)
-    low_confidence_threshold = float(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD", 0.55) or 0.55)
-    low_confidence_threshold = min(1.0, max(0.0, float(low_confidence_threshold)))
-    low_confidence = float(selected_score) < float(low_confidence_threshold)
-    low_confidence_strict = bool(getattr(settings, "TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED", False))
+    low_confidence_threshold = settings.TABLE_TAG_PLAN_LOW_CONFIDENCE_THRESHOLD or 0.55
+    low_confidence_threshold = min(1.0, max(0.0, low_confidence_threshold))
+    low_confidence = selected_score < low_confidence_threshold
+    low_confidence_strict = settings.TABLE_TAG_PLAN_LOW_CONFIDENCE_STRICT_ENABLED
     return selected_score, low_confidence_threshold, low_confidence, low_confidence_strict
 
 
@@ -955,18 +801,18 @@ def _build_join_planner(
             if aggregation is None and order_by is None and not bool(_TABLE_PICK_COUNT_INTENT_RE.search(""))
             else None
         ),
-        "joins": relationships[: max(1, int(state.max_join_tables) - 1)],
+        "joins": relationships[: max(1, state.max_join_tables - 1)],
         "selected_tables": selected_tables,
         "candidates": state.candidate_rows[: state.top_n],
         "multi_candidates": state.multi_candidate_rows[: state.top_n],
         "selected_candidate_id": str((selection.candidate or {}).get("candidate_id") or ""),
-        "selected_score": round(float(selected_score), 6),
+        "selected_score": round(selected_score, 6),
         "ambiguous": bool(selected_plan.get("ambiguous")),
         "ambiguity_gap": selected_plan.get("ambiguity_gap"),
-        "strict_ambiguity": bool(state.strict_ambiguity),
-        "low_confidence": bool(low_confidence),
-        "low_confidence_threshold": round(float(low_confidence_threshold), 6),
-        "strict_low_confidence": bool(low_confidence_strict),
+        "strict_ambiguity": state.strict_ambiguity,
+        "low_confidence": low_confidence,
+        "low_confidence_threshold": round(low_confidence_threshold, 6),
+        "strict_low_confidence": low_confidence_strict,
         "fail_reason": ("low_confidence_join_plan" if low_confidence else None),
         "join_plan_risk": join_plan_risk,
         "dry_run_cardinality": dry_run_cardinality,
@@ -1120,7 +966,6 @@ def _extract_question_limit(question: str, *, default_limit: int) -> int:
 
 
 def _pick_numeric_column(columns: list[dict[str, Any]]) -> str | None:
-    numeric_hints = ("int", "float", "double", "decimal", "number", "numeric", "real")
     for c in columns or []:
         if not isinstance(c, dict):
             continue
@@ -1128,7 +973,7 @@ def _pick_numeric_column(columns: list[dict[str, Any]]) -> str | None:
         if not name:
             continue
         dtype = str(c.get("dtype") or "").strip().lower()
-        if any(h in dtype for h in numeric_hints):
+        if any(h in dtype for h in _NUMERIC_DTYPE_HINTS):
             return name
     return None
 
@@ -1537,9 +1382,9 @@ def generate_sql_for_table_with_metadata(
     Backward compatibility: callers that only need `(sql, mode)` should keep using
     `generate_sql_for_table_with_mode`.
     """
-    deterministic_only = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_ONLY", False))
-    deterministic_fallback = bool(getattr(settings, "TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED", True))
-    llm_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
+    deterministic_only = settings.TABLE_NL2SQL_DETERMINISTIC_ONLY
+    deterministic_fallback = settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
+    llm_key = (settings.LLM_API_KEY or "").strip()
 
     schema_link = score_schema_link_diagnostics(
         question=question,
@@ -1679,7 +1524,7 @@ def generate_answer_from_result(
     """
     Draft a user-facing answer grounded in the executed SQL result.
     """
-    if not bool(getattr(settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", False)):
+    if not settings.TABLE_LLM_ALLOW_RESULT_EGRESS:
         raise RuntimeError("TABLE_LLM_ALLOW_RESULT_EGRESS=false")
 
     q = " ".join((question or "").strip().split())
@@ -1715,4 +1560,4 @@ def generate_answer_from_result(
 
 
 def tag_enabled() -> bool:
-    return bool(getattr(settings, "TABLE_NL2SQL_ENABLED", False))
+    return settings.TABLE_NL2SQL_ENABLED

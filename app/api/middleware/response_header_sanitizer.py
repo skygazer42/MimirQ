@@ -8,12 +8,12 @@ after the app has produced the response. This middleware is still useful for
 headers produced by the application stack.
 """
 
+from collections.abc import Iterable
 
-from collections.abc import Callable, Iterable
-
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
 _DEFAULT_STRIP_HEADERS: tuple[str, ...] = (
     "Server",
@@ -24,13 +24,13 @@ _DEFAULT_STRIP_HEADERS: tuple[str, ...] = (
 
 
 class ResponseHeaderSanitizerMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, *, strip_headers: Iterable[str] | None = None) -> None:
+    def __init__(self, app: ASGIApp, *, strip_headers: Iterable[str] | None = None) -> None:
         super().__init__(app)
         raw = list(strip_headers) if strip_headers is not None else list(_DEFAULT_STRIP_HEADERS)
         cleaned: list[str] = []
         seen: set[str] = set()
         for item in raw:
-            name = str(item or "").strip()
+            name = (item or "").strip()
             if not name:
                 continue
             key = name.lower()
@@ -40,10 +40,9 @@ class ResponseHeaderSanitizerMiddleware(BaseHTTPMiddleware):
             cleaned.append(name)
         self.strip_headers = tuple(cleaned)
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)
         for name in self.strip_headers:
             if name in response.headers:
                 del response.headers[name]
         return response
-

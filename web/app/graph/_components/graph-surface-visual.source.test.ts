@@ -44,7 +44,7 @@ describe('graph surfaces stay crisp', () => {
     expect(canvasSrc).not.toContain('shadow-[12px_18px_46px_-28px_rgba(15,23,42,0.44)]')
     expect(canvasSrc).not.toContain('shadow-[12px_18px_42px_-24px_rgba(15,23,42,0.38)]')
     expect(canvasSrc).not.toContain(
-      'bg-[radial-gradient(circle_at_center,transparent_52%,hsl(var(--info)/0.025)_100%)]'
+      'bg-[radial-gradient(circle_at_center,transparent_52%,hsl(var(--info)/0.025)_100%)]',
     )
   })
 

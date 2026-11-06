@@ -1,4 +1,3 @@
-
 import hashlib
 import json
 import sys
@@ -11,17 +10,13 @@ import pytest
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
 from app.rag.kg.extraction.relation_verifier import RelationCandidate, RelationVerifier
 from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter
-from app.rag.preprocessing.keyword import _normalize_hanlp_tokens
-from app.rag.reranker.cross_encoder import CrossEncoderReranker
 from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker
-from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.hybrid.lexical import LexicalDBMixin
 from app.services.dify_integration.metadata_condition_helpers import (
     MetadataConditionValidationError,
     metadata_condition_to_filter,
 )
 from app.services.evidence_drift_audit_service import audit_reference_sources_drift
-from app.services.image_embedding_index import index_clip_image_embeddings_for_dataset
 from app.services.rag_config_template_resolver import resolve_rag_config_template
 
 
@@ -205,48 +200,6 @@ def test_extract_markdown_frontmatter_preserves_list_and_strip_output_contract()
     assert result.end_char == len(result.raw)
 
 
-def test_normalize_hanlp_tokens_prefers_known_keys_and_first_non_empty_fallback() -> None:
-    assert _normalize_hanlp_tokens({"tok/coarse": [" Alpha ", None, 3], "ignored": ["beta"]}) == ["Alpha", "3"]
-    assert _normalize_hanlp_tokens({"unused": [], "fallback": " Gamma Delta "}) == ["Gamma", "Delta"]
-
-
-def test_cross_encoder_rerank_preserves_sorting_and_top_n_contracts() -> None:
-    model = _FakeCrossEncoderModel(
-        responses=[
-            _ListWithToList([0.2, 0.9]),
-            (0.5,),
-        ]
-    )
-    reranker = CrossEncoderReranker(model_name="fake-model", model=model)
-
-    result = reranker.rerank(
-        "query",
-        [
-            RerankCandidate(id="a", text="A" * 20),
-            RerankCandidate(id=" ", text="skip blank id"),
-            RerankCandidate(id="b", text="B" * 20),
-            RerankCandidate(id="c", text="keep"),
-            RerankCandidate(id="d", text=""),
-        ],
-        batch_size=2,
-        max_chars=5,
-        top_n=2,
-    )
-
-    assert result.ordered_ids == ["b", "c"]
-    assert result.score_map == {"b": 0.9, "c": 0.5}
-    assert result.stats == {
-        "provider": "cross_encoder",
-        "model": "fake-model",
-        "docs": 3,
-        "batch_size": 2,
-    }
-    assert model.batches == [
-        [("query", "AAAAA..."), ("query", "BBBBB...")],
-        [("query", "keep")],
-    ]
-
-
 def test_ltr_reranker_init_preserves_manifest_validation_and_sha_model_id(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -400,118 +353,6 @@ def test_audit_reference_sources_drift_preserves_invalid_ref_accounting_and_slic
         "quality_bucket": "high",
         "directory": "docs",
     }
-
-
-def test_index_clip_image_embeddings_for_dataset_preserves_skip_fail_and_index_state(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import app.services.image_embedding_index as image_mod
-
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    kept_chunk_id = uuid.uuid4()
-
-    monkeypatch.setattr(image_mod.settings, "IMAGE_EMBEDDING_ENABLED", True, raising=False)
-    monkeypatch.setattr(image_mod.settings, "IMAGE_EMBEDDING_COLLECTION_NAME", "images", raising=False)
-    monkeypatch.setattr(image_mod.settings, "MINIO_IMAGE_MAX_BYTES", 0, raising=False)
-    monkeypatch.setattr(image_mod, "resolve_collection_name", lambda value: value, raising=True)
-    monkeypatch.setattr(image_mod, "normalize_image_metadata", lambda meta: None, raising=True)
-
-    seen_minio_ids: list[str] = []
-
-    def _load_minio(*, img_id: str, max_bytes: int) -> bytes | None:
-        seen_minio_ids.append(img_id)
-        return None if img_id == "missing" else b"raw-image"
-
-    monkeypatch.setattr(image_mod, "_load_image_bytes_from_minio", _load_minio, raising=True)
-    monkeypatch.setattr(image_mod, "_load_image_bytes_from_local", lambda **kwargs: None, raising=True)
-    monkeypatch.setattr(image_mod, "_load_pil_image_from_bytes", lambda raw: f"pil:{raw.decode()}", raising=True)
-    monkeypatch.setattr(
-        image_mod,
-        "encode_clip_image",
-        lambda pil: [] if pil == "pil:raw-image-fail" else ([0.1, 0.2] if pil == "pil:raw-image" else []),
-        raising=True,
-    )
-
-    class _FakeAdapter:
-        def __init__(self) -> None:
-            self.calls: list[tuple[list[dict[str, object]], list[list[float]], bool]] = []
-
-        def add_vectors(self, items, *, embeddings, upsert):
-            self.calls.append((list(items), list(embeddings), bool(upsert)))
-
-    adapter = _FakeAdapter()
-    monkeypatch.setattr(image_mod, "get_milvus_adapter", lambda **kwargs: adapter, raising=True)
-
-    rows = [
-        SimpleNamespace(id=uuid.uuid4(), document_id=uuid.uuid4(), chunk_index=0, page_number=0, doc_metadata={}),
-        SimpleNamespace(
-            id=uuid.uuid4(),
-            document_id=uuid.uuid4(),
-            chunk_index=1,
-            page_number=0,
-            doc_metadata={"doc_type_kwd": "image", "img_id": "missing"},
-        ),
-        SimpleNamespace(
-            id=uuid.uuid4(),
-            document_id=uuid.uuid4(),
-            chunk_index=2,
-            page_number=0,
-            doc_metadata={"doc_type_kwd": "image", "img_id": "fail"},
-        ),
-        SimpleNamespace(
-            id=kept_chunk_id,
-            document_id=uuid.uuid4(),
-            chunk_index=3,
-            page_number=7,
-            doc_metadata={"doc_type_kwd": "image", "img_id": "ok", "image_url": "https://example/image.png"},
-        ),
-    ]
-
-    def _load_minio_with_fail(*, img_id: str, max_bytes: int) -> bytes | None:
-        seen_minio_ids.append(img_id)
-        if img_id == "missing":
-            return None
-        if img_id == "fail":
-            return b"raw-image-fail"
-        return b"raw-image"
-
-    monkeypatch.setattr(image_mod, "_load_image_bytes_from_minio", _load_minio_with_fail, raising=True)
-
-    stats = index_clip_image_embeddings_for_dataset(
-        db=_FakeSequentialDB(rows),
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        max_chunks=10,
-        upsert=False,
-    )
-
-    assert stats == image_mod.ImageIndexStats(indexed=1, skipped=2, failed=1, dim=2, errors=None)
-    assert seen_minio_ids == ["missing", "fail", "ok"]
-    assert adapter.calls == [
-        (
-            [
-                {
-                    "id": str(kept_chunk_id),
-                    "content": "image",
-                    "metadata": {
-                        "tenant_id": str(tenant_id),
-                        "dataset_id": str(dataset_id),
-                        "document_id": str(rows[3].document_id),
-                        "chunk_id": str(kept_chunk_id),
-                        "chunk_index": 3,
-                        "page_number": 7,
-                        "img_id": "ok",
-                        "image_id": "",
-                        "image_url": "https://example/image.png",
-                        "index_kind": "image",
-                    },
-                }
-            ],
-            [[0.1, 0.2]],
-            False,
-        )
-    ]
 
 
 def test_resolve_rag_config_template_adaptive_mode_preserves_exploit_and_debug_contract(

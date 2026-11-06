@@ -40,13 +40,16 @@ export function getFolderTreeIndex<T extends FolderTreeNodeLike>(folders: readon
   return index
 }
 
-export function collectFolderDescendantIds<T extends FolderTreeNodeLike>(folders: readonly T[], folderId: string): string[] {
+export function collectFolderDescendantIds<T extends FolderTreeNodeLike>(
+  folders: readonly T[],
+  folderId: string,
+): string[] {
   const index = getFolderTreeIndex(folders)
   const cached = index.descendantIdsByFolderId.get(folderId)
   if (cached) return cached
 
   const out: string[] = []
-  const stack = [...((index.childrenByParentId.get(folderId) || []).slice().reverse())]
+  const stack = [...(index.childrenByParentId.get(folderId) || []).slice().reverse()]
 
   while (stack.length > 0) {
     const node = stack.pop()

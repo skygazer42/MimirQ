@@ -63,8 +63,8 @@ describe('theme surface appearance', () => {
     expect(
       chroma.contrast(
         hslTokenToColor(tokens?.['--primary'] || ''),
-        hslTokenToColor(tokens?.['--primary-foreground'] || '')
-      )
+        hslTokenToColor(tokens?.['--primary-foreground'] || ''),
+      ),
     ).toBeGreaterThanOrEqual(4.5)
   })
 
@@ -93,7 +93,7 @@ describe('theme surface appearance', () => {
       createStorage({ [SURFACE_THEME_STORAGE_KEY]: 'neutral' }),
       root,
       null,
-      { notify: false }
+      { notify: false },
     )
 
     expect(appearance).toMatchObject({
@@ -127,8 +127,8 @@ describe('theme surface appearance', () => {
     expect(
       chroma.contrast(
         hslTokenToColor(skyTokens?.['--primary'] || ''),
-        hslTokenToColor(skyTokens?.['--primary-foreground'] || '')
-      )
+        hslTokenToColor(skyTokens?.['--primary-foreground'] || ''),
+      ),
     ).toBeGreaterThanOrEqual(4.5)
   })
 

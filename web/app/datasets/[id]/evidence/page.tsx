@@ -26,5 +26,13 @@ export default function DatasetEvidencePage() {
     return raw?.trim() ? raw.trim() : undefined
   }, [searchParams])
 
-  return <AppFrame>{datasetId ? <EvidenceSuiteWorkbench datasetId={datasetId} initialFeedbackId={initialFeedbackId} /> : <p className="p-6 text-sm">未取得数据集。</p>}</AppFrame>
+  return (
+    <AppFrame>
+      {datasetId ? (
+        <EvidenceSuiteWorkbench datasetId={datasetId} initialFeedbackId={initialFeedbackId} />
+      ) : (
+        <p className="p-6 text-sm">未取得数据集。</p>
+      )}
+    </AppFrame>
+  )
 }

@@ -16,7 +16,8 @@ export function renderHook<T>(useHook: () => T, options: RenderHookOptions = {})
   document.body.appendChild(container)
   const root = createRoot(container)
   const resultRef = React.createRef<T>()
-  const Wrapper = options.wrapper ?? (({ children }: WrapperProps) => React.createElement(React.Fragment, null, children))
+  const Wrapper =
+    options.wrapper ?? (({ children }: WrapperProps) => React.createElement(React.Fragment, null, children))
 
   const Harness = React.forwardRef<T, object>(function HookHarness(_props, ref) {
     const value = useHook()
@@ -52,13 +53,15 @@ export async function waitForAssertion(assertion: () => void, timeoutMs = 1000) 
   const deadline = Date.now() + timeoutMs
   let lastError: unknown
 
-  while (Date.now() < deadline) {
+  while (true) {
     try {
       assertion()
       return
     } catch (error) {
       lastError = error
     }
+
+    if (Date.now() >= deadline) break
 
     await act(async () => {
       await new Promise((resolve) => globalThis.setTimeout(resolve, 0))

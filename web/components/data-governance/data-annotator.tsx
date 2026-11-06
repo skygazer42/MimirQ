@@ -1,26 +1,17 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  ChevronRight,
-  Hash,
-  Highlighter,
-  Loader2,
-  Shield,
-  Tag,
-  Type,
-  X,
-} from '@/components/icons'
+import { ChevronRight, Hash, Highlighter, Loader2, Shield, Tag, Type, X } from '@/components/icons'
 import styles from './governance-inbox.module.css'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { pipelineApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientWarning } from '@/lib/client-logging'
-import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types'
+import type { AutoAnnotationRequest, AutoDocumentTag } from '@/types/processing'
 
-export interface Annotation {
+export type Annotation = {
   id: string
   text: string
   type: 'entity' | 'keyword' | 'sensitive' | 'custom'
@@ -29,7 +20,9 @@ export interface Annotation {
   end: number
 }
 
-interface DataAnnotatorProps {
+const EMPTY_ANNOTATIONS: Annotation[] = []
+
+type DataAnnotatorProps = {
   content: string
   annotations?: Annotation[]
   onAnnotate: (annotations: Annotation[]) => void
@@ -39,6 +32,14 @@ interface DataAnnotatorProps {
 type AnnotationTypeId = Annotation['type']
 type AnnotationTone = 'info' | 'success' | 'destructive' | 'primary'
 type AutoTagProviderId = 'cpu' | 'llm' | 'compliance' | 'hybrid'
+type AnnotationTypeConfig = {
+  id: AnnotationTypeId
+  label: string
+  icon: typeof Highlighter
+  tone: AnnotationTone
+  description: string
+}
+
 const ANNOTATION_TYPE_CONFIGS: Array<{
   id: AnnotationTypeId
   icon: typeof Hash
@@ -59,7 +60,6 @@ const AUTO_TAG_PROVIDER_OPTIONS: Array<{
   { id: 'cpu', providers: ['cpu'], enableLlm: false, enableSensitive: false },
   { id: 'llm', providers: ['llm'], enableLlm: true, enableSensitive: false },
   { id: 'compliance', providers: ['pii', 'secret', 'regex'], enableLlm: false, enableSensitive: true },
-  { id: 'hybrid', providers: ['cpu', 'llm', 'gliner', 'pii', 'secret'], enableLlm: true, enableSensitive: true },
 ]
 const DEFAULT_AUTO_TAG_PROVIDER: AutoTagProviderId = 'cpu'
 
@@ -90,16 +90,31 @@ function getSelectionRoot(): HTMLElement | null {
 }
 
 function normalizeSelectedText(value: string): string {
-  return String(value || '').replace(/\s+/g, ' ').trim()
+  return value.replace(/\s+/g, ' ').trim()
 }
 
-function findSelectionRange(content: string, selectedText: string): { start: number; end: number; text: string } | null {
-  const text = String(selectedText || '').trim()
+function findSelectionRange(
+  content: string,
+  selectedText: string,
+): { start: number; end: number; text: string } | null {
+  const text = selectedText.trim()
   if (!content || !text) return null
 
   const exactStart = content.indexOf(text)
   if (exactStart >= 0) return { start: exactStart, end: exactStart + text.length, text }
 
+  const pattern = normalizeSelectedText(text)
+    .split(' ')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`))
+    .join(String.raw`\s+`)
+  const match = new RegExp(pattern, 'm').exec(content)
+  if (match) {
+    return {
+      start: match.index,
+      end: match.index + match[0].length,
+      text: match[0],
+    }
+  }
 
   return null
 }
@@ -116,7 +131,12 @@ function dedupeAnnotations(items: Annotation[]): Annotation[] {
   return out
 }
 
-export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumentTags }: Readonly<DataAnnotatorProps>) {
+export function DataAnnotator({
+  content,
+  annotations = EMPTY_ANNOTATIONS,
+  onAnnotate,
+  onDocumentTags,
+}: Readonly<DataAnnotatorProps>) {
   const t = useTranslations('DataAnnotator')
   const annotationTypes = useMemo(
     () =>
@@ -127,7 +147,7 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         label: t(`types.${id}.label`),
         description: t(`types.${id}.description`),
       })),
-    [t]
+    [t],
   )
   const [selectedType, setSelectedType] = useState<AnnotationTypeId>('keyword')
   const [customLabel, setCustomLabel] = useState('')
@@ -138,8 +158,15 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
   const [localAnnotations, setLocalAnnotations] = useState<Annotation[]>(annotations)
   const [semanticSummary, setSemanticSummary] = useState<string | null>(null)
   const [semanticTags, setSemanticTags] = useState<AutoDocumentTag[]>([])
-  const contentRef = useRef(content)
-  useEffect(() => { contentRef.current = content }, [content])
+  const localAnnotationsRef = useRef(annotations)
+  const activeAnnotationRef = useRef<symbol | null>(null)
+  const onAnnotateRef = useRef(onAnnotate)
+  const onDocumentTagsRef = useRef(onDocumentTags)
+
+  useEffect(() => {
+    onAnnotateRef.current = onAnnotate
+    onDocumentTagsRef.current = onDocumentTags
+  }, [onAnnotate, onDocumentTags])
 
   const annotationsByType = useMemo(() => {
     const grouped: Record<AnnotationTypeId, Annotation[]> = {
@@ -157,15 +184,15 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
   }, [localAnnotations])
 
   const documentTagGroups = useMemo(() => {
-    const compact = semanticTags.filter(tag => !isLongTag(tag))
+    const compact = semanticTags.filter((tag) => !isLongTag(tag))
     return {
       attributes: Object.entries(DOCUMENT_TAG_LABELS)
         .filter(([type]) => type !== 'keyword' && type !== 'topic')
-        .map(([type, label]) => ({ type, label, tags: compact.filter(tag => tag.type === type) }))
-        .filter(group => group.tags.length > 0),
+        .map(([type, label]) => ({ type, label, tags: compact.filter((tag) => tag.type === type) }))
+        .filter((group) => group.tags.length > 0),
       terms: (['topic', 'keyword'] as const)
-        .map(type => ({ type, label: DOCUMENT_TAG_LABELS[type], tags: compact.filter(tag => tag.type === type) }))
-        .filter(group => group.tags.length > 0),
+        .map((type) => ({ type, label: DOCUMENT_TAG_LABELS[type], tags: compact.filter((tag) => tag.type === type) }))
+        .filter((group) => group.tags.length > 0),
       excerpts: semanticTags.filter(isLongTag),
     }
   }, [semanticTags])
@@ -175,12 +202,20 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
     AUTO_TAG_PROVIDER_OPTIONS.find((option) => option.id === autoTagProvider) ?? AUTO_TAG_PROVIDER_OPTIONS[0]
 
   useEffect(() => {
+    activeAnnotationRef.current = null
+    setIsAutoTagging(false)
+    localAnnotationsRef.current = annotations
     setLocalAnnotations(annotations)
-  }, [annotations])
+  }, [annotations, content])
 
   useEffect(() => {
     setSemanticSummary(null)
     setSemanticTags([])
+    setSelection(null)
+    setIsSelecting(false)
+    return () => {
+      activeAnnotationRef.current = null
+    }
   }, [content])
 
   useEffect(() => {
@@ -190,14 +225,13 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
     }
   }, [content, selection])
 
-  const commitAnnotations = useCallback(
-    (updater: (prev: Annotation[]) => Annotation[]) => {
-      const next = dedupeAnnotations(updater(localAnnotations))
-      setLocalAnnotations(next)
-      onAnnotate(next)
-    },
-    [localAnnotations, onAnnotate]
-  )
+  const commitAnnotations = useCallback((updater: (prev: Annotation[]) => Annotation[]) => {
+    const next = dedupeAnnotations(updater(localAnnotationsRef.current))
+    localAnnotationsRef.current = next
+    setLocalAnnotations(next)
+    onAnnotateRef.current(next)
+    return next
+  }, [])
 
   useEffect(() => {
     if (!isSelecting) return
@@ -240,6 +274,8 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
       end: selection.end,
     }
 
+    activeAnnotationRef.current = null
+    setIsAutoTagging(false)
     commitAnnotations((prev) => [...prev, nextAnnotation])
     setSelection(null)
     setIsSelecting(false)
@@ -249,16 +285,21 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
   }
 
   const handleDeleteAnnotation = (annotationId: string) => {
+    activeAnnotationRef.current = null
+    setIsAutoTagging(false)
     commitAnnotations((prev) => prev.filter((annotation) => annotation.id !== annotationId))
   }
 
   const handleAutoAnnotate = async () => {
-    const source = String(content || '')
+    const source = content.trim()
     if (!source.trim() || isAutoTagging) {
       toast.warning(t('auto.empty'))
       return
     }
 
+    const annotation = Symbol()
+    activeAnnotationRef.current = annotation
+    const sourceOffset = content.indexOf(source)
     setIsAutoTagging(true)
     try {
       const response = await pipelineApi.autoAnnotations({
@@ -274,27 +315,32 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         keyword_top_k: 12,
         max_annotations: 80,
       })
-      if (contentRef.current !== source) return
-      const nextSemanticTags = response.document_tags || []
+      if (activeAnnotationRef.current !== annotation) return
+      const nextSemanticTags = response.document_tags
       setSemanticSummary(response.summary ?? null)
       setSemanticTags(nextSemanticTags)
       if (nextSemanticTags.length > 0) {
-        onDocumentTags?.(nextSemanticTags.map((tag) => tag.value))
+        onDocumentTagsRef.current?.(nextSemanticTags.map((tag) => tag.value))
       }
-      const candidates: Annotation[] = (response.annotations || []).map((item, index) => ({
-        id:
-          globalThis.crypto?.randomUUID?.() ??
-          `auto-${item.type}-${item.start}-${item.end}-${index}`,
+      // Python offsets count code points; DOM string ranges use UTF-16 indices.
+      const offsets = [sourceOffset]
+      const lastOffset = response.annotations.reduce((max, item) => Math.max(max, item.end), 0)
+      for (const codePoint of source) {
+        if (offsets.length > lastOffset) break
+        offsets.push(offsets[offsets.length - 1] + codePoint.length)
+      }
+      const candidates: Annotation[] = response.annotations.map((item, index) => ({
+        id: globalThis.crypto?.randomUUID?.() ?? `auto-${item.type}-${item.start}-${item.end}-${index}`,
         text: item.text,
         type: item.type,
         label: item.label || annotationTypes.find((type) => type.id === item.type)?.label || item.type,
-        start: item.start,
-        end: item.end,
+        start: offsets[item.start],
+        end: offsets[item.end],
       }))
 
-      const before = localAnnotations.length
-      commitAnnotations((prev) => [...prev, ...candidates])
-      const added = dedupeAnnotations([...localAnnotations, ...candidates]).length - before
+      const before = localAnnotationsRef.current.length
+      const next = commitAnnotations((prev) => [...prev, ...candidates])
+      const added = next.length - before
       if (added > 0) {
         toast.success(t('auto.success', { count: added }))
       } else if (nextSemanticTags.length > 0) {
@@ -303,68 +349,178 @@ export function DataAnnotator({ content, annotations = [], onAnnotate, onDocumen
         toast.info(t('auto.noCandidates'))
       }
     } catch (err) {
+      if (activeAnnotationRef.current !== annotation) return
       reportClientWarning('Auto annotation failed', err)
       toast.error(t('auto.failed'))
     } finally {
-      setIsAutoTagging(false)
+      if (activeAnnotationRef.current === annotation) {
+        activeAnnotationRef.current = null
+        setIsAutoTagging(false)
+      }
     }
   }
 
   return (
     <>
       <div className={styles.toolLine}>
-        <div className={styles.toolIdentity}><strong>文本标注</strong><span>{localAnnotations.length} 条标注</span></div>
+        <div className={styles.toolIdentity}>
+          <strong>文本标注</strong>
+          <span>{localAnnotations.length} 条标注</span>
+        </div>
         <div className={styles.toolActions}>
-          <select className={styles.fieldControl} aria-label="自动标注方式" value={autoTagProvider} onChange={event => setAutoTagProvider(event.target.value as AutoTagProviderId)} disabled={isAutoTagging}>
-            {AUTO_TAG_PROVIDER_OPTIONS.map(option => <option key={option.id} value={option.id}>{t('auto.providers.' + option.id + '.label')}</option>)}
+          <select
+            className={styles.fieldControl}
+            aria-label="自动标注方式"
+            value={autoTagProvider}
+            onChange={(event) => setAutoTagProvider(event.target.value as AutoTagProviderId)}
+            disabled={isAutoTagging}
+          >
+            {AUTO_TAG_PROVIDER_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {t('auto.providers.' + option.id + '.label')}
+              </option>
+            ))}
           </select>
-          <Button disabled={isAutoTagging || !content.trim()} onClick={() => void handleAutoAnnotate()}>{isAutoTagging ? <Loader2 className={styles.spinner} /> : <Tag className="size-4" />}{isAutoTagging ? '正在标注…' : '自动标注'}</Button>
+          <Button disabled={isAutoTagging || !content.trim()} onClick={() => void handleAutoAnnotate()}>
+            {isAutoTagging ? <Loader2 className={styles.spinner} /> : <Tag className="size-4" />}
+            {isAutoTagging ? '正在标注…' : '自动标注'}
+          </Button>
         </div>
       </div>
       <div className={styles.toolBody}>
         <div className={styles.formRow}>
           <div className={styles.fieldGroup}>
             <label htmlFor="governance-annotation-type">标注类型</label>
-            <select className={styles.fieldControl} id="governance-annotation-type" value={selectedType} onChange={event => setSelectedType(event.target.value as AnnotationTypeId)}>
-              {annotationTypes.map(type => <option key={type.id} value={type.id}>{type.label} · {annotationsByType[type.id].length}</option>)}
+            <select
+              className={styles.fieldControl}
+              id="governance-annotation-type"
+              value={selectedType}
+              onChange={(event) => setSelectedType(event.target.value as AnnotationTypeId)}
+            >
+              {annotationTypes.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.label} · {annotationsByType[type.id].length}
+                </option>
+              ))}
             </select>
           </div>
-          {selectedType === 'custom' && <input className={styles.fieldControl} aria-label="自定义标注名称" placeholder="标签名称" value={customLabel} onChange={event => setCustomLabel(event.target.value)} />}
-          <Button variant="outline" disabled={!content.trim()} aria-pressed={isSelecting} onClick={() => { setIsSelecting(value => !value); setSelection(null) }}><Highlighter className="size-4" />{isSelecting ? '取消选取' : '选择正文文字'}</Button>
+          {selectedType === 'custom' && (
+            <input
+              className={styles.fieldControl}
+              aria-label="自定义标注名称"
+              placeholder="标签名称"
+              value={customLabel}
+              onChange={(event) => setCustomLabel(event.target.value)}
+            />
+          )}
+          <Button
+            variant="outline"
+            disabled={!content.trim()}
+            aria-pressed={isSelecting}
+            onClick={() => {
+              setIsSelecting((value) => !value)
+              setSelection(null)
+            }}
+          >
+            <Highlighter className="size-4" />
+            {isSelecting ? '取消选取' : '选择正文文字'}
+          </Button>
           {isSelecting && !selection && <span className={styles.fieldHint}>在下方正文中选中需要标注的文字</span>}
         </div>
-        {selection && <div className={styles.selection}><p>{selection.text}</p><Button size="sm" variant="outline" disabled={selectedType === 'custom' && !customLabel.trim()} onClick={handleAddAnnotation}>添加{typeConfig.label}标注</Button></div>}
-        {semanticTags.length > 0 || semanticSummary ? <section className={styles.annotationResults} aria-label="文档标签">
-          {semanticSummary && <p className={styles.annotationSummary}>{semanticSummary}</p>}
-          {documentTagGroups.attributes.length > 0 && <dl className={styles.annotationAttributes}>
-            {documentTagGroups.attributes.map(group => <div key={group.type}>
-              <dt>{group.label}</dt>
-              <dd>{group.tags.map((tag, index) => <span key={tag.value + ':' + index}>{documentTagLabel(tag)}</span>)}</dd>
-            </div>)}
-          </dl>}
-          {documentTagGroups.terms.map(group => <div className={styles.annotationKeywords} key={group.type}>
-            <h3>{group.label}</h3>
-            <ul aria-label={group.label}>{group.tags.map((tag, index) => <li key={tag.value + ':' + index}>{tag.value}</li>)}</ul>
-          </div>)}
-        </section> : null}
-        {documentTagGroups.excerpts.length > 0 || localAnnotations.length > 0 ? <div className={styles.annotationDetails}>
-          {documentTagGroups.excerpts.length > 0 && <details className={styles.annotationDisclosure}>
-            <summary><ChevronRight aria-hidden="true" /><span>长文本标签</span><span className={styles.annotationCount}>{documentTagGroups.excerpts.length}</span></summary>
-            <ul className={styles.annotationExcerpts}>
-              {documentTagGroups.excerpts.map((tag, index) => <li key={tag.type + ':' + index}><span>{DOCUMENT_TAG_LABELS[tag.type]}</span><p>{tag.value}</p></li>)}
-            </ul>
-          </details>}
-          {localAnnotations.length > 0 && <details className={styles.annotationDisclosure}>
-            <summary><ChevronRight aria-hidden="true" /><span>正文标注</span><span className={styles.annotationCount}>{localAnnotations.length}</span></summary>
-            <ul aria-label="正文标注" className={styles.annotationList}>
-              {localAnnotations.map(annotation => <li className={styles.annotationRow} key={annotation.id}>
-                <span className={styles.annotationKind} data-tone={annotationTypes.find(type => type.id === annotation.type)?.tone}>{annotation.label}</span>
-                <p>{annotation.text}</p>
-                <Button size="icon" variant="ghost" className={styles.annotationDelete} aria-label={'删除标注 ' + annotation.text} onClick={() => handleDeleteAnnotation(annotation.id)}><X className="size-4" /></Button>
-              </li>)}
-            </ul>
-          </details>}
-        </div> : null}
+        {selection && (
+          <div className={styles.selection}>
+            <p>{selection.text}</p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={selectedType === 'custom' && !customLabel.trim()}
+              onClick={handleAddAnnotation}
+            >
+              添加{typeConfig.label}标注
+            </Button>
+          </div>
+        )}
+        {semanticTags.length > 0 || semanticSummary ? (
+          <section className={styles.annotationResults} aria-label="文档标签">
+            {semanticSummary && <p className={styles.annotationSummary}>{semanticSummary}</p>}
+            {documentTagGroups.attributes.length > 0 && (
+              <dl className={styles.annotationAttributes}>
+                {documentTagGroups.attributes.map((group) => (
+                  <div key={group.type}>
+                    <dt>{group.label}</dt>
+                    <dd>
+                      {group.tags.map((tag, index) => (
+                        <span key={tag.value + ':' + index}>{documentTagLabel(tag)}</span>
+                      ))}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {documentTagGroups.terms.map((group) => (
+              <div className={styles.annotationKeywords} key={group.type}>
+                <h3>{group.label}</h3>
+                <ul aria-label={group.label}>
+                  {group.tags.map((tag, index) => (
+                    <li key={tag.value + ':' + index}>{tag.value}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </section>
+        ) : null}
+        {documentTagGroups.excerpts.length > 0 || localAnnotations.length > 0 ? (
+          <div className={styles.annotationDetails}>
+            {documentTagGroups.excerpts.length > 0 && (
+              <details className={styles.annotationDisclosure}>
+                <summary>
+                  <ChevronRight aria-hidden="true" />
+                  <span>长文本标签</span>
+                  <span className={styles.annotationCount}>{documentTagGroups.excerpts.length}</span>
+                </summary>
+                <ul className={styles.annotationExcerpts}>
+                  {documentTagGroups.excerpts.map((tag, index) => (
+                    <li key={tag.type + ':' + index}>
+                      <span>{DOCUMENT_TAG_LABELS[tag.type]}</span>
+                      <p>{tag.value}</p>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {localAnnotations.length > 0 && (
+              <details className={styles.annotationDisclosure}>
+                <summary>
+                  <ChevronRight aria-hidden="true" />
+                  <span>正文标注</span>
+                  <span className={styles.annotationCount}>{localAnnotations.length}</span>
+                </summary>
+                <ul aria-label="正文标注" className={styles.annotationList}>
+                  {localAnnotations.map((annotation) => (
+                    <li className={styles.annotationRow} key={annotation.id}>
+                      <span
+                        className={styles.annotationKind}
+                        data-tone={annotationTypes.find((type) => type.id === annotation.type)?.tone}
+                      >
+                        {annotation.label}
+                      </span>
+                      <p>{annotation.text}</p>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className={styles.annotationDelete}
+                        aria-label={'删除标注 ' + annotation.text}
+                        onClick={() => handleDeleteAnnotation(annotation.id)}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        ) : null}
       </div>
     </>
   )

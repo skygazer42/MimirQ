@@ -8,7 +8,10 @@ extend-exclude = [
   ".pytest_cache",
   ".ruff_cache",
   ".shared",
-  "docs",
+  ".superpowers",
+  "app/third_party",
+  "app/deepdoc",
+  "alembic/versions",
   "uploads",
   "web",
 ]
@@ -20,14 +23,12 @@ fixable = ["ALL"]
 
 [lint.per-file-ignores]
 "app/main.py" = ["E402"]
-"app/deepdoc/parser/pdf_parser.py" = ["E402"]
 "app/api/v1/**" = ["BLE001"]
-"app/deepdoc/**" = ["B", "BLE001", "N"]
 "app/parsing/**" = ["BLE001"]
 "app/rag/**" = ["BLE001"]
 "app/services/**" = ["BLE001"]
 "app/storage/**" = ["BLE001"]
-"app/third_party/**" = ["B", "BLE001", "N"]
 "scripts/**" = ["BLE001", "T201"]
+"ci/download_verified_wheels.py" = ["T201"]
 "tests/**" = ["BLE001"]
 "docker/olmocr/**" = ["BLE001", "B904"]

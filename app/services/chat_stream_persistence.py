@@ -1,28 +1,73 @@
 import asyncio
 import contextlib
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from typing import Any, Callable
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.token_utils import num_tokens_from_string
-from app.models.chat import Conversation, Message
 from app.rag.core.logging import get_logger
-from app.services.audit_log_service import audit_log_event, build_chat_audit_details
-from app.services.chat_memory_runtime import _touch_conversation_after_turn
-from app.services.chat_runtime import (
-    ChatStreamPersistInput,
-    _resolve_chat_stream_persist_input,
-    store_chat_response_cache_if_needed,
-)
+from app.services.chat_cache_runtime import store_chat_response_cache_if_needed
 from app.services.chat_turn_persistence import (
+    ChatTurnPersistInput,
     auto_update_summary_background,
-    build_chat_message_metadata,
+    persist_chat_turn_sync,
 )
-from app.services.structured_memory_service import extract_structured_memory_for_turn
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class ChatStreamPersistInput:
+    tenant_id: UUID
+    conversation_id: UUID
+    account_id: str
+    assistant_message_id: UUID
+    request_id: str
+    question: str
+    document_count: int
+    content: str
+    citations: list[Any]
+    metrics: dict[str, Any]
+    dataset_id_used: UUID | None
+    cache_hit: bool
+    cache_key: str | None
+    cache_eligible: bool
+    structured_data: object | None
+    ip: str | None
+    user_agent: str | None
+    enable_summary_memory: bool
+    enable_structured_memory: bool
+
+
+def _chat_turn_persist_input(
+    *,
+    options: ChatStreamPersistInput,
+    metrics: dict[str, Any],
+    increment_message_count: bool,
+    touch_conversation: bool = True,
+) -> ChatTurnPersistInput:
+    return ChatTurnPersistInput(
+        tenant_id=options.tenant_id,
+        conversation_id=options.conversation_id,
+        account_id=options.account_id,
+        audit_action="chat.stream",
+        assistant_message_id=options.assistant_message_id,
+        request_id=options.request_id,
+        question=options.question,
+        document_count=options.document_count,
+        content=options.content,
+        citations=options.citations,
+        metrics=metrics,
+        dataset_id_used=options.dataset_id_used,
+        cache_hit=options.cache_hit,
+        ip=options.ip,
+        user_agent=options.user_agent,
+        enable_structured_memory=options.enable_structured_memory,
+        increment_message_count=increment_message_count,
+        touch_conversation=touch_conversation,
+    )
 
 
 def dispatch_chat_stream_persistence(
@@ -47,8 +92,8 @@ def dispatch_chat_stream_persistence(
     )
 
     should_update_summary = (
-        bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
-        and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
+        bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED)
+        and bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE)
         and bool(options.enable_summary_memory)
         and bool(options.conversation_id)
     )
@@ -67,95 +112,24 @@ def persist_chat_stream_turn_sync(
     db: Session,
     options: ChatStreamPersistInput,
 ) -> None:
-    message_metadata = build_chat_message_metadata(
-        request_id=str(options.request_id),
-        original_question=options.question,
-        metrics=options.metrics,
-        citations=options.citations if isinstance(options.citations, list) else [],
-    )
-    if options.enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
-        try:
-            message_metadata["structured_memory"] = extract_structured_memory_for_turn(
-                user_text=str(options.question or ""),
-                assistant_text=str(options.content or ""),
-                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
-            )
-        except Exception as exc:
-            logger.debug("Ignoring structured memory extraction failure for streamed chat turn: %s", exc)
-
-    assistant_message = Message(
-        id=options.assistant_message_id,
-        tenant_id=options.tenant_id,
-        conversation_id=options.conversation_id,
-        role="assistant",
-        content=options.content or "",
-        citations=options.citations if isinstance(options.citations, list) else [],
-        token_count=num_tokens_from_string(options.content or ""),
-        message_metadata=message_metadata,
-    )
-    db.add(assistant_message)
-
-    audit_log_event(
-        db,
-        tenant_id=options.tenant_id,
-        actor_id=options.account_id,
-        action="chat.stream",
-        resource_type="conversation",
-        resource_id=str(options.conversation_id),
-        request_id=str(options.request_id),
-        ip=options.ip,
-        user_agent=options.user_agent,
-        details=build_chat_audit_details(
-            question=options.question,
-            document_count=int(options.document_count or 0),
-            dataset_id=options.dataset_id_used,
-            cache_hit=options.cache_hit,
+    persist_chat_turn_sync(
+        db=db,
+        options=_chat_turn_persist_input(
+            options=options,
+            metrics=options.metrics,
+            increment_message_count=False,
         ),
     )
-
-    _touch_conversation_after_turn(
-        db=db,
-        tenant_id=options.tenant_id,
-        conversation_id=options.conversation_id,
-    )
-    db.commit()
 
 
 async def persist_chat_stream_turn_background(
     *,
-    options: ChatStreamPersistInput | None = None,
-    **legacy_overrides: Any,
+    options: ChatStreamPersistInput,
 ) -> None:
-    persist_input = _resolve_chat_stream_persist_input(
-        options=options,
-        legacy_overrides=legacy_overrides,
-    )
-    tenant_id = persist_input.tenant_id
-    conversation_id = persist_input.conversation_id
-    account_id = persist_input.account_id
-    assistant_message_id = persist_input.assistant_message_id
-    request_id = persist_input.request_id
-    question = persist_input.question
-    document_count = persist_input.document_count
-    content = persist_input.content
-    citations = persist_input.citations
-    metrics = persist_input.metrics
-    dataset_id_used = persist_input.dataset_id_used
-    cache_hit = persist_input.cache_hit
-    cache_key = persist_input.cache_key
-    cache_eligible = persist_input.cache_eligible
-    structured_data = persist_input.structured_data
-    ip = persist_input.ip
-    user_agent = persist_input.user_agent
-    enable_summary_memory = persist_input.enable_summary_memory
-    enable_structured_memory = persist_input.enable_structured_memory
-
     should_update_summary = (
-        bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False))
-        and bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False))
-        and bool(enable_summary_memory)
-        and bool(conversation_id)
+        bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED)
+        and bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE)
+        and bool(options.enable_summary_memory)
     )
 
     def _persist_sync() -> bool:
@@ -164,79 +138,25 @@ async def persist_chat_stream_turn_background(
 
             db2 = SessionLocal()
             try:
-                metrics2 = dict(metrics or {})
+                metrics2 = dict(options.metrics or {})
                 store_chat_response_cache_if_needed(
-                    cache_eligible=cache_eligible,
-                    cache_hit=cache_hit,
-                    cache_key=cache_key,
-                    content=content,
-                    citations=citations,
+                    cache_eligible=options.cache_eligible,
+                    cache_hit=options.cache_hit,
+                    cache_key=options.cache_key,
+                    content=options.content,
+                    citations=options.citations,
                     metrics=metrics2,
-                    structured_data=structured_data,
+                    structured_data=options.structured_data,
                 )
-
-                message_metadata = build_chat_message_metadata(
-                    request_id=str(request_id),
-                    original_question=question,
-                    metrics=metrics2,
-                    citations=citations if isinstance(citations, list) else [],
-                )
-                if enable_structured_memory and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False)):
-                    try:
-                        message_metadata["structured_memory"] = extract_structured_memory_for_turn(
-                            user_text=str(question or ""),
-                            assistant_text=str(content or ""),
-                            max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                            max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
-                        )
-                    except Exception as exc:
-                        logger.debug(
-                            "Ignoring structured memory extraction failure for background streamed chat turn: %s", exc
-                        )
-
-                assistant_message = Message(
-                    id=assistant_message_id,
-                    tenant_id=tenant_id,
-                    conversation_id=conversation_id,
-                    role="assistant",
-                    content=content or "",
-                    citations=citations if isinstance(citations, list) else [],
-                    token_count=num_tokens_from_string(content or ""),
-                    message_metadata=message_metadata,
-                )
-                db2.add(assistant_message)
-
-                audit_log_event(
-                    db2,
-                    tenant_id=tenant_id,
-                    actor_id=account_id,
-                    action="chat.stream",
-                    resource_type="conversation",
-                    resource_id=str(conversation_id),
-                    request_id=str(request_id),
-                    ip=ip,
-                    user_agent=user_agent,
-                    details=build_chat_audit_details(
-                        question=question,
-                        document_count=int(document_count or 0),
-                        dataset_id=dataset_id_used,
-                        cache_hit=cache_hit,
+                persist_chat_turn_sync(
+                    db=db2,
+                    options=_chat_turn_persist_input(
+                        options=options,
+                        metrics=metrics2,
+                        increment_message_count=True,
+                        touch_conversation=False,
                     ),
                 )
-
-                conversation = (
-                    db2.query(Conversation)
-                    .filter(
-                        Conversation.id == conversation_id,
-                        Conversation.tenant_id == tenant_id,
-                    )
-                    .first()
-                )
-                if conversation is not None:
-                    conversation.message_count = int(conversation.message_count or 0) + 1
-                    conversation.updated_at = datetime.now(UTC).replace(tzinfo=None)
-
-                db2.commit()
             finally:
                 try:
                     db2.close()
@@ -254,6 +174,6 @@ async def persist_chat_stream_turn_background(
     if should_update_summary:
         with contextlib.suppress(Exception):
             await auto_update_summary_background(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
+                tenant_id=options.tenant_id,
+                conversation_id=options.conversation_id,
             )

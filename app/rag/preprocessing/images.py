@@ -8,7 +8,6 @@ image tags. Removal is code-fence aware and supports:
 - mode="all": remove all images
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Literal
@@ -88,8 +87,7 @@ def _replace_html_image(match: re.Match[str], *, mode: ImageRemoveMode, removed:
 
     tag = match.group(0) or ""
     attrs = {
-        (m.group("key") or "").strip().lower(): (m.group("val") or "").strip()
-        for m in _HTML_ATTR_RE.finditer(tag)
+        (m.group("key") or "").strip().lower(): (m.group("val") or "").strip() for m in _HTML_ATTR_RE.finditer(tag)
     }
     if _is_decorative_image(alt=attrs.get("alt", ""), url=attrs.get("src", "")):
         removed[0] += 1

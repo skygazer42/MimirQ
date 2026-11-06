@@ -1,6 +1,5 @@
 """Deterministic helpers for chained query decomposition retrieval."""
 
-
 from typing import Any
 
 

@@ -8,7 +8,8 @@ Provides two usage modes:
 
 import re
 import threading
-from typing import Any, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, NamedTuple, Optional
 from uuid import UUID
 
 from app.core.config import settings
@@ -16,6 +17,11 @@ from app.core.constants import EmbeddingProviders, MilvusConfig
 from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.contracts import INDEXED_METADATA_KEY
+
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
+
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
 logger = get_logger("storage.vector.milvus")
 
@@ -100,18 +106,7 @@ def _ensure_milvus_collection_loaded(store: Any) -> bool:
     if isinstance(getattr(store, "col", None), Collection):
         return True
 
-    init_kwargs: dict[str, Any] = {}
-    partition_names = getattr(store, "partition_names", None)
-    if partition_names:
-        init_kwargs["partition_names"] = partition_names
-    replica_number = getattr(store, "replica_number", None)
-    if replica_number:
-        init_kwargs["replica_number"] = replica_number
-    store_timeout = getattr(store, "timeout", None)
-    if store_timeout:
-        init_kwargs["timeout"] = store_timeout
-
-    store._init(**init_kwargs)  # type: ignore[attr-defined]
+    store._init(**_milvus_store_init_kwargs(store))  # type: ignore[attr-defined]
     return isinstance(getattr(store, "col", None), Collection)
 
 
@@ -517,7 +512,7 @@ def _build_milvus_metadata_expr(metadata_filter: dict[str, Any] | None) -> str |
 # ========= Embedding initialization ==========
 
 
-def _init_embedding_model():
+def _init_embedding_model() -> "LangChainEmbeddingsAdapter":
     """Initialize embedding model using app.rag.embedding module."""
     from app.rag.embedding import create_langchain_embeddings_from_config
 
@@ -581,11 +576,23 @@ def _milvus_store_init_kwargs(store: Any) -> dict[str, Any]:
     return init_kwargs
 
 
+class _AdapterVectorPayload(NamedTuple):
+    texts: list[str]
+    ids: list[str]
+    metadatas: list[dict[str, Any]]
+
+
+class _DocumentWritePayload(NamedTuple):
+    texts: list[str]
+    metadatas: list[dict[str, Any]]
+    ids: list[str]
+
+
 def _prepare_adapter_vector_payload(
     items: list[dict[str, Any]],
     *,
     reserved_fields: set[str],
-) -> tuple[list[str], list[str], list[dict[str, Any]]]:
+) -> _AdapterVectorPayload:
     texts: list[str] = []
     metadatas: list[dict[str, Any]] = []
     ids: list[str] = []
@@ -597,7 +604,7 @@ def _prepare_adapter_vector_payload(
             meta.pop(key, None)
         meta.update(_flatten_indexed_metadata_slots(meta))
         metadatas.append(meta)
-    return texts, ids, _normalize_milvus_metadata_batch(metadatas)
+    return _AdapterVectorPayload(texts, ids, _normalize_milvus_metadata_batch(metadatas))
 
 
 def _ensure_adapter_write_collection(
@@ -671,10 +678,6 @@ def _invoke_milvus_batch_write(
     writer = getattr(collection, "upsert" if upsert else "insert")
     result = writer(insert_list, timeout=timeout, **write_kwargs)
     return [str(pk) for pk in result.primary_keys]
-
-
-def _iter_milvus_batch_ranges(total_count: int, batch_size: int) -> range:
-    return range(0, total_count, batch_size)
 
 
 def _tenant_scoped_milvus_expr(tenant_id: str) -> str:
@@ -834,7 +837,7 @@ def _prepare_document_write_payload(
     *,
     document_id: UUID,
     tenant_id: UUID,
-) -> tuple[list[str], list[dict[str, Any]], list[str]]:
+) -> _DocumentWritePayload:
     texts: list[str] = []
     metadatas: list[dict[str, Any]] = []
     ids: list[str] = []
@@ -849,7 +852,7 @@ def _prepare_document_write_payload(
         ids.append(vector_id)
         texts.append((doc.get("content") or "")[:65_535])
         metadatas.append(metadata)
-    return texts, metadatas, ids
+    return _DocumentWritePayload(texts, metadatas, ids)
 
 
 def _write_document_batches(
@@ -960,8 +963,8 @@ class MilvusSemanticCacheMaintenanceIterator:
         self,
         *,
         iterator: Any,
-        next_batch: Any,
-        close: Any,
+        next_batch: Callable[[], Any],
+        close: Callable[[], Any],
         tenant_id: str,
         primary_field: str,
         collection_name: str,
@@ -1027,6 +1030,25 @@ class MilvusSemanticCacheMaintenanceIterator:
             ) from exc
 
 
+def _adapter_search_results(
+    results: list[tuple["Document", Any]], *, client_filter: dict[str, Any]
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for doc, score in results:
+        meta = _rehydrate_indexed_metadata_slots(doc.metadata or {})
+        if client_filter and not _match_metadata_filter(meta, client_filter):
+            continue
+        out.append(
+            {
+                "id": doc.id,
+                "metadata": meta,
+                "score": float(score),
+                "content": doc.page_content,
+            }
+        )
+    return out
+
+
 # ========= Generic Milvus adapter ==========
 
 
@@ -1042,7 +1064,7 @@ class MilvusAdapter:
         collection_name: str,
         vector_field: str = "embedding",
         text_field: str = "content",
-    ):
+    ) -> None:
         self.collection_name = collection_name
         self.vector_field = vector_field
         self.text_field = text_field
@@ -1146,7 +1168,7 @@ class MilvusAdapter:
             raise RuntimeError(f"Milvus collection is not initialized for collection={self.collection_name}")
         field_order = list(getattr(store, "fields", []))
         eff_timeout = getattr(store, "timeout", None) or timeout
-        for start in _iter_milvus_batch_ranges(total_count, batch_size):
+        for start in range(0, total_count, batch_size):
             end = min(start + batch_size, total_count)
             insert_list = [insert_dict[field][start:end] for field in field_order if field in insert_dict]
             try:
@@ -1270,20 +1292,7 @@ class MilvusAdapter:
             if metadata_expr_fallback
             else _milvus_client_filter_spec(supported_filter)
         )
-        out: list[dict[str, Any]] = []
-        for doc, score in results:
-            meta = _rehydrate_indexed_metadata_slots(doc.metadata or {})
-            if client_filter and not _match_metadata_filter(meta, client_filter):
-                continue
-            out.append(
-                {
-                    "id": doc.id,
-                    "metadata": meta,
-                    "score": float(score),
-                    "content": doc.page_content,
-                }
-            )
-        return out
+        return _adapter_search_results(results, client_filter=client_filter)
 
     def search_native_hybrid(
         self,
@@ -1348,20 +1357,7 @@ class MilvusAdapter:
             if metadata_expr_fallback
             else _milvus_client_filter_spec(supported_filter)
         )
-        out: list[dict[str, Any]] = []
-        for doc, score in results:
-            meta = _rehydrate_indexed_metadata_slots(doc.metadata or {})
-            if client_filter and not _match_metadata_filter(meta, client_filter):
-                continue
-            out.append(
-                {
-                    "id": doc.id,
-                    "metadata": meta,
-                    "score": float(score),
-                    "content": doc.page_content,
-                }
-            )
-        return out
+        return _adapter_search_results(results, client_filter=client_filter)
 
     def open_semantic_cache_maintenance_iterator(
         self,
@@ -1469,7 +1465,7 @@ class MilvusVectorStore:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._embedding_provider = (settings.EMBEDDING_PROVIDER or "local").lower()
         self._embedding_model = None
         self._store = None
@@ -1485,11 +1481,11 @@ class MilvusVectorStore:
         except Exception:
             return ""
 
-    def _init_embedding_model(self):
+    def _init_embedding_model(self) -> "LangChainEmbeddingsAdapter":
         """Initialize embedding model."""
         return _init_embedding_model()
 
-    def get_embedding_model(self):  # noqa: ANN201
+    def get_embedding_model(self) -> "LangChainEmbeddingsAdapter":
         with self._store_lock:
             current_space = self._current_embedding_space_hash()
             if (

@@ -28,9 +28,9 @@ from app.models.group_permissions import DatasetGroupPermission
 from app.models.ingestion_run import IngestionRun as DBIngestionRun
 from app.models.tenant_group import TenantGroupMember
 from app.rag.core.logging import get_logger
+from app.services import dataset_service, ingestion_run_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import EDIT_ROLES, DatasetService
-from app.services.ingestion_run_service import IngestionRunService
+from app.services.dataset_service import EDIT_ROLES
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -75,37 +75,37 @@ def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
 
 def _run_out(run: DBIngestionRun) -> IngestionRunOut:
     docs: list[IngestionRunDocumentOut] = []
-    for d in getattr(run, "documents", None) or []:
-        if getattr(d, "document_id", None) is None:
+    for d in run.documents or []:
+        if d.document_id is None:
             continue
         docs.append(
             IngestionRunDocumentOut(
                 document_id=d.document_id,
-                status=str(getattr(d, "status", "") or ""),
-                source_ref=getattr(d, "source_ref", None),
-                created_at=getattr(d, "created_at", None),
+                status=str(d.status or ""),
+                source_ref=d.source_ref,
+                created_at=d.created_at,
             )
         )
 
     return IngestionRunOut(
         id=run.id,
         tenant_id=run.tenant_id,
-        dataset_id=getattr(run, "dataset_id", None),
-        kind=str(getattr(run, "kind", "") or ""),
-        requested_by=getattr(run, "requested_by", None),
-        status=str(getattr(run, "status", "") or ""),
-        config=dict(getattr(run, "config", None) or {}),
-        stats=dict(getattr(run, "stats", None) or {}),
-        error_message=getattr(run, "error_message", None),
-        created_at=getattr(run, "created_at", None),
-        started_at=getattr(run, "started_at", None),
-        finished_at=getattr(run, "finished_at", None),
+        dataset_id=run.dataset_id,
+        kind=str(run.kind or ""),
+        requested_by=run.requested_by,
+        status=str(run.status or ""),
+        config=dict(run.config or {}),
+        stats=dict(run.stats or {}),
+        error_message=run.error_message,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
         documents=docs,
     )
 
 
 def _load_replay_base_run(*, db: Session, run_id: UUID, tenant_id: UUID, account_id: str) -> DBIngestionRun:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     base = (
         db.query(DBIngestionRun)
         .options(selectinload(DBIngestionRun.documents))
@@ -115,15 +115,15 @@ def _load_replay_base_run(*, db: Session, run_id: UUID, tenant_id: UUID, account
     if not base:
         raise HTTPException(status_code=404, detail="Ingestion run not found")
     if base.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, base.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, base.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
     return base
 
 
 def _collect_replay_doc_ids(base: DBIngestionRun) -> list[UUID]:
     doc_ids: list[UUID] = []
-    for document in getattr(base, "documents", None) or []:
-        document_id = getattr(document, "document_id", None)
+    for document in base.documents or []:
+        document_id = document.document_id
         if document_id:
             doc_ids.append(document_id)
         if len(doc_ids) >= 2000:
@@ -152,8 +152,8 @@ def _audit_replay_creation(
             resource_id=str(new_run.id),
             details={
                 "base_run_id": str(base.id),
-                "dataset_id": str(getattr(base, "dataset_id", None)) if getattr(base, "dataset_id", None) else None,
-                "documents": int(len(doc_ids)),
+                "dataset_id": str(base.dataset_id) if base.dataset_id else None,
+                "documents": len(doc_ids),
             },
         )
         db.commit()
@@ -165,7 +165,7 @@ def _audit_replay_creation(
 def _attach_replay_documents(*, db: Session, tenant_id: UUID, run_id: UUID, doc_ids: list[UUID]) -> None:
     for doc_id in doc_ids[:2000]:
         try:
-            IngestionRunService.add_document(
+            ingestion_run_service.add_document(
                 db,
                 tenant_id=tenant_id,
                 run_id=run_id,
@@ -195,7 +195,7 @@ async def _run_replay_retries(
             try:
                 doc = db0.query(DBDocument).filter(DBDocument.id == doc_id, DBDocument.tenant_id == tenant_id).first()
                 if doc is not None:
-                    meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+                    meta0 = dict(doc.doc_metadata or {})
                     meta0["last_ingestion_run_id"] = str(new_run_id)
                     meta0["last_ingestion_kind"] = "replay"
                     doc.doc_metadata = meta0
@@ -241,14 +241,14 @@ def list_ingestion_runs(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List ingestion runs (requires dataset write permission for each returned run's dataset)."""
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
 
     q = db.query(DBIngestionRun).filter(DBIngestionRun.tenant_id == tenant_id)
     if dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
         q = q.filter(DBIngestionRun.dataset_id == dataset_id)
-    elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
+    elif str(member.role or "").lower() not in EDIT_ROLES:
         return IngestionRunListResponse(total=0, items=[])
     else:
         q = q.filter(
@@ -284,7 +284,7 @@ def get_ingestion_run(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Get ingestion run detail (requires dataset write permission)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     run = (
         db.query(DBIngestionRun)
@@ -296,8 +296,8 @@ def get_ingestion_run(
         raise HTTPException(status_code=404, detail="Ingestion run not found")
 
     if run.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, run.dataset_id)
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, run.dataset_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
 
     return _run_out(run)
 
@@ -323,10 +323,10 @@ def export_ingestion_run_json(
             resource_type="ingestion_run",
             resource_id=str(run_id),
             details={
-                "dataset_id": str(getattr(run, "dataset_id", None)) if getattr(run, "dataset_id", None) else None,
-                "kind": str(getattr(run, "kind", "") or ""),
-                "status": str(getattr(run, "status", "") or ""),
-                "documents": int(len(getattr(run, "documents", None) or [])),
+                "dataset_id": str(run.dataset_id) if run.dataset_id else None,
+                "kind": str(run.kind or ""),
+                "status": str(run.status or ""),
+                "documents": len(run.documents or []),
             },
         )
         db.commit()
@@ -368,10 +368,10 @@ def export_ingestion_run_html(
             resource_type="ingestion_run",
             resource_id=str(run_id),
             details={
-                "dataset_id": str(getattr(run, "dataset_id", None)) if getattr(run, "dataset_id", None) else None,
-                "kind": str(getattr(run, "kind", "") or ""),
-                "status": str(getattr(run, "status", "") or ""),
-                "documents": int(len(getattr(run, "documents", None) or [])),
+                "dataset_id": str(run.dataset_id) if run.dataset_id else None,
+                "kind": str(run.kind or ""),
+                "status": str(run.status or ""),
+                "documents": len(run.documents or []),
             },
         )
         db.commit()
@@ -424,7 +424,7 @@ def compare_ingestion_runs(
     )
     diff = {}
     if row_a is not None and row_b is not None:
-        diff = IngestionRunService.compare_runs(run_a=row_a, run_b=row_b)
+        diff = ingestion_run_service.compare_runs(run_a=row_a, run_b=row_b)
 
     # Best-effort audit log (PII-minimal): record compare operation.
     try:
@@ -437,7 +437,7 @@ def compare_ingestion_runs(
             resource_id=str(run_id),
             details={
                 "other_run_id": str(other_run_id),
-                "dataset_id": str(getattr(a, "dataset_id", None)) if getattr(a, "dataset_id", None) else None,
+                "dataset_id": str(a.dataset_id) if a.dataset_id else None,
             },
         )
         db.commit()
@@ -472,13 +472,13 @@ def replay_ingestion_run(
     base = _load_replay_base_run(db=db, run_id=run_id, tenant_id=tenant_id, account_id=account_id)
     doc_ids = _collect_replay_doc_ids(base)
 
-    new_run = IngestionRunService.create_run(
+    new_run = ingestion_run_service.create_run(
         db,
         tenant_id=tenant_id,
-        dataset_id=getattr(base, "dataset_id", None),
+        dataset_id=base.dataset_id,
         requested_by=account_id,
         kind="replay",
-        config={"replay_of": str(base.id), "base_kind": str(getattr(base, "kind", "") or "")},
+        config={"replay_of": str(base.id), "base_kind": str(base.kind or "")},
         expected_documents=len(doc_ids),
     )
 

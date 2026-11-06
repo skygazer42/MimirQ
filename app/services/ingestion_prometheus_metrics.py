@@ -7,7 +7,6 @@ Design goals:
 - Optional: enabled only when PROMETHEUS_ENABLED=true.
 """
 
-
 import re
 
 from prometheus_client import Counter, Gauge, Histogram
@@ -34,7 +33,7 @@ INGESTION_PROCESSING_STAGE_TOTAL = Gauge(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return settings.PROMETHEUS_ENABLED
 
 
 def _norm_kind(value: str | None) -> str:
@@ -125,4 +124,3 @@ __all__ = [
     "observe_ingestion_run_finished",
     "adjust_processing_stage_gauge",
 ]
-

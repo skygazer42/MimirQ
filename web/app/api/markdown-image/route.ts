@@ -3,11 +3,11 @@ import type { LookupAddress } from 'node:dns'
 import http, { type IncomingHttpHeaders } from 'node:http'
 import https from 'node:https'
 
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 import { API_V1_BASE_URL } from '@/lib/env'
 import { jsonNoStore, requireSameOrigin } from '@/lib/server-auth-route'
-import { buildMarkdownImageResponseHeaders } from './response-headers'
+import { buildMarkdownImageResponseHeaders, readMarkdownImageHeader } from './response-headers'
 import {
   isAllowedMarkdownImageContentType,
   isBlockedMarkdownImageTarget,
@@ -34,19 +34,11 @@ class ImageFetchError extends Error {
   }
 }
 
-function headerValue(headers: IncomingHttpHeaders, name: string): string {
-  const value = headers[name]
-  return String(Array.isArray(value) ? value[0] || '' : value || '').trim()
-}
-
 async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
   const started = Date.now()
   let dnsTimeout: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
-    dnsTimeout = setTimeout(
-      () => reject(new ImageFetchError('image_fetch_failed')),
-      IMAGE_FETCH_TIMEOUT_MS,
-    )
+    dnsTimeout = setTimeout(() => reject(new ImageFetchError('image_fetch_failed')), IMAGE_FETCH_TIMEOUT_MS)
   })
   let addresses: LookupAddress[]
   try {
@@ -70,7 +62,7 @@ async function fetchPinnedImage(target: URL): Promise<PinnedImageResponse> {
       },
       async (response) => {
         const status = response.statusCode || 502
-        const contentLength = Number(headerValue(response.headers, 'content-length'))
+        const contentLength = Number(readMarkdownImageHeader(response.headers, 'content-length'))
         if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
           response.destroy()
           reject(new ImageFetchError('image_too_large'))
@@ -159,7 +151,7 @@ export async function GET(req: NextRequest) {
     return jsonNoStore({ error: 'image_fetch_failed' }, { status: 502 })
   }
 
-  const contentType = headerValue(upstream.headers, 'content-type').toLowerCase()
+  const contentType = readMarkdownImageHeader(upstream.headers, 'content-type').toLowerCase()
   if (!isAllowedMarkdownImageContentType(contentType)) {
     return jsonNoStore({ error: 'image_content_type_invalid' }, { status: 415 })
   }
@@ -185,9 +177,7 @@ export async function POST(req: NextRequest) {
   }
 
   const rawSrc =
-    body && typeof body === 'object' && 'src' in body && typeof body.src === 'string'
-      ? body.src.trim()
-      : ''
+    body && typeof body === 'object' && 'src' in body && typeof body.src === 'string' ? body.src.trim() : ''
   const target = parseMarkdownImageUrl(rawSrc)
   if (!target || isBlockedMarkdownImageTarget(target.toString())) {
     return jsonNoStore({ error: 'invalid_image_src' }, { status: 400 })

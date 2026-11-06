@@ -101,18 +101,14 @@ def _summarize_stage_report(raw: Any) -> dict[str, Any]:
 
 def _summarize_local_test(report: dict[str, Any]) -> dict[str, Any]:
     raw_stages = report.get("stages") if isinstance(report.get("stages"), dict) else {}
-    stages = {
-        stage: _summarize_stage_report(raw_stages.get(stage))
-        for stage in _STAGE_ORDER
-        if isinstance(raw_stages, dict) and stage in raw_stages
-    }
+    stages = {stage: _summarize_stage_report(raw_stages.get(stage)) for stage in _STAGE_ORDER if stage in raw_stages}
     golden = report.get("golden_draft") if isinstance(report.get("golden_draft"), dict) else {}
     return {
         "passed": report.get("passed") is True,
         "stages": stages,
         "golden_draft": {
-            "passed": golden.get("passed") is True if golden else False,
-            "items_total": int(golden.get("items_total") or 0) if isinstance(golden, dict) else 0,
+            "passed": golden.get("passed") is True,
+            "items_total": int(golden.get("items_total") or 0),
         },
     }
 
@@ -289,11 +285,11 @@ def build_plugin_release_gate_report(
         )
     )
 
-    required_checks = [check for check in checks if bool(check.get("required"))]
+    required_checks = [check for check in checks if check["required"]]
     return {
         "schema": PLUGIN_RELEASE_GATE_SCHEMA,
         "generated_at": generated_at,
-        "passed": all(bool(check.get("passed")) for check in required_checks),
+        "passed": all(check["passed"] for check in required_checks),
         "summary": _gate_summary(checks),
         "plugin": _descriptor_payload(descriptor_after),
         "checks": checks,
@@ -335,7 +331,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         require_retrieval_policy=args.require_retrieval_policy,
     )
     text = json.dumps(report, ensure_ascii=False, indent=2)
-    if str(args.out or "-") == "-":
+    if (args.out or "-") == "-":
         print(text)
     else:
         out_path = Path(args.out)

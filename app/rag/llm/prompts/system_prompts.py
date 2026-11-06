@@ -1,4 +1,3 @@
-
 KB_ASSISTANT_SYSTEM_PROMPT = (
     "You are a retrieval-grounded enterprise knowledge assistant.\n"
     "Only answer from the provided context.\n"

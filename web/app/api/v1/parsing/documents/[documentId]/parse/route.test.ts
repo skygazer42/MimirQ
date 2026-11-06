@@ -14,12 +14,14 @@ describe('long-running parsing proxy route', () => {
   it('forwards auth headers and query parameters to the internal backend', async () => {
     vi.stubEnv('API_INTERNAL_URL', 'http://mimirq-api:8000/')
     vi.stubEnv('NEXT_PUBLIC_API_LONG_TIMEOUT_MS', '654321')
-    const fetchMock = vi.fn().mockResolvedValue(
-      Response.json(
-        { document_id: 'doc-1', markdown_content: '# parsed' },
-        { status: 200, headers: { 'X-Request-ID': 'request-1' } },
-      ),
-    )
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json(
+          { document_id: 'doc-1', markdown_content: '# parsed' },
+          { status: 200, headers: { 'X-Request-ID': 'request-1' } },
+        ),
+      )
     vi.stubGlobal('fetch', fetchMock)
     const { POST } = await import('./route')
     const request = new NextRequest(
@@ -68,9 +70,7 @@ describe('long-running parsing proxy route', () => {
     vi.stubEnv('API_INTERNAL_URL', 'http://mimirq-api:8000')
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue(
-        Response.json({ detail: 'DeepDoc rejected the file' }, { status: 422 }),
-      ),
+      vi.fn().mockResolvedValue(Response.json({ detail: 'DeepDoc rejected the file' }, { status: 422 })),
     )
     const { POST } = await import('./route')
 

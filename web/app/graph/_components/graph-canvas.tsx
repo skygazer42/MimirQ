@@ -93,8 +93,8 @@ function reportGraphCanvasTrace(payload: {
           component: 'graph-canvas',
           page: getFrontendTracePage(),
         },
-        { keepalive: true }
-      )
+        { keepalive: true },
+      ),
     )
     .catch((error) => {
       reportClientWarning('Failed to report graph canvas trace', error)
@@ -122,7 +122,7 @@ const KnowledgeGraph3D = dynamic(
         </div>
       </div>
     ),
-  }
+  },
 )
 
 type GraphCanvasProps = Readonly<{
@@ -155,7 +155,7 @@ type GraphCanvasProps = Readonly<{
 
 function normalizeNodeLabel(node: Record<string, unknown>, fallback: string) {
   const candidate = [node.label, node.name, node.title, node.id].find(
-    (value) => typeof value === 'string' && value.trim().length > 0
+    (value) => typeof value === 'string' && value.trim().length > 0,
   )
   return typeof candidate === 'string' ? candidate : fallback
 }
@@ -280,46 +280,48 @@ export function GraphCanvas({
       }
     }
 
-    detachPromise((async () => {
-      try {
-        const startedAt = getNowMs()
-        if (!clusteringWorkerRef.current || !clusteringApiRef.current) {
-          const { wrap } = await import('comlink')
-          if (cancelled) return
-          clusteringWorkerRef.current = new Worker(
-            new URL('../../../workers/graph-clustering.worker.ts', import.meta.url),
-            { type: 'module' }
-          )
-          clusteringApiRef.current = wrap<GraphClusteringWorkerApi>(clusteringWorkerRef.current)
-        }
+    detachPromise(
+      (async () => {
+        try {
+          const startedAt = getNowMs()
+          if (!clusteringWorkerRef.current || !clusteringApiRef.current) {
+            const { wrap } = await import('comlink')
+            if (cancelled) return
+            clusteringWorkerRef.current = new Worker(
+              new URL('../../../workers/graph-clustering.worker.ts', import.meta.url),
+              { type: 'module' },
+            )
+            clusteringApiRef.current = wrap<GraphClusteringWorkerApi>(clusteringWorkerRef.current)
+          }
 
-        const res = await clusteringApiRef.current.computeConnectedComponents({
-          nodes,
-          links,
-        })
-
-        if (cancelled) return
-        if (clusteringSeqRef.current !== seq) return
-        setClusterResult(res)
-        const durationMs = Math.max(0, getNowMs() - startedAt)
-        const traceKey = ['worker', nodeCount, links.length, res.clusterCount, Math.round(durationMs)].join(':')
-        if (lastClusterTraceKeyRef.current !== traceKey) {
-          lastClusterTraceKeyRef.current = traceKey
-          reportGraphCanvasTrace({
-            event: 'graph_cluster_compute',
-            duration_ms: durationMs,
-            input_node_count: nodeCount,
-            input_link_count: links.length,
-            output_node_count: nodes.length,
-            output_link_count: links.length,
+          const res = await clusteringApiRef.current.computeConnectedComponents({
+            nodes,
+            links,
           })
+
+          if (cancelled) return
+          if (clusteringSeqRef.current !== seq) return
+          setClusterResult(res)
+          const durationMs = Math.max(0, getNowMs() - startedAt)
+          const traceKey = ['worker', nodeCount, links.length, res.clusterCount, Math.round(durationMs)].join(':')
+          if (lastClusterTraceKeyRef.current !== traceKey) {
+            lastClusterTraceKeyRef.current = traceKey
+            reportGraphCanvasTrace({
+              event: 'graph_cluster_compute',
+              duration_ms: durationMs,
+              input_node_count: nodeCount,
+              input_link_count: links.length,
+              output_node_count: nodes.length,
+              output_link_count: links.length,
+            })
+          }
+        } catch (e) {
+          reportClientWarning('Graph clustering worker failed; falling back to main thread', e)
+          clusteringDisabledRef.current = true
+          detachPromise(computeOnMainThread())
         }
-      } catch (e) {
-        reportClientWarning('Graph clustering worker failed; falling back to main thread', e)
-        clusteringDisabledRef.current = true
-        detachPromise(computeOnMainThread())
-      }
-    })())
+      })(),
+    )
 
     return () => {
       cancelled = true
@@ -334,38 +336,40 @@ export function GraphCanvas({
       return
     }
 
-    detachPromise((async () => {
-      const startedAt = getNowMs()
-      const { applyClusterPalette } = await import('@/lib/graph-cluster-palette')
-      if (cancelled) return
-      const next = applyClusterPalette({
-        graphRenderData,
-        paletteSeed,
-        clusterResult,
-      })
-      if (!cancelled) {
-        setEffectiveGraphRenderData(next)
-      }
-      const durationMs = Math.max(0, getNowMs() - startedAt)
-      const traceKey = [
-        paletteSeed,
-        graphRenderData.nodes.length,
-        graphRenderData.links.length,
-        clusterResult.clusterCount,
-        Math.round(durationMs),
-      ].join(':')
-      if (lastPaletteTraceKeyRef.current !== traceKey) {
-        lastPaletteTraceKeyRef.current = traceKey
-        reportGraphCanvasTrace({
-          event: 'graph_cluster_palette',
-          duration_ms: durationMs,
-          input_node_count: graphRenderData.nodes.length,
-          input_link_count: graphRenderData.links.length,
-          output_node_count: next.nodes.length,
-          output_link_count: next.links.length,
+    detachPromise(
+      (async () => {
+        const startedAt = getNowMs()
+        const { applyClusterPalette } = await import('@/lib/graph-cluster-palette')
+        if (cancelled) return
+        const next = applyClusterPalette({
+          graphRenderData,
+          paletteSeed,
+          clusterResult,
         })
-      }
-    })())
+        if (!cancelled) {
+          setEffectiveGraphRenderData(next)
+        }
+        const durationMs = Math.max(0, getNowMs() - startedAt)
+        const traceKey = [
+          paletteSeed,
+          graphRenderData.nodes.length,
+          graphRenderData.links.length,
+          clusterResult.clusterCount,
+          Math.round(durationMs),
+        ].join(':')
+        if (lastPaletteTraceKeyRef.current !== traceKey) {
+          lastPaletteTraceKeyRef.current = traceKey
+          reportGraphCanvasTrace({
+            event: 'graph_cluster_palette',
+            duration_ms: durationMs,
+            input_node_count: graphRenderData.nodes.length,
+            input_link_count: graphRenderData.links.length,
+            output_node_count: next.nodes.length,
+            output_link_count: next.links.length,
+          })
+        }
+      })(),
+    )
 
     return () => {
       cancelled = true
@@ -389,7 +393,7 @@ export function GraphCanvas({
           raw: node,
         }
       }),
-    [graphRenderData.nodes]
+    [graphRenderData.nodes],
   )
   const semanticLinks = useMemo(
     () =>
@@ -406,7 +410,7 @@ export function GraphCanvas({
           relation,
         }
       }),
-    [graphRenderData.links]
+    [graphRenderData.links],
   )
   const semanticRelationSummary = useMemo(() => {
     const counts = new Map<string, number>()
@@ -424,7 +428,7 @@ export function GraphCanvas({
       graph3dRef.current?.focusNode(nodeId)
       graph2dRef.current?.focusNode(nodeId)
     },
-    [graph2dRef, graph3dRef]
+    [graph2dRef, graph3dRef],
   )
   const setSemanticNodeButtonRef = useCallback((nodeId: string, element: HTMLButtonElement | null) => {
     if (element) {
@@ -434,87 +438,102 @@ export function GraphCanvas({
     semanticNodeButtonRefs.current.delete(nodeId)
   }, [])
 
-  const moveKeyboardRovingFocus = useCallback((direction: 1 | -1) => {
-    if (!semanticNodes.length) return
+  const moveKeyboardRovingFocus = useCallback(
+    (direction: 1 | -1) => {
+      if (!semanticNodes.length) return
 
-    const nextIndex = getNextKeyboardRovingIndex(keyboardRovingIndex, semanticNodes.length, direction)
-    if (nextIndex < 0) return
+      const nextIndex = getNextKeyboardRovingIndex(keyboardRovingIndex, semanticNodes.length, direction)
+      if (nextIndex < 0) return
 
-    const nextNode = semanticNodes[nextIndex]
-    const focusNextNode = () => {
-      setKeyboardRovingIndex(nextIndex)
-      focusSemanticNode(nextNode.id)
-      onNodeClick(nextNode.raw)
-      semanticNodeButtonRefs.current.get(nextNode.id)?.focus()
-    }
-
-    if (!isSemanticListVisible) {
-      setIsSemanticListVisible(true)
-      globalThis.window.requestAnimationFrame(focusNextNode)
-      return
-    }
-
-    focusNextNode()
-  }, [focusSemanticNode, isSemanticListVisible, keyboardRovingIndex, onNodeClick, semanticNodes])
-
-  const handleCanvasKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (viewMode !== '3d') return
-    if (event.key !== 'Tab') return
-    if (event.altKey || event.ctrlKey || event.metaKey) return
-    if (event.target !== event.currentTarget) return
-
-    event.preventDefault()
-    moveKeyboardRovingFocus(event.shiftKey ? -1 : 1)
-  }, [moveKeyboardRovingFocus, viewMode])
-
-  const clampSemanticPanelPosition = useCallback((position: { x: number; y: number }) => {
-    if (graphViewportWidth <= 0 || graphViewportHeight <= 0) {
-      return position
-    }
-
-    const panelWidth = semanticPanelRef.current?.offsetWidth ?? (isSemanticListVisible ? 352 : 52)
-    const panelHeight = semanticPanelRef.current?.offsetHeight ?? (isSemanticListVisible ? 360 : 48)
-    const maxX = Math.max(SEMANTIC_PANEL_SIDE_MARGIN, graphViewportWidth - panelWidth - SEMANTIC_PANEL_SIDE_MARGIN)
-    const maxY = Math.max(SEMANTIC_PANEL_MIN_TOP, graphViewportHeight - panelHeight - SEMANTIC_PANEL_SIDE_MARGIN)
-
-    return {
-      x: clampNumber(position.x, SEMANTIC_PANEL_SIDE_MARGIN, maxX),
-      y: clampNumber(position.y, SEMANTIC_PANEL_MIN_TOP, maxY),
-    }
-  }, [graphViewportHeight, graphViewportWidth, isSemanticListVisible])
-
-  const handleSemanticPanelPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if (event.button !== 0) return
-
-    const panelElement = semanticPanelRef.current
-    semanticPanelDragStateRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: semanticPanelPosition?.x ?? panelElement?.offsetLeft ?? SEMANTIC_PANEL_SIDE_MARGIN,
-      originY: semanticPanelPosition?.y ?? panelElement?.offsetTop ?? SEMANTIC_PANEL_TOP_OFFSET,
-    }
-
-    event.currentTarget.setPointerCapture(event.pointerId)
-    event.preventDefault()
-  }, [semanticPanelPosition])
-
-  const handleSemanticPanelPointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    const dragState = semanticPanelDragStateRef.current
-    if (dragState?.pointerId !== event.pointerId) return
-
-    const nextPosition = clampSemanticPanelPosition({
-      x: dragState.originX + (event.clientX - dragState.startX),
-      y: dragState.originY + (event.clientY - dragState.startY),
-    })
-
-    setSemanticPanelPosition((current) => {
-      if (current?.x === nextPosition.x && current.y === nextPosition.y) {
-        return current
+      const nextNode = semanticNodes[nextIndex]
+      const focusNextNode = () => {
+        setKeyboardRovingIndex(nextIndex)
+        focusSemanticNode(nextNode.id)
+        onNodeClick(nextNode.raw)
+        semanticNodeButtonRefs.current.get(nextNode.id)?.focus()
       }
-      return nextPosition
-    })
-  }, [clampSemanticPanelPosition])
+
+      if (!isSemanticListVisible) {
+        setIsSemanticListVisible(true)
+        globalThis.window.requestAnimationFrame(focusNextNode)
+        return
+      }
+
+      focusNextNode()
+    },
+    [focusSemanticNode, isSemanticListVisible, keyboardRovingIndex, onNodeClick, semanticNodes],
+  )
+
+  const handleCanvasKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (viewMode !== '3d') return
+      if (event.key !== 'Tab') return
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+      if (event.target !== event.currentTarget) return
+
+      event.preventDefault()
+      moveKeyboardRovingFocus(event.shiftKey ? -1 : 1)
+    },
+    [moveKeyboardRovingFocus, viewMode],
+  )
+
+  const clampSemanticPanelPosition = useCallback(
+    (position: { x: number; y: number }) => {
+      if (graphViewportWidth <= 0 || graphViewportHeight <= 0) {
+        return position
+      }
+
+      const panelWidth = semanticPanelRef.current?.offsetWidth ?? (isSemanticListVisible ? 352 : 52)
+      const panelHeight = semanticPanelRef.current?.offsetHeight ?? (isSemanticListVisible ? 360 : 48)
+      const maxX = Math.max(SEMANTIC_PANEL_SIDE_MARGIN, graphViewportWidth - panelWidth - SEMANTIC_PANEL_SIDE_MARGIN)
+      const maxY = Math.max(SEMANTIC_PANEL_MIN_TOP, graphViewportHeight - panelHeight - SEMANTIC_PANEL_SIDE_MARGIN)
+
+      return {
+        x: clampNumber(position.x, SEMANTIC_PANEL_SIDE_MARGIN, maxX),
+        y: clampNumber(position.y, SEMANTIC_PANEL_MIN_TOP, maxY),
+      }
+    },
+    [graphViewportHeight, graphViewportWidth, isSemanticListVisible],
+  )
+
+  const handleSemanticPanelPointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return
+
+      const panelElement = semanticPanelRef.current
+      semanticPanelDragStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        originX: semanticPanelPosition?.x ?? panelElement?.offsetLeft ?? SEMANTIC_PANEL_SIDE_MARGIN,
+        originY: semanticPanelPosition?.y ?? panelElement?.offsetTop ?? SEMANTIC_PANEL_TOP_OFFSET,
+      }
+
+      event.currentTarget.setPointerCapture(event.pointerId)
+      event.preventDefault()
+    },
+    [semanticPanelPosition],
+  )
+
+  const handleSemanticPanelPointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const dragState = semanticPanelDragStateRef.current
+      if (dragState?.pointerId !== event.pointerId) return
+
+      const nextPosition = clampSemanticPanelPosition({
+        x: dragState.originX + (event.clientX - dragState.startX),
+        y: dragState.originY + (event.clientY - dragState.startY),
+      })
+
+      setSemanticPanelPosition((current) => {
+        if (current?.x === nextPosition.x && current.y === nextPosition.y) {
+          return current
+        }
+        return nextPosition
+      })
+    },
+    [clampSemanticPanelPosition],
+  )
 
   const handleSemanticPanelPointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (semanticPanelDragStateRef.current?.pointerId !== event.pointerId) return
@@ -548,7 +567,13 @@ export function GraphCanvas({
     return () => {
       globalThis.window.cancelAnimationFrame(frame)
     }
-  }, [clampSemanticPanelPosition, graphViewportHeight, graphViewportWidth, isSemanticListVisible, semanticPanelPosition])
+  }, [
+    clampSemanticPanelPosition,
+    graphViewportHeight,
+    graphViewportWidth,
+    isSemanticListVisible,
+    semanticPanelPosition,
+  ])
 
   return (
     <div
@@ -557,13 +582,14 @@ export function GraphCanvas({
       tabIndex={0}
       role="region"
       aria-label={showSemanticPanel ? '知识图谱画布，按 Tab 浏览节点' : '知识图谱画布'}
-      aria-describedby={showSemanticPanel && viewMode === '3d' ? `${semanticPanelId}-keyboard-help ${semanticPanelId}-keyboard-status` : undefined}
+      aria-describedby={
+        showSemanticPanel && viewMode === '3d'
+          ? `${semanticPanelId}-keyboard-help ${semanticPanelId}-keyboard-status`
+          : undefined
+      }
       onKeyDown={showSemanticPanel ? handleCanvasKeyDown : undefined}
     >
-      <div
-        className="absolute inset-0 z-0"
-        style={getCanvasBackdropStyle()}
-      />
+      <div className="absolute inset-0 z-0" style={getCanvasBackdropStyle()} />
       {graphRenderData.nodes.length > 0 ? (
         <>
           {viewMode === '3d' ? (
@@ -613,216 +639,222 @@ export function GraphCanvas({
               layoutMode={layoutMode}
             />
           )}
-          {showSemanticPanel ? <aside
-            className="absolute z-20 pointer-events-none"
-            style={
-              semanticPanelPosition
-                ? { left: semanticPanelPosition.x, top: semanticPanelPosition.y }
-                : { right: SEMANTIC_PANEL_SIDE_MARGIN, top: SEMANTIC_PANEL_TOP_OFFSET }
-            }
-          >
-            <div
-              ref={semanticPanelRef}
-              className={`pointer-events-auto overflow-hidden border border-border/60 bg-card shadow-none ${
-                isSemanticListVisible ? 'w-[min(16.75rem,calc(100vw-2rem))] rounded-[1.35rem]' : 'rounded-[1.35rem]'
-              }`}
+          {showSemanticPanel ? (
+            <aside
+              className="absolute z-20 pointer-events-none"
+              style={
+                semanticPanelPosition
+                  ? { left: semanticPanelPosition.x, top: semanticPanelPosition.y }
+                  : { right: SEMANTIC_PANEL_SIDE_MARGIN, top: SEMANTIC_PANEL_TOP_OFFSET }
+              }
             >
               <div
-                className={`flex items-center gap-2 px-3 py-2.5 ${isSemanticListVisible ? 'border-b border-border/55' : ''}`}
+                ref={semanticPanelRef}
+                className={`pointer-events-auto overflow-hidden border border-border/60 bg-card shadow-none ${
+                  isSemanticListVisible ? 'w-[min(16.75rem,calc(100vw-2rem))] rounded-[1.35rem]' : 'rounded-[1.35rem]'
+                }`}
               >
-                <button
-                  type="button"
-                  className="flex h-8 w-8 shrink-0 cursor-grab appearance-none items-center justify-center rounded-xl border border-border/60 bg-card/55 p-0 text-muted-foreground touch-none select-none active:cursor-grabbing"
-                  aria-label="拖动语义图谱列表"
-                  onPointerDown={handleSemanticPanelPointerDown}
-                  onPointerMove={handleSemanticPanelPointerMove}
-                  onPointerUp={handleSemanticPanelPointerUp}
-                  onPointerCancel={handleSemanticPanelPointerUp}
+                <div
+                  className={`flex items-center gap-2 px-3 py-2.5 ${isSemanticListVisible ? 'border-b border-border/55' : ''}`}
                 >
-                  <div className="grid grid-cols-2 gap-[3px]">
-                    {Array.from({ length: 6 }, (_, dotIndex) => dotIndex).map((dotIndex) => (
-                      <span key={`semantic-drag-dot-${dotIndex}`} className="h-1 w-1 rounded-full bg-current/60" />
-                    ))}
-                  </div>
-                </button>
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 shrink-0 cursor-grab appearance-none items-center justify-center rounded-xl border border-border/60 bg-card/55 p-0 text-muted-foreground touch-none select-none active:cursor-grabbing"
+                    aria-label="拖动语义图谱列表"
+                    onPointerDown={handleSemanticPanelPointerDown}
+                    onPointerMove={handleSemanticPanelPointerMove}
+                    onPointerUp={handleSemanticPanelPointerUp}
+                    onPointerCancel={handleSemanticPanelPointerUp}
+                  >
+                    <div className="grid grid-cols-2 gap-[3px]">
+                      {Array.from({ length: 6 }, (_, dotIndex) => dotIndex).map((dotIndex) => (
+                        <span key={`semantic-drag-dot-${dotIndex}`} className="h-1 w-1 rounded-full bg-current/60" />
+                      ))}
+                    </div>
+                  </button>
 
-                {isSemanticListVisible ? (
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-border/70 bg-card shadow-none">
-                        <div className="grid grid-cols-2 gap-1">
-                          {SEMANTIC_NODE_TONES.slice(0, 4).map((tone) => (
-                            <span
-                              key={tone}
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: tone }}
-                            />
-                          ))}
+                  {isSemanticListVisible ? (
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-xl border border-border/70 bg-card shadow-none">
+                          <div className="grid grid-cols-2 gap-1">
+                            {SEMANTIC_NODE_TONES.slice(0, 4).map((tone) => (
+                              <span key={tone} className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: tone }} />
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      <div className="min-w-0">
-                        <h2 className="truncate text-sm font-medium text-foreground">语义索引</h2>
-                        <p className="truncate text-[11px] text-muted-foreground">
-                          当前数据：{semanticNodeCount} 个节点，{semanticLinkCount} 条连线
-                        </p>
+                        <div className="min-w-0">
+                          <h2 className="truncate text-sm font-medium text-foreground">语义索引</h2>
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            当前数据：{semanticNodeCount} 个节点，{semanticLinkCount} 条连线
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="pr-1 text-[11px] text-muted-foreground">
-                    语义列表
-                  </div>
-                )}
+                  ) : (
+                    <div className="pr-1 text-[11px] text-muted-foreground">语义列表</div>
+                  )}
 
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-8 w-8 shrink-0 rounded-lg px-0 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
-                  aria-label={isSemanticListVisible ? '隐藏语义列表' : '显示语义列表'}
-                  title={isSemanticListVisible ? '隐藏语义列表' : '显示语义列表'}
-                  aria-expanded={isSemanticListVisible}
-                  aria-controls={semanticPanelId}
-                  onClick={() => setIsSemanticListVisible((visible) => !visible)}
-                >
-                  {isSemanticListVisible ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-                  <span className="sr-only">{isSemanticListVisible ? '隐藏语义列表' : '显示语义列表'}</span>
-                </Button>
-              </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 rounded-lg px-0 text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                    aria-label={isSemanticListVisible ? '隐藏语义列表' : '显示语义列表'}
+                    title={isSemanticListVisible ? '隐藏语义列表' : '显示语义列表'}
+                    aria-expanded={isSemanticListVisible}
+                    aria-controls={semanticPanelId}
+                    onClick={() => setIsSemanticListVisible((visible) => !visible)}
+                  >
+                    {isSemanticListVisible ? (
+                      <PanelRightClose className="h-4 w-4" />
+                    ) : (
+                      <PanelRightOpen className="h-4 w-4" />
+                    )}
+                    <span className="sr-only">{isSemanticListVisible ? '隐藏语义列表' : '显示语义列表'}</span>
+                  </Button>
+                </div>
 
-              {viewMode === '3d' ? (
-                <p
-                  id={`${semanticPanelId}-keyboard-help`}
-                  className="sr-only"
-                >
-                  3D 视图为视觉展示，语义列表提供可读结构，便于键盘与屏幕阅读器访问；按 Tab 键可逐个聚焦节点，Shift + Tab 可反向切换。
+                {viewMode === '3d' ? (
+                  <p id={`${semanticPanelId}-keyboard-help`} className="sr-only">
+                    3D 视图为视觉展示，语义列表提供可读结构，便于键盘与屏幕阅读器访问；按 Tab 键可逐个聚焦节点，Shift +
+                    Tab 可反向切换。
+                  </p>
+                ) : null}
+                <p id={`${semanticPanelId}-keyboard-status`} aria-live="polite" className="sr-only">
+                  {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex]
+                    ? `键盘当前聚焦：${semanticNodes[keyboardRovingIndex].label}（${keyboardRovingIndex + 1}/${semanticNodes.length}）`
+                    : '键盘当前聚焦：尚未选中节点'}
                 </p>
-              ) : null}
-              <p
-                id={`${semanticPanelId}-keyboard-status`}
-                aria-live="polite"
-                className="sr-only"
-              >
-                {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex]
-                  ? `键盘当前聚焦：${semanticNodes[keyboardRovingIndex].label}（${keyboardRovingIndex + 1}/${semanticNodes.length}）`
-                  : '键盘当前聚焦：尚未选中节点'}
-              </p>
-              <section
-                id={semanticPanelId}
-                hidden={!isSemanticListVisible}
-                aria-label="知识图谱语义化结构列表"
-                className="space-y-3 px-3 py-3 max-h-[min(22rem,calc(100vh-12rem))] overflow-auto"
-              >
-                {isSemanticListVisible ? (
-                  <>
-                    <section aria-labelledby={`${semanticPanelId}-nodes`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 id={`${semanticPanelId}-nodes`} className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                          节点
-                        </h3>
-                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[11px] text-muted-foreground">
-                          <Rows3 className="h-3 w-3" />
-                          {semanticNodeCount}
+                <section
+                  id={semanticPanelId}
+                  hidden={!isSemanticListVisible}
+                  aria-label="知识图谱语义化结构列表"
+                  className="space-y-3 px-3 py-3 max-h-[min(22rem,calc(100vh-12rem))] overflow-auto"
+                >
+                  {isSemanticListVisible ? (
+                    <>
+                      <section aria-labelledby={`${semanticPanelId}-nodes`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <h3
+                            id={`${semanticPanelId}-nodes`}
+                            className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground"
+                          >
+                            节点
+                          </h3>
+                          <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[11px] text-muted-foreground">
+                            <Rows3 className="h-3 w-3" />
+                            {semanticNodeCount}
+                          </div>
                         </div>
-                      </div>
-                      <TooltipProvider delayDuration={100}>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {semanticNodes.map((node, index) => {
-                            const tone = getSemanticNodeTone(`${node.id}:${node.type}:${node.kind}`)
-                            const isActive = selectedNodeId === node.id || keyboardRovingIndex === index
+                        <TooltipProvider delayDuration={100}>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {semanticNodes.map((node, index) => {
+                              const tone = getSemanticNodeTone(`${node.id}:${node.type}:${node.kind}`)
+                              const isActive = selectedNodeId === node.id || keyboardRovingIndex === index
 
-                            return (
-                              <Tooltip key={node.id}>
-                                <TooltipTrigger asChild>
-                                  <button
-                                     ref={(element) => setSemanticNodeButtonRef(node.id, element)}
-                                     type="button"
-                                     className="group/node relative flex h-7 w-7 items-center justify-center rounded-xl border border-border/65 bg-card transition-all duration-200 hover:border-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                                     aria-label={`聚焦节点：${node.label}`}
-                                     aria-pressed={selectedNodeId === node.id}
-                                    onFocus={() => {
-                                      setKeyboardRovingIndex(index)
-                                      focusSemanticNode(node.id)
-                                    }}
-                                    onClick={() => {
-                                      setKeyboardRovingIndex(index)
-                                      focusSemanticNode(node.id)
-                                      onNodeClick(node.raw)
-                                    }}
-                                  >
-                                    <span
-                                      className="absolute inset-[5px] rounded-full opacity-20 transition-opacity duration-200 group-hover/node:opacity-35"
-                                      style={{ backgroundColor: tone }}
-                                    />
-                                    <span
-                                      className="relative h-2.5 w-2.5 rounded-full"
-                                      style={{
-                                        backgroundColor: tone,
-                                        boxShadow: isActive
-                                          ? `0 0 0 4px hsl(var(--background) / 0.62), 0 0 0 1px ${tone}`
-                                          : '0 0 0 4px hsl(var(--background) / 0.5)',
+                              return (
+                                <Tooltip key={node.id}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      ref={(element) => setSemanticNodeButtonRef(node.id, element)}
+                                      type="button"
+                                      className="group/node relative flex h-7 w-7 items-center justify-center rounded-xl border border-border/65 bg-card transition-all duration-200 hover:border-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
+                                      aria-label={`聚焦节点：${node.label}`}
+                                      aria-pressed={selectedNodeId === node.id}
+                                      onFocus={() => {
+                                        setKeyboardRovingIndex(index)
+                                        focusSemanticNode(node.id)
                                       }}
-                                    />
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent
-                                  side="left"
-                                  align="center"
-                                  className="rounded-2xl border-border/55 bg-popover px-3 py-2 text-[11px] text-foreground shadow-none"
-                                >
-                                  <div className="flex items-start gap-2">
-                                    <span className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tone }} />
-                                    <div className="space-y-1">
-                                      <div className="font-semibold leading-4 text-foreground">{node.label}</div>
-                                      <div className="text-[11px] leading-4 text-muted-foreground">
-                                        ID {node.id} · {node.kind} · {node.type}
+                                      onClick={() => {
+                                        setKeyboardRovingIndex(index)
+                                        focusSemanticNode(node.id)
+                                        onNodeClick(node.raw)
+                                      }}
+                                    >
+                                      <span
+                                        className="absolute inset-[5px] rounded-full opacity-20 transition-opacity duration-200 group-hover/node:opacity-35"
+                                        style={{ backgroundColor: tone }}
+                                      />
+                                      <span
+                                        className="relative h-2.5 w-2.5 rounded-full"
+                                        style={{
+                                          backgroundColor: tone,
+                                          boxShadow: isActive
+                                            ? `0 0 0 4px hsl(var(--background) / 0.62), 0 0 0 1px ${tone}`
+                                            : '0 0 0 4px hsl(var(--background) / 0.5)',
+                                        }}
+                                      />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="left"
+                                    align="center"
+                                    className="rounded-2xl border-border/55 bg-popover px-3 py-2 text-[11px] text-foreground shadow-none"
+                                  >
+                                    <div className="flex items-start gap-2">
+                                      <span
+                                        className="mt-1 h-2.5 w-2.5 rounded-full"
+                                        style={{ backgroundColor: tone }}
+                                      />
+                                      <div className="space-y-1">
+                                        <div className="font-semibold leading-4 text-foreground">{node.label}</div>
+                                        <div className="text-[11px] leading-4 text-muted-foreground">
+                                          ID {node.id} · {node.kind} · {node.type}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                </TooltipContent>
-                              </Tooltip>
-                            )
-                          })}
-                        </div>
-                      </TooltipProvider>
-                    </section>
-                    <section aria-labelledby={`${semanticPanelId}-links`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 id={`${semanticPanelId}-links`} className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                          关系
-                        </h3>
-                        <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[11px] text-muted-foreground">
-                          {semanticLinkCount}
-                        </div>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {semanticRelationSummary.map((item) => (
-                          <span
-                            key={item.relation}
-                            className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card px-2 py-1 text-[11px] text-muted-foreground shadow-none"
+                                  </TooltipContent>
+                                </Tooltip>
+                              )
+                            })}
+                          </div>
+                        </TooltipProvider>
+                      </section>
+                      <section aria-labelledby={`${semanticPanelId}-links`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <h3
+                            id={`${semanticPanelId}-links`}
+                            className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground"
                           >
-                            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/80" />
-                            {item.relation}
-                            <span className="text-muted-foreground">{item.count}</span>
+                            关系
+                          </h3>
+                          <div className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card/55 px-2 py-0.5 text-[11px] text-muted-foreground">
+                            {semanticLinkCount}
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {semanticRelationSummary.map((item) => (
+                            <span
+                              key={item.relation}
+                              className="inline-flex items-center gap-1 rounded-full border border-border/65 bg-card px-2 py-1 text-[11px] text-muted-foreground shadow-none"
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/80" />
+                              {item.relation}
+                              <span className="text-muted-foreground">{item.count}</span>
+                            </span>
+                          ))}
+                          {isSemanticListTruncated ? (
+                            <span className="inline-flex items-center rounded-full border border-dashed border-border/70 bg-card/42 px-2 py-1 text-[11px] text-muted-foreground">
+                              仅显示前 {SEMANTIC_LIST_ITEM_LIMIT} 项
+                            </span>
+                          ) : null}
+                        </div>
+                      </section>
+                      {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex] ? (
+                        <div className="rounded-2xl border border-border/60 bg-card px-2.5 py-2 text-[11px] text-muted-foreground shadow-none">
+                          当前聚焦：
+                          <span className="font-semibold text-foreground">
+                            {semanticNodes[keyboardRovingIndex].label}
                           </span>
-                        ))}
-                        {isSemanticListTruncated ? (
-                          <span className="inline-flex items-center rounded-full border border-dashed border-border/70 bg-card/42 px-2 py-1 text-[11px] text-muted-foreground">
-                            仅显示前 {SEMANTIC_LIST_ITEM_LIMIT} 项
-                          </span>
-                        ) : null}
-                      </div>
-                    </section>
-                    {keyboardRovingIndex >= 0 && semanticNodes[keyboardRovingIndex] ? (
-                      <div className="rounded-2xl border border-border/60 bg-card px-2.5 py-2 text-[11px] text-muted-foreground shadow-none">
-                        当前聚焦：<span className="font-semibold text-foreground">{semanticNodes[keyboardRovingIndex].label}</span>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-              </section>
-            </div>
-          </aside> : null}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </section>
+              </div>
+            </aside>
+          ) : null}
         </>
       ) : (
         <div className="absolute inset-0 z-10 flex items-center justify-center px-5 py-6">
@@ -831,11 +863,7 @@ export function GraphCanvas({
           ) : (
             <section className="mx-auto flex w-full max-w-[36rem] flex-col items-center justify-center px-8 py-14 text-center md:px-10 md:py-16">
               <div className="mb-7 flex items-center justify-center">
-                <svg
-                  aria-hidden="true"
-                  viewBox="0 0 180 72"
-                  className="h-14 w-36"
-                >
+                <svg aria-hidden="true" viewBox="0 0 180 72" className="h-14 w-36">
                   <path
                     d="M36 46H90M90 46H144M90 46V22"
                     fill="none"
@@ -843,10 +871,38 @@ export function GraphCanvas({
                     strokeWidth="1.6"
                     strokeLinecap="round"
                   />
-                  <circle cx="36" cy="46" r="8.7" fill="hsl(var(--background) / 0.92)" stroke="hsl(var(--info) / 0.32)" strokeWidth="1.5" />
-                  <circle cx="144" cy="46" r="8.7" fill="hsl(var(--background) / 0.92)" stroke="hsl(var(--info) / 0.32)" strokeWidth="1.5" />
-                  <circle cx="90" cy="22" r="10.2" fill="hsl(var(--info) / 0.10)" stroke="hsl(var(--info) / 0.62)" strokeWidth="1.6" />
-                  <circle cx="90" cy="46" r="8.7" fill="hsl(var(--background) / 0.92)" stroke="hsl(var(--info) / 0.32)" strokeWidth="1.5" />
+                  <circle
+                    cx="36"
+                    cy="46"
+                    r="8.7"
+                    fill="hsl(var(--background) / 0.92)"
+                    stroke="hsl(var(--info) / 0.32)"
+                    strokeWidth="1.5"
+                  />
+                  <circle
+                    cx="144"
+                    cy="46"
+                    r="8.7"
+                    fill="hsl(var(--background) / 0.92)"
+                    stroke="hsl(var(--info) / 0.32)"
+                    strokeWidth="1.5"
+                  />
+                  <circle
+                    cx="90"
+                    cy="22"
+                    r="10.2"
+                    fill="hsl(var(--info) / 0.10)"
+                    stroke="hsl(var(--info) / 0.62)"
+                    strokeWidth="1.6"
+                  />
+                  <circle
+                    cx="90"
+                    cy="46"
+                    r="8.7"
+                    fill="hsl(var(--background) / 0.92)"
+                    stroke="hsl(var(--info) / 0.32)"
+                    strokeWidth="1.5"
+                  />
                   <circle cx="36" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
                   <circle cx="90" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
                   <circle cx="144" cy="46" r="2" fill="hsl(var(--info) / 0.48)" />
@@ -857,11 +913,9 @@ export function GraphCanvas({
                 {hasActiveScope ? '当前范围暂无图谱' : '选择图谱'}
               </h2>
               <div className="mx-auto mt-3 w-full max-w-[30rem] text-pretty text-sm leading-7 text-muted-foreground md:text-[15px]">
-                {hasActiveScope ? (
-                  '当前范围还没有实体与关系，可以切换到其他已有图谱。'
-                ) : (
-                  '选择数据集或文档，查看已有的实体、关系与来源。'
-                )}
+                {hasActiveScope
+                  ? '当前范围还没有实体与关系，可以切换到其他已有图谱。'
+                  : '选择数据集或文档，查看已有的实体、关系与来源。'}
               </div>
               <div className="mx-auto mt-7 flex w-full max-w-[30rem] flex-wrap items-center justify-center gap-3">
                 <Button
@@ -872,10 +926,7 @@ export function GraphCanvas({
                   <Network className="h-4 w-4" />
                   导入 KG JSON / JSONL
                 </Button>
-                <Button
-                  className="h-9 gap-2 rounded-md px-3 text-[13px] shadow-none"
-                  onClick={onOpenGraphPicker}
-                >
+                <Button className="h-9 gap-2 rounded-md px-3 text-[13px] shadow-none" onClick={onOpenGraphPicker}>
                   选择图谱
                 </Button>
               </div>

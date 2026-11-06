@@ -1,8 +1,4 @@
-import type {
-  DatasetPrecheckFileOut,
-  DatasetPrecheckSamplesResponse,
-  Document,
-} from '@/types'
+import type { DatasetPrecheckFileOut, DatasetPrecheckSamplesResponse, Document } from '@/types'
 
 import type { SampleDisposition } from './types'
 
@@ -14,11 +10,7 @@ export function safeNumber(value: unknown): number {
 export function stringifyForDisplay(value: unknown): string {
   if (value == null) return ''
   if (typeof value === 'string') return value
-  if (
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    typeof value === 'bigint'
-  ) {
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value)
   }
   if (typeof value === 'symbol') return value.description ?? ''
@@ -57,14 +49,10 @@ export const MARKDOWN_IMAGE_REF_PATTERN = /!\[[^\]]*]\([^)]*\)/g
 export const HTML_TABLE_PATTERN = /<table\b/gi
 
 export function getRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object'
-    ? (value as Record<string, unknown>)
-    : null
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 }
 
-export function getDocumentMetadataRecord(
-  document: Document
-): Record<string, unknown> {
+export function getDocumentMetadataRecord(document: Document): Record<string, unknown> {
   return getRecord(document.metadata) ?? {}
 }
 
@@ -81,28 +69,16 @@ export function firstPositiveNumber(...values: unknown[]): number {
   return 0
 }
 
-export function getDocumentAnalyticsRecord(
-  document: Document
-): Record<string, unknown> | null {
+export function getDocumentAnalyticsRecord(document: Document): Record<string, unknown> | null {
   const meta = getDocumentMetadataRecord(document)
   const pipeline = getRecord(meta.pipeline)
-  return (
-    getRecord(pipeline?.analytics_raw) ??
-    getRecord(meta.document_analytics_raw) ??
-    getRecord(meta.analytics_raw)
-  )
+  return getRecord(pipeline?.analytics_raw) ?? getRecord(meta.document_analytics_raw) ?? getRecord(meta.analytics_raw)
 }
 
-export function getDocumentPdfQualityRecord(
-  document: Document
-): Record<string, unknown> | null {
+export function getDocumentPdfQualityRecord(document: Document): Record<string, unknown> | null {
   const meta = getDocumentMetadataRecord(document)
   const qualityGate = getRecord(meta.quality_gate)
-  return (
-    getRecord(meta.pdf_quality) ??
-    getRecord(qualityGate?.pdf_quality) ??
-    getRecord(qualityGate?.stats)
-  )
+  return getRecord(meta.pdf_quality) ?? getRecord(qualityGate?.pdf_quality) ?? getRecord(qualityGate?.stats)
 }
 
 export function getDocumentElementTexts(document: Document): string[] {
@@ -140,19 +116,13 @@ export function countDocumentImageRefs(document: Document): number {
     ? elements.filter((element) => {
         const record = getRecord(element)
         const kind = firstDisplayValue(
-          record?.kind ??
-            record?.type ??
-            record?.category ??
-            record?.visual_kind
+          record?.kind ?? record?.type ?? record?.category ?? record?.visual_kind,
         ).toLowerCase()
         return ['image', 'figure', 'picture'].includes(kind)
       }).length
     : 0
 
-  return (
-    elementKindCount +
-    countPatternInTexts(getDocumentElementTexts(document), MARKDOWN_IMAGE_REF_PATTERN)
-  )
+  return elementKindCount + countPatternInTexts(getDocumentElementTexts(document), MARKDOWN_IMAGE_REF_PATTERN)
 }
 
 export function countDocumentTableRefs(document: Document): number {
@@ -160,17 +130,12 @@ export function countDocumentTableRefs(document: Document): number {
   const elementKindCount = Array.isArray(elements)
     ? elements.filter((element) => {
         const record = getRecord(element)
-        const kind = firstDisplayValue(
-          record?.kind ?? record?.type ?? record?.category
-        ).toLowerCase()
+        const kind = firstDisplayValue(record?.kind ?? record?.type ?? record?.category).toLowerCase()
         return kind === 'table'
       }).length
     : 0
 
-  return (
-    elementKindCount +
-    countPatternInTexts(getDocumentElementTexts(document), HTML_TABLE_PATTERN)
-  )
+  return elementKindCount + countPatternInTexts(getDocumentElementTexts(document), HTML_TABLE_PATTERN)
 }
 
 export function getDocumentRuntimeStats(document: Document) {
@@ -179,27 +144,17 @@ export function getDocumentRuntimeStats(document: Document) {
   const pdfQuality = getDocumentPdfQualityRecord(document)
   const stageDurations = getRecord(meta.ingest_stage_durations_ms)
 
-  const pageCount = firstPositiveNumber(
-    meta.page_count,
-    analytics?.page_count,
-    pdfQuality?.page_count
-  )
-  const imageCount =
-    firstPositiveNumber(meta.image_count, analytics?.image_count) ||
-    countDocumentImageRefs(document)
-  const tableCount =
-    firstPositiveNumber(meta.table_count, analytics?.table_count) ||
-    countDocumentTableRefs(document)
+  const pageCount = firstPositiveNumber(meta.page_count, analytics?.page_count, pdfQuality?.page_count)
+  const imageCount = firstPositiveNumber(meta.image_count, analytics?.image_count) || countDocumentImageRefs(document)
+  const tableCount = firstPositiveNumber(meta.table_count, analytics?.table_count) || countDocumentTableRefs(document)
   const blockCount = firstPositiveNumber(
     meta.block_count,
     analytics?.block_count,
-    Array.isArray(meta.elements) ? meta.elements.length : 0
+    Array.isArray(meta.elements) ? meta.elements.length : 0,
   )
   const parseDurationSec = firstPositiveNumber(
     meta.parse_duration_sec,
-    stageDurations?.parse
-      ? safeNumber(stageDurations.parse) / 1000
-      : undefined
+    stageDurations?.parse ? safeNumber(stageDurations.parse) / 1000 : undefined,
   )
 
   return {
@@ -216,35 +171,22 @@ export function getDocumentUserMeta(document: Document): Record<string, unknown>
   const meta = document.metadata
   if (!meta || typeof meta !== 'object') return null
   const user = (meta as Record<string, unknown>).user
-  return user && typeof user === 'object'
-    ? (user as Record<string, unknown>)
-    : null
+  return user && typeof user === 'object' ? (user as Record<string, unknown>) : null
 }
 
-export function getPersistedSampleDisposition(
-  document: Document
-): SampleDisposition | null {
+export function getPersistedSampleDisposition(document: Document): SampleDisposition | null {
   const disposition = getDocumentUserMeta(document)?.precheck_disposition
-  return disposition === 'approved' || disposition === 'manual'
-    ? disposition
-    : null
+  return disposition === 'approved' || disposition === 'manual' ? disposition : null
 }
 
-export function getPersistedSalesAuditDisposition(
-  file: DatasetPrecheckFileOut
-): SampleDisposition | null {
+export function getPersistedSalesAuditDisposition(file: DatasetPrecheckFileOut): SampleDisposition | null {
   const disposition = file.review_disposition
-  const reviewedAt =
-    typeof file.reviewed_at === 'string' ? file.reviewed_at : null
+  const reviewedAt = typeof file.reviewed_at === 'string' ? file.reviewed_at : null
   if (!reviewedAt) return null
-  return disposition === 'approved' || disposition === 'manual'
-    ? disposition
-    : null
+  return disposition === 'approved' || disposition === 'manual' ? disposition : null
 }
 
-export function collectSalesAuditSampleFiles(
-  samples: DatasetPrecheckSamplesResponse | null
-): DatasetPrecheckFileOut[] {
+export function collectSalesAuditSampleFiles(samples: DatasetPrecheckSamplesResponse | null): DatasetPrecheckFileOut[] {
   if (!samples) return []
 
   const representative = samples.representative ?? []
@@ -253,12 +195,7 @@ export function collectSalesAuditSampleFiles(
   const topLongText = samples.top_long_text ?? []
   const unique = new Map<string, DatasetPrecheckFileOut>()
 
-  for (const file of [
-    ...needsReview,
-    ...topLargeFiles,
-    ...topLongText,
-    ...representative,
-  ]) {
+  for (const file of [...needsReview, ...topLargeFiles, ...topLongText, ...representative]) {
     unique.set(String(file.name), file)
   }
 
@@ -303,10 +240,7 @@ export function downloadTextFile(filename: string, content: string, type: string
   URL.revokeObjectURL(url)
 }
 
-export function getPageCountSourceLabel(
-  meta: Record<string, unknown>,
-  pageCount: number
-): string {
+export function getPageCountSourceLabel(meta: Record<string, unknown>, pageCount: number): string {
   if (typeof meta.page_count_source === 'string') return meta.page_count_source
   if (pageCount) return 'metadata'
   return ''

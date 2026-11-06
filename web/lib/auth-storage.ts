@@ -26,6 +26,7 @@ const AUTH_SYNC_SOURCE = `tab:${Math.random().toString(36).slice(2, 10)}`
 let authSyncChannel: BroadcastChannel | null = null
 let authSyncChannelInitialized = false
 let lastHandledAuthSyncMessageId: string | null = null
+let authSessionRevision = 0
 
 function getEnvTenantId(): string | null {
   return process.env.NEXT_PUBLIC_TENANT_ID || null
@@ -67,6 +68,7 @@ function buildAuthCacheScope(tenantId: string | null, userId: string | null): st
 
 function notifyAuthScopeChanged(previousScope?: string, force = false) {
   if (!force && previousScope !== undefined && previousScope === getAuthCacheScope()) return
+  authSessionRevision += 1
   removeClientStorage(DOCUMENT_VIEW_STORAGE_KEY)
   globalThis.window?.dispatchEvent(new Event(AUTH_SCOPE_CHANGED_EVENT))
 }
@@ -82,9 +84,7 @@ function isAuthSyncMessage(value: unknown): value is AuthSyncMessage {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<AuthSyncMessage>
   return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.source === 'string' &&
-    candidate.type === AUTH_SYNC_CLEAR_TYPE
+    typeof candidate.id === 'string' && typeof candidate.source === 'string' && candidate.type === AUTH_SYNC_CLEAR_TYPE
   )
 }
 
@@ -166,7 +166,7 @@ globalThis.window?.addEventListener('storage', (event) => {
   }
   if (event.key === TENANT_ID_KEY) {
     notifyAuthScopeChanged(
-      buildAuthCacheScope(event.oldValue || process.env.NEXT_PUBLIC_TENANT_ID || null, getStoredUserId())
+      buildAuthCacheScope(event.oldValue || process.env.NEXT_PUBLIC_TENANT_ID || null, getStoredUserId()),
     )
     return
   }
@@ -209,6 +209,10 @@ export function getAuthCacheScope(): string {
   return buildAuthCacheScope(getAuthScopeTenantId(), getAuthScopeUserId())
 }
 
+export function getAuthSessionRevision(): number {
+  return authSessionRevision
+}
+
 export function getStoredUser(): UserProfile | null {
   if (!hasStoredAccessToken()) return null
   const raw = readClientStorage(USER_KEY)
@@ -222,6 +226,8 @@ export function getStoredUser(): UserProfile | null {
 
 export function setAuthSession(params: { token: AuthToken; user: UserProfile }) {
   if (globalThis.window === undefined) return
+  // An explicit login replaces pending request ownership even when its user/token is reused.
+  authSessionRevision += 1
   const { token, user } = params
   const previousScope = getAuthCacheScope()
   const previousUserId = readClientStorage(USER_ID_KEY)
@@ -253,6 +259,7 @@ export function setStoredUser(user: UserProfile) {
 
 export function clearAuthSession() {
   if (globalThis.window === undefined) return
+  authSessionRevision += 1
   const previousScope = getAuthCacheScope()
   removeStoredAccessToken()
   removeClientStorage(USER_KEY)

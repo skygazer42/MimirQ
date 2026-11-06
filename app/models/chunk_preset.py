@@ -5,7 +5,6 @@ Chunk presets are tenant-scoped templates for chunking configuration used by the
 chunk preview UI and ingestion tuning workflows.
 """
 
-
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, String, Text

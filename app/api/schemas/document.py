@@ -9,6 +9,7 @@ from uuid import UUID
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.core.config import settings
 from app.rag.pipeline_plugins.refs import clean_python_plugin_ref
 
 from .base import OrmModel
@@ -90,7 +91,7 @@ def _dedupe_member_ids(raw_members: list[str] | None) -> list[str] | None:
     seen: set[str] = set()
     normalized: list[str] = []
     for raw in raw_members:
-        member_id = str(raw or "").strip()
+        member_id = raw.strip()
         if not member_id or member_id in seen:
             continue
         if len(member_id) > 255:
@@ -107,11 +108,7 @@ def _dedupe_group_ids(raw_groups: list[UUID] | None) -> list[UUID] | None:
         return None
     seen: set[UUID] = set()
     normalized: list[UUID] = []
-    for raw in raw_groups:
-        try:
-            group_id = UUID(str(raw))
-        except Exception as exc:
-            raise ValueError("partial_group_list contains invalid UUID") from exc
+    for group_id in raw_groups:
         if group_id in seen:
             continue
         seen.add(group_id)
@@ -195,8 +192,9 @@ class DocumentPipelineOptions(BaseModel):
         default=None, description="Extract document-level keywords for metadata enrichment (best-effort)"
     )
     governance_keywords_provider: str | None = Field(
-        default=None, description="Keyword provider: auto / jieba / jieba_textrank / hanlp / simple"
+        default=None, description="Keyword provider: auto / jieba / jieba_textrank / simple"
     )
+
     governance_keywords_top_k: int | None = Field(default=None, ge=1, le=100, description="Max keywords to extract")
     governance_keywords_max_chars: int | None = Field(
         default=None, ge=0, le=2_000_000, description="Max chars used for keyword extraction (truncate when exceeded)"
@@ -484,6 +482,42 @@ class DocumentPipelineOptions(BaseModel):
         return self
 
 
+class UrlUploadRequest(BaseModel):
+    """Upload a document by fetching a remote URL (connector skeleton)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(..., max_length=2000)
+    dataset_id: UUID | None = None
+    filename: str | None = Field(
+        default=None, max_length=500, description="Optional override filename (used for extension + display)"
+    )
+    # Optional: authenticated fetch (cookie/bearer/basic) for private pages.
+    fetch_headers: dict[str, str] | None = None
+    user_agent: str | None = Field(default=None, max_length=200)
+    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: DocumentPipelineOptions | None = None
+
+
+class LocalHtmlIngestRequest(BaseModel):
+    """Ingest a local HTML payload as a document (internal connector helper)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    html: str = Field(..., description="HTML content (fragment or full document)")
+    source_url: str | None = Field(
+        default=None, max_length=2000, description="Best-effort source URL for citations/debug"
+    )
+    dataset_id: UUID | None = None
+    filename: str | None = Field(
+        default=None, max_length=500, description="Optional override filename (used for extension + display)"
+    )
+    parser_backend: str = Field(default=settings.DEFAULT_PARSER_BACKEND)
+    chunk_strategy: str = Field(default=settings.DEFAULT_CHUNK_STRATEGY)
+    pipeline: DocumentPipelineOptions | None = None
+
+
 DocumentAccessMode = Literal["inherit", "only_me", "all_team_members", "partial_members"]
 
 
@@ -736,7 +770,7 @@ class DocumentChunkSchema(OrmModel):
     def _populate_index_operation(self) -> "DocumentChunkSchema":
         if self.index_operation is not None:
             return self
-        raw = self.metadata.get("index_operation_result") if isinstance(self.metadata, dict) else None
+        raw = self.metadata.get("index_operation_result")
         if not isinstance(raw, dict):
             return self
         self.index_operation = dict(raw)
@@ -1004,7 +1038,7 @@ class DocumentPipelineProvenance(BaseModel):
     def from_metadata(cls, meta: dict[str, Any] | None) -> "DocumentPipelineProvenance":
         m = meta if isinstance(meta, dict) else {}
         effective = _pipeline_effective_from_metadata(m)
-        governance_enabled = bool(m.get("governance_enabled") or getattr(effective, "governance_enabled", False))
+        governance_enabled = bool(m.get("governance_enabled") or effective.governance_enabled)
 
         return cls(
             active_pipeline_hash=_active_pipeline_hash_from_metadata(m),

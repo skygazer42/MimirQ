@@ -92,21 +92,19 @@ class AgentExecutionLoggingMiddleware:
         return state
 
 
+def _configured_logging_middleware() -> AgentExecutionLoggingMiddleware:
+    return AgentExecutionLoggingMiddleware(
+        enabled=settings.AGENT_LOG_ENABLED,
+        include_execution_path=settings.AGENT_LOG_INCLUDE_EXECUTION_PATH,
+        max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS or 500,
+    )
+
+
 @before_agent(priority=50, name="agent_logging_before")
 def _agent_logging_before(state: dict[str, Any]) -> dict[str, Any]:
-    mw = AgentExecutionLoggingMiddleware(
-        enabled=bool(getattr(settings, "AGENT_LOG_ENABLED", False)),
-        include_execution_path=bool(getattr(settings, "AGENT_LOG_INCLUDE_EXECUTION_PATH", False)),
-        max_preview_chars=int(getattr(settings, "AGENT_LOG_MAX_PREVIEW_CHARS", 500) or 500),
-    )
-    return mw.before(state)
+    return _configured_logging_middleware().before(state)
 
 
 @after_agent(priority=50, name="agent_logging_after")
 def _agent_logging_after(state: dict[str, Any]) -> dict[str, Any]:
-    mw = AgentExecutionLoggingMiddleware(
-        enabled=bool(getattr(settings, "AGENT_LOG_ENABLED", False)),
-        include_execution_path=bool(getattr(settings, "AGENT_LOG_INCLUDE_EXECUTION_PATH", False)),
-        max_preview_chars=int(getattr(settings, "AGENT_LOG_MAX_PREVIEW_CHARS", 500) or 500),
-    )
-    return mw.after(state)
+    return _configured_logging_middleware().after(state)

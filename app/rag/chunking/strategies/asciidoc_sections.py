@@ -9,7 +9,6 @@ Targets AsciiDoc-like documents with headings such as:
 The chunker splits by heading blocks and preserves character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -74,7 +73,7 @@ def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
     title = s[j:].strip()
     if not title:
         return None
-    return int(i), title
+    return i, title
 
 
 def _iter_lines(text: str) -> list[_Line]:
@@ -103,7 +102,7 @@ def _iter_headings(text: str) -> list[AsciidocHeading]:
             AsciidocHeading(
                 start=ln.start,
                 end=ln.end,
-                level=max(1, min(6, int(level))),
+                level=max(1, min(6, level)),
                 title=title,
             )
         )
@@ -133,7 +132,7 @@ def _build_sections(text: str, headings: list[AsciidocHeading]) -> list[_Section
 
 
 def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     while len(stack) >= level:
         stack.pop()
     stack.append(heading_text)
@@ -152,7 +151,7 @@ def looks_like_asciidoc(text: str) -> bool:
 
 
 class AsciiDocSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -189,7 +188,7 @@ class AsciiDocSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["asciidoc_heading"] = section.heading.title
-                meta["asciidoc_level"] = int(section.heading.level)
+                meta["asciidoc_level"] = section.heading.level
             if path:
                 meta["asciidoc_path"] = path
             if path_str:

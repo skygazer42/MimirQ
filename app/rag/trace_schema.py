@@ -6,7 +6,6 @@ Design constraints:
 - PII-safe: never return raw user question/query or chunk text.
 """
 
-
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field

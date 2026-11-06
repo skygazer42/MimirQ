@@ -7,16 +7,18 @@ import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
-import { pipelineApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientWarning } from '@/lib/client-logging'
-import type { AutoDocumentTag } from '@/types'
+import type { AutoDocumentTag } from '@/types/processing'
 
-interface DataClassifierProps {
+type DataClassifierProps = {
   content: string
   initialCategory?: string | null
   initialTags?: string[]
   onClassify: (category: string, tags: string[]) => void
 }
+
+const EMPTY_TAGS: string[] = []
 
 type CategoryId = 'technical' | 'product' | 'business' | 'legal' | 'hr' | 'finance' | 'other'
 
@@ -38,7 +40,7 @@ function dedupeStrings(values: string[]): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   for (const value of values) {
-    const normalized = String(value || '').trim()
+    const normalized = value.trim()
     if (!normalized || seen.has(normalized)) continue
     seen.add(normalized)
     result.push(normalized)
@@ -55,7 +57,12 @@ function isLongTag(tag: string): boolean {
 }
 
 function displayTag(tag: string): string {
-  const sensitivityLabels: Record<string, string> = { internal: '内部', public: '公开', restricted: '受限', confidential: '机密' }
+  const sensitivityLabels: Record<string, string> = {
+    internal: '内部',
+    public: '公开',
+    restricted: '受限',
+    confidential: '机密',
+  }
   return sensitivityLabels[tag] ?? tag
 }
 
@@ -71,7 +78,7 @@ function selectCategoryTag(tags: AutoDocumentTag[]): AutoDocumentTag | undefined
 export function DataClassifier({
   content,
   initialCategory = null,
-  initialTags = [],
+  initialTags = EMPTY_TAGS,
   onClassify,
 }: Readonly<DataClassifierProps>) {
   const t = useTranslations('DataClassifier')
@@ -83,7 +90,7 @@ export function DataClassifier({
         tone,
         label: t(`categories.${id}.label`),
       })),
-    [t]
+    [t],
   )
   const suggestedTagLabels = t.raw('suggestedTags') as string[]
   const [selectedCategory, setSelectedCategory] = useState<string | null>(initialCategory)
@@ -91,14 +98,32 @@ export function DataClassifier({
   const [newTag, setNewTag] = useState('')
   const [isAutoClassifying, setIsAutoClassifying] = useState(false)
   const [suggestedTags, setSuggestedTags] = useState<string[]>([])
-  const shortTags = tags.filter(tag => !isLongTag(tag))
+  const shortTags = tags.filter((tag) => !isLongTag(tag))
   const longTags = tags.filter(isLongTag)
-  const availableSuggestions = dedupeStrings([...suggestedTags, ...suggestedTagLabels])
-    .filter(tag => !tags.some(item => displayTag(item) === displayTag(tag)) && !isLongTag(tag))
-  const contentRef = useRef(content)
-  useEffect(() => { contentRef.current = content }, [content])
-  useEffect(() => { setSelectedCategory(initialCategory) }, [initialCategory])
-  useEffect(() => { setTags(initialTags) }, [initialTags])
+  const availableSuggestions = dedupeStrings([...suggestedTags, ...suggestedTagLabels]).filter(
+    (tag) => !tags.some((item) => displayTag(item) === displayTag(tag)) && !isLongTag(tag),
+  )
+  const activeClassificationRef = useRef<symbol | null>(null)
+  const onClassifyRef = useRef(onClassify)
+
+  useEffect(() => {
+    onClassifyRef.current = onClassify
+  }, [onClassify])
+
+  useEffect(() => {
+    activeClassificationRef.current = null
+    setIsAutoClassifying(false)
+    setSelectedCategory(initialCategory)
+    setTags(initialTags)
+  }, [content, initialCategory, initialTags])
+
+  useEffect(() => {
+    setSuggestedTags([])
+    setNewTag('')
+    return () => {
+      activeClassificationRef.current = null
+    }
+  }, [content])
 
   const handleAutoClassify = useCallback(async () => {
     const source = String(content || '')
@@ -107,6 +132,8 @@ export function DataClassifier({
       return
     }
 
+    const classification = Symbol()
+    activeClassificationRef.current = classification
     setIsAutoClassifying(true)
     try {
       const response = await pipelineApi.autoAnnotations({
@@ -120,8 +147,8 @@ export function DataClassifier({
         keyword_top_k: 12,
         max_annotations: 60,
       })
-      if (contentRef.current !== source) return
-      const documentTags = response.document_tags || []
+      if (activeClassificationRef.current !== classification) return
+      const documentTags = response.document_tags
       const categoryTag = selectCategoryTag(documentTags)
       const nextCategory = categoryTag ? getTagText(categoryTag) : t('categories.other.label')
       const backendSuggestedTags = dedupeStrings(documentTags.map(getTagText))
@@ -130,7 +157,7 @@ export function DataClassifier({
       setSelectedCategory(nextCategory)
       setSuggestedTags(backendSuggestedTags)
       setTags(nextTags)
-      onClassify(nextCategory, nextTags)
+      onClassifyRef.current(nextCategory, nextTags)
 
       if (backendSuggestedTags.length > 0) {
         toast.success(t('auto.success', { count: backendSuggestedTags.length }))
@@ -138,81 +165,168 @@ export function DataClassifier({
         toast.info(t('auto.noTags'))
       }
     } catch (error) {
+      if (activeClassificationRef.current !== classification) return
       reportClientWarning('Backend auto classification failed', error)
       toast.error(t('auto.failed'))
     } finally {
-      setIsAutoClassifying(false)
+      if (activeClassificationRef.current === classification) {
+        activeClassificationRef.current = null
+        setIsAutoClassifying(false)
+      }
     }
-  }, [content, isAutoClassifying, onClassify, t, tags])
+  }, [content, isAutoClassifying, t, tags])
 
   const handleAddTag = useCallback(
     (tag: string) => {
       if (tag && !tags.includes(tag)) {
+        activeClassificationRef.current = null
+        setIsAutoClassifying(false)
         const updated = [...tags, tag]
         setTags(updated)
-        onClassify(selectedCategory || '', updated)
+        onClassifyRef.current(selectedCategory || '', updated)
       }
 
       setNewTag('')
     },
-    [onClassify, selectedCategory, tags]
+    [selectedCategory, tags],
   )
 
   const handleRemoveTag = useCallback(
     (tag: string) => {
+      activeClassificationRef.current = null
+      setIsAutoClassifying(false)
       const updated = tags.filter((item) => item !== tag)
       setTags(updated)
-      onClassify(selectedCategory || '', updated)
+      onClassifyRef.current(selectedCategory || '', updated)
     },
-    [onClassify, selectedCategory, tags]
+    [selectedCategory, tags],
   )
 
   return (
     <>
       <div className={styles.toolLine}>
-        <div className={styles.toolIdentity}><strong>分类与标签</strong><span>{tags.length} 个标签</span></div>
-        <div className={styles.toolActions}><Button onClick={() => void handleAutoClassify()} disabled={isAutoClassifying || !content.trim()}>{isAutoClassifying ? <Loader2 className={styles.spinner} /> : <FolderTree className="size-4" />}{isAutoClassifying ? '正在分类…' : '自动分类'}</Button></div>
+        <div className={styles.toolIdentity}>
+          <strong>分类与标签</strong>
+          <span>{tags.length} 个标签</span>
+        </div>
+        <div className={styles.toolActions}>
+          <Button onClick={() => void handleAutoClassify()} disabled={isAutoClassifying || !content.trim()}>
+            {isAutoClassifying ? <Loader2 className={styles.spinner} /> : <FolderTree className="size-4" />}
+            {isAutoClassifying ? '正在分类…' : '自动分类'}
+          </Button>
+        </div>
       </div>
       <div className={styles.toolBody}>
         <div className={styles.classifierForm}>
           <div className={`${styles.fieldGroup} ${styles.classifierCategory}`}>
             <label htmlFor="governance-category">文档分类</label>
-            <select className={styles.fieldControl} id="governance-category" value={selectedCategory || ''} disabled={isAutoClassifying} onChange={event => { setSelectedCategory(event.target.value); onClassify(event.target.value, tags) }}>
-              <option value="">未分类</option>{selectedCategory && !categories.some(category => category.label === selectedCategory) && <option value={selectedCategory}>{selectedCategory}</option>}
-              {categories.map(category => <option key={category.id} value={category.label}>{category.label}</option>)}
+            <select
+              className={styles.fieldControl}
+              id="governance-category"
+              value={selectedCategory || ''}
+              onChange={(event) => {
+                activeClassificationRef.current = null
+                setIsAutoClassifying(false)
+                setSelectedCategory(event.target.value)
+                onClassifyRef.current(event.target.value, tags)
+              }}
+            >
+              <option value="">未分类</option>
+              {selectedCategory && !categories.some((category) => category.label === selectedCategory) && (
+                <option value={selectedCategory}>{selectedCategory}</option>
+              )}
+              {categories.map((category) => (
+                <option key={category.id} value={category.label}>
+                  {category.label}
+                </option>
+              ))}
             </select>
           </div>
-          <form className={styles.classifierTagForm} onSubmit={event => { event.preventDefault(); if (newTag.trim()) handleAddTag(newTag.trim()) }}>
-            <label htmlFor="governance-new-tag" className={styles.fieldLabel}>文档标签</label>
+          <form
+            className={styles.classifierTagForm}
+            onSubmit={(event) => {
+              event.preventDefault()
+              if (newTag.trim()) handleAddTag(newTag.trim())
+            }}
+          >
+            <label htmlFor="governance-new-tag" className={styles.fieldLabel}>
+              文档标签
+            </label>
             <div className={styles.classifierTagEntry}>
-              <input className={styles.fieldControl} id="governance-new-tag" value={newTag} onChange={event => setNewTag(event.target.value)} placeholder="输入标签名称" disabled={isAutoClassifying} />
-              <Button variant="outline" type="submit" disabled={!newTag.trim() || isAutoClassifying}><Plus className="size-4" />添加</Button>
+              <input
+                className={styles.fieldControl}
+                id="governance-new-tag"
+                value={newTag}
+                onChange={(event) => setNewTag(event.target.value)}
+                placeholder="输入标签名称"
+              />
+              <Button variant="outline" type="submit" disabled={!newTag.trim()}>
+                <Plus className="size-4" />
+                添加
+              </Button>
             </div>
           </form>
         </div>
-        {shortTags.length > 0 && <ul className={`${styles.tags} ${styles.classifierTags}`} aria-label="已添加标签">
-          {shortTags.map(tag => <li className={styles.tag} key={tag}>
-            <span title={displayTag(tag) !== tag ? tag : undefined}>{displayTag(tag)}</span>
-            <button type="button" aria-label={'删除标签 ' + tag} disabled={isAutoClassifying} onClick={() => handleRemoveTag(tag)}><X /></button>
-          </li>)}
-        </ul>}
-        {longTags.length > 0 || availableSuggestions.length > 0 ? <div className={styles.annotationDetails}>
-          {longTags.length > 0 && <details className={styles.annotationDisclosure}>
-            <summary><ChevronRight aria-hidden="true" /><span>长文本标签</span><span className={styles.annotationCount}>{longTags.length}</span></summary>
-            <ul className={styles.classifierLongTags} aria-label="长文本标签">
-              {longTags.map(tag => <li key={tag}>
-                <p>{tag}</p>
-                <Button size="icon" variant="ghost" className={styles.annotationDelete} aria-label={'删除标签 ' + tag} disabled={isAutoClassifying} onClick={() => handleRemoveTag(tag)}><X className="size-4" /></Button>
-              </li>)}
-            </ul>
-          </details>}
-          {availableSuggestions.length > 0 && <details className={styles.annotationDisclosure}>
-            <summary><ChevronRight aria-hidden="true" /><span>推荐标签</span><span className={styles.annotationCount}>{availableSuggestions.length}</span></summary>
-            <ul className={styles.classifierSuggestions} aria-label="推荐标签">
-              {availableSuggestions.map(tag => <li key={tag}><button type="button" disabled={isAutoClassifying} aria-label={'添加推荐标签 ' + tag} onClick={() => handleAddTag(tag)}><Plus aria-hidden="true" />{displayTag(tag)}</button></li>)}
-            </ul>
-          </details>}
-        </div> : null}
+        {shortTags.length > 0 && (
+          <ul className={`${styles.tags} ${styles.classifierTags}`} aria-label="已添加标签">
+            {shortTags.map((tag) => (
+              <li className={styles.tag} key={tag}>
+                <span title={displayTag(tag) !== tag ? tag : undefined}>{displayTag(tag)}</span>
+                <button type="button" aria-label={'删除标签 ' + tag} onClick={() => handleRemoveTag(tag)}>
+                  <X />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {longTags.length > 0 || availableSuggestions.length > 0 ? (
+          <div className={styles.annotationDetails}>
+            {longTags.length > 0 && (
+              <details className={styles.annotationDisclosure}>
+                <summary>
+                  <ChevronRight aria-hidden="true" />
+                  <span>长文本标签</span>
+                  <span className={styles.annotationCount}>{longTags.length}</span>
+                </summary>
+                <ul className={styles.classifierLongTags} aria-label="长文本标签">
+                  {longTags.map((tag) => (
+                    <li key={tag}>
+                      <p>{tag}</p>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className={styles.annotationDelete}
+                        aria-label={'删除标签 ' + tag}
+                        onClick={() => handleRemoveTag(tag)}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {availableSuggestions.length > 0 && (
+              <details className={styles.annotationDisclosure}>
+                <summary>
+                  <ChevronRight aria-hidden="true" />
+                  <span>推荐标签</span>
+                  <span className={styles.annotationCount}>{availableSuggestions.length}</span>
+                </summary>
+                <ul className={styles.classifierSuggestions} aria-label="推荐标签">
+                  {availableSuggestions.map((tag) => (
+                    <li key={tag}>
+                      <button type="button" aria-label={'添加推荐标签 ' + tag} onClick={() => handleAddTag(tag)}>
+                        <Plus aria-hidden="true" />
+                        {displayTag(tag)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        ) : null}
       </div>
     </>
   )

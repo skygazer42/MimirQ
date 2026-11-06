@@ -13,9 +13,10 @@ import io
 import json
 import re
 import zipfile
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
@@ -54,14 +55,18 @@ from app.models.evaluation import RagasRegressionCase
 from app.models.evidence import EvidenceItem, EvidenceSuite
 from app.models.feedback import MessageFeedback
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
 from app.services.hardcase_discovery_service import (
     build_rag_trace_index_from_records,
     plan_feedback_hardcase_candidates,
     read_jsonl_tail,
 )
 from app.services.ltr_rollout_workflow import materialize_feedback_case, normalize_reference_sources
+
+if TYPE_CHECKING:
+    from app.rag.reranker.ltr import LTRFeatureSpec
+    from app.rag.reranker.types import RerankCandidate
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -91,12 +96,16 @@ def _hash_text_for_metrics(text: str) -> str:
 
 
 def _ensure_status(item: EvidenceItem, *, expected: str) -> None:
-    cur = str(getattr(item, "status", "") or "").strip().lower()
+    cur = str(item.status or "").strip().lower()
     if cur != expected:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid status transition (expected {expected}, got {cur or 'unknown'})",
         )
+
+
+def _empty_suite_counts() -> dict[str, int]:
+    return {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
 
 
 def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dict[str, dict[str, int]]:
@@ -118,7 +127,7 @@ def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dic
     for suite_id, status, cnt in rows:
         sid = str(suite_id)
         st = str(status or "").strip().lower() or "unknown"
-        out.setdefault(sid, {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0})
+        out.setdefault(sid, _empty_suite_counts())
         if st in out[sid]:
             out[sid][st] = int(cnt or 0)
         out[sid]["total"] += int(cnt or 0)
@@ -152,11 +161,11 @@ def _assert_suite_access(
     suite: EvidenceSuite,
     writable: bool,
 ) -> None:
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
     if writable:
-        DatasetService.assert_dataset_writable(db, ds, account_id)
+        dataset_service.assert_dataset_writable(db, ds, account_id)
         return
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
 
 def _build_empty_reference_repair_response(
@@ -350,10 +359,8 @@ def _collect_hardcase_feedback_rows(
                 "conversation_id": str(feedback.conversation_id),
                 "message_id": str(feedback.message_id),
                 "request_id": request_id,
-                "rating": int(getattr(feedback, "rating", 0) or 0),
-                "tags": list(getattr(feedback, "tags", []) or [])
-                if isinstance(getattr(feedback, "tags", None), list)
-                else [],
+                "rating": int(feedback.rating or 0),
+                "tags": list(feedback.tags or []) if isinstance(feedback.tags, list) else [],
             }
         )
     return out
@@ -368,7 +375,7 @@ def _apply_evidence_item_patch_fields(
     account_id: str,
     dataset_id: UUID,
 ) -> None:
-    fields = set(getattr(payload, "model_fields_set", set()) or set())
+    fields = set(payload.model_fields_set or set())
     if "query" in fields and payload.query is not None:
         row.query = payload.query
     if "expected_answer" in fields:
@@ -407,7 +414,7 @@ def _as_float_or_zero(value: Any) -> float:
 
 
 def _extract_reference_chunk_ids(item: EvidenceItem) -> set[str]:
-    refs = getattr(item, "reference_sources", None) or []
+    refs = item.reference_sources or []
     if not isinstance(refs, list):
         return set()
     out: set[str] = set()
@@ -463,9 +470,9 @@ def _build_ltr_training_row(
     query_hash: str,
     retrieval_cfg_hash: str | None,
     ref_chunk_ids: set[str],
-    spec: Any,
-    extract_ltr_features: Any,
-    rerank_candidate_cls: Any,
+    spec: "LTRFeatureSpec",
+    extract_ltr_features: Callable[..., list[float]],
+    rerank_candidate_cls: type["RerankCandidate"],
 ) -> dict[str, Any] | None:
     chunk_id = str(citation.get("chunk_id") or "").strip()
     if not chunk_id:
@@ -488,15 +495,15 @@ def _build_ltr_training_row(
         "dataset_id": str(suite.dataset_id),
         "query_hash": query_hash,
         "retrieval_config_hash": retrieval_cfg_hash,
-        "rank": int(rank),
-        "label": int(1 if chunk_id in ref_chunk_ids else 0),
+        "rank": rank,
+        "label": 1 if chunk_id in ref_chunk_ids else 0,
         "candidate": {
             "chunk_id": chunk_id,
             "document_id": str(citation.get("document_id") or "").strip() or None,
         },
         "slices": {
-            "status": str(getattr(item, "status", "") or "").strip().lower() or None,
-            "tags": list(getattr(item, "tags", []) or []),
+            "status": str(item.status or "").strip().lower() or None,
+            "tags": list(item.tags or []),
         },
         "features": features,
     }
@@ -510,14 +517,14 @@ def _append_hard_negative_line(
     citations: list[dict[str, Any]],
     retrieval_cfg_hash: str | None,
     query_hash: str,
-    mine_hard_negatives_for_case_from_trace: Any,
+    mine_hard_negatives_for_case_from_trace: Callable[..., dict[str, Any]],
 ) -> int:
     try:
         trace_record = {
             "citations": citations,
             "retrieval": {"retrieval_config_hash": retrieval_cfg_hash},
         }
-        case = {"reference_sources": getattr(item, "reference_sources", None) or []}
+        case = {"reference_sources": item.reference_sources or []}
         hard_negative = mine_hard_negatives_for_case_from_trace(
             case=case,
             trace_record=trace_record,
@@ -530,7 +537,7 @@ def _append_hard_negative_line(
         hard_negative["suite_id"] = str(suite.id)
         hard_negative["item_id"] = str(item.id)
         hard_negative["dataset_id"] = str(suite.dataset_id)
-        hard_negative["tags"] = list(getattr(item, "tags", []) or [])
+        hard_negative["tags"] = list(item.tags or [])
         hard_lines.append(json.dumps(hard_negative, ensure_ascii=False, separators=(",", ":"), default=str))
         return 1
     except Exception as exc:
@@ -542,11 +549,11 @@ def _collect_ltr_training_bundle_rows(
     *,
     suite: EvidenceSuite,
     items: list[EvidenceItem],
-    spec: Any,
-    stable_hash: Any,
-    extract_ltr_features: Any,
-    rerank_candidate_cls: Any,
-    mine_hard_negatives_for_case_from_trace: Any,
+    spec: "LTRFeatureSpec",
+    stable_hash: Callable[..., str],
+    extract_ltr_features: Callable[..., list[float]],
+    rerank_candidate_cls: type["RerankCandidate"],
+    mine_hard_negatives_for_case_from_trace: Callable[..., dict[str, Any]],
 ) -> tuple[list[str], list[str], int, int, int]:
     training_lines: list[str] = []
     hard_lines: list[str] = []
@@ -555,7 +562,7 @@ def _collect_ltr_training_bundle_rows(
     hard_total = 0
 
     for item in items:
-        snapshot = getattr(item, "retrieval_snapshot", None) or {}
+        snapshot = item.retrieval_snapshot or {}
         if not isinstance(snapshot, dict):
             continue
         citations = snapshot.get("citations") or []
@@ -563,7 +570,7 @@ def _collect_ltr_training_bundle_rows(
             continue
 
         items_with_snapshot += 1
-        query_hash = stable_hash(str(getattr(item, "query", "") or ""), length=64)
+        query_hash = stable_hash(str(item.query or ""), length=64)
         ref_chunk_ids = _extract_reference_chunk_ids(item)
         retrieval_cfg_hash = _resolve_retrieval_config_hash(snapshot)
 
@@ -607,7 +614,7 @@ def _build_ltr_training_manifest(
     include_archived_items: bool,
     max_items: int,
     spec_version: int,
-    spec: Any,
+    spec: "LTRFeatureSpec",
     items_total: int,
     items_with_snapshot: int,
     rows_total: int,
@@ -620,8 +627,8 @@ def _build_ltr_training_manifest(
         "dataset_id": str(suite.dataset_id),
         "suite": {
             "id": str(suite.id),
-            "name": str(getattr(suite, "name", "") or ""),
-            "tags": list(getattr(suite, "tags", []) or []),
+            "name": str(suite.name or ""),
+            "tags": list(suite.tags or []),
             "include_archived_items": bool(include_archived_items),
             "max_items": int(max_items or 0),
         },
@@ -719,48 +726,48 @@ def _feedback_training_export_row(
     question: str,
     reference_sources: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    extra = dict(getattr(feedback, "extra", {}) or {})
+    extra = dict(feedback.extra or {})
     return {
         "schema": "mimirq.training_export_row.v1",
         "source_type": "feedback",
         "source_id": str(feedback.id),
-        "dataset_id": str(getattr(conversation, "dataset_id", "") or "") or None,
+        "dataset_id": str(conversation.dataset_id or "") or None,
         "status": "feedback",
         "question": str(question or "").strip(),
-        "expected_answer": getattr(feedback, "expected_answer", None),
-        "tags": list(getattr(feedback, "tags", []) or []),
+        "expected_answer": feedback.expected_answer,
+        "tags": list(feedback.tags or []),
         "reference_sources": normalize_reference_sources(reference_sources),
         "trace_snapshot": dict(trace_payload or {}),
         "rag_config_snapshot": dict(extra.get("rag_config_snapshot") or {}),
         "source_metadata": {
             "conversation_id": str(conversation.id),
             "message_id": str(assistant.id),
-            "rating": int(getattr(feedback, "rating", 0) or 0),
-            "reason": str(getattr(feedback, "reason", "") or "") or None,
+            "rating": int(feedback.rating or 0),
+            "reason": str(feedback.reason or "") or None,
         },
-        "created_at": feedback.created_at.isoformat() if getattr(feedback, "created_at", None) else None,
-        "updated_at": feedback.updated_at.isoformat() if getattr(feedback, "updated_at", None) else None,
+        "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
+        "updated_at": feedback.updated_at.isoformat() if feedback.updated_at else None,
     }
 
 
 def _evidence_training_export_row(item: EvidenceItem) -> dict[str, Any]:
-    source_metadata = dict(getattr(item, "source_metadata", {}) or {})
-    source_metadata.setdefault("suite_id", str(getattr(item, "suite_id", "") or ""))
+    source_metadata = dict(item.source_metadata or {})
+    source_metadata.setdefault("suite_id", str(item.suite_id or ""))
     return {
         "schema": "mimirq.training_export_row.v1",
         "source_type": "evidence_item",
         "source_id": str(item.id),
-        "dataset_id": str(getattr(item, "dataset_id", "") or "") or None,
-        "status": str(getattr(item, "status", "") or "").strip().lower() or None,
-        "question": str(getattr(item, "query", "") or "").strip(),
-        "expected_answer": getattr(item, "expected_answer", None),
-        "tags": list(getattr(item, "tags", []) or []),
-        "reference_sources": normalize_reference_sources(getattr(item, "reference_sources", None)),
-        "trace_snapshot": dict(getattr(item, "retrieval_snapshot", {}) or {}),
-        "rag_config_snapshot": dict(getattr(item, "rag_config_snapshot", {}) or {}),
+        "dataset_id": str(item.dataset_id or "") or None,
+        "status": str(item.status or "").strip().lower() or None,
+        "question": str(item.query or "").strip(),
+        "expected_answer": item.expected_answer,
+        "tags": list(item.tags or []),
+        "reference_sources": normalize_reference_sources(item.reference_sources),
+        "trace_snapshot": dict(item.retrieval_snapshot or {}),
+        "rag_config_snapshot": dict(item.rag_config_snapshot or {}),
         "source_metadata": source_metadata,
-        "created_at": item.created_at.isoformat() if getattr(item, "created_at", None) else None,
-        "updated_at": item.updated_at.isoformat() if getattr(item, "updated_at", None) else None,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
     }
 
 
@@ -805,7 +812,7 @@ def _collect_feedback_training_export_rows(
 
     out: list[dict[str, Any]] = []
     for feedback, assistant, conversation, preceding_user_message in rows:
-        extra = dict(getattr(feedback, "extra", {}) or {})
+        extra = dict(feedback.extra or {})
         trace_payload = extra.get("retrieval_trace") if isinstance(extra.get("retrieval_trace"), dict) else None
         materialized = materialize_feedback_case(
             feedback=feedback,
@@ -966,7 +973,7 @@ async def repair_evidence_suite_reference_sources(
     - Does not mutate approved items unless `allow_approved=true`.
     - Dry-run by default (`apply=false`).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
     _assert_suite_access(
@@ -979,7 +986,7 @@ async def repair_evidence_suite_reference_sources(
 
     # Optional async enqueue: run repair as a queue job (default remains synchronous for compatibility).
     if bool(async_mode):
-        if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        if not bool(settings.TASK_QUEUE_ENABLED):
             raise HTTPException(status_code=400, detail="Task queue is disabled (TASK_QUEUE_ENABLED=false)")
         try:
             task_id = await _enqueue_reference_repair_job(
@@ -1035,10 +1042,10 @@ def create_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     row = EvidenceSuite(
         tenant_id=tenant_id,
@@ -1054,7 +1061,7 @@ def create_evidence_suite(
     db.refresh(row)
 
     out = EvidenceSuiteOut.model_validate(row).model_dump()
-    out["item_counts"] = {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
+    out["item_counts"] = _empty_suite_counts()
     return out
 
 
@@ -1069,12 +1076,12 @@ def list_evidence_suites(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     q = db.query(EvidenceSuite).filter(EvidenceSuite.tenant_id == tenant_id)
     if dataset_id is not None:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         q = q.filter(EvidenceSuite.dataset_id == dataset_id)
     else:
         # Security trimming: list only suites under datasets readable by the caller.
@@ -1110,13 +1117,7 @@ def list_evidence_suites(
     items_out: list[dict[str, Any]] = []
     for s in suites:
         out = EvidenceSuiteOut.model_validate(s).model_dump()
-        out["item_counts"] = counts.get(str(s.id)) or {
-            "total": 0,
-            "draft": 0,
-            "reviewed": 0,
-            "approved": 0,
-            "archived": 0,
-        }
+        out["item_counts"] = counts.get(str(s.id)) or _empty_suite_counts()
         items_out.append(out)
 
     return {"total": total, "items": items_out}
@@ -1130,24 +1131,18 @@ def get_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, row.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, row.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[row.id])
     out = EvidenceSuiteOut.model_validate(row).model_dump()
-    out["item_counts"] = counts.get(str(row.id)) or {
-        "total": 0,
-        "draft": 0,
-        "reviewed": 0,
-        "approved": 0,
-        "archived": 0,
-    }
+    out["item_counts"] = counts.get(str(row.id)) or _empty_suite_counts()
     return out
 
 
@@ -1171,18 +1166,18 @@ def get_evidence_suite_dashboard(
 
     Coverage is derived from reference_sources by resolving referenced documents.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     # Counts: include archived so the dashboard matches suite list badges.
     counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[suite_id])
-    item_counts = counts.get(str(suite_id)) or {"total": 0, "draft": 0, "reviewed": 0, "approved": 0, "archived": 0}
+    item_counts = counts.get(str(suite_id)) or _empty_suite_counts()
 
     q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
     if not include_archived_items:
@@ -1192,7 +1187,7 @@ def get_evidence_suite_dashboard(
     # Resolve document slice metadata (language/file_type/quality bucket).
     doc_ids: set[UUID] = set()
     for it in items:
-        refs = it.reference_sources if isinstance(getattr(it, "reference_sources", None), list) else []
+        refs = it.reference_sources if isinstance(it.reference_sources, list) else []
         for ref in refs:
             if not isinstance(ref, dict):
                 continue
@@ -1259,10 +1254,10 @@ def list_evidence_suite_hardcase_candidates(
 
     Output is clustered/deduped by `question_hash` and does NOT include raw query text.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
-    if getattr(suite, "archived_at", None) is not None:
+    if suite.archived_at is not None:
         raise HTTPException(status_code=400, detail="Evidence suite is archived")
     _assert_suite_access(
         db,
@@ -1272,8 +1267,8 @@ def list_evidence_suite_hardcase_candidates(
         writable=False,
     )
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = bool(settings.ENABLE_METRICS_LOG)
+    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
     now = _now_utc()
 
     if not enabled:
@@ -1337,8 +1332,8 @@ def list_evidence_suite_hardcase_candidates(
         window_minutes=int(window_minutes),
         max_bytes=int(max_bytes),
         truncated=truncated,
-        feedback_scanned=int(len(feedback_rows)),
-        trace_index_size=int(len(trace_index)),
+        feedback_scanned=len(feedback_rows),
+        trace_index_size=len(trace_index),
         candidates=candidates,
     )
 
@@ -1352,16 +1347,16 @@ def patch_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not row:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, row.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, row.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
-    fields = set(getattr(payload, "model_fields_set", set()) or set())
+    fields = set(payload.model_fields_set or set())
     if "name" in fields and payload.name is not None:
         row.name = payload.name
     if "description" in fields:
@@ -1379,13 +1374,7 @@ def patch_evidence_suite(
 
     counts = _suite_counts(db, tenant_id=tenant_id, suite_ids=[row.id])
     out = EvidenceSuiteOut.model_validate(row).model_dump()
-    out["item_counts"] = counts.get(str(row.id)) or {
-        "total": 0,
-        "draft": 0,
-        "reviewed": 0,
-        "approved": 0,
-        "archived": 0,
-    }
+    out["item_counts"] = counts.get(str(row.id)) or _empty_suite_counts()
     return out
 
 
@@ -1405,14 +1394,14 @@ def audit_evidence_suite_reference_sources_drift(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
     if not include_archived_items:
@@ -1448,10 +1437,10 @@ def audit_dataset_reference_sources_drift(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     suite_ids = [
         row[0]
@@ -1514,7 +1503,7 @@ def create_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
@@ -1527,8 +1516,8 @@ def create_evidence_item(
     if payload.dataset_id != suite.dataset_id:
         raise HTTPException(status_code=400, detail="dataset_id mismatch")
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     # Normalize and validate evidence pointers before persisting.
     from app.api.v1.evaluations import _finalize_reference_sources  # noqa: WPS433
@@ -1584,7 +1573,7 @@ async def import_evidence_items(
     - reference_sources starts empty; users can later label evidence and progress review/approve.
     - Dedupes by query (query.strip(), whitespace-collapsed) within the suite.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
@@ -1592,8 +1581,8 @@ async def import_evidence_items(
     if suite.archived_at is not None:
         raise HTTPException(status_code=400, detail="Suite is archived")
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     max_bytes = 5 * 1024 * 1024
     raw = await file.read(max_bytes + 1)
@@ -1626,7 +1615,7 @@ async def import_evidence_items(
 
     plan = plan_evidence_item_import(existing_queries=existing, items=items, max_items=int(max_items))
     created = 0
-    skipped = int(plan.get("skipped") or 0) + int(len(parse_errors))
+    skipped = int(plan.get("skipped") or 0) + len(parse_errors)
     errors: list[dict[str, Any]] = list(parse_errors or []) + list(plan.get("errors") or [])
 
     for payload in plan.get("create_items") or []:
@@ -1657,7 +1646,7 @@ async def import_evidence_items(
     return EvidenceItemImportResponse(
         suite_id=suite_id,
         dataset_id=suite.dataset_id,
-        parsed=int(len(items)),
+        parsed=len(items),
         created=int(created),
         skipped=int(skipped),
         errors=errors,
@@ -1675,14 +1664,14 @@ def list_evidence_items(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     q = db.query(EvidenceItem).filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
     if status:
@@ -1702,7 +1691,7 @@ def patch_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = _get_evidence_item_or_404(db, tenant_id=tenant_id, item_id=item_id)
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=row.suite_id)
@@ -1739,7 +1728,7 @@ def review_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
@@ -1751,11 +1740,11 @@ def review_evidence_item(
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     _ensure_status(row, expected="draft")
-    refs = row.reference_sources if isinstance(getattr(row, "reference_sources", None), list) else []
+    refs = row.reference_sources if isinstance(row.reference_sources, list) else []
     if not refs:
         raise HTTPException(status_code=400, detail="Cannot review item without reference_sources")
     row.status = "reviewed"
@@ -1776,7 +1765,7 @@ def approve_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
@@ -1788,11 +1777,11 @@ def approve_evidence_item(
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     _ensure_status(row, expected="reviewed")
-    refs = row.reference_sources if isinstance(getattr(row, "reference_sources", None), list) else []
+    refs = row.reference_sources if isinstance(row.reference_sources, list) else []
     if not refs:
         raise HTTPException(status_code=400, detail="Cannot approve item without reference_sources")
     row.status = "approved"
@@ -1813,7 +1802,7 @@ def archive_evidence_item(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     row = db.query(EvidenceItem).filter(EvidenceItem.id == item_id, EvidenceItem.tenant_id == tenant_id).first()
     if not row:
@@ -1825,10 +1814,10 @@ def archive_evidence_item(
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
-    cur = str(getattr(row, "status", "") or "").strip().lower()
+    cur = str(row.status or "").strip().lower()
     if cur == "archived":
         return row
 
@@ -1854,14 +1843,14 @@ def sync_suite_to_regression_cases(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     approved_items = (
         db.query(EvidenceItem)
@@ -1985,14 +1974,14 @@ def export_evidence_suite(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = db.query(EvidenceSuite).filter(EvidenceSuite.id == suite_id, EvidenceSuite.tenant_id == tenant_id).first()
     if not suite:
         raise HTTPException(status_code=404, detail=_DETAIL_SUITE_NOT_FOUND)
 
-    ds = DatasetService.get_dataset(db, tenant_id, suite.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     q = (
         db.query(EvidenceItem)
@@ -2021,8 +2010,8 @@ def export_evidence_suite(
                 "status": it.status,
                 "query": it.query,
                 "expected_answer": it.expected_answer,
-                "tags": list(getattr(it, "tags", []) or []),
-                "source_metadata": dict(getattr(it, "source_metadata", {}) or {}),
+                "tags": list(it.tags or []),
+                "source_metadata": dict(it.source_metadata or {}),
                 "reference_sources": it.reference_sources,
                 "retrieval_snapshot": it.retrieval_snapshot or {},
                 "rag_config_snapshot": it.rag_config_snapshot or {},
@@ -2068,9 +2057,9 @@ def export_training_dataset(
     - `jsonl`: one stable row per feedback/evidence record
     - `csv`: flattened export with nested JSON columns
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     fmt = str(format or "jsonl").strip().lower() or "jsonl"
     if fmt not in {"jsonl", "csv"}:
@@ -2153,7 +2142,7 @@ def export_evidence_suite_ltr_training_bundle(
     from app.rag.reranker.ltr import LTRFeatureSpec, extract_ltr_features
     from app.rag.reranker.types import RerankCandidate
 
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
     _assert_suite_access(
@@ -2174,9 +2163,9 @@ def export_evidence_suite_ltr_training_bundle(
         q = q.filter(EvidenceItem.status != "archived")
     items = q.all()
 
-    spec_version = int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1)
+    spec_version = int(settings.LTR_FEATURE_SPEC_VERSION or 1)
     spec = LTRFeatureSpec.from_version(spec_version)
-    items_total = int(len(items))
+    items_total = len(items)
     training_lines, hard_lines, items_with_snapshot, rows_total, hard_total = _collect_ltr_training_bundle_rows(
         suite=suite,
         items=items,
@@ -2217,7 +2206,7 @@ def export_evidence_suite_ltr_training_bundle(
         training_lines=training_lines,
         hard_lines=hard_lines,
     )
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(suite, "name", "") or "evidence_suite"))[:64]
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(suite.name or "evidence_suite"))[:64]
     filename = f"{safe}.ltr_training.zip"
     return Response(
         content=raw,

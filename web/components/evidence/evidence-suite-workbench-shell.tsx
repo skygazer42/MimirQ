@@ -6,7 +6,14 @@ import { SuiteActionsBar } from './suite-actions-bar'
 import { Loader2 } from '@/components/icons'
 
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { TagInput } from '@/components/ui/tag-input'
@@ -167,7 +174,8 @@ export function EvidenceSuiteWorkbenchShell({
             <div className="space-y-1">
               <div className="text-sm font-semibold text-foreground">导入待处理反馈</div>
               <div className="text-xs text-muted-foreground text-pretty">
-                当前链接携带了一个待处理的 <span className="font-mono">feedback_id</span>。确认目标 suite 后，可直接导入为 draft EvidenceItem。
+                当前链接携带了一个待处理的 <span className="font-mono">feedback_id</span>。确认目标 suite
+                后，可直接导入为 draft EvidenceItem。
               </div>
               <div className="text-[11px] font-mono text-foreground/80">feedback_id={pendingFeedbackId}</div>
             </div>
@@ -185,7 +193,7 @@ export function EvidenceSuiteWorkbenchShell({
                         source: 'chat_feedback_action',
                       })
                       if (createdId) setPendingFeedbackId('')
-                    })()
+                    })(),
                   )
                 }}
               >
@@ -202,47 +210,125 @@ export function EvidenceSuiteWorkbenchShell({
         </div>
       ) : null}
 
-      <DirectoryWorkspace pane={pane} onPaneChange={setPane} directoryLabel="证据集" detailLabel="证据条目" directory={<SuiteListPanel
-          datasetLabel={datasetLoading ? '加载中…' : dataset?.name || datasetId || '-'}
-          suiteQuery={suiteQuery}
-          onSuiteQueryChange={setSuiteQuery}
-          onRefresh={() => detachPromise(loadSuites())}
-          suitesLoading={suitesLoading}
-          includeArchivedSuites={includeArchivedSuites}
-          onIncludeArchivedSuitesChange={setIncludeArchivedSuites}
-          suitesError={suitesError}
-          filteredSuites={filteredSuites}
-          selectedSuiteId={selectedSuiteId}
-          onCreateSuite={openCreateSuite}
-          onSelectSuite={(suiteId) => {
-            setSelectedSuiteId(suiteId)
-            setSelectedItemId(''); setPane('detail')
+      <DirectoryWorkspace
+        pane={pane}
+        onPaneChange={setPane}
+        directoryLabel="证据集"
+        detailLabel="证据条目"
+        directory={
+          <SuiteListPanel
+            datasetLabel={datasetLoading ? '加载中…' : dataset?.name || datasetId || '-'}
+            suiteQuery={suiteQuery}
+            onSuiteQueryChange={setSuiteQuery}
+            onRefresh={() => detachPromise(loadSuites())}
+            suitesLoading={suitesLoading}
+            includeArchivedSuites={includeArchivedSuites}
+            onIncludeArchivedSuitesChange={setIncludeArchivedSuites}
+            suitesError={suitesError}
+            filteredSuites={filteredSuites}
+            selectedSuiteId={selectedSuiteId}
+            onCreateSuite={openCreateSuite}
+            onSelectSuite={(suiteId) => {
+              setSelectedSuiteId(suiteId)
+              setSelectedItemId('')
+              setPane('detail')
+            }}
+          />
+        }
+      >
+        {selectedSuiteId ? (
+          <>
+            <SuiteActionsBar
+              selectedSuite={selectedSuite}
+              suiteCounts={suiteCounts}
+              importingQAFaq={importingQAFaq}
+              qaFaqInputRef={qaFaqInputRef}
+              onImportQAFaqFile={(file) => {
+                void handleImportQAFaq(file)
+              }}
+              onOpenHardcases={() => setHardcaseOpen(true)}
+              onOpenDashboard={() => setDashboardOpen(true)}
+              onExportSuite={handleExportSuite}
+              onExportLtrTraining={handleExportLtrTraining}
+              onSyncSuite={() => {
+                void handleSyncSuite()
+              }}
+            />
+            <ItemListPanel
+              selectedSuite={selectedSuite}
+              selectedSuiteId={selectedSuiteId}
+              itemQuery={itemQuery}
+              onItemQueryChange={setItemQuery}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              onRefresh={() => detachPromise(loadItems())}
+              itemsLoading={itemsLoading}
+              filteredItems={filteredItems}
+              itemsError={itemsError}
+              selectedItemId={selectedItemId}
+              onCreateItem={openCreateItem}
+              onSelectItem={(id) => {
+                detailTrigger.current = document.activeElement as HTMLElement
+                setSelectedItemId(id)
+                setDetailOpen(true)
+              }}
+              statusBadgeVariant={evidenceStatusBadgeVariant}
+            />
+          </>
+        ) : (
+          <div className={ws.empty}>
+            <h2>
+              {suitesLoading
+                ? '正在读取证据集…'
+                : suitesError
+                  ? '证据集读取失败'
+                  : filteredSuites.length
+                    ? '选择证据集'
+                    : suiteQuery
+                      ? '没有匹配的证据集'
+                      : '还没有证据集'}
+            </h2>
+            <p>
+              {filteredSuites.length
+                ? '从目录选择一个证据集，管理问题、答案和引用。'
+                : '新建证据集后，添加用于复核与回归的问题。'}
+            </p>
+            {!suitesLoading && !suitesError ? (
+              <Button onClick={suiteQuery ? () => setSuiteQuery('') : openCreateSuite}>
+                {suiteQuery ? '清除搜索' : '新建证据集'}
+              </Button>
+            ) : null}
+          </div>
+        )}
+      </DirectoryWorkspace>
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent
+          className={ws.dialog}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault()
+            detailTrigger.current?.focus()
           }}
-        />}>{selectedSuiteId ? <><SuiteActionsBar selectedSuite={selectedSuite} suiteCounts={suiteCounts} importingQAFaq={importingQAFaq} qaFaqInputRef={qaFaqInputRef} onImportQAFaqFile={file => { void handleImportQAFaq(file) }} onOpenHardcases={() => setHardcaseOpen(true)} onOpenDashboard={() => setDashboardOpen(true)} onExportSuite={handleExportSuite} onExportLtrTraining={handleExportLtrTraining} onSyncSuite={() => { void handleSyncSuite() }} /><ItemListPanel
-          selectedSuite={selectedSuite}
-          selectedSuiteId={selectedSuiteId}
-          itemQuery={itemQuery}
-          onItemQueryChange={setItemQuery}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          onRefresh={() => detachPromise(loadItems())}
-          itemsLoading={itemsLoading}
-          filteredItems={filteredItems}
-          itemsError={itemsError}
-          selectedItemId={selectedItemId}
-          onCreateItem={openCreateItem}
-          onSelectItem={id => { detailTrigger.current = document.activeElement as HTMLElement; setSelectedItemId(id); setDetailOpen(true) }}
-          statusBadgeVariant={evidenceStatusBadgeVariant}
-        /></> : <div className={ws.empty}><h2>{suitesLoading ? '正在读取证据集…' : suitesError ? '证据集读取失败' : filteredSuites.length ? '选择证据集' : suiteQuery ? '没有匹配的证据集' : '还没有证据集'}</h2><p>{filteredSuites.length ? '从目录选择一个证据集，管理问题、答案和引用。' : '新建证据集后，添加用于复核与回归的问题。'}</p>{!suitesLoading && !suitesError ? <Button onClick={suiteQuery ? () => setSuiteQuery('') : openCreateSuite}>{suiteQuery ? '清除搜索' : '新建证据集'}</Button> : null}</div>}</DirectoryWorkspace>
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}><DialogContent className={ws.dialog} onCloseAutoFocus={event => { event.preventDefault(); detailTrigger.current?.focus() }}><DialogHeader className={ws.dialogHeader}><DialogTitle>证据条目</DialogTitle><DialogDescription>复核标准答案和引用证据。</DialogDescription></DialogHeader><div className={ws.dialogBody}><ItemDetailPanel
-          selectedItem={selectedItem}
-          selectedSuite={selectedSuite}
-          statusBadgeVariant={evidenceStatusBadgeVariant}
-          onReviewItem={(itemId) => detachPromise(handleReviewItem(itemId))}
-          onApproveItem={(itemId) => detachPromise(handleApproveItem(itemId))}
-          onOpenWhyMissed={() => { setDetailOpen(false); openWhyMissed() }}
-          onArchiveItem={(itemId) => detachPromise(handleArchiveItem(itemId))}
-        /></div></DialogContent></Dialog>
+        >
+          <DialogHeader className={ws.dialogHeader}>
+            <DialogTitle>证据条目</DialogTitle>
+            <DialogDescription>复核标准答案和引用证据。</DialogDescription>
+          </DialogHeader>
+          <div className={ws.dialogBody}>
+            <ItemDetailPanel
+              selectedItem={selectedItem}
+              selectedSuite={selectedSuite}
+              statusBadgeVariant={evidenceStatusBadgeVariant}
+              onReviewItem={(itemId) => detachPromise(handleReviewItem(itemId))}
+              onApproveItem={(itemId) => detachPromise(handleApproveItem(itemId))}
+              onOpenWhyMissed={() => {
+                setDetailOpen(false)
+                openWhyMissed()
+              }}
+              onArchiveItem={(itemId) => detachPromise(handleArchiveItem(itemId))}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <HardcaseCandidatesDialog
         open={hardcaseOpen}
@@ -299,50 +385,50 @@ export function EvidenceSuiteWorkbenchShell({
           if (!open) resetCreateSuiteForm()
         }}
       >
-        <DialogContent  className={ws.dialog}>
-<DialogHeader  className={ws.dialogHeader}>
+        <DialogContent className={ws.dialog}>
+          <DialogHeader className={ws.dialogHeader}>
             <DialogTitle>新建证据集</DialogTitle>
             <DialogDescription className="text-pretty">将相关问题与引用证据组织在同一个证据集中。</DialogDescription>
           </DialogHeader>
-<div className={ws.dialogBody}>
-
-<div className="space-y-3">
-            <div className="space-y-1">
-              <Label htmlFor="suite-name">名称</Label>
-              <Input
-                id="suite-name"
-                value={suiteName}
-                onChange={(event) => setSuiteName(event.target.value)}
-                placeholder="例如：Refund Policy v1"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="suite-desc">描述（可选）</Label>
-              <Textarea
-                id="suite-desc"
-                value={suiteDesc}
-                onChange={(event) => setSuiteDesc(event.target.value)}
-                placeholder="该 Suite 的范围 / 目标 / 约定…"
-                rows={3}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>标签（选填）</Label>
-              <TagInput value={suiteTags} onValueChange={setSuiteTags} placeholder="输入后回车添加标签" />
+          <div className={ws.dialogBody}>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label htmlFor="suite-name">名称</Label>
+                <Input
+                  id="suite-name"
+                  value={suiteName}
+                  onChange={(event) => setSuiteName(event.target.value)}
+                  placeholder="例如：Refund Policy v1"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="suite-desc">描述（可选）</Label>
+                <Textarea
+                  id="suite-desc"
+                  value={suiteDesc}
+                  onChange={(event) => setSuiteDesc(event.target.value)}
+                  placeholder="该 Suite 的范围 / 目标 / 约定…"
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>标签（选填）</Label>
+                <TagInput value={suiteTags} onValueChange={setSuiteTags} placeholder="输入后回车添加标签" />
+              </div>
             </div>
           </div>
-
-</div>
-<DialogFooter  className={ws.dialogFooter}>
+          <DialogFooter className={ws.dialogFooter}>
             <Button variant="outline" onClick={() => setCreateSuiteOpen(false)}>
               取消
             </Button>
             <Button onClick={() => detachPromise(handleCreateSuite())} disabled={creatingSuite || !suiteName.trim()}>
-              {creatingSuite ? <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+              {creatingSuite ? (
+                <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              ) : null}
               创建
             </Button>
           </DialogFooter>
-</DialogContent>
+        </DialogContent>
       </Dialog>
 
       <CreateItemDialog

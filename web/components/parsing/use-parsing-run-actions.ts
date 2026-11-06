@@ -1,24 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, type Dispatch, type RefObject, type SetStateAction } from 'react'
 import { useTranslations } from 'next-intl'
 
 import { toast } from 'sonner'
 
-import { parsingApi } from '@/lib/api'
+import { parsingApi } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { restoreParsingRunFromMarkdown } from '@/lib/parsing-run-restore'
 import { detachPromise } from '@/lib/utils'
 import { type ParsedFileData } from '@/store/use-parsed-files-store'
-import { type FileStatus } from '@/components/ui/file-queue-item'
+import type { ParsingContentResponse } from '@/lib/api/parsing'
 
 import type { ParseFailureDiagnostics, ParsedFile } from './parsing-types'
-
-type MutableRef<T> = {
-  current: T
-}
+import { bumpParsingProgress, countMarkdownHeadings, mapBackendStatusToLibraryStatus } from './parsing-page-utils'
 
 function estimateTableCount(markdownContent: string): number {
   const tableMatches = markdownContent.match(/\|.*\|/g) || []
@@ -29,16 +26,13 @@ function estimateTableCount(markdownContent: string): number {
 type UseParsingRunActionsOptions = {
   activeFile: ParsedFile | null
   autoParseFileId: string | null
-  bumpParsingProgress: (prev: ParsedFile[], fileId: string) => ParsedFile[]
   cancelParse: (fileId: string) => void
-  countMarkdownHeadings: (markdown: string) => number
-  fileIdSetRef: MutableRef<Set<string>>
-  filesRef: MutableRef<ParsedFile[]>
+  fileIdSetRef: RefObject<Set<string>>
+  filesRef: RefObject<ParsedFile[]>
   imageCaptionEnabled: boolean
   imageOcrEnabled: boolean
-  mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
-  parseControllersRef: MutableRef<Map<string, AbortController>>
-  parseProgressIntervalsRef: MutableRef<Map<string, ReturnType<typeof setInterval>>>
+  parseControllersRef: RefObject<Map<string, AbortController>>
+  parseProgressIntervalsRef: RefObject<Map<string, ReturnType<typeof setInterval>>>
   parserBackend: string
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
   setAutoParseFileId: Dispatch<SetStateAction<string | null>>
@@ -51,16 +45,13 @@ type UseParsingRunActionsOptions = {
   vlmCorrectionEnabled: boolean
 }
 
-function getMarkdownStats(markdownContent: string, apiStats: Record<string, unknown> | undefined, blockCount: number) {
+function getMarkdownStats(markdownContent: string, apiStats: ParsingContentResponse['stats'], blockCount: number) {
   return {
     charCount: markdownContent.length,
     lineCount: markdownContent.split('\n').length,
     headingCount: 0,
     pageCount: typeof apiStats?.page_count === 'number' ? apiStats.page_count : undefined,
-    tableCount:
-      typeof apiStats?.table_count === 'number'
-        ? apiStats.table_count
-        : estimateTableCount(markdownContent),
+    tableCount: typeof apiStats?.table_count === 'number' ? apiStats.table_count : estimateTableCount(markdownContent),
     imageCount:
       typeof apiStats?.image_count === 'number'
         ? apiStats.image_count
@@ -72,14 +63,11 @@ function getMarkdownStats(markdownContent: string, apiStats: Record<string, unkn
 export function useParsingRunActions({
   activeFile,
   autoParseFileId,
-  bumpParsingProgress,
   cancelParse,
-  countMarkdownHeadings,
   fileIdSetRef,
   filesRef,
   imageCaptionEnabled,
   imageOcrEnabled,
-  mapBackendStatusToLibraryStatus,
   parseControllersRef,
   parseProgressIntervalsRef,
   parserBackend,
@@ -110,7 +98,7 @@ export function useParsingRunActions({
 
       const resolvedRequested = resolveParserBackendForFilename(
         file.file.name,
-        backendOverride || file.parserBackend || parserBackend
+        backendOverride || file.parserBackend || parserBackend,
       )
       const requestedBackend = resolvedRequested.backend
       const requestedLabel = getParserLabel(requestedBackend)
@@ -129,8 +117,8 @@ export function useParsingRunActions({
                 parserLabel: requestedLabel,
                 parseDiagnostics: undefined,
               }
-            : item
-        )
+            : item,
+        ),
       )
 
       if (file.libraryId) {
@@ -196,8 +184,8 @@ export function useParsingRunActions({
             prev.map((item) =>
               item.id === fileId
                 ? { ...item, libraryId, datasetId: targetDatasetId, datasetName: targetDatasetName }
-                : item
-            )
+                : item,
+            ),
           )
         }
 
@@ -241,9 +229,8 @@ export function useParsingRunActions({
           ? Number(data.parse_duration_sec)
           : fallbackDurationSec
         const runId = `${resolvedBackend}-${Date.now()}`
-        const stats = getMarkdownStats(markdownContent, data.stats as Record<string, unknown> | undefined, blocks.length)
+        const stats = getMarkdownStats(markdownContent, data.stats, blocks.length)
         stats.headingCount = countMarkdownHeadings(markdownContent)
-        const responseExtras = data as unknown as { pdf_quality?: unknown; quality_gate?: unknown }
 
         const run = {
           id: runId,
@@ -254,8 +241,8 @@ export function useParsingRunActions({
           blocks,
           elements: data.elements || [],
           createdAt: Date.now(),
-          pdfQuality: responseExtras.pdf_quality ?? null,
-          qualityGate: responseExtras.quality_gate ?? null,
+          pdfQuality: data.pdf_quality ?? null,
+          qualityGate: data.quality_gate ?? null,
         }
 
         setFiles((prev) =>
@@ -272,13 +259,13 @@ export function useParsingRunActions({
                   duration: durationSec,
                   stats,
                   elements: data.elements || [],
-                  pdfQuality: responseExtras.pdf_quality ?? null,
-                  qualityGate: responseExtras.quality_gate ?? null,
+                  pdfQuality: data.pdf_quality ?? null,
+                  qualityGate: data.quality_gate ?? null,
                   runs: [...(item.runs || []), run],
                   activeRunId: runId,
                 }
-              : item
-          )
+              : item,
+          ),
         )
 
         setActiveBlockId(null)
@@ -321,8 +308,8 @@ export function useParsingRunActions({
                   progress: 0,
                   parseDiagnostics: diagnostics,
                 }
-              : item
-          )
+              : item,
+          ),
         )
 
         if (libraryId) {
@@ -336,14 +323,11 @@ export function useParsingRunActions({
       }
     },
     [
-      bumpParsingProgress,
       cancelParse,
-      countMarkdownHeadings,
       fileIdSetRef,
       filesRef,
       imageCaptionEnabled,
       imageOcrEnabled,
-      mapBackendStatusToLibraryStatus,
       parseControllersRef,
       parseProgressIntervalsRef,
       parserBackend,
@@ -355,7 +339,7 @@ export function useParsingRunActions({
       updateParsedFile,
       upsertParsedFile,
       vlmCorrectionEnabled,
-    ]
+    ],
   )
 
   useEffect(() => {
@@ -367,7 +351,7 @@ export function useParsingRunActions({
 
   const parseAllPending = useCallback(async () => {
     const targets = visibleQueueFiles.filter(
-      (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error')
+      (file) => file.librarySource !== 'knowledge_base' && (file.status === 'pending' || file.status === 'error'),
     )
     for (const file of targets) {
       await parseFile(file.id)
@@ -390,15 +374,15 @@ export function useParsingRunActions({
                 parserBackend: nextRun.parserBackend,
                 parserLabel: nextRun.parserLabel,
               }
-            : file
-        )
+            : file,
+        ),
       )
 
       setActiveBlockId(null)
       setHoveredBlockId(null)
       setRightPanelMode('markdown')
     },
-    [activeFile, setActiveBlockId, setFiles, setHoveredBlockId, setRightPanelMode]
+    [activeFile, setActiveBlockId, setFiles, setHoveredBlockId, setRightPanelMode],
   )
 
   return {

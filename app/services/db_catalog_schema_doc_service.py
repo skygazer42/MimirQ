@@ -7,10 +7,20 @@ aggregates, so retrieval can find schema knowledge without exposing raw rows.
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.types.indexing import ChunkInput
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from sqlalchemy.orm import Session
+
+    from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
+    from app.models.document import Document, DocumentChunk, DocumentParsedContent
+    from app.services.indexer import Indexer
+    from app.types.indexing import PersistChunksResult
 
 # Only include allowlisted keys from profiling snapshots to avoid accidentally
 # rendering raw values (e.g. sample rows / top values).
@@ -62,7 +72,7 @@ def build_virtual_schema_document_fields(
         "dataset_id": ds,
         "filename": virtual_schema_filename(ds),
         "file_type": "md",
-        "file_size": int(len(md.encode("utf-8", "ignore"))),
+        "file_size": len(md.encode("utf-8", "ignore")),
         "file_path": virtual_schema_file_path(ds),
         "owner_id": (_norm_str(requested_by) or None),
         "access_mode": "inherit",
@@ -123,7 +133,9 @@ def chunk_virtual_schema_markdown(
     return out
 
 
-def _load_catalog_tables(db: Any, *, db_catalog_table: Any, tenant_id: UUID, dataset_id: UUID) -> list[Any]:
+def _load_catalog_tables(
+    db: "Session", *, db_catalog_table: "type[DbCatalogTable]", tenant_id: UUID, dataset_id: UUID
+) -> "list[DbCatalogTable]":
     return (
         db.query(db_catalog_table)
         .filter(db_catalog_table.tenant_id == tenant_id, db_catalog_table.dataset_id == dataset_id)
@@ -138,9 +150,9 @@ def _load_catalog_tables(db: Any, *, db_catalog_table: Any, tenant_id: UUID, dat
 
 
 def _load_columns_by_table(
-    db: Any,
+    db: "Session",
     *,
-    db_catalog_column: Any,
+    db_catalog_column: "type[DbCatalogColumn]",
     table_ids: list[UUID],
 ) -> dict[UUID, list[dict[str, Any]]]:
     cols_by_table: dict[UUID, list[dict[str, Any]]] = {}
@@ -158,25 +170,25 @@ def _load_columns_by_table(
         .all()
     )
     for column in cols or []:
-        table_id = getattr(column, "table_id", None)
+        table_id = column.table_id
         if table_id is None:
             continue
         cols_by_table.setdefault(table_id, []).append(
             {
-                "ordinal": getattr(column, "ordinal", 0),
-                "name": getattr(column, "name", None),
-                "data_type": getattr(column, "data_type", None),
-                "nullable": getattr(column, "nullable", None),
-                "comment": getattr(column, "comment", None),
+                "ordinal": column.ordinal,
+                "name": column.name,
+                "data_type": column.data_type,
+                "nullable": column.nullable,
+                "comment": column.comment,
             }
         )
     return cols_by_table
 
 
 def _load_latest_profiles_by_table(
-    db: Any,
+    db: "Session",
     *,
-    db_profile_snapshot: Any,
+    db_profile_snapshot: "type[DbProfileSnapshot]",
     table_ids: list[UUID],
 ) -> dict[UUID, dict[str, Any]]:
     latest_profile_by_table: dict[UUID, dict[str, Any]] = {}
@@ -193,33 +205,33 @@ def _load_latest_profiles_by_table(
         .all()
     )
     for snapshot in snaps or []:
-        table_id = getattr(snapshot, "table_id", None)
+        table_id = snapshot.table_id
         if table_id is None or table_id in latest_profile_by_table:
             continue
-        profile = getattr(snapshot, "profile", None)
+        profile = snapshot.profile
         latest_profile_by_table[table_id] = dict(profile or {}) if isinstance(profile, dict) else {}
     return latest_profile_by_table
 
 
 def _build_virtual_schema_tables(
-    tables: list[Any],
+    tables: "list[DbCatalogTable]",
     *,
     cols_by_table: dict[UUID, list[dict[str, Any]]],
     latest_profile_by_table: dict[UUID, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     table_dicts: list[dict[str, Any]] = []
     for table in tables or []:
-        table_id = getattr(table, "id", None)
+        table_id = table.id
         if table_id is None:
             continue
         table_dicts.append(
             {
-                "engine": getattr(table, "engine", None),
-                "db_name": getattr(table, "db_name", None),
-                "schema_name": getattr(table, "schema_name", None),
-                "table_name": getattr(table, "table_name", None),
-                "table_type": getattr(table, "table_type", None),
-                "comment": getattr(table, "comment", None),
+                "engine": table.engine,
+                "db_name": table.db_name,
+                "schema_name": table.schema_name,
+                "table_name": table.table_name,
+                "table_type": table.table_type,
+                "comment": table.comment,
                 "columns": cols_by_table.get(table_id, []),
                 "profile": latest_profile_by_table.get(table_id, {}),
             }
@@ -228,14 +240,14 @@ def _build_virtual_schema_tables(
 
 
 def _load_virtual_schema_doc(
-    db: Any,
+    db: "Session",
     *,
-    db_document: Any,
-    document_parsed_content: Any,
+    db_document: "type[Document]",
+    document_parsed_content: "type[DocumentParsedContent]",
     tenant_id: UUID,
     dataset_id: UUID,
     file_path: str,
-) -> tuple[Any | None, str]:
+) -> "tuple[Document | None, str]":
     doc = (
         db.query(db_document)
         .filter(
@@ -262,25 +274,25 @@ def _load_virtual_schema_doc(
 
 
 def _upsert_virtual_schema_document(
-    db: Any,
+    db: "Session",
     *,
-    db_document: Any,
-    doc: Any | None,
+    db_document: "type[Document]",
+    doc: "Document | None",
     tenant_id: UUID,
     dataset_id: UUID,
     filename: str,
     file_path: str,
     fields: dict[str, Any],
     meta: dict[str, Any],
-    now: Any,
-) -> Any:
+    now: "datetime",
+) -> "Document":
     if doc is None:
         doc = db_document(
             tenant_id=tenant_id,
             dataset_id=dataset_id,
             filename=filename,
             file_type="md",
-            file_size=int(fields["file_size"]),
+            file_size=fields["file_size"],
             file_path=file_path,
             owner_id=fields.get("owner_id"),
             access_mode=fields.get("access_mode"),
@@ -297,7 +309,7 @@ def _upsert_virtual_schema_document(
     else:
         doc.filename = filename
         doc.file_type = "md"
-        doc.file_size = int(fields["file_size"])
+        doc.file_size = fields["file_size"]
         doc.file_path = file_path
         doc.owner_id = fields.get("owner_id")
         doc.access_mode = fields.get("access_mode")
@@ -313,9 +325,9 @@ def _upsert_virtual_schema_document(
 
 
 def _upsert_virtual_schema_parsed_content(
-    db: Any,
+    db: "Session",
     *,
-    document_parsed_content: Any,
+    document_parsed_content: "type[DocumentParsedContent]",
     tenant_id: UUID,
     document_id: UUID,
     markdown: str,
@@ -340,17 +352,17 @@ def _upsert_virtual_schema_parsed_content(
 
 
 def _reindex_virtual_schema_document(
-    db: Any,
+    db: "Session",
     *,
-    indexer_cls: Any,
-    document_chunk: Any,
+    indexer_cls: "type[Indexer]",
+    document_chunk: "type[DocumentChunk]",
     tenant_id: UUID,
-    doc: Any,
+    doc: "Document",
     markdown: str,
     meta: dict[str, Any],
     chunk_size: int,
     chunk_overlap: int,
-) -> Any:
+) -> "PersistChunksResult":
     indexer_cls(db).delete_chunk_indexes(tenant_id=tenant_id, document_id=doc.id)
     db.query(document_chunk).filter(
         document_chunk.tenant_id == tenant_id,
@@ -375,8 +387,8 @@ def _reindex_virtual_schema_document(
         default_source="db_catalog",
         commit=True,
     )
-    doc.chunk_count = int(len(result.db_chunks or []))
-    doc.total_characters = int(result.total_characters or 0)
+    doc.chunk_count = len(result.db_chunks or [])
+    doc.total_characters = result.total_characters
     db.commit()
     db.refresh(doc)
     return result
@@ -384,25 +396,21 @@ def _reindex_virtual_schema_document(
 
 def _catalog_summary(
     *,
-    tables: list[Any],
+    tables: "list[DbCatalogTable]",
     cols_by_table: dict[UUID, list[dict[str, Any]]],
     latest_profile_by_table: dict[UUID, dict[str, Any]],
     table_dicts: list[dict[str, Any]],
-    now: Any,
+    now: "datetime",
     file_path: str,
-    doc: Any,
-    result: Any,
+    doc: "Document",
+    result: "PersistChunksResult",
     schema_diff: dict[str, Any],
     elapsed: float,
 ) -> dict[str, Any]:
-    columns_total = sum(
-        int(len(cols_by_table.get(getattr(table, "id", None), [])))
-        for table in tables or []
-        if getattr(table, "id", None) is not None
-    )
+    columns_total = sum(len(cols_by_table.get(table.id, [])) for table in tables or [] if table.id is not None)
     last_seen_at = None
     for table in tables or []:
-        seen_at = getattr(table, "last_seen_at", None)
+        seen_at = table.last_seen_at
         if seen_at is None:
             continue
         if last_seen_at is None or seen_at > last_seen_at:
@@ -410,26 +418,26 @@ def _catalog_summary(
     catalog_age_sec = None
     if last_seen_at is not None:
         try:
-            catalog_age_sec = float((now - last_seen_at).total_seconds())
+            catalog_age_sec = (now - last_seen_at).total_seconds()
         except Exception:
             catalog_age_sec = None
     return {
         "document_id": str(doc.id),
         "file_path": file_path,
-        "tables": int(len(table_dicts)),
-        "columns": int(columns_total),
-        "tables_with_profiles": int(len(latest_profile_by_table)),
+        "tables": len(table_dicts),
+        "columns": columns_total,
+        "tables_with_profiles": len(latest_profile_by_table),
         "catalog_last_seen_at": (last_seen_at.isoformat() if last_seen_at is not None else None),
         "catalog_age_sec": catalog_age_sec,
         "schema_diff": schema_diff,
-        "chunks": int(len(result.db_chunks or [])),
-        "elapsed_sec": float(elapsed),
+        "chunks": len(result.db_chunks or []),
+        "elapsed_sec": elapsed,
     }
 
 
 def upsert_and_index_virtual_schema_doc(
     *,
-    db: Any,
+    db: "Session",
     tenant_id: UUID,
     dataset_id: UUID,
     requested_by: str | None,
@@ -470,7 +478,7 @@ def upsert_and_index_virtual_schema_doc(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
     )
-    table_ids = [t.id for t in (tables or []) if getattr(t, "id", None) is not None]
+    table_ids = [t.id for t in (tables or []) if t.id is not None]
     cols_by_table = _load_columns_by_table(db, db_catalog_column=DbCatalogColumn, table_ids=table_ids)
     latest_profile_by_table = _load_latest_profiles_by_table(
         db,
@@ -836,7 +844,7 @@ def compute_schema_diff(
                 )
 
     def _pack(items: list[Any]) -> dict[str, Any]:
-        total = int(len(items))
+        total = len(items)
         if max_items_eff <= 0:
             return {"count": total, "items": [], "truncated": total > 0}
         sliced = items[:max_items_eff]

@@ -1,19 +1,18 @@
 'use client'
 
 import { API_BASE_URL, toAbsoluteBackendUrl } from '@/lib/env'
-import {
-  AUTH_SCOPE_CHANGED_EVENT,
-  getAuthCacheScope,
-} from '@/lib/auth-storage'
+import { AUTH_SCOPE_CHANGED_EVENT, getAuthCacheScope } from '@/lib/auth-storage'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { authenticatedFetch } from '@/lib/authenticated-fetch'
 import { buildMarkdownImageProxyUrl } from '@/lib/markdown-image-proxy'
 
 const DOCUMENT_DOWNLOAD_PATH_RE = /^\/api\/v1\/documents\/[^/]+\/download\/?$/
+const ASSET_BASE_URL = API_BASE_URL || globalThis.window?.location.origin
 
 let BACKEND_ORIGIN = ''
 try {
-  BACKEND_ORIGIN = new URL(API_BASE_URL).origin
+  const backend = new URL(ASSET_BASE_URL || '')
+  BACKEND_ORIGIN = /^https?:$/i.test(backend.protocol) ? backend.origin : ''
 } catch {
   BACKEND_ORIGIN = ''
 }
@@ -44,23 +43,29 @@ export function normalizeAssetUrl(rawUrl: string | null | undefined): string | n
   return toAbsoluteBackendUrl(raw)
 }
 
+function resolveAssetUrl(resolved: string): URL | null {
+  if (!BACKEND_ORIGIN) return null
+  try {
+    return new URL(resolved, ASSET_BASE_URL)
+  } catch {
+    return null
+  }
+}
+
 export function needsAuthAssetProxy(rawUrl: string | null | undefined): boolean {
   const resolved = normalizeAssetUrl(rawUrl)
   if (!resolved || /^data:/i.test(resolved) || /^blob:/i.test(resolved)) return false
 
-  try {
-    const parsed = new URL(resolved, API_BASE_URL)
-    if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) return /^https?:$/i.test(parsed.protocol)
+  const parsed = resolveAssetUrl(resolved)
+  if (!parsed) return false
+  if (parsed.origin !== BACKEND_ORIGIN) return /^https?:$/i.test(parsed.protocol)
 
-    const path = parsed.pathname || ''
-    return (
-      path.includes('/api/v1/documents/image/') ||
-      path.includes('/api/v1/documents/image-url/') ||
-      DOCUMENT_DOWNLOAD_PATH_RE.test(path)
-    )
-  } catch {
-    return false
-  }
+  const path = parsed.pathname || ''
+  return (
+    path.includes('/api/v1/documents/image/') ||
+    path.includes('/api/v1/documents/image-url/') ||
+    DOCUMENT_DOWNLOAD_PATH_RE.test(path)
+  )
 }
 
 async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string | null> {
@@ -85,7 +90,7 @@ async function mintOpaqueRemoteImageUrl(rawUrl: string): Promise<string | null> 
       })
 
       if (response.ok) {
-        const payload = await response.json() as { src?: unknown }
+        const payload = (await response.json()) as { src?: unknown }
         const nextUrl = typeof payload?.src === 'string' ? payload.src.trim() : ''
         if (nextUrl) {
           if (key !== cacheKey(rawUrl)) return null
@@ -120,13 +125,10 @@ export async function fetchAuthAssetUrl(rawUrl: string | null | undefined): Prom
   if (!resolved) return null
   if (!needsAuthAssetProxy(resolved)) return resolved
 
-  try {
-    const parsed = new URL(resolved, API_BASE_URL)
-    if (BACKEND_ORIGIN && parsed.origin !== BACKEND_ORIGIN) {
-      return await mintOpaqueRemoteImageUrl(resolved)
-    }
-  } catch {
-    return null
+  const parsed = resolveAssetUrl(resolved)
+  if (!parsed) return null
+  if (parsed.origin !== BACKEND_ORIGIN) {
+    return await mintOpaqueRemoteImageUrl(resolved)
   }
 
   const key = cacheKey(resolved)

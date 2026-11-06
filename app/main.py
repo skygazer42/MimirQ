@@ -6,9 +6,12 @@ import logging
 import os
 import time
 import warnings
+from asyncio import Task
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from ipaddress import IPv4Address
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from app.core.local_proxy import ensure_local_no_proxy
@@ -40,7 +43,6 @@ warnings.filterwarnings(
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from sqlalchemy.orm import Session
 
 import app.models._all  # noqa: F401
 from app import __version__
@@ -58,8 +60,6 @@ from app.core.migrations import apply_runtime_migrations
 from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
 from app.core.sentry import init_sentry
 from app.core.utils import parse_csv
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
 from app.services.initial_admin_service import (
     InitialAdminBootstrapError,
     bootstrap_initial_admin_if_configured,
@@ -174,9 +174,9 @@ def _build_cors_expose_headers(raw_headers: str) -> list[str]:
 
 # Optional JSON logging (LOG_FORMAT=json).
 configure_logging(
-    log_level=str(getattr(settings, "LOG_LEVEL", "INFO") or "INFO"),
-    log_format=str(getattr(settings, "LOG_FORMAT", "plain") or "plain"),
-    include_trace_context=bool(getattr(settings, "OTEL_ENABLED", False)),
+    log_level=settings.LOG_LEVEL or "INFO",
+    log_format=settings.LOG_FORMAT or "plain",
+    include_trace_context=settings.OTEL_ENABLED,
 )
 
 # Optional error monitoring (SENTRY_DSN).
@@ -189,7 +189,7 @@ if not _OPENAPI_EXPORT_MODE and init_otel():
 
 
 def _warmup_retrieval_tokenizer() -> None:
-    if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
+    if not settings.BM25_INDEX_ENABLED:
         return
 
     from app.rag.preprocessing.tokenization import warmup_bm25_tokenizer
@@ -199,35 +199,35 @@ def _warmup_retrieval_tokenizer() -> None:
     logger.info("BM25 tokenizer initialized in %.3fs", time.perf_counter() - started_at)
 
 
-def start_rag_runtime_warmup():
+def start_rag_runtime_warmup() -> Task[None] | None:
     from app.services.rag_runtime_warmup import start_rag_runtime_warmup as _impl
 
     return _impl()
 
 
-def _start_runtime_warmup():
-    if not bool(getattr(settings, "RAG_RUNTIME_WARMUP_ENABLED", False)):
+def _start_runtime_warmup() -> Task[None] | None:
+    if not settings.RAG_RUNTIME_WARMUP_ENABLED:
         return None
     return start_rag_runtime_warmup()
 
 
-def _iter_startup_directories() -> list[object]:
-    vector_backend = getattr(settings, "VECTOR_BACKEND", "milvus")
+def _iter_startup_directories() -> list[str | None]:
+    vector_backend = settings.VECTOR_BACKEND
     return [
         settings.UPLOAD_DIR,
-        getattr(settings, "TABLE_STORE_DIR", None),
+        settings.TABLE_STORE_DIR,
         settings.FAISS_STORE_PATH if vector_backend == "faiss" else None,
         settings.CHROMA_PERSIST_PATH if vector_backend == "chroma" else None,
     ]
 
 
-def _ensure_directory(path_value: object, *, warning_prefix: str) -> None:
+def _ensure_directory(path_value: str | None, *, warning_prefix: str) -> None:
     if not path_value:
         return
     try:
-        Path(str(path_value)).mkdir(parents=True, exist_ok=True)
+        Path(path_value).mkdir(parents=True, exist_ok=True)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("%s %s: %s", warning_prefix, str(path_value), str(exc)[:200])
+        logger.warning("%s %s: %s", warning_prefix, path_value, str(exc)[:200])
 
 
 def _ensure_startup_directories() -> None:
@@ -235,28 +235,24 @@ def _ensure_startup_directories() -> None:
         _ensure_directory(dir_path, warning_prefix="Failed to ensure directory")
 
 
-def _ensure_parent_directory(path_value: object, *, warning_message: str) -> None:
+def _ensure_parent_directory(path_value: str, *, warning_message: str) -> None:
     try:
-        Path(str(path_value)).parent.mkdir(parents=True, exist_ok=True)
+        Path(path_value).parent.mkdir(parents=True, exist_ok=True)
     except Exception as exc:  # noqa: BLE001
         logger.warning("%s: %s", warning_message, str(exc)[:200])
 
 
 def _ensure_optional_log_directories() -> None:
-    if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+    if settings.ENABLE_METRICS_LOG:
+        _ensure_parent_directory(settings.METRICS_LOG_PATH, warning_message="Failed to ensure metrics log dir")
+    if settings.MINIO_ENABLED:
         _ensure_parent_directory(
-            getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl"),
-            warning_message="Failed to ensure metrics log dir",
-        )
-    if bool(getattr(settings, "MINIO_ENABLED", False)):
-        _ensure_parent_directory(
-            getattr(settings, "MINIO_METRICS_LOG_PATH", "./logs/minio_metrics.jsonl"),
-            warning_message="Failed to ensure MinIO metrics log dir",
+            settings.MINIO_METRICS_LOG_PATH, warning_message="Failed to ensure MinIO metrics log dir"
         )
 
 
 def _setup_langsmith_tracing() -> None:
-    if not bool(getattr(settings, "LANGSMITH_TRACING_ENABLED", False)):
+    if not settings.LANGSMITH_TRACING_ENABLED:
         return
     try:
         from app.rag.tracing import setup_tracing
@@ -267,8 +263,8 @@ def _setup_langsmith_tracing() -> None:
 
 
 def _initialize_database_for_startup() -> None:
-    runtime_migrations_enabled = bool(getattr(settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True))
-    create_all_enabled = bool(getattr(settings, "DB_CREATE_ALL_ON_STARTUP", True))
+    runtime_migrations_enabled = settings.DB_RUNTIME_MIGRATIONS_ENABLED
+    create_all_enabled = settings.DB_CREATE_ALL_ON_STARTUP
 
     if runtime_migrations_enabled:
         apply_runtime_migrations(engine)
@@ -304,7 +300,7 @@ async def _initialize_task_queue() -> None:
 
 
 def _start_task_queue_observability_poller() -> None:
-    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if not settings.PROMETHEUS_ENABLED:
         return
     try:
         from app.services.task_queue_observability_service import start_task_queue_observability_poller
@@ -312,78 +308,6 @@ def _start_task_queue_observability_poller() -> None:
         start_task_queue_observability_poller()
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to start task queue observability poller: %s", str(exc)[:200])
-
-
-def _bm25_startup_skip_message() -> str | None:
-    if not bool(getattr(settings, "BM25_INDEX_ENABLED", True)):
-        return "BM25 indexing disabled; skipping startup build"
-    if not bool(getattr(settings, "BM25_STARTUP_BUILD_ENABLED", False)):
-        return "BM25 startup build disabled (BM25_STARTUP_BUILD_ENABLED=false)"
-    return None
-
-
-def _load_bm25_startup_tenant_ids(db: Session) -> list[object]:
-    tenant_ids: list[object] = []
-    tenant_q = (
-        db.query(DocumentChunk.tenant_id)
-        .join(DBDocument)
-        .filter(DBDocument.status == "completed")
-        .filter(DBDocument.publication_status == "published")
-        .distinct()
-        .execution_options(stream_results=True)
-        .enable_eagerloads(False)
-    )
-    for row in tenant_q.yield_per(2000):
-        if row and row[0]:
-            tenant_ids.append(row[0])
-    return tenant_ids
-
-
-def _build_bm25_startup_indexes() -> None:
-    skip_message = _bm25_startup_skip_message()
-    if skip_message is not None:
-        logger.info(skip_message)
-        return
-
-    logger.info("Initializing BM25 index (startup build)...")
-    from sqlalchemy import func
-
-    from app.rag.retriever import hybrid_retriever
-
-    db = SessionLocal()
-    try:
-        max_chunks = int(getattr(settings, "BM25_STARTUP_BUILD_MAX_CHUNKS", 0) or 0)
-        total_chunks = (
-            db.query(func.count(DocumentChunk.id))
-            .join(DBDocument)
-            .filter(DBDocument.status == "completed")
-            .filter(DBDocument.publication_status == "published")
-            .scalar()
-        ) or 0
-        if max_chunks > 0 and int(total_chunks) > max_chunks:
-            logger.warning(
-                "Skipping BM25 startup build: %s chunks exceeds cap %s; "
-                "enable BM25_LAZY_BUILD_ENABLED for on-demand builds",
-                int(total_chunks),
-                max_chunks,
-            )
-            return
-
-        tenant_ids = _load_bm25_startup_tenant_ids(db)
-        if not tenant_ids:
-            logger.warning("No documents found, BM25 index will be built on first upload")
-            return
-
-        built_total = 0
-        for tid in tenant_ids:
-            built_total += hybrid_retriever.build_bm25_index_from_db(db, tenant_id=tid, batch_size=2000)
-        logger.info(
-            "BM25 index loaded with %s chunks across %s tenants",
-            built_total,
-            len(tenant_ids),
-        )
-    finally:
-        db.close()
 
 
 def _schedule_dify_external_knowledge_warmup() -> None:
@@ -396,7 +320,7 @@ def _schedule_dify_external_knowledge_warmup() -> None:
 
 
 async def _stop_task_queue_observability_poller() -> None:
-    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if not settings.PROMETHEUS_ENABLED:
         return
     try:
         from app.services.task_queue_observability_service import stop_task_queue_observability_poller
@@ -416,7 +340,7 @@ def _dispose_database_engine() -> None:
 
 # Lifespan management
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Operations on app startup and shutdown."""
     # Startup: create database tables.
     logger.info("Starting MimirQ backend...")
@@ -432,7 +356,6 @@ async def lifespan(app: FastAPI):
     # newly added API replica does not serialize its first concurrent requests.
     _warmup_retrieval_tokenizer()
     _start_runtime_warmup()
-    _build_bm25_startup_indexes()
     _schedule_dify_external_knowledge_warmup()
 
     yield
@@ -461,11 +384,9 @@ app = FastAPI(
     title="MimirQ - Knowledge Base RAG System",
     description="Knowledge Base Management and RAG Conversation System",
     version=__version__,
-    docs_url=_DOCS_PATH if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
-    redoc_url="/redoc" if bool(getattr(settings, "API_DOCS_ENABLED", True)) else None,
-    openapi_url=(
-        "/openapi.json" if (bool(getattr(settings, "API_OPENAPI_ENABLED", True)) or _OPENAPI_EXPORT_MODE) else None
-    ),
+    docs_url=_DOCS_PATH if settings.API_DOCS_ENABLED else None,
+    redoc_url="/redoc" if settings.API_DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if settings.API_OPENAPI_ENABLED or _OPENAPI_EXPORT_MODE else None,
     lifespan=lifespan,
 )
 
@@ -474,7 +395,7 @@ app = FastAPI(
 # =============================================================================
 
 
-def _patch_openapi_additional_properties(spec: dict) -> None:  # noqa: ANN401
+def _patch_openapi_additional_properties(spec: dict[str, Any]) -> None:
     """
     Ensure dict-like/Any-object schemas remain useful in generated TS types.
 
@@ -502,7 +423,7 @@ def _patch_openapi_additional_properties(spec: dict) -> None:  # noqa: ANN401
     walk(spec)
 
 
-def custom_openapi():  # noqa: ANN201
+def custom_openapi() -> dict[str, Any]:
     if app.openapi_schema:
         return app.openapi_schema
 
@@ -524,19 +445,16 @@ app.openapi = custom_openapi  # type: ignore[assignment]
 instrument_fastapi(app)
 
 # Trusted hosts (Host header hardening; production-only by default).
-if is_production_env() and bool(getattr(settings, "TRUSTED_HOSTS_ENABLED", True)):
+if is_production_env() and settings.TRUSTED_HOSTS_ENABLED:
     from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-    allowed_hosts = parse_csv(str(getattr(settings, "ALLOWED_HOSTS", "") or ""))
+    allowed_hosts = parse_csv(settings.ALLOWED_HOSTS or "")
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 # Request body size limit (DoS guardrail).
 from app.api.middleware.body_size_limit import BodySizeLimitMiddleware
 
-app.add_middleware(
-    BodySizeLimitMiddleware,
-    max_body_bytes=int(getattr(settings, "REQUEST_MAX_BODY_BYTES", 0) or 0),
-)
+app.add_middleware(BodySizeLimitMiddleware, max_body_bytes=settings.REQUEST_MAX_BODY_BYTES or 0)
 
 # Rate limiting middleware
 if settings.RATE_LIMIT_ENABLED:
@@ -552,17 +470,13 @@ if settings.RATE_LIMIT_ENABLED:
     )
 
 # Response compression (safe for SSE; event-stream is excluded by Starlette).
-if bool(getattr(settings, "GZIP_ENABLED", True)):
+if settings.GZIP_ENABLED:
     from starlette.middleware.gzip import GZipMiddleware
 
-    app.add_middleware(
-        GZipMiddleware,
-        minimum_size=int(getattr(settings, "GZIP_MIN_SIZE", 1000)),
-        compresslevel=int(getattr(settings, "GZIP_COMPRESS_LEVEL", 5)),
-    )
+    app.add_middleware(GZipMiddleware, minimum_size=settings.GZIP_MIN_SIZE, compresslevel=settings.GZIP_COMPRESS_LEVEL)
 
 # Prometheus metrics (optional).
-if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+if settings.PROMETHEUS_ENABLED:
     from app.api.v1.metrics import router as metrics_router
     from app.core.metrics import PrometheusMiddleware
 
@@ -581,40 +495,32 @@ if bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
     )
 
 # Process-time header (useful for debugging and quick perf checks).
-app.add_middleware(
-    ProcessTimeMiddleware,
-    server_timing_enabled=bool(getattr(settings, "SERVER_TIMING_ENABLED", True)),
-)
+app.add_middleware(ProcessTimeMiddleware, server_timing_enabled=settings.SERVER_TIMING_ENABLED)
 
 # Security headers (lightweight hardening).
-if bool(getattr(settings, "SECURITY_HEADERS_ENABLED", True)):
+if settings.SECURITY_HEADERS_ENABLED:
     from app.api.middleware.security_headers import SecurityHeadersMiddleware
 
     hsts_value = ""
-    if bool(getattr(settings, "SECURITY_HEADERS_HSTS_ENABLED", False)):
-        max_age = int(getattr(settings, "SECURITY_HEADERS_HSTS_MAX_AGE_SEC", 31536000) or 31536000)
+    if settings.SECURITY_HEADERS_HSTS_ENABLED:
+        max_age = settings.SECURITY_HEADERS_HSTS_MAX_AGE_SEC or 31536000
         max_age = max(0, max_age)
         parts = [f"max-age={max_age}"]
-        if bool(getattr(settings, "SECURITY_HEADERS_HSTS_INCLUDE_SUBDOMAINS", True)):
+        if settings.SECURITY_HEADERS_HSTS_INCLUDE_SUBDOMAINS:
             parts.append("includeSubDomains")
-        if bool(getattr(settings, "SECURITY_HEADERS_HSTS_PRELOAD", False)):
+        if settings.SECURITY_HEADERS_HSTS_PRELOAD:
             parts.append("preload")
         hsts_value = "; ".join(parts)
 
     app.add_middleware(
         SecurityHeadersMiddleware,
-        x_content_type_options=str(
-            getattr(settings, "SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS", "nosniff") or "nosniff"
-        ),
-        x_frame_options=str(getattr(settings, "SECURITY_HEADERS_X_FRAME_OPTIONS", "DENY") or "DENY"),
-        referrer_policy=str(
-            getattr(settings, "SECURITY_HEADERS_REFERRER_POLICY", "strict-origin-when-cross-origin")
-            or "strict-origin-when-cross-origin"
-        ),
+        x_content_type_options=settings.SECURITY_HEADERS_X_CONTENT_TYPE_OPTIONS or "nosniff",
+        x_frame_options=settings.SECURITY_HEADERS_X_FRAME_OPTIONS or "DENY",
+        referrer_policy=settings.SECURITY_HEADERS_REFERRER_POLICY or "strict-origin-when-cross-origin",
         strict_transport_security=hsts_value,
-        permissions_policy=str(getattr(settings, "SECURITY_HEADERS_PERMISSIONS_POLICY", "") or ""),
-        cross_origin_opener_policy=str(getattr(settings, "SECURITY_HEADERS_CROSS_ORIGIN_OPENER_POLICY", "") or ""),
-        cross_origin_resource_policy=str(getattr(settings, "SECURITY_HEADERS_CROSS_ORIGIN_RESOURCE_POLICY", "") or ""),
+        permissions_policy=settings.SECURITY_HEADERS_PERMISSIONS_POLICY or "",
+        cross_origin_opener_policy=settings.SECURITY_HEADERS_CROSS_ORIGIN_OPENER_POLICY or "",
+        cross_origin_resource_policy=settings.SECURITY_HEADERS_CROSS_ORIGIN_RESOURCE_POLICY or "",
     )
 
 # Response header sanitization (reduce fingerprinting).
@@ -634,10 +540,10 @@ if not is_production_env():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials=bool(getattr(settings, "CORS_ALLOW_CREDENTIALS", True)),
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=_build_cors_expose_headers(getattr(settings, "CORS_EXPOSE_HEADERS", "X-Request-ID")),
+    expose_headers=_build_cors_expose_headers(settings.CORS_EXPOSE_HEADERS),
 )
 
 # Register routes
@@ -647,14 +553,14 @@ app.include_router(api_v1_router, prefix="/api/v1", dependencies=[Depends(bind_r
 register_exception_handlers(app)
 
 
-@app.get("/")
-async def root():
+@app.get("/", response_model=None)
+async def root() -> dict[str, str]:
     """Root path."""
     return {"message": "Welcome to MimirQ API", "version": __version__, "docs": _DOCS_PATH}
 
 
-@app.get("/health")
-async def health_check():
+@app.get("/health", response_model=None)
+async def health_check() -> dict[str, bool | str]:
     """Public liveness probe."""
     return {"ok": True, "status": "healthy"}
 

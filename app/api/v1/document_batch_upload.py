@@ -8,7 +8,8 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import BatchTaskStatus, BatchUploadRequest, BatchUploadResponse
 from app.core.database import get_db
-from app.services.dataset_service import EDIT_ROLES, DatasetService
+from app.services import dataset_service
+from app.services.dataset_service import EDIT_ROLES
 from app.services.mineru_service import mineru_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -30,13 +31,13 @@ async def apply_batch_upload_urls(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> BatchUploadResponse:
     """
     Batch request file upload URLs (MinerU online parsing).
 
     Use case: batch upload local files for parsing.
     """
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     role = (member.role or "").lower()
     if role not in EDIT_ROLES:
         raise HTTPException(status_code=403, detail="No permission to apply upload URLs")
@@ -65,23 +66,23 @@ async def get_batch_task_status(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> BatchTaskStatus:
     """
     Query batch parsing task status.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     try:
         status = await mineru_service.aget_task_status(batch_id)
 
         return BatchTaskStatus(
             batch_id=batch_id,
-            status=status.get("status", "pending"),
-            total_files=status.get("total_files", 0),
-            completed_files=status.get("completed_files", 0),
-            failed_files=status.get("failed_files", 0),
-            progress=status.get("progress", 0),
-            result_url=status.get("result_url"),
-            error=status.get("error"),
+            status=status["status"],
+            total_files=status["total_files"],
+            completed_files=status["completed_files"],
+            failed_files=status["failed_files"],
+            progress=status["progress"],
+            result_url=status["result_url"],
+            error=status["error"],
         )
 
     except LookupError as e:

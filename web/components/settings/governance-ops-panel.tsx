@@ -14,7 +14,7 @@ import { DatasetSelectField } from '@/components/ops/dataset-select-field'
 import { OperationResultPanel } from '@/components/ops/operation-result-panel'
 import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { settingsTextTokens } from '@/components/ui/system-page-tokens'
-import { chunkPresetApi, governanceApi } from '@/lib/api'
+import { chunkPresetApi, governanceApi } from '@/lib/api/governance'
 import { formatApiError } from '@/lib/api-errors'
 import { cn, detachPromise } from '@/lib/utils'
 
@@ -47,9 +47,7 @@ export function GovernanceOpsPanel() {
             <Database className="size-4 text-muted-foreground" />
             文档复核
           </h3>
-          <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
-            按数据集查询待复核或已过期的文档。
-          </p>
+          <p className="mt-1 text-[13px] leading-5 text-muted-foreground">按数据集查询待复核或已过期的文档。</p>
         </div>
       </div>
 
@@ -77,9 +75,29 @@ export function GovernanceOpsPanel() {
           </Select>
         </Field>
         <Field label="到期窗口（天）">
-          <Input aria-label="到期窗口（天）" value={String(dueWithinDays)} onChange={(event) => setDueWithinDays(Number.parseInt(event.target.value || '0', 10) || 14)} className="h-11 text-[13px] sm:h-9" inputMode="numeric" />
+          <Input
+            aria-label="到期窗口（天）"
+            value={String(dueWithinDays)}
+            onChange={(event) => setDueWithinDays(Number.parseInt(event.target.value || '0', 10) || 14)}
+            className="h-11 text-[13px] sm:h-9"
+            inputMode="numeric"
+          />
         </Field>
-        <ActionButton icon={FileClock} busy={busy === 'stale'} disabled={Boolean(busy) || !datasetId.trim()} label="查询待复核文档" onClick={() => runAction('stale', '待复核文档', () => governanceApi.listStaleDocumentsByDataset(datasetId.trim(), { mode, due_within_days: dueWithinDays, limit: 50 }))} />
+        <ActionButton
+          icon={FileClock}
+          busy={busy === 'stale'}
+          disabled={Boolean(busy) || !datasetId.trim()}
+          label="查询待复核文档"
+          onClick={() =>
+            runAction('stale', '待复核文档', () =>
+              governanceApi.listStaleDocumentsByDataset(datasetId.trim(), {
+                mode,
+                due_within_days: dueWithinDays,
+                limit: 50,
+              }),
+            )
+          }
+        />
       </div>
 
       <DangerZonePanel
@@ -93,26 +111,43 @@ export function GovernanceOpsPanel() {
       >
         <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <Field label="切块预设 ID">
-            <Input aria-label="切块预设 ID" value={presetId} onChange={(event) => setPresetId(event.target.value)} className="h-11 font-mono text-[13px] sm:h-9" />
+            <Input
+              aria-label="切块预设 ID"
+              value={presetId}
+              onChange={(event) => setPresetId(event.target.value)}
+              className="h-11 font-mono text-[13px] sm:h-9"
+            />
           </Field>
           <ConfirmDialog
             title="删除切块预设？"
             description={`将删除切块预设 ID=${presetId.trim() || '-'}如果数据集仍引用该预设，后续策略可能需要重新配置`}
             confirmLabel="确认删除"
-            onConfirm={() => runAction('delete-preset', '删除切块预设', async () => {
-              await chunkPresetApi.delete(presetId.trim())
-              return { preset_id: presetId.trim(), deleted: true }
-            })}
+            onConfirm={() =>
+              runAction('delete-preset', '删除切块预设', async () => {
+                await chunkPresetApi.delete(presetId.trim())
+                return { preset_id: presetId.trim(), deleted: true }
+              })
+            }
           >
-            <Button variant="outline" className="h-11 gap-2 px-3 text-[13px] sm:h-9" disabled={Boolean(busy) || !presetId.trim()}>
-              {busy === 'delete-preset' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Trash2 className="h-3.5 w-3.5" />}
+            <Button
+              variant="outline"
+              className="h-11 gap-2 px-3 text-[13px] sm:h-9"
+              disabled={Boolean(busy) || !presetId.trim()}
+            >
+              {busy === 'delete-preset' ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
               删除切块预设
             </Button>
           </ConfirmDialog>
         </div>
       </DangerZonePanel>
 
-      {result ? <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="尚无复核结果。" /> : null}
+      {result ? (
+        <OperationResultPanel className="mt-3" title="治理运维结果" result={result} emptyMessage="尚无复核结果。" />
+      ) : null}
     </section>
   )
 }
@@ -140,8 +175,17 @@ function ActionButton({
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="secondary" className="h-11 gap-2 px-3 text-[13px] sm:h-9" disabled={disabled} onClick={() => detachPromise(onClick())}>
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
+    <Button
+      variant="secondary"
+      className="h-11 gap-2 px-3 text-[13px] sm:h-9"
+      disabled={disabled}
+      onClick={() => detachPromise(onClick())}
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <Icon className="h-3.5 w-3.5" />
+      )}
       {label}
     </Button>
   )

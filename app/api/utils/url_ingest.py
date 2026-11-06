@@ -75,7 +75,7 @@ def _sanitize_extra_headers(extra: dict[str, str] | None) -> dict[str, str]:
 
 
 def _parse_csv(raw: str) -> list[str]:
-    parts = [p.strip() for p in str(raw or "").split(",")]
+    parts = [p.strip() for p in (raw or "").split(",")]
     return [p for p in parts if p]
 
 
@@ -110,7 +110,7 @@ def _parse_allowed_ports(raw: str) -> list[int]:
     for item in _parse_csv(raw):
         try:
             p = int(item)
-        except Exception as exc:  # noqa: BLE001
+        except ValueError as exc:
             raise ValueError("invalid_port_allowlist") from exc
         if p <= 0 or p > 65535:
             raise ValueError("invalid_port_allowlist")
@@ -119,11 +119,11 @@ def _parse_allowed_ports(raw: str) -> list[int]:
     return ports
 
 
-def _is_allowed_ip(ip: ipaddress._BaseAddress, *, allow_private: bool) -> bool:  # type: ignore[name-defined]
+def _is_allowed_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private: bool) -> bool:
     if allow_private:
         return True
     # `is_global` is the most practical "public routable" signal.
-    return bool(getattr(ip, "is_global", False))
+    return ip.is_global
 
 
 @dataclass(frozen=True)
@@ -162,13 +162,13 @@ def _validate_blocked_host(host: str) -> None:
 
 
 def _validate_host_allowlist(host: str) -> None:
-    allowed_hosts = _parse_csv(str(getattr(settings, "URL_INGEST_ALLOWED_HOSTS", "") or ""))
+    allowed_hosts = _parse_csv(settings.URL_INGEST_ALLOWED_HOSTS or "")
     if allowed_hosts and not _host_in_allowlist(host, allowed_hosts):
         raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
 
 
 def _validate_port_allowlist(port: int) -> None:
-    allowed_ports_raw = str(getattr(settings, "URL_INGEST_ALLOWED_PORTS", "") or "")
+    allowed_ports_raw = settings.URL_INGEST_ALLOWED_PORTS or ""
     if not allowed_ports_raw.strip():
         return
     try:
@@ -180,14 +180,14 @@ def _validate_port_allowlist(port: int) -> None:
         raise HTTPException(status_code=400, detail="url port is not allowed")
 
 
-def _ip_literal_or_none(host: str) -> ipaddress._BaseAddress | None:  # type: ignore[name-defined]
+def _ip_literal_or_none(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     try:
         return ipaddress.ip_address(host)
     except ValueError:
         return None
 
 
-def _validate_ip_allowed(ip: ipaddress._BaseAddress, *, allow_private: bool) -> None:  # type: ignore[name-defined]
+def _validate_ip_allowed(ip: ipaddress.IPv4Address | ipaddress.IPv6Address, *, allow_private: bool) -> None:
     if not _is_allowed_ip(ip, allow_private=allow_private):
         raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
 
@@ -266,7 +266,7 @@ async def _validated_fetch_target(url: str, *, enforce_allowlists: bool = True) 
     if enforce_allowlists:
         _validate_host_allowlist(parsed_url.host)
         _validate_port_allowlist(parsed_url.port)
-    allow_private = bool(getattr(settings, "URL_INGEST_ALLOW_PRIVATE_IPS", False))
+    allow_private = settings.URL_INGEST_ALLOW_PRIVATE_IPS
 
     if ip := _ip_literal_or_none(parsed_url.host):
         _validate_ip_allowed(ip, allow_private=allow_private)
@@ -322,9 +322,9 @@ class _DownloadOptions:
 
 
 def _effective_max_bytes(max_bytes: int | None) -> int:
-    max_bytes_eff = int(max_bytes if max_bytes is not None else getattr(settings, "URL_INGEST_MAX_BYTES", 0) or 0)
+    max_bytes_eff = max_bytes if max_bytes is not None else settings.URL_INGEST_MAX_BYTES or 0
     if max_bytes_eff <= 0:
-        return int(getattr(settings, "MAX_FILE_SIZE", 0) or 50_000_000)
+        return settings.MAX_FILE_SIZE or 50_000_000
     return max_bytes_eff
 
 
@@ -337,16 +337,12 @@ def _build_download_headers(*, user_agent: str | None, extra_headers: dict[str, 
 
 def _download_options(options: URLDownloadOptions | None) -> _DownloadOptions:
     raw = options or URLDownloadOptions()
-    max_redirects = int(getattr(settings, "URL_INGEST_MAX_REDIRECTS", 5) or 5)
+    max_redirects = settings.URL_INGEST_MAX_REDIRECTS or 5
     return _DownloadOptions(
         max_bytes=_effective_max_bytes(raw.max_bytes),
-        timeout_sec=float(
-            raw.timeout_sec if raw.timeout_sec is not None else getattr(settings, "URL_INGEST_TIMEOUT_SEC", 30.0)
-        ),
+        timeout_sec=float(raw.timeout_sec if raw.timeout_sec is not None else settings.URL_INGEST_TIMEOUT_SEC),
         follow_redirects=(
-            bool(raw.follow_redirects)
-            if raw.follow_redirects is not None
-            else bool(getattr(settings, "URL_INGEST_FOLLOW_REDIRECTS", False))
+            raw.follow_redirects if raw.follow_redirects is not None else settings.URL_INGEST_FOLLOW_REDIRECTS
         ),
         headers=_build_download_headers(user_agent=raw.user_agent, extra_headers=raw.extra_headers),
         max_redirects=max(0, min(max_redirects, 20)),
@@ -406,7 +402,7 @@ def _download_result(resp: httpx.Response, *, size_bytes: int, final_url: str) -
     if etag and len(etag) > 500:
         etag = etag[:500]
     return DownloadedURL(
-        size_bytes=int(size_bytes),
+        size_bytes=size_bytes,
         content_type=resp.headers.get("content-type"),
         final_url=final_url,
         last_modified=last_modified,

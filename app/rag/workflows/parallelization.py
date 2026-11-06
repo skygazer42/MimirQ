@@ -7,7 +7,6 @@ Useful for fan-out operations like multi-query retrieval.
 Pattern: Split -> [Task1, Task2, ...] (parallel) -> Aggregate -> Result
 """
 
-
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any
@@ -31,7 +30,7 @@ class ParallelTask:
         name: str,
         func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         weight: float = 1.0,
-    ):
+    ) -> None:
         self.name = name
         self.func = func
         self.weight = weight
@@ -60,8 +59,8 @@ class ParallelWorkflow(BaseWorkflow):
         aggregator: Callable[[list[dict[str, Any]]], Awaitable[dict[str, Any]]] | None = None,
         fail_fast: bool = False,
         max_concurrency: int | None = None,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the parallel workflow.
 
@@ -274,10 +273,11 @@ def create_multi_query_aggregator() -> Callable[[list[dict[str, Any]]], Awaitabl
 
     Deduplicates and ranks contexts from multiple queries.
     """
+
     async def aggregator(results: list[dict[str, Any]]) -> dict[str, Any]:
         await asyncio.sleep(0)
-        all_contexts = []
-        seen_ids = set()
+        all_contexts: list[dict[str, Any]] = []
+        seen_ids: set[Any] = set()
 
         for result in results:
             contexts = result.get("contexts", [])

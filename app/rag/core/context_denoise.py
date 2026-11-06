@@ -9,7 +9,6 @@ Rules:
 - conservative cleaning (boilerplate removal is heading/code-fence aware)
 """
 
-
 import re
 from collections import defaultdict
 from collections.abc import Iterable
@@ -172,7 +171,7 @@ def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> 
         content = str(getattr(doc, "page_content", "") or "").strip()
         if not content:
             continue
-        n = int(num_tokens_from_string(content) or 0)
+        n = num_tokens_from_string(content)
         if out and (used + n) > cap:
             break
         out.append(doc)

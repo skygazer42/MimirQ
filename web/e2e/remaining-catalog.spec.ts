@@ -3,7 +3,11 @@ import { datasetRoute, openRemaining, remainingFixture, remainingShot } from './
 test('catalog sync failure preserves connection inputs and a reachable footer on phone', async ({ page }) => {
   const state = await remainingFixture(page)
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.route('**/api/v1/connectors/runs', route => route.request().method() === 'POST' ? route.fulfill({ status: 503, json: { detail: '同步服务暂不可用' } }) : route.fallback())
+  await page.route('**/api/v1/connectors/runs', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({ status: 503, json: { detail: '同步服务暂不可用' } })
+      : route.fallback(),
+  )
   await openRemaining(page, datasetRoute('db-catalog'), '数据库目录')
   await page.getByRole('button', { name: '新建同步', exact: true }).first().click()
   const dialog = page.getByRole('dialog')

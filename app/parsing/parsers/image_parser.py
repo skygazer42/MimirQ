@@ -12,7 +12,6 @@ Notes:
   enrich image chunks when enabled.
 """
 
-
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote

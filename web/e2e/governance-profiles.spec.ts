@@ -6,13 +6,58 @@ import { installCommonApiMocks } from './enterprise-quality-telemetry.helpers'
 const evidence = path.resolve(__dirname, '../../artifacts/rebrand/governance-profiles-directory-v1/tests')
 const sourceEvidence = path.resolve(__dirname, '../../artifacts/rebrand/governance-profiles-source-v1/tests')
 const customId = '7248dc7c-5763-4c61-a7dc-0c6279a63388'
-const scripts = [{ name: '审阅清洗脚本', language: 'python' as const, stage: 'post_governance' as const, content: 'def clean(text):\n    return text' }]
-const payload: GovernanceProfilePayload = { version: '1', input_formats: ['markdown'], pipeline_patch: { governance_enabled: true, governance_remove_toc_lines: true, governance_remove_noise_lines: true, governance_unwrap_lines: true, governance_remove_common_lines: true, governance_normalize_tables: true, governance_max_blank_lines: 1 }, regex_rules: [] }
-const builtins: GovernanceProfileOut[] = [
-  { key: 'builtin:pdf_text', name: 'PDF 文本版（修复断行/页眉页脚/表格）', description: '适用于可复制文本的 PDF：合并软换行、去重页眉页脚、表格规范化。', is_system: true, payload },
-  { key: 'builtin:html_web', name: '网页 HTML（去样板/去导航）', description: '提取网页正文，清理导航与页脚。', is_system: true, payload: { ...payload, input_formats: ['html'], pipeline_patch: { governance_enabled: true, governance_remove_boilerplate: true, governance_remove_noise_lines: false, governance_html_xpath: '//main', governance_remove_images: 'decorative', governance_rule_packs: ['web_navigation', 'web_cookie_banners'] } } },
+const scripts = [
+  {
+    name: '审阅清洗脚本',
+    language: 'python' as const,
+    stage: 'post_governance' as const,
+    content: 'def clean(text):\n    return text',
+  },
 ]
-async function json(route: Route, body: unknown, status = 200) { await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) }) }
+const payload: GovernanceProfilePayload = {
+  version: '1',
+  input_formats: ['markdown'],
+  pipeline_patch: {
+    governance_enabled: true,
+    governance_remove_toc_lines: true,
+    governance_remove_noise_lines: true,
+    governance_unwrap_lines: true,
+    governance_remove_common_lines: true,
+    governance_normalize_tables: true,
+    governance_max_blank_lines: 1,
+  },
+  regex_rules: [],
+}
+const builtins: GovernanceProfileOut[] = [
+  {
+    key: 'builtin:pdf_text',
+    name: 'PDF 文本版（修复断行/页眉页脚/表格）',
+    description: '适用于可复制文本的 PDF：合并软换行、去重页眉页脚、表格规范化。',
+    is_system: true,
+    payload,
+  },
+  {
+    key: 'builtin:html_web',
+    name: '网页 HTML（去样板/去导航）',
+    description: '提取网页正文，清理导航与页脚。',
+    is_system: true,
+    payload: {
+      ...payload,
+      input_formats: ['html'],
+      pipeline_patch: {
+        governance_enabled: true,
+        governance_remove_boilerplate: true,
+        governance_remove_noise_lines: false,
+        governance_html_xpath: '//main',
+        governance_remove_images: 'decorative',
+        governance_rule_packs: ['web_navigation', 'web_cookie_banners'],
+      },
+    },
+  },
+]
+async function json(route: Route, body: unknown, status = 200) {
+  await route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
+}
 
 async function fixture(page: Page) {
   await page.setViewportSize({ width: 1600, height: 1000 })
@@ -21,16 +66,47 @@ async function fixture(page: Page) {
     if (!localStorage.getItem('theme')) localStorage.setItem('theme', 'light')
     if (!localStorage.getItem('mimirq.surfaceTheme')) localStorage.setItem('mimirq.surfaceTheme', 'ocean')
     localStorage.setItem('mimirq.themeColor', '#20262e')
-    document.addEventListener('DOMContentLoaded', () => { const style = document.createElement('style'); style.textContent = 'nextjs-portal { display: none !important; }'; document.head.appendChild(style) }, { once: true })
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => {
+        const style = document.createElement('style')
+        style.textContent = 'nextjs-portal { display: none !important; }'
+        document.head.appendChild(style)
+      },
+      { once: true },
+    )
   })
   const state = {
-    profiles: [...structuredClone(builtins), { id: customId, key: 'team:inherited', name: '团队清洗配置', description: '继承 PDF 文本规则，关闭噪声清理。', is_system: false, payload: { version: '1', extends: 'builtin:pdf_text', input_formats: ['markdown'], pipeline_patch: { governance_remove_noise_lines: false }, regex_rules: [], processing_scripts: scripts } } as GovernanceProfileOut],
-    failList: false, failResolved: false, failPreview: false, failSave: false, failDelete: false,
-    previewStarted: 0, holdPreview: null as Promise<void> | null,
+    profiles: [
+      ...structuredClone(builtins),
+      {
+        id: customId,
+        key: 'team:inherited',
+        name: '团队清洗配置',
+        description: '继承 PDF 文本规则，关闭噪声清理。',
+        is_system: false,
+        payload: {
+          version: '1',
+          extends: 'builtin:pdf_text',
+          input_formats: ['markdown'],
+          pipeline_patch: { governance_remove_noise_lines: false },
+          regex_rules: [],
+          processing_scripts: scripts,
+        },
+      } as GovernanceProfileOut,
+    ],
+    failList: false,
+    failResolved: false,
+    failPreview: false,
+    failSave: false,
+    failDelete: false,
+    previewStarted: 0,
+    holdPreview: null as Promise<void> | null,
     requests: [] as Array<{ method: string; ref: string; body: unknown }>,
-    previewRequests: [] as CleanPreviewRequest[], importBody: '',
+    previewRequests: [] as CleanPreviewRequest[],
+    importBody: '',
   }
-  await page.route('**/api/v1/pipeline/**', async route => {
+  await page.route('**/api/v1/pipeline/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     if (url.pathname.endsWith('/clean-preview')) {
@@ -39,37 +115,63 @@ async function fixture(page: Page) {
       state.previewRequests.push(body)
       if (state.holdPreview) await state.holdPreview
       if (state.failPreview) return json(route, { detail: '清洗服务暂不可用' }, 503)
-      return json(route, { markdown: body.markdown.replace('重复页眉\n', ''), changed: true, issues: [], dropped: false, rule_stats: [] })
+      return json(route, {
+        markdown: body.markdown.replace('重复页眉\n', ''),
+        changed: true,
+        issues: [],
+        dropped: false,
+        rule_stats: [],
+      })
     }
     const suffix = url.pathname.split('/governance-profiles')[1]
     if (suffix === undefined) return route.fallback()
     const ref = decodeURIComponent(suffix.split('/')[1] || '')
     const method = request.method()
-    if (ref === 'import') { state.importBody = request.postData() || ''; return json(route, { created: 1, updated: 0, skipped: 0, items: [] }) }
+    if (ref === 'import') {
+      state.importBody = request.postData() || ''
+      return json(route, { created: 1, updated: 0, skipped: 0, items: [] })
+    }
     if (!ref && method === 'GET') {
       if (state.failList) return json(route, { detail: '目录服务暂不可用' }, 503)
       const q = url.searchParams.get('q') || ''
-      const items = state.profiles.filter(item => `${item.name} ${item.key} ${item.description}`.includes(q)).map(({ payload: _, ...item }) => item)
+      const items = state.profiles
+        .filter((item) => `${item.name} ${item.key} ${item.description}`.includes(q))
+        .map(({ payload: _, ...item }) => item)
       return json(route, { total: items.length, items })
     }
     if (!ref && method === 'POST') {
       const body = request.postDataJSON()
       state.requests.push({ method, ref, body })
       if (state.failSave) return json(route, { detail: '保存服务暂不可用' }, 503)
-      const created = { ...body, id: 'a54e88f1-af26-4343-9ed5-4c6ca6b1fe98', key: body.key || 'team:copy', is_system: false }
+      const created = {
+        ...body,
+        id: 'a54e88f1-af26-4343-9ed5-4c6ca6b1fe98',
+        key: body.key || 'team:copy',
+        is_system: false,
+      }
       state.profiles.push(created)
       return json(route, created)
     }
-    const index = state.profiles.findIndex(item => (item.id || item.key) === ref)
+    const index = state.profiles.findIndex((item) => (item.id || item.key) === ref)
     const profile = state.profiles[index]
     if (!profile) return json(route, { detail: '配置不存在' }, 404)
     if (suffix.endsWith('/export') || suffix.endsWith('/export-ingestion-policy')) {
-      state.requests.push({ method, ref, body: null }); return json(route, profile)
+      state.requests.push({ method, ref, body: null })
+      return json(route, profile)
     }
     if (suffix.endsWith('/resolved')) {
       if (state.failResolved) return json(route, { detail: '规则服务暂不可用' }, 503)
-      const parent = state.profiles.find(item => item.key === profile.payload.extends)
-      return json(route, { profile, chain: parent ? [parent, profile] : [profile], effective: parent ? { ...profile.payload, pipeline_patch: { ...parent.payload.pipeline_patch, ...profile.payload.pipeline_patch } } : profile.payload })
+      const parent = state.profiles.find((item) => item.key === profile.payload.extends)
+      return json(route, {
+        profile,
+        chain: parent ? [parent, profile] : [profile],
+        effective: parent
+          ? {
+              ...profile.payload,
+              pipeline_patch: { ...parent.payload.pipeline_patch, ...profile.payload.pipeline_patch },
+            }
+          : profile.payload,
+      })
     }
     if (method === 'PATCH') {
       const body = request.postDataJSON()
@@ -95,9 +197,13 @@ async function openProfiles(page: Page) {
   await expect(page.locator('[data-profile-page]')).toHaveCSS('display', 'flex')
   await page.evaluate(() => document.fonts.ready)
 }
-async function noOverflow(page: Page) { expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1) }
+async function noOverflow(page: Page) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1)
+}
 
-test('directory selection displays actual resolved rules and previews preserve failed input and reject stale responses', async ({ page }) => {
+test('directory selection displays actual resolved rules and previews preserve failed input and reject stale responses', async ({
+  page,
+}) => {
   const state = await fixture(page)
   await openProfiles(page)
   const detail = page.locator('[data-profile-detail]')
@@ -110,7 +216,7 @@ test('directory selection displays actual resolved rules and previews preserve f
   await expect(detail.getByRole('row', { name: /移除目录行/ })).toContainText('启用')
   const input = page.getByRole('textbox', { name: '清洗前', exact: true })
   await input.fill('重复页眉\n保留这段正文。')
-  const refetched = page.waitForResponse(response => response.url().includes(`${customId}/resolved`))
+  const refetched = page.waitForResponse((response) => response.url().includes(`${customId}/resolved`))
   await page.getByRole('button', { name: '重新加载目录', exact: true }).click()
   await refetched
   await expect(input).toHaveValue('重复页眉\n保留这段正文。')
@@ -123,7 +229,9 @@ test('directory selection displays actual resolved rules and previews preserve f
   await expect(page.locator('[data-profile-preview-output]')).toContainText('保留这段正文。')
   expect(state.previewRequests.at(-1)).toMatchObject({ remove_toc_lines: true, remove_noise_lines: false })
   let release!: () => void
-  state.holdPreview = new Promise(resolve => { release = resolve })
+  state.holdPreview = new Promise((resolve) => {
+    release = resolve
+  })
   await page.getByRole('button', { name: '运行预览', exact: true }).click()
   await expect.poll(() => state.previewStarted).toBe(3)
   await input.fill('另一段正文。')
@@ -133,7 +241,9 @@ test('directory selection displays actual resolved rules and previews preserve f
   await page.screenshot({ path: path.join(evidence, 'custom-preview.png') })
 })
 
-test('copy and edit preserve inheritance and scripts, failed drafts survive and save reads back after reload', async ({ page }) => {
+test('copy and edit preserve inheritance and scripts, failed drafts survive and save reads back after reload', async ({
+  page,
+}) => {
   const state = await fixture(page)
   await openProfiles(page)
   await page.getByRole('button', { name: /自定义配置/ }).click()
@@ -149,7 +259,10 @@ test('copy and edit preserve inheritance and scripts, failed drafts survive and 
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(dialog).toBeHidden()
   await expect(page.locator('[data-profile-detail] h2')).toHaveText('团队新名称')
-  expect(state.requests.find(item => item.method === 'PATCH')).toMatchObject({ ref: customId, body: { payload: { extends: 'builtin:pdf_text', processing_scripts: scripts } } })
+  expect(state.requests.find((item) => item.method === 'PATCH')).toMatchObject({
+    ref: customId,
+    body: { payload: { extends: 'builtin:pdf_text', processing_scripts: scripts } },
+  })
   await page.reload()
   await expect(page.getByRole('button', { name: /自定义配置/ })).toBeVisible()
   await page.getByRole('button', { name: /自定义配置/ }).click()
@@ -159,11 +272,15 @@ test('copy and edit preserve inheritance and scripts, failed drafts survive and 
   await expect(dialog.getByLabel('模板名称', { exact: true })).toHaveValue('团队新名称 (copy)')
   await dialog.getByRole('button', { name: '保存', exact: true }).click()
   await expect(dialog).toBeHidden()
-  expect(state.requests.find(item => item.method === 'POST')).toMatchObject({ body: { payload: { extends: 'builtin:pdf_text', processing_scripts: scripts } } })
+  expect(state.requests.find((item) => item.method === 'POST')).toMatchObject({
+    body: { payload: { extends: 'builtin:pdf_text', processing_scripts: scripts } },
+  })
   await expect(page.locator('[data-profile-detail] h2')).toHaveText('团队新名称 (copy)')
 })
 
-test('import honors overwrite, exports target the current ref and failed deletion remains retryable', async ({ page }) => {
+test('import honors overwrite, exports target the current ref and failed deletion remains retryable', async ({
+  page,
+}) => {
   const state = await fixture(page)
   await openProfiles(page)
   const download = page.waitForEvent('download')
@@ -172,7 +289,9 @@ test('import honors overwrite, exports target the current ref and failed deletio
   expect(state.requests.at(-1)?.ref).toBe('builtin:pdf_text')
   await page.getByRole('button', { name: '导入', exact: true }).click()
   await page.getByRole('menuitemcheckbox', { name: '覆盖同名配置', exact: true }).click()
-  await page.getByLabel('导入治理配置文件', { exact: true }).setInputFiles({ name: 'profiles.json', mimeType: 'application/json', buffer: Buffer.from('{"items":[]}') })
+  await page
+    .getByLabel('导入治理配置文件', { exact: true })
+    .setInputFiles({ name: 'profiles.json', mimeType: 'application/json', buffer: Buffer.from('{"items":[]}') })
   await expect.poll(() => state.importBody).toContain('name="overwrite"\r\n\r\ntrue')
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: /自定义配置/ }).click()
@@ -190,14 +309,19 @@ test('import honors overwrite, exports target the current ref and failed deletio
   await expect(page.getByText('还没有自定义配置', { exact: true })).toBeVisible()
 })
 
-test('directory supports search, retry and mobile back focus, while surfaces follow the global theme', async ({ page }) => {
+test('directory supports search, retry and mobile back focus, while surfaces follow the global theme', async ({
+  page,
+}) => {
   const state = await fixture(page)
   await openProfiles(page)
   await noOverflow(page)
   await page.screenshot({ path: path.join(evidence, 'desktop.png') })
   await page.getByRole('searchbox', { name: '搜索治理配置', exact: true }).fill('不存在的配置')
   await expect(page.getByText('没有找到匹配的配置', { exact: true })).toBeVisible()
-  await page.getByRole('navigation', { name: '配置列表', exact: true }).getByRole('button', { name: '清除搜索', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: '配置列表', exact: true })
+    .getByRole('button', { name: '清除搜索', exact: true })
+    .click()
   await page.locator('[data-profile-ref="builtin:html_web"]').click()
   await expect(page.locator('[data-profile-detail] h2')).toHaveText('网页 HTML')
   await expect(page.getByLabel('预览输入格式', { exact: true })).toHaveValue('html')
@@ -205,16 +329,26 @@ test('directory supports search, retry and mobile back focus, while surfaces fol
   await expect(page.locator('[data-profile-detail] table')).toContainText('网页导航菜单、网页 Cookie 横幅')
   state.failList = true
   await page.getByRole('button', { name: '重新加载目录', exact: true }).click()
-  await expect(page.locator('[data-profile-directory]').getByRole('alert')).toContainText('目录服务暂不可用', { timeout: 25_000 })
+  await expect(page.locator('[data-profile-directory]').getByRole('alert')).toContainText('目录服务暂不可用', {
+    timeout: 25_000,
+  })
   state.failList = false
   await page.getByRole('button', { name: '重试读取', exact: true }).click()
   await expect(page.locator('[data-profile-detail] table')).toBeVisible()
-  const before = await page.locator('[data-profile-detail]').evaluate(element => getComputedStyle(element.parentElement!).backgroundColor)
+  const before = await page
+    .locator('[data-profile-detail]')
+    .evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor)
   await page.getByRole('button', { name: '界面外观', exact: true }).click()
   await page.getByRole('radio', { name: '米白配色', exact: true }).press('Space')
   await expect(page.locator('html')).toHaveAttribute('data-surface-theme', 'earth')
   await page.keyboard.press('Escape')
-  await expect.poll(() => page.locator('[data-profile-detail]').evaluate(element => getComputedStyle(element.parentElement!).backgroundColor)).not.toBe(before)
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-profile-detail]')
+        .evaluate((element) => getComputedStyle(element.parentElement!).backgroundColor),
+    )
+    .not.toBe(before)
   await page.screenshot({ path: path.join(evidence, 'earth.png') })
   await page.setViewportSize({ width: 390, height: 844 })
   await page.getByRole('button', { name: '收起侧边栏', exact: true }).click()
@@ -243,17 +377,40 @@ async function documentFixture(page: Page) {
     { id: 'parsed-two', filename: '第二份资料.md', file_type: 'md', status: 'completed' },
     { id: 'parsed-empty', filename: '空正文.pdf', file_type: 'pdf', status: 'completed' },
   ]
-  const state = { documents, failList: false, failContent: false, holdContentId: '', holdContent: null as Promise<void> | null, contentStarted: [] as string[], listSkips: [] as number[], writes: [] as string[], pageSize: 200 }
-  await page.route('**/api/v1/parsing/documents**', async route => {
+  const state = {
+    documents,
+    failList: false,
+    failContent: false,
+    holdContentId: '',
+    holdContent: null as Promise<void> | null,
+    contentStarted: [] as string[],
+    listSkips: [] as number[],
+    writes: [] as string[],
+    pageSize: 200,
+  }
+  await page.route('**/api/v1/parsing/documents**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())
-    if (request.method() !== 'GET') { state.writes.push(request.method() + ' ' + url.pathname); return json(route, {}) }
+    if (request.method() !== 'GET') {
+      state.writes.push(request.method() + ' ' + url.pathname)
+      return json(route, {})
+    }
     if (url.pathname.endsWith('/content')) {
       const id = url.pathname.split('/documents/')[1].split('/')[0]
       state.contentStarted.push(id)
       if (id === state.holdContentId && state.holdContent) await state.holdContent
       if (state.failContent) return json(route, { detail: '正文服务暂不可用' }, 503)
-      return json(route, { document_id: id, parser_backend: 'text', markdown_content: id === 'parsed-empty' ? '' : id === 'parsed-one' ? '# 已保存的清洗稿\n\n这不是解析原文。' : '# 第二份资料\n\n第二份正文。', original_markdown_content: id === 'parsed-one' ? '重复页眉\n# 设备维护手册\n\n解析完成后的原始正文。' : '' })
+      return json(route, {
+        document_id: id,
+        parser_backend: 'text',
+        markdown_content:
+          id === 'parsed-empty'
+            ? ''
+            : id === 'parsed-one'
+              ? '# 已保存的清洗稿\n\n这不是解析原文。'
+              : '# 第二份资料\n\n第二份正文。',
+        original_markdown_content: id === 'parsed-one' ? '重复页眉\n# 设备维护手册\n\n解析完成后的原始正文。' : '',
+      })
     }
     if (state.failList) return json(route, { detail: '解析目录暂不可用' }, 503)
     expect(url.searchParams.get('status')).toBe('completed')
@@ -264,7 +421,9 @@ async function documentFixture(page: Page) {
   return { preview, state }
 }
 
-test('parsed sources use original content, automatically preview across templates and preserve manual text without document writes', async ({ page }) => {
+test('parsed sources use original content, automatically preview across templates and preserve manual text without document writes', async ({
+  page,
+}) => {
   const { preview, state } = await documentFixture(page)
   await openProfiles(page)
   const input = page.getByRole('textbox', { name: '清洗前', exact: true })
@@ -293,7 +452,9 @@ test('parsed sources use original content, automatically preview across template
   expect(state.writes).toEqual([])
 })
 
-test('source list, content and cleaning failures recover in place; late source and preview responses cannot replace the new selection', async ({ page }) => {
+test('source list, content and cleaning failures recover in place; late source and preview responses cannot replace the new selection', async ({
+  page,
+}) => {
   const { preview, state } = await documentFixture(page)
   state.failList = true
   await openProfiles(page)
@@ -315,14 +476,18 @@ test('source list, content and cleaning failures recover in place; late source a
   await page.getByRole('button', { name: '重新预览', exact: true }).click()
   await expect(page.locator('[data-profile-preview-output]')).toContainText('原始正文')
   let releasePreview!: () => void
-  preview.holdPreview = new Promise(resolve => { releasePreview = resolve })
+  preview.holdPreview = new Promise((resolve) => {
+    releasePreview = resolve
+  })
   const started = preview.previewStarted
   await page.getByRole('button', { name: '重新预览', exact: true }).click()
   await expect.poll(() => preview.previewStarted).toBe(started + 1)
   preview.holdPreview = null
   let releaseContent!: () => void
   state.holdContentId = 'parsed-two'
-  state.holdContent = new Promise(resolve => { releaseContent = resolve })
+  state.holdContent = new Promise((resolve) => {
+    releaseContent = resolve
+  })
   await page.getByRole('button', { name: /^更换预览文档/ }).click()
   await page.getByRole('button', { name: '使用文档 第二份资料.md', exact: true }).click()
   await expect.poll(() => state.contentStarted).toContain('parsed-two')
@@ -330,8 +495,9 @@ test('source list, content and cleaning failures recover in place; late source a
   await page.getByRole('button', { name: /^更换预览文档/ }).click()
   await page.getByRole('button', { name: '使用文档 空正文.pdf', exact: true }).click()
   await expect(page.getByText('此文档没有可预览的正文，请返回文档解析检查结果。', { exact: true })).toBeVisible()
-  const oldResponse = page.waitForResponse(response => response.url().endsWith('/clean-preview'))
-  releasePreview(); releaseContent()
+  const oldResponse = page.waitForResponse((response) => response.url().endsWith('/clean-preview'))
+  releasePreview()
+  releaseContent()
   await oldResponse
   await expect(page.getByRole('textbox', { name: '清洗前', exact: true })).toHaveValue('')
   await expect(page.locator('[data-profile-preview-output]')).not.toContainText('原始正文')
@@ -343,7 +509,9 @@ test('source list, content and cleaning failures recover in place; late source a
   expect(state.writes).toEqual([])
 })
 
-test('source picker handles pagination, mobile keyboard access and parsed Markdown under an HTML template', async ({ page }) => {
+test('source picker handles pagination, mobile keyboard access and parsed Markdown under an HTML template', async ({
+  page,
+}) => {
   const { preview, state } = await documentFixture(page)
   state.pageSize = 1
   await openProfiles(page)

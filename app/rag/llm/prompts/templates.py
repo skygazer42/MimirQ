@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -10,6 +9,7 @@ from app.rag.llm.prompts.oneshots import (
 from app.rag.llm.prompts.schemas import (
     ActionItemsPromptSchema,
     AssistantPromptSchema,
+    BasePromptSchema,
     SummaryPromptSchema,
 )
 from app.rag.llm.prompts.system_prompts import (
@@ -23,7 +23,7 @@ from app.rag.llm.prompts.system_prompts import (
 class PromptBundle:
     key: str
     system_prompt: str
-    response_model: type
+    response_model: type[BasePromptSchema]
     template: str
     oneshot_example: dict[str, Any]
 
@@ -61,9 +61,7 @@ PROMPT_BUNDLES: dict[str, PromptBundle] = {
         system_prompt=KB_SUMMARY_SYSTEM_PROMPT,
         response_model=SummaryPromptSchema,
         template=(
-            "Context:\n{context}\n\n"
-            "Question:\n{question}\n\n"
-            "Return a concise summary with bullets and citations."
+            "Context:\n{context}\n\nQuestion:\n{question}\n\nReturn a concise summary with bullets and citations."
         ),
         oneshot_example=KB_SUMMARY_ONESHOT,
     ),
@@ -72,9 +70,7 @@ PROMPT_BUNDLES: dict[str, PromptBundle] = {
         system_prompt=KB_ACTION_ITEMS_SYSTEM_PROMPT,
         response_model=ActionItemsPromptSchema,
         template=(
-            "Context:\n{context}\n\n"
-            "Question:\n{question}\n\n"
-            "Return concrete supported action items and citations."
+            "Context:\n{context}\n\nQuestion:\n{question}\n\nReturn concrete supported action items and citations."
         ),
         oneshot_example=KB_ACTION_ITEMS_ONESHOT,
     ),

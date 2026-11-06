@@ -205,7 +205,7 @@ def _next_entry_start(
 
 
 class TOMLConfigChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -266,7 +266,7 @@ class TOMLConfigChunker(BaseChunker):
                 "chunk_strategy": "toml_config",
                 "start_char": first.start,
                 "end_char": last.end,
-                "toml_entry_count": int(end_idx - start_idx),
+                "toml_entry_count": end_idx - start_idx,
             }
         )
         meta.setdefault("doc_type_kwd", "toml")
@@ -318,13 +318,11 @@ class TOMLConfigChunker(BaseChunker):
         if not text.strip():
             return
         base_meta = dict(doc.metadata or {})
-        any_entries = False
         for section in _build_sections(text):
             if not text[section.start : section.end].strip():
                 continue
             entries = _iter_entries(text, start=section.start, end=section.end)
             if entries:
-                any_entries = True
                 self._append_entry_chunks(
                     out,
                     text=text,
@@ -340,14 +338,6 @@ class TOMLConfigChunker(BaseChunker):
                 end=section.end,
                 base_meta=base_meta,
                 table=section.name,
-            )
-        if not any_entries:
-            self._append_fallback_chunks(
-                out,
-                text=text,
-                start=0,
-                end=len(text),
-                base_meta=base_meta,
             )
 
     def split_documents(self, documents: list[Document]) -> list[Document]:

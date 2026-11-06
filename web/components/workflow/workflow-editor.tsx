@@ -63,7 +63,7 @@ function buildEdgeId(source: string, target: string, index: number): string {
   return `edge:${source}:${target}:${index}`
 }
 
-function buildDefaultPositions(graph: GraphData): Map<string, { x: number, y: number }> {
+function buildDefaultPositions(graph: GraphData): Map<string, { x: number; y: number }> {
   const nodeIds = graph.nodes.map((node) => node.id)
   const indegree = new Map<string, number>(nodeIds.map((id) => [id, 0]))
   const children = new Map<string, string[]>()
@@ -77,9 +77,7 @@ function buildDefaultPositions(graph: GraphData): Map<string, { x: number, y: nu
   }
 
   const roots = nodeIds.filter((id) => (indegree.get(id) || 0) === 0)
-  const orderedRoots = roots.includes('bundle')
-    ? ['bundle', ...roots.filter((id) => id !== 'bundle')]
-    : roots
+  const orderedRoots = roots.includes('bundle') ? ['bundle', ...roots.filter((id) => id !== 'bundle')] : roots
 
   const depth = new Map<string, number>()
   const queue: Array<[string, number]> = orderedRoots.map((id) => [id, 0])
@@ -107,7 +105,7 @@ function buildDefaultPositions(graph: GraphData): Map<string, { x: number, y: nu
     rowsByDepth.set(level, [...(rowsByDepth.get(level) || []), node.id])
   }
 
-  const positions = new Map<string, { x: number, y: number }>()
+  const positions = new Map<string, { x: number; y: number }>()
   for (const [level, ids] of rowsByDepth.entries()) {
     ids.forEach((id, row) => {
       positions.set(id, {
@@ -125,9 +123,7 @@ function buildEditorNodes(graph: GraphData, workflowLayout: JsonRecord | null | 
   const layoutNodes = Array.isArray(layout.nodes) ? layout.nodes.filter(isRecord) : []
   const positions = buildDefaultPositions(graph)
   const storedNodeMap = new Map<string, JsonRecord>(
-    layoutNodes
-      .map((node) => [toTrimmedPrimitiveString(node.id), node] as const)
-      .filter(([id]) => !!id)
+    layoutNodes.map((node) => [toTrimmedPrimitiveString(node.id), node] as const).filter(([id]) => !!id),
   )
 
   return graph.nodes.map((graphNode, index) => {
@@ -163,7 +159,7 @@ function buildEditorNodes(graph: GraphData, workflowLayout: JsonRecord | null | 
 function buildEditorEdges(
   graph: GraphData,
   workflowLayout: JsonRecord | null | undefined,
-  nodeIds: Set<string>
+  nodeIds: Set<string>,
 ): WorkflowEditorEdge[] {
   const layout = getWorkflowLayout(workflowLayout)
   const hasStoredEdges = Array.isArray(layout.edges)
@@ -176,17 +172,19 @@ function buildEditorEdges(
     if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) return []
 
     const label = typeof edgeLike.label === 'string' && edgeLike.label.trim() ? edgeLike.label.trim() : undefined
-    return [{
-      id: typeof edgeLike.id === 'string' && edgeLike.id.trim() ? edgeLike.id : buildEdgeId(source, target, index),
-      source,
-      target,
-      label,
-      type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: 1.5, stroke: 'hsl(var(--muted-foreground))' },
-      labelStyle: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
-      labelBgStyle: { fill: 'hsl(var(--background))' },
-    }]
+    return [
+      {
+        id: typeof edgeLike.id === 'string' && edgeLike.id.trim() ? edgeLike.id : buildEdgeId(source, target, index),
+        source,
+        target,
+        label,
+        type: 'smoothstep',
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { strokeWidth: 1.5, stroke: 'hsl(var(--muted-foreground))' },
+        labelStyle: { fill: 'hsl(var(--muted-foreground))', fontSize: 12 },
+        labelBgStyle: { fill: 'hsl(var(--background))' },
+      },
+    ]
   })
 }
 
@@ -209,7 +207,7 @@ function serializeWorkflowLayout(nodes: WorkflowEditorNode[], edges: WorkflowEdi
   }
 }
 
-export interface WorkflowEditorProps {
+export type WorkflowEditorProps = {
   graph: GraphData
   workflowLayout?: JsonRecord | null
   onWorkflowLayoutChange?: (layout: WorkflowLayout) => void
@@ -225,49 +223,74 @@ export function WorkflowEditor({
   const nodeIds = useMemo(() => new Set(graph.nodes.map((node) => node.id)), [graph.nodes])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [measurements, setMeasurements] = useState<Map<string, WorkflowEditorNode['measured']>>(() => new Map())
-  const nodes = useMemo(() => buildEditorNodes(graph, workflowLayout).map(node => ({ ...node, selected: node.id === selectedNodeId, measured: measurements.get(node.id) })), [graph, workflowLayout, measurements, selectedNodeId])
+  const nodes = useMemo(
+    () =>
+      buildEditorNodes(graph, workflowLayout).map((node) => ({
+        ...node,
+        selected: node.id === selectedNodeId,
+        measured: measurements.get(node.id),
+      })),
+    [graph, workflowLayout, measurements, selectedNodeId],
+  )
   const edges = useMemo(() => buildEditorEdges(graph, workflowLayout, nodeIds), [graph, nodeIds, workflowLayout])
 
-  const publishWorkflowLayout = useCallback((nextNodes: WorkflowEditorNode[], nextEdges: WorkflowEditorEdge[]) => {
-    onWorkflowLayoutChange?.(serializeWorkflowLayout(nextNodes, nextEdges))
-  }, [onWorkflowLayoutChange])
+  const publishWorkflowLayout = useCallback(
+    (nextNodes: WorkflowEditorNode[], nextEdges: WorkflowEditorEdge[]) => {
+      onWorkflowLayoutChange?.(serializeWorkflowLayout(nextNodes, nextEdges))
+    },
+    [onWorkflowLayoutChange],
+  )
 
-  const onNodesChange = useCallback((changes: NodeChange<WorkflowEditorNode>[]) => {
-    const nextNodes = applyNodeChanges(changes, nodes)
-    if (changes.some(change => change.type === 'dimensions')) {
-      setMeasurements(new Map(nextNodes.map(node => [node.id, node.measured])))
-    }
-    const layoutChanged = changes.some(change => {
-      if (change.type === 'select' || change.type === 'dimensions') return false
-      if (change.type !== 'position') return true
-      const node = nodes.find(item => item.id === change.id)
-      return change.position && node && (change.position.x !== node.position.x || change.position.y !== node.position.y)
-    })
-    if (!layoutChanged) return
-    publishWorkflowLayout(nextNodes, edges)
-  }, [edges, nodes, publishWorkflowLayout])
+  const onNodesChange = useCallback(
+    (changes: NodeChange<WorkflowEditorNode>[]) => {
+      const nextNodes = applyNodeChanges(changes, nodes)
+      if (changes.some((change) => change.type === 'dimensions')) {
+        setMeasurements(new Map(nextNodes.map((node) => [node.id, node.measured])))
+      }
+      const layoutChanged = changes.some((change) => {
+        if (change.type === 'select' || change.type === 'dimensions') return false
+        if (change.type !== 'position') return true
+        const node = nodes.find((item) => item.id === change.id)
+        return (
+          change.position && node && (change.position.x !== node.position.x || change.position.y !== node.position.y)
+        )
+      })
+      if (!layoutChanged) return
+      publishWorkflowLayout(nextNodes, edges)
+    },
+    [edges, nodes, publishWorkflowLayout],
+  )
 
-  const onEdgesChange = useCallback((changes: EdgeChange<WorkflowEditorEdge>[]) => {
-    if (changes.every(change => change.type === 'select')) return
-    publishWorkflowLayout(nodes, applyEdgeChanges(changes, edges))
-  }, [edges, nodes, publishWorkflowLayout])
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange<WorkflowEditorEdge>[]) => {
+      if (changes.every((change) => change.type === 'select')) return
+      publishWorkflowLayout(nodes, applyEdgeChanges(changes, edges))
+    },
+    [edges, nodes, publishWorkflowLayout],
+  )
 
-  const onConnect = useCallback((connection: Connection) => {
-    if (!connection.source || !connection.target) return
-    const nextEdge: WorkflowEditorEdge = {
-      ...connection,
-      id: buildEdgeId(connection.source, connection.target, edges.length),
-      type: 'smoothstep',
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { strokeWidth: 1.5, stroke: 'hsl(var(--muted-foreground))' },
-    }
-    publishWorkflowLayout(nodes, addEdge(nextEdge, edges))
-  }, [edges, nodes, publishWorkflowLayout])
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return
+      const nextEdge: WorkflowEditorEdge = {
+        ...connection,
+        id: buildEdgeId(connection.source, connection.target, edges.length),
+        type: 'smoothstep',
+        markerEnd: { type: MarkerType.ArrowClosed },
+        style: { strokeWidth: 1.5, stroke: 'hsl(var(--muted-foreground))' },
+      }
+      publishWorkflowLayout(nodes, addEdge(nextEdge, edges))
+    },
+    [edges, nodes, publishWorkflowLayout],
+  )
 
-  const handleNodeClick = useCallback((_event: React.MouseEvent, node: WorkflowEditorNode) => {
-    setSelectedNodeId(node.id)
-    onNodeSelect?.(node.data.graphNode)
-  }, [onNodeSelect])
+  const handleNodeClick = useCallback(
+    (_event: React.MouseEvent, node: WorkflowEditorNode) => {
+      setSelectedNodeId(node.id)
+      onNodeSelect?.(node.data.graphNode)
+    },
+    [onNodeSelect],
+  )
 
   const handlePaneClick = useCallback(() => {
     setSelectedNodeId(null)

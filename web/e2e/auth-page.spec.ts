@@ -6,8 +6,11 @@ test.beforeEach(async ({ page }) => {
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
-        initialized: true, registration_enabled: true, bootstrap_enabled: false,
-        bootstrap_token_required: false, password_min_length: 8,
+        initialized: true,
+        registration_enabled: true,
+        bootstrap_enabled: false,
+        bootstrap_token_required: false,
+        password_min_length: 8,
       }),
     })
   })
@@ -18,14 +21,18 @@ test('keeps authentication readable when reduced motion is enabled', async ({ pa
   await page.goto('/auth')
   await expect(page.getByRole('heading', { name: '欢迎回来' })).toBeVisible()
 
-  await expect.poll(async () => page.locator('#main-content').evaluate((element) => {
-    const blurredAncestors: string[] = []
-    for (let current: Element | null = element; current; current = current.parentElement) {
-      const filter = getComputedStyle(current).filter
-      if (filter !== 'none' && filter !== 'blur(0px)') blurredAncestors.push(filter)
-    }
-    return blurredAncestors
-  })).toEqual([])
+  await expect
+    .poll(async () =>
+      page.locator('#main-content').evaluate((element) => {
+        const blurredAncestors: string[] = []
+        for (let current: Element | null = element; current; current = current.parentElement) {
+          const filter = getComputedStyle(current).filter
+          if (filter !== 'none' && filter !== 'blur(0px)') blurredAncestors.push(filter)
+        }
+        return blurredAncestors
+      }),
+    )
+    .toEqual([])
 })
 
 test('clears login errors and keeps registration reachable at low viewport heights', async ({ page }) => {

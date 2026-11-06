@@ -32,7 +32,10 @@ test('command menu natural-language handoff routes into chat autorun', async ({ 
 
   await expect(page.getByLabel('消息输入框', { exact: true })).toBeVisible({ timeout: 60_000 })
 
-  await page.getByRole('navigation', { name: '主导航' }).getByRole('button', { name: '搜索与命令', exact: true }).click()
+  await page
+    .getByRole('navigation', { name: '主导航' })
+    .getByRole('button', { name: '搜索与命令', exact: true })
+    .click()
 
   const commandDialog = page.getByRole('dialog')
   await expect(commandDialog).toBeVisible()

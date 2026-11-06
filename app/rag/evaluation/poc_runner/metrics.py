@@ -1,4 +1,3 @@
-
 from typing import Any, Mapping
 
 
@@ -20,7 +19,7 @@ def compute_feedback_metrics(
     def _rate(numerator: float, denominator: float) -> float:
         if denominator <= 0:
             return 0.0
-        return round(float(numerator) / float(denominator), 4)
+        return round(float(numerator) / denominator, 4)
 
     return {
         "raw_positive_rate": _rate(positive_feedback, feedback_base),

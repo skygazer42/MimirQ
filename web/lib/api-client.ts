@@ -57,7 +57,11 @@ export type {
   DatasetAnalysisRuleSuggestionParams,
   DatasetRetrievalAuditPayload,
 } from '@/lib/api/datasets'
-export type { FrontendTraceReportRequest, FrontendWebVitalReportOptions, FrontendWebVitalReportRequest } from '@/lib/api/observability'
+export type {
+  FrontendTraceReportRequest,
+  FrontendWebVitalReportOptions,
+  FrontendWebVitalReportRequest,
+} from '@/lib/api/observability'
 export type { ParsingContentResponse, ParsingContentUpdateRequest } from '@/lib/api/parsing'
 export type { BackendMeta, BackendMetaDetails } from '@/lib/api/meta'
 export type { TenantMember, TenantMemberListResponse } from '@/lib/api/access'
@@ -88,10 +92,16 @@ export type {
   KGSearchDiagnosticsResponse,
   KGSearchDiagnosticsRunDetail,
   KGSearchDiagnosticsRunList,
+  KGSearchDiagnosticsRunListParams,
   KGSearchDiagnosticsRunOut,
+  RagasConversationReadinessItem,
+  RagasConversationReadinessRequest,
+  RagasConversationReadinessResponse,
   RagasItem,
   RagasRun,
+  RagasRunCreateRequest,
   RagasRunDetail,
+  RagasRunList,
 } from '@/lib/api/evaluation'
 export type {
   PromptTemplate,
@@ -100,10 +110,6 @@ export type {
   PromptTemplateUpdate,
 } from '@/lib/api/prompts'
 export type {
-  ClipImageIndexRequest,
-  ClipImageIndexResponse,
-  ClipImageSearchRequest,
-  ClipImageSearchResponse,
   RagConfigTemplate,
   RagConfigTemplateCreate,
   RagConfigTemplateNewVersion,
@@ -112,19 +118,34 @@ export type {
 export type {
   CacheConfig,
   ChatConfig,
+  DifyExternalKnowledgeConfig,
+  DoclingConfig,
+  EmbeddingConfig,
   Etl4LlmConfig,
   FeatureFlags,
+  GovernanceConfig,
   KGConfig,
   LangGraphConfig,
+  LLMConfig,
   MagicPDFConfig,
   MarkerConfig,
+  MilvusConfig,
+  MinIOConfig,
+  MinerUConfig,
+  NavigationConfig,
   ObservabilityConfig,
   PaddleVLConfig,
+  ParserBackendStatus,
+  RAGConfig,
   SafetyConfig,
+  SettingsUpdateResponse,
   SystemSettings,
   SystemStatus,
   TestLLMRequest,
   TestLLMResponse,
+  TextInConfig,
+  UpdateSettingsRequest,
+  UrlIngestStatus,
 } from '@/lib/api/settings'
 
 export { default } from '@/lib/api/core'

@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -40,7 +39,7 @@ def _coerce_float(value: Any) -> float | None:
         number = float(value)
         if number != number:
             return None
-        return float(number)
+        return number
     except Exception:
         return None
 
@@ -122,7 +121,7 @@ def build_block_element(
         confidence_value = merged_attributes.get("ocr_confidence")
     confidence = _coerce_float(confidence_value)
     if confidence is not None:
-        element["confidence"] = max(0.0, min(1.0, float(confidence)))
+        element["confidence"] = max(0.0, min(1.0, confidence))
     return {key: value for key, value in element.items() if value not in (None, "", [])}
 
 

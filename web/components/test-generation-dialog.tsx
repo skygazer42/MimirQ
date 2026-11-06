@@ -1,6 +1,6 @@
 /**
  * AI 生成测试问题对话框
- * 
+ *
  * 功能：
  * - 选择生成来源（文档或对话）
  * - 配置生成参数
@@ -10,8 +10,8 @@
 
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
-import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState, useEffect, useRef } from 'react'
 import { evaluationApi, documentApi, chatApi, datasetApi } from '@/lib/api'
 import { queryKeys } from '@/lib/query-keys'
 import type {
@@ -31,11 +31,11 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatApiError } from '@/lib/api-errors'
 
-interface TestGenerationDialogProps {
+type TestGenerationDialogProps = {
   open: boolean
   onClose: () => void
   onGenerated?: () => void
-  initialSourceType?: 'documents' | 'conversations'
+  initialSourceType?: SourceType
   initialDatasetId?: string
   initialDocumentIds?: string[]
 }
@@ -56,9 +56,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getQuestionType(metadata: unknown): string | null {
   if (!isRecord(metadata)) return null
-  return typeof metadata.question_type === 'string' && metadata.question_type.trim()
-    ? metadata.question_type
-    : null
+  return typeof metadata.question_type === 'string' && metadata.question_type.trim() ? metadata.question_type : null
 }
 
 export function TestGenerationDialog({
@@ -69,6 +67,7 @@ export function TestGenerationDialog({
   initialDatasetId,
   initialDocumentIds,
 }: Readonly<TestGenerationDialogProps>) {
+  const queryClient = useQueryClient()
   const [step, setStep] = useState<Step>('select_source')
   const [sourceType, setSourceType] = useState<SourceType>('documents')
 
@@ -88,6 +87,7 @@ export function TestGenerationDialog({
   const [generatedQuestions, setGeneratedQuestions] = useState<GeneratedQuestion[]>([])
   const [savedCaseIds, setSavedCaseIds] = useState<string[]>([])
   const [error, setError] = useState<string>('')
+  const generationTokenRef = useRef(0)
 
   const documentsQuery = useQuery({
     queryKey: queryKeys.documents.list(TEST_GEN_DOCUMENT_PARAMS),
@@ -127,19 +127,11 @@ export function TestGenerationDialog({
   }, [open, initialSourceType, initialDatasetId, initialDocumentIds])
 
   useEffect(() => {
-    const error =
-      sourceType === 'documents'
-        ? (documentsQuery.error || datasetsQuery.error)
-        : conversationsQuery.error
+    const error = sourceType === 'documents' ? documentsQuery.error || datasetsQuery.error : conversationsQuery.error
     if (!error) return
     console.error('加载数据失败:', error)
     toast.error(formatApiError(error, '加载数据失败'))
-  }, [
-    conversationsQuery.error,
-    datasetsQuery.error,
-    documentsQuery.error,
-    sourceType,
-  ])
+  }, [conversationsQuery.error, datasetsQuery.error, documentsQuery.error, sourceType])
 
   const resetState = () => {
     setStep('select_source')
@@ -151,7 +143,11 @@ export function TestGenerationDialog({
   }
 
   useEffect(() => {
-    if (!open) resetState()
+    if (!open) {
+      generationTokenRef.current += 1
+      setIsGenerating(false)
+      resetState()
+    }
   }, [open])
 
   // 关闭对话框
@@ -192,6 +188,15 @@ export function TestGenerationDialog({
 
   // 生成问题
   const handleGenerate = async () => {
+    const sourceQueryKey =
+      sourceType === 'documents'
+        ? queryKeys.documents.list(TEST_GEN_DOCUMENT_PARAMS)
+        : queryKeys.chat.conversations(TEST_GEN_CONVERSATION_PARAMS)
+    const queryCache = queryClient.getQueryCache()
+    const sourceQueryOwner = queryCache.find({ queryKey: sourceQueryKey, exact: true })
+    if (!sourceQueryOwner) return
+    const ownsSourceQuery = () => queryCache.find({ queryKey: sourceQueryKey, exact: true }) === sourceQueryOwner
+    const requestToken = (generationTokenRef.current += 1)
     setIsGenerating(true)
     setError('')
 
@@ -229,24 +234,33 @@ export function TestGenerationDialog({
         result = await evaluationApi.generateFromConversations(params)
       }
 
+      if (!ownsSourceQuery()) return
       if (result.status === 'completed') {
-        setGeneratedQuestions(result.generated_questions)
-        setSavedCaseIds(result.saved_case_ids || [])
-        setStep('preview')
+        if (result.saved_case_ids?.length) {
+          void queryClient.invalidateQueries({ queryKey: queryKeys.evaluations.regressionCases().slice(0, 2) })
+        }
+        if (requestToken === generationTokenRef.current) {
+          setGeneratedQuestions(result.generated_questions)
+          setSavedCaseIds(result.saved_case_ids || [])
+          setStep('preview')
+        }
         if (autoSave) {
-          toast.success(`成功生成 ${result.generated_questions.length} 个问题，已保存 ${result.saved_case_ids?.length || 0} 个用例`)
+          toast.success(
+            `成功生成 ${result.generated_questions.length} 个问题，已保存 ${result.saved_case_ids?.length || 0} 个用例`,
+          )
         } else {
           toast.success(`成功生成 ${result.generated_questions.length} 个问题`)
         }
       } else {
-        setError(result.error_message || '生成失败')
+        if (requestToken === generationTokenRef.current) setError(result.error_message || '生成失败')
       }
     } catch (error: unknown) {
+      if (!ownsSourceQuery()) return
       console.error('生成问题失败:', error)
       const msg = formatApiError(error, '生成问题失败')
-      setError(msg)
+      if (requestToken === generationTokenRef.current) setError(msg)
     } finally {
-      setIsGenerating(false)
+      if (requestToken === generationTokenRef.current) setIsGenerating(false)
     }
   }
 
@@ -296,38 +310,26 @@ export function TestGenerationDialog({
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => setSourceType('documents')}
-	                  className={cn(
-	                    'p-4 rounded-xl border-2 transition text-left',
-	                    sourceType === 'documents'
-	                      ? 'border-info bg-info/10'
-	                      : 'border-border/60 hover:border-border'
-	                  )}
-	                >
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition text-left',
+                    sourceType === 'documents' ? 'border-info bg-info/10' : 'border-border/60 hover:border-border',
+                  )}
+                >
                   <FileText className="w-6 h-6 mb-2 text-info" />
-                  <div className="font-medium text-foreground mb-1">
-                    从文档生成
-                  </div>
-	                  <div className="text-xs text-muted-foreground">
-	                    基于知识库文档内容生成多样化测试问题
-	                  </div>
+                  <div className="font-medium text-foreground mb-1">从文档生成</div>
+                  <div className="text-xs text-muted-foreground">基于知识库文档内容生成多样化测试问题</div>
                 </button>
 
                 <button
                   onClick={() => setSourceType('conversations')}
-	                  className={cn(
-	                    'p-4 rounded-xl border-2 transition text-left',
-	                    sourceType === 'conversations'
-	                      ? 'border-info bg-info/10'
-	                      : 'border-border/60 hover:border-border'
-	                  )}
-	                >
+                  className={cn(
+                    'p-4 rounded-xl border-2 transition text-left',
+                    sourceType === 'conversations' ? 'border-info bg-info/10' : 'border-border/60 hover:border-border',
+                  )}
+                >
                   <MessageSquare className="w-6 h-6 mb-2 text-accent" />
-                  <div className="font-medium text-foreground mb-1">
-                    从对话生成
-                  </div>
-	                  <div className="text-xs text-muted-foreground">
-	                    从真实对话历史中提炼高质量问题
-	                  </div>
+                  <div className="font-medium text-foreground mb-1">从对话生成</div>
+                  <div className="text-xs text-muted-foreground">从真实对话历史中提炼高质量问题</div>
                 </button>
               </div>
 
@@ -337,9 +339,7 @@ export function TestGenerationDialog({
                   {/* 知识库选择 */}
                   {datasets.length > 0 && (
                     <div>
-                      <div className="block text-sm font-medium text-foreground/80 mb-2">
-                        选择知识库（可选）
-                      </div>
+                      <div className="block text-sm font-medium text-foreground/80 mb-2">选择知识库（可选）</div>
                       <select
                         value={selectedDatasetId}
                         onChange={(e) => setSelectedDatasetId(e.target.value)}
@@ -357,34 +357,36 @@ export function TestGenerationDialog({
 
                   {/* 文档列表 */}
                   <div>
-                    <div className="block text-sm font-medium text-foreground/80 mb-2">
-                      选择文档
-                    </div>
+                    <div className="block text-sm font-medium text-foreground/80 mb-2">选择文档</div>
                     <div className="border border-border/60 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
                       {(() => {
-    if (isLoadingData) {
-        return (<div className="flex items-center justify-center py-8">
-                          <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
-                        </div>);
-    }
-    else if (documents.length === 0) {
-            return (<div className="text-center py-8 text-muted-foreground text-sm">
-                          暂无可用文档
-                        </div>);
-        }
-        else {
-            return (documents.map((doc) => (<label key={doc.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0">
-                            <input type="checkbox" checked={selectedDocumentIds.has(doc.id)} onChange={() => toggleDocument(doc.id)} className="w-4 h-4 rounded"/>
-                            <FileText className="w-4 h-4 text-muted-foreground"/>
-                            <span className="flex-1 text-sm text-foreground truncate">
-                              {doc.filename}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {doc.chunk_count} 切片
-                            </span>
-                          </label>)));
-        }
-})()}
+                        if (isLoadingData) {
+                          return (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+                            </div>
+                          )
+                        } else if (documents.length === 0) {
+                          return <div className="text-center py-8 text-muted-foreground text-sm">暂无可用文档</div>
+                        } else {
+                          return documents.map((doc) => (
+                            <label
+                              key={doc.id}
+                              className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedDocumentIds.has(doc.id)}
+                                onChange={() => toggleDocument(doc.id)}
+                                className="w-4 h-4 rounded"
+                              />
+                              <FileText className="w-4 h-4 text-muted-foreground" />
+                              <span className="flex-1 text-sm text-foreground truncate">{doc.filename}</span>
+                              <span className="text-xs text-muted-foreground">{doc.chunk_count} 切片</span>
+                            </label>
+                          ))
+                        }
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -393,34 +395,38 @@ export function TestGenerationDialog({
               {/* 对话选择 */}
               {sourceType === 'conversations' && (
                 <div>
-                  <div className="block text-sm font-medium text-foreground/80 mb-2">
-                    选择对话
-                  </div>
+                  <div className="block text-sm font-medium text-foreground/80 mb-2">选择对话</div>
                   <div className="border border-border/60 rounded-lg max-h-64 overflow-y-auto overscroll-contain no-scrollbar">
                     {(() => {
-    if (isLoadingData) {
-        return (<div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground"/>
-                      </div>);
-    }
-    else if (conversations.length === 0) {
-            return (<div className="text-center py-8 text-muted-foreground text-sm">
-                        暂无对话记录
-                      </div>);
-        }
-        else {
-            return (conversations.map((conv) => (<label key={conv.id} className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0">
-                          <input type="checkbox" checked={selectedConversationIds.has(conv.id)} onChange={() => toggleConversation(conv.id)} className="w-4 h-4 rounded"/>
-                          <MessageSquare className="w-4 h-4 text-muted-foreground"/>
-                          <span className="flex-1 text-sm text-foreground truncate">
-                            {conv.title || `对话 ${conv.id.slice(0, 8)}`}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {conv.message_count} 消息
-                          </span>
-                        </label>)));
-        }
-})()}
+                      if (isLoadingData) {
+                        return (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="w-6 h-6 animate-spin motion-reduce:animate-none text-muted-foreground" />
+                          </div>
+                        )
+                      } else if (conversations.length === 0) {
+                        return <div className="text-center py-8 text-muted-foreground text-sm">暂无对话记录</div>
+                      } else {
+                        return conversations.map((conv) => (
+                          <label
+                            key={conv.id}
+                            className="flex items-center gap-3 p-3 hover:bg-muted/30 cursor-pointer border-b border-border/60 last:border-0"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedConversationIds.has(conv.id)}
+                              onChange={() => toggleConversation(conv.id)}
+                              className="w-4 h-4 rounded"
+                            />
+                            <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                            <span className="flex-1 text-sm text-foreground truncate">
+                              {conv.title || `对话 ${conv.id.slice(0, 8)}`}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{conv.message_count} 消息</span>
+                          </label>
+                        ))
+                      }
+                    })()}
                   </div>
                 </div>
               )}
@@ -434,9 +440,7 @@ export function TestGenerationDialog({
             <div className="space-y-6">
               {/* 生成数量 */}
               <div>
-                <label className="block text-sm font-medium text-foreground/80 mb-2">
-                  生成数量: {numQuestions}
-                </label>
+                <label className="block text-sm font-medium text-foreground/80 mb-2">生成数量: {numQuestions}</label>
                 <input
                   type="range"
                   min="1"
@@ -454,9 +458,7 @@ export function TestGenerationDialog({
               {/* 问题类型（仅文档） */}
               {sourceType === 'documents' && (
                 <div>
-                  <div className="block text-sm font-medium text-foreground/80 mb-2">
-                    问题类型
-                  </div>
+                  <div className="block text-sm font-medium text-foreground/80 mb-2">问题类型</div>
                   <div className="flex flex-wrap gap-2">
                     {[
                       { key: 'factual', label: '事实型', desc: '询问具体信息' },
@@ -472,7 +474,7 @@ export function TestGenerationDialog({
                           'px-4 py-2 rounded-lg border-2 transition text-sm',
                           questionTypes.includes(type.key)
                             ? 'border-info bg-info/10 text-info'
-                            : 'border-border/60 text-muted-foreground hover:border-border'
+                            : 'border-border/60 text-muted-foreground hover:border-border',
                         )}
                       >
                         <div className="font-medium">{type.label}</div>
@@ -508,12 +510,8 @@ export function TestGenerationDialog({
               {/* 自动保存 */}
               <div className="flex items-center justify-between p-4 rounded-lg bg-muted/40">
                 <div>
-                  <div className="text-sm font-medium text-foreground/80">
-                    自动保存为测试用例
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    生成后自动保存到用例库，可直接运行测试
-                  </div>
+                  <div className="text-sm font-medium text-foreground/80">自动保存为测试用例</div>
+                  <div className="text-xs text-muted-foreground mt-1">生成后自动保存到用例库，可直接运行测试</div>
                 </div>
                 <Switch checked={autoSave} onCheckedChange={setAutoSave} />
               </div>
@@ -528,9 +526,7 @@ export function TestGenerationDialog({
           <div className="flex-1 overflow-y-auto overscroll-contain no-scrollbar p-6">
             <div className="space-y-4">
               {generatedQuestions.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  没有生成问题
-                </div>
+                <div className="text-center py-8 text-muted-foreground">没有生成问题</div>
               ) : (
                 <>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -544,37 +540,38 @@ export function TestGenerationDialog({
                     {generatedQuestions.map((q, index) => {
                       const questionType = getQuestionType(q.metadata)
                       return (
-	                      <div
-	                        key={`${q.question}-${q.expected_answer || ''}-${questionType || ''}`}
-	                        className="p-4 rounded-lg border border-border bg-card"
-	                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-foreground mb-1">
-                              {index + 1}. {q.question}
-                            </div>
-                            {q.expected_answer && (
-                              <div className="text-xs text-muted-foreground mt-2">
-                                <span className="font-medium">参考答案:</span> {q.expected_answer}
+                        <div
+                          key={`${q.question}-${q.expected_answer || ''}-${questionType || ''}`}
+                          className="p-4 rounded-lg border border-border bg-card"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-foreground mb-1">
+                                {index + 1}. {q.question}
                               </div>
-                            )}
-                            {questionType && (
-                              <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-info/10 text-[11px] text-info">
-                                {questionType}
-                              </span>
-                            )}
-	                          </div>
-	                          <button
-                            type="button"
-                            onClick={() => handleDeleteQuestion(index)}
-                            aria-label={`删除问题 ${index + 1}`}
-                            className="rounded-md p-1 text-muted-foreground hover:text-destructive transition-colors duration-150 motion-reduce:transition-none focus-ring"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                              {q.expected_answer && (
+                                <div className="text-xs text-muted-foreground mt-2">
+                                  <span className="font-medium">参考答案:</span> {q.expected_answer}
+                                </div>
+                              )}
+                              {questionType && (
+                                <span className="inline-block mt-2 px-2 py-0.5 rounded-full bg-info/10 text-[11px] text-info">
+                                  {questionType}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteQuestion(index)}
+                              aria-label={`删除问题 ${index + 1}`}
+                              className="rounded-md p-1 text-muted-foreground hover:text-destructive transition-colors duration-150 motion-reduce:transition-none focus-ring"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )})}
+                      )
+                    })}
                   </div>
                 </>
               )}
@@ -594,9 +591,7 @@ export function TestGenerationDialog({
               <Button
                 onClick={() => setStep('configure')}
                 disabled={
-                  (sourceType === 'documents' &&
-                    selectedDocumentIds.size === 0 &&
-                    !selectedDatasetId) ||
+                  (sourceType === 'documents' && selectedDocumentIds.size === 0 && !selectedDatasetId) ||
                   (sourceType === 'conversations' && selectedConversationIds.size === 0)
                 }
               >
@@ -607,7 +602,14 @@ export function TestGenerationDialog({
 
             {step === 'configure' && (
               <>
-                <Button variant="outline" onClick={() => setStep('select_source')}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    generationTokenRef.current += 1
+                    setIsGenerating(false)
+                    setStep('select_source')
+                  }}
+                >
                   上一步
                 </Button>
                 <Button onClick={handleGenerate} disabled={isGenerating}>

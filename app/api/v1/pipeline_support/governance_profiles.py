@@ -30,7 +30,7 @@ GOVERNANCE_PROFILE_NOT_FOUND_DETAIL = "Governance profile not found"
 
 
 def _profile_key_for_row(row: DBGovernanceProfile) -> str:
-    raw = str(getattr(row, "key", "") or "").strip()
+    raw = str(row.key or "").strip()
     if raw:
         return raw
     return f"custom:{str(row.id)}"
@@ -40,26 +40,26 @@ def _profile_summary_from_row(row: DBGovernanceProfile) -> GovernanceProfileSumm
     return GovernanceProfileSummary(
         id=row.id,
         key=_profile_key_for_row(row),
-        name=str(getattr(row, "name", "") or ""),
-        description=getattr(row, "description", None),
-        is_system=bool(getattr(row, "is_system", False)),
+        name=str(row.name or ""),
+        description=row.description,
+        is_system=bool(row.is_system),
     )
 
 
 def _profile_out_from_row(row: DBGovernanceProfile) -> GovernanceProfileOut:
-    payload_raw = getattr(row, "payload", None)
+    payload_raw = row.payload
     if not isinstance(payload_raw, dict):
         payload_raw = {}
     payload = GovernanceProfilePayload(**payload_raw)
     return GovernanceProfileOut(
         id=row.id,
         key=_profile_key_for_row(row),
-        name=str(getattr(row, "name", "") or ""),
-        description=getattr(row, "description", None),
-        is_system=bool(getattr(row, "is_system", False)),
+        name=str(row.name or ""),
+        description=row.description,
+        is_system=bool(row.is_system),
         payload=payload,
-        created_at=getattr(row, "created_at", None),
-        updated_at=getattr(row, "updated_at", None),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 

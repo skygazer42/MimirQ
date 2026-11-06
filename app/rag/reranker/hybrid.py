@@ -57,7 +57,7 @@ class WeightedReranker(DocumentReranker):
         tenant_id: str,
         weights: Weights,
         embedding_fn: Callable[[str], list[float]] | None = None,
-    ):
+    ) -> None:
         """
         Initialize the weighted reranker.
 

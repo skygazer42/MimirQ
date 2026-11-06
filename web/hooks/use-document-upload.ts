@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { CancelledError, useMutation } from '@tanstack/react-query'
 
 import { documentApi } from '@/lib/api/documents'
 import { formatApiError } from '@/lib/api-errors'
@@ -12,14 +12,16 @@ import type {
   DocumentBatchUploadResponse,
   DocumentBatchUploadSuccess,
   DocumentPipelineOptions,
-} from '@/types'
+} from '@/types/backend'
 
 import {
   clampUploadOption,
   getUploadFileKey,
   matchesDocumentListParams,
   uploadBatchRound,
+  type CaptureDocumentListOperation,
   type DocumentListParams,
+  type DocumentListOperation,
   type UpdateCachedDocuments,
 } from './use-document-shared'
 
@@ -32,17 +34,15 @@ type DocumentUploadPreferences = {
 
 type UseDocumentUploadOptions = {
   preferences: DocumentUploadPreferences
-  lastListParamsRef: { current: DocumentListParams }
-  loadDocuments: (params?: DocumentListParams) => Promise<void>
-  pollDocumentStatus: (documentId: string) => void
+  captureDocumentListOperation: CaptureDocumentListOperation
+  pollDocumentStatus: (documentId: string, operation: DocumentListOperation) => void
   setActionError: (error: string | null) => void
-  updateCachedDocuments: UpdateCachedDocuments
 }
 
 function prependDocument(
   newDocument: Document,
   currentParams: DocumentListParams,
-  updateCachedDocuments: UpdateCachedDocuments
+  updateCachedDocuments: UpdateCachedDocuments,
 ) {
   if (!matchesDocumentListParams(newDocument, currentParams)) return
 
@@ -55,54 +55,54 @@ function prependDocument(
 
 export function useDocumentUpload({
   preferences,
-  lastListParamsRef,
-  loadDocuments,
+  captureDocumentListOperation,
   pollDocumentStatus,
   setActionError,
-  updateCachedDocuments,
 }: UseDocumentUploadOptions) {
   const { parserBackend, chunkStrategy, pipelineOverridesEnabled, pipelineOptions } = preferences
 
-  const {
-    mutateAsync: uploadDocumentMutation,
-    isPending: uploadDocumentPending,
-  } = useMutation({
-    mutationFn: async (file: File) => {
-      const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
-      return documentApi.upload(file, {
+  const { mutateAsync: uploadDocumentMutation, isPending: uploadDocumentPending } = useMutation({
+    mutationFn: async ({ file, operation }: { file: File; operation: DocumentListOperation }) => {
+      if (!operation.isActive()) throw new CancelledError()
+      const datasetId = String(operation.params.dataset_id || '').trim()
+      const document = await documentApi.upload(file, {
         parser_backend: parserBackend,
         chunk_strategy: chunkStrategy,
         dataset_id: datasetId || undefined,
         pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
       })
+      if (!operation.isActive()) throw new CancelledError()
+      return document
     },
-    onMutate: () => {
-      setActionError(null)
+    onMutate: ({ operation }) => {
+      if (operation.isCurrent()) setActionError(null)
     },
-    onSuccess: (newDoc) => {
-      prependDocument(newDoc, lastListParamsRef.current, updateCachedDocuments)
-      pollDocumentStatus(newDoc.id)
+    onSuccess: (newDoc, { operation }) => {
+      if (!operation.isActive()) return
+      prependDocument(newDoc, operation.params, operation.updateCachedDocuments)
+      pollDocumentStatus(newDoc.id, operation)
     },
-    onError: (err) => {
-      setActionError(formatApiError(err, 'Failed to upload document'))
+    onError: (err, { operation }) => {
+      if (!operation.isActive()) return
+      if (operation.isCurrent()) setActionError(formatApiError(err, 'Failed to upload document'))
       reportClientError('Upload document failed', err)
     },
   })
 
-  const {
-    mutateAsync: uploadDocumentsMutation,
-    isPending: uploadDocumentsPending,
-  } = useMutation({
+  const { mutateAsync: uploadDocumentsMutation, isPending: uploadDocumentsPending } = useMutation({
     mutationFn: async ({
       files,
       options,
+      operation,
     }: {
       files: File[]
       options?: { maxRetries?: number; maxConcurrent?: number }
+      operation: DocumentListOperation
     }): Promise<DocumentBatchUploadResponse> => {
+      if (!operation.isActive()) throw new CancelledError()
       const maxRetries = clampUploadOption(options?.maxRetries, 1, 0, 3)
       const maxConcurrent = clampUploadOption(options?.maxConcurrent, 5, 1, 10)
-      const datasetId = String(lastListParamsRef.current.dataset_id || '').trim()
+      const datasetId = String(operation.params.dataset_id || '').trim()
 
       const originalFiles = files.filter(Boolean)
       const total = originalFiles.length
@@ -131,8 +131,10 @@ export function useDocumentUpload({
             pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
             max_concurrent: maxConcurrent,
           },
-          fileByKey
+          fileByKey,
+          operation.isActive,
         )
+        if (!operation.isActive()) throw new CancelledError()
 
         successes.push(...round.successful)
         failures = round.failed
@@ -142,10 +144,11 @@ export function useDocumentUpload({
         remaining = round.nextRemaining
       }
 
-      await loadDocuments()
+      await operation.refresh()
+      if (!operation.isActive()) throw new CancelledError()
       for (const success of successes) {
         if (success?.document_id) {
-          pollDocumentStatus(String(success.document_id))
+          pollDocumentStatus(String(success.document_id), operation)
         }
       }
 
@@ -157,21 +160,26 @@ export function useDocumentUpload({
         failed: failures,
       }
     },
-    onMutate: () => {
-      setActionError(null)
+    onMutate: ({ operation }) => {
+      if (operation.isCurrent()) setActionError(null)
     },
-    onError: (err) => {
-      setActionError(formatApiError(err, 'Failed to upload documents'))
+    onError: (err, { operation }) => {
+      if (!operation.isActive()) return
+      if (operation.isCurrent()) setActionError(formatApiError(err, 'Failed to upload documents'))
       reportClientError('Batch upload documents failed', err)
     },
   })
 
-  const {
-    mutateAsync: uploadDocumentFromUrlMutation,
-    isPending: uploadDocumentFromUrlPending,
-  } = useMutation({
-    mutationFn: async (params: { url: string; filename?: string; dataset_id?: string }) => {
-      return documentApi.uploadFromUrl({
+  const { mutateAsync: uploadDocumentFromUrlMutation, isPending: uploadDocumentFromUrlPending } = useMutation({
+    mutationFn: async ({
+      params,
+      operation,
+    }: {
+      params: { url: string; filename?: string; dataset_id?: string }
+      operation: DocumentListOperation
+    }) => {
+      if (!operation.isActive()) throw new CancelledError()
+      const document = await documentApi.uploadFromUrl({
         url: params.url,
         filename: params.filename,
         dataset_id: params.dataset_id,
@@ -179,38 +187,40 @@ export function useDocumentUpload({
         chunk_strategy: chunkStrategy,
         pipeline: pipelineOverridesEnabled ? pipelineOptions : undefined,
       })
+      if (!operation.isActive()) throw new CancelledError()
+      return document
     },
-    onMutate: () => {
-      setActionError(null)
+    onMutate: ({ operation }) => {
+      if (operation.isCurrent()) setActionError(null)
     },
-    onSuccess: (newDoc) => {
-      prependDocument(newDoc, lastListParamsRef.current, updateCachedDocuments)
-      pollDocumentStatus(newDoc.id)
+    onSuccess: (newDoc, { operation }) => {
+      if (!operation.isActive()) return
+      prependDocument(newDoc, operation.params, operation.updateCachedDocuments)
+      pollDocumentStatus(newDoc.id, operation)
     },
-    onError: (err) => {
-      setActionError(formatApiError(err, 'Failed to upload document from URL'))
+    onError: (err, { operation }) => {
+      if (!operation.isActive()) return
+      if (operation.isCurrent()) setActionError(formatApiError(err, 'Failed to upload document from URL'))
       reportClientError('Upload document from URL failed', err)
     },
   })
 
   const uploadDocument = useCallback(
-    async (file: File) => uploadDocumentMutation(file),
-    [uploadDocumentMutation]
+    async (file: File) => uploadDocumentMutation({ file, operation: captureDocumentListOperation() }),
+    [captureDocumentListOperation, uploadDocumentMutation],
   )
 
   const uploadDocuments = useCallback(
-    async (
-      files: File[],
-      options: { maxRetries?: number; maxConcurrent?: number } = {}
-    ) => uploadDocumentsMutation({ files, options }),
-    [uploadDocumentsMutation]
+    async (files: File[], options: { maxRetries?: number; maxConcurrent?: number } = {}) =>
+      uploadDocumentsMutation({ files, options, operation: captureDocumentListOperation() }),
+    [captureDocumentListOperation, uploadDocumentsMutation],
   )
 
   const uploadDocumentFromUrl = useCallback(
     async (params: { url: string; filename?: string; dataset_id?: string }) => {
-      return uploadDocumentFromUrlMutation(params)
+      return uploadDocumentFromUrlMutation({ params, operation: captureDocumentListOperation() })
     },
-    [uploadDocumentFromUrlMutation]
+    [captureDocumentListOperation, uploadDocumentFromUrlMutation],
   )
 
   return {

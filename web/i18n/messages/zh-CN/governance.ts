@@ -1,23 +1,23 @@
 const governanceMessages = {
-DataGovernancePage: {
+  DataGovernancePage: {
     loading: {
       message: '正在加载数据治理面板...',
       srMessage: 'Loading data governance panel',
     },
   },
-GovernanceProfilesRoutePage: {
+  GovernanceProfilesRoutePage: {
     loading: {
       message: '正在加载治理配置…',
       srMessage: '正在加载治理配置页面',
     },
   },
-GovernanceCommonLinesRoutePage: {
+  GovernanceCommonLinesRoutePage: {
     loading: {
       message: '正在加载重复内容治理...',
       srMessage: 'Loading common lines learning page',
     },
   },
-DataAnnotator: {
+  DataAnnotator: {
     header: {
       title: '数据标注',
     },
@@ -73,10 +73,6 @@ DataAnnotator: {
           label: '敏感合规',
           description: 'PII、密钥和实体线索优先',
         },
-        hybrid: {
-          label: '混合增强',
-          description: '本地规则 + AI 语义 + 敏感检测',
-        },
       },
       empty: '当前文档没有可标注内容',
       success: '已自动添加 {count} 个标注',
@@ -98,7 +94,7 @@ DataAnnotator: {
       deleteAnnotation: '删除 {label} 标注 {start}-{end}',
     },
   },
-DataClassifier: {
+  DataClassifier: {
     header: {
       title: '分类归档',
     },
@@ -182,7 +178,7 @@ DataClassifier: {
       addTagWithValue: '添加标签 {tag}',
     },
   },
-QualityChecker: {
+  QualityChecker: {
     header: {
       title: '质量检测',
     },
@@ -275,7 +271,7 @@ QualityChecker: {
       failed: '后端检测失败（可忽略）',
     },
   },
-DataCleaner: {
+  DataCleaner: {
     header: {
       title: '智能清洗配置',
     },
@@ -354,7 +350,7 @@ DataCleaner: {
       info: 'INFO',
     },
   },
-DataGovernancePanel: {
+  DataGovernancePanel: {
     header: {
       title: '数据治理',
       subtitle: '清洗、标注与结构修复',
@@ -523,7 +519,7 @@ DataGovernancePanel: {
       deleteFile: '删除文件：{filename}',
       toggleChunkFile: '选择待切块文档：{filename}',
     },
-  }
+  },
 } as const
 
 export default governanceMessages

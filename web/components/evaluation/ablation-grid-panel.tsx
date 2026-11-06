@@ -68,7 +68,11 @@ const DEFAULT_GRID = `{
 }`
 
 function isGridValue(value: unknown): value is RegressionAblationGridValue {
-  return value === null || ['string', 'number', 'boolean'].includes(typeof value) || (typeof value === 'object' && !Array.isArray(value))
+  return (
+    value === null ||
+    ['string', 'number', 'boolean'].includes(typeof value) ||
+    (typeof value === 'object' && !Array.isArray(value))
+  )
 }
 
 function parseGrid(value: string): { grid: GridSpec; variants: GridVariant[]; error: string | null } {
@@ -99,16 +103,16 @@ function parseGrid(value: string): { grid: GridSpec; variants: GridVariant[]; er
   if (!entries.length) return { grid: {}, variants: [], error: '至少配置一个参数数组' }
 
   const grid = Object.fromEntries(entries.map(([key, values]) => [key, values])) as GridSpec
-  const variants: Array<Record<string, RegressionAblationGridValue>> = [{}]
+  const variants: GridVariant[] = [{}]
   for (const [key, values] of entries) {
-    const next: Array<Record<string, RegressionAblationGridValue>> = []
+    const next: GridVariant[] = []
     for (const variant of variants) {
       for (const item of values) next.push({ ...variant, [key]: item })
     }
     variants.splice(0, variants.length, ...next.slice(0, MAX_GRID_COMBINATIONS + 1))
   }
 
-  return { grid, variants: variants.map((item) => item as GridVariant), error: null }
+  return { grid, variants, error: null }
 }
 
 export function AblationGridPanel({
@@ -155,11 +159,10 @@ export function AblationGridPanel({
             笛卡尔网格批量
           </div>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            用 JSON 定义参数数组，前端按组合顺序创建 regression runs；默认上限 {MAX_GRID_COMBINATIONS} 个，避免跑爆配额。
+            用 JSON 定义参数数组，前端按组合顺序创建 regression runs；默认上限 {MAX_GRID_COMBINATIONS}{' '}
+            个，避免跑爆配额。
           </p>
-          <p className="mt-1 text-[11px] leading-5 text-muted-foreground/70">
-            支持字段：{GRID_PARAM_KEYS.join(' / ')}
-          </p>
+          <p className="mt-1 text-[11px] leading-5 text-muted-foreground/70">支持字段：{GRID_PARAM_KEYS.join(' / ')}</p>
         </div>
         <div className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-right">
           <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">组合数</div>
@@ -192,9 +195,17 @@ export function AblationGridPanel({
               {disabledReason}
             </span>
           ) : running ? (
-            <span>正在提交批量任务 {completed}/{variants.length} runs…</span>
+            <span>
+              正在提交批量任务 {completed}/{variants.length} runs…
+            </span>
           ) : (
-            <span>预览前 {Math.min(variants.length, 3)} 组：{variants.slice(0, 3).map((item) => JSON.stringify(item)).join(' / ')}</span>
+            <span>
+              预览前 {Math.min(variants.length, 3)} 组：
+              {variants
+                .slice(0, 3)
+                .map((item) => JSON.stringify(item))
+                .join(' / ')}
+            </span>
           )}
         </div>
         <Button type="button" disabled={!canRun} onClick={() => void runBatch()} className="gap-2 rounded-xl">

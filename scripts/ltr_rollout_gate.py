@@ -58,7 +58,7 @@ def _merge_cli_overrides(*, base: dict[str, Any] | None, args: argparse.Namespac
         return base
 
     merged = normalize_ltr_rollout_gate_thresholds(base)
-    metrics = dict(merged.get("metrics") or {})
+    metrics = dict(merged["metrics"])
     metrics.update(overrides)
     merged["metrics"] = metrics
     return merged
@@ -113,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     gate_out: dict[str, Any] = dict(gate)
-    if bool(args.canary_on_pass):
+    if args.canary_on_pass:
         activation = build_ltr_rollout_activation_plan(
             gate=gate,
             candidate_model_id=str(comparison.get("candidate_model_id") or ""),
@@ -138,14 +138,14 @@ def main(argv: list[str] | None = None) -> int:
         for reason in gate.get("reasons") or []:
             print(f"[ltr_rollout_gate] reason: {reason}")
     if isinstance(gate_out.get("activation"), dict):
-        activation = gate_out.get("activation") or {}
+        activation = gate_out["activation"]
         print(
             "[ltr_rollout_gate]"
             f" activation_status={activation.get('status')}"
             f" canary_ratio={activation.get('canary_ratio')}"
         )
 
-    return 0 if bool(gate.get("passed")) else 3
+    return 0 if gate.get("passed") else 3
 
 
 if __name__ == "__main__":

@@ -65,9 +65,22 @@ def _log_cancelled_document_processing_error(exc: BaseException) -> None:
     )
 
 
-async def _run_document_processing_without_blocking_event_loop(*args: Any, **kwargs: Any) -> Any:
+async def _run_document_processing_without_blocking_event_loop(
+    *,
+    file_path: Path,
+    document_id: UUID,
+    tenant_id: UUID,
+    parser_backend: str | None,
+    chunk_strategy: str | None,
+) -> dict[str, Any]:
     return await run_coroutine_in_thread(
-        lambda: document_processor.process_document(*args, **kwargs),
+        lambda: document_processor.process_document(
+            file_path,
+            document_id,
+            tenant_id,
+            parser_backend,
+            chunk_strategy,
+        ),
         on_cancelled_worker_error=_log_cancelled_document_processing_error,
     )
 
@@ -629,9 +642,9 @@ async def _run_document_job_processor(
     temp_path: Path | None,
     document_id: UUID,
     tenant_id: UUID,
-    parser_backend: Any,
-    chunk_strategy: Any,
-) -> Any:
+    parser_backend: str | None,
+    chunk_strategy: str | None,
+) -> dict[str, Any]:
     try:
         return await _run_document_processing_without_blocking_event_loop(
             file_path=file_path,
@@ -639,7 +652,6 @@ async def _run_document_job_processor(
             tenant_id=tenant_id,
             parser_backend=parser_backend,
             chunk_strategy=chunk_strategy,
-            db=None,
         )
     finally:
         if temp_path is not None:
@@ -838,7 +850,7 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
                 run_id=run_id,
             )
 
-        connector_id = str(getattr(run, "connector_id", "") or "").strip()
+        connector_id = run.connector_id.strip()
         try:
             redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
             sem_key = await tenant_acquire(

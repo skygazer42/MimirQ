@@ -12,7 +12,6 @@ This module provides small, deterministic helpers:
 - aggregate summary metrics for CI gates (Hit@K/MRR/Recall/NDCG, abstain rate)
 """
 
-
 import math
 from collections.abc import Iterable
 from typing import Any
@@ -211,10 +210,10 @@ def _pass_metrics(
     passed = sum(values)
     return {
         rate_key: float(passed) / float(total) if total > 0 else None,
-        total_key: int(total),
-        passed_key: int(passed),
-        failed_key: int(max(0, total - passed)),
-        alias_key: int(passed),
+        total_key: total,
+        passed_key: passed,
+        failed_key: max(0, total - passed),
+        alias_key: passed,
     }
 
 
@@ -241,10 +240,10 @@ def _parse_quality_metrics(items: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "parse_quality_alert_rate": _mean(alert_values),
         "parse_quality_gate_block_rate": _mean(blocked_values),
-        "parse_risk_cases_total": int(total),
-        "parse_risk_high_cases": int(high),
-        "parse_risk_medium_cases": int(sum(1 for level in risk_levels if level == "medium")),
-        "parse_risk_unknown_cases": int(sum(1 for level in risk_levels if level == "unknown")),
+        "parse_risk_cases_total": total,
+        "parse_risk_high_cases": high,
+        "parse_risk_medium_cases": sum(1 for level in risk_levels if level == "medium"),
+        "parse_risk_unknown_cases": sum(1 for level in risk_levels if level == "unknown"),
         "parse_risk_high_rate": float(high) / float(total) if total > 0 else None,
         "parse_risk_score_mean": _mean(risk_scores),
     }
@@ -279,7 +278,7 @@ def build_retrieval_gate_summary(items_meta: list[dict[str, Any]]) -> dict[str, 
 
     items = _dict_items(items_meta)
     out = _retrieval_metric_means(items)
-    out["total_cases"] = int(len(items))
+    out["total_cases"] = len(items)
     out.update(
         _pass_metrics(
             items,

@@ -69,12 +69,7 @@ class TCADPParser(BaseAdvancedParser):
         return (ok, "" if ok else "TCADP not configured")
 
     def _call_parse_method(
-        self,
-        parser: Any,
-        file_path: Path,
-        binary: bytes | None,
-        callback: Callable[[float, str], None],
-        **kwargs
+        self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
     ) -> tuple[list, list]:
         # Determine file type.
         suffix = file_path.suffix.lower()
@@ -88,9 +83,5 @@ class TCADPParser(BaseAdvancedParser):
         file_type = file_type_map.get(suffix, "PDF")
 
         return parser.parse_pdf(
-            filepath=str(file_path),
-            binary=binary,
-            callback=callback,
-            file_type=file_type,
-            **kwargs
+            filepath=str(file_path), binary=binary, callback=callback, file_type=file_type, **kwargs
         )

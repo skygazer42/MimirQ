@@ -18,7 +18,14 @@ export function rehypeSourceRange({ range }: { range?: MarkdownSourceRange | nul
     const visit = (node: SourceNode) => {
       const start = node.position?.start?.offset
       const end = node.position?.end?.offset
-      if (node.tagName && SOURCE_BLOCKS.has(node.tagName) && start != null && end != null && start < range.end && end > range.start) {
+      if (
+        node.tagName &&
+        SOURCE_BLOCKS.has(node.tagName) &&
+        start != null &&
+        end != null &&
+        start < range.end &&
+        end > range.start
+      ) {
         node.properties = { ...node.properties, 'data-source-selected': 'true' }
         selected.push(node)
       }

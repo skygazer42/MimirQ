@@ -1,4 +1,3 @@
-
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -10,11 +9,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 import app.api.v1.auth as auth_module
 from app.api.schemas.auth import SamlExchangeResponse, TokenResponse, UserPublic
-from app.core.config import settings
 from app.core.database import Base
+from app.core.exceptions import ConfigError, ConflictError
 from app.models.tenant import Tenant, TenantMember
 from app.models.user import User
-from app.services.user_service import UserService
+from app.services.user_service import create_user
 
 
 def _build_app() -> FastAPI:
@@ -94,20 +93,29 @@ def test_saml_exchange_endpoint_surfaces_auth_errors(monkeypatch) -> None:
     assert res.json()["detail"] == "Invalid SAML signature"
 
 
-def test_default_membership_rejects_registration_after_first_owner(monkeypatch) -> None:
+def test_default_membership_rejects_registration_after_first_owner() -> None:
     tenant_id = uuid4()
-    monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine, tables=[User.__table__, Tenant.__table__, TenantMember.__table__])
     db = sessionmaker(bind=engine)()
     try:
-        first = UserService.create_user(
-            db, email="first@example.com", username="first-user", password="valid-first-password",
+        first = create_user(
+            db,
+            email="first@example.com",
+            username="first-user",
+            password="valid-first-password",
+            password_min_length=8,
+            default_tenant_id=str(tenant_id),
         )
-        with pytest.raises(HTTPException) as conflict:
-            UserService.create_user(
-                db, email="later@example.com", username="later-user", password="valid-later-password",
+        with pytest.raises(ConflictError) as conflict:
+            create_user(
+                db,
+                email="later@example.com",
+                username="later-user",
+                password="valid-later-password",
+                password_min_length=8,
+                default_tenant_id=str(tenant_id),
             )
 
         assert conflict.value.status_code == 409
@@ -119,12 +127,13 @@ def test_default_membership_rejects_registration_after_first_owner(monkeypatch) 
         engine.dispose()
 
 
-def test_default_membership_rejects_invalid_tenant_configuration(monkeypatch) -> None:
-    monkeypatch.setattr(settings, "DEFAULT_TENANT_ID", "not-a-uuid", raising=False)
-
-    with Session() as db, pytest.raises(HTTPException) as misconfigured:
-        UserService.create_user(
-            db, email="first@example.com", username="first-user", password="valid-first-password",
+def test_default_membership_rejects_invalid_tenant_configuration() -> None:
+    with Session() as db, pytest.raises(ConfigError, match="DEFAULT_TENANT_ID is invalid"):
+        create_user(
+            db,
+            email="first@example.com",
+            username="first-user",
+            password="valid-first-password",
+            password_min_length=8,
+            default_tenant_id="not-a-uuid",
         )
-
-    assert misconfigured.value.status_code == 500

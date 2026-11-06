@@ -17,8 +17,7 @@ def write(rel: str, body: str) -> None:
 def category(path: str, label: str, pos: int) -> None:
     write(
         path,
-        json.dumps({"label": label, "position": pos, "collapsed": False}, ensure_ascii=False, indent=2)
-        + "\n",
+        json.dumps({"label": label, "position": pos, "collapsed": False}, ensure_ascii=False, indent=2) + "\n",
     )
 
 
@@ -142,7 +141,11 @@ def pilot_backend_documents() -> None:
     category("backend/documents/_category_.json", "文档与入库", 3)
     blocks = [
         ("overview", "概述与边界", "上传、列表、状态、分块、解析文本、删除；连接器与入库 Run 见 ingestion 小节。"),
-        ("api-index", "API 参考索引", "OpenAPI 标签 **documents**；含 `POST /documents/upload`、`GET /documents/{{id}}/status`、分块与解析内容等路径。"),
+        (
+            "api-index",
+            "API 参考索引",
+            "OpenAPI 标签 **documents**；含 `POST /documents/upload`、`GET /documents/{{id}}/status`、分块与解析内容等路径。",
+        ),
         ("schemas", "请求与响应要点", "multipart 上传、文档状态机 pending/processing/completed/failed；分页与错误码。"),
         ("state-jobs", "状态与任务", "解析与索引流水线异步阶段；轮询间隔与超时建议。"),
         ("permissions", "权限与安全", "文档级 ACL、租户隔离；敏感文件类型策略。"),
@@ -168,13 +171,23 @@ def pilot_frontend_datasets() -> None:
     md(
         "frontend/welcome.md",
         "前端视角总览",
-        tmpl_block(scope="全站", perspective="前端", extra="Next.js 路由、`web/lib/api/*` 调用与 UI 状态从此侧栏进入。"),
+        tmpl_block(
+            scope="全站", perspective="前端", extra="Next.js 路由、`web/lib/api/*` 调用与 UI 状态从此侧栏进入。"
+        ),
         "总览",
         1,
     )
     blocks = [
-        ("overview", "用户路径与入口", "`web/app/datasets/**` 下列表、详情、预检、画像、健康、DB Catalog、表、工作流等页面；权限可见性随 RBAC 变化。"),
-        ("api-client", "web/lib/api 模块", "`web/lib/api/datasets.ts` 等模块中的封装函数与类型；与 OpenAPI 字段对齐方式。"),
+        (
+            "overview",
+            "用户路径与入口",
+            "`web/app/datasets/**` 下列表、详情、预检、画像、健康、DB Catalog、表、工作流等页面；权限可见性随 RBAC 变化。",
+        ),
+        (
+            "api-client",
+            "web/lib/api 模块",
+            "`web/lib/api/datasets.ts` 等模块中的封装函数与类型；与 OpenAPI 字段对齐方式。",
+        ),
         ("state-ui", "状态与加载", "SWR/React Query（若使用）、乐观更新、分页与空态。"),
         ("errors", "错误处理", "统一 `ApiError` / toast；未知错误码参见仓库内 extract-errors 技能说明。"),
         ("feature-flags", "功能开关", "与 `@gate` / feature flag 相关的页面显隐。"),

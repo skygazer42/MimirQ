@@ -86,13 +86,14 @@ def _load_evidence_capsules_module(monkeypatch: pytest.MonkeyPatch) -> ModuleTyp
         def ensure_member(db, tenant_id, account_id):  # noqa: ANN001
             return object()
 
-    dataset_service_module.DatasetService = _DatasetService
+    dataset_service_module.ensure_member = _DatasetService.ensure_member
 
     monkeypatch.setitem(sys.modules, "app.api.dependencies.auth", auth_module)
     monkeypatch.setitem(sys.modules, "app.api.dependencies.tenant", tenant_module)
     monkeypatch.setitem(sys.modules, "app.core.database", database_module)
     monkeypatch.setitem(sys.modules, "app.rag.core.evidence_capsule_builder", capsule_builder_module)
     monkeypatch.setitem(sys.modules, "app.services.dataset_service", dataset_service_module)
+    monkeypatch.setattr("app.services.dataset_service", dataset_service_module, raising=False)
 
     module_path = Path(__file__).resolve().parents[1] / "app/api/v1/evidence_capsules.py"
     spec = importlib.util.spec_from_file_location("tests.evidence_capsules_module", module_path)
@@ -110,7 +111,7 @@ def test_capsules_are_bucketed_by_tenant_and_bound_in_payload(tmp_path: Path, mo
 
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(
-        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+        module.dataset_service, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
     )
 
     capsule_a = _build_capsule()
@@ -176,7 +177,7 @@ def test_capsules_are_owner_bound_within_same_tenant_for_get_and_overwrite(
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", True, raising=False)
     monkeypatch.setattr(
-        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+        module.dataset_service, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
     )
 
     original = _build_capsule()
@@ -246,7 +247,7 @@ def test_legacy_global_capsule_file_is_readable_only_when_bound_to_same_tenant_a
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", True, raising=False)
     monkeypatch.setattr(
-        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+        module.dataset_service, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
     )
 
     matched = module.get_evidence_capsule(capsule_id, tenant_id=tenant_id, account_id="owner-a", db=object())
@@ -287,7 +288,7 @@ def test_legacy_global_capsule_file_is_not_used_as_cross_tenant_fallback(
 
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(
-        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+        module.dataset_service, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
     )
 
     with pytest.raises(HTTPException, match="capsule_not_found"):
@@ -305,7 +306,7 @@ def test_concurrent_persist_does_not_allow_silent_overwrite(
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_STORE_DIR", str(tmp_path), raising=False)
     monkeypatch.setattr(module.settings, "EVIDENCE_CAPSULE_ALLOW_OVERWRITE", False, raising=False)
     monkeypatch.setattr(
-        module.DatasetService, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
+        module.dataset_service, "ensure_member", staticmethod(lambda db, tenant_id, account_id: object())
     )
 
     target_path = tmp_path / str(tenant_id) / f"{capsule_id}.json"

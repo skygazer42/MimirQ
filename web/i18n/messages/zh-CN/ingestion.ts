@@ -1,5 +1,5 @@
 const ingestionMessages = {
-IngestionDetailDialog: {
+  IngestionDetailDialog: {
     stages: {
       queued: '排队',
       parsing: '解析',
@@ -80,7 +80,7 @@ IngestionDetailDialog: {
       retry: '已触发重新入库',
       retryForced: '已触发重新入库（强制）',
     },
-  }
+  },
 } as const
 
 export default ingestionMessages

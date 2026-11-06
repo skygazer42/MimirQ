@@ -6,33 +6,21 @@
 import { useEffect, useId, useState } from 'react'
 import { toast } from 'sonner'
 import { Eye, EyeOff, FlaskConical, Save, ChevronRight } from '@/components/icons'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { FeedbackToast } from '@/components/feedback-toast'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ProviderIcon } from '@/components/provider-icon'
 import { cn } from '@/lib/utils'
-import { settingsApi } from '@/lib/api'
+import { settingsApi } from '@/lib/api/settings'
 import { formatApiError } from '@/lib/api-errors'
 import type { ModelProvider, ProviderConfig } from '@/types/models'
 
 type ModelEntryMode = 'preset' | 'custom'
 
-interface ModelConfigDialogProps {
+type ModelConfigDialogProps = {
   provider: ModelProvider | null
   open: boolean
   onClose: () => void
@@ -50,6 +38,7 @@ function getDefaultApiBase(providerId: string): string {
     'qwen-embedding': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     moonshot: 'https://api.moonshot.cn/v1',
     ollama: 'http://localhost:11434/v1',
+    'ollama-embedding': 'http://localhost:11434/api/embed',
     ark: 'https://ark.cn-beijing.volces.com/api/v3',
     lingyiwanwu: 'https://api.lingyiwanwu.com/v1',
     qianfan: 'https://qianfan.baidubce.com/v2',
@@ -70,12 +59,7 @@ function getProviderModelOptions(provider: ModelProvider | null) {
   })
 }
 
-export function ModelConfigDialog({
-  provider,
-  open,
-  onClose,
-  onSave,
-}: Readonly<ModelConfigDialogProps>) {
+export function ModelConfigDialog({ provider, open, onClose, onSave }: Readonly<ModelConfigDialogProps>) {
   const idPrefix = useId()
   const [config, setConfig] = useState<ProviderConfig>({
     apiKey: '',
@@ -148,9 +132,7 @@ export function ModelConfigDialog({
       setCustomModelId(config.model || customModelId)
       setConfig((current) => ({
         ...current,
-        model: modelOptions.some((model) => model.name === current.model)
-          ? current.model
-          : modelOptions[0]?.name || '',
+        model: modelOptions.some((model) => model.name === current.model) ? current.model : modelOptions[0]?.name || '',
       }))
     }
     setModelEntryMode(nextMode)
@@ -214,7 +196,9 @@ export function ModelConfigDialog({
     else if (provider.id === 'openai-embedding') {
       try {
         apiKeyRequired = new URL(config.apiBase || getDefaultApiBase(provider.id)).hostname === 'api.openai.com'
-      } catch { /* Keep API Key required until a valid custom endpoint is entered. */ }
+      } catch {
+        /* Keep API Key required until a valid custom endpoint is entered. */
+      }
     }
   }
 
@@ -227,12 +211,8 @@ export function ModelConfigDialog({
             <ProviderIcon providerId={provider.id} className="size-8 object-contain" />
           </div>
           <div>
-            <DialogTitle className="text-xl font-semibold text-foreground mb-1">
-              配置 {provider.name}
-            </DialogTitle>
-            <DialogDescription className="leading-tight">
-              {provider.description}
-            </DialogDescription>
+            <DialogTitle className="text-xl font-semibold text-foreground mb-1">配置 {provider.name}</DialogTitle>
+            <DialogDescription className="leading-tight">{provider.description}</DialogDescription>
           </div>
         </div>
 
@@ -241,7 +221,12 @@ export function ModelConfigDialog({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor={apiKeyId} className="text-sm font-medium text-foreground">
-                API Key {apiKeyRequired ? <span className="text-destructive ml-1">*</span> : <span className="ml-1 font-normal text-muted-foreground">（可选）</span>}
+                API Key{' '}
+                {apiKeyRequired ? (
+                  <span className="text-destructive ml-1">*</span>
+                ) : (
+                  <span className="ml-1 font-normal text-muted-foreground">（可选）</span>
+                )}
               </Label>
               <a
                 href={getProviderDocsUrl(provider.id)}
@@ -312,7 +297,7 @@ export function ModelConfigDialog({
                   'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
                   modelEntryMode === 'preset'
                     ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
                 )}
               >
                 推荐模型
@@ -328,7 +313,7 @@ export function ModelConfigDialog({
                   'h-9 rounded-md px-3 text-sm font-medium transition-[background-color,color,box-shadow] motion-reduce:transition-none focus-ring',
                   modelEntryMode === 'custom'
                     ? 'bg-card text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-card/55 hover:text-foreground',
                 )}
               >
                 自定义模型 ID
@@ -343,7 +328,9 @@ export function ModelConfigDialog({
             >
               {modelEntryMode === 'preset' ? (
                 <>
-                  <Label htmlFor={modelPresetId} className="sr-only">推荐模型</Label>
+                  <Label htmlFor={modelPresetId} className="sr-only">
+                    推荐模型
+                  </Label>
                   <Select
                     value={config.model || ''}
                     onValueChange={(value) => {
@@ -361,9 +348,7 @@ export function ModelConfigDialog({
                         <SelectItem key={model.id} value={model.name} className="py-2.5">
                           <span className="grid min-w-0 gap-0.5">
                             <span className="font-medium text-foreground">{model.displayName}</span>
-                            <span className="truncate font-mono text-[11px] text-muted-foreground">
-                              {model.name}
-                            </span>
+                            <span className="truncate font-mono text-[11px] text-muted-foreground">{model.name}</span>
                           </span>
                         </SelectItem>
                       ))}
@@ -372,13 +357,17 @@ export function ModelConfigDialog({
                 </>
               ) : (
                 <>
-                  <Label htmlFor={modelCustomId} className="sr-only">自定义模型 ID</Label>
+                  <Label htmlFor={modelCustomId} className="sr-only">
+                    自定义模型 ID
+                  </Label>
                   <Input
                     id={modelCustomId}
                     type="text"
                     value={config.model || ''}
                     onChange={(event) => handleCustomModelChange(event.target.value)}
-                    placeholder={provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'}
+                    placeholder={
+                      provider.id === 'ark' ? '例如 doubao-seed-2-0-lite-260428' : '输入服务商控制台中的完整模型 ID'
+                    }
                     aria-describedby={modelHintId}
                     autoComplete="off"
                     spellCheck={false}
@@ -410,10 +399,10 @@ export function ModelConfigDialog({
               onClick={() => setShowAdvanced(!showAdvanced)}
               className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none group"
             >
-              <ChevronRight className={cn("size-4 transition-transform", showAdvanced && "rotate-90")} />
+              <ChevronRight className={cn('size-4 transition-transform', showAdvanced && 'rotate-90')} />
               高级设置
             </button>
-            
+
             {showAdvanced && (
               <div className="mt-4 grid grid-cols-2 gap-4 motion-safe:animate-in motion-safe:slide-in-from-top-2 motion-safe:duration-200">
                 <div className="space-y-1.5">
@@ -447,7 +436,11 @@ export function ModelConfigDialog({
             )}
           </div>
 
-          <FeedbackToast type={testResult?.success ? 'success' : 'error'} message={testResult?.message} id="model-connection-feedback" />
+          <FeedbackToast
+            type={testResult?.success ? 'success' : 'error'}
+            message={testResult?.message}
+            id="model-connection-feedback"
+          />
         </div>
 
         <DialogFooter className="p-6 pt-2 bg-card">
@@ -467,8 +460,8 @@ export function ModelConfigDialog({
                 </>
               )}
             </Button>
-            <Button 
-              onClick={handleSave} 
+            <Button
+              onClick={handleSave}
               disabled={(apiKeyRequired && !config.apiKey?.trim()) || !config.model?.trim()}
               className="flex-1 rounded-xl h-11"
             >

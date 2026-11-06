@@ -10,7 +10,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -37,9 +36,7 @@ class _Section:
     heading: ResumeHeading | None
 
 
-_EMAIL_RE = re.compile(
-    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])"
-)
+_EMAIL_RE = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])")
 _CN_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 
 _EN_SECTIONS: dict[str, str] = {
@@ -184,7 +181,7 @@ def looks_like_resume(text: str) -> bool:
 
 
 class ResumeStructuredChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

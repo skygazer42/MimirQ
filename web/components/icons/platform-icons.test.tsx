@@ -30,10 +30,16 @@ describe('Ragvia functional icon family', () => {
   })
 
   it('preserves named graphics, dimensions, stroke and SVG props for existing controls', () => {
-    const named = renderToStaticMarkup(createElement(glyphs.Retrieval, {
-      size: 20, strokeWidth: 2, absoluteStrokeWidth: true,
-      className: 'text-primary', 'aria-label': '检索资料', 'data-testid': 'retrieval',
-    } as React.ComponentProps<typeof glyphs.Retrieval>))
+    const named = renderToStaticMarkup(
+      createElement(glyphs.Retrieval, {
+        size: 20,
+        strokeWidth: 2,
+        absoluteStrokeWidth: true,
+        className: 'text-primary',
+        'aria-label': '检索资料',
+        'data-testid': 'retrieval',
+      } as React.ComponentProps<typeof glyphs.Retrieval>),
+    )
     expect(named).toContain('role="img"')
     expect(named).toContain('aria-label="检索资料"')
     expect(named).not.toContain('aria-hidden')

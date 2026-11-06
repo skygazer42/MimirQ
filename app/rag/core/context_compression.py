@@ -1,6 +1,5 @@
 """Deterministic query-aware context compression helpers."""
 
-
 from collections.abc import Iterable
 
 from langchain_core.documents import Document
@@ -20,9 +19,9 @@ def compress_context_docs(
         return []
 
     out: list[Document] = []
-    q = str(query or '').strip()
+    q = str(query or "").strip()
     for doc in docs:
-        raw = str(getattr(doc, 'page_content', '') or '').strip()
+        raw = str(getattr(doc, "page_content", "") or "").strip()
         if not raw:
             continue
 
@@ -34,18 +33,18 @@ def compress_context_docs(
                 max_sentences=max(1, int(max_sentences or 0)),
                 min_sentence_chars=max(0, int(min_sentence_chars or 0)),
             )
-        content = str(content or '').strip()
+        content = content.strip()
         if not content:
             continue
 
         out.append(
             Document(
                 page_content=content,
-                metadata=dict(getattr(doc, 'metadata', None) or {}),
-                id=getattr(doc, 'id', None),
+                metadata=dict(getattr(doc, "metadata", None) or {}),
+                id=getattr(doc, "id", None),
             )
         )
     return out
 
 
-__all__ = ['compress_context_docs']
+__all__ = ["compress_context_docs"]

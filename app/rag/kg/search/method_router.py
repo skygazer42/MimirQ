@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.kg.search.query_mode import classify_kg_query_mode

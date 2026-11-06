@@ -25,14 +25,11 @@ describe('settings page visual boundary contract', () => {
       '_sections/dify-integration-section.tsx',
       '_sections/industry-rules-section.tsx',
     ]
-    const combined = files
-      .map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8'))
-      .join('\n')
+    const combined = files.map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8')).join('\n')
 
     expectSourceNotToContain(combined, 'bg-card/82')
     expectSourceNotToContain(combined, 'bg-[linear-gradient(135deg')
   })
-
 
   it('waits for a wide desktop before showing the settings index', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'page.tsx'), 'utf8')
@@ -40,7 +37,4 @@ describe('settings page visual boundary contract', () => {
     expectSourceToContain(src, 'xl:block')
     expectSourceNotToContain(src, 'lg:grid-cols-[176px_minmax(0,1fr)]')
   })
-
-
-
 })

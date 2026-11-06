@@ -1,7 +1,4 @@
-export function isOneOf<const T extends readonly string[]>(
-  values: T,
-  value: string,
-): value is T[number] {
+export function isOneOf<const T extends readonly string[]>(values: T, value: string): value is T[number] {
   return values.includes(value)
 }
 

@@ -12,60 +12,27 @@ Design constraints:
 """
 
 import re
-from collections.abc import Iterable
-from typing import Any
+from collections.abc import Iterable, Iterator
+from typing import Any, TypedDict
 
+from app.rag.core.claim_verifier import claim_token_set, is_uncertainty_claim
 from app.rag.core.text import is_claim_supported, split_into_claims
 
 _WS_RE = re.compile(r"\s+")
-_CLAIM_TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}|\d+(?:\.\d+)?")
-_UNCERTAINTY_RE = re.compile(
-    r"(unable to answer|cannot determine|can't determine|"
-    r"insufficient evidence|not enough (?:info|information)|unknown|unsure|not sure|"
-    r"证据不足|材料不足|无法(确定|判断|回答)|不确定|未知)",
-    flags=re.IGNORECASE,
-)
-_EN_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "as",
-    "at",
-    "be",
-    "by",
-    "for",
-    "from",
-    "in",
-    "is",
-    "of",
-    "on",
-    "or",
-    "the",
-    "to",
-    "with",
-}
 _SENTENCE_BOUNDARIES = {"。", "！", "？", ".", "!", "?", "\n"}
+
+
+class _EvidenceChunk(TypedDict):
+    document_id: str | None
+    chunk_id: str | None
+    text: str
+    start_char: Any
+    end_char: Any
+    page_number: Any
 
 
 def _collapse_ws(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").strip())
-
-
-def _token_set(text: str) -> set[str]:
-    tokens: set[str] = set()
-    for m in _CLAIM_TOKEN_RE.finditer(text or ""):
-        t = (m.group(0) or "").strip()
-        if not t:
-            continue
-        if t.isascii():
-            folded = t.casefold()
-            if folded in _EN_STOPWORDS:
-                continue
-            tokens.add(folded)
-        else:
-            tokens.add(t)
-    return tokens
 
 
 def _find_prev_boundary(text: str, *, start: int, end: int) -> int:
@@ -147,10 +114,10 @@ def _extract_span(text: str, terms: list[str], *, max_chars: int) -> tuple[int, 
         base_start=base_start,
         base_end=base_end,
     )
-    return int(start), int(end), quote
+    return start, end, quote
 
 
-def _iter_chunks(evidence_chunks: Iterable[Any]) -> Iterable[dict[str, Any]]:
+def _iter_chunks(evidence_chunks: Iterable[Any]) -> Iterator[_EvidenceChunk]:
     for obj in evidence_chunks or []:
         if obj is None:
             continue
@@ -181,7 +148,7 @@ def _iter_chunks(evidence_chunks: Iterable[Any]) -> Iterable[dict[str, Any]]:
             end_char = meta.get("end_char")
             page_number = meta.get("page_number") or meta.get("page")
 
-        out = {
+        out: _EvidenceChunk = {
             "document_id": str(doc_id) if doc_id is not None else None,
             "chunk_id": str(chunk_id) if chunk_id is not None else None,
             "text": str(text or ""),
@@ -196,15 +163,15 @@ def _rank_claim_chunks(
     claim: str,
     *,
     claim_tokens: set[str],
-    chunks: list[dict[str, Any]],
+    chunks: list[_EvidenceChunk],
     verifier_options: dict[str, Any],
-) -> list[tuple[float, int, dict[str, Any]]]:
-    ranked: list[tuple[float, int, dict[str, Any]]] = []
+) -> list[tuple[float, int, _EvidenceChunk]]:
+    ranked: list[tuple[float, int, _EvidenceChunk]] = []
     for chunk in chunks:
-        text = str(chunk.get("text") or "")
+        text = chunk["text"]
         if not text.strip() or not is_claim_supported(claim, text, **verifier_options):
             continue
-        shared_count = len(claim_tokens.intersection(_token_set(text)))
+        shared_count = len(claim_tokens.intersection(claim_token_set(text)))
         if shared_count <= 0:
             continue
         score = float(shared_count) / float(max(1, len(claim_tokens)))
@@ -214,7 +181,7 @@ def _rank_claim_chunks(
 
 
 def _absolute_span(
-    chunk: dict[str, Any],
+    chunk: _EvidenceChunk,
     *,
     local_start: int,
     local_end: int,
@@ -226,17 +193,17 @@ def _absolute_span(
         base_index = None
     if base_index is None:
         return None, None
-    return base_index + int(local_start), base_index + int(local_end)
+    return base_index + local_start, base_index + local_end
 
 
 def _ranked_evidence_entry(
     score: float,
-    chunk: dict[str, Any],
+    chunk: _EvidenceChunk,
     *,
     terms: list[str],
     max_quote_chars: int,
 ) -> dict[str, Any]:
-    text = str(chunk.get("text") or "")
+    text = chunk["text"]
     span = _extract_span(text, terms, max_chars=max_quote_chars)
     if span is None:
         quote = _collapse_ws(text)[:max_quote_chars]
@@ -249,19 +216,19 @@ def _ranked_evidence_entry(
             local_end=local_end,
         )
     return {
-        "document_id": chunk.get("document_id"),
-        "chunk_id": chunk.get("chunk_id"),
+        "document_id": chunk["document_id"],
+        "chunk_id": chunk["chunk_id"],
         "start_char": absolute_start,
         "end_char": absolute_end,
         "quote": quote,
-        "score": round(float(score), 4),
+        "score": round(score, 4),
     }
 
 
 def _claim_evidence_entry(
     claim: str,
     *,
-    chunks: list[dict[str, Any]],
+    chunks: list[_EvidenceChunk],
     max_evidence: int,
     max_quote_chars: int,
     verifier_options: dict[str, Any],
@@ -269,10 +236,10 @@ def _claim_evidence_entry(
     claim_text = (claim or "").strip()
     if not claim_text:
         return None
-    if _UNCERTAINTY_RE.search(claim_text):
+    if is_uncertainty_claim(claim_text):
         return {"claim": claim_text, "evidence": []}
 
-    claim_tokens = _token_set(claim_text)
+    claim_tokens = claim_token_set(claim_text)
     if not claim_tokens or max_evidence <= 0 or not chunks:
         return {"claim": claim_text, "evidence": []}
     ranked = _rank_claim_chunks(

@@ -3,9 +3,23 @@
  */
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient, type Query } from '@tanstack/react-query'
 import Link from 'next/link'
-import { Folder, FileCode2, Check, AlertCircle, Sparkles, BarChart3, Loader2, Wand2, Database, Globe, Filter, type PlatformIcon } from '@/components/icons'
+import {
+  Folder,
+  FileCode2,
+  Check,
+  AlertCircle,
+  Sparkles,
+  BarChart3,
+  Loader2,
+  Wand2,
+  Database,
+  Globe,
+  Filter,
+  type PlatformIcon,
+} from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { FeedbackToast } from '@/components/feedback-toast'
@@ -19,10 +33,13 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { datasetApi, evaluationApi, pipelineApi } from '@/lib/api'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
+import { queryKeys } from '@/lib/query-keys'
 import { SEPARATOR_PRESET_OPTIONS } from '@/components/chunk-preview/constants'
 import { IngestionPreviewDetailsDialog } from '@/components/chunk-preview/components/ingestion-preview-details-dialog'
 
 import { formatPreviewWarningMessage } from '@/components/chunk-preview/utils/preview-warnings'
+import { decodeSeparatorInput, getPresetSeparator } from '../../utils/separators'
 import type {
   ChunkPreviewHistogramBin,
   ChunkPreviewRecommendationPatch,
@@ -64,9 +81,7 @@ type EmptyFileListLabels = {
   emptyAll: string
 }
 
-type PluginReadinessCheck = NonNullable<
-  NonNullable<PipelinePluginChunkReportResponse['readiness']>['checks']
->[number]
+type PluginReadinessCheck = NonNullable<NonNullable<PipelinePluginChunkReportResponse['readiness']>['checks']>[number]
 
 const SIDEBAR_BASE_TONE: SidebarToneStyle = {
   chip: 'border-foreground/10 bg-background/82 text-muted-foreground antialiased shadow-none',
@@ -111,10 +126,7 @@ function getEmptyFileListLabel({
   return labels.emptyAll
 }
 
-function getRecommendationTargetLabel(
-  target: string,
-  labels: Record<string, string>
-): string {
+function getRecommendationTargetLabel(target: string, labels: Record<string, string>): string {
   return labels[target] ?? target
 }
 
@@ -184,7 +196,7 @@ function SidebarChip({
       className={cn(
         'inline-flex items-center rounded-full border px-1.5 py-0.5 text-[13px] font-semibold tracking-[0.04em]',
         SIDEBAR_TONE_STYLES[tone].chip,
-        className
+        className,
       )}
     >
       {children}
@@ -199,11 +211,7 @@ function SidebarNote({
 }: Readonly<{ tone?: AccentTone; children: ReactNode; className?: string }>) {
   return (
     <div
-      className={cn(
-        'rounded-lg border px-2.5 py-1.5 text-[13px] leading-4',
-        SIDEBAR_TONE_STYLES[tone].note,
-        className
-      )}
+      className={cn('rounded-lg border px-2.5 py-1.5 text-[13px] leading-4', SIDEBAR_TONE_STYLES[tone].note, className)}
     >
       {children}
     </div>
@@ -219,12 +227,7 @@ function SidebarSectionHeader({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span
-          className={cn(
-            SIDEBAR_COMPACT_ICON_FRAME_CLASS,
-            SIDEBAR_TONE_STYLES[tone].icon
-          )}
-        >
+        <span className={cn(SIDEBAR_COMPACT_ICON_FRAME_CLASS, SIDEBAR_TONE_STYLES[tone].icon)}>
           <Icon className={SIDEBAR_COMPACT_ICON_CLASS} strokeWidth={2.5} />
         </span>
         <h2 className="truncate text-[13px] font-medium text-foreground/90 antialiased">{label}</h2>
@@ -239,20 +242,12 @@ function SidebarPanel({
   className,
   children,
 }: Readonly<{ tone?: AccentTone; className?: string; children: ReactNode }>) {
-  return (
-    <section
-      className={cn(
-        styles.configurationSection,
-        className
-      )}
-    >
-      {children}
-    </section>
-  )
+  return <section className={cn(styles.configurationSection, className)}>{children}</section>
 }
 
 export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {}) {
   const t = useTranslations('ChunkPreview')
+  const queryClient = useQueryClient()
   const {
     fileList,
     currentFileIndex,
@@ -301,9 +296,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   const minMaxStatLabel = isTokenStrategy ? t('sidebar.stats.minMaxTokens') : t('sidebar.stats.minMaxLength')
   const histogramTitle = isTokenStrategy ? t('sidebar.stats.histogramTokens') : t('sidebar.stats.histogramLength')
 
-  const sortedFileList = [...fileList].sort(
-    (a, b) => (b.addedAt || 0) - (a.addedAt || 0)
-  )
+  const sortedFileList = [...fileList].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0))
 
   const currentFileId = fileList[currentFileIndex]?.id
   const selectedIngestCount = selectedIngestFileIds.size
@@ -361,34 +354,23 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
       gapCount: gapCount == null ? null : Math.max(0, Math.trunc(gapCount)),
       largestGap: largestGap == null ? null : Math.max(0, Math.trunc(largestGap)),
     }
-  }, [previewData?.stats?.coverage_ratio, previewData?.stats?.overlap_waste_ratio, previewData?.stats?.gap_count, previewData?.stats?.largest_gap])
+  }, [
+    previewData?.stats?.coverage_ratio,
+    previewData?.stats?.overlap_waste_ratio,
+    previewData?.stats?.gap_count,
+    previewData?.stats?.largest_gap,
+  ])
 
   const effectiveSeparator = useMemo(() => {
     if (!isSeparatorStrategy) return null
 
-    const presetMap: Record<string, string> = {
-      paragraph: '\n\n',
-      line: '\n',
-      sentence_cn: '。',
-      sentence_en: '.',
-      markdown_hr: '---',
-      markdown_h1: '# ',
-      markdown_h2: '## ',
-    }
-
     if (separatorPreset && separatorPreset !== 'custom') {
-      return presetMap[separatorPreset] ?? '\n\n'
+      return getPresetSeparator(separatorPreset)
     }
 
     const raw = String(separatorCustom || '').trim()
     if (!raw) return '\n\n'
-    try {
-      // Same trick as context.decodeSeparatorInput: support \n, \t, \uXXXX etc.
-      const escapedValue = raw.replaceAll('"', String.raw`\"`)
-      return JSON.parse(`"${escapedValue}"`)
-    } catch {
-      return raw
-    }
+    return decodeSeparatorInput(raw)
   }, [isSeparatorStrategy, separatorCustom, separatorPreset])
 
   const separatorPresetOptions = useMemo(() => {
@@ -451,9 +433,12 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   const parentChildEffective = useMemo(() => {
     if (!isParentChildStrategy) return null
     const sp = previewData?.params?.strategy_params
-    const ratio = typeof sp?.child_ratio === 'number' && Number.isFinite(sp.child_ratio) ? sp.child_ratio : parentChildRatio
+    const ratio =
+      typeof sp?.child_ratio === 'number' && Number.isFinite(sp.child_ratio) ? sp.child_ratio : parentChildRatio
     const minSize =
-      typeof sp?.min_child_size === 'number' && Number.isFinite(sp.min_child_size) ? sp.min_child_size : parentChildMinChildSize
+      typeof sp?.min_child_size === 'number' && Number.isFinite(sp.min_child_size)
+        ? sp.min_child_size
+        : parentChildMinChildSize
     const childSize =
       typeof sp?.child_size === 'number' && Number.isFinite(sp.child_size)
         ? sp.child_size
@@ -474,7 +459,10 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [datasetsLoading, setDatasetsLoading] = useState(false)
   const [datasetsError, setDatasetsError] = useState<string | null>(null)
-  const selectedDataset = useMemo(() => (datasetId ? datasets.find((ds) => ds.id === datasetId) || null : null), [datasetId, datasets])
+  const selectedDataset = useMemo(
+    () => (datasetId ? datasets.find((ds) => ds.id === datasetId) || null : null),
+    [datasetId, datasets],
+  )
 
   const [ingestionPreview, setIngestionPreview] = useState<IngestionPreviewResponse | null>(null)
   const [ingestionLoading, setIngestionLoading] = useState(false)
@@ -493,10 +481,32 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     href: string
     caseCount: number
   } | null>(null)
+  const mountedRef = useRef(false)
+  const ingestionRequestRef = useRef<object | null>(null)
+  const reportRequestRef = useRef<object | null>(null)
+  const goldenSubmissionRef = useRef<{ sessionRevision: number } | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      ingestionRequestRef.current = null
+      reportRequestRef.current = null
+      goldenSubmissionRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    ingestionRequestRef.current = null
+    setIngestionPreview(null)
+    setIngestionError(null)
+    setIngestionLoading(false)
+    setIngestionDetailsOpen(false)
+  }, [currentFile, datasetId, parserBackend, chunkStrategy])
 
   const applyPipelinePatch = (
     patch: DocumentPipelineOptions | JsonObject | null | undefined,
-    options?: { successMessage?: string; errorMessage?: string }
+    options?: { successMessage?: string; errorMessage?: string },
   ) => {
     if (!patch || typeof patch !== 'object') return false
 
@@ -507,7 +517,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
           ...pipelineCtx.options,
           ...patch,
         },
-      })
+      }),
     )
 
     if (!result.ok) {
@@ -521,52 +531,60 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
 
   const pythonPluginActive = Boolean(
     pipelineCtx.options.governance_python_plugin ||
-      pipelineCtx.options.chunk_python_plugin ||
-      pipelineCtx.options.kg_python_plugin
+    pipelineCtx.options.chunk_python_plugin ||
+    pipelineCtx.options.kg_python_plugin,
   )
   const governancePluginOptions = useMemo(
     () => pipelinePlugins.filter((plugin) => Boolean(plugin.refs.governance)),
-    [pipelinePlugins]
+    [pipelinePlugins],
   )
   const chunkPluginOptions = useMemo(
     () => pipelinePlugins.filter((plugin) => Boolean(plugin.refs.chunk)),
-    [pipelinePlugins]
+    [pipelinePlugins],
   )
-  const kgPluginOptions = useMemo(
-    () => pipelinePlugins.filter((plugin) => Boolean(plugin.refs.kg)),
-    [pipelinePlugins]
-  )
+  const kgPluginOptions = useMemo(() => pipelinePlugins.filter((plugin) => Boolean(plugin.refs.kg)), [pipelinePlugins])
   const unreadyPluginCount = pipelinePlugins.filter((plugin) => !plugin.executable).length
   const firstPluginRegistryError = pipelinePluginRegistryErrors[0]
   const governancePluginValue = pipelineCtx.options.governance_python_plugin || PYTHON_PLUGIN_NONE_VALUE
   const chunkPluginValue = pipelineCtx.options.chunk_python_plugin || PYTHON_PLUGIN_NONE_VALUE
   const kgPluginValue = pipelineCtx.options.kg_python_plugin || PYTHON_PLUGIN_NONE_VALUE
   const governancePluginListed = governancePluginOptions.some(
-    (plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin
+    (plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin,
   )
   const chunkPluginListed = chunkPluginOptions.some(
-    (plugin) => plugin.refs.chunk === pipelineCtx.options.chunk_python_plugin
+    (plugin) => plugin.refs.chunk === pipelineCtx.options.chunk_python_plugin,
   )
-  const kgPluginListed = kgPluginOptions.some(
-    (plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin
-  )
+  const kgPluginListed = kgPluginOptions.some((plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin)
   const selectedChunkPlugin = useMemo(
     () => chunkPluginOptions.find((plugin) => plugin.refs.chunk === pipelineCtx.options.chunk_python_plugin) || null,
-    [chunkPluginOptions, pipelineCtx.options.chunk_python_plugin]
+    [chunkPluginOptions, pipelineCtx.options.chunk_python_plugin],
   )
   const selectedGovernancePlugin = useMemo(
     () =>
-      governancePluginOptions.find((plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin) ||
-      null,
-    [governancePluginOptions, pipelineCtx.options.governance_python_plugin]
+      governancePluginOptions.find(
+        (plugin) => plugin.refs.governance === pipelineCtx.options.governance_python_plugin,
+      ) || null,
+    [governancePluginOptions, pipelineCtx.options.governance_python_plugin],
   )
   const selectedKgPlugin = useMemo(
     () => kgPluginOptions.find((plugin) => plugin.refs.kg === pipelineCtx.options.kg_python_plugin) || null,
-    [kgPluginOptions, pipelineCtx.options.kg_python_plugin]
+    [kgPluginOptions, pipelineCtx.options.kg_python_plugin],
   )
   const selectedGoldenPlugin = selectedChunkPlugin?.contract?.golden?.enabled ? selectedChunkPlugin : null
   const selectedGoldenPluginRef = selectedChunkPlugin?.refs.chunk || ''
   const selectedChunkPluginRef = selectedGoldenPluginRef
+  useEffect(() => {
+    reportRequestRef.current = null
+    setPluginChunkReport(null)
+    setPluginChunkReportLoading(false)
+  }, [selectedChunkPluginRef])
+
+  useEffect(() => {
+    goldenSubmissionRef.current = null
+    setGoldenImportLoading(false)
+    setGoldenRegressionLoading(false)
+    setLastGoldenRegressionRun(null)
+  }, [datasetId, selectedGoldenPluginRef])
   const selectedAuditPlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
   const selectedAuditPackageHash = String(selectedAuditPlugin?.package_hash || '').trim()
   const selectedAuditReportOwner =
@@ -583,7 +601,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     selectedGoldenPluginRef &&
     selectedGoldenPlugin?.executable &&
     selectedGoldenPlugin.contract?.golden?.enabled &&
-    !goldenImportLoading
+    !goldenImportLoading,
   )
   const selectedPipelinePlugin = selectedChunkPlugin || selectedGovernancePlugin || selectedKgPlugin
   const selectedPluginProcessingTemplates = Array.isArray(selectedPipelinePlugin?.processing_templates?.templates)
@@ -594,7 +612,9 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     return {
       ...REGISTERED_PLUGIN_BASE_PIPELINE_PATCH,
       ...getPluginSuggestedPipelinePatch(selectedPipelinePlugin.suggested_pipeline_patch),
-      ...(selectedPipelinePlugin.refs.governance ? { governance_python_plugin: selectedPipelinePlugin.refs.governance } : {}),
+      ...(selectedPipelinePlugin.refs.governance
+        ? { governance_python_plugin: selectedPipelinePlugin.refs.governance }
+        : {}),
       ...(selectedPipelinePlugin.refs.chunk ? { chunk_python_plugin: selectedPipelinePlugin.refs.chunk } : {}),
       ...(selectedPipelinePlugin.refs.kg ? { kg_python_plugin: selectedPipelinePlugin.refs.kg } : {}),
     }
@@ -608,7 +628,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     applyPipelinePatch(selectedPipelinePluginPatch, {
       successMessage: t('sidebar.pythonPlugins.applySelectedSuccess', {
         name: `${selectedPipelinePlugin.name} v${selectedPipelinePlugin.version}`,
-      })
+      }),
     })
   }
 
@@ -632,7 +652,20 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
       toast.error(t('sidebar.pythonPlugins.importGoldenNoPlugin'))
       return
     }
-    if (goldenImportLoading || goldenRegressionLoading) return
+    const sessionRevision = getAuthSessionRevision()
+    if (goldenSubmissionRef.current?.sessionRevision === sessionRevision) return
+    const submission = { sessionRevision }
+    goldenSubmissionRef.current = submission
+    const authScope = getAuthCacheScope()
+    const isSessionCurrent = () => getAuthCacheScope() === authScope && getAuthSessionRevision() === sessionRevision
+    const canPublish = () => mountedRef.current && goldenSubmissionRef.current === submission && isSessionCurrent()
+    const originalCases = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: queryKeys.evaluations.regressionCases().slice(0, 2) })
+      .filter((query) => {
+        const params = query.queryKey[2] as Parameters<typeof evaluationApi.listRegressionCases>[0]
+        return !params?.dataset_id || params.dataset_id === datasetId
+      })
 
     const setLoading = runRegression ? setGoldenRegressionLoading : setGoldenImportLoading
     setLoading(true)
@@ -643,17 +676,21 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
         max_items: 500,
         overwrite: false,
       })
+      if (!isSessionCurrent()) return
+      invalidateOriginalEvaluationLists(originalCases)
       const caseIds = result.import_result.case_ids ?? []
       const imported = caseIds.length
       if (result.draft.items_total <= 0 || imported <= 0) {
-        toast.info(t('sidebar.pythonPlugins.importGoldenEmpty'))
+        if (canPublish()) toast.info(t('sidebar.pythonPlugins.importGoldenEmpty'))
         return
       }
       if (runRegression) {
-        if (caseIds.length <= 0) {
-          toast.info(t('sidebar.pythonPlugins.importGoldenRunNoCases'))
-          return
-        }
+        const originalRuns = [queryKeys.evaluations.regressionRuns(), queryKeys.evaluations.regressionLeaderboard()]
+          .flatMap((key) => queryClient.getQueryCache().findAll({ queryKey: key.slice(0, 2) }))
+          .filter((query) => {
+            const params = query.queryKey[2] as Parameters<typeof evaluationApi.listRegressionRuns>[0]
+            return !params?.dataset_id || params.dataset_id === datasetId
+          })
         const run = await evaluationApi.createRegressionRun({
           dataset_id: datasetId,
           case_ids: caseIds,
@@ -665,6 +702,9 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
           hierarchy_overfetch_factor: 4,
           max_cases: Math.max(1, Math.min(caseIds.length, 500)),
         })
+        if (!isSessionCurrent()) return
+        invalidateOriginalEvaluationLists(originalRuns)
+        if (!canPublish()) return
         setLastGoldenRegressionRun({
           id: run.id,
           href: `/evaluations?tab=regression&dataset_id=${encodeURIComponent(datasetId)}&run_id=${encodeURIComponent(run.id)}`,
@@ -674,21 +714,25 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
           t('sidebar.pythonPlugins.importGoldenRunSuccess', {
             count: caseIds.length,
             runId: run.id.slice(0, 8),
-          })
+          }),
         )
         return
       }
-      toast.success(
-        t('sidebar.pythonPlugins.importGoldenSuccess', {
-          created: result.import_result.created,
-          updated: result.import_result.updated,
-          skipped: result.import_result.skipped,
-        })
-      )
+      if (canPublish())
+        toast.success(
+          t('sidebar.pythonPlugins.importGoldenSuccess', {
+            created: result.import_result.created,
+            updated: result.import_result.updated,
+            skipped: result.import_result.skipped,
+          }),
+        )
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.importGoldenError')))
+      if (canPublish()) toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.importGoldenError')))
     } finally {
-      setLoading(false)
+      if (goldenSubmissionRef.current === submission) {
+        goldenSubmissionRef.current = null
+        if (mountedRef.current) setLoading(false)
+      }
     }
   }
 
@@ -697,7 +741,16 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
       toast.error(t('sidebar.pythonPlugins.chunkReportNoPlugin'))
       return
     }
-    if (pluginChunkReportLoading) return
+    if (reportRequestRef.current) return
+    const request = {}
+    reportRequestRef.current = request
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      mountedRef.current &&
+      reportRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setPluginChunkReportLoading(true)
     try {
       const report = await pipelineApi.buildPluginChunkReport({
@@ -706,6 +759,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
         max_examples_per_section: 2,
         preview_chars: 180,
       })
+      if (!isCurrent()) return
       setPluginChunkReport(report)
       if (report.passed) {
         toast.success(t('sidebar.pythonPlugins.chunkReportSuccess'))
@@ -713,17 +767,68 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
         toast.error(t('sidebar.pythonPlugins.chunkReportFailed'))
       }
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.chunkReportError')))
+      if (isCurrent()) toast.error(getErrorMessage(error, t('sidebar.pythonPlugins.chunkReportError')))
     } finally {
-      setPluginChunkReportLoading(false)
+      if (reportRequestRef.current === request) {
+        reportRequestRef.current = null
+        if (mountedRef.current) setPluginChunkReportLoading(false)
+      }
+    }
+  }
+
+  const invalidateOriginalEvaluationLists = (queries: Query[]) => {
+    for (const query of queries) {
+      if (queryClient.getQueryCache().get(query.queryHash) === query) {
+        void queryClient.invalidateQueries({ queryKey: query.queryKey, exact: true })
+      }
+    }
+  }
+
+  const handleIngestionPreview = async () => {
+    if (!datasetId) {
+      toast.error(t('sidebar.ingestionPreview.selectDatasetFirst'))
+      return
+    }
+    if (!currentFile || ingestionRequestRef.current) return
+    const request = {}
+    ingestionRequestRef.current = request
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      mountedRef.current &&
+      ingestionRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
+    setIngestionLoading(true)
+    setIngestionError(null)
+    try {
+      const result = await pipelineApi.ingestionPreview(currentFile, {
+        dataset_id: datasetId,
+        parser_backend: parserBackend || undefined,
+        chunk_strategy: chunkStrategy || undefined,
+        diff_max_lines: 300,
+      })
+      if (!isCurrent()) return
+      setIngestionPreview(result)
+      toast.success(t('sidebar.ingestionPreview.generatedSuccess'))
+    } catch (error: unknown) {
+      if (isCurrent()) setIngestionError(getErrorMessage(error, t('sidebar.ingestionPreview.requestFailed')))
+    } finally {
+      if (ingestionRequestRef.current === request) {
+        ingestionRequestRef.current = null
+        if (mountedRef.current) setIngestionLoading(false)
+      }
     }
   }
 
   const buildPreviewSettingsPatch = (patch: JsonObject): PreviewSettingsPatch => {
     const next: PreviewSettingsPatch = {}
-    if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size)) next.chunkSize = Math.trunc(patch.chunk_size)
-    if (typeof patch.chunk_overlap === 'number' && Number.isFinite(patch.chunk_overlap)) next.chunkOverlap = Math.trunc(patch.chunk_overlap)
-    if (typeof patch.chunk_strategy === 'string' && patch.chunk_strategy.trim()) next.strategy = patch.chunk_strategy.trim()
+    if (typeof patch.chunk_size === 'number' && Number.isFinite(patch.chunk_size))
+      next.chunkSize = Math.trunc(patch.chunk_size)
+    if (typeof patch.chunk_overlap === 'number' && Number.isFinite(patch.chunk_overlap))
+      next.chunkOverlap = Math.trunc(patch.chunk_overlap)
+    if (typeof patch.chunk_strategy === 'string' && patch.chunk_strategy.trim())
+      next.strategy = patch.chunk_strategy.trim()
     return next
   }
 
@@ -733,7 +838,8 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     if (typeof patch.original_text_max_chars === 'number' && Number.isFinite(patch.original_text_max_chars)) {
       next.originalTextMaxChars = Math.trunc(patch.original_text_max_chars)
     }
-    if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks)) next.maxChunks = Math.trunc(patch.max_chunks)
+    if (typeof patch.max_chunks === 'number' && Number.isFinite(patch.max_chunks))
+      next.maxChunks = Math.trunc(patch.max_chunks)
     return next
   }
 
@@ -741,7 +847,8 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     let alive = true
     setPipelinePluginsLoading(true)
     setPipelinePluginsError(null)
-    pipelineApi.listPipelinePlugins()
+    pipelineApi
+      .listPipelinePlugins()
       .then((res) => {
         if (!alive) return
         setPipelinePlugins(res.items || [])
@@ -785,14 +892,10 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
   }, [t])
 
   const content = (
-    <div
-      className={section === 'settings' ? configStyles.shell : cn(styles.drawerBody, 'space-y-5')}
-    >
-        {section !== 'settings' && <SidebarPanel tone="sky" className="relative overflow-hidden p-0">
-          <div
-            data-dataset-scope-header="true"
-            className="flex items-center px-3 py-3"
-          >
+    <div className={section === 'settings' ? configStyles.shell : cn(styles.drawerBody, 'space-y-5')}>
+      {section !== 'settings' && (
+        <SidebarPanel tone="sky" className="relative overflow-hidden p-0">
+          <div data-dataset-scope-header="true" className="flex items-center px-3 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className={cn(SIDEBAR_LEAD_ICON_FRAME_CLASS, 'border-primary/20 bg-background')}>
                 <Filter className={cn(SIDEBAR_LEAD_ICON_CLASS, 'text-primary')} strokeWidth={2.6} />
@@ -809,10 +912,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
             </div>
           </div>
 
-          <div
-            data-dataset-scope-selector="true"
-            className="border-t border-foreground/10 px-3 py-3"
-          >
+          <div data-dataset-scope-selector="true" className="border-t border-foreground/10 px-3 py-3">
             <div className="relative group/select">
               <Select
                 value={datasetId || DATASET_DEFAULT_VALUE}
@@ -827,15 +927,23 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                     'h-9 rounded-md border-input/70 bg-background/70 px-3 text-[13px] font-medium text-foreground shadow-none transition-colors',
                     'hover:border-info/30 hover:bg-background',
                     'focus:ring-info/15',
-                    datasetId && 'border-info/30 bg-info/[0.025]'
+                    datasetId && 'border-info/30 bg-info/[0.025]',
                   )}
                 >
                   <SelectValue placeholder={t('sidebar.datasetScope.defaultOption')} />
                 </SelectTrigger>
                 <SelectContent className="rounded-lg border-info/20 bg-secondary p-1 shadow-lg">
-                  <SelectItem value={DATASET_DEFAULT_VALUE} className="rounded-md py-2 text-[13px] font-medium focus:bg-info/[0.06] focus:text-info transition-colors">
+                  <SelectItem
+                    value={DATASET_DEFAULT_VALUE}
+                    className="rounded-md py-2 text-[13px] font-medium focus:bg-info/[0.06] focus:text-info transition-colors"
+                  >
                     <div className="flex items-center gap-3">
-                      <div className={cn(SIDEBAR_LEAD_ICON_FRAME_CLASS, 'border-transparent bg-muted/10 text-muted-foreground')}>
+                      <div
+                        className={cn(
+                          SIDEBAR_LEAD_ICON_FRAME_CLASS,
+                          'border-transparent bg-muted/10 text-muted-foreground',
+                        )}
+                      >
                         <Globe className={SIDEBAR_LEAD_ICON_CLASS} strokeWidth={2.5} />
                       </div>
                       <span className="truncate">{t('sidebar.datasetScope.defaultOption')}</span>
@@ -843,9 +951,15 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                   </SelectItem>
                   <div className="mx-1 my-1 h-px bg-border/40" />
                   {datasets.map((ds) => (
-                    <SelectItem key={ds.id} value={ds.id} className="rounded-md py-2 text-[13px] font-medium focus:bg-info/[0.06] focus:text-info transition-colors">
+                    <SelectItem
+                      key={ds.id}
+                      value={ds.id}
+                      className="rounded-md py-2 text-[13px] font-medium focus:bg-info/[0.06] focus:text-info transition-colors"
+                    >
                       <div className="flex items-center gap-3">
-                        <div className={cn(SIDEBAR_LEAD_ICON_FRAME_CLASS, 'border-transparent bg-info/[0.06] text-info')}>
+                        <div
+                          className={cn(SIDEBAR_LEAD_ICON_FRAME_CLASS, 'border-transparent bg-info/[0.06] text-info')}
+                        >
                           <Database className={SIDEBAR_LEAD_ICON_CLASS} strokeWidth={2.5} />
                         </div>
                         <span className="truncate">{ds.name}</span>
@@ -886,10 +1000,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
             )}
           </div>
 
-          <div
-            data-chunk-file-queue
-            className="border-t border-foreground/10 px-3 py-3"
-          >
+          <div data-chunk-file-queue className="border-t border-foreground/10 px-3 py-3">
             <div className="flex items-center justify-between gap-3">
               <SidebarSectionHeader
                 icon={Folder}
@@ -902,127 +1013,142 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
               data-chunk-file-list
               className="mt-2 max-h-[216px] space-y-1 overflow-y-auto overscroll-contain no-scrollbar"
             >
-            {sortedFileList.length === 0 ? (
-              <div className="py-3">
-                <div className="text-[13px] font-medium text-foreground/75">
-                  {getEmptyFileListLabel({
-                    scopeSyncLoading,
-                    datasetId,
-                    labels: {
-                      syncing: t('sidebar.datasetScope.syncing'),
-                      emptyDataset: t('sidebar.fileList.emptyDataset'),
-                      emptyAll: t('sidebar.fileList.emptyAll'),
-                    },
-                  })}
+              {sortedFileList.length === 0 ? (
+                <div className="py-3">
+                  <div className="text-[13px] font-medium text-foreground/75">
+                    {getEmptyFileListLabel({
+                      scopeSyncLoading,
+                      datasetId,
+                      labels: {
+                        syncing: t('sidebar.datasetScope.syncing'),
+                        emptyDataset: t('sidebar.fileList.emptyDataset'),
+                        emptyAll: t('sidebar.fileList.emptyAll'),
+                      },
+                    })}
+                  </div>
+                  <div className="mt-1 text-[13px] leading-4 text-muted-foreground/70">
+                    {datasetId ? t('sidebar.fileList.emptyDatasetHint') : t('sidebar.fileList.emptyAllHint')}
+                  </div>
                 </div>
-                <div className="mt-1 text-[13px] leading-4 text-muted-foreground/70">
-                  {datasetId ? t('sidebar.fileList.emptyDatasetHint') : t('sidebar.fileList.emptyAllHint')}
-                </div>
-              </div>
-            ) : sortedFileList.map((f) => {
-              const isActive = currentFileId === f.id
-              const isSelectedForIngest = selectedIngestFileIds.has(f.id)
-              const displayTime = f.addedAt
-                ? new Date(f.addedAt).toLocaleString([], {
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : ''
-              const fileIndex = fileList.findIndex((item) => item.id === f.id)
-              const fileTypeLabel = f.originalFileType ? String(f.originalFileType).toUpperCase() : null
-              const fileSizeLabel = typeof f.originalFileSize === 'number' ? formatFileSize(f.originalFileSize) : null
-              const fileSourceLabel = f.source ? t(`sidebar.datasetScope.sources.${f.source}`) : null
-              const fileMetaLabel = [
-                fileTypeLabel,
-                displayTime || t('sidebar.fileList.timeFallback'),
-                fileSizeLabel,
-                fileSourceLabel,
-              ].filter(Boolean).join(' · ')
-              return (
-                <div
-                  key={f.id}
-                  className={cn(
-                    'group relative overflow-hidden rounded-xl border text-[13px] transition-[background,border,box-shadow] duration-150',
-                    isActive
-                      ? 'border-primary/18 bg-background/78 shadow-none'
-                      : 'border-transparent bg-background/45 hover:border-border/40 hover:bg-background/70'
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
-                    }}
-                    aria-label={t('sidebar.fileList.selectFile', { name: f.displayName })}
-                    className="block w-full min-w-0 cursor-pointer rounded-xl py-2 pl-2.5 pr-24 text-left focus-ring"
-                  >
-                    <span className="min-w-0">
-                      <span className="flex min-w-0 items-center gap-1">
-                        <span
-                          title={f.displayName}
-                          className={cn(
-                            'min-w-0 truncate font-medium leading-4',
-                            isActive ? 'text-foreground' : 'text-foreground/78'
-                          )}
-                        >
-                          {f.displayName}
-                        </span>
-                        {processedStatus[f.id] === 'processing' ? <Loader2 className="h-3 w-3 shrink-0 animate-spin text-info motion-reduce:animate-none" /> : null}
-                        {processedStatus[f.id] === 'success' ? <Check className="h-3 w-3 shrink-0 text-success" /> : null}
-                        {processedStatus[f.id] === 'error' ? <AlertCircle className="h-3 w-3 shrink-0 text-destructive" /> : null}
-                      </span>
-                      <span
-                        className="mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[13px] leading-3 text-muted-foreground/75"
-                        title={fileMetaLabel}
+              ) : (
+                sortedFileList.map((f) => {
+                  const isActive = currentFileId === f.id
+                  const isSelectedForIngest = selectedIngestFileIds.has(f.id)
+                  const displayTime = f.addedAt
+                    ? new Date(f.addedAt).toLocaleString([], {
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : ''
+                  const fileIndex = fileList.findIndex((item) => item.id === f.id)
+                  const fileTypeLabel = f.originalFileType ? String(f.originalFileType).toUpperCase() : null
+                  const fileSizeLabel =
+                    typeof f.originalFileSize === 'number' ? formatFileSize(f.originalFileSize) : null
+                  const fileSourceLabel = f.source ? t(`sidebar.datasetScope.sources.${f.source}`) : null
+                  const fileMetaLabel = [
+                    fileTypeLabel,
+                    displayTime || t('sidebar.fileList.timeFallback'),
+                    fileSizeLabel,
+                    fileSourceLabel,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')
+                  return (
+                    <div
+                      key={f.id}
+                      className={cn(
+                        'group relative overflow-hidden rounded-xl border text-[13px] transition-[background,border,box-shadow] duration-150',
+                        isActive
+                          ? 'border-primary/18 bg-background/78 shadow-none'
+                          : 'border-transparent bg-background/45 hover:border-border/40 hover:bg-background/70',
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (fileIndex >= 0) setCurrentFileIndex(fileIndex)
+                        }}
+                        aria-label={t('sidebar.fileList.selectFile', { name: f.displayName })}
+                        className="block w-full min-w-0 cursor-pointer rounded-xl py-2 pl-2.5 pr-24 text-left focus-ring"
                       >
-                        {fileTypeLabel ? (
-                          <span className="shrink-0 rounded-md border border-border/45 bg-background/70 px-1 py-px font-medium text-muted-foreground/85">
-                            {fileTypeLabel}
+                        <span className="min-w-0">
+                          <span className="flex min-w-0 items-center gap-1">
+                            <span
+                              title={f.displayName}
+                              className={cn(
+                                'min-w-0 truncate font-medium leading-4',
+                                isActive ? 'text-foreground' : 'text-foreground/78',
+                              )}
+                            >
+                              {f.displayName}
+                            </span>
+                            {processedStatus[f.id] === 'processing' ? (
+                              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-info motion-reduce:animate-none" />
+                            ) : null}
+                            {processedStatus[f.id] === 'success' ? (
+                              <Check className="h-3 w-3 shrink-0 text-success" />
+                            ) : null}
+                            {processedStatus[f.id] === 'error' ? (
+                              <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />
+                            ) : null}
                           </span>
-                        ) : null}
-                        {fileSizeLabel ? <span className="shrink-0 tabular-nums">{fileSizeLabel}</span> : null}
-                        {displayTime ? <span className="shrink-0 max-w-[4.2rem] truncate tabular-nums">{displayTime}</span> : null}
-                        {fileSourceLabel ? <span className="min-w-0 truncate">{fileSourceLabel}</span> : null}
-                      </span>
-                    </span>
-                  </button>
+                          <span
+                            className="mt-0.5 flex min-w-0 items-center gap-1 overflow-hidden text-[13px] leading-3 text-muted-foreground/75"
+                            title={fileMetaLabel}
+                          >
+                            {fileTypeLabel ? (
+                              <span className="shrink-0 rounded-md border border-border/45 bg-background/70 px-1 py-px font-medium text-muted-foreground/85">
+                                {fileTypeLabel}
+                              </span>
+                            ) : null}
+                            {fileSizeLabel ? <span className="shrink-0 tabular-nums">{fileSizeLabel}</span> : null}
+                            {displayTime ? (
+                              <span className="shrink-0 max-w-[4.2rem] truncate tabular-nums">{displayTime}</span>
+                            ) : null}
+                            {fileSourceLabel ? <span className="min-w-0 truncate">{fileSourceLabel}</span> : null}
+                          </span>
+                        </span>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (fileIndex >= 0) removeFile(fileIndex)
-                    }}
-                    className={cn(
-                      'absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-md px-1.5 py-1 text-[13px] font-medium text-muted-foreground/62 opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none',
-                      'hover:bg-destructive/8 hover:text-destructive focus-ring focus-visible:opacity-100 group-hover:opacity-100',
-                      isActive ? 'opacity-80' : ''
-                    )}
-                    aria-label={t('sidebar.fileList.removeFile', { name: f.displayName })}
-                    title={t('sidebar.fileList.removeFile', { name: f.displayName })}
-                  >
-                    {t('sidebar.fileList.removeShort')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggleIngestFileSelection(f.id)}
-                    aria-pressed={isSelectedForIngest}
-                    aria-label={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
-                    title={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
-                    className={cn(
-                      'absolute right-10 top-1/2 h-5 -translate-y-1/2 cursor-pointer rounded-md border px-1.5 text-[13px] font-medium opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none focus-ring focus-visible:opacity-100 group-hover:opacity-100',
-                      isSelectedForIngest || isActive ? 'opacity-100' : '',
-                      isSelectedForIngest
-                        ? 'border-primary/25 bg-primary/10 text-primary shadow-none'
-                        : 'border-border/40 bg-background/70 text-muted-foreground hover:border-primary/20 hover:bg-background hover:text-primary'
-                    )}
-                  >
-                    {isSelectedForIngest ? t('sidebar.fileList.selectedForIngestShort') : t('sidebar.fileList.selectForIngestShort')}
-                  </button>
-                </div>
-              )
-            })}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (fileIndex >= 0) removeFile(fileIndex)
+                        }}
+                        className={cn(
+                          'absolute right-1.5 top-1/2 -translate-y-1/2 cursor-pointer rounded-md px-1.5 py-1 text-[13px] font-medium text-muted-foreground/62 opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none',
+                          'hover:bg-destructive/8 hover:text-destructive focus-ring focus-visible:opacity-100 group-hover:opacity-100',
+                          isActive ? 'opacity-80' : '',
+                        )}
+                        aria-label={t('sidebar.fileList.removeFile', { name: f.displayName })}
+                        title={t('sidebar.fileList.removeFile', { name: f.displayName })}
+                      >
+                        {t('sidebar.fileList.removeShort')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleIngestFileSelection(f.id)}
+                        aria-pressed={isSelectedForIngest}
+                        aria-label={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
+                        title={t('sidebar.fileList.toggleForIngest', { name: f.displayName })}
+                        className={cn(
+                          'absolute right-10 top-1/2 h-5 -translate-y-1/2 cursor-pointer rounded-md border px-1.5 text-[13px] font-medium opacity-0 transition-colors transition-opacity duration-150 motion-reduce:transition-none focus-ring focus-visible:opacity-100 group-hover:opacity-100',
+                          isSelectedForIngest || isActive ? 'opacity-100' : '',
+                          isSelectedForIngest
+                            ? 'border-primary/25 bg-primary/10 text-primary shadow-none'
+                            : 'border-border/40 bg-background/70 text-muted-foreground hover:border-primary/20 hover:bg-background hover:text-primary',
+                        )}
+                      >
+                        {isSelectedForIngest
+                          ? t('sidebar.fileList.selectedForIngestShort')
+                          : t('sidebar.fileList.selectForIngestShort')}
+                      </button>
+                    </div>
+                  )
+                })
+              )}
             </div>
 
             <div className="mt-2 flex items-center justify-between gap-2 border-t border-foreground/10 pt-2">
@@ -1030,7 +1156,9 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                 <span
                   className={cn(
                     'h-1.5 w-1.5 shrink-0 rounded-full',
-                    selectedIngestCount > 0 ? 'bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]' : 'bg-muted-foreground/35'
+                    selectedIngestCount > 0
+                      ? 'bg-primary shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]'
+                      : 'bg-muted-foreground/35',
                   )}
                 />
                 <span className="min-w-0 truncate text-[13px] font-medium text-muted-foreground/85">
@@ -1059,7 +1187,9 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
               <div className="border-b border-foreground/10 pb-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="text-[13px] font-medium text-foreground/82">{t('sidebar.dataset.pipelineSummary')}</div>
+                    <div className="text-[13px] font-medium text-foreground/82">
+                      {t('sidebar.dataset.pipelineSummary')}
+                    </div>
                     <div className="mt-1 flex flex-wrap gap-1.5 text-[13px]">
                       {selectedDataset.pipeline.governance_enabled ? (
                         <span className="rounded-full border border-primary/18 bg-primary/7 px-1.5 py-0.5 text-primary">
@@ -1181,10 +1311,11 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                 <div className="text-[13px] font-medium text-foreground/90">
                   {ingestionPreview.rule.matched
                     ? t('sidebar.ingestionPreview.result.matchedRule', {
-                      name: ingestionPreview.rule.rule_name
-                        || ingestionPreview.rule.rule_id
-                        || t('sidebar.ingestionPreview.result.matchedRuleFallback'),
-                    })
+                        name:
+                          ingestionPreview.rule.rule_name ||
+                          ingestionPreview.rule.rule_id ||
+                          t('sidebar.ingestionPreview.result.matchedRuleFallback'),
+                      })
                     : t('sidebar.ingestionPreview.result.defaultRule')}
                 </div>
                 <div className="text-[13px] text-muted-foreground font-mono">
@@ -1214,7 +1345,8 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                   </span>{' '}
                   ·{' '}
                   <span className="font-mono">
-                    {formatFileSize(ingestionPreview.preprocess.size_before)} → {formatFileSize(ingestionPreview.preprocess.size_after)}
+                    {formatFileSize(ingestionPreview.preprocess.size_before)} →{' '}
+                    {formatFileSize(ingestionPreview.preprocess.size_after)}
                   </span>
                   {ingestionPreview.preprocess.warnings?.length ? (
                     <span className="text-warning">
@@ -1255,24 +1387,30 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
               preview={ingestionPreview}
               datasetId={datasetId}
               onApplyPipelinePatch={(patch) => {
-                applyPipelinePatch(patch, { errorMessage: t('sidebar.ingestionPreview.applySuggestedPipelinePatchError') })
+                applyPipelinePatch(patch, {
+                  errorMessage: t('sidebar.ingestionPreview.applySuggestedPipelinePatchError'),
+                })
               }}
             />
           </div>
-        </SidebarPanel>}
+        </SidebarPanel>
+      )}
 
-        {section !== 'documents' && <AdvancedConfigBody
-          pluginSettings={<div
-              data-python-pipeline-plugin-panel
-              className={configStyles.pluginSettings}
-            >
+      {section !== 'documents' && (
+        <AdvancedConfigBody
+          pluginSettings={
+            <div data-python-pipeline-plugin-panel className={configStyles.pluginSettings}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-start gap-2">
-                  <span className={cn(SIDEBAR_LEAD_ICON_FRAME_CLASS, 'mt-0.5 border-accent/20 bg-accent/8 text-accent')}>
+                  <span
+                    className={cn(SIDEBAR_LEAD_ICON_FRAME_CLASS, 'mt-0.5 border-accent/20 bg-accent/8 text-accent')}
+                  >
                     <FileCode2 className={SIDEBAR_LEAD_ICON_CLASS} strokeWidth={2.6} />
                   </span>
                   <div className="min-w-0">
-                    <div className="text-[13px] font-medium leading-4 text-foreground">{t('sidebar.pythonPlugins.title')}</div>
+                    <div className="text-[13px] font-medium leading-4 text-foreground">
+                      {t('sidebar.pythonPlugins.title')}
+                    </div>
                     <div className="text-[13px] font-medium leading-6 text-muted-foreground">
                       {t('sidebar.pythonPlugins.description')}
                     </div>
@@ -1285,14 +1423,16 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
 
               <div className="grid gap-2">
                 <label className="grid gap-1">
-                  <span className="text-[13px] font-medium text-muted-foreground">{t('sidebar.pythonPlugins.governancePluginLabel')}</span>
+                  <span className="text-[13px] font-medium text-muted-foreground">
+                    {t('sidebar.pythonPlugins.governancePluginLabel')}
+                  </span>
                   <Select
                     value={governancePluginValue}
                     onValueChange={(value) => {
                       pipelineCtx.setEnabled(true)
                       pipelineCtx.updateOption(
                         'governance_python_plugin',
-                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value
+                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value,
                       )
                     }}
                   >
@@ -1300,9 +1440,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       <SelectValue placeholder={t('sidebar.pythonPlugins.selectPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>
-                        {t('sidebar.pythonPlugins.none')}
-                      </SelectItem>
+                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>{t('sidebar.pythonPlugins.none')}</SelectItem>
                       {pipelineCtx.options.governance_python_plugin && !governancePluginListed ? (
                         <SelectItem value={pipelineCtx.options.governance_python_plugin}>
                           {t('sidebar.pythonPlugins.currentImportPath')}
@@ -1321,14 +1459,16 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                   </Select>
                 </label>
                 <label className="grid gap-1">
-                  <span className="text-[13px] font-medium text-muted-foreground">{t('sidebar.pythonPlugins.chunkPluginLabel')}</span>
+                  <span className="text-[13px] font-medium text-muted-foreground">
+                    {t('sidebar.pythonPlugins.chunkPluginLabel')}
+                  </span>
                   <Select
                     value={chunkPluginValue}
                     onValueChange={(value) => {
                       pipelineCtx.setEnabled(true)
                       pipelineCtx.updateOption(
                         'chunk_python_plugin',
-                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value
+                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value,
                       )
                     }}
                   >
@@ -1336,9 +1476,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       <SelectValue placeholder={t('sidebar.pythonPlugins.selectPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>
-                        {t('sidebar.pythonPlugins.none')}
-                      </SelectItem>
+                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>{t('sidebar.pythonPlugins.none')}</SelectItem>
                       {pipelineCtx.options.chunk_python_plugin && !chunkPluginListed ? (
                         <SelectItem value={pipelineCtx.options.chunk_python_plugin}>
                           {t('sidebar.pythonPlugins.currentImportPath')}
@@ -1357,14 +1495,16 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                   </Select>
                 </label>
                 <label className="grid gap-1">
-                  <span className="text-[13px] font-medium text-muted-foreground">{t('sidebar.pythonPlugins.kgPluginLabel')}</span>
+                  <span className="text-[13px] font-medium text-muted-foreground">
+                    {t('sidebar.pythonPlugins.kgPluginLabel')}
+                  </span>
                   <Select
                     value={kgPluginValue}
                     onValueChange={(value) => {
                       pipelineCtx.setEnabled(true)
                       pipelineCtx.updateOption(
                         'kg_python_plugin',
-                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value
+                        value === PYTHON_PLUGIN_NONE_VALUE ? undefined : value,
                       )
                     }}
                   >
@@ -1372,9 +1512,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       <SelectValue placeholder={t('sidebar.pythonPlugins.selectPlaceholder')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>
-                        {t('sidebar.pythonPlugins.none')}
-                      </SelectItem>
+                      <SelectItem value={PYTHON_PLUGIN_NONE_VALUE}>{t('sidebar.pythonPlugins.none')}</SelectItem>
                       {pipelineCtx.options.kg_python_plugin && !kgPluginListed ? (
                         <SelectItem value={pipelineCtx.options.kg_python_plugin}>
                           {t('sidebar.pythonPlugins.currentImportPath')}
@@ -1479,7 +1617,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                               'rounded-full border px-1.5 py-0.5 text-[13px] font-medium',
                               pluginChunkReportReadinessPassed
                                 ? 'border-success/20 bg-success/8 text-success'
-                                : 'border-destructive/20 bg-destructive/8 text-destructive'
+                                : 'border-destructive/20 bg-destructive/8 text-destructive',
                             )}
                           >
                             {pluginChunkReportReadinessPassed
@@ -1531,9 +1669,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       <span className="truncate text-[13px] font-medium text-foreground">
                         {t('sidebar.pythonPlugins.processingTemplatesTitle')}
                       </span>
-                      <SidebarChip tone="violet">
-                        {selectedPluginProcessingTemplates.length}
-                      </SidebarChip>
+                      <SidebarChip tone="violet">{selectedPluginProcessingTemplates.length}</SidebarChip>
                     </div>
                     <div className="text-[13px] font-medium leading-3 text-muted-foreground">
                       {t('sidebar.pythonPlugins.processingTemplatesHint')}
@@ -1545,9 +1681,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                             key={template.key}
                             className="flex min-w-0 items-center justify-between gap-2 rounded-md border border-border/35 bg-muted/18 px-1.5 py-1"
                           >
-                            <span className="truncate font-semibold text-foreground">
-                              {template.name}
-                            </span>
+                            <span className="truncate font-semibold text-foreground">{template.name}</span>
                             <span className="shrink-0 rounded-full border border-border/40 bg-background/70 px-1.5 py-0.5 font-mono text-[13px] uppercase text-muted-foreground">
                               {template.stage}
                             </span>
@@ -1603,7 +1737,9 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                       </Button>
                     </div>
                     <div className="text-[13px] font-medium leading-6 text-muted-foreground">
-                      {datasetId ? t('sidebar.pythonPlugins.importGoldenHint') : t('sidebar.pythonPlugins.importGoldenSelectDataset')}
+                      {datasetId
+                        ? t('sidebar.pythonPlugins.importGoldenHint')
+                        : t('sidebar.pythonPlugins.importGoldenSelectDataset')}
                     </div>
                     {lastGoldenRegressionRun ? (
                       <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/15 bg-primary/5 px-2 py-1.5">
@@ -1617,10 +1753,13 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                             })}
                           </div>
                         </div>
-                        <Button asChild size="sm" variant="outline" className="h-6 shrink-0 rounded-lg px-2 text-[13px] shadow-none">
-                          <Link href={lastGoldenRegressionRun.href}>
-                            {t('sidebar.pythonPlugins.viewGoldenRun')}
-                          </Link>
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="outline"
+                          className="h-6 shrink-0 rounded-lg px-2 text-[13px] shadow-none"
+                        >
+                          <Link href={lastGoldenRegressionRun.href}>{t('sidebar.pythonPlugins.viewGoldenRun')}</Link>
                         </Button>
                       </div>
                     ) : null}
@@ -1649,414 +1788,491 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
                   {t('sidebar.pythonPlugins.clear')}
                 </Button>
               </div>
-            </div>}
-          strategySettings={<>
-            {isSeparatorStrategy ? (
-            <SidebarPanel tone="cyan" className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[13px] font-semibold text-foreground/82">{t('sidebar.separator.title')}</div>
-                <SidebarChip tone="cyan">分隔</SidebarChip>
-              </div>
-
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[13px] text-muted-foreground">{t('sidebar.separator.syncToPipeline')}</div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 text-[13px]"
-                  onClick={() => {
-                    const preset = separatorPreset || 'paragraph'
-                    const patch: ChunkStrategyParams = {
-                      separator_preset: preset,
-                      keep_separator: !!keepSeparator,
-                      separator_max_chunk_size: Number(separatorMaxChunkSize) || 0,
-                    }
-                    if (preset === 'custom') {
-                      patch.separator = effectiveSeparator || '\n\n'
-                    }
-                    pipelineCtx.setEnabled(true)
-                    pipelineCtx.updateOption('chunk_strategy_params', patch)
-                    toast.success(t('sidebar.separator.writeSuccess'))
-                  }}
-                >
-                  {t('sidebar.separator.write')}
-                </Button>
-              </div>
-              {pipelineCtx.options.chunk_strategy_params ? (
-                <div className="text-[13px] text-muted-foreground font-mono break-all">
-                  {t('sidebar.separator.currentPipeline', {
-                    value: JSON.stringify(pipelineCtx.options.chunk_strategy_params),
-                  })}
-                </div>
-              ) : (
-                <div className="text-[13px] text-muted-foreground font-mono">
-                  {t('sidebar.separator.currentPipeline', {
-                    value: t('sidebar.separator.currentPipelineEmpty'),
-                  })}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <div className="text-[13px] font-medium text-muted-foreground">{t('sidebar.separator.presetLabel')}</div>
-                <Select
-                  value={separatorPreset}
-                  onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
-                >
-                  <SelectTrigger className="h-8 bg-background text-[13px]">
-                    <SelectValue placeholder={t('sidebar.separator.presetPlaceholder')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {separatorPresetOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <SidebarNote tone="cyan" className="py-1.5">
-                  {separatorPresetOptions.find((o) => o.value === separatorPreset)?.hint || ''}
-                </SidebarNote>
-                {effectiveSeparator ? (
-                  <div className="text-[13px] text-muted-foreground font-mono">
-                    {t('sidebar.separator.effectiveSeparator', {
-                      value: JSON.stringify(effectiveSeparator).slice(1, -1) || t('sidebar.separator.currentPipelineEmpty'),
-                      length: effectiveSeparator.length,
-                    })}
+            </div>
+          }
+          strategySettings={
+            <>
+              {isSeparatorStrategy ? (
+                <SidebarPanel tone="cyan" className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[13px] font-semibold text-foreground/82">{t('sidebar.separator.title')}</div>
+                    <SidebarChip tone="cyan">分隔</SidebarChip>
                   </div>
-                ) : null}
-              </div>
 
-              {separatorPreset === 'custom' ? (
-                <div className="space-y-2">
-                  <div className="text-[13px] font-medium text-muted-foreground">{t('sidebar.separator.customLabel')}</div>
-                  <Input
-                    value={separatorCustom}
-                    onChange={(e) => updateSeparatorSettings({ separatorCustom: e.target.value })}
-                    className="h-9 text-[13px] font-mono bg-background"
-                    placeholder={t('sidebar.separator.customPlaceholder')}
-                    aria-label={t('sidebar.separator.customAria')}
-                  />
-                  <SidebarNote tone="cyan" className="py-1.5">{t('sidebar.separator.customHelp')}</SidebarNote>
-                </div>
-              ) : null}
-
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
-                <div>
-                  <div className="text-[13px] font-medium text-foreground/82">{t('sidebar.separator.keepSeparator.title')}</div>
-                  <div className="text-[13px] text-muted-foreground">{t('sidebar.separator.keepSeparator.description')}</div>
-                </div>
-                <label className="inline-flex items-center gap-2 text-[13px] text-muted-foreground">
-                  <input
-                    type="checkbox"
-                    checked={keepSeparator}
-                    onChange={(e) => updateSeparatorSettings({ keepSeparator: e.target.checked })}
-                    className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
-                  />
-                  {keepSeparator ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
-                </label>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-[13px] font-medium text-muted-foreground">{t('sidebar.separator.maxChunkLength')}</div>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={20000}
-                    step={100}
-                    value={separatorMaxChunkSize}
-                    onChange={(e) => {
-                      const n = Number(e.target.value)
-                      if (!Number.isFinite(n)) return
-                      updateSeparatorSettings({ separatorMaxChunkSize: clampInt(n, 0, 20000) })
-                    }}
-                    className="h-7 w-24 text-[13px] font-mono bg-background"
-                    aria-label={t('sidebar.separator.maxChunkLengthAria')}
-                  />
-                </div>
-                <SidebarNote tone="cyan" className="py-1.5">{t('sidebar.separator.maxChunkLengthHelp')}</SidebarNote>
-              </div>
-            </SidebarPanel>
-          ) : null}
-            {isParentChildStrategy ? (
-            <SidebarPanel tone="emerald" className="space-y-3">
-              <div className="text-[13px] font-semibold text-foreground/84">{t('sidebar.parentChild.title')}</div>
-
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[13px] text-muted-foreground">{t('sidebar.parentChild.syncToPipeline')}</div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-6 px-2 text-[13px]"
-                  onClick={() => {
-                    const patch: ChunkStrategyParams = {
-                      child_ratio: Number(parentChildRatio),
-                      min_child_size: Number(parentChildMinChildSize),
-                    }
-                    pipelineCtx.setEnabled(true)
-                    pipelineCtx.updateOption('chunk_strategy_params', patch)
-                    toast.success(t('sidebar.parentChild.writeSuccess'))
-                  }}
-                >
-                  {t('sidebar.parentChild.write')}
-                </Button>
-              </div>
-              {pipelineCtx.options.chunk_strategy_params ? (
-                <div className="text-[13px] text-muted-foreground/80 font-mono break-all">
-                  {t('sidebar.parentChild.currentPipeline', {
-                    value: JSON.stringify(pipelineCtx.options.chunk_strategy_params),
-                  })}
-                </div>
-              ) : (
-                <div className="text-[13px] text-muted-foreground/80 font-mono">
-                  {t('sidebar.parentChild.currentPipeline', {
-                    value: t('sidebar.parentChild.currentPipelineEmpty'),
-                  })}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <div className="text-[13px] font-medium text-muted-foreground">{t('sidebar.parentChild.ratioLabel')}</div>
-                  <Input
-                    type="number"
-                    inputMode="decimal"
-                    min={0.05}
-                    max={1}
-                    step={0.05}
-                    value={parentChildRatio}
-                    onChange={(e) => {
-                      const n = Number(e.target.value)
-                      if (!Number.isFinite(n)) return
-                      updateParentChildSettings({ parentChildRatio: Math.max(0.05, Math.min(1, n)) })
-                    }}
-                    className="h-8 text-[13px] font-mono bg-background"
-                    aria-label={t('sidebar.parentChild.ratioAria')}
-                  />
-                  <SidebarNote tone="emerald" className="py-1">{t('sidebar.parentChild.ratioHelp')}</SidebarNote>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="text-[13px] font-medium text-muted-foreground">{t('sidebar.parentChild.minChildSizeLabel')}</div>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={50}
-                    max={4000}
-                    step={50}
-                    value={parentChildMinChildSize}
-                    onChange={(e) => {
-                      const n = Number(e.target.value)
-                      if (!Number.isFinite(n)) return
-                      updateParentChildSettings({ parentChildMinChildSize: clampInt(n, 50, 4000) })
-                    }}
-                    className="h-8 text-[13px] font-mono bg-background"
-                    aria-label={t('sidebar.parentChild.minChildSizeAria')}
-                  />
-                  <SidebarNote tone="emerald" className="py-1">{t('sidebar.parentChild.minChildSizeHelp')}</SidebarNote>
-                </div>
-              </div>
-
-              {parentChildEffective ? (
-                <SidebarNote tone="emerald" className="font-mono text-[13px]">
-                  {t('sidebar.parentChild.effectiveSummary', {
-                    childSize: parentChildEffective.childSize,
-                    childOverlap: parentChildEffective.childOverlap,
-                    ratio: Math.round(parentChildEffective.ratio * 100),
-                  })}
-                </SidebarNote>
-              ) : null}
-
-              <SidebarNote tone="emerald">{t('sidebar.parentChild.description')}</SidebarNote>
-            </SidebarPanel>
-          ) : null}
-          </>}
-          analysisDetails={<>
-            {serverStats ? (
-                  <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="border-b border-border py-3">
-                  <div className="text-[13px] text-muted-foreground uppercase  font-medium">{minMaxStatLabel}</div>
-                  <div className="mt-1 text-sm font-mono text-foreground/90">
-                    {serverStats.min} / {serverStats.max}
-                  </div>
-                  <div className="mt-1 text-[13px] text-muted-foreground font-mono">{t('sidebar.stats.p10', { value: serverStats.p10 ?? '-' })}</div>
-                </div>
-                <div className="border-b border-border py-3">
-                  <div className="text-[13px] text-muted-foreground uppercase  font-medium">{t('sidebar.stats.qualitySignals')}</div>
-                  <div className="mt-1 text-[13px] text-muted-foreground">
-                    {t('sidebar.stats.qualitySummary', {
-                      shortCount: serverStats.short_count ?? 0,
-                      duplicateCount: serverStats.duplicate_count ?? 0,
-                    })}
-                  </div>
-                  {overlapGuidance ? (
-                    <div className={cn('mt-1 text-[13px]', overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground')}>
-                      {t('sidebar.stats.overlapSummary', {
-                        ratio: Math.round(overlapGuidance.ratio * 100),
-                        min: 10,
-                        max: 25,
-                      })}
-                    </div>
-                  ) : null}
-                  {coverageSignals ? (
-                    <div
-                      className={cn(
-                        'mt-1 text-[13px]',
-                        coverageSignals.coveragePct != null && coverageSignals.coveragePct < 95 ? 'text-warning' : 'text-muted-foreground'
-                      )}
-                      title={coverageSignals.largestGap == null ? undefined : t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[13px] text-muted-foreground">{t('sidebar.separator.syncToPipeline')}</div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[13px]"
+                      onClick={() => {
+                        const preset = separatorPreset || 'paragraph'
+                        const patch: ChunkStrategyParams = {
+                          separator_preset: preset,
+                          keep_separator: !!keepSeparator,
+                          separator_max_chunk_size: Number(separatorMaxChunkSize) || 0,
+                        }
+                        if (preset === 'custom') {
+                          patch.separator = effectiveSeparator || '\n\n'
+                        }
+                        pipelineCtx.setEnabled(true)
+                        pipelineCtx.updateOption('chunk_strategy_params', patch)
+                        toast.success(t('sidebar.separator.writeSuccess'))
+                      }}
                     >
-                      {t('sidebar.stats.coverageSummary', {
-                        coverage: coverageSignals.coveragePct ?? '-',
-                        waste: coverageSignals.overlapWastePct ?? '-',
-                        gaps: coverageSignals.gapCount ?? '-',
+                      {t('sidebar.separator.write')}
+                    </Button>
+                  </div>
+                  {pipelineCtx.options.chunk_strategy_params ? (
+                    <div className="text-[13px] text-muted-foreground font-mono break-all">
+                      {t('sidebar.separator.currentPipeline', {
+                        value: JSON.stringify(pipelineCtx.options.chunk_strategy_params),
                       })}
                     </div>
-                  ) : null}
-                </div>
-                <div className="col-span-2 border-b border-border py-3">
-                  <div className="text-[13px] text-muted-foreground uppercase  font-medium">{histogramTitle}</div>
-                  {histogramData.length ? (
-                    <SafeResponsiveChart className="mt-2 h-[120px]" minHeight={120}>
-                      <BarChart data={histogramData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.35} />
-                        <XAxis dataKey="label" hide />
-                        <YAxis hide />
-                        <Tooltip
-                          formatter={(value) => [value ?? 0, t('sidebar.stats.histogramCount')]}
-                          labelFormatter={(label, payload) => {
-                            const p = payload?.[0]?.payload
-                            const min = typeof p?.min === 'number' ? p.min : null
-                            const max = typeof p?.max === 'number' ? p.max : null
-                            if (min != null && max != null) return `${min}-${max} ${statsUnitLabel}`
-                            return String(label ?? '')
-                          }}
-                        />
-                        <Bar dataKey="count" fill="hsl(var(--primary))" fillOpacity={0.25} radius={[2, 2, 0, 0]} />
-                      </BarChart>
-                    </SafeResponsiveChart>
                   ) : (
-                    <div className="mt-2 text-[13px] text-muted-foreground">{t('sidebar.stats.histogramEmpty')}</div>
-                  )}
-                  <div className="mt-2 flex items-center justify-between text-[13px] text-muted-foreground font-mono">
-                    <span>0</span>
-                    <span>{histogramMax || serverStats.max}</span>
-                  </div>
-                </div>
-                {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
-                  <div className="col-span-2 border-b border-border py-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-[13px] text-muted-foreground uppercase  font-medium">{t('sidebar.recommendations.title')}</div>
-                      {previewData?.recommendation_patches?.length ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          className="h-7 px-2 text-[13px]"
-                          onClick={() => {
-                            for (const item of previewData.recommendation_patches || []) {
-                              const target = item.target || 'preview'
-                              const patch = item.patch || {}
-                              if (target === 'preview') {
-                                const next = buildPreviewSettingsPatch(patch)
-                                if (Object.keys(next).length) updateSettings(next)
-                              } else if (target === 'pipeline') {
-                                applyPipelinePatch(patch, { errorMessage: t('sidebar.recommendations.applyAllPipelineError') })
-                              } else if (target === 'perf') {
-                                const next = buildPerfSettingsPatch(patch)
-                                if (Object.keys(next).length) updatePerfSettings(next)
-                              }
-                            }
-                            toast.success(t('sidebar.recommendations.applyAllSuccess'))
-                          }}
-                        >
-                          {t('sidebar.recommendations.applyAll')}
-                        </Button>
-                      ) : null}
+                    <div className="text-[13px] text-muted-foreground font-mono">
+                      {t('sidebar.separator.currentPipeline', {
+                        value: t('sidebar.separator.currentPipelineEmpty'),
+                      })}
                     </div>
+                  )}
 
-                    {previewData?.recommendation_patches?.length ? (
-                      <div className="mt-2 space-y-2">
-                        {(previewData.recommendation_patches || []).slice(0, 6).map((patchItem: ChunkPreviewRecommendationPatch) => {
-                          const title = patchItem.title || patchItem.id || t('sidebar.recommendations.patchFallback')
-                          const desc = patchItem.description || ''
-                          const target = patchItem.target || 'preview'
-                          const patch = patchItem.patch || {}
-                          const targetLabel = getRecommendationTargetLabel(target, {
-                            preview: t('sidebar.recommendations.targets.preview'),
-                            pipeline: t('sidebar.recommendations.targets.pipeline'),
-                            perf: t('sidebar.recommendations.targets.perf'),
-                          })
-                          return (
-                            <div key={patchItem.id || title} className="rounded-lg border border-border/60 bg-background p-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="text-[13px] font-medium text-foreground/90">{title}</div>
-                                  {desc ? <div className="mt-0.5 text-[13px] text-muted-foreground">{desc}</div> : null}
-                                </div>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="h-7 px-2 text-[13px]"
-                                  onClick={() => {
-                                    if (target === 'preview') {
-                                      const next = buildPreviewSettingsPatch(patch)
-                                      if (Object.keys(next).length) {
-                                        updateSettings(next)
-                                        toast.success(t('sidebar.recommendations.applyPreviewSuccess'))
-                                      }
-                                      return
-                                    }
-                                    if (target === 'pipeline') {
-                                      if (applyPipelinePatch(patch, { errorMessage: t('sidebar.recommendations.applyPipelineError') })) {
-                                        toast.success(t('sidebar.recommendations.applyPipelineSuccess'))
-                                      }
-                                      return
-                                    }
-                                    if (target === 'perf') {
-                                      const next = buildPerfSettingsPatch(patch)
-                                      if (Object.keys(next).length) {
-                                        updatePerfSettings(next)
-                                        toast.success(t('sidebar.recommendations.applyPerfSuccess'))
-                                      }
-                                    }
-                                  }}
-                                  title={Object.keys(patch || {}).length ? JSON.stringify(patch) : undefined}
-                                >
-                                  {t('sidebar.recommendations.apply')}
-                                </Button>
-                              </div>
-                              <div className="mt-1 text-[13px] text-muted-foreground font-mono">
-                                {t('sidebar.recommendations.target', { value: targetLabel })}
-                              </div>
-                            </div>
-                          )
+                  <div className="space-y-2">
+                    <div className="text-[13px] font-medium text-muted-foreground">
+                      {t('sidebar.separator.presetLabel')}
+                    </div>
+                    <Select
+                      value={separatorPreset}
+                      onValueChange={(value) => updateSeparatorSettings({ separatorPreset: value })}
+                    >
+                      <SelectTrigger className="h-8 bg-background text-[13px]">
+                        <SelectValue placeholder={t('sidebar.separator.presetPlaceholder')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {separatorPresetOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <SidebarNote tone="cyan" className="py-1.5">
+                      {separatorPresetOptions.find((o) => o.value === separatorPreset)?.hint || ''}
+                    </SidebarNote>
+                    {effectiveSeparator ? (
+                      <div className="text-[13px] text-muted-foreground font-mono">
+                        {t('sidebar.separator.effectiveSeparator', {
+                          value:
+                            JSON.stringify(effectiveSeparator).slice(1, -1) ||
+                            t('sidebar.separator.currentPipelineEmpty'),
+                          length: effectiveSeparator.length,
                         })}
                       </div>
                     ) : null}
+                  </div>
 
-                    {previewData?.recommendations?.length ? (
-                      <div className="mt-2 space-y-1 text-[13px] text-muted-foreground">
-                        {(previewData.recommendations || []).slice(0, 8).map((r) => (
-                          <div key={String(r)} className="flex gap-2">
-                            <span className="font-mono text-muted-foreground/70">-</span>
-                            <span className="flex-1">{String(r)}</span>
-                          </div>
-                        ))}
+                  {separatorPreset === 'custom' ? (
+                    <div className="space-y-2">
+                      <div className="text-[13px] font-medium text-muted-foreground">
+                        {t('sidebar.separator.customLabel')}
+                      </div>
+                      <Input
+                        value={separatorCustom}
+                        onChange={(e) => updateSeparatorSettings({ separatorCustom: e.target.value })}
+                        className="h-9 text-[13px] font-mono bg-background"
+                        placeholder={t('sidebar.separator.customPlaceholder')}
+                        aria-label={t('sidebar.separator.customAria')}
+                      />
+                      <SidebarNote tone="cyan" className="py-1.5">
+                        {t('sidebar.separator.customHelp')}
+                      </SidebarNote>
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-card/75 px-2.5 py-1.5">
+                    <div>
+                      <div className="text-[13px] font-medium text-foreground/82">
+                        {t('sidebar.separator.keepSeparator.title')}
+                      </div>
+                      <div className="text-[13px] text-muted-foreground">
+                        {t('sidebar.separator.keepSeparator.description')}
+                      </div>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-[13px] text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={keepSeparator}
+                        onChange={(e) => updateSeparatorSettings({ keepSeparator: e.target.checked })}
+                        className="h-3.5 w-3.5 rounded border-border/60 text-primary focus:ring-2 focus:ring-ring/20 focus:ring-offset-2 focus:ring-offset-background"
+                      />
+                      {keepSeparator ? t('sidebar.common.enabled') : t('sidebar.common.disabled')}
+                    </label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[13px] font-medium text-muted-foreground">
+                        {t('sidebar.separator.maxChunkLength')}
+                      </div>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        max={20000}
+                        step={100}
+                        value={separatorMaxChunkSize}
+                        onChange={(e) => {
+                          const n = Number(e.target.value)
+                          if (!Number.isFinite(n)) return
+                          updateSeparatorSettings({ separatorMaxChunkSize: clampInt(n, 0, 20000) })
+                        }}
+                        className="h-7 w-24 text-[13px] font-mono bg-background"
+                        aria-label={t('sidebar.separator.maxChunkLengthAria')}
+                      />
+                    </div>
+                    <SidebarNote tone="cyan" className="py-1.5">
+                      {t('sidebar.separator.maxChunkLengthHelp')}
+                    </SidebarNote>
+                  </div>
+                </SidebarPanel>
+              ) : null}
+              {isParentChildStrategy ? (
+                <SidebarPanel tone="emerald" className="space-y-3">
+                  <div className="text-[13px] font-semibold text-foreground/84">{t('sidebar.parentChild.title')}</div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[13px] text-muted-foreground">{t('sidebar.parentChild.syncToPipeline')}</div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-[13px]"
+                      onClick={() => {
+                        const patch: ChunkStrategyParams = {
+                          child_ratio: Number(parentChildRatio),
+                          min_child_size: Number(parentChildMinChildSize),
+                        }
+                        pipelineCtx.setEnabled(true)
+                        pipelineCtx.updateOption('chunk_strategy_params', patch)
+                        toast.success(t('sidebar.parentChild.writeSuccess'))
+                      }}
+                    >
+                      {t('sidebar.parentChild.write')}
+                    </Button>
+                  </div>
+                  {pipelineCtx.options.chunk_strategy_params ? (
+                    <div className="text-[13px] text-muted-foreground/80 font-mono break-all">
+                      {t('sidebar.parentChild.currentPipeline', {
+                        value: JSON.stringify(pipelineCtx.options.chunk_strategy_params),
+                      })}
+                    </div>
+                  ) : (
+                    <div className="text-[13px] text-muted-foreground/80 font-mono">
+                      {t('sidebar.parentChild.currentPipeline', {
+                        value: t('sidebar.parentChild.currentPipelineEmpty'),
+                      })}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <div className="text-[13px] font-medium text-muted-foreground">
+                        {t('sidebar.parentChild.ratioLabel')}
+                      </div>
+                      <Input
+                        type="number"
+                        inputMode="decimal"
+                        min={0.05}
+                        max={1}
+                        step={0.05}
+                        value={parentChildRatio}
+                        onChange={(e) => {
+                          const n = Number(e.target.value)
+                          if (!Number.isFinite(n)) return
+                          updateParentChildSettings({ parentChildRatio: Math.max(0.05, Math.min(1, n)) })
+                        }}
+                        className="h-8 text-[13px] font-mono bg-background"
+                        aria-label={t('sidebar.parentChild.ratioAria')}
+                      />
+                      <SidebarNote tone="emerald" className="py-1">
+                        {t('sidebar.parentChild.ratioHelp')}
+                      </SidebarNote>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="text-[13px] font-medium text-muted-foreground">
+                        {t('sidebar.parentChild.minChildSizeLabel')}
+                      </div>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        min={50}
+                        max={4000}
+                        step={50}
+                        value={parentChildMinChildSize}
+                        onChange={(e) => {
+                          const n = Number(e.target.value)
+                          if (!Number.isFinite(n)) return
+                          updateParentChildSettings({ parentChildMinChildSize: clampInt(n, 50, 4000) })
+                        }}
+                        className="h-8 text-[13px] font-mono bg-background"
+                        aria-label={t('sidebar.parentChild.minChildSizeAria')}
+                      />
+                      <SidebarNote tone="emerald" className="py-1">
+                        {t('sidebar.parentChild.minChildSizeHelp')}
+                      </SidebarNote>
+                    </div>
+                  </div>
+
+                  {parentChildEffective ? (
+                    <SidebarNote tone="emerald" className="font-mono text-[13px]">
+                      {t('sidebar.parentChild.effectiveSummary', {
+                        childSize: parentChildEffective.childSize,
+                        childOverlap: parentChildEffective.childOverlap,
+                        ratio: Math.round(parentChildEffective.ratio * 100),
+                      })}
+                    </SidebarNote>
+                  ) : null}
+
+                  <SidebarNote tone="emerald">{t('sidebar.parentChild.description')}</SidebarNote>
+                </SidebarPanel>
+              ) : null}
+            </>
+          }
+          analysisDetails={
+            <>
+              {serverStats ? (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="border-b border-border py-3">
+                    <div className="text-[13px] text-muted-foreground uppercase  font-medium">{minMaxStatLabel}</div>
+                    <div className="mt-1 text-sm font-mono text-foreground/90">
+                      {serverStats.min} / {serverStats.max}
+                    </div>
+                    <div className="mt-1 text-[13px] text-muted-foreground font-mono">
+                      {t('sidebar.stats.p10', { value: serverStats.p10 ?? '-' })}
+                    </div>
+                  </div>
+                  <div className="border-b border-border py-3">
+                    <div className="text-[13px] text-muted-foreground uppercase  font-medium">
+                      {t('sidebar.stats.qualitySignals')}
+                    </div>
+                    <div className="mt-1 text-[13px] text-muted-foreground">
+                      {t('sidebar.stats.qualitySummary', {
+                        shortCount: serverStats.short_count ?? 0,
+                        duplicateCount: serverStats.duplicate_count ?? 0,
+                      })}
+                    </div>
+                    {overlapGuidance ? (
+                      <div
+                        className={cn(
+                          'mt-1 text-[13px]',
+                          overlapGuidance.outOfRange ? 'text-warning' : 'text-muted-foreground',
+                        )}
+                      >
+                        {t('sidebar.stats.overlapSummary', {
+                          ratio: Math.round(overlapGuidance.ratio * 100),
+                          min: 10,
+                          max: 25,
+                        })}
+                      </div>
+                    ) : null}
+                    {coverageSignals ? (
+                      <div
+                        className={cn(
+                          'mt-1 text-[13px]',
+                          coverageSignals.coveragePct != null && coverageSignals.coveragePct < 95
+                            ? 'text-warning'
+                            : 'text-muted-foreground',
+                        )}
+                        title={
+                          coverageSignals.largestGap == null
+                            ? undefined
+                            : t('sidebar.stats.largestGap', { value: coverageSignals.largestGap })
+                        }
+                      >
+                        {t('sidebar.stats.coverageSummary', {
+                          coverage: coverageSignals.coveragePct ?? '-',
+                          waste: coverageSignals.overlapWastePct ?? '-',
+                          gaps: coverageSignals.gapCount ?? '-',
+                        })}
                       </div>
                     ) : null}
                   </div>
-                ) : null}
+                  <div className="col-span-2 border-b border-border py-3">
+                    <div className="text-[13px] text-muted-foreground uppercase  font-medium">{histogramTitle}</div>
+                    {histogramData.length ? (
+                      <SafeResponsiveChart className="mt-2 h-[120px]" minHeight={120}>
+                        <BarChart data={histogramData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            vertical={false}
+                            stroke="hsl(var(--border))"
+                            strokeOpacity={0.35}
+                          />
+                          <XAxis dataKey="label" hide />
+                          <YAxis hide />
+                          <Tooltip
+                            formatter={(value) => [value ?? 0, t('sidebar.stats.histogramCount')]}
+                            labelFormatter={(label, payload) => {
+                              const p = payload?.[0]?.payload
+                              const min = typeof p?.min === 'number' ? p.min : null
+                              const max = typeof p?.max === 'number' ? p.max : null
+                              if (min != null && max != null) return `${min}-${max} ${statsUnitLabel}`
+                              return String(label ?? '')
+                            }}
+                          />
+                          <Bar dataKey="count" fill="hsl(var(--primary))" fillOpacity={0.25} radius={[2, 2, 0, 0]} />
+                        </BarChart>
+                      </SafeResponsiveChart>
+                    ) : (
+                      <div className="mt-2 text-[13px] text-muted-foreground">{t('sidebar.stats.histogramEmpty')}</div>
+                    )}
+                    <div className="mt-2 flex items-center justify-between text-[13px] text-muted-foreground font-mono">
+                      <span>0</span>
+                      <span>{histogramMax || serverStats.max}</span>
+                    </div>
                   </div>
-                ) : null}
-            {previewData?.warnings?.length ? <ul className="space-y-2">{previewData.warnings.map(warning => <li key={warning}>{formatPreviewWarningMessage(warning, { semanticNeedsReview: count => t('sidebar.performance.warnings.semanticNeedsReview', { count }) })}</li>)}</ul> : null}
-          </>}
-        />}
-      </div>
-    )
+                  {previewData?.recommendations?.length || previewData?.recommendation_patches?.length ? (
+                    <div className="col-span-2 border-b border-border py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[13px] text-muted-foreground uppercase  font-medium">
+                          {t('sidebar.recommendations.title')}
+                        </div>
+                        {previewData?.recommendation_patches?.length ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-[13px]"
+                            onClick={() => {
+                              for (const item of previewData.recommendation_patches || []) {
+                                const target = item.target || 'preview'
+                                const patch = item.patch || {}
+                                if (target === 'preview') {
+                                  const next = buildPreviewSettingsPatch(patch)
+                                  if (Object.keys(next).length) updateSettings(next)
+                                } else if (target === 'pipeline') {
+                                  applyPipelinePatch(patch, {
+                                    errorMessage: t('sidebar.recommendations.applyAllPipelineError'),
+                                  })
+                                } else if (target === 'perf') {
+                                  const next = buildPerfSettingsPatch(patch)
+                                  if (Object.keys(next).length) updatePerfSettings(next)
+                                }
+                              }
+                              toast.success(t('sidebar.recommendations.applyAllSuccess'))
+                            }}
+                          >
+                            {t('sidebar.recommendations.applyAll')}
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      {previewData?.recommendation_patches?.length ? (
+                        <div className="mt-2 space-y-2">
+                          {(previewData.recommendation_patches || [])
+                            .slice(0, 6)
+                            .map((patchItem: ChunkPreviewRecommendationPatch) => {
+                              const title =
+                                patchItem.title || patchItem.id || t('sidebar.recommendations.patchFallback')
+                              const desc = patchItem.description || ''
+                              const target = patchItem.target || 'preview'
+                              const patch = patchItem.patch || {}
+                              const targetLabel = getRecommendationTargetLabel(target, {
+                                preview: t('sidebar.recommendations.targets.preview'),
+                                pipeline: t('sidebar.recommendations.targets.pipeline'),
+                                perf: t('sidebar.recommendations.targets.perf'),
+                              })
+                              return (
+                                <div
+                                  key={patchItem.id || title}
+                                  className="rounded-lg border border-border/60 bg-background p-2"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="text-[13px] font-medium text-foreground/90">{title}</div>
+                                      {desc ? (
+                                        <div className="mt-0.5 text-[13px] text-muted-foreground">{desc}</div>
+                                      ) : null}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      className="h-7 px-2 text-[13px]"
+                                      onClick={() => {
+                                        if (target === 'preview') {
+                                          const next = buildPreviewSettingsPatch(patch)
+                                          if (Object.keys(next).length) {
+                                            updateSettings(next)
+                                            toast.success(t('sidebar.recommendations.applyPreviewSuccess'))
+                                          }
+                                          return
+                                        }
+                                        if (target === 'pipeline') {
+                                          if (
+                                            applyPipelinePatch(patch, {
+                                              errorMessage: t('sidebar.recommendations.applyPipelineError'),
+                                            })
+                                          ) {
+                                            toast.success(t('sidebar.recommendations.applyPipelineSuccess'))
+                                          }
+                                          return
+                                        }
+                                        if (target === 'perf') {
+                                          const next = buildPerfSettingsPatch(patch)
+                                          if (Object.keys(next).length) {
+                                            updatePerfSettings(next)
+                                            toast.success(t('sidebar.recommendations.applyPerfSuccess'))
+                                          }
+                                        }
+                                      }}
+                                      title={Object.keys(patch || {}).length ? JSON.stringify(patch) : undefined}
+                                    >
+                                      {t('sidebar.recommendations.apply')}
+                                    </Button>
+                                  </div>
+                                  <div className="mt-1 text-[13px] text-muted-foreground font-mono">
+                                    {t('sidebar.recommendations.target', { value: targetLabel })}
+                                  </div>
+                                </div>
+                              )
+                            })}
+                        </div>
+                      ) : null}
+
+                      {previewData?.recommendations?.length ? (
+                        <div className="mt-2 space-y-1 text-[13px] text-muted-foreground">
+                          {(previewData.recommendations || []).slice(0, 8).map((r) => (
+                            <div key={String(r)} className="flex gap-2">
+                              <span className="font-mono text-muted-foreground/70">-</span>
+                              <span className="flex-1">{String(r)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {previewData?.warnings?.length ? (
+                <ul className="space-y-2">
+                  {previewData.warnings.map((warning) => (
+                    <li key={warning}>
+                      {formatPreviewWarningMessage(warning, {
+                        semanticNeedsReview: (count) =>
+                          t('sidebar.performance.warnings.semanticNeedsReview', { count }),
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          }
+        />
+      )}
+    </div>
+  )
 
   if (variant === 'pane') return content
 
@@ -2064,7 +2280,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
     <aside
       className={cn(
         'flex min-h-0 overflow-hidden flex-col',
-        variant === 'dialog' ? 'w-full flex-1 border-0' : 'h-full w-[19rem] border-r border-border/60'
+        variant === 'dialog' ? 'w-full flex-1 border-0' : 'h-full w-[19rem] border-r border-border/60',
       )}
     >
       {content}

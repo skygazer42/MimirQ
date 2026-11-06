@@ -1,15 +1,15 @@
-"use client"
+'use client'
 
-import { useEffect, useState } from "react"
-import { motion, useMotionValue, useReducedMotion, useSpring } from "framer-motion"
-import { usePathname } from "@/i18n/navigation"
+import { useEffect, useState } from 'react'
+import { motion, useMotionValue, useReducedMotion, useSpring } from 'framer-motion'
+import { usePathname } from '@/i18n/navigation'
 
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 export function FluidCursor() {
-  const enabled = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === "1"
+  const enabled = process.env.NEXT_PUBLIC_ENABLE_FLUID_CURSOR === '1'
 
-  const [variant, setVariant] = useState<"default" | "pointer" | "text" | "hidden">("default")
+  const [variant, setVariant] = useState<'default' | 'pointer' | 'text' | 'hidden'>('default')
   const cursorX = useMotionValue(-100)
   const cursorY = useMotionValue(-100)
   const shouldReduceMotion = useReducedMotion()
@@ -26,13 +26,13 @@ export function FluidCursor() {
   useEffect(() => {
     if (!enabled) return
     if (globalThis.window === undefined) return
-    const mq = globalThis.window.matchMedia("(pointer: fine)")
+    const mq = globalThis.window.matchMedia('(pointer: fine)')
     const update = () => setIsDesktop(mq.matches)
     update()
 
     // Keep in sync on hybrid devices / pointer changes.
-    mq.addEventListener("change", update)
-    return () => mq.removeEventListener("change", update)
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
   }, [enabled])
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export function FluidCursor() {
     if (shouldReduceMotion) return
     if (!isDesktop) return
     // IMPORTANT: Do NOT hide default cursor. User feedback indicated visibility issues.
-    // document.body.style.cursor = 'none' 
+    // document.body.style.cursor = 'none'
 
     // Add class to body to indicate custom cursor active (optional, for other CSS hooks if needed)
     document.body.classList.add('custom-cursor-enabled')
@@ -57,30 +57,31 @@ export function FluidCursor() {
       // Check for buttons/links
       const isClickable = target.closest('button') || target.closest('a') || target.closest('[role="button"]')
       // Check for inputs/textareas
-      const isInput = target.closest('input') || target.closest('textarea') || target.closest('[contenteditable="true"]')
+      const isInput =
+        target.closest('input') || target.closest('textarea') || target.closest('[contenteditable="true"]')
 
       if (isInput) {
-        setVariant("text")
+        setVariant('text')
       } else if (isClickable) {
-        setVariant("pointer")
+        setVariant('pointer')
       } else {
-        setVariant("default")
+        setVariant('default')
       }
     }
 
-    const handleMouseLeave = () => setVariant("hidden")
-    const handleMouseEnter = () => setVariant("default")
+    const handleMouseLeave = () => setVariant('hidden')
+    const handleMouseEnter = () => setVariant('default')
 
-    globalThis.window.addEventListener("mousemove", moveCursor)
-    globalThis.window.addEventListener("mouseover", checkHover)
-    document.addEventListener("mouseleave", handleMouseLeave)
-    document.addEventListener("mouseenter", handleMouseEnter)
+    globalThis.window.addEventListener('mousemove', moveCursor)
+    globalThis.window.addEventListener('mouseover', checkHover)
+    document.addEventListener('mouseleave', handleMouseLeave)
+    document.addEventListener('mouseenter', handleMouseEnter)
 
     return () => {
-      globalThis.window.removeEventListener("mousemove", moveCursor)
-      globalThis.window.removeEventListener("mouseover", checkHover)
-      document.removeEventListener("mouseleave", handleMouseLeave)
-      document.removeEventListener("mouseenter", handleMouseEnter)
+      globalThis.window.removeEventListener('mousemove', moveCursor)
+      globalThis.window.removeEventListener('mouseover', checkHover)
+      document.removeEventListener('mouseleave', handleMouseLeave)
+      document.removeEventListener('mouseenter', handleMouseEnter)
       // Ensure specific style cleanups
       document.body.style.cursor = ''
       document.body.classList.remove('custom-cursor-enabled')
@@ -103,32 +104,32 @@ export function FluidCursor() {
     },
     hidden: {
       scale: 0.8,
-      opacity: 0
-    }
+      opacity: 0,
+    },
   }
 
   if (!enabled || shouldReduceMotion || !isDesktop) return null
 
-  const appearance = variant === "hidden" ? "default" : variant
+  const appearance = variant === 'hidden' ? 'default' : variant
 
   return (
     <motion.div
       className={cn(
-        "fixed top-0 left-0 z-90 pointer-events-none size-8 rounded-full border-2 border-primary",
-        appearance === "pointer" && "bg-primary/10 border-solid",
-        appearance === "default" && "bg-transparent border-solid",
-        appearance === "text" && "bg-transparent border-dashed"
+        'fixed top-0 left-0 z-90 pointer-events-none size-8 rounded-full border-2 border-primary',
+        appearance === 'pointer' && 'bg-primary/10 border-solid',
+        appearance === 'default' && 'bg-transparent border-solid',
+        appearance === 'text' && 'bg-transparent border-dashed',
       )}
       aria-hidden="true"
       style={{
         translateX: cursorXSpring,
         translateY: cursorYSpring,
         // Keep the cursor opt-in to normal blending; avoids weird contrast inversions on rich content.
-        mixBlendMode: "normal",
+        mixBlendMode: 'normal',
       }}
       variants={variants}
       animate={variant}
-      transition={{ type: "spring", stiffness: 500, damping: 28 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 28 }}
     />
   )
 }

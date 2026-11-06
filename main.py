@@ -1,24 +1,21 @@
 import os
 import warnings
 from pathlib import Path
-from typing import Any
 
 import uvicorn
 
 
-def _is_truthy(value: Any, *, default: bool = False) -> bool:
+def _is_truthy(value: str | None, *, default: bool = False) -> bool:
     if value is None:
         return default
-    if isinstance(value, bool):
-        return value
-    s = str(value).strip().lower()
+    s = value.strip().lower()
     if not s:
         return default
     return s in {"1", "true", "yes", "y", "on"}
 
 
 def _is_watch_limit_error(exc: BaseException) -> bool:
-    msg = str(exc) or ""
+    msg = str(exc)
     return ("MaxFilesWatch" in msg) or ("file watch limit reached" in msg.lower())
 
 

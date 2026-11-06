@@ -9,10 +9,14 @@ Only runs on PostgreSQL. Failures are ignored to avoid blocking startup.
 """
 
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 
 MigrationStatement = str | tuple[str, Mapping[str, object]]
 
@@ -28,7 +32,7 @@ def _default_tenant_uuid() -> str:
     try:
         from app.core.config import settings
 
-        raw = str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip()
+        raw = (settings.DEFAULT_TENANT_ID or "").strip()
         return str(UUID(raw)) if raw else fallback
     except Exception:  # noqa: BLE001
         return fallback
@@ -64,14 +68,14 @@ def _tenant_id_migrations(table: str, default_tenant: str) -> list[MigrationStat
     ]
 
 
-def apply_runtime_migrations(engine) -> None:
+def apply_runtime_migrations(engine: "Engine") -> None:
     """Apply small schema changes needed by newer code paths."""
     try:
         if engine.dialect.name != "postgresql":
             return
 
         default_tenant = _default_tenant_uuid()
-        ddl_statements = [
+        ddl_statements: list[MigrationStatement] = [
             # =========================
             # Multi-tenant columns (legacy DB compatibility)
             # =========================

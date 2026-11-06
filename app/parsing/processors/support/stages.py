@@ -1,9 +1,7 @@
-"""Document processing pipeline stage classes.
+"""Document processing stages and stateless document transformations.
 
-Stage classes that hold the service (``ParsingStage``, ``InlineAssetStage``,
-``ChunkAssetStage``) receive it via ``__init__(self, service)``; the parameter
-is annotated with a string literal so this module never imports
-``app.parsing.processors.processor`` (circular import).
+Service-backed stages receive the processor through a type-only reference,
+so this module never imports the processor during initialization.
 """
 
 import asyncio
@@ -11,9 +9,10 @@ import datetime as dt
 import hashlib
 import shutil
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -83,9 +82,13 @@ from app.services.parse_cache import (
     build_parse_cache_key as build_remote_parse_cache_key,
 )
 from app.services.parse_cache import (
-    parse_cache_service,
+    get_parse_cache,
+    set_parse_cache,
 )
 from app.types.document_analytics import compute_document_analytics
+
+if TYPE_CHECKING:
+    from app.parsing.processors.processor import DocumentProcessorService
 
 
 @dataclass
@@ -108,15 +111,15 @@ class _InlineAssetStats:
             documents=documents,
             uploaded_img_ids=self.uploaded,
             next_asset_index=next_asset_index,
-            image_codes_added=int(self.image_codes_added_total),
+            image_codes_added=self.image_codes_added_total,
             image_code_audit=(dict(self.image_code_audit) if isinstance(self.image_code_audit, dict) else None),
-            captions_added=int(self.captions_added_total),
+            captions_added=self.captions_added_total,
             caption_backend=self.caption_backend,
             caption_audit=(dict(self.caption_audit) if isinstance(self.caption_audit, dict) else None),
-            formulas_added=int(self.formulas_added_total),
+            formulas_added=self.formulas_added_total,
             formula_backend=self.formula_backend,
             formula_audit=(dict(self.formula_audit) if isinstance(self.formula_audit, dict) else None),
-            charts_added=int(self.charts_added_total),
+            charts_added=self.charts_added_total,
             chart_backend=self.chart_backend,
             chart_audit=(dict(self.chart_audit) if isinstance(self.chart_audit, dict) else None),
         )
@@ -124,14 +127,14 @@ class _InlineAssetStats:
 
 @dataclass(frozen=True)
 class _ChunkAssetDeps:
-    append_image_understanding_text: Any
-    decode_image_codes: Any
-    derive_image_caption: Any
-    infer_visual_kind_from_pixels: Any
-    load_image_for_ocr: Any
-    ocr_image: Any
-    redact_ocr_text: Any
-    score_chunk_quality: Any
+    append_image_understanding_text: Callable[..., str]
+    decode_image_codes: Callable[[Any], dict[str, Any]]
+    derive_image_caption: Callable[..., str]
+    infer_visual_kind_from_pixels: Callable[[Any], str]
+    load_image_for_ocr: Callable[..., tuple[Any, bool]]
+    ocr_image: Callable[..., str]
+    redact_ocr_text: Callable[..., tuple[str, dict[str, int], dict[str, int]]]
+    score_chunk_quality: Callable[..., dict[str, Any]]
 
 
 @dataclass
@@ -154,7 +157,7 @@ class _ImageUnderstandingResult:
 
 
 class ParsingStage:
-    def __init__(self, service):
+    def __init__(self, service: "DocumentProcessorService") -> None:
         self._svc = service
 
     @staticmethod
@@ -331,7 +334,7 @@ class ParsingStage:
                 config_hash=(pipeline_hash or "unknown"),
                 version=str(getattr(settings, "PARSE_CACHE_VERSION", "v1") or "v1"),
             )
-            cached, age_ms = parse_cache_service.get(
+            cached, age_ms = get_parse_cache(
                 tenant_id=str(tenant_id),
                 dataset_id=str(dataset_id),
                 cache_key=parse_cache_key,
@@ -488,7 +491,7 @@ class ParsingStage:
                     for doc in documents
                 ],
             )
-            parse_cache_service.set(
+            set_parse_cache(
                 tenant_id=str(tenant_id),
                 dataset_id=str(dataset_id),
                 cache_key=parse_cache_key,
@@ -588,7 +591,7 @@ class ParsingStage:
 
 
 class InlineAssetStage:
-    def __init__(self, service):
+    def __init__(self, service: "DocumentProcessorService") -> None:
         self._svc = service
 
     @staticmethod
@@ -793,16 +796,6 @@ class InlineAssetStage:
         chart_enabled = bool(getattr(settings, "CHART_TO_DATA_ENABLED", False)) and bool(
             str(getattr(settings, "CHART_TO_DATA_API_URL", "") or "").strip()
         )
-        image_code_enabled = True
-        if (
-            not upload_enabled
-            and not caption_enabled
-            and not formula_enabled
-            and not chart_enabled
-            and not image_code_enabled
-        ):
-            return InlineAssetResult(documents=documents, uploaded_img_ids=[], next_asset_index=int(start_index or 0))
-
         inline_cache: dict[str, str] = {}
         asset_idx = int(start_index or 0)
         processed_docs: list[Document] = []
@@ -865,304 +858,290 @@ class InlineAssetStage:
         return stats.to_result(documents=processed_docs, next_asset_index=asset_idx)
 
 
-class GovernanceStage:
-    def run(
-        self,
-        *,
-        items: list[Document],
-        enabled: bool,
-        kwargs: dict[str, Any],
-    ) -> GovernanceResult:
-        if not enabled:
-            return GovernanceResult(items=items, stats=None)
-        cleaned, stats = governance_processor.clean_documents(items, **kwargs)
-        return GovernanceResult(items=cleaned, stats=stats)
+def govern_documents(
+    *,
+    items: list[Document],
+    enabled: bool,
+    kwargs: dict[str, Any],
+) -> GovernanceResult:
+    if not enabled:
+        return GovernanceResult(items=items, stats=None)
+    cleaned, stats = governance_processor.clean_documents(items, **kwargs)
+    return GovernanceResult(items=cleaned, stats=stats)
 
 
-class NormalizeStage:
-    """
-    Apply conservative normalization before governance/chunking.
-
-    Unlike governance cleaning, this stage is always safe to run:
-    - Normalizes line endings and Unicode whitespace artifacts
-    - Removes zero-width/control characters and soft hyphens
-    - Repairs common PDF ligatures
-    """
-
-    def run(self, *, items: list[Document]) -> list[Document]:
-        if not items:
-            return items
-        out: list[Document] = []
-        for doc in items:
-            raw = doc.page_content or ""
-            normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
-            canon = canonicalize_markdown(normalized)
-            meta = dict(doc.metadata or {})
-            meta["text_normalized"] = True
-            meta["text_normalized_changed"] = bool(normalized != raw)
-            meta["markdown_canonicalized"] = True
-            meta["markdown_canonical_changed"] = bool(canon.changed)
-            meta["markdown_canonical_stats"] = {
-                "headings_changed": int(canon.headings_changed),
-                "list_markers_changed": int(canon.list_markers_changed),
-                "ordered_list_markers_changed": int(canon.ordered_list_markers_changed),
-                "code_fences_changed": int(canon.code_fences_changed),
-                "tables": int(canon.tables),
-                "table_rows_changed": int(canon.table_rows_changed),
-            }
-            out.append(Document(page_content=canon.text, metadata=meta, id=getattr(doc, "id", None)))
-        return out
+def normalize_documents(*, items: list[Document]) -> list[Document]:
+    """Applies conservative text and Markdown normalization before governance/chunking."""
+    if not items:
+        return items
+    out: list[Document] = []
+    for doc in items:
+        raw = doc.page_content or ""
+        normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
+        canon = canonicalize_markdown(normalized)
+        meta = dict(doc.metadata or {})
+        meta["text_normalized"] = True
+        meta["text_normalized_changed"] = bool(normalized != raw)
+        meta["markdown_canonicalized"] = True
+        meta["markdown_canonical_changed"] = canon.changed
+        meta["markdown_canonical_stats"] = {
+            "headings_changed": canon.headings_changed,
+            "list_markers_changed": canon.list_markers_changed,
+            "ordered_list_markers_changed": canon.ordered_list_markers_changed,
+            "code_fences_changed": canon.code_fences_changed,
+            "tables": canon.tables,
+            "table_rows_changed": canon.table_rows_changed,
+        }
+        out.append(Document(page_content=canon.text, metadata=meta, id=getattr(doc, "id", None)))
+    return out
 
 
-class ChunkingStage:
-    @staticmethod
-    def _to_bool(value: object) -> bool | None:
-        if value is None:
-            return None
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return bool(value)
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"1", "true", "yes", "y", "on"}:
-                return True
-            if normalized in {"0", "false", "no", "n", "off"}:
-                return False
-        return None
+def chunk_documents(
+    *,
+    documents: list[Document],
+    chunk_strategy: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    chunk_strategy_params: dict[str, Any] | None = None,
+    chunk_python_plugin: str = "",
+    chunk_python_params: dict[str, Any] | None = None,
+) -> ChunkingResult:
+    logger.info("Chunking document into smaller pieces...")
+    if chunk_overlap >= chunk_size:
+        raise ValueError("chunk_overlap must be less than chunk_size")
+    params = dict(chunk_strategy_params or {})
+    plugin_ref = str(chunk_python_plugin or "").strip()
+    if plugin_ref:
+        return ChunkingResult(
+            chunks=_plugin_chunks(
+                documents=documents,
+                chunk_strategy=chunk_strategy,
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                plugin_ref=plugin_ref,
+                params=params,
+                chunk_python_params=chunk_python_params,
+            )
+        )
 
-    @staticmethod
-    def _to_int(value: object) -> int | None:
-        if value is None:
-            return None
-        if isinstance(value, bool):
-            return int(value)
-        if isinstance(value, (int, float)):
-            try:
-                return int(value)
-            except (TypeError, ValueError, AttributeError):
-                return None
-        if isinstance(value, str):
-            try:
-                return int(float(value.strip()))
-            except (TypeError, ValueError, AttributeError):
-                return None
-        return None
-
-    @staticmethod
-    def _to_float(value: object) -> float | None:
-        if value is None:
-            return None
-        if isinstance(value, bool):
-            return float(value)
-        if isinstance(value, (int, float)):
-            try:
-                return float(value)
-            except (TypeError, ValueError, AttributeError):
-                return None
-        if isinstance(value, str):
-            try:
-                return float(value.strip())
-            except (TypeError, ValueError, AttributeError):
-                return None
-        return None
-
-    @staticmethod
-    def _decode_separator_value(raw_value: object) -> str:
-        separator = str(raw_value or "") or "\n\n"
-        try:
-            import json as _json  # local import to keep module deps minimal
-
-            escaped = separator.replace('"', '\\"')
-            return str(_json.loads(f'"{escaped}"'))
-        except Exception as exc:
-            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            return separator
-
-    def _build_separator_chunker(
-        self,
-        *,
-        params: dict[str, Any],
-        chunk_size: int,
-        chunk_overlap: int,
-    ) -> SeparatorChunker:
-        preset = str(params.get("separator_preset") or "").strip() or "paragraph"
-        if preset != "custom":
-            separator = SeparatorChunker.PRESET_SEPARATORS.get(preset)
-            if separator is None:
-                raise ValueError(f"Invalid separator_preset: {preset}")
-        else:
-            raw_value = params.get("separator")
-            if raw_value is None:
-                raw_value = params.get("separator_custom")
-            separator = self._decode_separator_value(raw_value)
-
-        keep_separator = self._to_bool(params.get("keep_separator"))
-        max_chunk_size = self._to_int(params.get("separator_max_chunk_size"))
-        if max_chunk_size is None:
-            max_chunk_size = self._to_int(params.get("max_chunk_size"))
-        return SeparatorChunker(
+    # Separator chunking needs preset/custom mapping (preview supports this too).
+    if (chunk_strategy or "").strip().lower() == "separator":
+        chunker = _build_separator_chunker(
+            params=params,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            separator=separator,
-            keep_separator=(True if keep_separator is None else keep_separator),
-            max_chunk_size=int(max_chunk_size or 0),
         )
-
-    def _coerce_strategy_params(self, params: dict[str, Any]) -> dict[str, Any]:
-        normalized = dict(params)
-        if "child_ratio" in normalized:
-            child_ratio = self._to_float(normalized.get("child_ratio"))
-            if child_ratio is not None:
-                normalized["child_ratio"] = child_ratio
-        if "min_child_size" in normalized:
-            min_child_size = self._to_int(normalized.get("min_child_size"))
-            if min_child_size is not None:
-                normalized["min_child_size"] = min_child_size
-        return normalized
-
-    @staticmethod
-    def _plugin_chunks(
-        *,
-        documents: list[Document],
-        chunk_strategy: str,
-        chunk_size: int,
-        chunk_overlap: int,
-        plugin_ref: str,
-        params: dict[str, Any],
-        chunk_python_params: dict[str, Any] | None,
-    ) -> list[Document]:
-        return apply_chunk_python_plugin(
-            documents,
-            plugin_ref=plugin_ref,
-            params={**params, **dict(chunk_python_params or {})},
-            context={
-                "chunk_strategy": chunk_strategy,
-                "chunk_size": int(chunk_size),
-                "chunk_overlap": int(chunk_overlap),
-            },
+    else:
+        chunker = chunker_factory.get_chunker(
+            chunk_strategy,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            **_coerce_chunk_strategy_params(params),
         )
-
-    def run(
-        self,
-        *,
-        documents: list[Document],
-        chunk_strategy: str,
-        chunk_size: int,
-        chunk_overlap: int,
-        chunk_strategy_params: dict[str, Any] | None = None,
-        chunk_python_plugin: str = "",
-        chunk_python_params: dict[str, Any] | None = None,
-    ) -> ChunkingResult:
-        logger.info("Chunking document into smaller pieces...")
-        if chunk_overlap >= chunk_size:
-            raise ValueError("chunk_overlap must be less than chunk_size")
-        params = dict(chunk_strategy_params or {})
-        plugin_ref = str(chunk_python_plugin or "").strip()
-        if plugin_ref:
-            return ChunkingResult(
-                chunks=self._plugin_chunks(
-                    documents=documents,
-                    chunk_strategy=chunk_strategy,
-                    chunk_size=chunk_size,
-                    chunk_overlap=chunk_overlap,
-                    plugin_ref=plugin_ref,
-                    params=params,
-                    chunk_python_params=chunk_python_params,
-                )
-            )
-
-        # Separator chunking needs preset/custom mapping (preview supports this too).
-        if (chunk_strategy or "").strip().lower() == "separator":
-            chunker = self._build_separator_chunker(
-                params=params,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-            )
-        else:
-            chunker = chunker_factory.get_chunker(
-                chunk_strategy,
-                chunk_size=chunk_size,
-                chunk_overlap=chunk_overlap,
-                **self._coerce_strategy_params(params),
-            )
-        return ChunkingResult(chunks=chunker.split_documents(documents))
+    return ChunkingResult(chunks=chunker.split_documents(documents))
 
 
-class ChunkDedupStage:
-    @staticmethod
-    def _chunk_digest_metadata(chunk: Document) -> tuple[str, dict[str, Any]]:
-        raw = chunk.page_content or ""
-        normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
-        digest = hashlib.sha256(normalized.strip().encode("utf-8", "ignore")).hexdigest()
-
-        meta = dict(chunk.metadata or {})
-        meta.setdefault("content_hash", digest)
-        meta.setdefault("content_hash_algo", "sha256")
-        meta.setdefault("content_len", len(normalized.strip()))
-        return digest, meta
-
-    @staticmethod
-    def _chunk_has_asset(meta: dict[str, Any]) -> bool:
-        doc_type = str(meta.get("doc_type_kwd") or "").lower()
-        return (
-            doc_type in {"image", "table"}
-            or meta.get("image") is not None
-            or bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
-        )
-
-    @staticmethod
-    def _record_identity_key(meta: dict[str, Any]) -> str | None:
-        record_identity = meta.get("_record_identity")
-        if not isinstance(record_identity, dict):
-            return None
-        key = str(record_identity.get("key") or "").strip()
-        return key or None
-
-    @classmethod
-    def _duplicate_text_chunk(
-        cls,
-        *,
-        digest: str,
-        meta: dict[str, Any],
-        seen: set[tuple[str, str | None]],
-    ) -> bool:
-        if cls._chunk_has_asset(meta):
-            return False
-        dedup_key = (digest, cls._record_identity_key(meta))
-        if dedup_key in seen:
+def _chunking_bool(value: object) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
             return True
-        seen.add(dedup_key)
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+    return None
+
+
+def _chunking_int(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except (TypeError, ValueError, AttributeError):
+            return None
+    if isinstance(value, str):
+        try:
+            return int(float(value.strip()))
+        except (TypeError, ValueError, AttributeError):
+            return None
+    return None
+
+
+def _chunking_float(value: object) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except (TypeError, ValueError, AttributeError):
+            return None
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except (TypeError, ValueError, AttributeError):
+            return None
+    return None
+
+
+def _decode_separator_value(raw_value: object) -> str:
+    separator = str(raw_value or "") or "\n\n"
+    try:
+        import json as _json  # local import to keep module deps minimal
+
+        escaped = separator.replace('"', '\\"')
+        return str(_json.loads(f'"{escaped}"'))
+    except Exception as exc:
+        logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+        return separator
+
+
+def _build_separator_chunker(
+    *,
+    params: dict[str, Any],
+    chunk_size: int,
+    chunk_overlap: int,
+) -> SeparatorChunker:
+    preset = str(params.get("separator_preset") or "").strip() or "paragraph"
+    if preset != "custom":
+        separator = SeparatorChunker.PRESET_SEPARATORS.get(preset)
+        if separator is None:
+            raise ValueError(f"Invalid separator_preset: {preset}")
+    else:
+        raw_value = params.get("separator")
+        if raw_value is None:
+            raw_value = params.get("separator_custom")
+        separator = _decode_separator_value(raw_value)
+
+    keep_separator = _chunking_bool(params.get("keep_separator"))
+    max_chunk_size = _chunking_int(params.get("separator_max_chunk_size"))
+    if max_chunk_size is None:
+        max_chunk_size = _chunking_int(params.get("max_chunk_size"))
+    return SeparatorChunker(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separator=separator,
+        keep_separator=(True if keep_separator is None else keep_separator),
+        max_chunk_size=int(max_chunk_size or 0),
+    )
+
+
+def _coerce_chunk_strategy_params(params: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(params)
+    if "child_ratio" in normalized:
+        child_ratio = _chunking_float(normalized.get("child_ratio"))
+        if child_ratio is not None:
+            normalized["child_ratio"] = child_ratio
+    if "min_child_size" in normalized:
+        min_child_size = _chunking_int(normalized.get("min_child_size"))
+        if min_child_size is not None:
+            normalized["min_child_size"] = min_child_size
+    return normalized
+
+
+def _plugin_chunks(
+    *,
+    documents: list[Document],
+    chunk_strategy: str,
+    chunk_size: int,
+    chunk_overlap: int,
+    plugin_ref: str,
+    params: dict[str, Any],
+    chunk_python_params: dict[str, Any] | None,
+) -> list[Document]:
+    return apply_chunk_python_plugin(
+        documents,
+        plugin_ref=plugin_ref,
+        params={**params, **dict(chunk_python_params or {})},
+        context={
+            "chunk_strategy": chunk_strategy,
+            "chunk_size": int(chunk_size),
+            "chunk_overlap": int(chunk_overlap),
+        },
+    )
+
+
+def deduplicate_chunks(*, chunks: list[Document], enabled: bool) -> ChunkDedupResult:
+    """
+    Drop exact-duplicate *text* chunks within a single document.
+
+    Notes:
+    - Keeps image/table-related chunks even if their text matches (assets matter).
+    - Uses a normalized content hash for comparison (line endings/control chars).
+    """
+    if not enabled or not chunks:
+        return ChunkDedupResult(chunks=chunks, duplicates_dropped=0)
+
+    seen: set[tuple[str, str | None]] = set()
+    out: list[Document] = []
+    dropped = 0
+
+    for c in chunks:
+        digest, meta = _chunk_digest_metadata(c)
+        if _duplicate_text_chunk(digest=digest, meta=meta, seen=seen):
+            dropped += 1
+            continue
+
+        out.append(Document(page_content=c.page_content, metadata=meta, id=getattr(c, "id", None)))
+
+    return ChunkDedupResult(chunks=out, duplicates_dropped=dropped)
+
+
+def _chunk_digest_metadata(chunk: Document) -> tuple[str, dict[str, Any]]:
+    raw = chunk.page_content or ""
+    normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
+    digest = hashlib.sha256(normalized.strip().encode("utf-8", "ignore")).hexdigest()
+
+    meta = dict(chunk.metadata or {})
+    meta.setdefault("content_hash", digest)
+    meta.setdefault("content_hash_algo", "sha256")
+    meta.setdefault("content_len", len(normalized.strip()))
+    return digest, meta
+
+
+def _dedup_chunk_has_asset(meta: dict[str, Any]) -> bool:
+    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+    return (
+        doc_type in {"image", "table"}
+        or meta.get("image") is not None
+        or bool(meta.get("img_id") or meta.get("image_id") or meta.get("image_url"))
+    )
+
+
+def _dedup_record_identity_key(meta: dict[str, Any]) -> str | None:
+    record_identity = meta.get("_record_identity")
+    if not isinstance(record_identity, dict):
+        return None
+    key = str(record_identity.get("key") or "").strip()
+    return key or None
+
+
+def _duplicate_text_chunk(
+    *,
+    digest: str,
+    meta: dict[str, Any],
+    seen: set[tuple[str, str | None]],
+) -> bool:
+    if _dedup_chunk_has_asset(meta):
         return False
-
-    def run(self, *, chunks: list[Document], enabled: bool) -> ChunkDedupResult:
-        """
-        Drop exact-duplicate *text* chunks within a single document.
-
-        Notes:
-        - Keeps image/table-related chunks even if their text matches (assets matter).
-        - Uses a normalized content hash for comparison (line endings/control chars).
-        """
-        if not enabled or not chunks:
-            return ChunkDedupResult(chunks=chunks, duplicates_dropped=0)
-
-        seen: set[tuple[str, str | None]] = set()
-        out: list[Document] = []
-        dropped = 0
-
-        for c in chunks:
-            digest, meta = self._chunk_digest_metadata(c)
-            if self._duplicate_text_chunk(digest=digest, meta=meta, seen=seen):
-                dropped += 1
-                continue
-
-            out.append(Document(page_content=c.page_content, metadata=meta, id=getattr(c, "id", None)))
-
-        return ChunkDedupResult(chunks=out, duplicates_dropped=dropped)
+    dedup_key = (digest, _dedup_record_identity_key(meta))
+    if dedup_key in seen:
+        return True
+    seen.add(dedup_key)
+    return False
 
 
 class ChunkAssetStage:
-    def __init__(self, service):
+    def __init__(self, service: "DocumentProcessorService") -> None:
         self._svc = service
 
     @staticmethod
@@ -1541,16 +1520,16 @@ class ChunkAssetStage:
 
         runtime.seen_ocr_hashes.add(ocr_hash)
         ocr_meta = dict(parent_meta)
-        ocr_meta["chunk_index"] = int(runtime.out_idx)
-        ocr_meta["chunk_key"] = f"{str(document_id)}:{int(runtime.out_idx)}"
+        ocr_meta["chunk_index"] = runtime.out_idx
+        ocr_meta["chunk_key"] = f"{str(document_id)}:{runtime.out_idx}"
         ocr_meta["doc_type_kwd"] = "ocr"
         ocr_meta["content_type"] = "ocr"
         ocr_meta["chunk_role"] = "ocr"
-        ocr_meta["image_parent_chunk_index"] = int(parent_idx)
+        ocr_meta["image_parent_chunk_index"] = parent_idx
         ensure_hierarchy_overlay_metadata(
             ocr_meta,
             document_id=str(document_id),
-            chunk_index=int(runtime.out_idx),
+            chunk_index=runtime.out_idx,
         )
         for key in (
             "content_hash",
@@ -1563,7 +1542,7 @@ class ChunkAssetStage:
             "chunk_type",
         ):
             ocr_meta.pop(key, None)
-        ocr_meta["ocr_text_hash"] = str(ocr_hash)
+        ocr_meta["ocr_text_hash"] = ocr_hash
         ocr_meta.setdefault("ocr_text_hash_algo", "sha256")
         ocr_content_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True)
         self._populate_content_metadata(meta=ocr_meta, content_norm=ocr_content_norm, deps=deps, force_hashes=True)
@@ -1607,7 +1586,7 @@ class ChunkAssetStage:
         deps = self._load_deps()
         runtime = self._build_runtime(options)
         for chunk in chunks:
-            idx = int(runtime.out_idx)
+            idx = runtime.out_idx
             meta = self._base_chunk_metadata(
                 chunk=chunk,
                 document_id=document_id,

@@ -13,7 +13,11 @@ test('controlled tool dialogs return keyboard focus to their opener', async ({ p
   await expect(source).toBeFocused()
 })
 
-for (const variant of [{ name: 'desktop', width: 1600, height: 1000, theme: 'light' as const }, { name: 'narrow-dark', width: 1120, height: 850, theme: 'dark' as const }, { name: 'phone', width: 390, height: 844, theme: 'light' as const }]) {
+for (const variant of [
+  { name: 'desktop', width: 1600, height: 1000, theme: 'light' as const },
+  { name: 'narrow-dark', width: 1120, height: 850, theme: 'dark' as const },
+  { name: 'phone', width: 390, height: 844, theme: 'light' as const },
+]) {
   test(`similarity ${variant.name} preserves failed inputs and displays a calculated matrix`, async ({ page }) => {
     const state = await similarityFixture(page, variant.theme)
     await page.setViewportSize(variant)

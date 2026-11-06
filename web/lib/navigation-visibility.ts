@@ -18,11 +18,7 @@ const ADMIN_CONTROLLED_NAVIGATION_MODULE_SET = new Set<string>(ADMIN_CONTROLLED_
 const ADMIN_ROLES = new Set(['owner', 'admin'])
 
 export function normalizeNavigationModules(value: unknown): AdminControlledNavigationModule[] {
-  const raw = Array.isArray(value)
-    ? value
-    : typeof value === 'string'
-      ? value.split(',')
-      : []
+  const raw = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : []
   const requested = new Set(raw.map((item) => String(item || '').trim()).filter(Boolean))
 
   return ADMIN_CONTROLLED_NAVIGATION_MODULES.filter((module) => requested.has(module))
@@ -30,13 +26,15 @@ export function normalizeNavigationModules(value: unknown): AdminControlledNavig
 
 export function tenantAccessIsAdmin(access: TenantAccess | null | undefined): boolean {
   if (!access?.is_active) return false
-  const role = String(access.role || '').trim().toLowerCase()
+  const role = String(access.role || '')
+    .trim()
+    .toLowerCase()
   return ADMIN_ROLES.has(role) || (access.permissions || []).includes('settings.read')
 }
 
 export function canShowAdminControlledNavigationModule(
   access: TenantAccess | null | undefined,
-  moduleKey?: AdminControlledNavigationModule
+  moduleKey?: AdminControlledNavigationModule,
 ): boolean {
   if (!moduleKey) return true
   if (!ADMIN_CONTROLLED_NAVIGATION_MODULE_SET.has(moduleKey)) return false

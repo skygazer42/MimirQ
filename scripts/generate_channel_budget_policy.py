@@ -46,7 +46,7 @@ def _normalize_budgets_to_k(raw: dict[str, int], *, k: int) -> dict[str, int]:
         "sparse": max(0, int(raw.get("sparse", 0) or 0)),
     }
     k0 = max(1, int(k or 1))
-    total = int(sum(out.values()))
+    total = sum(out.values())
     if total <= 0:
         return {"vector": k0, "bm25": 0, "lexical": 0, "sparse": 0}
     if total <= k0:
@@ -79,17 +79,17 @@ def build_channel_budget_policy(
     # Baseline keyword budgets.
     keyword_budgets = _normalize_budgets_to_k(
         {
-            "vector": max(1, int(round(top_k * 0.4))),
-            "bm25": max(1, int(round(top_k * 0.3))),
-            "lexical": max(1, top_k - max(1, int(round(top_k * 0.4))) - max(1, int(round(top_k * 0.3)))),
+            "vector": max(1, round(top_k * 0.4)),
+            "bm25": max(1, round(top_k * 0.3)),
+            "lexical": max(1, top_k - max(1, round(top_k * 0.4)) - max(1, round(top_k * 0.3))),
             "sparse": 0,
         },
         k=top_k,
     )
     vector_budgets = _normalize_budgets_to_k(
         {
-            "vector": max(1, int(round(top_k * 0.7))),
-            "bm25": max(0, top_k - max(1, int(round(top_k * 0.7)))),
+            "vector": max(1, round(top_k * 0.7)),
+            "bm25": max(0, top_k - max(1, round(top_k * 0.7))),
             "lexical": 0,
             "sparse": 0,
         },
@@ -97,10 +97,10 @@ def build_channel_budget_policy(
     )
     hybrid_budgets = _normalize_budgets_to_k(
         {
-            "vector": max(1, int(round(top_k * 0.5))),
-            "bm25": max(1, int(round(top_k * 0.25))),
-            "lexical": max(1, int(round(top_k * 0.15))),
-            "sparse": max(0, top_k - int(round(top_k * 0.5)) - int(round(top_k * 0.25)) - int(round(top_k * 0.15))),
+            "vector": max(1, round(top_k * 0.5)),
+            "bm25": max(1, round(top_k * 0.25)),
+            "lexical": max(1, round(top_k * 0.15)),
+            "sparse": max(0, top_k - round(top_k * 0.5) - round(top_k * 0.25) - round(top_k * 0.15)),
         },
         k=top_k,
     )
@@ -108,38 +108,32 @@ def build_channel_budget_policy(
     triggers: list[str] = []
 
     # Sparse channel uplift: allocate one slot when sparse report is non-regressive.
-    sparse_non_regressive = (
-        sparse.get("hit_at_k", 0.0) >= base.get("hit_at_k", 0.0)
-        and sparse.get("mrr", 0.0) >= base.get("mrr", 0.0)
-    )
+    sparse_non_regressive = sparse["hit_at_k"] >= base["hit_at_k"] and sparse["mrr"] >= base["mrr"]
     if sparse_non_regressive:
         triggers.append("sparse_uplift")
-        keyword_budgets["sparse"] = max(1, keyword_budgets.get("sparse", 0))
-        keyword_budgets["vector"] = max(0, keyword_budgets.get("vector", 0) - 1)
+        keyword_budgets["sparse"] = max(1, keyword_budgets["sparse"])
+        keyword_budgets["vector"] = max(0, keyword_budgets["vector"] - 1)
         keyword_budgets = _normalize_budgets_to_k(keyword_budgets, k=top_k)
 
     # ColBERT uplift in vector mode when quality is non-regressive.
-    colbert_non_regressive = (
-        colbert.get("hit_at_k", 0.0) >= base.get("hit_at_k", 0.0)
-        and colbert.get("mrr", 0.0) >= base.get("mrr", 0.0)
-    )
+    colbert_non_regressive = colbert["hit_at_k"] >= base["hit_at_k"] and colbert["mrr"] >= base["mrr"]
     if colbert_non_regressive:
         triggers.append("colbert_uplift")
-        vector_budgets["vector"] = min(top_k, max(vector_budgets.get("vector", 0), int(round(top_k * 0.8))))
+        vector_budgets["vector"] = min(top_k, max(vector_budgets["vector"], round(top_k * 0.8)))
         vector_budgets["bm25"] = max(0, top_k - vector_budgets["vector"])
         vector_budgets = _normalize_budgets_to_k(vector_budgets, k=top_k)
 
     # Hybrid latency guard: shift one quota from vector to lexical when latency is very high.
-    if hybrid.get("p95_latency_ms", 0.0) > 2_000.0:
+    if hybrid["p95_latency_ms"] > 2_000.0:
         triggers.append("hybrid_latency_guard")
-        if hybrid_budgets.get("vector", 0) > 1:
+        if hybrid_budgets["vector"] > 1:
             hybrid_budgets["vector"] -= 1
             hybrid_budgets["lexical"] += 1
         hybrid_budgets = _normalize_budgets_to_k(hybrid_budgets, k=top_k)
 
     policy = {
         "schema": _POLICY_SCHEMA,
-        "top_k": int(top_k),
+        "top_k": top_k,
         "fusion_strategy": "budgeted_rrf",
         "source": {
             "benchmark_report_hash": _hash_obj(benchmark_report or {}),
@@ -148,10 +142,10 @@ def build_channel_budget_policy(
             "colbert_report_hash": (_hash_obj(colbert_report) if isinstance(colbert_report, dict) else None),
         },
         "summary_snapshot": {
-            "benchmark": {k: round(float(v), 6) for k, v in base.items()},
-            "hybrid": {k: round(float(v), 6) for k, v in hybrid.items()},
-            "sparse": {k: round(float(v), 6) for k, v in sparse.items()},
-            "colbert": {k: round(float(v), 6) for k, v in colbert.items()},
+            "benchmark": {k: round(v, 6) for k, v in base.items()},
+            "hybrid": {k: round(v, 6) for k, v in hybrid.items()},
+            "sparse": {k: round(v, 6) for k, v in sparse.items()},
+            "colbert": {k: round(v, 6) for k, v in colbert.items()},
         },
         "triggers": triggers,
         "profiles": {
@@ -162,11 +156,7 @@ def build_channel_budget_policy(
             "keyword": {
                 "fusion_strategy": "budgeted_rrf",
                 "fusion_budgets": dict(keyword_budgets),
-                "fusion_min_scores": (
-                    {"sparse": 0.01}
-                    if int(keyword_budgets.get("sparse", 0) or 0) > 0
-                    else {}
-                ),
+                "fusion_min_scores": ({"sparse": 0.01} if keyword_budgets["sparse"] > 0 else {}),
             },
             "vector": {
                 "fusion_strategy": "budgeted_rrf",
@@ -189,6 +179,15 @@ def _read_json(path: Path) -> dict[str, Any]:
     return obj
 
 
+def _read_optional_report(path_raw: str) -> dict[str, Any] | None:
+    p = Path(str(path_raw or "").strip()).expanduser().resolve() if str(path_raw or "").strip() else None
+    if p is None:
+        return None
+    if not p.exists():
+        raise SystemExit(f"optional_report_not_found:{p}")
+    return _read_json(p)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate channel budget policy from offline retrieval artifacts.")
     parser.add_argument("--benchmark-report", required=True, help="Primary benchmark report JSON path.")
@@ -203,17 +202,9 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"benchmark_report_not_found:{benchmark_path}")
     benchmark_report = _read_json(benchmark_path)
 
-    def _optional(path_raw: str) -> dict[str, Any] | None:
-        p = Path(str(path_raw or "").strip()).expanduser().resolve() if str(path_raw or "").strip() else None
-        if p is None:
-            return None
-        if not p.exists():
-            raise SystemExit(f"optional_report_not_found:{p}")
-        return _read_json(p)
-
-    hybrid_report = _optional(str(args.hybrid_report or ""))
-    sparse_report = _optional(str(args.sparse_report or ""))
-    colbert_report = _optional(str(args.colbert_report or ""))
+    hybrid_report = _read_optional_report(str(args.hybrid_report or ""))
+    sparse_report = _read_optional_report(str(args.sparse_report or ""))
+    colbert_report = _read_optional_report(str(args.colbert_report or ""))
 
     policy = build_channel_budget_policy(
         benchmark_report=benchmark_report,
@@ -226,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(policy, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"[channel-budget-policy] wrote {out_path}")
-    print(f"[channel-budget-policy] triggers={len(list(policy.get('triggers') or []))}")
+    print(f"[channel-budget-policy] triggers={len(policy['triggers'])}")
     return 0
 
 

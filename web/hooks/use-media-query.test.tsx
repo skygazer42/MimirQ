@@ -11,10 +11,7 @@ type MockMediaQueryList = MediaQueryList & {
   _dispatch: (matches: boolean) => void
 }
 
-function createMockMediaQueryList(
-  query: string,
-  initialMatches = false
-): MockMediaQueryList {
+function createMockMediaQueryList(query: string, initialMatches = false): MockMediaQueryList {
   let matches = initialMatches
   const listeners = new Set<(event: MediaQueryListEvent) => void>()
 
@@ -24,16 +21,10 @@ function createMockMediaQueryList(
     },
     media: query,
     onchange: null,
-    addEventListener: (
-      _type: 'change',
-      listener: (event: MediaQueryListEvent) => void
-    ) => {
+    addEventListener: (_type: 'change', listener: (event: MediaQueryListEvent) => void) => {
       listeners.add(listener)
     },
-    removeEventListener: (
-      _type: 'change',
-      listener: (event: MediaQueryListEvent) => void
-    ) => {
+    removeEventListener: (_type: 'change', listener: (event: MediaQueryListEvent) => void) => {
       listeners.delete(listener)
     },
     addListener: (listener: (event: MediaQueryListEvent) => void) => {
@@ -53,13 +44,9 @@ function createMockMediaQueryList(
   return mql as MockMediaQueryList
 }
 
-function MediaQueryHarness({
-  query = '(max-width: 1279.98px)',
-}: Readonly<{ query?: string }>) {
+function MediaQueryHarness({ query = '(max-width: 1279.98px)' }: Readonly<{ query?: string }>) {
   const matches = useMediaQuery(query)
-  return (
-    <div data-testid="media-query-state">{matches ? 'match' : 'no-match'}</div>
-  )
+  return <div data-testid="media-query-state">{matches ? 'match' : 'no-match'}</div>
 }
 
 describe('useMediaQuery', () => {
@@ -77,9 +64,7 @@ describe('useMediaQuery', () => {
   })
 
   it('reads the current client snapshot on first render', () => {
-    const matchMedia = vi.fn((query: string) =>
-      createMockMediaQueryList(query, true)
-    )
+    const matchMedia = vi.fn((query: string) => createMockMediaQueryList(query, true))
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       writable: true,

@@ -14,7 +14,9 @@ function toValidLanguageTag(value: unknown): string | undefined {
   return tag
 }
 
-export function resolveBrowserPreferredLanguage(navigatorLike: NavigatorLike | undefined = globalThis.navigator): string | undefined {
+export function resolveBrowserPreferredLanguage(
+  navigatorLike: NavigatorLike | undefined = globalThis.navigator,
+): string | undefined {
   if (!navigatorLike) return undefined
 
   const candidates: unknown[] = []
@@ -35,7 +37,7 @@ function hasHeaderIgnoreCase(headers: Record<string, string>, key: string): bool
 
 export function withPreferredLanguageHeader(
   headers: Record<string, string>,
-  preferredLanguage: string | undefined = resolveBrowserPreferredLanguage()
+  preferredLanguage: string | undefined = resolveBrowserPreferredLanguage(),
 ): Record<string, string> {
   if (!preferredLanguage) return headers
   if (hasHeaderIgnoreCase(headers, 'Accept-Language')) return headers
@@ -47,7 +49,7 @@ export function withPreferredLanguageHeader(
 
 export function applyPreferredLanguageAxiosHeader(
   headers: AxiosHeaders,
-  preferredLanguage: string | undefined = resolveBrowserPreferredLanguage()
+  preferredLanguage: string | undefined = resolveBrowserPreferredLanguage(),
 ): void {
   if (!preferredLanguage) return
   if (headers.has('Accept-Language')) return

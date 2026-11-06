@@ -16,12 +16,26 @@ for (const viewport of [
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
     const events: Record<string, unknown>[] = []
     let phase = 'open-workspace'
-    const saveState = () => fs.writeFileSync(path.join(evidence, `${viewport.label}-state.json`), JSON.stringify({
-      viewport, phase, events,
-      savedRole: state.members.find(member => member.user_id === 'member-viewer-b')?.role,
-      writes: state.writes, reads: state.reads, blocked: state.blocked,
-      errors: state.errors, scimCalls: state.scimCalls, samlProviders: state.samlProviders,
-    }, null, 2))
+    const saveState = () =>
+      fs.writeFileSync(
+        path.join(evidence, `${viewport.label}-state.json`),
+        JSON.stringify(
+          {
+            viewport,
+            phase,
+            events,
+            savedRole: state.members.find((member) => member.user_id === 'member-viewer-b')?.role,
+            writes: state.writes,
+            reads: state.reads,
+            blocked: state.blocked,
+            errors: state.errors,
+            scimCalls: state.scimCalls,
+            samlProviders: state.samlProviders,
+          },
+          null,
+          2,
+        ),
+      )
     const checkpoint = async (name: string, details: Record<string, unknown> = {}) => {
       phase = name
       const snapshot = await page.locator('body').ariaSnapshot()
@@ -66,8 +80,10 @@ for (const viewport of [
       await checkpoint('05-role-options')
       await page.getByRole('option', { name: '编辑者', exact: true }).click()
       await expect(memberRole).toContainText('编辑者')
-      expect(state.members.find(member => member.user_id === 'member-viewer-b')?.role).toBe('editor')
-      expect(state.writes).toEqual([{ path: '/api/v1/rbac/members/member-viewer-b', method: 'PATCH', body: { role: 'editor' } }])
+      expect(state.members.find((member) => member.user_id === 'member-viewer-b')?.role).toBe('editor')
+      expect(state.writes).toEqual([
+        { path: '/api/v1/rbac/members/member-viewer-b', method: 'PATCH', body: { role: 'editor' } },
+      ])
       await checkpoint('06-saved-role')
 
       phase = 'refresh-members'
@@ -84,7 +100,7 @@ for (const viewport of [
       const searchAfterReload = await search.inputValue()
       await search.fill('顾言')
       await expect(memberRole).toContainText('编辑者')
-      expect(state.members.find(member => member.user_id === 'member-viewer-b')?.role).toBe('editor')
+      expect(state.members.find((member) => member.user_id === 'member-viewer-b')?.role).toBe('editor')
       await checkpoint('08-reloaded-confirmed', { searchAfterReload })
 
       phase = 'rejected-role-change'
@@ -101,7 +117,7 @@ for (const viewport of [
       await expect(search).toHaveValue('顾言')
       await expect(filter).toContainText('编辑者')
       await expect(page.getByRole('button', { name: /重试/ })).toBeVisible()
-      expect(state.members.find(member => member.user_id === 'member-viewer-b')?.role).toBe('editor')
+      expect(state.members.find((member) => member.user_id === 'member-viewer-b')?.role).toBe('editor')
       expect(state.writes).toEqual([
         { path: '/api/v1/rbac/members/member-viewer-b', method: 'PATCH', body: { role: 'editor' } },
         { path: '/api/v1/rbac/members/member-viewer-b', method: 'PATCH', body: { role: 'viewer' } },
@@ -115,8 +131,16 @@ for (const viewport of [
     } catch (error) {
       events.push({ name: 'failed', phase, message: String(error) })
       saveState()
-      fs.writeFileSync(path.join(evidence, `${viewport.label}-failure.txt`), await page.locator('body').ariaSnapshot().catch(() => 'No page snapshot available'))
-      await page.screenshot({ path: path.join(evidence, `${viewport.label}-failure.png`), animations: 'disabled' }).catch(() => {})
+      fs.writeFileSync(
+        path.join(evidence, `${viewport.label}-failure.txt`),
+        await page
+          .locator('body')
+          .ariaSnapshot()
+          .catch(() => 'No page snapshot available'),
+      )
+      await page
+        .screenshot({ path: path.join(evidence, `${viewport.label}-failure.png`), animations: 'disabled' })
+        .catch(() => {})
       throw error
     }
   })

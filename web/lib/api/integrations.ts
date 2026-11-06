@@ -1,8 +1,5 @@
 import { apiClient } from './core'
-import type {
-  ExternalConversationIngestRequest,
-  ExternalConversationIngestResponse,
-} from '@/types/backend'
+import type { ExternalConversationIngestRequest, ExternalConversationIngestResponse } from '@/types/backend'
 
 export type {
   ExternalConversationIngestRequest,
@@ -12,7 +9,7 @@ export type {
 
 export const integrationApi = {
   async ingestConversationHistory(
-    payload: ExternalConversationIngestRequest
+    payload: ExternalConversationIngestRequest,
   ): Promise<ExternalConversationIngestResponse> {
     const { data } = await apiClient.post('/integrations/conversations/ingest', payload)
     return data

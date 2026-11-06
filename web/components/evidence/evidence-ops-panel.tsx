@@ -1,17 +1,17 @@
 'use client'
-import { useState, type ReactNode } from 'react';
-import { Download, Loader2, PackageCheck, ShieldCheck } from '@/components/icons';
-import type { PlatformIcon } from '@/components/icons';
-import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { WorkspaceNotice } from '@/components/ui/operational-workspace';
-import { Textarea } from '@/components/ui/textarea';
-import { DatasetSelectField } from '@/components/ops/dataset-select-field';
-import { OperationResultPanel } from '@/components/ops/operation-result-panel';
-import { evidenceApi } from '@/lib/api';
-import { formatApiError } from '@/lib/api-errors';
-import { detachPromise } from '@/lib/utils';
+import { useState, type ReactNode } from 'react'
+import { Download, Loader2, PackageCheck, ShieldCheck } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { WorkspaceNotice } from '@/components/ui/operational-workspace'
+import { Textarea } from '@/components/ui/textarea'
+import { DatasetSelectField } from '@/components/ops/dataset-select-field'
+import { OperationResultPanel } from '@/components/ops/operation-result-panel'
+import { evidenceApi } from '@/lib/api'
+import { formatApiError } from '@/lib/api-errors'
+import { detachPromise } from '@/lib/utils'
 
 function parseJson(raw: string) {
   const value = raw.trim()
@@ -32,7 +32,9 @@ export function EvidenceOpsPanel() {
   const [suiteId, setSuiteId] = useState('')
   const [itemId, setItemId] = useState('')
   const [capsuleId, setCapsuleId] = useState('')
-  const [payloadJson, setPayloadJson] = useState('{\n  "capsule": {\n    "schema": "mimirq.evidence_capsule.v1",\n    "claims": []\n  }\n}')
+  const [payloadJson, setPayloadJson] = useState(
+    '{\n  "capsule": {\n    "schema": "mimirq.evidence_capsule.v1",\n    "claims": []\n  }\n}',
+  )
   const [busy, setBusy] = useState<string | null>(null)
   const [result, setResult] = useState<{ title: string; payload: unknown } | null>(null)
 
@@ -72,12 +74,36 @@ export function EvidenceOpsPanel() {
 
       <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
         <DatasetSelectField value={datasetId} onChange={setDatasetId} />
-        <ActionButton icon={ShieldCheck} busy={busy === 'dataset-drift'} disabled={Boolean(busy) || !dataset} label="数据集 Drift" onClick={() => runAction('dataset-drift', '数据集 Drift Audit', () => evidenceApi.getDatasetDriftAudit(dataset, { include_details: true, details_limit: 20 }))} />
-        <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={Boolean(busy) || !dataset} onClick={() => detachPromise(runAction('training-export', '导出训练集', async () => {
-          const blob = await evidenceApi.exportTrainingDataset({ dataset_id: dataset, format: 'jsonl', include_feedback: true, include_evidence: true })
-          downloadBlob(blob, `evidence-training.${dataset.slice(0, 8)}.jsonl`)
-          return { bytes: blob.size, type: blob.type }
-        }))}>
+        <ActionButton
+          icon={ShieldCheck}
+          busy={busy === 'dataset-drift'}
+          disabled={Boolean(busy) || !dataset}
+          label="数据集 Drift"
+          onClick={() =>
+            runAction('dataset-drift', '数据集 Drift Audit', () =>
+              evidenceApi.getDatasetDriftAudit(dataset, { include_details: true, details_limit: 20 }),
+            )
+          }
+        />
+        <Button
+          variant="outline"
+          className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+          disabled={Boolean(busy) || !dataset}
+          onClick={() =>
+            detachPromise(
+              runAction('training-export', '导出训练集', async () => {
+                const blob = await evidenceApi.exportTrainingDataset({
+                  dataset_id: dataset,
+                  format: 'jsonl',
+                  include_feedback: true,
+                  include_evidence: true,
+                })
+                downloadBlob(blob, `evidence-training.${dataset.slice(0, 8)}.jsonl`)
+                return { bytes: blob.size, type: blob.type }
+              }),
+            )
+          }
+        >
           <Download className="h-3.5 w-3.5" />
           导出训练集
         </Button>
@@ -85,32 +111,105 @@ export function EvidenceOpsPanel() {
 
       <details className="mt-3 rounded-lg border border-border/60 bg-background/70 p-3">
         <summary className="cursor-pointer text-xs font-semibold text-foreground">高级参数（可选）</summary>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">仅在需要修复引用、Patch suite/item 或处理 Evidence Capsule 时填写。</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          仅在需要修复引用、Patch suite/item 或处理 Evidence Capsule 时填写。
+        </p>
         <div className="mt-3 grid gap-2 md:grid-cols-3">
           <Field label="Suite 标识">
-            <Input value={suiteId} onChange={(event) => setSuiteId(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input
+              value={suiteId}
+              onChange={(event) => setSuiteId(event.target.value)}
+              className="h-8 font-mono text-xs"
+            />
           </Field>
           <Field label="Item 标识">
-            <Input value={itemId} onChange={(event) => setItemId(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input
+              value={itemId}
+              onChange={(event) => setItemId(event.target.value)}
+              className="h-8 font-mono text-xs"
+            />
           </Field>
           <Field label="Capsule 标识">
-            <Input value={capsuleId} onChange={(event) => setCapsuleId(event.target.value)} className="h-8 font-mono text-xs" />
+            <Input
+              value={capsuleId}
+              onChange={(event) => setCapsuleId(event.target.value)}
+              className="h-8 font-mono text-xs"
+            />
           </Field>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-        <ActionButton icon={ShieldCheck} busy={busy === 'repair'} disabled={Boolean(busy) || !suite} label="修复引用" onClick={() => runAction('repair', '修复 Suite Reference Sources', () => evidenceApi.repairSuiteReferenceSources(suite, parseJson(payloadJson)))} />
-        <ActionButton icon={ShieldCheck} busy={busy === 'patch-suite'} disabled={Boolean(busy) || !suite} label="Patch Suite" onClick={() => runAction('patch-suite', 'Patch Evidence Suite', () => evidenceApi.patchSuite(suite, parseJson(payloadJson)))} />
-        <ActionButton icon={ShieldCheck} busy={busy === 'patch-item'} disabled={Boolean(busy) || !item} label="Patch Item" onClick={() => runAction('patch-item', 'Patch Evidence Item', () => evidenceApi.patchItem(item, parseJson(payloadJson)))} />
-        <ActionButton icon={PackageCheck} busy={busy === 'persist'} disabled={Boolean(busy)} label="保存 Capsule" onClick={() => runAction('persist', '保存 Evidence Capsule', () => evidenceApi.persistCapsule(parseJson(payloadJson)))} />
-        <ActionButton icon={PackageCheck} busy={busy === 'get-capsule'} disabled={Boolean(busy) || !capsule} label="读取 Capsule" onClick={() => runAction('get-capsule', '读取 Evidence Capsule', () => evidenceApi.getCapsule(capsule))} />
-        <ActionButton icon={PackageCheck} busy={busy === 'verify'} disabled={Boolean(busy)} label="校验 Capsule" onClick={() => runAction('verify', '校验 Evidence Capsule', () => evidenceApi.verifyCapsule(parseJson(payloadJson)))} />
+          <ActionButton
+            icon={ShieldCheck}
+            busy={busy === 'repair'}
+            disabled={Boolean(busy) || !suite}
+            label="修复引用"
+            onClick={() =>
+              runAction('repair', '修复 Suite Reference Sources', () =>
+                evidenceApi.repairSuiteReferenceSources(suite, parseJson(payloadJson)),
+              )
+            }
+          />
+          <ActionButton
+            icon={ShieldCheck}
+            busy={busy === 'patch-suite'}
+            disabled={Boolean(busy) || !suite}
+            label="Patch Suite"
+            onClick={() =>
+              runAction('patch-suite', 'Patch Evidence Suite', () =>
+                evidenceApi.patchSuite(suite, parseJson(payloadJson)),
+              )
+            }
+          />
+          <ActionButton
+            icon={ShieldCheck}
+            busy={busy === 'patch-item'}
+            disabled={Boolean(busy) || !item}
+            label="Patch Item"
+            onClick={() =>
+              runAction('patch-item', 'Patch Evidence Item', () => evidenceApi.patchItem(item, parseJson(payloadJson)))
+            }
+          />
+          <ActionButton
+            icon={PackageCheck}
+            busy={busy === 'persist'}
+            disabled={Boolean(busy)}
+            label="保存 Capsule"
+            onClick={() =>
+              runAction('persist', '保存 Evidence Capsule', () => evidenceApi.persistCapsule(parseJson(payloadJson)))
+            }
+          />
+          <ActionButton
+            icon={PackageCheck}
+            busy={busy === 'get-capsule'}
+            disabled={Boolean(busy) || !capsule}
+            label="读取 Capsule"
+            onClick={() => runAction('get-capsule', '读取 Evidence Capsule', () => evidenceApi.getCapsule(capsule))}
+          />
+          <ActionButton
+            icon={PackageCheck}
+            busy={busy === 'verify'}
+            disabled={Boolean(busy)}
+            label="校验 Capsule"
+            onClick={() =>
+              runAction('verify', '校验 Evidence Capsule', () => evidenceApi.verifyCapsule(parseJson(payloadJson)))
+            }
+          />
         </div>
         <Field label="高级载荷（JSON）">
-          <Textarea value={payloadJson} onChange={(event) => setPayloadJson(event.target.value)} className="mt-3 min-h-[140px] font-mono text-xs" />
+          <Textarea
+            value={payloadJson}
+            onChange={(event) => setPayloadJson(event.target.value)}
+            className="mt-3 min-h-[140px] font-mono text-xs"
+          />
         </Field>
       </details>
 
-      <OperationResultPanel className="mt-3" title="Evidence 操作结果" result={result} emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。" />
+      <OperationResultPanel
+        className="mt-3"
+        title="Evidence 操作结果"
+        result={result}
+        emptyMessage="选择上方操作后，这里展示执行摘要；原始响应默认收起。"
+      />
       {actionError ? <WorkspaceNotice>{actionError}</WorkspaceNotice> : null}
     </fieldset>
   )
@@ -139,8 +238,17 @@ function ActionButton({
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold" disabled={disabled} onClick={() => detachPromise(onClick())}>
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Icon className="h-3.5 w-3.5" />}
+    <Button
+      variant="outline"
+      className="h-8 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+      disabled={disabled}
+      onClick={() => detachPromise(onClick())}
+    >
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+      ) : (
+        <Icon className="h-3.5 w-3.5" />
+      )}
       {label}
     </Button>
   )

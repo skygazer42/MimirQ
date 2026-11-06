@@ -8,7 +8,6 @@ Profiles are declarative "governance scripts" that store:
 They must never contain executable code.
 """
 
-
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, Index, String, Text
@@ -43,4 +42,3 @@ class GovernanceProfile(Base):
         Index("ix_governance_profiles_tenant_name", "tenant_id", "name"),
         Index("ix_governance_profiles_tenant_key", "tenant_id", "key"),
     )
-

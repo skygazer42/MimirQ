@@ -4,7 +4,12 @@ import { parseKnowledgeQueryState, serializeKnowledgeQueryState } from './use-kn
 describe('knowledge navigation', () => {
   it('keeps task deep links after retiring the settings tab', () => {
     const state = parseKnowledgeQueryState(new URLSearchParams('tab=settings&dataset=team&run=run-1'))
-    expect(state).toMatchObject({ activeTab: 'documents', datasetScope: 'team', connectorRunId: 'run-1', tasksOpen: true })
+    expect(state).toMatchObject({
+      activeTab: 'documents',
+      datasetScope: 'team',
+      connectorRunId: 'run-1',
+      tasksOpen: true,
+    })
     expect(serializeKnowledgeQueryState(state)).toBe('dataset=team&run=run-1')
   })
 

@@ -15,7 +15,7 @@ import asyncio
 import concurrent.futures
 import json
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any, NotRequired, TypedDict
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -30,17 +30,21 @@ from app.rag.core.evidence_expectations import (
 )
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
-from app.rag.core.query_rewrite_strategy import (
-    build_query_rewrite_strategy_spec,
-    get_query_rewrite_prompt_template,
-)
 from app.rag.core.temporal import (
     apply_recency_boost,
-    detect_temporal_intent,
     fetch_document_updated_ts,
 )
 from app.rag.engine_support.doc_utils import DocUtilsMixin
-from app.rag.industry_rules.runtime import apply_industry_rules_query_expansion
+from app.rag.engine_support.query_model_calls import EngineQueryModels
+from app.rag.policy.intent_router import (
+    route_adaptive_retrieval_overrides as route_adaptive_retrieval_overrides,
+)
+from app.rag.policy.intent_router import (
+    route_intent as route_intent,
+)
+from app.rag.policy.intent_router import (
+    route_retrieval_preset as route_retrieval_preset,
+)
 from app.rag.policy.must_recall import (
     MUST_RECALL_FAIL_REASON_TAXONOMY_V1,
     build_must_recall_fail_reasons,
@@ -50,9 +54,15 @@ from app.rag.policy.must_recall_auto import (
     infer_expected_source_keys,
     infer_required_anchor_fields,
 )
-from app.rag.policy.query_expansion import build_clause_fastlane_queries, build_lightweight_subquery_queries
 from app.rag.policy.recall_obligation import build_must_recall_proof
-from app.rag.query_expansion import generate_alias_queries
+from app.rag.policy.router_layers import build_router_layers as build_router_layers
+from app.rag.rerank_result_cache import (
+    build_evidence_post_rerank_cache_key,
+    fingerprint_rerank_candidates,
+    get_cached_evidence_post_rerank_result,
+    get_evidence_post_rerank_cache_backend,
+    set_cached_evidence_post_rerank_result,
+)
 from app.rag.reranker.types import RerankCandidate
 from app.rag.retrieval.contextual_followup import build_contextual_followup_query
 from app.rag.retrieval.contract import resolve_retrieval_contract_policy
@@ -173,12 +183,6 @@ from app.rag.retrieval.orchestration.citation_quality import (
 )
 from app.rag.retrieval.orchestration.common import (
     _coerce_optional_bool as _coerce_optional_bool,
-)
-from app.rag.retrieval.orchestration.common import (
-    _coerce_optional_float as _coerce_optional_float,
-)
-from app.rag.retrieval.orchestration.common import (
-    _coerce_optional_int as _coerce_optional_int,
 )
 from app.rag.retrieval.orchestration.common import (
     _doc_key as _doc_key,
@@ -302,18 +306,6 @@ from app.rag.retrieval.orchestration.hierarchy import (
 from app.rag.retrieval.orchestration.hierarchy import (
     _update_hierarchy_family_feature as _update_hierarchy_family_feature,
 )
-from app.rag.retrieval.orchestration.intent_router import (
-    build_router_layers as build_router_layers,
-)
-from app.rag.retrieval.orchestration.intent_router import (
-    route_adaptive_retrieval_overrides as route_adaptive_retrieval_overrides,
-)
-from app.rag.retrieval.orchestration.intent_router import (
-    route_intent as route_intent,
-)
-from app.rag.retrieval.orchestration.intent_router import (
-    route_retrieval_preset as route_retrieval_preset,
-)
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _apply_kg_chunk_boost as _apply_kg_chunk_boost,
 )
@@ -359,6 +351,9 @@ from app.rag.retrieval.orchestration.kg_merge_boost import (
 from app.rag.retrieval.orchestration.kg_merge_boost import (
     _resolve_kg_scope as _resolve_kg_scope,
 )
+from app.rag.retrieval.orchestration.model_query_expansion import (
+    decompose_query,
+)
 from app.rag.retrieval.orchestration.out_of_scope_live_gate import (
     maybe_apply_out_of_scope_live_guard as maybe_apply_out_of_scope_live_guard,
 )
@@ -369,21 +364,22 @@ from app.rag.retrieval.orchestration.query_contract import (
     RetrievalConfigSnapshotInput,
     build_retrieval_config_snapshot,
 )
+from app.rag.retrieval.orchestration.query_contracts import (
+    QueryPreparationOverrides,
+    RetrievalRequest,
+)
 from app.rag.retrieval.orchestration.query_invocation import (
     QueryInvocationRecordInput,
     build_query_invocation_record,
 )
-from app.rag.retrieval.orchestration.query_variants import (
-    QueryVariantStageInput,
-    build_query_variant_stage,
+from app.rag.retrieval.orchestration.query_options import (
+    QUERY_PLANNING_OPTION_KEYS,
+    parse_model_query_overrides,
+    parse_query_expansion_budget,
+    resolve_model_query_settings,
+    resolve_query_preparation_request,
 )
-from app.rag.retrieval.orchestration.rerank_result_cache import (
-    build_evidence_post_rerank_cache_key,
-    fingerprint_rerank_candidates,
-    get_cached_evidence_post_rerank_result,
-    get_evidence_post_rerank_cache_backend,
-    set_cached_evidence_post_rerank_result,
-)
+from app.rag.retrieval.orchestration.query_planning import prepare_query_plan
 from app.rag.retrieval.orchestration.reranker_factory import (
     describe_reranker_provider as describe_reranker_provider,
 )
@@ -450,9 +446,25 @@ from app.services.hardcase_discovery_service import (
     evaluate_parse_risk_auto_enqueue_policy,
 )
 from app.services.router_prometheus_metrics import observe_router_layers
+from app.storage.bm25.milvus import BM25IndexNotReadyError
+
+if TYPE_CHECKING:
+    from app.models.document import DocumentChunk
 
 logger = get_logger(__name__)
 _RETRIEVAL_ORCHESTRATOR_FALLBACK_LOG_MESSAGE = "Ignoring non-critical retrieval orchestrator fallback failure: %s"
+
+
+class _PostRerankRow(TypedDict):
+    idx: int
+    rid: str
+    doc: Document
+    meta: dict[str, Any]
+    retrieval_score: float
+    rerank_score: float | None
+    retrieval_score_norm: NotRequired[float]
+    rerank_score_norm: NotRequired[float | None]
+    calibrated_score: NotRequired[float]
 
 
 def get_rag_engine():  # noqa: ANN201
@@ -465,13 +477,6 @@ def get_rag_engine():  # noqa: ANN201
     from app.rag.engine import get_rag_engine as _get_rag_engine
 
     return _get_rag_engine()
-
-
-def _get_langchain_text_pipeline_primitives() -> tuple[Any, Any]:
-    from langchain_core.output_parsers import StrOutputParser
-    from langchain_core.prompts import ChatPromptTemplate
-
-    return ChatPromptTemplate, StrOutputParser
 
 
 def _get_kg_search() -> Any:
@@ -495,7 +500,7 @@ async def kg_search(  # noqa: ANN201
     """
 
     fn = _get_kg_search()
-    result = await fn(
+    return await fn(
         query=query,
         tenant_id=tenant_id,
         document_ids=document_ids,
@@ -503,99 +508,11 @@ async def kg_search(  # noqa: ANN201
         dataset_ids=dataset_ids,
         account_id=account_id,
     )
-    return result if isinstance(result, dict) else {}
 
 
 def _build_history_text(history: list[dict[str, str]] | None) -> str:
     """Compress history to readable text, keep only within window."""
     return format_history_text(history, window=settings.CHAT_HISTORY_WINDOW)
-
-
-def _query_decomposition_settings(enabled: bool | None) -> tuple[bool, int, int, int, bool, str]:
-    dq_n = max(0, min(_safe_int(settings.QUERY_DECOMPOSITION_MAX_SUBQUESTIONS), 8))
-    dq_min_chars = max(0, _safe_int(settings.QUERY_DECOMPOSITION_MIN_CHARS))
-    dq_max_chars = max(0, _safe_int(settings.QUERY_DECOMPOSITION_MAX_CHARS))
-    dq_enabled = bool(settings.ENABLE_QUERY_DECOMPOSITION) if enabled is None else bool(enabled)
-    heuristic_enabled = bool(getattr(settings, "QUERY_DECOMPOSITION_HEURISTIC_FALLBACK_ENABLED", True))
-    llm_api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    return dq_enabled, dq_n, dq_min_chars, dq_max_chars, heuristic_enabled, llm_api_key
-
-
-def _query_decomposition_allowed(
-    query: str, *, enabled: bool, max_questions: int, min_chars: int, max_chars: int
-) -> bool:
-    return bool(
-        enabled and max_questions > 0 and len(query) >= min_chars and (max_chars <= 0 or len(query) <= max_chars)
-    )
-
-
-def _heuristic_decompose(query: str, *, max_questions: int) -> tuple[list[str], dict[str, Any]]:
-    from app.rag.core.text import heuristic_decompose_query
-
-    sub_questions = heuristic_decompose_query(query, max_subquestions=max_questions)
-    meta = (
-        {"ok": True, "method": "heuristic", "error": None}
-        if sub_questions
-        else {"ok": False, "method": None, "error": None}
-    )
-    return sub_questions, meta
-
-
-def _normalized_decomposed_question(item: Any, *, original_query: str, seen: set[str]) -> str:
-    if not isinstance(item, str):
-        return ""
-    question = (item or "").strip().strip('"').strip()
-    if not question or question == original_query or question in seen:
-        return ""
-    if len(question) > 500:
-        return question[:500] + "..."
-    return question
-
-
-def _normalize_decomposed_questions(raw: Any, *, original_query: str, max_questions: int) -> list[str]:
-    if not isinstance(raw, list):
-        return []
-    seen: set[str] = set()
-    out: list[str] = []
-    for item in raw:
-        question = _normalized_decomposed_question(item, original_query=original_query, seen=seen)
-        if not question:
-            continue
-        seen.add(question)
-        out.append(question)
-        if len(out) >= max_questions:
-            break
-    return out
-
-
-def _invoke_decomposition_chain(
-    query_for_retrieval: str,
-    engine: Any,
-    *,
-    max_questions: int,
-) -> tuple[list[str], float, str | None, dict[str, Any]]:
-    dq_llm = engine.models.get("fast") or engine.models.get("default")  # type: ignore[attr-defined]
-    model_used = getattr(dq_llm, "model_name", None) or getattr(dq_llm, "model", None)
-    try:
-        _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-        dq_chain = (
-            engine.decompose_prompt  # type: ignore[attr-defined]
-            | dq_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
-            | str_output_parser_cls()
-        )
-        started_at = time.time()
-        raw = dq_chain.invoke({"query": query_for_retrieval, "n": max_questions})
-        elapsed = time.time() - started_at
-        data, parse_meta = parse_json_from_text(raw, expected="array")
-        questions = _normalize_decomposed_questions(
-            data,
-            original_query=query_for_retrieval,
-            max_questions=max_questions,
-        )
-        return questions, elapsed, model_used, parse_meta
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("_decompose_query", exc)
-        return [], 0.0, model_used, {"ok": False, "method": None, "error": str(exc)[:200]}
 
 
 def _decompose_query(
@@ -604,33 +521,13 @@ def _decompose_query(
     *,
     enabled: bool | None = None,
 ) -> tuple[list[str], float, str | None, dict[str, Any]]:
-    dq_enabled, dq_n, dq_min_chars, dq_max_chars, heuristic_enabled, llm_api_key = _query_decomposition_settings(
-        enabled
-    )
-    parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    if not _query_decomposition_allowed(
-        query_for_retrieval, enabled=dq_enabled, max_questions=dq_n, min_chars=dq_min_chars, max_chars=dq_max_chars
-    ):
-        return [], 0.0, None, parse_meta
-
-    if heuristic_enabled and not llm_api_key:
-        sub_questions, parse_meta = _heuristic_decompose(query_for_retrieval, max_questions=dq_n)
-        return sub_questions, 0.0, None, parse_meta
-
-    if engine is None:
-        engine = get_rag_engine()
-
-    sub_questions, elapsed, model_used, parse_meta = _invoke_decomposition_chain(
+    model_settings = resolve_model_query_settings(parse_model_query_overrides({"enable_query_decomposition": enabled}))
+    outcome = decompose_query(
         query_for_retrieval,
-        engine,
-        max_questions=dq_n,
+        settings=model_settings.decomposition,
+        models=EngineQueryModels(lambda: engine if engine is not None else get_rag_engine()),
     )
-    if heuristic_enabled and not sub_questions and not bool(parse_meta.get("ok")):
-        sub_questions, heuristic_meta = _heuristic_decompose(query_for_retrieval, max_questions=dq_n)
-        if sub_questions:
-            return sub_questions, 0.0, None, heuristic_meta
-
-    return sub_questions, elapsed, model_used, parse_meta
+    return list(outcome.queries), outcome.elapsed_sec, outcome.model_used, outcome.parse_metadata
 
 
 def _resolve_post_rerank_corpus_cache_token(state: dict[str, Any]) -> str | None:
@@ -707,7 +604,7 @@ def _build_no_retrieval_response(
         "retrieval_profile_requested": profile_norm,
         "no_retrieval_intent": dict(no_retrieval_intent),
     }
-    router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent))
+    router_layers = build_router_layers(query=question, intent_meta=dict(no_retrieval_intent), max_reason_codes=6)
     query_debug["router_layers"] = router_layers
     observe_router_layers(router_layers)
     retrieval_trace: dict[str, Any] = {
@@ -745,10 +642,10 @@ def _post_rerank_minmax(values: list[float]) -> list[float]:
     rng = hi - lo
     if rng <= 0.0:
         return [0.0 for _ in values]
-    return [(float(value) - float(lo)) / float(rng) for value in values]
+    return [(value - lo) / rng for value in values]
 
 
-def _post_rerank_row(idx: int, doc: Document) -> dict[str, Any]:
+def _post_rerank_row(idx: int, doc: Document) -> _PostRerankRow:
     meta = dict(doc.metadata or {})
     rid = _doc_key(doc) or str(idx)
     base_raw = meta.get("retrieval_score")
@@ -766,45 +663,45 @@ def _post_rerank_row(idx: int, doc: Document) -> dict[str, Any]:
         rerank_score = None
 
     return {
-        "idx": int(idx),
+        "idx": idx,
         "rid": rid,
         "doc": doc,
         "meta": meta,
-        "retrieval_score": float(retrieval_score),
+        "retrieval_score": retrieval_score,
         "rerank_score": rerank_score,
     }
 
 
 def _calibrated_post_rerank_rows(
-    rows: list[dict[str, Any]],
+    rows: list[_PostRerankRow],
     *,
     alpha: float,
-) -> list[dict[str, Any]]:
-    ranked_rows = [row for row in rows if row.get("rerank_score") is not None]
-    retrieval_norm = _post_rerank_minmax([float(row.get("retrieval_score") or 0.0) for row in rows])
-    rerank_norm_values = _post_rerank_minmax([float(row.get("rerank_score") or 0.0) for row in ranked_rows])
+) -> list[_PostRerankRow]:
+    ranked_rows = [row for row in rows if row["rerank_score"] is not None]
+    retrieval_norm = _post_rerank_minmax([row["retrieval_score"] or 0.0 for row in rows])
+    rerank_norm_values = _post_rerank_minmax([row["rerank_score"] or 0.0 for row in ranked_rows])
     rerank_norm_by_id = {
-        str(ranked_rows[index].get("rid") or ""): float(rerank_norm_values[index])
+        ranked_rows[index]["rid"]: rerank_norm_values[index]
         for index in range(min(len(ranked_rows), len(rerank_norm_values)))
     }
 
     for index, row in enumerate(rows):
-        base_norm = float(retrieval_norm[index]) if index < len(retrieval_norm) else 0.0
-        rerank_norm = rerank_norm_by_id.get(str(row.get("rid") or ""))
+        base_norm = retrieval_norm[index] if index < len(retrieval_norm) else 0.0
+        rerank_norm = rerank_norm_by_id.get(row["rid"])
         calibrated = base_norm
         if rerank_norm is not None:
-            calibrated = (alpha * float(rerank_norm)) + ((1.0 - alpha) * float(base_norm))
-        row["retrieval_score_norm"] = float(base_norm)
-        row["rerank_score_norm"] = float(rerank_norm) if rerank_norm is not None else None
-        row["calibrated_score"] = float(calibrated)
+            calibrated = (alpha * rerank_norm) + ((1.0 - alpha) * base_norm)
+        row["retrieval_score_norm"] = base_norm
+        row["rerank_score_norm"] = rerank_norm
+        row["calibrated_score"] = calibrated
 
     return sorted(
         rows,
         key=lambda row: (
-            -float(row.get("calibrated_score") or 0.0),
-            -float(row.get("rerank_score_norm") or -1.0),
-            -float(row.get("retrieval_score_norm") or 0.0),
-            int(row.get("idx") or 0),
+            -(row["calibrated_score"] or 0.0),
+            -(row["rerank_score_norm"] or -1.0),
+            -(row["retrieval_score_norm"] or 0.0),
+            row["idx"] or 0,
         ),
     )
 
@@ -823,39 +720,39 @@ def _calibrate_post_rerank_prefix(
         return prefix_docs, False
 
     rows = [_post_rerank_row(index, doc) for index, doc in enumerate(prefix_docs)]
-    ranked_rows = [row for row in rows if row.get("rerank_score") is not None]
+    ranked_rows = [row for row in rows if row["rerank_score"] is not None]
     if len(ranked_rows) < 2:
         stats["skip_reason"] = "insufficient_rerank_scores"
-        stats["eligible_docs"] = int(len(ranked_rows))
+        stats["eligible_docs"] = len(ranked_rows)
         return prefix_docs, False
 
     rows_sorted = _calibrated_post_rerank_rows(rows, alpha=alpha)
-    moved = sum(1 for index, row in enumerate(rows_sorted) if int(row.get("idx") or 0) != index)
-    top_changed = bool(rows_sorted) and int(rows_sorted[0].get("idx") or 0) != 0
+    moved = sum(1 for index, row in enumerate(rows_sorted) if row["idx"] != index)
+    top_changed = bool(rows_sorted) and rows_sorted[0]["idx"] != 0
 
     out_docs: list[Document] = []
     for row in rows_sorted:
-        meta = dict(row.get("meta") or {})
-        calibrated = float(row.get("calibrated_score") or 0.0)
+        meta = dict(row["meta"] or {})
+        calibrated = row["calibrated_score"] or 0.0
         meta["rerank_score_calibrated"] = round(calibrated, 6)
-        meta["score"] = float(calibrated)
-        doc = row.get("doc")
+        meta["score"] = calibrated
+        doc = row["doc"]
         if isinstance(doc, Document):
             out_docs.append(
                 Document(
                     page_content=doc.page_content,
                     metadata=meta,
-                    id=getattr(doc, "id", None) or meta.get("chunk_id"),
+                    id=doc.id or meta.get("chunk_id"),
                 )
             )
 
     stats.update(
         {
             "used": True,
-            "applied_docs": int(len(rows)),
-            "eligible_docs": int(len(ranked_rows)),
-            "moved_positions": int(moved),
-            "top_changed": bool(top_changed),
+            "applied_docs": len(rows),
+            "eligible_docs": len(ranked_rows),
+            "moved_positions": moved,
+            "top_changed": top_changed,
         }
     )
     return out_docs, True
@@ -1088,7 +985,7 @@ def _hierarchy_fetch_pairs_by_doc(
     return _hierarchy_fetch_pairs_by_doc_impl(pairs)
 
 
-def _chunk_document_from_row(ck: Any) -> Document | None:
+def _chunk_document_from_row(ck: "DocumentChunk") -> Document | None:
     return _chunk_document_from_row_impl(ck)
 
 
@@ -1202,153 +1099,31 @@ def _filter_strict_span_citations(
     return filtered_items, missing_count
 
 
-def _prepare_query_phase(
-    state: dict[str, Any],
-    *,
-    question: str,
-    history_text: str,
-    llm_engine_factory: Any,
-) -> dict[str, Any]:
-    from app.rag.retrieval.sparse import normalize_sparse_provider_name
-
-    query_for_retrieval = question
-    rewrite_elapsed = 0.0
-    rewrite_used = False
-    rewrite_model_used = None
-    rewrite_strategy_id: str | None = None
-    rewrite_strategy_hash: str | None = None
-    rewrite_temperature: float | None = None
-    rewrite_max_chars: int | None = None
-
-    sparse_enabled_override = state.get("sparse_retrieval_enabled")
-    sparse_enabled = (
-        bool(sparse_enabled_override)
-        if sparse_enabled_override is not None
-        else bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False))
+def _build_retrieval_request(state: dict[str, Any], *, question: str, history_text: str) -> RetrievalRequest:
+    rewrite_temperature = state.get("query_rewrite_temperature")
+    rewrite_max_chars = state.get("query_rewrite_max_chars")
+    overrides = QueryPreparationOverrides(
+        enable_rewrite=None if state.get("enable_query_rewrite") is None else bool(state["enable_query_rewrite"]),
+        rewrite_strategy=state.get("query_rewrite_strategy"),
+        rewrite_temperature=None if rewrite_temperature is None else float(rewrite_temperature),
+        rewrite_max_chars=None if rewrite_max_chars is None else int(rewrite_max_chars),
+        sparse_enabled=(
+            None if state.get("sparse_retrieval_enabled") is None else bool(state["sparse_retrieval_enabled"])
+        ),
+        sparse_provider=state.get("sparse_retrieval_provider"),
+        industry_enabled=(
+            None if state.get("industry_rules_enabled") is None else bool(state["industry_rules_enabled"])
+        ),
+        industry_rulesets=state.get("industry_rules_rulesets"),
     )
-    sparse_provider_raw = state.get("sparse_retrieval_provider")
-    sparse_provider = normalize_sparse_provider_name(
-        str(
-            sparse_provider_raw
-            if sparse_provider_raw is not None
-            else (getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "deterministic") or "deterministic")
-        )
+    preparation = resolve_query_preparation_request(
+        question,
+        history_text,
+        overrides,
+        temporal_enabled=bool(settings.RAG_TEMPORAL_INTENT_ENABLED),
     )
-
-    industry_rules_meta: dict[str, Any] = {"enabled": False, "used": False}
-    temporal_intent_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_ENABLED", False))
-    temporal_intent_meta: dict[str, Any] = {"detected": False, "reason_codes": []}
-    temporal_recency_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
-
-    rewrite_enabled_req = state.get("enable_query_rewrite")
-    rewrite_enabled = (
-        bool(rewrite_enabled_req) if rewrite_enabled_req is not None else bool(settings.ENABLE_QUERY_REWRITE)
-    )
-    if rewrite_enabled:
-        spec = build_query_rewrite_strategy_spec(
-            state.get("query_rewrite_strategy") or getattr(settings, "QUERY_REWRITE_STRATEGY", None)
-        )
-        rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
-        rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
-        try:
-            rewrite_temperature = float(
-                (
-                    settings.QUERY_REWRITE_TEMPERATURE
-                    if state.get("query_rewrite_temperature") is None
-                    else state.get("query_rewrite_temperature")
-                )
-                or 0.0
-            )
-        except (TypeError, ValueError, AttributeError):
-            rewrite_temperature = 0.0
-        try:
-            rewrite_max_chars = int(
-                (
-                    settings.QUERY_REWRITE_MAX_CHARS
-                    if state.get("query_rewrite_max_chars") is None
-                    else state.get("query_rewrite_max_chars")
-                )
-                or 0
-            )
-        except (TypeError, ValueError, AttributeError):
-            rewrite_max_chars = 0
-
-    if (
-        bool(rewrite_enabled)
-        and history_text != "(No conversation history)"
-        and len(question) <= int(rewrite_max_chars or 0)
-        and should_rewrite_query(question)
-    ):
-        rewrite_engine = llm_engine_factory()
-        rewrite_llm = rewrite_engine.models.get("fast") or rewrite_engine.models.get("default")  # type: ignore[attr-defined]
-        rewrite_model_used = getattr(rewrite_llm, "model_name", None) or getattr(rewrite_llm, "model", None)
-        try:
-            chat_prompt_template_cls, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            prompt_template = get_query_rewrite_prompt_template(rewrite_strategy_id)
-            rewrite_prompt = chat_prompt_template_cls.from_template(prompt_template)
-            rewrite_chain = rewrite_prompt | rewrite_llm.bind(temperature=rewrite_temperature) | str_output_parser_cls()
-            rewrite_start = time.time()
-            rewritten = rewrite_chain.invoke({"history": history_text, "question": question})
-            rewrite_elapsed = time.time() - rewrite_start
-            rewritten = (rewritten or "").strip().strip('"')
-            if rewritten:
-                query_for_retrieval = rewritten
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("_prepare_query_phase", exc)
-            query_for_retrieval = question
-            rewrite_elapsed = 0.0
-        rewrite_used = query_for_retrieval != question
-
-    industry_rules_enabled_req = state.get("industry_rules_enabled")
-    industry_rules_enabled = (
-        bool(industry_rules_enabled_req)
-        if industry_rules_enabled_req is not None
-        else bool(getattr(settings, "RAG_INDUSTRY_RULES_ENABLED", False))
-    )
-    try:
-        query_for_retrieval, industry_rules_meta = apply_industry_rules_query_expansion(
-            query_for_retrieval,
-            enabled=industry_rules_enabled,
-            ruleset_names=(
-                state.get("industry_rules_rulesets")
-                if state.get("industry_rules_rulesets") is not None
-                else getattr(settings, "RAG_INDUSTRY_RULES_RULESETS", "")
-            ),
-            max_aliases=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_ALIASES", 16) or 16),
-            max_query_chars=int(getattr(settings, "RAG_INDUSTRY_RULES_MAX_QUERY_CHARS", 2000) or 2000),
-        )
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("_prepare_query_phase", exc)
-        industry_rules_meta = {
-            "enabled": bool(industry_rules_enabled),
-            "used": False,
-            "error": f"industry_rules_exception:{str(exc)[:160]}",
-        }
-
-    if temporal_intent_enabled:
-        try:
-            temporal_intent_meta = detect_temporal_intent(query_for_retrieval)
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("_prepare_query_phase", exc)
-            temporal_intent_meta = {"detected": False, "reason_codes": [], "error": str(exc)[:200]}
-
-    return {
-        "query_for_retrieval": query_for_retrieval,
-        "rewrite_elapsed": rewrite_elapsed,
-        "rewrite_used": rewrite_used,
-        "rewrite_model_used": rewrite_model_used,
-        "rewrite_strategy_id": rewrite_strategy_id,
-        "rewrite_strategy_hash": rewrite_strategy_hash,
-        "rewrite_temperature": rewrite_temperature,
-        "rewrite_max_chars": rewrite_max_chars,
-        "rewrite_enabled": rewrite_enabled,
-        "sparse_enabled": sparse_enabled,
-        "sparse_provider": sparse_provider,
-        "industry_rules_meta": industry_rules_meta,
-        "temporal_intent_enabled": temporal_intent_enabled,
-        "temporal_intent_meta": temporal_intent_meta,
-        "temporal_recency_meta": temporal_recency_meta,
-    }
+    options = {key: state[key] for key in QUERY_PLANNING_OPTION_KEYS if key in state}
+    return RetrievalRequest(preparation, options, parse_query_expansion_budget(options))
 
 
 def _resolve_contract_phase(
@@ -1402,184 +1177,71 @@ def _apply_routing_phase(
 
 
 def _run_retrieval_bootstrap_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.engine: Any | None = None
+    engine: Any | None = None
 
-    def _llm_engine() -> Any:
-        if ctx.engine is None:
-            ctx.engine = get_rag_engine()
-        return ctx.engine
+    def llm_engine() -> Any:
+        nonlocal engine
+        if engine is None:
+            engine = get_rag_engine()
+        return engine
 
-    ctx._llm_engine = _llm_engine
+    request = _build_retrieval_request(ctx.state, question=ctx.question, history_text=ctx.history_text)
+    ctx.query_plan = prepare_query_plan(request, models=EngineQueryModels(llm_engine))
 
-    # KG search output can be reused by multiple retrieval steps (query expansion / chunk injection).
-    ctx.kg_result_cached: dict[str, Any] | None = None
-    ctx.intent_router_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.adaptive_router_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
-    query_phase = _prepare_query_phase(
-        ctx.state,
-        question=ctx.question,
-        history_text=ctx.history_text,
-        llm_engine_factory=_llm_engine,
-    )
-    ctx.query_for_retrieval = str(query_phase["query_for_retrieval"])
-    ctx.rewrite_elapsed = float(query_phase["rewrite_elapsed"])
-    ctx.rewrite_used = bool(query_phase["rewrite_used"])
-    ctx.rewrite_model_used = query_phase["rewrite_model_used"]
-    ctx.rewrite_strategy_id = query_phase["rewrite_strategy_id"]
-    ctx.rewrite_strategy_hash = query_phase["rewrite_strategy_hash"]
-    ctx.rewrite_temperature = query_phase["rewrite_temperature"]
-    ctx.rewrite_max_chars = query_phase["rewrite_max_chars"]
-    ctx.rewrite_enabled = bool(query_phase["rewrite_enabled"])
-    ctx.sparse_enabled = bool(query_phase["sparse_enabled"])
-    ctx.sparse_provider = str(query_phase["sparse_provider"] or "")
-    ctx.industry_rules_meta = dict(query_phase["industry_rules_meta"])
-    ctx.temporal_intent_enabled = bool(query_phase["temporal_intent_enabled"])
-    ctx.temporal_intent_meta = dict(query_phase["temporal_intent_meta"])
-    ctx.temporal_recency_meta = dict(query_phase["temporal_recency_meta"])
+    plan = ctx.query_plan
+    prepared, routing = plan.prepared, plan.routing
+    evidence, normalization = routing.evidence_contract, routing.normalization
+    rewrite = prepared.rewrite
+    rewrite_configuration = rewrite.configuration
+    ctx.rewrite_enabled = rewrite.enabled
+    ctx.rewrite_elapsed = rewrite.elapsed_sec
+    ctx.rewrite_model_used = rewrite.model_used
+    ctx.rewrite_strategy_id = rewrite.strategy_id
+    ctx.rewrite_strategy_hash = rewrite.strategy_hash
+    ctx.rewrite_temperature = rewrite_configuration.temperature if rewrite_configuration else None
+    ctx.rewrite_max_chars = rewrite_configuration.max_chars if rewrite_configuration else None
+    ctx.sparse_enabled, ctx.sparse_provider = prepared.sparse.enabled, prepared.sparse.provider
+    ctx.industry_rules_meta = prepared.industry.metadata
+    ctx.temporal_intent_enabled = prepared.temporal.enabled
+    ctx.temporal_intent_meta = prepared.temporal.metadata
+    ctx.temporal_recency_meta = {"enabled": False, "used": False, "reason": "not_run"}
+    ctx.kg_result_cached = plan.kg.response
 
-    contract_phase = _resolve_contract_phase(
-        ctx.state,
-        query_for_retrieval=ctx.query_for_retrieval,
-    )
-    ctx.requested_retrieval_mode = contract_phase["requested_retrieval_mode"]
-    ctx.requested_retrieval_profile = contract_phase["requested_retrieval_profile"]
-    ctx.retrieval_contract_policy = dict(contract_phase["retrieval_contract_policy"])
-    ctx.retrieval_contract_mode = str(contract_phase["retrieval_contract_mode"])
-    ctx.contract_deterministic_recall = bool(contract_phase["contract_deterministic_recall"])
-    ctx.contract_must_recall_strict = bool(contract_phase["contract_must_recall_strict"])
-    ctx.must_recall_requested = contract_phase["must_recall_requested"]
-    ctx.must_recall_enabled = bool(contract_phase["must_recall_enabled"])
-    ctx.must_recall_expected_source_keys = list(contract_phase["must_recall_expected_source_keys"])
-    ctx.must_recall_auto_expected_source_keys_enabled = bool(
-        contract_phase["must_recall_auto_expected_source_keys_enabled"]
-    )
-    ctx.must_recall_auto_expected_source_keys = list(contract_phase["must_recall_auto_expected_source_keys"])
-    ctx.must_recall_auto_expected_source_keys_reason_codes = list(
-        contract_phase["must_recall_auto_expected_source_keys_reason_codes"]
-    )
-    ctx.must_recall_auto_expected_source_keys_confidence = str(
-        contract_phase["must_recall_auto_expected_source_keys_confidence"]
-    )
-    ctx.must_recall_auto_expected_source_keys_applied = bool(
-        contract_phase["must_recall_auto_expected_source_keys_applied"]
-    )
-    ctx.must_recall_required_anchor_fields = list(contract_phase["must_recall_required_anchor_fields"])
-    ctx.must_recall_auto_required_anchor_fields_enabled = bool(
-        contract_phase["must_recall_auto_required_anchor_fields_enabled"]
-    )
-    ctx.must_recall_auto_required_anchor_fields = list(contract_phase["must_recall_auto_required_anchor_fields"])
-    ctx.must_recall_auto_required_anchor_fields_reason_codes = list(
-        contract_phase["must_recall_auto_required_anchor_fields_reason_codes"]
-    )
-    ctx.must_recall_auto_required_anchor_fields_applied = bool(
-        contract_phase["must_recall_auto_required_anchor_fields_applied"]
-    )
-    ctx.must_recall_second_pass_enabled = bool(contract_phase["must_recall_second_pass_enabled"])
-    ctx.must_recall_second_pass_mode = str(contract_phase["must_recall_second_pass_mode"])
-    ctx.must_recall_second_pass_top_k = int(contract_phase["must_recall_second_pass_top_k"])
-    ctx.contextual_followup_enabled = bool(contract_phase["contextual_followup_enabled"])
-    ctx.contextual_followup_mode = str(contract_phase["contextual_followup_mode"])
-    ctx.contextual_followup_top_k = int(contract_phase["contextual_followup_top_k"])
-    ctx.contextual_followup_max_docs = int(contract_phase["contextual_followup_max_docs"])
-    ctx.contextual_followup_max_terms = int(contract_phase["contextual_followup_max_terms"])
-    ctx.contextual_followup_min_term_chars = int(contract_phase["contextual_followup_min_term_chars"])
-    ctx.contextual_followup_max_query_chars = int(contract_phase["contextual_followup_max_query_chars"])
-    ctx.contextual_followup_max_hops = int(contract_phase["contextual_followup_max_hops"])
-    ctx.contextual_followup_latency_budget_ms = float(contract_phase["contextual_followup_latency_budget_ms"])
-    ctx.hierarchy_recall_enabled = bool(contract_phase["hierarchy_recall_enabled"])
-    ctx.hierarchy_family_collapse = bool(contract_phase["hierarchy_family_collapse"])
-    ctx.hierarchy_family_aggregation = str(contract_phase["hierarchy_family_aggregation"])
-    ctx.hierarchy_tree_dedup = bool(contract_phase["hierarchy_tree_dedup"])
-    ctx.hierarchy_parent_depth = int(contract_phase["hierarchy_parent_depth"])
-    ctx.hierarchy_sibling_window = int(contract_phase["hierarchy_sibling_window"])
-    ctx.hierarchy_overfetch_factor = int(contract_phase["hierarchy_overfetch_factor"])
-
-    routing_phase = _apply_routing_phase(
-        ctx.state,
-        query_for_retrieval=ctx.query_for_retrieval,
-        requested_retrieval_mode=ctx.requested_retrieval_mode,
-        requested_retrieval_profile=ctx.requested_retrieval_profile,
-        sparse_enabled=bool(ctx.sparse_enabled),
-        sparse_provider=str(ctx.sparse_provider or ""),
-        hierarchy_recall_enabled=bool(ctx.hierarchy_recall_enabled),
-        hierarchy_family_collapse=bool(ctx.hierarchy_family_collapse),
-        hierarchy_family_aggregation=str(ctx.hierarchy_family_aggregation),
-        hierarchy_tree_dedup=bool(ctx.hierarchy_tree_dedup),
-        hierarchy_parent_depth=int(ctx.hierarchy_parent_depth),
-        hierarchy_sibling_window=int(ctx.hierarchy_sibling_window),
-        hierarchy_overfetch_factor=int(ctx.hierarchy_overfetch_factor),
-    )
-    ctx.intent_router_meta = dict(routing_phase["intent_router_meta"])
-    ctx.adaptive_router_meta = dict(routing_phase["adaptive_router_meta"])
-    ctx.channel_budget_policy_meta = dict(routing_phase["channel_budget_policy_meta"])
-    ctx.request_retrieval_mode = str(routing_phase["request_retrieval_mode"])
-    ctx.retrieval_mode_routed = bool(routing_phase["retrieval_mode_routed"])
-    ctx.profile_norm = str(routing_phase["profile_norm"] or "")
-    ctx.retrieval_contract_policy = dict(routing_phase["retrieval_contract_policy"])
-    ctx.retrieval_contract_mode = str(routing_phase["retrieval_contract_mode"])
-    ctx.contract_deterministic_recall = bool(routing_phase["contract_deterministic_recall"])
-    ctx.sparse_enabled = bool(routing_phase["sparse_enabled"])
-    ctx.sparse_provider = str(routing_phase["sparse_provider"] or "")
-    ctx.hierarchy_recall_enabled = bool(routing_phase["hierarchy_recall_enabled"])
-    ctx.hierarchy_family_collapse = bool(routing_phase["hierarchy_family_collapse"])
-    ctx.hierarchy_family_aggregation = str(routing_phase["hierarchy_family_aggregation"])
-    ctx.hierarchy_tree_dedup = bool(routing_phase["hierarchy_tree_dedup"])
-    ctx.hierarchy_parent_depth = int(routing_phase["hierarchy_parent_depth"])
-    ctx.hierarchy_sibling_window = int(routing_phase["hierarchy_sibling_window"])
-    ctx.hierarchy_overfetch_factor = int(routing_phase["hierarchy_overfetch_factor"])
-    ctx.retriever_update = dict(routing_phase["retriever_update"])
-    ctx.retriever = routing_phase["retriever"]
+    for key, value in evidence.items():
+        if key not in {"retrieval_contract_policy", "hierarchy_recall_enabled"}:
+            setattr(ctx, key, value)
+    ctx.request_retrieval_mode = normalization.request_retrieval_mode
+    ctx.retrieval_mode_routed = normalization.retrieval_mode_routed
+    ctx.retrieval_contract_mode = normalization.retrieval_contract_mode
+    ctx.contract_deterministic_recall = normalization.contract_deterministic_recall
+    ctx.contract_must_recall_strict = bool(evidence["contract_must_recall_strict"])
+    ctx.profile_norm = normalization.profile_norm or ""
+    ctx.retrieval_profile = normalization.profile_norm
+    ctx.intent_router_meta = routing.intent_metadata
+    ctx.adaptive_router_meta = routing.adaptive_metadata
+    ctx.channel_budget_policy_meta = routing.channel_metadata
+    ctx.hierarchy_family_collapse = normalization.hierarchy.family_collapse
+    ctx.hierarchy_family_aggregation = normalization.hierarchy.family_aggregation
+    ctx.hierarchy_tree_dedup = normalization.hierarchy.tree_dedup
+    ctx.hierarchy_parent_depth = normalization.hierarchy.parent_depth
+    ctx.hierarchy_sibling_window = normalization.hierarchy.sibling_window
+    ctx.hierarchy_overfetch_factor = normalization.hierarchy.overfetch_factor
+    ctx.retriever_update = dict(plan.retriever_options)
+    ctx.retriever = hybrid_retriever.model_copy(update=ctx.retriever_update)
+    ctx.retrieval_mode = ctx.retriever_update["retrieval_mode"]
     return None
 
 
 def _run_retrieval_alias_dictionary_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.alias_elapsed = 0.0
-    ctx.alias_used = False
-    ctx.alias_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.alias_queries: list[str] = []
-
-    ctx.alias_enabled = ctx.state.get("enable_query_alias_expansion")
-    aliases = ctx.state.get("query_aliases")
-    if ctx.alias_enabled is None:
-        ctx.alias_enabled = bool(aliases)
-    if bool(ctx.alias_enabled):
-        t0 = time.time()
-        ctx.alias_queries, ctx.alias_meta = generate_alias_queries(
-            query=ctx.query_for_retrieval,
-            aliases=aliases,
-            max_queries=(
-                5
-                if ctx.state.get("query_alias_max_queries") is None
-                else int(ctx.state.get("query_alias_max_queries") or 0)
-            ),
-        )
-        ctx.alias_elapsed = time.time() - t0
-        ctx.alias_used = bool(ctx.alias_queries)
-
-    # Deterministic dictionary expansion (bounded, auditable).
-    ctx.dict_elapsed = 0.0
-    ctx.dict_used = False
-    ctx.dict_meta: dict[str, Any] = {"enabled": False, "used": False}
-    ctx.dict_expansions: list[dict[str, Any]] = []
-    try:
-        from app.query.expand import generate_dictionary_expansions, load_base_dictionary_rules
-
-        t0 = time.time()
-        ctx.dict_expansions, ctx.dict_meta = generate_dictionary_expansions(
-            query=ctx.query_for_retrieval,
-            rules=load_base_dictionary_rules(),
-            max_expansions_total=5,
-            max_expansions_per_rule=1,
-        )
-        ctx.dict_elapsed = time.time() - t0
-        ctx.dict_used = bool(ctx.dict_expansions)
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("run_retrieval", exc)
-        ctx.dict_elapsed = 0.0
-        ctx.dict_used = False
-        ctx.dict_expansions = []
-        ctx.dict_meta = {"enabled": False, "used": False, "error": str(exc)[:200]}
+    deterministic = ctx.query_plan.deterministic
+    ctx.alias_elapsed = deterministic.alias.elapsed_sec
+    ctx.alias_used = bool(deterministic.alias.queries)
+    ctx.alias_meta = deterministic.alias.metadata
+    ctx.alias_enabled = ctx.query_plan.alias_settings.enabled
+    ctx.dict_elapsed = deterministic.dictionary.elapsed_sec
+    ctx.dict_used = bool(deterministic.dictionary.expansions)
+    ctx.dict_meta = deterministic.dictionary.metadata
+    ctx.dict_expansions = list(deterministic.dictionary.expansions)
     return None
 
 
@@ -1597,413 +1259,86 @@ def _run_kg_search_sync(kg_kwargs: dict[str, Any]) -> Any:
     return asyncio.run(coro)
 
 
-def _score_kg_query_entities(
-    entities: list[Any],
-    *,
-    exclude_all: bool,
-    exclude_fold: set[str],
-    min_weight: float,
-) -> list[tuple[float, str]]:
-    scored: list[tuple[float, str]] = []
-    for entity in entities:
-        if not isinstance(entity, dict) or exclude_all:
-            continue
-        entity_type = str(entity.get("type") or "").strip()
-        if entity_type and entity_type.casefold() in exclude_fold:
-            continue
-        name = str(entity.get("name") or "").strip()
-        if not name:
-            continue
-        try:
-            weight = float(entity.get("weight", 0.0) or 0.0)
-        except (TypeError, ValueError, AttributeError):
-            weight = 0.0
-        if weight >= min_weight:
-            scored.append((weight, name))
-    return sorted(scored, key=lambda item: (-item[0], item[1]))
-
-
-def _select_kg_query_entity_names(
-    scored: list[tuple[float, str]],
-    *,
-    query: str,
-    max_entities: int,
-) -> list[str]:
-    seen_names: set[str] = set()
-    base_folded = query.casefold()
-    selected_names: list[str] = []
-    for _weight, name in scored:
-        key = name.casefold() if name.isascii() else name
-        if key in seen_names:
-            continue
-        seen_names.add(key)
-        if key and key in base_folded:
-            continue
-        selected_names.append(name)
-        if max_entities > 0 and len(selected_names) >= max_entities:
-            break
-    return selected_names
-
-
-def _build_kg_query_expansions(query: str, names: list[str], *, max_queries: int) -> list[str]:
-    queries: list[str] = []
-    for name in names:
-        expanded = f"{query} {name}".strip()
-        if len(expanded) > 500:
-            expanded = expanded[:500] + "..."
-        queries.append(expanded)
-        if max_queries > 0 and len(queries) >= max_queries:
-            break
-    return queries
-
-
 def _run_retrieval_kg_query_expansion_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.kg_query_expansion_enabled = _coerce_optional_bool(
-        ctx.state.get("enable_kg_query_expansion"),
-        default=bool(getattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False)),
-    )
-    ctx.kg_query_expansion_used = False
-    ctx.kg_query_expansion_elapsed = 0.0
-    ctx.kg_query_expansion_error: str | None = None
-    ctx.kg_query_expansion_entities_total = 0
-    ctx.kg_query_expansion_entities_selected = 0
-    ctx.kg_query_expansion_queries: list[str] = []
-    ctx.kg_query_expansion_entity_names: list[str] = []
-    try:
-        tenant_id = ctx.state.get("tenant_id")
-        account_id = ctx.state.get("account_id")
-        kg_document_ids, kg_dataset_id, kg_dataset_ids = _resolve_kg_scope(ctx.state)
-
-        if (
-            ctx.kg_query_expansion_enabled
-            and bool(getattr(settings, "KG_ENABLED", False))
-            and bool(getattr(settings, "KG_CHAT_ENABLED", False))
-            and tenant_id is not None
-            and (kg_document_ids or kg_dataset_id is not None or kg_dataset_ids)
-            and (account_id is not None or (kg_dataset_id is None and not kg_dataset_ids))
-        ):
-            kg_kwargs = {
-                "query": ctx.query_for_retrieval,
-                "tenant_id": tenant_id,
-                "document_ids": kg_document_ids or None,
-                "dataset_id": kg_dataset_id,
-                "account_id": account_id,
-            }
-            if kg_dataset_ids:
-                kg_kwargs["dataset_ids"] = kg_dataset_ids
-            t0 = time.time()
-            kg_result = _run_kg_search_sync(kg_kwargs)
-
-            ctx.kg_result_cached = kg_result if isinstance(kg_result, dict) else None
-            ctx.kg_query_expansion_elapsed = time.time() - t0
-
-            entities = (kg_result or {}).get("entities") or []
-            entities = entities if isinstance(entities, list) else []
-            ctx.kg_query_expansion_entities_total = len(entities)
-
-            max_entities = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_ENTITIES", 5) or 5))
-            max_queries = max(0, int(getattr(settings, "RAG_KG_QUERY_EXPANSION_MAX_QUERIES", 5) or 5))
-            min_weight = float(getattr(settings, "RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT", 0.15) or 0.15)
-            exclude_types = parse_csv(str(getattr(settings, "RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES", "") or ""))
-            exclude_all = "*" in exclude_types
-            exclude_fold = {t.casefold() for t in exclude_types if str(t or "").strip() and t != "*"}
-
-            scored = _score_kg_query_entities(
-                entities,
-                exclude_all=exclude_all,
-                exclude_fold=exclude_fold,
-                min_weight=min_weight,
-            )
-            selected_names = _select_kg_query_entity_names(
-                scored,
-                query=ctx.query_for_retrieval,
-                max_entities=max_entities,
-            )
-
-            ctx.kg_query_expansion_entities_selected = len(selected_names)
-            ctx.kg_query_expansion_entity_names = selected_names[
-                : max_queries if max_queries > 0 else len(selected_names)
-            ]
-
-            ctx.kg_query_expansion_queries = _build_kg_query_expansions(
-                ctx.query_for_retrieval,
-                ctx.kg_query_expansion_entity_names,
-                max_queries=max_queries,
-            )
-
-            ctx.kg_query_expansion_used = bool(ctx.kg_query_expansion_queries)
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("run_retrieval", exc)
-        ctx.kg_query_expansion_used = False
-        ctx.kg_query_expansion_queries = []
-        ctx.kg_query_expansion_entity_names = []
-        ctx.kg_query_expansion_error = str(exc)[:200]
+    expansion = ctx.query_plan.kg
+    ctx.kg_result_cached = expansion.response
+    ctx.kg_query_expansion_enabled = expansion.enabled
+    ctx.kg_query_expansion_used = expansion.used
+    ctx.kg_query_expansion_elapsed = expansion.elapsed_sec
+    ctx.kg_query_expansion_entities_total = expansion.entities_total
+    ctx.kg_query_expansion_entities_selected = expansion.entities_selected
+    ctx.kg_query_expansion_queries = list(expansion.queries)
+    ctx.kg_query_expansion_entity_names = list(expansion.entity_names)
+    ctx.kg_query_expansion_error = str(expansion.failure)[:200] if expansion.failure is not None else None
     return None
 
 
-def _normalize_multi_queries(raw: Any, *, query: str, limit: int) -> list[str]:
-    if not isinstance(raw, list):
-        return []
-    seen: set[str] = set()
-    queries: list[str] = []
-    for item in raw:
-        if not isinstance(item, str):
-            continue
-        candidate = item.strip().strip('"').strip()
-        if not candidate or candidate == query or candidate in seen:
-            continue
-        if len(candidate) > 400:
-            candidate = candidate[:400] + "..."
-        seen.add(candidate)
-        queries.append(candidate)
-        if len(queries) >= limit:
-            break
-    return queries
-
-
 def _run_retrieval_multi_query_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.multi_query_elapsed = 0.0
-    ctx.multi_query_used = False
-    ctx.multi_query_model_used = None
-    ctx.multi_query_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    ctx.multi_queries: list[str] = []
-    ctx.multi_query_ab_test_key = str(ctx.state.get("multi_query_ab_test_key") or "").strip() or None
-    ctx.multi_query_ab_variant = str(ctx.state.get("multi_query_ab_variant") or "").strip().lower() or None
-    ctx.multi_query_ab_seed = ctx.state.get("multi_query_ab_seed")
-    ctx.multi_query_ab_forced = bool(
-        ctx.state.get("enable_multi_query") is None
-        and ctx.multi_query_ab_variant in {"on", "enabled", "treatment", "mq"}
-    )
-
-    ctx.mq_enabled = (
-        bool(ctx.state.get("enable_multi_query"))
-        if ctx.state.get("enable_multi_query") is not None
-        else (bool(settings.ENABLE_MULTI_QUERY) or ctx.multi_query_ab_forced)
-    )
-    ctx.mq_n = (
-        settings.MULTI_QUERY_COUNT
-        if ctx.state.get("multi_query_count") is None
-        else int(ctx.state.get("multi_query_count") or 0)
-    )
-    ctx.mq_temp = (
-        settings.MULTI_QUERY_TEMPERATURE
-        if ctx.state.get("multi_query_temperature") is None
-        else float(ctx.state.get("multi_query_temperature") or 0.0)
-    )
-    ctx.mq_max_chars = (
-        settings.MULTI_QUERY_MAX_CHARS
-        if ctx.state.get("multi_query_max_chars") is None
-        else int(ctx.state.get("multi_query_max_chars") or 0)
-    )
-
-    mq_cap = max(0, int(getattr(settings, "MULTI_QUERY_COUNT_CAP", 8) or 8))
-    ctx.mq_n = max(0, min(int(ctx.mq_n or 0), int(mq_cap)))
-    ctx.mq_temp = min(2.0, max(0.0, float(ctx.mq_temp or 0.0)))
-    ctx.mq_max_chars = max(0, int(ctx.mq_max_chars or 0))
-
-    if ctx.mq_enabled and ctx.mq_n > 0 and ctx.mq_max_chars > 0 and len(ctx.query_for_retrieval) <= ctx.mq_max_chars:
-        mq_engine = ctx._llm_engine()
-        mq_llm = mq_engine.models.get("fast") or mq_engine.models.get("default")  # type: ignore[attr-defined]
-        ctx.multi_query_model_used = getattr(mq_llm, "model_name", None) or getattr(mq_llm, "model", None)
-        try:
-            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            mq_chain = (
-                mq_engine.multi_query_prompt  # type: ignore[attr-defined]
-                | mq_llm.bind(temperature=ctx.mq_temp)
-                | str_output_parser_cls()
-            )
-            mq_start = time.time()
-            mq_raw = mq_chain.invoke({"query": ctx.query_for_retrieval, "n": ctx.mq_n})
-            ctx.multi_query_elapsed = time.time() - mq_start
-            mq_data, ctx.multi_query_parse_meta = parse_json_from_text(mq_raw, expected="array")
-
-            ctx.multi_queries = _normalize_multi_queries(
-                mq_data,
-                query=ctx.query_for_retrieval,
-                limit=ctx.mq_n,
-            )
-            if ctx.multi_query_ab_seed is not None and ctx.multi_queries:
-                seed_prefix = str(ctx.multi_query_ab_seed)
-                ctx.multi_queries = sorted(
-                    ctx.multi_queries,
-                    key=lambda item: (
-                        stable_hash(f"{seed_prefix}:{item}", length=16),
-                        item,
-                    ),
-                )
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("run_retrieval", exc)
-            ctx.multi_query_elapsed = 0.0
-            ctx.multi_query_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-            ctx.multi_queries = []
-
-    ctx.multi_query_used = bool(ctx.multi_queries)
+    multi = ctx.query_plan.models.multi_query
+    multi_settings = ctx.query_plan.model_settings.multi_query
+    experiment = multi_settings.experiment
+    ctx.multi_query_ab_test_key = experiment.key
+    ctx.multi_query_ab_variant = experiment.variant
+    ctx.multi_query_ab_seed = experiment.seed
+    ctx.multi_query_ab_forced = experiment.forced
+    ctx.mq_enabled = multi_settings.enabled
+    ctx.mq_n = multi_settings.count
+    ctx.mq_temp = multi_settings.temperature
+    ctx.mq_max_chars = multi_settings.max_chars
+    ctx.multi_query_elapsed = multi.elapsed_sec
+    ctx.multi_query_used = multi.used
+    ctx.multi_query_model_used = multi.model_used
+    ctx.multi_query_parse_meta = multi.parse_metadata
     return None
 
 
 def _run_retrieval_hyde_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.hyde_used = False
-    ctx.hyde_elapsed = 0.0
-    ctx.hyde_model_used = None
-    ctx.hyde_text = ""
-    hyde_max_chars = max(0, int(settings.HYDE_MAX_CHARS or 0))
-    retrieval_mode_norm = str(ctx.request_retrieval_mode or "hybrid").lower()
-    ctx.hyde_enabled = (
-        bool(settings.ENABLE_HYDE) if ctx.state.get("enable_hyde") is None else bool(ctx.state.get("enable_hyde"))
-    )
-    if (
-        ctx.hyde_enabled
-        and retrieval_mode_norm not in ("keyword",)
-        and hyde_max_chars > 0
-        and len(ctx.query_for_retrieval) <= hyde_max_chars
-    ):
-        hyde_engine = ctx._llm_engine()
-        hyde_llm = hyde_engine.models.get("fast") or hyde_engine.models.get("default")  # type: ignore[attr-defined]
-        ctx.hyde_model_used = getattr(hyde_llm, "model_name", None) or getattr(hyde_llm, "model", None)
-        try:
-            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            hyde_chain = (
-                hyde_engine.hyde_prompt  # type: ignore[attr-defined]
-                | hyde_llm.bind(temperature=settings.HYDE_TEMPERATURE)
-                | str_output_parser_cls()
-            )
-            hyde_start = time.time()
-            ctx.hyde_text = hyde_chain.invoke({"query": ctx.query_for_retrieval})
-            ctx.hyde_elapsed = time.time() - hyde_start
-            ctx.hyde_text = (ctx.hyde_text or "").strip()
-            out_max = max(0, int(settings.HYDE_OUTPUT_MAX_CHARS or 0))
-            if out_max and len(ctx.hyde_text) > out_max:
-                ctx.hyde_text = ctx.hyde_text[:out_max] + "..."
-            ctx.hyde_used = bool(ctx.hyde_text)
-        except Exception as exc:
-            _log_orchestrator_fallback("run_retrieval", exc)
-            ctx.hyde_text = ""
-            ctx.hyde_elapsed = 0.0
-            ctx.hyde_used = False
+    hyde = ctx.query_plan.models.hyde
+    ctx.hyde_enabled = ctx.query_plan.model_settings.hyde.enabled
+    ctx.hyde_text = hyde.text
+    ctx.hyde_elapsed = hyde.elapsed_sec
+    ctx.hyde_model_used = hyde.model_used
+    ctx.hyde_used = hyde.used
     return None
 
 
 def _run_retrieval_step_back_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.step_back_enabled = bool(getattr(settings, "ENABLE_STEP_BACK_QUERY", False))
-    ctx.step_back_elapsed = 0.0
-    ctx.step_back_used = False
-    ctx.step_back_model_used = None
-    ctx.step_back_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    ctx.step_back_query = ""
-    ctx.step_back_max_chars = max(0, int(getattr(settings, "STEP_BACK_MAX_CHARS", 0) or 0))
-    ctx.step_back_temp = min(2.0, max(0.0, float(getattr(settings, "STEP_BACK_TEMPERATURE", 0.2) or 0.0)))
-    ctx.step_back_output_max = max(0, int(getattr(settings, "STEP_BACK_OUTPUT_MAX_CHARS", 0) or 0))
-    if (
-        ctx.step_back_enabled
-        and ctx.step_back_max_chars > 0
-        and len(ctx.query_for_retrieval) <= ctx.step_back_max_chars
-    ):
-        step_back_engine = ctx._llm_engine()
-        sb_llm = step_back_engine.models.get("fast") or step_back_engine.models.get("default")  # type: ignore[attr-defined]
-        ctx.step_back_model_used = getattr(sb_llm, "model_name", None) or getattr(sb_llm, "model", None)
-        try:
-            _, str_output_parser_cls = _get_langchain_text_pipeline_primitives()
-            sb_chain = (
-                step_back_engine.step_back_prompt  # type: ignore[attr-defined]
-                | sb_llm.bind(temperature=ctx.step_back_temp)
-                | str_output_parser_cls()
-            )
-            sb_start = time.time()
-            sb_raw = sb_chain.invoke({"query": ctx.query_for_retrieval})
-            ctx.step_back_elapsed = time.time() - sb_start
-            ctx.step_back_query = (sb_raw or "").strip().strip('"').strip()
-            if ctx.step_back_output_max > 0 and len(ctx.step_back_query) > ctx.step_back_output_max:
-                ctx.step_back_query = ctx.step_back_query[: ctx.step_back_output_max] + "..."
-            if ctx.step_back_query and ctx.step_back_query != ctx.query_for_retrieval:
-                ctx.step_back_parse_meta = {"ok": True, "method": "text", "error": None}
-            else:
-                ctx.step_back_query = ""
-                ctx.step_back_parse_meta = {"ok": False, "method": "text", "error": "empty_or_duplicate"}
-        except Exception as exc:  # noqa: BLE001
-            _log_orchestrator_fallback("run_retrieval", exc)
-            ctx.step_back_query = ""
-            ctx.step_back_elapsed = 0.0
-            ctx.step_back_parse_meta = {"ok": False, "method": None, "error": str(exc)[:200]}
-    ctx.step_back_used = bool(ctx.step_back_query)
+    step_back = ctx.query_plan.models.step_back
+    step_back_settings = ctx.query_plan.model_settings.step_back
+    ctx.step_back_enabled = step_back_settings.enabled
+    ctx.step_back_max_chars = step_back_settings.max_chars
+    ctx.step_back_temp = step_back_settings.temperature
+    ctx.step_back_output_max = step_back_settings.output_max_chars
+    ctx.step_back_query = step_back.text
+    ctx.step_back_elapsed = step_back.elapsed_sec
+    ctx.step_back_model_used = step_back.model_used
+    ctx.step_back_parse_meta = step_back.parse_metadata
+    ctx.step_back_used = step_back.used
     return None
 
 
 def _run_retrieval_decomposition_variants_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.decompose_elapsed = 0.0
-    ctx.decompose_used = False
-    ctx.decompose_model_used = None
-    ctx.decompose_parse_meta: dict[str, Any] = {"ok": False, "method": None, "error": None}
-    ctx.sub_questions: list[str] = []
-
-    ctx.decompose_enabled = (
-        bool(settings.ENABLE_QUERY_DECOMPOSITION)
-        if ctx.state.get("enable_query_decomposition") is None
-        else bool(ctx.state.get("enable_query_decomposition"))
-    )
-    decompose_result = _decompose_query(ctx.query_for_retrieval, ctx.engine, enabled=ctx.decompose_enabled)
-    if isinstance(decompose_result, tuple) and len(decompose_result) == 4:
-        ctx.sub_questions, ctx.decompose_elapsed, ctx.decompose_model_used, ctx.decompose_parse_meta = decompose_result
-    elif isinstance(decompose_result, list):
-        ctx.sub_questions = [str(item).strip() for item in decompose_result if str(item or "").strip()]
-        if ctx.sub_questions:
-            ctx.decompose_parse_meta = {"ok": True, "method": "patched", "error": None}
-
-    ctx.decompose_used = bool(ctx.sub_questions)
-    ctx.decompose_chain_enabled = bool(getattr(settings, "RAG_DECOMPOSITION_CHAIN_ENABLED", False))
+    decomposition = ctx.query_plan.models.decomposition
+    ctx.decompose_enabled = ctx.query_plan.model_settings.decomposition.enabled
+    ctx.decompose_elapsed = decomposition.elapsed_sec
+    ctx.decompose_used = decomposition.used
+    ctx.decompose_model_used = decomposition.model_used
+    ctx.decompose_parse_meta = decomposition.parse_metadata
+    ctx.sub_questions = list(decomposition.queries)
+    ctx.decompose_chain_enabled = bool(settings.RAG_DECOMPOSITION_CHAIN_ENABLED)
     ctx.decompose_chain_requested = bool(ctx.decompose_chain_enabled and ctx.sub_questions)
     ctx.decompose_chain_used = False
     ctx.decompose_chain_steps = 0
     ctx.decompose_chain_elapsed = 0.0
     ctx.decompose_chain_queries: list[str] = []
-
-    ctx.clause_fastlane_queries = build_clause_fastlane_queries(ctx.query_for_retrieval)
-    if bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)):
-        ctx.lightweight_subqueries = build_lightweight_subquery_queries(
-            ctx.query_for_retrieval,
-            max_queries=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MAX_QUERIES", 3) or 3),
-            min_query_chars=int(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_MIN_QUERY_CHARS", 28) or 28),
-        )
-    else:
-        ctx.lightweight_subqueries = []
-    query_expansion_elapsed_ms = float(
-        (
-            ctx.alias_elapsed
-            + ctx.dict_elapsed
-            + ctx.kg_query_expansion_elapsed
-            + ctx.multi_query_elapsed
-            + ctx.step_back_elapsed
-            + ctx.hyde_elapsed
-            + ctx.decompose_elapsed
-        )
-        * 1000.0
-    )
-    query_variant_stage = build_query_variant_stage(
-        QueryVariantStageInput(
-            query_for_retrieval=ctx.query_for_retrieval,
-            alias_queries=list(ctx.alias_queries or []),
-            dict_expansions=list(ctx.dict_expansions or []),
-            kg_query_expansion_queries=list(ctx.kg_query_expansion_queries or []),
-            clause_fastlane_queries=list(ctx.clause_fastlane_queries or []),
-            lightweight_subqueries=list(ctx.lightweight_subqueries or []),
-            multi_queries=list(ctx.multi_queries or []),
-            step_back_used=bool(ctx.step_back_used),
-            step_back_query=str(ctx.step_back_query or ""),
-            sub_questions=list(ctx.sub_questions or []),
-            hyde_used=bool(ctx.hyde_used),
-            hyde_text=str(ctx.hyde_text or ""),
-            query_expansion_max_queries_raw=ctx.state.get("query_expansion_max_queries"),
-            query_expansion_max_candidates_raw=ctx.state.get("query_expansion_max_candidates"),
-            query_expansion_token_budget_raw=ctx.state.get("query_expansion_token_budget"),
-            query_expansion_latency_budget_ms_raw=ctx.state.get("query_expansion_latency_budget_ms"),
-            query_expansion_elapsed_ms=query_expansion_elapsed_ms,
-        )
-    )
-    ctx.retrieval_queries = list(query_variant_stage.retrieval_queries or [])
-    ctx.query_expansion_budget_meta = dict(query_variant_stage.query_expansion_budget_meta or {})
-    ctx.query_expansion_budget_max_queries = int(query_variant_stage.query_expansion_budget_max_queries or 0)
-    ctx.query_expansion_budget_max_candidates = int(query_variant_stage.query_expansion_budget_max_candidates or 0)
-    ctx.query_expansion_budget_token_budget = int(query_variant_stage.query_expansion_budget_token_budget or 0)
-    ctx.query_expansion_budget_latency_ms = float(query_variant_stage.query_expansion_budget_latency_ms or 0.0)
+    ctx.clause_fastlane_queries = list(ctx.query_plan.clause_queries)
+    ctx.lightweight_subqueries = list(ctx.query_plan.lightweight_queries)
+    variant_stage = ctx.query_plan.variant_stage
+    ctx.query_expansion_budget_meta = dict(variant_stage.query_expansion_budget_meta)
+    ctx.query_expansion_budget_max_queries = variant_stage.query_expansion_budget_max_queries
+    ctx.query_expansion_budget_max_candidates = variant_stage.query_expansion_budget_max_candidates
+    ctx.query_expansion_budget_token_budget = variant_stage.query_expansion_budget_token_budget
+    ctx.query_expansion_budget_latency_ms = variant_stage.query_expansion_budget_latency_ms
     return None
 
 
@@ -2056,6 +1391,8 @@ def _invoke_retrieval_query(
         if bool(ctx.hierarchy_recall_enabled) and docs:
             debug = _hierarchy_invocation_debug(docs, debug)
         return kind, docs, None, time.time() - started, debug
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("_invoke_with_timing", exc)
         return kind, [], str(exc)[:200], time.time() - started, None
@@ -2137,6 +1474,8 @@ def _run_decomposition_chain(ctx: RetrievalRuntimeState) -> None:
         ctx.decompose_chain_elapsed = time.time() - chain_started
         if ctx.decompose_chain_used:
             ctx.retrieval_plan = [item for item in ctx.retrieval_plan if item[0] != "subq"]
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:
         _log_orchestrator_fallback("run_retrieval", exc)
         ctx.decompose_chain_used = False
@@ -2165,8 +1504,8 @@ def _run_retrieval_retrieval_execution_phase(ctx: RetrievalRuntimeState) -> dict
     ctx.docs_by_query_kinds = []
     ctx.retrieval_errors = []
     ctx.retrieval_per_query = []
-    ctx.retrieval_parallelism = max(1, int(getattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 1) or 1))
-    ctx.retrieval_plan = [(kind, query, _retriever_for_query_kind(ctx, kind)) for kind, query in ctx.retrieval_queries]
+    ctx.retrieval_parallelism = max(1, int(settings.RETRIEVAL_QUERY_PARALLELISM or 1))
+    ctx.retrieval_plan = [(kind, query, _retriever_for_query_kind(ctx, kind)) for kind, query in ctx.query_plan.queries]
     started = time.time()
     _run_decomposition_chain(ctx)
     _run_retrieval_plan(ctx)
@@ -2356,12 +1695,12 @@ def _temporal_document_ids(docs: list[Document], *, limit: int) -> list[str]:
 def _apply_temporal_recency(ctx: RetrievalRuntimeState) -> None:
     if not ctx.temporal_intent_enabled or not ctx.docs:
         return
-    boost_enabled = bool(getattr(settings, "RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED", True))
+    boost_enabled = bool(settings.RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED)
     if not bool(ctx.temporal_intent_meta.get("detected")) or not boost_enabled:
         ctx.temporal_recency_meta = {"enabled": boost_enabled, "used": False, "reason": "not_detected"}
         return
     try:
-        max_docs = max(0, int(getattr(settings, "RAG_TEMPORAL_INTENT_MAX_DOCS", 200) or 200))
+        max_docs = max(0, int(settings.RAG_TEMPORAL_INTENT_MAX_DOCS or 200))
         updated_ts = fetch_document_updated_ts(
             _temporal_document_ids(ctx.docs, limit=max_docs),
             tenant_id=ctx.state.get("tenant_id"),
@@ -2371,8 +1710,8 @@ def _apply_temporal_recency(ctx: RetrievalRuntimeState) -> None:
         ctx.docs, ctx.temporal_recency_meta = apply_recency_boost(
             ctx.docs,
             updated_ts_by_document_id=updated_ts,
-            boost_max=float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0),
-            window_days=int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180),
+            boost_max=float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX or 0.0),
+            window_days=int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS or 180),
         )
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
@@ -2401,9 +1740,9 @@ def _run_retrieval_fusion_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | 
         or settings.RETRIEVAL_TOP_K
         or 5
     )
-    ctx.mq_diversify_enabled = bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(ctx.mq_enabled)
+    ctx.mq_diversify_enabled = bool(settings.MULTI_QUERY_DIVERSIFY_ENABLED) and bool(ctx.mq_enabled)
     try:
-        mq_budget_raw = int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0)
+        mq_budget_raw = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET or 0)
     except (TypeError, ValueError, AttributeError):
         mq_budget_raw = 0
     ctx.mq_diversify_budget = max(0, min(int(mq_budget_raw or 0), int(ctx.top_k or 0)))
@@ -2642,11 +1981,11 @@ def _run_kg_injection(ctx: RetrievalRuntimeState) -> list[Document]:
 def _run_retrieval_kg_injection_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
     ctx.kg_chunk_injection_enabled = _coerce_optional_bool(
         ctx.state.get("enable_kg_chunk_injection"),
-        default=bool(getattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False)),
+        default=bool(settings.RAG_KG_CHUNK_INJECTION_ENABLED),
     )
-    ctx.kg_chunk_injection_max_chunks = _coerce_optional_int(
+    ctx.kg_chunk_injection_max_chunks = _safe_int(
         ctx.state.get("kg_chunk_injection_max_chunks"),
-        default=int(getattr(settings, "RAG_KG_CHUNK_INJECTION_MAX_CHUNKS", 5) or 5),
+        default=int(settings.RAG_KG_CHUNK_INJECTION_MAX_CHUNKS or 5),
         minimum=0,
         maximum=50,
     )
@@ -2655,8 +1994,8 @@ def _run_retrieval_kg_injection_phase(ctx: RetrievalRuntimeState) -> dict[str, A
     try:
         enabled = (
             bool(ctx.kg_chunk_injection_enabled)
-            and bool(getattr(settings, "KG_ENABLED", False))
-            and bool(getattr(settings, "KG_CHAT_ENABLED", False))
+            and bool(settings.KG_ENABLED)
+            and bool(settings.KG_CHAT_ENABLED)
             and ctx.state.get("tenant_id") is not None
             and any(_resolve_kg_scope(ctx.state))
         )
@@ -2766,17 +2105,17 @@ def _run_retrieval_tag_kg_boost_phase(ctx: RetrievalRuntimeState) -> dict[str, A
 
     kg_chunk_boost_enabled = _coerce_optional_bool(
         ctx.state.get("enable_kg_chunk_boost"),
-        default=bool(getattr(settings, "RAG_KG_CHUNK_BOOST_ENABLED", False)),
+        default=bool(settings.RAG_KG_CHUNK_BOOST_ENABLED),
     )
-    kg_chunk_boost_weight = _coerce_optional_float(
+    kg_chunk_boost_weight = _safe_float(
         ctx.state.get("kg_chunk_boost_weight"),
-        default=float(getattr(settings, "RAG_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.25),
+        default=float(settings.RAG_KG_CHUNK_BOOST_WEIGHT or 0.25),
         minimum=0.0,
         maximum=1.0,
     )
-    kg_chunk_boost_max_promoted = _coerce_optional_int(
+    kg_chunk_boost_max_promoted = _safe_int(
         ctx.state.get("kg_chunk_boost_max_promoted"),
-        default=int(getattr(settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", 3) or 3),
+        default=int(settings.RAG_KG_CHUNK_BOOST_MAX_PROMOTED or 3),
         minimum=0,
         maximum=20,
     )
@@ -2924,6 +2263,8 @@ def _invoke_contextual_followup(
         )
         debug = getattr(retriever_obj, "_last_debug_metrics", None)
         ctx.contextual_followup_retriever_debug = _sanitize_retriever_debug(debug if isinstance(debug, dict) else None)
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
         error = str(exc)[:200]
@@ -3096,6 +2437,8 @@ def _invoke_hard_fallback(ctx: RetrievalRuntimeState) -> list[Document]:
         )
         debug = getattr(retriever_obj, "_last_debug_metrics", None)
         ctx.hard_fallback_retriever_debug = _sanitize_retriever_debug(debug if isinstance(debug, dict) else None)
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
         error = str(exc)[:200]
@@ -3227,6 +2570,8 @@ def _invoke_must_recall_second_pass(ctx: RetrievalRuntimeState) -> list[Document
             retriever_obj.invoke(ctx.query_for_retrieval) or [],
             "must_recall_second_pass",
         )
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
         ctx.must_recall_second_pass_error = str(exc)[:200]
@@ -3394,15 +2739,13 @@ def _run_retrieval_must_recall_phase(ctx: RetrievalRuntimeState) -> dict[str, An
 
 def _run_retrieval_parse_quality_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
     try:
-        ctx.parse_quality_low_threshold = float(
-            getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35
-        )
+        ctx.parse_quality_low_threshold = float(settings.RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD or 0.35)
     except (TypeError, ValueError, AttributeError):
         ctx.parse_quality_low_threshold = 0.35
     ctx.parse_quality_low_threshold = min(1.0, max(0.0, float(ctx.parse_quality_low_threshold)))
 
     try:
-        ctx.parse_quality_alert_ratio = float(getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5)
+        ctx.parse_quality_alert_ratio = float(settings.RETRIEVAL_PARSE_QUALITY_ALERT_RATIO or 0.5)
     except (TypeError, ValueError, AttributeError):
         ctx.parse_quality_alert_ratio = 0.5
     ctx.parse_quality_alert_ratio = min(1.0, max(0.0, float(ctx.parse_quality_alert_ratio)))
@@ -3413,7 +2756,7 @@ def _run_retrieval_parse_quality_phase(ctx: RetrievalRuntimeState) -> dict[str, 
         alert_ratio=ctx.parse_quality_alert_ratio,
     )
     ctx.parse_quality_gate_profile = (
-        str(getattr(settings, "RETRIEVAL_PARSE_QUALITY_GATE_PROFILE", "warn") or "warn").strip().lower() or "warn"
+        str(settings.RETRIEVAL_PARSE_QUALITY_GATE_PROFILE or "warn").strip().lower() or "warn"
     )
     if ctx.parse_quality_gate_profile not in {"off", "warn", "strict"}:
         ctx.parse_quality_gate_profile = "warn"
@@ -3423,17 +2766,13 @@ def _run_retrieval_parse_quality_phase(ctx: RetrievalRuntimeState) -> dict[str, 
     )
     ctx.parse_quality_gate_reason = "parse_quality_alert" if ctx.parse_quality_gate_violation else None
     try:
-        parse_risk_hardcase_min_low_ratio = float(
-            getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO", 0.5) or 0.5
-        )
+        parse_risk_hardcase_min_low_ratio = float(settings.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_LOW_RATIO or 0.5)
     except (TypeError, ValueError, AttributeError):
         parse_risk_hardcase_min_low_ratio = 0.5
     parse_risk_hardcase_min_low_ratio = min(1.0, max(0.0, float(parse_risk_hardcase_min_low_ratio)))
 
     try:
-        parse_risk_hardcase_min_considered = int(
-            getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED", 3) or 3
-        )
+        parse_risk_hardcase_min_considered = int(settings.RETRIEVAL_PARSE_RISK_HARDCASE_MIN_CONSIDERED or 3)
     except (TypeError, ValueError, AttributeError):
         parse_risk_hardcase_min_considered = 3
     parse_risk_hardcase_min_considered = max(1, int(parse_risk_hardcase_min_considered))
@@ -3543,11 +2882,11 @@ def _run_retrieval_metrics_core_phase(ctx: RetrievalRuntimeState) -> dict[str, A
     ctx.metrics["iterative_pass_enabled"] = bool(ctx.contextual_followup_enabled)
     ctx.metrics["iterative_pass_max_hops"] = int(ctx.contextual_followup_max_hops)
     ctx.metrics["iterative_pass_latency_budget_ms"] = round(float(ctx.contextual_followup_latency_budget_ms), 3)
-    ctx.metrics["iterative_pass_hops_attempted"] = int(
-        len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
+    ctx.metrics["iterative_pass_hops_attempted"] = len(
+        [h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))]
     )
-    ctx.metrics["iterative_pass_hops_used"] = int(
-        len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])
+    ctx.metrics["iterative_pass_hops_used"] = len(
+        [h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))]
     )
     ctx.metrics["iterative_pass_reason_codes"] = list(ctx.iterative_pass_reason_codes or [])[:16]
     ctx.metrics["iterative_pass_gap"] = (
@@ -3732,7 +3071,7 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["kg_query_expansion_used"] = bool(ctx.kg_query_expansion_used)
     ctx.metrics["kg_query_expansion_entities_total"] = int(ctx.kg_query_expansion_entities_total)
     ctx.metrics["kg_query_expansion_entities_selected"] = int(ctx.kg_query_expansion_entities_selected)
-    ctx.metrics["kg_query_expansion_query_count"] = int(len(ctx.kg_query_expansion_queries))
+    ctx.metrics["kg_query_expansion_query_count"] = len(ctx.kg_query_expansion_queries)
     ctx.metrics["kg_query_expansion_elapsed_sec"] = round(float(ctx.kg_query_expansion_elapsed), 3)
     ctx.metrics["kg_query_expansion_error"] = ctx.kg_query_expansion_error
     ctx.metrics["kg_chunk_injection_enabled"] = bool(ctx.kg_chunk_injection_enabled)
@@ -3827,7 +3166,7 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["parse_repair_actions"] = (
         dict(ctx.parse_repair_actions_meta) if isinstance(ctx.parse_repair_actions_meta, dict) else None
     )
-    ctx.metrics["parse_repair_actions_enabled"] = bool(isinstance(ctx.parse_repair_actions_meta, dict))
+    ctx.metrics["parse_repair_actions_enabled"] = isinstance(ctx.parse_repair_actions_meta, dict)
     ctx.metrics["parse_repair_actions_run_id"] = (
         str(ctx.parse_repair_actions_meta.get("run_id") or "")
         if isinstance(ctx.parse_repair_actions_meta, dict)
@@ -3880,7 +3219,7 @@ def _apply_abstain_thresholds(ctx: RetrievalRuntimeState) -> None:
 def _apply_out_of_scope_guard(ctx: RetrievalRuntimeState) -> dict[str, Any]:
     result = maybe_apply_out_of_scope_live_guard(
         query=ctx.query_for_retrieval,
-        enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
+        enabled=bool(settings.RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED),
         candidate=bool(ctx.abstain_triggered or not ctx.citations),
         current_triggered=bool(ctx.abstain_triggered),
         current_reason=ctx.abstain_reason,
@@ -3890,10 +3229,10 @@ def _apply_out_of_scope_guard(ctx: RetrievalRuntimeState) -> dict[str, Any]:
             query=ctx.query_for_retrieval,
             tenant_id=str(ctx.state.get("tenant_id") or ""),
             dataset_id=str(ctx.state.get("dataset_id") or ""),
-            ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
+            ruleset_name=(str(settings.RAG_OUT_OF_SCOPE_RULESET or "").strip() or None),
             hyde_query=ctx.hyde_text if bool(ctx.hyde_used and ctx.hyde_text) else None,
-            vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
-            hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
+            vector_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD or 0.35),
+            hyde_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_HYDE_THRESHOLD or 0.4),
         ),
     )
     ctx.abstain_triggered = bool(result.get("abstain_triggered"))
@@ -3905,7 +3244,7 @@ def _record_abstain_metrics(ctx: RetrievalRuntimeState, out_of_scope_guard: dict
     ctx.metrics["abstain_enabled"] = bool(ctx.abstain_enabled)
     ctx.metrics["abstain_triggered"] = bool(ctx.abstain_triggered)
     ctx.metrics["abstain_reason"] = ctx.abstain_reason
-    ctx.metrics["out_of_scope_guard_enabled"] = bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False))
+    ctx.metrics["out_of_scope_guard_enabled"] = bool(settings.RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED)
     if isinstance(out_of_scope_guard.get("verdict"), dict):
         ctx.metrics["out_of_scope_guard"] = dict(out_of_scope_guard.get("verdict") or {})
     ctx.metrics["abstain_min_citations"] = int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0)
@@ -3921,7 +3260,7 @@ def _record_abstain_metrics(ctx: RetrievalRuntimeState, out_of_scope_guard: dict
 
 
 def _emit_retrieval_hardcase(ctx: RetrievalRuntimeState) -> None:
-    enabled = bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False))
+    enabled = bool(settings.RETRIEVAL_HARDCASE_EMIT_ENABLED)
     if not enabled or (not ctx.abstain_triggered and ctx.citations):
         return
     reason = "abstain" if ctx.abstain_triggered else "no_citations"
@@ -3949,20 +3288,18 @@ def _emit_retrieval_hardcase(ctx: RetrievalRuntimeState) -> None:
 def _parse_risk_enqueue_policy(ctx: RetrievalRuntimeState) -> dict[str, Any]:
     levels = {
         str(value).strip().lower()
-        for value in parse_csv(
-            str(getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS", "high,medium") or "high,medium")
-        )
+        for value in parse_csv(str(settings.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS or "high,medium"))
         if str(value).strip()
     }
     if not levels:
         levels = {"high", "medium"}
     try:
-        min_score = float(getattr(settings, "RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE", 0.0) or 0.0)
+        min_score = float(settings.RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_MIN_SCORE or 0.0)
     except (TypeError, ValueError, AttributeError):
         min_score = 0.0
     return evaluate_parse_risk_auto_enqueue_policy(
         parse_risk=ctx.parse_risk,
-        enabled=bool(getattr(settings, "RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED", False)),
+        enabled=bool(settings.RETRIEVAL_PARSE_RISK_HARDCASE_EMIT_ENABLED),
         allowed_levels=levels,
         min_score=min(1.0, max(0.0, min_score)),
     )
@@ -4138,6 +3475,7 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
             else None
         ),
         intent_meta=(ctx.intent_router_meta if isinstance(ctx.intent_router_meta, dict) else None),
+        max_reason_codes=6,
     )
     ctx.query_debug["router_layers"] = ctx.router_layers
     ctx.query_debug["intent_router"] = ctx.intent_router_meta
@@ -4189,10 +3527,8 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
         "enabled": bool(ctx.contextual_followup_enabled),
         "max_hops": int(ctx.contextual_followup_max_hops),
         "latency_budget_ms": round(float(ctx.contextual_followup_latency_budget_ms), 3),
-        "hops_attempted": int(
-            len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))])
-        ),
-        "hops_used": int(len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))])),
+        "hops_attempted": len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("attempted"))]),
+        "hops_used": len([h for h in ctx.iterative_pass_hops if isinstance(h, dict) and bool(h.get("used"))]),
         "reason_codes": list(ctx.iterative_pass_reason_codes or [])[:16],
         "gap": (dict(ctx.iterative_pass_gap or {}) if isinstance(ctx.iterative_pass_gap, dict) else None),
         "hops": [h for h in list(ctx.iterative_pass_hops or [])[:5] if isinstance(h, dict)],
@@ -4267,14 +3603,13 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
 def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
     ctx.retrieval_trace = build_retrieval_trace_stage(
         RetrievalTraceStageInput(
-            query_for_retrieval=ctx.query_for_retrieval,
+            query_plan=ctx.query_plan,
             requested_retrieval_mode=ctx.requested_retrieval_mode,
             request_retrieval_mode=ctx.request_retrieval_mode,
             retrieval_mode_routed=bool(ctx.retrieval_mode_routed),
             requested_retrieval_profile=ctx.requested_retrieval_profile,
             profile_norm=ctx.profile_norm or None,
             retrieval_contract_mode=ctx.retrieval_contract_mode or None,
-            retrieval_contract_policy=dict(ctx.retrieval_contract_policy or {}),
             contract_deterministic_recall=bool(ctx.contract_deterministic_recall),
             must_recall_enabled=bool(ctx.must_recall_enabled),
             must_recall_status=str(ctx.must_recall_status),
@@ -4343,7 +3678,6 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             rewrite_strategy_hash=ctx.rewrite_strategy_hash,
             rewrite_temperature=ctx.rewrite_temperature,
             rewrite_max_chars=ctx.rewrite_max_chars,
-            rewrite_used=bool(ctx.rewrite_used),
             rewrite_elapsed=float(ctx.rewrite_elapsed or 0.0),
             rewrite_model_used=ctx.rewrite_model_used,
             query_expansion_budget_meta=dict(ctx.query_expansion_budget_meta),
@@ -4366,7 +3700,6 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             lightweight_subqueries=list(ctx.lightweight_subqueries or []),
             mq_enabled=bool(ctx.mq_enabled),
             multi_query_used=bool(ctx.multi_query_used),
-            multi_queries=list(ctx.multi_queries or []),
             multi_query_elapsed=float(ctx.multi_query_elapsed or 0.0),
             multi_query_model_used=ctx.multi_query_model_used,
             multi_query_parse_meta=dict(ctx.multi_query_parse_meta or {}),
@@ -4455,7 +3788,7 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
     return None
 
 
-def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
+def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[str, Any]:
     try:
         retrieval_cfg: dict[str, Any] = {
             "requested_retrieval_mode": str(ctx.requested_retrieval_mode or ""),
@@ -4489,23 +3822,23 @@ def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[s
             "reranker_provider": str(ctx.retriever_update.get("reranker_provider") or ""),
             "reranker_tier": describe_reranker_provider(
                 str(ctx.retriever_update.get("reranker_provider") or ""),
-                provider_name=str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"),
+                provider_name=str(settings.COLBERT_RERANK_PROVIDER or "deterministic"),
             ).get("tier"),
             "reranker_top_n": int(ctx.retriever_update.get("reranker_top_n") or 0),
             "visible_evidence_only": bool(ctx.strict_visible),
             # Global retrieval channel toggles (low-cardinality).
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-            "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
-            "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
+            "vector_backend": str(settings.VECTOR_BACKEND or ""),
+            "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
+            "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
             "sparse_enabled": bool(ctx.sparse_enabled),
             "sparse_provider": ctx.sparse_provider,
-            "sparse_index_persist_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
-            "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
-            "colbert_provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
-            "colbert_index_persist_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False)),
-            "colbert_max_docs": int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0),
-            "parent_child_auto_merge_enabled": bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)),
-            "parent_child_auto_merge_mode": str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "") or ""),
+            "sparse_index_persist_enabled": bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED),
+            "colbert_enabled": bool(settings.COLBERT_RETRIEVAL_ENABLED),
+            "colbert_provider": str(settings.COLBERT_RETRIEVAL_PROVIDER or ""),
+            "colbert_index_persist_enabled": bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED),
+            "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0),
+            "parent_child_auto_merge_enabled": bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED),
+            "parent_child_auto_merge_mode": str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or ""),
             "kg_query_expansion_enabled": bool(ctx.kg_query_expansion_enabled),
             "kg_chunk_injection_enabled": bool(ctx.kg_chunk_injection_enabled),
             "kg_chunk_boost_enabled": bool(ctx.kg_chunk_boost_meta.get("enabled")),
@@ -4539,29 +3872,21 @@ def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[s
             "hierarchy_parent_depth": int(ctx.hierarchy_parent_depth),
             "hierarchy_sibling_window": int(ctx.hierarchy_sibling_window),
             "hierarchy_overfetch_factor": int(ctx.hierarchy_overfetch_factor),
-            "retrieval_hardcase_emit_enabled": bool(getattr(settings, "RETRIEVAL_HARDCASE_EMIT_ENABLED", False)),
+            "retrieval_hardcase_emit_enabled": bool(settings.RETRIEVAL_HARDCASE_EMIT_ENABLED),
             "rag_evidence_require_spans_enabled": bool(ctx.evidence_span_strict_enabled),
-            "retrieval_parse_quality_low_threshold": float(
-                getattr(settings, "RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD", 0.35) or 0.35
-            ),
-            "retrieval_parse_quality_alert_ratio": float(
-                getattr(settings, "RETRIEVAL_PARSE_QUALITY_ALERT_RATIO", 0.5) or 0.5
-            ),
+            "retrieval_parse_quality_low_threshold": float(settings.RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD or 0.35),
+            "retrieval_parse_quality_alert_ratio": float(settings.RETRIEVAL_PARSE_QUALITY_ALERT_RATIO or 0.5),
             "retrieval_parse_quality_gate_profile": str(ctx.parse_quality_gate_profile),
-            "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
-            "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
-            "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
-            "evidence_post_rerank_pipeline_enabled": bool(
-                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)
-            ),
-            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(
-                getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "")
-            ),
+            "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
+            "evidence_post_rerank_provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or ""),
+            "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
+            "evidence_post_rerank_pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
+            "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(settings.EVIDENCE_POST_RERANK_PIPELINE),
             "evidence_post_rerank_score_calibration_enabled": bool(
-                getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", False)
+                settings.EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED
             ),
             "evidence_post_rerank_score_calibration_alpha": float(
-                getattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.0) or 0.0
+                settings.EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA or 0.0
             ),
             "multi_query": {
                 "enabled": bool(ctx.mq_enabled),
@@ -4572,11 +3897,11 @@ def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[s
                 "ab_variant": ctx.multi_query_ab_variant,
                 "ab_seed": ctx.multi_query_ab_seed,
                 "diversify": {
-                    "enabled": bool(getattr(settings, "MULTI_QUERY_DIVERSIFY_ENABLED", False)) and bool(ctx.mq_enabled),
+                    "enabled": bool(settings.MULTI_QUERY_DIVERSIFY_ENABLED) and bool(ctx.mq_enabled),
                     "budget": max(
                         0,
                         min(
-                            int(getattr(settings, "MULTI_QUERY_DIVERSIFY_BUDGET", 0) or 0),
+                            int(settings.MULTI_QUERY_DIVERSIFY_BUDGET or 0),
                             int(ctx.top_k or 0),
                         ),
                     ),
@@ -4644,7 +3969,6 @@ def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[s
         "query_debug": ctx.query_debug,
         "retrieval_trace": ctx.retrieval_trace,
     }
-    return None
 
 
 _RETRIEVAL_RUNTIME_PHASES = (

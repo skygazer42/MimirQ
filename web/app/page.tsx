@@ -20,17 +20,17 @@ export default async function Home({
   // Next.js 16 types this as a Promise in app router PageProps.
   searchParams?: Promise<HomeSearchParams>
 }>) {
-  const sp = await searchParams
+  const params = await searchParams
   return (
     <ChatPageClient
-      initialConversationId={sp?.conversation}
-      initialPrompt={sp?.prompt}
-      initialAutoSendPrompt={sp?.autorun === '1' || sp?.autorun === 'true'}
-      initialOpenRagSettings={sp?.rag === '1' || sp?.rag === 'true'}
-      initialDocumentId={sp?.doc}
-      initialChunkId={sp?.chunk}
-      initialHighlightStart={sp?.start}
-      initialHighlightEnd={sp?.end}
+      initialConversationId={params?.conversation}
+      initialPrompt={params?.prompt}
+      initialAutoSendPrompt={params?.autorun === '1' || params?.autorun === 'true'}
+      initialOpenRagSettings={params?.rag === '1' || params?.rag === 'true'}
+      initialDocumentId={params?.doc}
+      initialChunkId={params?.chunk}
+      initialHighlightStart={params?.start}
+      initialHighlightEnd={params?.end}
     />
   )
 }

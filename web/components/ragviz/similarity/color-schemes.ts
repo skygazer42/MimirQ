@@ -17,10 +17,7 @@ export type VisualConfig = {
   sorting: { order: string }
 }
 
-export function createDefaultVisualConfig(
-  xFields: string[],
-  yFields: string[]
-): VisualConfig {
+export function createDefaultVisualConfig(xFields: string[], yFields: string[]): VisualConfig {
   const defaultXField = getDefaultDisplayField(xFields)
   const defaultYField = getDefaultDisplayField(yFields)
 
@@ -76,8 +73,7 @@ export const DIFFERENCE_COLORSCALE: Array<[number, string]> = [
   [1, '#dc2626'],
 ]
 
-const DIFFERENCE_COLOR_PREVIEW =
-  'linear-gradient(90deg,#2563eb,#f8fafc,#dc2626)'
+const DIFFERENCE_COLOR_PREVIEW = 'linear-gradient(90deg,#2563eb,#f8fafc,#dc2626)'
 
 export const COLOR_SCHEMES: Array<{
   key: ColorSchemeKey
@@ -145,30 +141,18 @@ function colorStopsToVisualMapColors(stops: Array<[number, string]>) {
 
 export function toEchartsVisualMapColors(key: ColorSchemeKey) {
   return colorStopsToVisualMapColors(
-    COLOR_SCHEMES.find((scheme) => scheme.key === key)?.colorscale ??
-      COLOR_SCHEMES[0].colorscale
+    COLOR_SCHEMES.find((scheme) => scheme.key === key)?.colorscale ?? COLOR_SCHEMES[0].colorscale,
   )
 }
 
-export const DIFFERENCE_VISUALMAP_COLORS = colorStopsToVisualMapColors(
-  DIFFERENCE_COLORSCALE
-)
+export const DIFFERENCE_VISUALMAP_COLORS = colorStopsToVisualMapColors(DIFFERENCE_COLORSCALE)
 
-export function heatmapLegendBackground(
-  key: ColorSchemeKey,
-  isDifference: boolean
-) {
+export function heatmapLegendBackground(key: ColorSchemeKey, isDifference: boolean) {
   if (isDifference) return DIFFERENCE_COLOR_PREVIEW
-  return (
-    COLOR_SCHEMES.find((scheme) => scheme.key === key)?.preview ??
-    COLOR_SCHEMES[0].preview
-  )
+  return COLOR_SCHEMES.find((scheme) => scheme.key === key)?.preview ?? COLOR_SCHEMES[0].preview
 }
 
-export function generateUniqueLabels(
-  items: Array<Record<string, unknown>>,
-  field: string
-) {
+export function generateUniqueLabels(items: Array<Record<string, unknown>>, field: string) {
   const counts = new Map<string, number>()
   return items.map((item) => {
     const raw = axisLabelForItem(item, field)

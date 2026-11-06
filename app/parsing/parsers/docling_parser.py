@@ -12,7 +12,6 @@ Supports:
 - Multiple formats (PDF, DOCX, PPTX, HTML, etc.)
 """
 
-
 import html as _html
 import re
 from collections.abc import Callable
@@ -49,7 +48,7 @@ def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
         out.setdefault("element_kind", "equation")
     else:
         out.setdefault("element_kind", "paragraph")
-    out.setdefault("element_text", str(text or ""))
+    out.setdefault("element_text", text)
     attrs = out.get("element_attributes") if isinstance(out.get("element_attributes"), dict) else {}
     attrs.setdefault("source_content_type", content_type or None)
     attrs.setdefault("source_doc_type", doc_type or None)
@@ -71,7 +70,7 @@ def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
                         "y1": int(first[4]),
                     },
                 )
-                attrs.setdefault("page", int(page_index + 1))
+                attrs.setdefault("page", page_index + 1)
                 attrs.setdefault(
                     "bbox",
                     {
@@ -87,7 +86,7 @@ def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
         raw_page = out.get("page")
         if isinstance(raw_page, (int, float)) and not isinstance(raw_page, bool):
             out["element_page"] = int(raw_page)
-            attrs.setdefault("page", int(out["element_page"]))
+            attrs.setdefault("page", out["element_page"])
     if isinstance(out.get("element_bbox"), dict):
         attrs.setdefault("bbox", dict(out["element_bbox"]))
     out["element_attributes"] = attrs
@@ -225,27 +224,17 @@ class DoclingParser(BaseAdvancedParser):
         return (ok, "" if ok else reason)
 
     def _call_parse_method(
-        self,
-        parser: Any,
-        file_path: Path,
-        binary: bytes | None,
-        callback: Callable[[float, str], None],
-        **kwargs
+        self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
     ) -> tuple[list, list]:
-        return parser.parse_pdf(
-            filepath=str(file_path),
-            binary=binary,
-            callback=callback,
-            **kwargs
-        )
+        return parser.parse_pdf(filepath=str(file_path), binary=binary, callback=callback, **kwargs)
 
     def _process_document(self, doc: Document) -> list[Document]:
-        meta = dict(doc.metadata or {})
+        meta = dict(doc.metadata)
         doc_type = str(meta.get("doc_type_kwd") or "").lower()
         if not self.extract_images and doc_type == "image":
             return []
 
-        content = doc.page_content or ""
+        content = doc.page_content
         content_type = str(meta.get("content_type") or "").lower()
         meta = _apply_element_hints(meta, text=content)
         if content_type == "table":
@@ -255,10 +244,10 @@ class DoclingParser(BaseAdvancedParser):
                     Document(
                         page_content=converted,
                         metadata=_apply_element_hints(meta, text=converted),
-                        id=getattr(doc, "id", None),
+                        id=doc.id,
                     )
                 ]
-        return [Document(page_content=content, metadata=meta, id=getattr(doc, "id", None))]
+        return [Document(page_content=content, metadata=meta, id=doc.id)]
 
     def parse(self, file_path: Path, **kwargs) -> list[Document]:
         documents = super().parse(file_path, **kwargs)

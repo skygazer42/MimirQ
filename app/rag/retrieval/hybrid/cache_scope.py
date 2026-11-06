@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -46,12 +45,12 @@ def prepare_hybrid_cache_scope(
     distributed_singleflight_eligible = bool(distributed_singleflight_enabled)
     semantic_cache_eligible = bool(semantic_cache_enabled) and not bool(semantic_cache_dataset_scoped)
     cache_meta: dict[str, Any] = {
-        "enabled": bool(cache_eligible),
+        "enabled": cache_eligible,
         "backend": "redis",
         "hit": False,
-        "singleflight_enabled": bool(distributed_singleflight_eligible),
+        "singleflight_enabled": distributed_singleflight_eligible,
         "semantic": {
-            "enabled": bool(semantic_cache_eligible),
+            "enabled": semantic_cache_eligible,
             "backend": "milvus+redis",
             "hit": False,
         },
@@ -99,9 +98,9 @@ def prepare_hybrid_cache_scope(
         semantic_cache_eligible = False
         cache_meta["semantic"]["skip_reason"] = "ttl_zero"
 
-    cache_meta["enabled"] = bool(cache_eligible)
-    cache_meta["singleflight_enabled"] = bool(distributed_singleflight_eligible)
-    cache_meta["semantic"]["enabled"] = bool(semantic_cache_eligible)
+    cache_meta["enabled"] = cache_eligible
+    cache_meta["singleflight_enabled"] = distributed_singleflight_eligible
+    cache_meta["semantic"]["enabled"] = semantic_cache_eligible
 
     return HybridCacheScopeDecision(
         account_id=account_id0,

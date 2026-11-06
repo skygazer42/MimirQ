@@ -1,4 +1,3 @@
-
 from collections.abc import Sequence
 from typing import Any
 
@@ -44,7 +43,7 @@ class MMRReranker(BaseReranker):
             best_id = ""
             best_score = float("-inf")
             for candidate_id in remaining:
-                rel = float(relevance.get(candidate_id, 0.0) or 0.0)
+                rel = relevance[candidate_id]
                 if not selected:
                     mmr_score = rel
                 else:
@@ -59,7 +58,7 @@ class MMRReranker(BaseReranker):
             if not best_id:
                 break
             selected.append(best_id)
-            score_map[best_id] = float(best_score)
+            score_map[best_id] = best_score
             remaining = [candidate_id for candidate_id in remaining if candidate_id != best_id]
 
         return RerankResult(
@@ -67,9 +66,9 @@ class MMRReranker(BaseReranker):
             score_map=score_map,
             stats={
                 "mode": "mmr",
-                "lambda_mult": float(self.lambda_mult),
+                "lambda_mult": self.lambda_mult,
                 "candidates_considered": len(docs),
-                "top_n": int(top_n),
+                "top_n": top_n,
             },
             provider="mmr",
             model_used="mmr:lexical",

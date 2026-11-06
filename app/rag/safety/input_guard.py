@@ -15,6 +15,7 @@ from app.rag.safety.rules import (
     ROLE_HIJACK_RULES,
     SYSTEM_PROMPT_PROBE_RULES,
     ZERO_WIDTH_CHARS,
+    GuardRule,
 )
 from app.services.metrics_logger import log_metrics
 
@@ -29,10 +30,10 @@ class GuardResult:
 
 
 def _record_match(matched: dict[str, float], rule_name: str, score: float) -> None:
-    matched[rule_name] = max(float(matched.get(rule_name) or 0.0), float(score))
+    matched[rule_name] = max(matched.get(rule_name) or 0.0, float(score))
 
 
-def _record_rule_matches(text: str, rules: tuple[Any, ...], matched: dict[str, float]) -> None:
+def _record_rule_matches(text: str, rules: tuple[GuardRule, ...], matched: dict[str, float]) -> None:
     for rule in rules:
         if rule.pattern.search(text):
             _record_match(matched, rule.name, rule.score)
@@ -123,9 +124,9 @@ class InputGuard:
         if not matched_rules:
             return "allow"
 
-        warn_threshold = float(getattr(settings, "INPUT_GUARD_WARN_THRESHOLD", 0.35) or 0.35)
-        block_threshold = float(getattr(settings, "INPUT_GUARD_SCORE_THRESHOLD", 0.7) or 0.7)
-        mode = str(getattr(settings, "INPUT_GUARD_MODE", "warn") or "warn").strip().lower()
+        warn_threshold = float(settings.INPUT_GUARD_WARN_THRESHOLD or 0.35)
+        block_threshold = float(settings.INPUT_GUARD_SCORE_THRESHOLD or 0.7)
+        mode = str(settings.INPUT_GUARD_MODE or "warn").strip().lower()
 
         if score >= block_threshold:
             return "block" if mode == "block" else "warn"
@@ -152,7 +153,7 @@ class InputGuard:
         log_metrics(payload)
 
         if result.action == "block":
-            if bool(getattr(settings, "INPUT_GUARD_LOG_BLOCKED", True)):
+            if bool(settings.INPUT_GUARD_LOG_BLOCKED):
                 logger.warning(
                     "Input guard blocked query hash=%s rules=%s score=%.3f", query_hash, matched_rules, result.score
                 )

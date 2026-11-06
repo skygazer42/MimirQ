@@ -71,10 +71,12 @@ function safeIsoForFilename(ts: string) {
 }
 
 function safeIdForFilename(value: string) {
-  return String(value || '')
-    .trim()
-    .replaceAll(/[^a-zA-Z0-9_-]+/g, '_')
-    .slice(0, 80) || 'request'
+  return (
+    String(value || '')
+      .trim()
+      .replaceAll(/[^a-zA-Z0-9_-]+/g, '_')
+      .slice(0, 80) || 'request'
+  )
 }
 
 function formatScore(v?: number | null, digits = 3) {
@@ -142,12 +144,13 @@ function normalizeTraceRequestId(trace: RagTrace | null | undefined) {
 export function buildTraceDiffCandidateOptions(
   traces: ReadonlyArray<RagTrace>,
   currentRequestId: string,
-  currentRetrievalConfigHash?: string | null
+  currentRetrievalConfigHash?: string | null,
 ): TraceDiffCandidateOption[] {
   const normalizedCurrentRequestId = String(currentRequestId || '').trim()
   const normalizedCurrentConfigHash = String(currentRetrievalConfigHash || '').trim() || null
   const currentTrace = traces.find((trace) => normalizeTraceRequestId(trace) === normalizedCurrentRequestId) ?? null
-  const currentTsMs = typeof currentTrace?.ts_ms === 'number' && Number.isFinite(currentTrace.ts_ms) ? currentTrace.ts_ms : null
+  const currentTsMs =
+    typeof currentTrace?.ts_ms === 'number' && Number.isFinite(currentTrace.ts_ms) ? currentTrace.ts_ms : null
 
   return traces
     .map((trace) => {
@@ -165,7 +168,9 @@ export function buildTraceDiffCandidateOptions(
             : (trace.citations || []).length,
         retrievalConfigHash,
         sameRetrievalConfig:
-          normalizedCurrentConfigHash && retrievalConfigHash ? retrievalConfigHash === normalizedCurrentConfigHash : null,
+          normalizedCurrentConfigHash && retrievalConfigHash
+            ? retrievalConfigHash === normalizedCurrentConfigHash
+            : null,
       } satisfies TraceDiffCandidateOption
     })
     .filter((candidate): candidate is TraceDiffCandidateOption => Boolean(candidate))
@@ -225,7 +230,7 @@ function getCitationSimulationScore(citation: RagTraceCitation, key: CitationSim
 
 function getAvailableCitationSimulationChannels(citations: RagTraceCitation[]) {
   return CITATION_SIMULATION_CHANNELS.filter((channel) =>
-    citations.some((citation) => getCitationSimulationScore(citation, channel.key) != null)
+    citations.some((citation) => getCitationSimulationScore(citation, channel.key) != null),
   )
 }
 
@@ -237,7 +242,7 @@ function clampCitationSimulationWeight(value: unknown) {
 
 function buildCitationSimulationWeightsForPreset(
   preset: CitationSimulationPreset,
-  channels: ReadonlyArray<{ key: CitationSimulationChannelKey }>
+  channels: ReadonlyArray<{ key: CitationSimulationChannelKey }>,
 ): CitationSimulationWeights {
   const keys = channels.map((channel) => channel.key)
   const weights = Object.fromEntries(keys.map((key) => [key, 0])) as CitationSimulationWeights
@@ -288,7 +293,7 @@ export function moveTraceSelectionIndex(currentIndex: number, total: number, dir
 
 export function buildCitationSimulationRows(
   citations: RagTraceCitation[],
-  weights: CitationSimulationWeights = {}
+  weights: CitationSimulationWeights = {},
 ): CitationSimulationRow[] {
   const channels = getAvailableCitationSimulationChannels(citations)
   if (!citations.length || !channels.length) return []
@@ -297,12 +302,12 @@ export function buildCitationSimulationRows(
   for (const channel of channels) {
     normalizedScoreByKey.set(
       channel.key,
-      normalizeCitationSimulationSeries(citations.map((citation) => getCitationSimulationScore(citation, channel.key)))
+      normalizeCitationSimulationSeries(citations.map((citation) => getCitationSimulationScore(citation, channel.key))),
     )
   }
 
   const normalizedWeights = Object.fromEntries(
-    channels.map((channel) => [channel.key, clampCitationSimulationWeight(weights[channel.key])])
+    channels.map((channel) => [channel.key, clampCitationSimulationWeight(weights[channel.key])]),
   ) as CitationSimulationWeights
   const totalWeight = channels.reduce((sum, channel) => sum + (normalizedWeights[channel.key] ?? 0), 0)
 
@@ -384,19 +389,21 @@ const RAG_TRACE_FALLBACK_MESSAGES: Record<string, string> = {
   'panel.channels.options.lexicalDb.label': 'Lexical DB',
   'panel.channels.options.lexicalDb.summary': '查看数据库级词法通道在最终证据里的存在感。',
   'panel.channels.options.sparse.label': 'Sparse',
-  'panel.channels.options.sparse.summary': '检查 learned sparse / SPLADE 风格通道是否带来额外证据。',
+  'panel.channels.options.sparse.summary': '检查 稀疏检索通道是否带来额外证据。',
   'panel.channels.options.colbert.label': 'ColBERT',
   'panel.channels.options.colbert.summary': '聚焦 late-interaction / ColBERT 通道影响到的证据。',
   'panel.inspector.retrieveSummary': '检索层决定候选面宽度，可以直接看 query 扩散、top_k 和融合策略是否异常。',
   'panel.inspector.retrieveCallout': 'hierarchy recall {status}{overfetch}',
   'panel.inspector.retrieveEnabled': '已启用',
   'panel.inspector.retrieveDisabled': '未启用',
-  'panel.inspector.rerankSummary': '重排层用于判断“为什么这个 chunk 最终浮到前面”，适合排查 provider、top_n 和跳过原因。',
+  'panel.inspector.rerankSummary':
+    '重排层用于判断“为什么这个 chunk 最终浮到前面”，适合排查 provider、top_n 和跳过原因。',
   'panel.inspector.rerankSkipped': '当前 trace 跳过 rerank：{reason}',
   'panel.inspector.citationsSummary': '证据层把最终引用聚合成可验证的来源，你可以直接跳到高分 chunk 做人工复核。',
   'panel.inspector.defaultSummary': '该阶段没有专门的诊断面板，保留关键计数与耗时，方便对照整条流水线。',
   'panel.evidencePreview.title': '证据解读',
-  'panel.evidencePreview.description': '这块用于判断回答到底引用了什么。当前展示排名前 {count} 条证据；如果证据偏题，就说明召回或 Dify 回传证据需要调整。',
+  'panel.evidencePreview.description':
+    '这块用于判断回答到底引用了什么。当前展示排名前 {count} 条证据；如果证据偏题，就说明召回或 Dify 回传证据需要调整。',
   'panel.evidencePreview.loading': '正在加载切片',
   'panel.evidencePreview.loaded': '已加载切片',
   'panel.evidencePreview.score': '相关度',
@@ -408,7 +415,8 @@ const RAG_TRACE_FALLBACK_MESSAGES: Record<string, string> = {
   'panel.evidencePreview.kinds.putonghuaRelated': '普通话相关线索',
   'panel.evidencePreview.kinds.default': '引用证据',
   'panel.evidencePreview.reasons.examRequired': '能支撑“身份证、准考证”等携带要求，但不是普通话考试专属证据。',
-  'panel.evidencePreview.reasons.putonghuaRelated': '能说明普通话/教育事项相关材料，但更偏教师资格认定，不能直接证明考试当天要求。',
+  'panel.evidencePreview.reasons.putonghuaRelated':
+    '能说明普通话/教育事项相关材料，但更偏教师资格认定，不能直接证明考试当天要求。',
   'panel.evidencePreview.reasons.default': '用于核对回答引用的来源；需要结合正文判断是否真正命中问题。',
   'panel.evidencePreview.open': '打开证据切片',
 }
@@ -429,36 +437,54 @@ function getRagTraceCitationChannelOptions(t: RagTraceTranslation = fallbackRagT
   summary: string
 }> {
   return [
-    { key: 'all', label: t("panel.channels.options.all.label"), summary: t("panel.channels.options.all.summary") },
-    { key: 'vector', label: t("panel.channels.options.vector.label"), summary: t("panel.channels.options.vector.summary") },
-    { key: 'bm25', label: t("panel.channels.options.bm25.label"), summary: t("panel.channels.options.bm25.summary") },
+    { key: 'all', label: t('panel.channels.options.all.label'), summary: t('panel.channels.options.all.summary') },
+    {
+      key: 'vector',
+      label: t('panel.channels.options.vector.label'),
+      summary: t('panel.channels.options.vector.summary'),
+    },
+    { key: 'bm25', label: t('panel.channels.options.bm25.label'), summary: t('panel.channels.options.bm25.summary') },
     {
       key: 'lexical_db',
-      label: t("panel.channels.options.lexicalDb.label"),
-      summary: t("panel.channels.options.lexicalDb.summary"),
+      label: t('panel.channels.options.lexicalDb.label'),
+      summary: t('panel.channels.options.lexicalDb.summary'),
     },
-    { key: 'sparse', label: t("panel.channels.options.sparse.label"), summary: t("panel.channels.options.sparse.summary") },
+    {
+      key: 'sparse',
+      label: t('panel.channels.options.sparse.label'),
+      summary: t('panel.channels.options.sparse.summary'),
+    },
     {
       key: 'colbert_ann',
-      label: t("panel.channels.options.colbert.label"),
-      summary: t("panel.channels.options.colbert.summary"),
+      label: t('panel.channels.options.colbert.label'),
+      summary: t('panel.channels.options.colbert.summary'),
     },
   ]
 }
 
-function getRagTraceCitationChannelLabel(channel: RagTraceCitationChannelFilter, t: RagTraceTranslation = fallbackRagTraceTranslation) {
-  return getRagTraceCitationChannelOptions(t).find((option) => option.key === channel)?.label || t("panel.channels.options.all.label")
+function getRagTraceCitationChannelLabel(
+  channel: RagTraceCitationChannelFilter,
+  t: RagTraceTranslation = fallbackRagTraceTranslation,
+) {
+  return (
+    getRagTraceCitationChannelOptions(t).find((option) => option.key === channel)?.label ||
+    t('panel.channels.options.all.label')
+  )
 }
 
-function getRagTraceCitationChannelSummary(channel: RagTraceCitationChannelFilter, t: RagTraceTranslation = fallbackRagTraceTranslation) {
+function getRagTraceCitationChannelSummary(
+  channel: RagTraceCitationChannelFilter,
+  t: RagTraceTranslation = fallbackRagTraceTranslation,
+) {
   return (
-    getRagTraceCitationChannelOptions(t).find((option) => option.key === channel)?.summary || t("panel.channels.options.all.summary")
+    getRagTraceCitationChannelOptions(t).find((option) => option.key === channel)?.summary ||
+    t('panel.channels.options.all.summary')
   )
 }
 
 function getRagTraceCitationChannelScore(
   citation: RagTraceCitation,
-  channel: Exclude<RagTraceCitationChannelFilter, 'all'>
+  channel: Exclude<RagTraceCitationChannelFilter, 'all'>,
 ): number | null {
   const raw = getRagTraceCitationChannelRawScore(citation, channel)
 
@@ -469,7 +495,7 @@ function getRagTraceCitationChannelScore(
 
 function getRagTraceCitationChannelRawScore(
   citation: RagTraceCitation,
-  channel: Exclude<RagTraceCitationChannelFilter, 'all'>
+  channel: Exclude<RagTraceCitationChannelFilter, 'all'>,
 ) {
   if (channel === 'vector') return citation.vector_score
   if (channel === 'bm25') return citation.bm25_score
@@ -492,14 +518,14 @@ function getTraceRankDeltaLabel(rankDelta: number): string {
 
 function getRagTraceChannelBox(
   channels: JsonObject | null | undefined,
-  channel: Exclude<RagTraceCitationChannelFilter, 'all'>
+  channel: Exclude<RagTraceCitationChannelFilter, 'all'>,
 ): JsonObject | null {
   return jsonObjectField(channels, channel)
 }
 
 export function filterTraceCitationsByChannel(
   citations: ReadonlyArray<RagTraceCitation>,
-  channel: RagTraceCitationChannelFilter
+  channel: RagTraceCitationChannelFilter,
 ): RagTraceCitation[] {
   const list = Array.from(citations || [])
   if (channel === 'all') {
@@ -509,7 +535,8 @@ export function filterTraceCitationsByChannel(
   return list
     .filter((citation) => isNonZero(getRagTraceCitationChannelScore(citation, channel)))
     .sort((a, b) => {
-      const channelDelta = (getRagTraceCitationChannelScore(b, channel) ?? 0) - (getRagTraceCitationChannelScore(a, channel) ?? 0)
+      const channelDelta =
+        (getRagTraceCitationChannelScore(b, channel) ?? 0) - (getRagTraceCitationChannelScore(a, channel) ?? 0)
       if (channelDelta !== 0) return channelDelta
       return (getPrimaryScore(b) ?? 0) - (getPrimaryScore(a) ?? 0)
     })
@@ -518,7 +545,7 @@ export function filterTraceCitationsByChannel(
 export function buildTraceCitationChannelSummaries(
   trace: RagTrace | null,
   activeChannel: RagTraceCitationChannelFilter,
-  t: RagTraceTranslation = fallbackRagTraceTranslation
+  t: RagTraceTranslation = fallbackRagTraceTranslation,
 ): RagTraceCitationChannelSummary[] {
   const citations = trace?.citations || []
   const mainQuery =
@@ -572,28 +599,32 @@ function getTraceCitationIds(citation: RagTraceCitation) {
 }
 
 function compactEvidenceText(value: string, maxChars = 150) {
-  const text = String(value || '').replaceAll(/\s+/g, ' ').trim()
+  const text = String(value || '')
+    .replaceAll(/\s+/g, ' ')
+    .trim()
   if (!text) return ''
   return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text
 }
 
 function getTraceEvidenceInterpretation(citation: RagTraceCitation, t: RagTraceTranslation) {
-  const hitType = String(citation.hit_type || '').trim().toLowerCase()
+  const hitType = String(citation.hit_type || '')
+    .trim()
+    .toLowerCase()
   if (hitType.includes('exam_required')) {
     return {
-      label: t("panel.evidencePreview.kinds.examRequired"),
-      reason: t("panel.evidencePreview.reasons.examRequired"),
+      label: t('panel.evidencePreview.kinds.examRequired'),
+      reason: t('panel.evidencePreview.reasons.examRequired'),
     }
   }
   if (hitType.includes('putonghua')) {
     return {
-      label: t("panel.evidencePreview.kinds.putonghuaRelated"),
-      reason: t("panel.evidencePreview.reasons.putonghuaRelated"),
+      label: t('panel.evidencePreview.kinds.putonghuaRelated'),
+      reason: t('panel.evidencePreview.reasons.putonghuaRelated'),
     }
   }
   return {
-    label: t("panel.evidencePreview.kinds.default"),
-    reason: t("panel.evidencePreview.reasons.default"),
+    label: t('panel.evidencePreview.kinds.default'),
+    reason: t('panel.evidencePreview.reasons.default'),
   }
 }
 
@@ -731,10 +762,14 @@ function readStoredTraceCitationTargets(): Record<string, StoredTraceCitationTar
             start: typeof value?.start === 'number' && Number.isFinite(value.start) ? Math.trunc(value.start) : null,
             end: typeof value?.end === 'number' && Number.isFinite(value.end) ? Math.trunc(value.end) : null,
             pageNumber:
-              typeof value?.pageNumber === 'number' && Number.isFinite(value.pageNumber) ? Math.trunc(value.pageNumber) : null,
+              typeof value?.pageNumber === 'number' && Number.isFinite(value.pageNumber)
+                ? Math.trunc(value.pageNumber)
+                : null,
             label: String(value?.label || '').trim() || null,
             openedAt:
-              typeof value?.openedAt === 'number' && Number.isFinite(value.openedAt) ? Math.trunc(value.openedAt) : Date.now(),
+              typeof value?.openedAt === 'number' && Number.isFinite(value.openedAt)
+                ? Math.trunc(value.openedAt)
+                : Date.now(),
           } satisfies StoredTraceCitationTarget,
         ] as const
       })
@@ -797,7 +832,11 @@ function stringifyInspectorValue(value: unknown, fallback = '—') {
   return safeDisplayString(value, fallback)
 }
 
-function buildInspectorMetric(label: string, value: unknown, opts?: { formatter?: (value: unknown) => string | null }): PipelineInspectorMetric | null {
+function buildInspectorMetric(
+  label: string,
+  value: unknown,
+  opts?: { formatter?: (value: unknown) => string | null },
+): PipelineInspectorMetric | null {
   const formatted = opts?.formatter ? opts.formatter(value) : stringifyInspectorValue(value)
   if (!formatted || formatted === '—') return null
   return { label, value: formatted }
@@ -810,7 +849,9 @@ function getTraceCitationRange(citation: RagTraceCitation): { start: number; end
 }
 
 function normalizePipelineSectionId(value: string) {
-  const key = String(value || '').trim().toLowerCase()
+  const key = String(value || '')
+    .trim()
+    .toLowerCase()
   if (!key) return 'stage'
   if (key.includes('retriev')) return 'retrieve'
   if (key.includes('rerank')) return 'rerank'
@@ -820,12 +861,11 @@ function normalizePipelineSectionId(value: string) {
 }
 
 function buildCitationsSummary(citations: RagTraceCitation[]) {
-  const sorted = citations
-    .slice()
-    .sort((a, b) => (getPrimaryScore(b) ?? 0) - (getPrimaryScore(a) ?? 0))
+  const sorted = citations.slice().sort((a, b) => (getPrimaryScore(b) ?? 0) - (getPrimaryScore(a) ?? 0))
   return {
     top: sorted.slice(0, 4),
-    distinctDocuments: new Set(sorted.map((citation) => String(citation.document_id || '').trim()).filter(Boolean)).size,
+    distinctDocuments: new Set(sorted.map((citation) => String(citation.document_id || '').trim()).filter(Boolean))
+      .size,
     imageHits: sorted.filter((citation) => Boolean(citation.has_image)).length,
   }
 }
@@ -834,10 +874,16 @@ export function movePipelineSelectionIndex(currentIndex: number, total: number, 
   return moveTraceSelectionIndex(currentIndex, total, direction)
 }
 
-export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTraceTranslation = fallbackRagTraceTranslation): PipelineInspectorSection[] {
+export function buildPipelineInspectorSections(
+  trace: RagTrace | null,
+  t: RagTraceTranslation = fallbackRagTraceTranslation,
+): PipelineInspectorSection[] {
   if (!trace) return []
 
-  const mainQuery = (trace.retrieval?.per_query || []).find((query) => query?.kind === 'main') ?? (trace.retrieval?.per_query || [])[0] ?? null
+  const mainQuery =
+    (trace.retrieval?.per_query || []).find((query) => query?.kind === 'main') ??
+    (trace.retrieval?.per_query || [])[0] ??
+    null
   const channels = jsonObjectField(mainQuery?.retriever_debug, 'channels')
   const hierarchyRecall = jsonObjectField(mainQuery?.retriever_debug, 'hierarchy_recall')
   const rerankMeta = jsonObjectField(channels, 'rerank')
@@ -867,14 +913,18 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
       return {
         id,
         label: step.label,
-        summary: t("panel.inspector.retrieveSummary"),
+        summary: t('panel.inspector.retrieveSummary'),
         callout:
           hierarchyRecall?.enabled == null
             ? null
-            : t("panel.inspector.retrieveCallout", {
-                status: hierarchyRecall.enabled ? t("panel.inspector.retrieveEnabled") : t("panel.inspector.retrieveDisabled"),
+            : t('panel.inspector.retrieveCallout', {
+                status: hierarchyRecall.enabled
+                  ? t('panel.inspector.retrieveEnabled')
+                  : t('panel.inspector.retrieveDisabled'),
                 overfetch:
-                  hierarchyRecall.overfetch_factor == null ? '' : ` · overfetch=${safeDisplayString(hierarchyRecall.overfetch_factor)}`,
+                  hierarchyRecall.overfetch_factor == null
+                    ? ''
+                    : ` · overfetch=${safeDisplayString(hierarchyRecall.overfetch_factor)}`,
               }),
         metrics,
         citations: citationSummary.top,
@@ -894,8 +944,10 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
       return {
         id,
         label: step.label,
-        summary: t("panel.inspector.rerankSummary"),
-        callout: rerankMeta?.skip_reason ? t("panel.inspector.rerankSkipped", { reason: safeDisplayString(rerankMeta.skip_reason) }) : null,
+        summary: t('panel.inspector.rerankSummary'),
+        callout: rerankMeta?.skip_reason
+          ? t('panel.inspector.rerankSkipped', { reason: safeDisplayString(rerankMeta.skip_reason) })
+          : null,
         metrics,
         citations: citationSummary.top,
       }
@@ -912,7 +964,7 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
       return {
         id,
         label: step.label,
-        summary: t("panel.inspector.citationsSummary"),
+        summary: t('panel.inspector.citationsSummary'),
         metrics,
         citations: citationSummary.top,
       }
@@ -946,7 +998,7 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
     return {
       id,
       label: step.label,
-      summary: t("panel.inspector.defaultSummary"),
+      summary: t('panel.inspector.defaultSummary'),
       metrics,
       citations: [],
     }
@@ -956,7 +1008,7 @@ export function buildPipelineInspectorSections(trace: RagTrace | null, t: RagTra
     sections.push({
       id: 'citations',
       label: 'Citations',
-      summary: t("panel.inspector.citationsSummary"),
+      summary: t('panel.inspector.citationsSummary'),
       metrics: [
         buildInspectorMetric('Citations', trace.citations_count),
         buildInspectorMetric('Distinct docs', citationSummary.distinctDocuments),
@@ -978,7 +1030,9 @@ export function buildPipelineTimelineSteps(trace: RagTrace | null): PipelineTime
     const lowerKey = String(step.key || '').toLowerCase()
     const meta = step.meta ?? null
     const mode = typeof meta?.mode === 'string' ? meta.mode : null
-    const queryCount = getMetaNumber(meta, 'query_count') ?? (lowerKey.includes('retriev') ? asFiniteNumber(trace?.retrieval?.query_count) : null)
+    const queryCount =
+      getMetaNumber(meta, 'query_count') ??
+      (lowerKey.includes('retriev') ? asFiniteNumber(trace?.retrieval?.query_count) : null)
     const itemCount = getMetaNumber(meta, 'count')
     const topK = lowerKey.includes('retriev') ? asFiniteNumber(trace?.retrieval?.top_k) : null
     const rerankTopN = lowerKey.includes('rerank') ? asFiniteNumber(trace?.rerank?.top_n) : null
@@ -1068,7 +1122,7 @@ export function RagTracePipelineTimeline({
                 'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
                 selected
                   ? 'border-info bg-info shadow-sm'
-                  : 'border-border/60 bg-muted/20 hover:border-info hover:bg-muted/40'
+                  : 'border-border/60 bg-muted/20 hover:border-info hover:bg-muted/40',
               )}
             >
               {content}
@@ -1106,7 +1160,7 @@ function TraceCitationDiffList({
           className={cn(
             'text-[11px]',
             tone === 'added' ? 'border-success/20 bg-success/10 text-success' : undefined,
-            tone === 'removed' ? 'border-warning/20 bg-warning/10 text-warning' : undefined
+            tone === 'removed' ? 'border-warning/20 bg-warning/10 text-warning' : undefined,
           )}
         >
           {items.length}
@@ -1171,7 +1225,7 @@ function TraceCitationScoreShiftList({
   return (
     <div className="rounded-2xl border border-border/60 bg-card/40 p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-foreground">{t("panel.evidenceDrift.scoreShiftTitle")}</div>
+        <div className="text-sm font-semibold text-foreground">{t('panel.evidenceDrift.scoreShiftTitle')}</div>
         <Badge variant="soft" className="text-[11px]">
           {items.length}
         </Badge>
@@ -1192,7 +1246,8 @@ function TraceCitationScoreShiftList({
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                     <span>{chunkId ? `chunk=${chunkId}` : 'document-level evidence'}</span>
                     <span className="font-mono">
-                      A={item.scoreA == null ? '—' : item.scoreA.toFixed(3)} → B={item.scoreB == null ? '—' : item.scoreB.toFixed(3)}
+                      A={item.scoreA == null ? '—' : item.scoreA.toFixed(3)} → B=
+                      {item.scoreB == null ? '—' : item.scoreB.toFixed(3)}
                     </span>
                     <span className={cn('font-mono', item.scoreDelta >= 0 ? 'text-success' : 'text-warning')}>
                       Δ {item.scoreDelta.toFixed(3)}
@@ -1246,13 +1301,18 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const [selectedPipelineSectionId, setSelectedPipelineSectionId] = React.useState<string | null>(null)
   const [selectedCitationChannel, setSelectedCitationChannel] = React.useState<RagTraceCitationChannelFilter>('all')
   const [citationSimulationWeights, setCitationSimulationWeights] = React.useState<CitationSimulationWeights>({})
-  const [storedTraceCitationTargets, setStoredTraceCitationTargets] = React.useState<Record<string, StoredTraceCitationTarget>>({})
+  const [storedTraceCitationTargets, setStoredTraceCitationTargets] = React.useState<
+    Record<string, StoredTraceCitationTarget>
+  >({})
   const prefetchedTraceCitationTargetsRef = React.useRef<Set<string>>(new Set())
 
   const items = React.useMemo(() => data?.items ?? [], [data])
   const selected = items[selectedIndex] ?? items[0] ?? null
   const retrievalConfigHash = selected?.retrieval?.retrieval_config_hash || null
-  const mainQuery = (selected?.retrieval?.per_query || []).find((q) => q?.kind === 'main') ?? (selected?.retrieval?.per_query || [])[0] ?? null
+  const mainQuery =
+    (selected?.retrieval?.per_query || []).find((q) => q?.kind === 'main') ??
+    (selected?.retrieval?.per_query || [])[0] ??
+    null
   const channels = jsonObjectField(mainQuery?.retriever_debug, 'channels')
   const hierarchyRecall = jsonObjectField(mainQuery?.retriever_debug, 'hierarchy_recall')
   const rerankMeta = jsonObjectField(channels, 'rerank')
@@ -1262,7 +1322,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   const requestId = String(selected?.request_id || '').trim()
   const diffCandidateOptions = React.useMemo(
     () => buildTraceDiffCandidateOptions(items, requestId, retrievalConfigHash),
-    [items, requestId, retrievalConfigHash]
+    [items, requestId, retrievalConfigHash],
   )
   const selectedDiffComparisonTrace = React.useMemo(() => {
     const targetRequestId = diffOtherRequestId.trim()
@@ -1271,29 +1331,29 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   }, [diffOtherRequestId, items])
   const localCitationDiff = React.useMemo(
     () => buildTraceCitationDiff(selected, selectedDiffComparisonTrace),
-    [selected, selectedDiffComparisonTrace]
+    [selected, selectedDiffComparisonTrace],
   )
   const pipelineSteps = React.useMemo(() => buildPipelineTimelineSteps(selected), [selected])
   const pipelineInspectorSections = React.useMemo(() => buildPipelineInspectorSections(selected, t), [selected, t])
   const availableCitationSimulationChannels = React.useMemo(
     () => getAvailableCitationSimulationChannels(selected?.citations || []),
-    [selected]
+    [selected],
   )
   const simulatedCitationRows = React.useMemo(
     () => buildCitationSimulationRows(selected?.citations || [], citationSimulationWeights),
-    [citationSimulationWeights, selected]
+    [citationSimulationWeights, selected],
   )
   const channelSummaries = React.useMemo(
     () => buildTraceCitationChannelSummaries(selected, selectedCitationChannel, t),
-    [selected, selectedCitationChannel, t]
+    [selected, selectedCitationChannel, t],
   )
   const filteredCitations = React.useMemo(
     () => filterTraceCitationsByChannel(selected?.citations || [], selectedCitationChannel),
-    [selected, selectedCitationChannel]
+    [selected, selectedCitationChannel],
   )
   const evidencePreviewCitations = React.useMemo(
     () => buildCitationsSummary(selected?.citations || []).top.slice(0, TRACE_EVIDENCE_PREVIEW_LIMIT),
-    [selected]
+    [selected],
   )
   const evidencePreviewKey = React.useMemo(
     () =>
@@ -1303,7 +1363,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           return `${documentId}:${chunkId}`
         })
         .join('|'),
-    [evidencePreviewCitations]
+    [evidencePreviewCitations],
   )
   const evidencePreviewQuery = useQuery({
     queryKey: ['rag-trace', 'evidence-preview', requestId, evidencePreviewKey],
@@ -1319,21 +1379,24 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           } catch {
             return null
           }
-        })
+        }),
       )
     },
   })
   const activeChannelSummary = React.useMemo(
     () => channelSummaries.find((summary) => summary.active) ?? channelSummaries[0] ?? null,
-    [channelSummaries]
+    [channelSummaries],
   )
   const lastOpenedTraceCitationTarget = React.useMemo(
-    () => (requestId ? storedTraceCitationTargets[requestId] ?? null : null),
-    [requestId, storedTraceCitationTargets]
+    () => (requestId ? (storedTraceCitationTargets[requestId] ?? null) : null),
+    [requestId, storedTraceCitationTargets],
   )
   const selectedPipelineSection = React.useMemo(
-    () => pipelineInspectorSections.find((section) => section.id === selectedPipelineSectionId) ?? pipelineInspectorSections[0] ?? null,
-    [pipelineInspectorSections, selectedPipelineSectionId]
+    () =>
+      pipelineInspectorSections.find((section) => section.id === selectedPipelineSectionId) ??
+      pipelineInspectorSections[0] ??
+      null,
+    [pipelineInspectorSections, selectedPipelineSectionId],
   )
   const selectedPipelineSectionIndex = React.useMemo(() => {
     if (!selectedPipelineSection) return -1
@@ -1354,12 +1417,17 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
   }, [])
 
   React.useEffect(() => {
-    setCitationSimulationWeights(buildCitationSimulationWeightsForPreset('balanced', availableCitationSimulationChannels))
+    setCitationSimulationWeights(
+      buildCitationSimulationWeightsForPreset('balanced', availableCitationSimulationChannels),
+    )
   }, [availableCitationSimulationChannels, requestId])
 
-  const applyCitationSimulationPreset = React.useCallback((preset: CitationSimulationPreset) => {
-    setCitationSimulationWeights(buildCitationSimulationWeightsForPreset(preset, availableCitationSimulationChannels))
-  }, [availableCitationSimulationChannels])
+  const applyCitationSimulationPreset = React.useCallback(
+    (preset: CitationSimulationPreset) => {
+      setCitationSimulationWeights(buildCitationSimulationWeightsForPreset(preset, availableCitationSimulationChannels))
+    },
+    [availableCitationSimulationChannels],
+  )
 
   const prefetchTraceCitationTarget = React.useCallback((documentId?: string | null, chunkId?: string | null) => {
     const docId = String(documentId || '').trim()
@@ -1398,7 +1466,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           chunkId: chunkId || null,
           start: range?.start ?? null,
           end: range?.end ?? null,
-          pageNumber: typeof citation.page_number === 'number' && Number.isFinite(citation.page_number) ? citation.page_number : null,
+          pageNumber:
+            typeof citation.page_number === 'number' && Number.isFinite(citation.page_number)
+              ? citation.page_number
+              : null,
           label,
           openedAt: Date.now(),
         })
@@ -1409,12 +1480,12 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
       })
       if (opts?.notify) {
         const chunkSuffix = chunkId ? ` · ${chunkId}` : ''
-        toast.message(t("panel.toasts.openedCitationDocument"), {
+        toast.message(t('panel.toasts.openedCitationDocument'), {
           description: `${label}${chunkSuffix}`,
         })
       }
     },
-    [openDocument, rememberOpenedTraceCitationTarget, requestId, t]
+    [openDocument, rememberOpenedTraceCitationTarget, requestId, t],
   )
 
   const reopenLastTraceCitation = React.useCallback(() => {
@@ -1427,21 +1498,16 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
         ? { start: lastOpenedTraceCitationTarget.start, end: lastOpenedTraceCitationTarget.end }
         : undefined
 
-    openDocument(
-      lastOpenedTraceCitationTarget.documentId,
-      lastOpenedTraceCitationTarget.chunkId || undefined,
-      range,
-      {
-        previewAnchor:
-          lastOpenedTraceCitationTarget.pageNumber == null
-            ? undefined
-            : { pageNumber: lastOpenedTraceCitationTarget.pageNumber },
-      }
-    )
+    openDocument(lastOpenedTraceCitationTarget.documentId, lastOpenedTraceCitationTarget.chunkId || undefined, range, {
+      previewAnchor:
+        lastOpenedTraceCitationTarget.pageNumber == null
+          ? undefined
+          : { pageNumber: lastOpenedTraceCitationTarget.pageNumber },
+    })
 
     const pageLabel =
       lastOpenedTraceCitationTarget.pageNumber == null ? '' : ` · P.${lastOpenedTraceCitationTarget.pageNumber}`
-    toast.message(t("panel.toasts.reopenedRecentEvidence"), {
+    toast.message(t('panel.toasts.reopenedRecentEvidence'), {
       description: `${lastOpenedTraceCitationTarget.label || lastOpenedTraceCitationTarget.documentId}${pageLabel}`,
     })
   }, [lastOpenedTraceCitationTarget, openDocument, t])
@@ -1484,7 +1550,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
           'Notes:',
           '- query text is NOT included; only hashes/aggregates are exported.',
           '- trace_bundle.json is produced by /api/v1/observability/rag-metrics/trace-bundle',
-        ].join('\n')
+        ].join('\n'),
       )
 
       const blob = await zip.generateAsync({ type: 'blob' })
@@ -1495,57 +1561,63 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
       a.download = filename
       a.click()
       URL.revokeObjectURL(url)
-      toast.success(t("panel.toasts.bundleDownloaded"))
+      toast.success(t('panel.toasts.bundleDownloaded'))
     } catch (err) {
-      const msg = formatApiError(err, t("panel.errors.bundleDownloadFailed"))
+      const msg = formatApiError(err, t('panel.errors.bundleDownloadFailed'))
       setBundleError(msg)
       toast.error(msg)
     } finally {
       bundleDownloadingRef.current = false
       setBundleDownloading(false)
     }
-	  }, [requestId, t])
+  }, [requestId, t])
 
-	  const runDiffForRequestId = React.useCallback(async (otherRequestId: string) => {
-	    const a = requestId
-	    const b = String(otherRequestId || '').trim()
-	    if (!a || !b) return
-	    if (a === b) {
-	      toast.error(t("panel.errors.diffSameRequest"))
-	      return
-	    }
+  const runDiffForRequestId = React.useCallback(
+    async (otherRequestId: string) => {
+      const a = requestId
+      const b = String(otherRequestId || '').trim()
+      if (!a || !b) return
+      if (a === b) {
+        toast.error(t('panel.errors.diffSameRequest'))
+        return
+      }
 
-	    setDiffLoading(true)
-	    setDiffError(null)
-	    try {
-	      const res = await observabilityApi.getRagTraceBundleDiff({ request_id_a: a, request_id_b: b })
-	      setDiffResult(res)
-	    } catch (err) {
-	      const msg = formatApiError(err, t("panel.errors.diffLoadFailed"))
-	      setDiffResult(null)
-	      setDiffError(msg)
-	      toast.error(msg)
-	    } finally {
-	      setDiffLoading(false)
-	    }
-	  }, [requestId, t])
+      setDiffLoading(true)
+      setDiffError(null)
+      try {
+        const res = await observabilityApi.getRagTraceBundleDiff({ request_id_a: a, request_id_b: b })
+        setDiffResult(res)
+      } catch (err) {
+        const msg = formatApiError(err, t('panel.errors.diffLoadFailed'))
+        setDiffResult(null)
+        setDiffError(msg)
+        toast.error(msg)
+      } finally {
+        setDiffLoading(false)
+      }
+    },
+    [requestId, t],
+  )
 
-	  const runDiff = React.useCallback(async () => {
-      const b = diffOtherRequestId.trim()
-      if (!b) return
-      await runDiffForRequestId(b)
-    }, [diffOtherRequestId, runDiffForRequestId])
+  const runDiff = React.useCallback(async () => {
+    const b = diffOtherRequestId.trim()
+    if (!b) return
+    await runDiffForRequestId(b)
+  }, [diffOtherRequestId, runDiffForRequestId])
 
-	  const selectDiffCandidate = React.useCallback((candidate: TraceDiffCandidateOption) => {
+  const selectDiffCandidate = React.useCallback(
+    (candidate: TraceDiffCandidateOption) => {
       setDiffOtherRequestId(candidate.requestId)
       detachPromise(runDiffForRequestId(candidate.requestId))
-    }, [runDiffForRequestId])
+    },
+    [runDiffForRequestId],
+  )
 
-	  React.useEffect(() => {
-	    // Clear diff results when switching the selected trace.
-	    setDiffResult(null)
-	    setDiffError(null)
-	  }, [requestId])
+  React.useEffect(() => {
+    // Clear diff results when switching the selected trace.
+    setDiffResult(null)
+    setDiffError(null)
+  }, [requestId])
   const tracesQuery = useQuery({
     queryKey: queryKeys.chat.ragTraces(conversationId, {
       limit: 40,
@@ -1561,7 +1633,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
   React.useEffect(() => {
     if (!tracesQuery.error) return
-    toast.error(formatApiError(tracesQuery.error, t("panel.errors.traceLoadFailed")))
+    toast.error(formatApiError(tracesQuery.error, t('panel.errors.traceLoadFailed')))
   }, [tracesQuery.error, t])
 
   React.useEffect(() => {
@@ -1591,12 +1663,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     return (
       <EmptyState
         className={className}
-        title={t("panel.states.notEnabledTitle")}
-        description={
-          <span>
-            {t("panel.states.notEnabledDescription")}
-          </span>
-        }
+        title={t('panel.states.notEnabledTitle')}
+        description={<span>{t('panel.states.notEnabledDescription')}</span>}
         icon={Route}
         iconClassName="text-info"
       />
@@ -1607,18 +1675,18 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
     return (
       <EmptyState
         className={className}
-        title={t("panel.states.emptyTitle")}
+        title={t('panel.states.emptyTitle')}
         description={
           <span className="space-y-1">
-            <span className="block">{t("panel.states.emptyHint")}</span>
-            <span className="block text-xs">{t("panel.states.emptyFollowup")}</span>
+            <span className="block">{t('panel.states.emptyHint')}</span>
+            <span className="block text-xs">{t('panel.states.emptyFollowup')}</span>
           </span>
         }
         icon={Quote}
         iconClassName="text-info"
       >
         <Button variant="outline" onClick={load} className="rounded-xl">
-          {t("panel.actions.refresh")}
+          {t('panel.actions.refresh')}
         </Button>
       </EmptyState>
     )
@@ -1629,20 +1697,24 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
       className={cn('grid grid-cols-1 gap-3 lg:grid-cols-[300px,minmax(0,1fr)]', className)}
       aria-label="RAG trace keyboard navigation"
     >
-      <Panel variant="glass" padding="none" className="overflow-hidden border-info/14 bg-[linear-gradient(180deg,hsl(var(--info)/0.05),hsl(var(--background)/0.7))]">
+      <Panel
+        variant="glass"
+        padding="none"
+        className="overflow-hidden border-info/14 bg-[linear-gradient(180deg,hsl(var(--info)/0.05),hsl(var(--background)/0.7))]"
+      >
         <div className="flex items-center justify-between gap-3 border-b border-border/60 px-3 py-2.5">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <Route className="h-4 w-4 text-info" />
-              <div className="text-sm font-semibold">{t("panel.header.title")}</div>
+              <div className="text-sm font-semibold">{t('panel.header.title')}</div>
               <Badge variant="soft" className="text-[11px]">
                 {items.length} 条
               </Badge>
             </div>
-            <div className="mt-1 truncate text-[11px] text-muted-foreground">{t("panel.header.keyboardHint")}</div>
+            <div className="mt-1 truncate text-[11px] text-muted-foreground">{t('panel.header.keyboardHint')}</div>
           </div>
           <Button variant="outline" size="sm" onClick={load} className="h-8 rounded-xl px-3">
-            {t("panel.actions.refresh")}
+            {t('panel.actions.refresh')}
           </Button>
         </div>
         <div className="max-h-[250px] overflow-y-auto p-2">
@@ -1657,9 +1729,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 className={cn(
                   'w-full rounded-xl border px-3 py-2 text-left transition-colors',
                   'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
-                  active
-                    ? 'border-info bg-info shadow-sm'
-                    : 'border-border/60 bg-background/65 hover:bg-muted/40'
+                  active ? 'border-info bg-info shadow-sm' : 'border-border/60 bg-background/65 hover:bg-muted/40',
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -1690,18 +1760,18 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="soft" className="max-w-[14rem] truncate text-[11px] font-mono" title={selected.request_id || ''}>
+                  <Badge
+                    variant="soft"
+                    className="max-w-[14rem] truncate text-[11px] font-mono"
+                    title={selected.request_id || ''}
+                  >
                     请求 {selected.request_id ? shortHash(selected.request_id, { head: 12, tail: 8 }) : '—'}
                   </Badge>
                   <Badge variant="soft" className="text-[11px]">
                     {formatTraceModeLabel(selected?.retrieval?.mode)}
                   </Badge>
                   {retrievalConfigHash ? (
-                    <Badge
-                      variant="soft"
-                      className="text-[11px] font-mono"
-                      title={retrievalConfigHash}
-                    >
+                    <Badge variant="soft" className="text-[11px] font-mono" title={retrievalConfigHash}>
                       cfg: {shortHash(retrievalConfigHash)}
                     </Badge>
                   ) : null}
@@ -1720,14 +1790,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     className="h-8 gap-1.5 rounded-xl px-3 text-xs"
                     disabled={!requestId || bundleDownloading}
                     onClick={() => detachPromise(downloadBundle())}
-                    title={t("panel.actions.downloadBundleTitle")}
+                    title={t('panel.actions.downloadBundleTitle')}
                   >
                     {bundleDownloading ? (
                       <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                     ) : (
                       <Download className="h-4 w-4" />
                     )}
-                    {t("panel.actions.downloadBundle")}
+                    {t('panel.actions.downloadBundle')}
                   </Button>
                   <Button
                     variant="outline"
@@ -1735,10 +1805,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     className="h-8 gap-1.5 rounded-xl px-3 text-xs"
                     disabled={!requestId}
                     onClick={() => setDiffOpen((v) => !v)}
-                    title={t("panel.actions.compareTitle")}
+                    title={t('panel.actions.compareTitle')}
                   >
                     <GitCompare className="h-4 w-4" />
-                    {t("panel.actions.compare")}
+                    {t('panel.actions.compare')}
                   </Button>
                 </div>
               </div>
@@ -1763,10 +1833,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         <div className="space-y-2">
                           <div>
                             <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-                              {t("panel.compareCandidates.title")}
+                              {t('panel.compareCandidates.title')}
                             </div>
                             <div className="mt-1 text-xs text-muted-foreground">
-                              {t("panel.compareCandidates.description")}
+                              {t('panel.compareCandidates.description')}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -1782,17 +1852,20 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                     'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
                                     active
                                       ? 'border-info bg-info'
-                                      : 'border-border/60 bg-background/80 hover:border-info hover:bg-muted/30'
+                                      : 'border-border/60 bg-background/80 hover:border-info hover:bg-muted/30',
                                   )}
                                 >
                                   <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-                                    <span className="font-mono">{shortHash(candidate.requestId, { head: 10, tail: 6 })}</span>
+                                    <span className="font-mono">
+                                      {shortHash(candidate.requestId, { head: 10, tail: 6 })}
+                                    </span>
                                     <Badge variant="soft" className="text-[11px]">
                                       {getTraceConfigMatchLabel(candidate.sameRetrievalConfig)}
                                     </Badge>
                                   </div>
                                   <div className="mt-1 text-[11px] text-muted-foreground">
-                                    {candidate.mode || '—'} · citations={candidate.citationsCount} · {formatTs(candidate.tsMs)}
+                                    {candidate.mode || '—'} · citations={candidate.citationsCount} ·{' '}
+                                    {formatTs(candidate.tsMs)}
                                   </div>
                                 </button>
                               )
@@ -1804,11 +1877,11 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
                         <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2">
                           <div className="space-y-1">
-                            <div className="text-[11px] text-muted-foreground">{t("panel.compare.requestIdA")}</div>
+                            <div className="text-[11px] text-muted-foreground">{t('panel.compare.requestIdA')}</div>
                             <Input value={requestId} readOnly className="font-mono text-xs" />
                           </div>
                           <div className="space-y-1">
-                            <div className="text-[11px] text-muted-foreground">{t("panel.compare.requestIdB")}</div>
+                            <div className="text-[11px] text-muted-foreground">{t('panel.compare.requestIdB')}</div>
                             <Input
                               value={diffOtherRequestId}
                               onChange={(e) => {
@@ -1816,7 +1889,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 setDiffResult(null)
                                 setDiffError(null)
                               }}
-                              placeholder={t("panel.compare.requestIdBPlaceholder")}
+                              placeholder={t('panel.compare.requestIdBPlaceholder')}
                               className="font-mono text-xs"
                             />
                           </div>
@@ -1833,7 +1906,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           ) : (
                             <GitCompare className="h-4 w-4" />
                           )}
-                          {t("panel.compare.action")}
+                          {t('panel.compare.action')}
                         </Button>
                       </div>
 
@@ -1848,10 +1921,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-                                {t("panel.evidenceDrift.title")}
+                                {t('panel.evidenceDrift.title')}
                               </div>
                               <div className="mt-1 text-xs text-muted-foreground">
-                                {t("panel.evidenceDrift.description")}
+                                {t('panel.evidenceDrift.description')}
                               </div>
                             </div>
                             <Badge variant="soft" className="text-[11px]">
@@ -1862,42 +1935,50 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                             <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft">
                               <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-                                {t("panel.evidenceDrift.sharedTitle")}
+                                {t('panel.evidenceDrift.sharedTitle')}
                               </div>
-                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.sharedCount}</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">
+                                {localCitationDiff.sharedCount}
+                              </div>
                             </div>
                             <div className="rounded-xl border border-success/20 bg-success/5 px-3 py-3">
                               <div className="text-[11px] font-semibold uppercase text-success">
-                                {t("panel.evidenceDrift.addedSummaryTitle")}
+                                {t('panel.evidenceDrift.addedSummaryTitle')}
                               </div>
-                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.addedCount}</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">
+                                {localCitationDiff.addedCount}
+                              </div>
                             </div>
                             <div className="rounded-xl border border-warning/20 bg-warning/5 px-3 py-3">
                               <div className="text-[11px] font-semibold uppercase text-warning">
-                                {t("panel.evidenceDrift.removedSummaryTitle")}
+                                {t('panel.evidenceDrift.removedSummaryTitle')}
                               </div>
-                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.removedCount}</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">
+                                {localCitationDiff.removedCount}
+                              </div>
                             </div>
                             <div className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-3 shadow-soft">
                               <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-                                {t("panel.evidenceDrift.scoreShiftSummaryTitle")}
+                                {t('panel.evidenceDrift.scoreShiftSummaryTitle')}
                               </div>
-                              <div className="mt-1 text-lg font-semibold text-foreground">{localCitationDiff.scoreShiftCount}</div>
+                              <div className="mt-1 text-lg font-semibold text-foreground">
+                                {localCitationDiff.scoreShiftCount}
+                              </div>
                             </div>
                           </div>
 
                           <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
                             <TraceCitationDiffList
-                              title={t("panel.evidenceDrift.addedTitle")}
-                              emptyLabel={t("panel.evidenceDrift.addedEmpty")}
+                              title={t('panel.evidenceDrift.addedTitle')}
+                              emptyLabel={t('panel.evidenceDrift.addedEmpty')}
                               items={localCitationDiff.added}
                               tone="added"
                               onPrefetchCitation={prefetchTraceCitationTarget}
                               onOpenCitation={openTraceCitation}
                             />
                             <TraceCitationDiffList
-                              title={t("panel.evidenceDrift.removedTitle")}
-                              emptyLabel={t("panel.evidenceDrift.removedEmpty")}
+                              title={t('panel.evidenceDrift.removedTitle')}
+                              emptyLabel={t('panel.evidenceDrift.removedEmpty')}
                               items={localCitationDiff.removed}
                               tone="removed"
                               onPrefetchCitation={prefetchTraceCitationTarget}
@@ -1914,7 +1995,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       ) : null}
                       {!localCitationDiff && diffOtherRequestId.trim() ? (
                         <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-3 py-3 text-xs text-muted-foreground">
-                          {t("panel.evidenceDrift.missingLocalSummary")}
+                          {t('panel.evidenceDrift.missingLocalSummary')}
                         </div>
                       ) : null}
 
@@ -1922,27 +2003,35 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         <div className="space-y-3">
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="rounded-xl border border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
-                              <div className="text-[11px] text-muted-foreground">{t("panel.compare.summaryA")}</div>
+                              <div className="text-[11px] text-muted-foreground">{t('panel.compare.summaryA')}</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 mode={diffResult.summary_a?.retrieval_mode || '—'} · cfg=
-                                {diffResult.summary_a?.retrieval_config_hash ? shortHash(diffResult.summary_a.retrieval_config_hash) : '—'} · citations=
+                                {diffResult.summary_a?.retrieval_config_hash
+                                  ? shortHash(diffResult.summary_a.retrieval_config_hash)
+                                  : '—'}{' '}
+                                · citations=
                                 {diffResult.summary_a?.citations_count ?? '—'}
                               </div>
                             </div>
                             <div className="rounded-xl border border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
-                              <div className="text-[11px] text-muted-foreground">{t("panel.compare.summaryB")}</div>
+                              <div className="text-[11px] text-muted-foreground">{t('panel.compare.summaryB')}</div>
                               <div className="mt-1 text-xs text-muted-foreground">
                                 mode={diffResult.summary_b?.retrieval_mode || '—'} · cfg=
-                                {diffResult.summary_b?.retrieval_config_hash ? shortHash(diffResult.summary_b.retrieval_config_hash) : '—'} · citations=
+                                {diffResult.summary_b?.retrieval_config_hash
+                                  ? shortHash(diffResult.summary_b.retrieval_config_hash)
+                                  : '—'}{' '}
+                                · citations=
                                 {diffResult.summary_b?.citations_count ?? '—'}
                               </div>
                             </div>
                           </div>
 
                           <div className="text-[11px] text-muted-foreground">
-                            {t("panel.compare.changesMeta", {
+                            {t('panel.compare.changesMeta', {
                               changes: diffResult.diff?.length ?? 0,
-                              truncated: diffResult.truncated ? t("panel.compare.truncatedYes") : t("panel.compare.truncatedNo"),
+                              truncated: diffResult.truncated
+                                ? t('panel.compare.truncatedYes')
+                                : t('panel.compare.truncatedNo'),
                             })}
                           </div>
                           <div className="space-y-2">
@@ -1956,7 +2045,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 <div className="text-xs text-muted-foreground break-words">
                                   {formatDiffValue(it.b)}
                                   {it.delta != null && Number.isFinite(Number(it.delta)) ? (
-                                    <span className="ml-2 font-mono text-[11px] text-foreground/80">Δ {String(it.delta)}</span>
+                                    <span className="ml-2 font-mono text-[11px] text-foreground/80">
+                                      Δ {String(it.delta)}
+                                    </span>
                                   ) : null}
                                 </div>
                               </div>
@@ -1973,14 +2064,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
                   <Timer className="h-4 w-4 text-info" />
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.retrieve")}</div>
+                    <div className="text-xs font-semibold text-foreground">{t('panel.pipelineSummary.retrieve')}</div>
                     <div className="text-xs text-muted-foreground">{formatSec(selected?.retrieval?.elapsed_sec)}</div>
                   </div>
                 </Panel>
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
                   <Database className="h-4 w-4 text-info" />
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.reranker")}</div>
+                    <div className="text-xs font-semibold text-foreground">{t('panel.pipelineSummary.reranker')}</div>
                     <div className="truncate text-xs text-muted-foreground">
                       {selected?.rerank?.enabled ? selected?.rerank?.provider || '已启用' : '未启用'}
                     </div>
@@ -1989,7 +2080,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 <Panel variant="muted" className="flex items-center gap-2 px-3 py-2">
                   <Quote className="h-4 w-4 text-info" />
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-foreground">{t("panel.pipelineSummary.citations")}</div>
+                    <div className="text-xs font-semibold text-foreground">{t('panel.pipelineSummary.citations')}</div>
                     <div className="text-xs text-muted-foreground">{selected.citations_count}</div>
                   </div>
                 </Panel>
@@ -1999,9 +2090,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                 <div className="space-y-2 rounded-2xl border border-info bg-info/[0.035] p-3 shadow-soft">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <div className="text-xs font-semibold text-foreground">{t("panel.evidencePreview.title")}</div>
+                      <div className="text-xs font-semibold text-foreground">{t('panel.evidencePreview.title')}</div>
                       <div className="mt-1 text-[11px] text-muted-foreground">
-                        {t("panel.evidencePreview.description", {
+                        {t('panel.evidencePreview.description', {
                           count: Math.min(TRACE_EVIDENCE_PREVIEW_LIMIT, evidencePreviewCitations.length),
                         })}
                       </div>
@@ -2009,7 +2100,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     {evidencePreviewQuery.isFetching ? (
                       <Badge variant="soft" className="gap-1 text-[11px]">
                         <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
-                        {t("panel.evidencePreview.loading")}
+                        {t('panel.evidencePreview.loading')}
                       </Badge>
                     ) : null}
                   </div>
@@ -2022,7 +2113,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       const previewChunk = evidencePreviewQuery.data?.[index] ?? null
                       const content = String(previewChunk?.content || '').trim()
                       const interpretation = getTraceEvidenceInterpretation(citation, t)
-                      const previewText = compactEvidenceText(content || t("panel.evidencePreview.missingContent"))
+                      const previewText = compactEvidenceText(content || t('panel.evidencePreview.missingContent'))
                       return (
                         <div
                           key={`evidence-preview:${documentId}:${chunkId || index}`}
@@ -2030,24 +2121,35 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         >
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <Badge variant="soft" className="text-[11px]">{interpretation.label}</Badge>
-                              {score == null ? null : <Badge variant="soft" className="text-[11px]">{t("panel.evidencePreview.score")}={score.toFixed(3)}</Badge>}
-                              {previewChunk ? <Badge variant="soft" className="text-[11px]">{t("panel.evidencePreview.loaded")}</Badge> : null}
+                              <Badge variant="soft" className="text-[11px]">
+                                {interpretation.label}
+                              </Badge>
+                              {score == null ? null : (
+                                <Badge variant="soft" className="text-[11px]">
+                                  {t('panel.evidencePreview.score')}={score.toFixed(3)}
+                                </Badge>
+                              )}
+                              {previewChunk ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  {t('panel.evidencePreview.loaded')}
+                                </Badge>
+                              ) : null}
                             </div>
                             <div className="mt-1.5 truncate text-sm font-semibold text-foreground" title={label}>
                               {label}
                             </div>
                             <div className="mt-1 break-all text-[11px] leading-4 text-muted-foreground">
-                              {t("panel.evidencePreview.document")} {shortHash(documentId, { head: 10, tail: 6 }) || '—'}
-                              {chunkId ? ` · ${t("panel.evidencePreview.chunk")} ${shortHash(chunkId, { head: 10, tail: 6 })}` : ''}
+                              {t('panel.evidencePreview.document')}{' '}
+                              {shortHash(documentId, { head: 10, tail: 6 }) || '—'}
+                              {chunkId
+                                ? ` · ${t('panel.evidencePreview.chunk')} ${shortHash(chunkId, { head: 10, tail: 6 })}`
+                                : ''}
                             </div>
                             <div className="mt-2 rounded-lg bg-muted/35 px-2 py-1.5 text-xs leading-5 text-foreground/85">
-                              <span className="font-semibold">{t("panel.evidencePreview.takeaway")}：</span>
+                              <span className="font-semibold">{t('panel.evidencePreview.takeaway')}：</span>
                               {interpretation.reason}
                             </div>
-                            <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">
-                              {previewText}
-                            </p>
+                            <p className="mt-1.5 text-[11px] leading-4 text-muted-foreground">{previewText}</p>
                           </div>
                           <Button
                             variant="outline"
@@ -2059,7 +2161,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             onClick={() => openTraceCitation(citation, { label, notify: true })}
                           >
                             <ExternalLink className="h-4 w-4" />
-                            <span className="ml-1">{t("panel.evidencePreview.open")}</span>
+                            <span className="ml-1">{t('panel.evidencePreview.open')}</span>
                           </Button>
                         </div>
                       )
@@ -2072,8 +2174,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                 <div>
-                  <div className="text-sm font-semibold">{t("panel.timeline.title")}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">{t("panel.timeline.description")}</div>
+                  <div className="text-sm font-semibold">{t('panel.timeline.title')}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">{t('panel.timeline.description')}</div>
                 </div>
                 {selectedPipelineSection && selectedPipelineSectionIndex >= 0 ? (
                   <Badge variant="soft" className="text-[11px]">
@@ -2090,7 +2192,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     steps={pipelineSteps}
                     selectedKey={selectedPipelineSection?.id ?? selectedPipelineSectionId}
                     onSelectStep={(key) => setSelectedPipelineSectionId(normalizePipelineSectionId(key))}
-                    emptyLabel={t("panel.timeline.unavailable")}
+                    emptyLabel={t('panel.timeline.unavailable')}
                   />
                 </section>
                 <div className="border-t border-border/60 bg-muted/10 lg:border-l lg:border-t-0">
@@ -2106,7 +2208,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       >
                         <div>
                           <div className="text-sm font-semibold text-foreground">{selectedPipelineSection.label}</div>
-                          <p className="mt-1 text-xs leading-5 text-muted-foreground">{selectedPipelineSection.summary}</p>
+                          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                            {selectedPipelineSection.summary}
+                          </p>
                         </div>
 
                         {selectedPipelineSection.callout ? (
@@ -2122,21 +2226,23 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                 key={`${selectedPipelineSection.id}:${metric.label}`}
                                 className="rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-2 shadow-soft"
                               >
-                                <div className="text-[11px] font-semibold uppercase text-muted-foreground">{metric.label}</div>
+                                <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                                  {metric.label}
+                                </div>
                                 <div className="mt-1 text-sm font-semibold text-foreground">{metric.value}</div>
                               </div>
                             ))}
                           </div>
                         ) : (
                           <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-3 py-2 text-xs text-muted-foreground">
-                            {t("panel.timeline.metricsUnavailable")}
+                            {t('panel.timeline.metricsUnavailable')}
                           </div>
                         )}
 
                         {selectedPipelineSection.citations.length ? (
                           <div className="space-y-2">
                             <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-                              {t("panel.timeline.quickEvidence")}
+                              {t('panel.timeline.quickEvidence')}
                             </div>
                             {selectedPipelineSection.citations.slice(0, 3).map((citation, index) => {
                               const documentId = String(citation.document_id || '').trim()
@@ -2160,7 +2266,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                     <div className="truncate text-sm font-medium text-foreground">{label}</div>
                                     <div className="mt-1 text-[11px] text-muted-foreground">
                                       {pageLabel ? `${pageLabel} · ` : ''}
-                                      {chunkId ? `chunk=${chunkId}` : t("panel.timeline.documentLevelEvidence")}
+                                      {chunkId ? `chunk=${chunkId}` : t('panel.timeline.documentLevelEvidence')}
                                     </div>
                                   </div>
                                   <ExternalLink className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -2171,7 +2277,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         ) : null}
                       </motion.div>
                     ) : (
-                      <div className="p-4 text-xs text-muted-foreground">{t("panel.timeline.unavailable")}</div>
+                      <div className="p-4 text-xs text-muted-foreground">{t('panel.timeline.unavailable')}</div>
                     )}
                   </AnimatePresence>
                 </div>
@@ -2180,7 +2286,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
 
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="px-4 py-3 border-b border-border/60">
-                <div className="text-sm font-semibold">{t("panel.channels.title")}</div>
+                <div className="text-sm font-semibold">{t('panel.channels.title')}</div>
               </div>
               <div className="p-4 space-y-3">
                 {channels ? (
@@ -2188,8 +2294,12 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     <div className="rounded-2xl border border-sidebar-border/70 bg-sidebar/60 p-3 shadow-soft">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
-                          <div className="text-[11px] font-semibold uppercase text-muted-foreground">{t("panel.channels.focusTitle")}</div>
-                          <div className="mt-1 text-xs text-muted-foreground">{t("panel.channels.focusDescription")}</div>
+                          <div className="text-[11px] font-semibold uppercase text-muted-foreground">
+                            {t('panel.channels.focusTitle')}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {t('panel.channels.focusDescription')}
+                          </div>
                         </div>
                         {activeChannelSummary ? (
                           <Badge variant="soft" className="text-[11px]">
@@ -2211,12 +2321,14 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
                               summary.active
                                 ? 'border-info/25 bg-info/10 text-info'
-                                : 'border-border/60 bg-background/80 text-muted-foreground hover:border-info hover:text-foreground'
+                                : 'border-border/60 bg-background/80 text-muted-foreground hover:border-info hover:text-foreground',
                             )}
                           >
                             <span className="font-semibold">{summary.label}</span>
                             <span className="ml-2 font-mono">{summary.matchCount}</span>
-                            {summary.candidateCount == null ? null : <span className="ml-2 text-[11px]">cand {summary.candidateCount}</span>}
+                            {summary.candidateCount == null ? null : (
+                              <span className="ml-2 text-[11px]">cand {summary.candidateCount}</span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -2224,7 +2336,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       {activeChannelSummary ? (
                         <div className="mt-3 text-xs text-muted-foreground">
                           {activeChannelSummary.summary}
-                          {activeChannelSummary.maxScore == null ? null : ` · top=${activeChannelSummary.maxScore.toFixed(3)}`}
+                          {activeChannelSummary.maxScore == null
+                            ? null
+                            : ` · top=${activeChannelSummary.maxScore.toFixed(3)}`}
                         </div>
                       ) : null}
                     </div>
@@ -2317,7 +2431,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                       </div>
                     ) : null}
 
-                    {(rerankSkipReason || rerankError) ? (
+                    {rerankSkipReason || rerankError ? (
                       <div className="flex flex-wrap items-center gap-2">
                         {rerankSkipReason ? (
                           <Badge variant="soft" className="text-[11px]">
@@ -2337,21 +2451,36 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="space-y-1">
                             <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-                              {t("panel.fusionSimulator.title")}
+                              {t('panel.fusionSimulator.title')}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {t("panel.fusionSimulator.description")}
+                              {t('panel.fusionSimulator.description')}
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('balanced')}>
-                              {t("panel.fusionSimulator.presetBalanced")}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl"
+                              onClick={() => applyCitationSimulationPreset('balanced')}
+                            >
+                              {t('panel.fusionSimulator.presetBalanced')}
                             </Button>
-                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('vector')}>
-                              {t("panel.fusionSimulator.presetVector")}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl"
+                              onClick={() => applyCitationSimulationPreset('vector')}
+                            >
+                              {t('panel.fusionSimulator.presetVector')}
                             </Button>
-                            <Button variant="outline" size="sm" className="rounded-xl" onClick={() => applyCitationSimulationPreset('lexical')}>
-                              {t("panel.fusionSimulator.presetLexical")}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-xl"
+                              onClick={() => applyCitationSimulationPreset('lexical')}
+                            >
+                              {t('panel.fusionSimulator.presetLexical')}
                             </Button>
                           </div>
                         </div>
@@ -2366,7 +2495,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <span className="text-xs font-semibold text-foreground">{channel.label}</span>
-                                  <span className="text-[11px] font-mono text-muted-foreground">{Math.round(value * 100)}%</span>
+                                  <span className="text-[11px] font-mono text-muted-foreground">
+                                    {Math.round(value * 100)}%
+                                  </span>
                                 </div>
                                 <input
                                   aria-label={channel.label}
@@ -2392,10 +2523,10 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                         <div className="space-y-2">
                           <div className="flex items-center justify-between gap-3">
                             <div className="text-[11px] font-semibold uppercase text-muted-foreground">
-                              {t("panel.fusionSimulator.simulatedTitle")}
+                              {t('panel.fusionSimulator.simulatedTitle')}
                             </div>
                             <div className="text-[11px] text-muted-foreground">
-                              {t("panel.fusionSimulator.simulatedDescription")}
+                              {t('panel.fusionSimulator.simulatedDescription')}
                             </div>
                           </div>
                           <div className="space-y-2">
@@ -2428,7 +2559,8 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                                     </div>
                                     <div className="text-sm font-medium text-foreground break-all">{label}</div>
                                     <div className="text-[11px] text-muted-foreground break-all">
-                                      {chunkId ? `chunk=${chunkId}` : 'document-level evidence'} · base rank #{row.baseRank}
+                                      {chunkId ? `chunk=${chunkId}` : 'document-level evidence'} · base rank #
+                                      {row.baseRank}
                                     </div>
                                   </div>
                                   <Button
@@ -2451,7 +2583,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     ) : null}
 
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                      {(['vector', 'colbert_ann', 'bm25', 'lexical_db', 'sparse']).map((k) => {
+                      {['vector', 'colbert_ann', 'bm25', 'lexical_db', 'sparse'].map((k) => {
                         const box = jsonObjectField(channels, k)
                         if (!box) return null
                         const summary = channelSummaries.find((item) => item.key === k)
@@ -2461,7 +2593,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             variant="muted"
                             className={cn(
                               'flex items-center justify-between gap-3',
-                              summary?.active ? 'border-info bg-info' : undefined
+                              summary?.active ? 'border-info bg-info' : undefined,
                             )}
                           >
                             <div className="min-w-0">
@@ -2469,7 +2601,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                               <div className="mt-0.5 text-[11px] text-muted-foreground">
                                 {box.enabled == null ? null : `enabled=${safeDisplayString(box.enabled)}`}
                                 {box.used == null ? null : ` · used=${safeDisplayString(box.used)}`}
-                                {box.filter_applied == null ? null : ` · filter=${safeDisplayString(box.filter_applied)}`}
+                                {box.filter_applied == null
+                                  ? null
+                                  : ` · filter=${safeDisplayString(box.filter_applied)}`}
                                 {box.index_enabled == null ? null : ` · index=${safeDisplayString(box.index_enabled)}`}
                                 {box.provider ? ` · provider=${safeDisplayString(box.provider)}` : null}
                                 {box.skipped_reason ? ` · skipped=${safeDisplayString(box.skipped_reason)}` : null}
@@ -2477,7 +2611,9 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                             </div>
                             <div className="shrink-0 text-xs font-medium text-muted-foreground">
                               {box.candidates == null ? '—' : safeDisplayString(box.candidates, '—')}
-                              {summary ? <span className="ml-2 text-[11px] text-foreground/70">hits {summary.matchCount}</span> : null}
+                              {summary ? (
+                                <span className="ml-2 text-[11px] text-foreground/70">hits {summary.matchCount}</span>
+                              ) : null}
                             </div>
                           </Panel>
                         )
@@ -2485,7 +2621,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                     </div>
                   </>
                 ) : (
-                  <div className="text-xs text-muted-foreground">{t("panel.channels.unavailable")}</div>
+                  <div className="text-xs text-muted-foreground">{t('panel.channels.unavailable')}</div>
                 )}
               </div>
             </Panel>
@@ -2493,7 +2629,7 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
             <Panel variant="glass" className="overflow-hidden" padding="none">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
                 <div>
-                  <div className="text-sm font-semibold">{t("panel.topCitations.title")}</div>
+                  <div className="text-sm font-semibold">{t('panel.topCitations.title')}</div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     {activeChannelSummary
                       ? `${activeChannelSummary.label} · ${activeChannelSummary.matchCount}/${selected.citations.length} hits`
@@ -2504,150 +2640,151 @@ export function RagTracePanel({ conversationId, className }: Readonly<RagTracePa
                   <Badge variant="soft" className="text-[11px]">
                     focus={getRagTraceCitationChannelLabel(selectedCitationChannel, t)}
                   </Badge>
-                   {lastOpenedTraceCitationTarget ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-xl"
-                        onClick={reopenLastTraceCitation}
-                        title={t("panel.topCitations.reopenRecentTitle")}
-                      >
-                        {t("panel.topCitations.reopenRecent")}
-                      </Button>
-                   ) : null}
+                  {lastOpenedTraceCitationTarget ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl"
+                      onClick={reopenLastTraceCitation}
+                      title={t('panel.topCitations.reopenRecentTitle')}
+                    >
+                      {t('panel.topCitations.reopenRecent')}
+                    </Button>
+                  ) : null}
                 </div>
               </div>
               <ScrollArea className="h-[360px]">
                 <div className="p-2">
-                  {filteredCitations.length ? filteredCitations.map((c, idx) => {
-                    const score = getPrimaryScore(c)
-                    const docId = c.document_id || ''
-                    const chunkId = c.chunk_id || ''
-                    const page = c.page_number == null ? null : `p.${c.page_number}`
-                    const rerankScore = formatScore(c.rerank_score, 3)
-                    const retrievalScore = formatScore(c.retrieval_score, 3)
-                    const relScore = formatScore(c.relevance_score, 3)
-                    const vectorScore = isNonZero(c.vector_score) ? formatScore(c.vector_score, 3) : null
-                    const bm25Score = isNonZero(c.bm25_score) ? formatScore(c.bm25_score, 3) : null
-                    const lexicalScore = isNonZero(c.lexical_score) ? formatScore(c.lexical_score, 3) : null
-                    const sparseScore = isNonZero(c.sparse_score) ? formatScore(c.sparse_score, 3) : null
-                    const colbertScore = isNonZero(c.colbert_score) ? formatScore(c.colbert_score, 3) : null
-                    const role = c.retrieval_role ? String(c.retrieval_role) : null
-                    const neighborOf = c.neighbor_of ? String(c.neighbor_of) : null
-                    const label = getTraceCitationLabel(c, docId || `citation-${idx + 1}`)
-                    const focusedChannelScore =
-                      selectedCitationChannel === 'all'
-                        ? null
-                        : getRagTraceCitationChannelScore(c, selectedCitationChannel)
-                    return (
-                      <div
-                        key={`${docId}:${chunkId}:${role || ''}:${neighborOf || ''}`}
-                        className="flex items-start justify-between gap-3 rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-2 text-left transition-colors shadow-soft hover:bg-sidebar/70"
-                      >
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="soft" className="text-[11px]">
-                              {c.hit_type || 'hit'}
-                            </Badge>
-                            {role ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                role={role}
-                              </Badge>
-                            ) : null}
-                            {neighborOf ? (
-                              <Badge variant="soft" className="text-[11px]" title={neighborOf}>
-                                neighbor_of={shortHash(neighborOf, { head: 10, tail: 6 })}
-                              </Badge>
-                            ) : null}
-                            {score == null ? null : (
-                              <Badge variant="soft" className="text-[11px]">
-                                score={score.toFixed(3)}
-                              </Badge>
-                            )}
-                            {focusedChannelScore != null && selectedCitationChannel !== 'all' ? (
-                              <Badge variant="soft" className="text-[11px] border-info bg-info">
-                                {getRagTraceCitationChannelLabel(selectedCitationChannel, t)}={focusedChannelScore.toFixed(3)}
-                              </Badge>
-                            ) : null}
-                            {rerankScore ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                rerank={rerankScore}
-                              </Badge>
-                            ) : null}
-                            {retrievalScore ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                retrieval={retrievalScore}
-                              </Badge>
-                            ) : null}
-                            {relScore ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                rel={relScore}
-                              </Badge>
-                            ) : null}
-                            {vectorScore ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                v={vectorScore}
-                              </Badge>
-                            ) : null}
-                            {bm25Score ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                bm25={bm25Score}
-                              </Badge>
-                            ) : null}
-                            {lexicalScore ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                lex={lexicalScore}
-                              </Badge>
-                            ) : null}
-                            {sparseScore ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                sparse={sparseScore}
-                              </Badge>
-                            ) : null}
-                            {colbertScore ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                colbert={colbertScore}
-                              </Badge>
-                            ) : null}
-                            {page ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                {page}
-                              </Badge>
-                            ) : null}
-                            {c.has_image ? (
-                              <Badge variant="soft" className="text-[11px]">
-                                image
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <div className="mt-1 text-[11px] text-muted-foreground break-all">
-                            doc {docId || '—'}
-                          </div>
-                          <div className="text-[11px] text-muted-foreground break-all">
-                            chunk {chunkId || '—'}
-                          </div>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-xl"
-                          disabled={!docId}
-                          onMouseEnter={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
-                          onFocus={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
-                          onClick={() => {
-                            openTraceCitation(c, { label, notify: true })
-                          }}
+                  {filteredCitations.length ? (
+                    filteredCitations.map((c, idx) => {
+                      const score = getPrimaryScore(c)
+                      const docId = c.document_id || ''
+                      const chunkId = c.chunk_id || ''
+                      const page = c.page_number == null ? null : `p.${c.page_number}`
+                      const rerankScore = formatScore(c.rerank_score, 3)
+                      const retrievalScore = formatScore(c.retrieval_score, 3)
+                      const relScore = formatScore(c.relevance_score, 3)
+                      const vectorScore = isNonZero(c.vector_score) ? formatScore(c.vector_score, 3) : null
+                      const bm25Score = isNonZero(c.bm25_score) ? formatScore(c.bm25_score, 3) : null
+                      const lexicalScore = isNonZero(c.lexical_score) ? formatScore(c.lexical_score, 3) : null
+                      const sparseScore = isNonZero(c.sparse_score) ? formatScore(c.sparse_score, 3) : null
+                      const colbertScore = isNonZero(c.colbert_score) ? formatScore(c.colbert_score, 3) : null
+                      const role = c.retrieval_role ? String(c.retrieval_role) : null
+                      const neighborOf = c.neighbor_of ? String(c.neighbor_of) : null
+                      const label = getTraceCitationLabel(c, docId || `citation-${idx + 1}`)
+                      const focusedChannelScore =
+                        selectedCitationChannel === 'all'
+                          ? null
+                          : getRagTraceCitationChannelScore(c, selectedCitationChannel)
+                      return (
+                        <div
+                          key={`${docId}:${chunkId}:${role || ''}:${neighborOf || ''}`}
+                          className="flex items-start justify-between gap-3 rounded-xl border border-sidebar-border/70 bg-sidebar/55 px-3 py-2 text-left transition-colors shadow-soft hover:bg-sidebar/70"
                         >
-                          <ExternalLink className="h-4 w-4" />
-                          <span className="ml-1 hidden sm:inline">{t("panel.topCitations.open")}</span>
-                        </Button>
-                      </div>
-                    )
-                  }) : (
-                     <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-6 text-sm text-muted-foreground">
-                       {t("panel.topCitations.empty")} <span className="font-mono">{getRagTraceCitationChannelLabel('all', t)}</span> {t("panel.topCitations.emptySuffix")}
-                     </div>
-                   )}
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="soft" className="text-[11px]">
+                                {c.hit_type || 'hit'}
+                              </Badge>
+                              {role ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  role={role}
+                                </Badge>
+                              ) : null}
+                              {neighborOf ? (
+                                <Badge variant="soft" className="text-[11px]" title={neighborOf}>
+                                  neighbor_of={shortHash(neighborOf, { head: 10, tail: 6 })}
+                                </Badge>
+                              ) : null}
+                              {score == null ? null : (
+                                <Badge variant="soft" className="text-[11px]">
+                                  score={score.toFixed(3)}
+                                </Badge>
+                              )}
+                              {focusedChannelScore != null && selectedCitationChannel !== 'all' ? (
+                                <Badge variant="soft" className="text-[11px] border-info bg-info">
+                                  {getRagTraceCitationChannelLabel(selectedCitationChannel, t)}=
+                                  {focusedChannelScore.toFixed(3)}
+                                </Badge>
+                              ) : null}
+                              {rerankScore ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  rerank={rerankScore}
+                                </Badge>
+                              ) : null}
+                              {retrievalScore ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  retrieval={retrievalScore}
+                                </Badge>
+                              ) : null}
+                              {relScore ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  rel={relScore}
+                                </Badge>
+                              ) : null}
+                              {vectorScore ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  v={vectorScore}
+                                </Badge>
+                              ) : null}
+                              {bm25Score ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  bm25={bm25Score}
+                                </Badge>
+                              ) : null}
+                              {lexicalScore ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  lex={lexicalScore}
+                                </Badge>
+                              ) : null}
+                              {sparseScore ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  sparse={sparseScore}
+                                </Badge>
+                              ) : null}
+                              {colbertScore ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  colbert={colbertScore}
+                                </Badge>
+                              ) : null}
+                              {page ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  {page}
+                                </Badge>
+                              ) : null}
+                              {c.has_image ? (
+                                <Badge variant="soft" className="text-[11px]">
+                                  image
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 text-[11px] text-muted-foreground break-all">doc {docId || '—'}</div>
+                            <div className="text-[11px] text-muted-foreground break-all">chunk {chunkId || '—'}</div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl"
+                            disabled={!docId}
+                            onMouseEnter={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
+                            onFocus={() => prefetchTraceCitationTarget(docId, chunkId || undefined)}
+                            onClick={() => {
+                              openTraceCitation(c, { label, notify: true })
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                            <span className="ml-1 hidden sm:inline">{t('panel.topCitations.open')}</span>
+                          </Button>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-sidebar-border/60 bg-sidebar/45 px-4 py-6 text-sm text-muted-foreground">
+                      {t('panel.topCitations.empty')}{' '}
+                      <span className="font-mono">{getRagTraceCitationChannelLabel('all', t)}</span>{' '}
+                      {t('panel.topCitations.emptySuffix')}
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
             </Panel>

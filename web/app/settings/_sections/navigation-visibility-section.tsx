@@ -4,11 +4,8 @@ import type { ComponentType } from 'react'
 import { GitCompare, Hash, LineChart, Network, ScrollText, SlidersHorizontal, Wand2, Braces } from '@/components/icons'
 
 import { SettingsSwitch } from '@/components/settings/settings-switch'
-import {
-  type AdminControlledNavigationModule,
-  normalizeNavigationModules,
-} from '@/lib/navigation-visibility'
-import type { NavigationConfig } from '@/lib/api'
+import { type AdminControlledNavigationModule, normalizeNavigationModules } from '@/lib/navigation-visibility'
+import type { NavigationConfig } from '@/types/settings'
 import styles from '../settings.module.css'
 
 type NavigationVisibilitySectionProps = {
@@ -120,10 +117,20 @@ export function NavigationVisibilitySection({
       <div key={item.key} className={styles.navigationRow}>
         <Icon className={styles.navigationIcon} />
         <div className={styles.navigationCopy}>
-          <label htmlFor={`navigation-${item.key}`} className={styles.navigationLabel}>{item.label}</label>
-          <p id={`navigation-${item.key}-description`} className={styles.navigationDescription}>{item.description}</p>
+          <label htmlFor={`navigation-${item.key}`} className={styles.navigationLabel}>
+            {item.label}
+          </label>
+          <p id={`navigation-${item.key}-description`} className={styles.navigationDescription}>
+            {item.description}
+          </p>
         </div>
-        <SettingsSwitch id={`navigation-${item.key}`} aria-label={`普通用户显示${item.label}`} aria-describedby={`navigation-${item.key}-description`} checked={visibleSet.has(item.key)} onCheckedChange={(next) => setModuleVisible(item.key, next)} />
+        <SettingsSwitch
+          id={`navigation-${item.key}`}
+          aria-label={`普通用户显示${item.label}`}
+          aria-describedby={`navigation-${item.key}-description`}
+          checked={visibleSet.has(item.key)}
+          onCheckedChange={(next) => setModuleVisible(item.key, next)}
+        />
       </div>
     )
   }
@@ -133,7 +140,9 @@ export function NavigationVisibilitySection({
       {MODULE_GROUPS.map((group, index) => (
         <section key={group.title} aria-labelledby={`navigation-group-${index}`} className={styles.navigationGroup}>
           <header className={styles.navigationGroupHeader}>
-            <h3 id={`navigation-group-${index}`} className={styles.navigationGroupTitle}>{group.title}</h3>
+            <h3 id={`navigation-group-${index}`} className={styles.navigationGroupTitle}>
+              {group.title}
+            </h3>
             <p className={styles.navigationDescription}>{group.description}</p>
           </header>
           <div className={styles.navigationItems}>{group.items.map(renderModule)}</div>

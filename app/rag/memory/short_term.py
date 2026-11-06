@@ -10,7 +10,6 @@ Features:
 - ShortTermMemoryManager: Unified short-term memory interface
 """
 
-
 from collections.abc import Callable
 from functools import wraps
 from typing import Any
@@ -35,9 +34,9 @@ MessageLike = BaseMessage | dict[str, Any]
 
 
 # Configuration defaults
-SHORT_TERM_MEMORY_MAX_TOKENS = getattr(settings, "SHORT_TERM_MEMORY_MAX_TOKENS", 4000)
-SUMMARIZATION_THRESHOLD = getattr(settings, "SUMMARIZATION_THRESHOLD", 10)
-CHAT_HISTORY_WINDOW = getattr(settings, "CHAT_HISTORY_WINDOW", 5)
+SHORT_TERM_MEMORY_MAX_TOKENS = settings.SHORT_TERM_MEMORY_MAX_TOKENS
+SUMMARIZATION_THRESHOLD = settings.SUMMARIZATION_THRESHOLD
+CHAT_HISTORY_WINDOW = settings.CHAT_HISTORY_WINDOW
 
 
 def _estimate_tokens(text: str) -> int:
@@ -51,7 +50,7 @@ def _estimate_tokens(text: str) -> int:
         return 0
 
     # Count CJK characters
-    cjk_count = sum(1 for c in text if '\u4e00' <= c <= '\u9fff')
+    cjk_count = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
     non_cjk_count = len(text) - cjk_count
 
     # CJK: ~2 chars/token, English: ~4 chars/token
@@ -236,7 +235,7 @@ async def summarize_messages(
     if llm is None:
         # Fallback: simple truncation-based summary
         logger.debug("No LLM provided for summarization, using truncation fallback")
-        truncated = full_conversation[:max_summary_tokens * 4]  # ~4 chars per token
+        truncated = full_conversation[: max_summary_tokens * 4]  # ~4 chars per token
         if len(full_conversation) > len(truncated):
             truncated += "..."
         return f"[Previous conversation summary]\n{truncated}"
@@ -250,11 +249,11 @@ async def summarize_messages(
 Summary (be concise, focus on key facts and decisions):"""
 
         response = await llm.ainvoke(summary_prompt)
-        summary = response.content if hasattr(response, 'content') else str(response)
+        summary = response.content if hasattr(response, "content") else str(response)
         return f"[Conversation summary]\n{summary}"
     except Exception as e:
         logger.warning("LLM summarization failed: %s", e)
-        return f"[Previous conversation]\n{full_conversation[:max_summary_tokens * 4]}..."
+        return f"[Previous conversation]\n{full_conversation[: max_summary_tokens * 4]}..."
 
 
 class ShortTermMemoryManager:
@@ -279,7 +278,7 @@ class ShortTermMemoryManager:
         include_system: bool = True,
         enable_summarization: bool = True,
         llm: Any | None = None,
-    ):
+    ) -> None:
         """
         Initialize the short-term memory manager.
 
@@ -331,9 +330,7 @@ class ShortTermMemoryManager:
                 # running (offloads to a worker thread) so sync callers get a
                 # real LLM summary instead of the degraded simple fallback.
                 try:
-                    summary = run_coroutine_sync(
-                        lambda: summarize_messages(old_messages, self.llm)
-                    )
+                    summary = run_coroutine_sync(lambda: summarize_messages(old_messages, self.llm))
                 except Exception:
                     summary = self._simple_summary(old_messages)
 
@@ -408,7 +405,7 @@ class ShortTermMemoryManager:
 
         return f"[Previous context: {len(messages)} messages]\n" + "\n".join(parts)
 
-    def clear_cache(self, session_id: str | None = None):
+    def clear_cache(self, session_id: str | None = None) -> None:
         """Clear summary cache."""
         if session_id:
             self._summary_cache.pop(session_id, None)
@@ -438,7 +435,7 @@ class SummarizationMiddleware:
         history_key: str = "history",
         messages_key: str = "messages",
         llm: Any | None = None,
-    ):
+    ) -> None:
         """
         Initialize the summarization middleware.
 
@@ -499,18 +496,20 @@ class SummarizationMiddleware:
         """
         Decorator to wrap a function with summarization middleware.
         """
+
         @wraps(func)
-        async def async_wrapper(state: dict[str, Any], *args, **kwargs):
+        async def async_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             state = await self.abefore_model(state)
             return await func(state, *args, **kwargs)
 
         @wraps(func)
-        def sync_wrapper(state: dict[str, Any], *args, **kwargs):
+        def sync_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> Any:
             state = self.before_model(state)
             return func(state, *args, **kwargs)
 
         # Check if function is async
         import asyncio
+
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper

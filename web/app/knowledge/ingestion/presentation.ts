@@ -11,11 +11,7 @@ import {
 
 import type { DatasetPrecheckFileOut, Document } from '@/types'
 
-import {
-  estimatePdfPageCountFromSignals,
-  getDocumentRuntimeStats,
-  stringifyForDisplay,
-} from './document-signals'
+import { estimatePdfPageCountFromSignals, getDocumentRuntimeStats, stringifyForDisplay } from './document-signals'
 import type { IngestionMode, SampleDisposition } from './types'
 
 export type SalesProcessingLane = {
@@ -62,14 +58,13 @@ export type BatchProfileFile = {
 
 export const SALES_PANEL_CLASS =
   'rounded-[1rem] border border-border/55 bg-background/92 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.12)]'
-export const SALES_PANEL_INSET_CLASS =
-  'rounded-[0.9rem] border border-border/50 bg-background/82'
+export const SALES_PANEL_INSET_CLASS = 'rounded-[0.9rem] border border-border/50 bg-background/82'
 export const SALES_SUMMARY_STRIP_CLASS =
   'overflow-hidden rounded-[1rem] border border-border/55 bg-background/72 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.1)]'
 
 export function resolveThroughputRowsSource(
   hasBackendRows: boolean,
-  documentRowsLength: number
+  documentRowsLength: number,
 ): 'backend' | 'documents' {
   if (hasBackendRows) return 'backend'
   if (documentRowsLength) return 'documents'
@@ -433,10 +428,7 @@ export function getHeaderAnimation({
   }
 }
 
-export function getHeaderBodyVisibilityClass(
-  mode: IngestionMode,
-  headerCollapsed: boolean
-): string {
+export function getHeaderBodyVisibilityClass(mode: IngestionMode, headerCollapsed: boolean): string {
   if (mode !== 'sales-audit') return 'mt-1.5 max-h-28 opacity-100'
   if (headerCollapsed) return 'mt-0 max-h-0 opacity-0'
   return 'mt-1.5 max-h-28 opacity-100'

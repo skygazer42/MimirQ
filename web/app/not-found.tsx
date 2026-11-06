@@ -10,7 +10,23 @@ export default function NotFound() {
 
   return (
     <FullScreenFrame showBackground={false} mainClassName="p-0">
-      <PageStatus title={t('notFound.title')} description={t('notFound.description')} icon={<Compass />} showBrand className="min-h-dvh" actions={<><Button asChild className={pageStatusActionClass}><Link href="/">{t('notFound.goHome')}</Link></Button><Button variant="outline" asChild className={pageStatusActionClass}><Link href="/knowledge">{t('notFound.goKnowledge')}</Link></Button></>} />
+      <PageStatus
+        title={t('notFound.title')}
+        description={t('notFound.description')}
+        icon={<Compass />}
+        showBrand
+        className="min-h-dvh"
+        actions={
+          <>
+            <Button asChild className={pageStatusActionClass}>
+              <Link href="/">{t('notFound.goHome')}</Link>
+            </Button>
+            <Button variant="outline" asChild className={pageStatusActionClass}>
+              <Link href="/knowledge">{t('notFound.goKnowledge')}</Link>
+            </Button>
+          </>
+        }
+      />
     </FullScreenFrame>
   )
 }

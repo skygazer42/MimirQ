@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 from types import SimpleNamespace

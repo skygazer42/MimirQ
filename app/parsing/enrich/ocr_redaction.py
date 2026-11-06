@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.preprocessing.pii_anonymizer import anonymize_pii
@@ -29,7 +28,7 @@ def redact_ocr_text(
     Returns:
       (redacted_text, pii_hits, secrets_hits)
     """
-    s = str(text or "")
+    s = text
     if not s:
         return s, {}, {}
 
@@ -47,4 +46,3 @@ def redact_ocr_text(
 
 
 __all__ = ["redact_ocr_text"]
-

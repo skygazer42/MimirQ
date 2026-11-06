@@ -107,9 +107,9 @@ class FilePreprocessResult:
                     "applied": bool(s.applied),
                     "changed": bool(s.changed),
                     "note": s.note,
-                    "bytes_before": int(getattr(s, "bytes_before", 0) or 0),
-                    "bytes_after": int(getattr(s, "bytes_after", 0) or 0),
-                    "elapsed_ms": int(getattr(s, "elapsed_ms", 0) or 0),
+                    "bytes_before": int(s.bytes_before or 0),
+                    "bytes_after": int(s.bytes_after or 0),
+                    "elapsed_ms": int(s.elapsed_ms or 0),
                 }
                 for s in (self.steps or [])
             ],
@@ -406,7 +406,7 @@ def _utf8_byte_len(text: str) -> int:
     try:
         return len(text.encode("utf-8", errors="replace"))
     except Exception:
-        return int(len(text or ""))
+        return len(text or "")
 
 
 def _apply_preprocess_steps(
@@ -423,7 +423,7 @@ def _apply_preprocess_steps(
     for step in steps:
         step_t0 = time.perf_counter()
         sid = str((step or {}).get("id") or "").strip().lower()
-        bytes_before = int(current_bytes)
+        bytes_before = current_bytes
         text, applied, changed, note = _apply_preprocess_step(
             text=text,
             sid=sid,
@@ -434,7 +434,7 @@ def _apply_preprocess_steps(
         if changed:
             changed_any = True
             current_bytes = _utf8_byte_len(text)
-        bytes_after = int(current_bytes)
+        bytes_after = current_bytes
         elapsed_ms = max(0, int(round((time.perf_counter() - step_t0) * 1000)))
         logs.append(
             PreprocessStepLog(

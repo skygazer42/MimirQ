@@ -16,21 +16,15 @@ from sqlalchemy.orm import Session
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
 from app.rag.rerank_result_cache import clear_evidence_post_rerank_cache
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
-
-logger = get_logger(__name__)
 
 
 def _as_iso(value: Any) -> str | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        try:
-            return value.isoformat()
-        except Exception:
-            return None
+        return value.isoformat()
     text = str(value or "").strip()
     return text or None
 
@@ -193,8 +187,9 @@ def resolve_corpus_cache_token(
             .filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id)
             .first()
         )
-        updated_at = row[0] if row else None
-        dataset_meta = row[1] if row and len(row) > 1 else None
+        if row is None:
+            return None
+        updated_at, dataset_meta = row
         return build_dataset_scope_corpus_cache_token(
             dataset_id=str(dataset_id),
             updated_at=updated_at,
@@ -246,12 +241,7 @@ def invalidate_dataset_cache_namespace(
     invalidated_at = datetime.now(UTC)
     dataset.updated_at = invalidated_at
 
-    try:
-        flush = getattr(db, "flush", None)
-        if callable(flush):
-            flush()
-    except Exception as exc:
-        logger.debug("Ignoring corpus cache namespace flush failure: %s", exc)
+    db.flush()
 
     current_token = resolve_corpus_cache_token(
         db,
@@ -271,6 +261,36 @@ def invalidate_dataset_cache_namespace(
             "Dataset caches are invalidated by rotating the dataset corpus token. Existing redis entries expire by TTL."
         ),
     }
+
+
+def invalidate_corpus_cache_scope(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    dataset_ids: Sequence[UUID] = (),
+    document_ids: Sequence[UUID] = (),
+) -> None:
+    """Rotate existing document/dataset revisions after an index rebuild; caller commits."""
+    documents = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
+    if dataset_ids:
+        documents = documents.filter(DBDocument.dataset_id.in_(list(dataset_ids)))
+    if document_ids:
+        documents = documents.filter(DBDocument.id.in_(list(document_ids)))
+    affected_datasets = set(dataset_ids)
+    if document_ids and not dataset_ids:
+        affected_datasets.update(
+            dataset_id
+            for (dataset_id,) in documents.with_entities(DBDocument.dataset_id).distinct()
+            if dataset_id is not None
+        )
+    now = datetime.now(UTC)
+    documents.update({DBDocument.updated_at: now}, synchronize_session=False)
+    datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
+    if dataset_ids or document_ids:
+        datasets = datasets.filter(Dataset.id.in_(list(affected_datasets)))
+    datasets.update({Dataset.updated_at: now}, synchronize_session=False)
+    db.flush()
+    clear_evidence_post_rerank_cache()
 
 
 __all__ = [

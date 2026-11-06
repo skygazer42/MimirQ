@@ -1,4 +1,3 @@
-
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -153,9 +152,7 @@ def test_compute_suite_coverage_counts_unique_items_references_and_heatmap(
         {"key": "unknown", "items": 2, "references": 2},
         {"key": "vector", "items": 1, "references": 1},
     ]
-    assert result["heatmaps"] == {
-        "language_x_file_type": {"x": ["pdf"], "y": ["en"], "z": [[2]], "metric": "items"}
-    }
+    assert result["heatmaps"] == {"language_x_file_type": {"x": ["pdf"], "y": ["en"], "z": [[2]], "metric": "items"}}
 
 
 def test_resolve_profile_inheritance_merges_parent_chain_and_caps_processing_scripts() -> None:

@@ -57,7 +57,7 @@ def _run(cmd: list[str], *, timeout_sec: float = 30.0) -> CmdResult:
         return CmdResult(cmd=cmd, exit_code=124, stdout=(exc.stdout or ""), stderr=f"TimeoutExpired: {exc}")
     except FileNotFoundError as exc:
         return CmdResult(cmd=cmd, exit_code=127, stdout="", stderr=f"{type(exc).__name__}: {exc}")
-    return CmdResult(cmd=cmd, exit_code=int(proc.returncode), stdout=(proc.stdout or ""), stderr=(proc.stderr or ""))
+    return CmdResult(cmd=cmd, exit_code=proc.returncode, stdout=(proc.stdout or ""), stderr=(proc.stderr or ""))
 
 
 def _get_replicas(*, namespace: str, kind: str, name: str) -> tuple[int | None, CmdResult]:
@@ -77,7 +77,7 @@ def _get_replicas(*, namespace: str, kind: str, name: str) -> tuple[int | None, 
 
 
 def _scale(*, namespace: str, kind: str, name: str, replicas: int) -> CmdResult:
-    cmd = ["kubectl", "-n", namespace, "scale", kind, name, f"--replicas={int(replicas)}"]
+    cmd = ["kubectl", "-n", namespace, "scale", kind, name, f"--replicas={replicas}"]
     return _run(cmd, timeout_sec=60.0)
 
 
@@ -152,8 +152,8 @@ def _scale_phase(
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
-    namespace = str(args.namespace or "").strip()
-    resources = [str(resource or "").strip() for resource in (args.resource or []) if str(resource or "").strip()]
+    namespace = args.namespace.strip()
+    resources = [resource.strip() for resource in args.resource if resource.strip()]
     if not namespace:
         print(json.dumps({"ok": False, "error": "namespace_required"}, ensure_ascii=False))
         return 2
@@ -166,8 +166,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"ok": False, "error": "invalid_resource", "resources": invalid}, ensure_ascii=False))
         return 2
 
-    down_seconds = max(0, int(args.down_seconds or 0))
-    execute = bool(args.execute)
+    down_seconds = max(0, args.down_seconds)
+    execute = args.execute
 
     report: dict[str, Any] = {
         "schema": "mimirq.chaos_dependency_outage.v1",

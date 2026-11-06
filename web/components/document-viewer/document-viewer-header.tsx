@@ -1,9 +1,9 @@
-"use client"
+'use client'
 
-import { CornerUpLeft, Download, Maximize2, Minimize2, X } from "@/components/icons"
+import { CornerUpLeft, Download, Maximize2, Minimize2, X } from '@/components/icons'
 
-import { Button } from "@/components/ui/button"
-import { FileTypeIcon } from "@/components/ui/file-type-icon"
+import { Button } from '@/components/ui/button'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 
 type DocumentViewerHeaderProps = {
   filename?: string | null
@@ -32,7 +32,7 @@ export function DocumentViewerHeader({
         </div>
         <div className="flex min-w-0 flex-col">
           <h2 className="max-w-[200px] truncate text-sm font-semibold leading-snug" title={filename ?? undefined}>
-            {filename || "加载中..."}
+            {filename || '加载中...'}
           </h2>
           <span className="text-xs text-muted-foreground">{chunkCount} 个切片</span>
         </div>
@@ -60,8 +60,8 @@ export function DocumentViewerHeader({
           variant="ghost"
           size="icon"
           onClick={onToggleExpanded}
-          title={isExpanded ? "收起" : "展开"}
-          aria-label={isExpanded ? "收起" : "展开"}
+          title={isExpanded ? '收起' : '展开'}
+          aria-label={isExpanded ? '收起' : '展开'}
         >
           {isExpanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
         </Button>

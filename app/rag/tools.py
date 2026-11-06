@@ -1,6 +1,7 @@
 """
 RAG retrieval helpers (tenant aware).
 """
+
 from contextvars import ContextVar
 from uuid import UUID
 
@@ -15,32 +16,21 @@ current_tenant_id: ContextVar[UUID | None] = ContextVar("tenant_id", default=Non
 
 class RetrievalInput(BaseModel):
     """Retrieval tool input parameters"""
+
     query: str = Field(
         min_length=1,
         max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
         description="User query or keywords",
     )
-    top_k: int = Field(
-        default=5,
-        description="Number of relevant document chunks to return",
-        ge=1,
-        le=20
-    )
+    top_k: int = Field(default=5, description="Number of relevant document chunks to return", ge=1, le=20)
     document_ids: list[str] | None = Field(
-        default=None,
-        description="List of document IDs to limit search scope (optional)"
+        default=None, description="List of document IDs to limit search scope (optional)"
     )
-    tenant_id: str | None = Field(
-        default=None,
-        description="Tenant ID (optional)"
-    )
+    tenant_id: str | None = Field(default=None, description="Tenant ID (optional)")
 
 
 def search_knowledge_base(
-    query: str,
-    top_k: int = 5,
-    document_ids: list[str] | None = None,
-    tenant_id: str | None = None
+    query: str, top_k: int = 5, document_ids: list[str] | None = None, tenant_id: str | None = None
 ) -> str:
     """
     Search for relevant document chunks in the knowledge base.
@@ -74,9 +64,7 @@ def search_knowledge_base(
             content = doc.page_content
             score = meta.get("score", 0.0)
 
-            formatted_results.append(
-                f"[Document {idx}] {source} - Page {page} (relevance {score:.2f})\n{content}"
-            )
+            formatted_results.append(f"[Document {idx}] {source} - Page {page} (relevance {score:.2f})\n{content}")
 
         return "\n\n".join(formatted_results)
 

@@ -39,7 +39,7 @@ function overlapLen(aStart: number, aEnd: number, bStart: number, bEnd: number):
  */
 export function buildBlockIdToBestChunkIndex(
   blockRanges: BlockRangeLike[],
-  chunks: ChunkRangeLike[]
+  chunks: ChunkRangeLike[],
 ): Map<string, number> {
   const result = new Map<string, number>()
   if (!Array.isArray(blockRanges) || blockRanges.length === 0) return result

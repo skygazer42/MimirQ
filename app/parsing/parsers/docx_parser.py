@@ -5,7 +5,6 @@ Used as a best-effort fallback when MarkItDown is unavailable or fails.
 Relies on python-docx (pure Python) to extract paragraphs and tables.
 """
 
-
 import re
 from pathlib import Path
 
@@ -113,7 +112,7 @@ def _render_paragraph_block(block) -> str | None:  # noqa: ANN001
 
     if _is_list_paragraph(block):
         lvl = _list_level(block)
-        indent = "  " * max(0, min(6, int(lvl)))
+        indent = "  " * max(0, min(6, lvl))
         marker = _list_marker(style_name)
         return f"{indent}{marker} {text}"
 

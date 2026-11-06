@@ -8,11 +8,7 @@ export function isRecord(value: unknown): value is JsonRecord {
 
 export function similarityDisplayString(value: unknown): string {
   if (typeof value === 'string') return value.trim()
-  if (
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    typeof value === 'bigint'
-  ) {
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value)
   }
   return ''
@@ -26,9 +22,7 @@ export function firstSimilarityDisplayString(...values: unknown[]): string {
   return ''
 }
 
-export function isSimilarityMatrixResult(
-  value: unknown
-): value is RagvizSimilarityMatrixResult {
+export function isSimilarityMatrixResult(value: unknown): value is RagvizSimilarityMatrixResult {
   return (
     isRecord(value) &&
     Array.isArray(value.matrix) &&
@@ -41,8 +35,7 @@ export function isSimilarityMatrixResult(
 }
 
 export function getErrorMessage(error: unknown, fallback = '操作失败'): string {
-  if (error instanceof Error && error.message.trim())
-    return error.message.trim()
+  if (error instanceof Error && error.message.trim()) return error.message.trim()
   const text = similarityDisplayString(error)
   return text || fallback
 }
@@ -54,11 +47,7 @@ export function importedPayloadEntries(raw: unknown): unknown[] {
   return [raw]
 }
 
-export function collectionLabel(
-  explicitLabel: unknown,
-  collectionId: string,
-  fallback: string
-) {
+export function collectionLabel(explicitLabel: unknown, collectionId: string, fallback: string) {
   return firstSimilarityDisplayString(explicitLabel, collectionId, fallback)
 }
 
@@ -78,10 +67,7 @@ export function emptyMatrixCellClass(index: number) {
   return 'bg-primary/15'
 }
 
-export function diagnosticCandidateStatusClass(
-  isDisabled: boolean,
-  isMarked: boolean
-) {
+export function diagnosticCandidateStatusClass(isDisabled: boolean, isMarked: boolean) {
   if (isDisabled) return 'border-border bg-muted text-muted-foreground'
   if (isMarked) {
     return 'border-warning/30 bg-warning/10 text-warning'
@@ -89,10 +75,7 @@ export function diagnosticCandidateStatusClass(
   return 'border-warning/30 bg-warning/10 text-warning'
 }
 
-export function diagnosticCandidateStatusLabel(
-  isDisabled: boolean,
-  isMarked: boolean
-) {
+export function diagnosticCandidateStatusLabel(isDisabled: boolean, isMarked: boolean) {
   if (isDisabled) return '已禁用'
   if (isMarked) return '待审'
   return '待处理'
@@ -110,9 +93,7 @@ function compactAxisLabel(value: string, maxLength = 42) {
 }
 
 function oneBasedItemNumber(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value)
-    ? Math.max(1, Math.trunc(value) + 1)
-    : null
+  return typeof value === 'number' && Number.isFinite(value) ? Math.max(1, Math.trunc(value) + 1) : null
 }
 
 export function axisLabelForItem(item: Record<string, unknown>, field: string) {

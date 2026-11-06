@@ -1,4 +1,3 @@
-import importlib
 import io
 import uuid
 from pathlib import Path
@@ -180,7 +179,6 @@ async def test_preview_document_inline_path_preserves_auth_pipeline_governance_a
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = importlib.import_module("app.api.v1.documents")
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
     upload_root = tmp_path / "uploads"
@@ -250,26 +248,26 @@ async def test_preview_document_inline_path_preserves_auth_pipeline_governance_a
     monkeypatch.setattr(document_preview.settings, "TASK_JOB_TIMEOUT_SEC", 321, raising=False)
     monkeypatch.setattr(document_preview.settings, "ALLOWED_EXTENSIONS", ".md,.pdf", raising=False)
     monkeypatch.setattr(
-        document_preview.DatasetService,
+        document_preview.dataset_service,
         "ensure_member",
         lambda *_args: call_order.append("ensure_member"),
         raising=True,
     )
     monkeypatch.setattr(
-        document_preview.DatasetService,
+        document_preview.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(dataset_metadata={"dataset": "meta"}),
         raising=True,
     )
     monkeypatch.setattr(
-        document_preview.DatasetService,
+        document_preview.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: call_order.append("assert_dataset_readable"),
         raising=True,
     )
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        document_preview,
         "_sanitize_filename",
         lambda name: call_order.append("sanitize") or "sanitized.md",
         raising=True,
@@ -305,7 +303,7 @@ async def test_preview_document_inline_path_preserves_auth_pipeline_governance_a
         lambda rules: call_order.append("build_rules") or rules,
         raising=True,
     )
-    monkeypatch.setattr(documents_module.governance_processor, "clean_documents", _clean_documents, raising=True)
+    monkeypatch.setattr(document_preview.governance_processor, "clean_documents", _clean_documents, raising=True)
 
     result = await document_preview.preview_document(
         request=_Request(),
@@ -392,7 +390,6 @@ async def test_preview_document_subprocess_path_preserves_payload_and_cleanup_sa
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = importlib.import_module("app.api.v1.documents")
     tenant_id = uuid.uuid4()
     upload_root = tmp_path / "uploads"
     safe_inside_without_marker = upload_root / str(tenant_id) / "other" / "artifact"
@@ -447,10 +444,10 @@ async def test_preview_document_subprocess_path_preserves_payload_and_cleanup_sa
     monkeypatch.setattr(document_preview.settings, "MAGIC_PDF_KEEP_ARTIFACTS", False, raising=False)
     monkeypatch.setattr(document_preview.settings, "TASK_JOB_TIMEOUT_SEC", 45, raising=False)
     monkeypatch.setattr(document_preview.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
-    monkeypatch.setattr(document_preview.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(document_preview.DatasetService, "get_dataset", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_preview.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_preview.dataset_service, "get_dataset", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
-    monkeypatch.setattr(documents_module, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
+    monkeypatch.setattr(document_preview, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
     monkeypatch.setattr(document_preview, "compute_document_analytics", _analytics, raising=True)
     monkeypatch.setattr(
         document_preview,
@@ -458,7 +455,7 @@ async def test_preview_document_subprocess_path_preserves_payload_and_cleanup_sa
         lambda **_kwargs: _governance_effective(),
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "run_subprocess_worker", _run_subprocess_worker, raising=True)
+    monkeypatch.setattr(document_preview, "run_subprocess_worker", _run_subprocess_worker, raising=True)
 
     result = await document_preview.preview_document(
         request=_Request(),
@@ -569,7 +566,6 @@ async def test_preview_document_maps_worker_errors_without_leaking_production_de
     status_code: int,
     detail: str,
 ) -> None:
-    documents_module = importlib.import_module("app.api.v1.documents")
     tenant_id = uuid.uuid4()
     upload_root = tmp_path / "uploads"
 
@@ -584,10 +580,10 @@ async def test_preview_document_maps_worker_errors_without_leaking_production_de
     monkeypatch.setattr(document_preview.settings, "UPLOAD_DIR", str(upload_root), raising=False)
     monkeypatch.setattr(document_preview.settings, "MAX_FILE_SIZE", 128, raising=False)
     monkeypatch.setattr(document_preview.settings, "ALLOWED_EXTENSIONS", ".pdf", raising=False)
-    monkeypatch.setattr(document_preview.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_preview.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(document_preview, "save_upload_file", _save_upload, raising=True)
-    monkeypatch.setattr(documents_module, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
-    monkeypatch.setattr(documents_module, "run_subprocess_worker", _raise, raising=True)
+    monkeypatch.setattr(document_preview, "_sanitize_filename", lambda _name: "sanitized.pdf", raising=True)
+    monkeypatch.setattr(document_preview, "run_subprocess_worker", _raise, raising=True)
     monkeypatch.setattr(document_preview, "is_production_env", lambda: production, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -610,7 +606,7 @@ async def test_retry_document_processing_enforces_membership_then_write_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry.txt"
     source.write_text("hello", encoding="utf-8")
     document = _make_retry_document(file_path=str(source))
@@ -624,8 +620,8 @@ async def test_retry_document_processing_enforces_membership_then_write_gate(
         call_order.append("assert_writable")
         raise HTTPException(status_code=403, detail="denied")
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", _ensure_member, raising=True)
-    monkeypatch.setattr(documents_module, "_assert_document_writable_for_lifecycle", _deny, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", _ensure_member, raising=True)
+    monkeypatch.setattr(documents_module, "assert_document_writable_for_lifecycle", _deny, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await document_processing.retry_document_processing(
@@ -658,7 +654,7 @@ async def test_retry_document_processing_rejects_non_retryable_states(
     force: bool,
     expected_detail: str,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     document = _make_retry_document(
         status=status,
         file_path=file_path,
@@ -666,14 +662,14 @@ async def test_retry_document_processing_rejects_non_retryable_states(
     )
     db = _DB(document)
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_is_reprocessable_pending_document", lambda _document: False, raising=True)
+    monkeypatch.setattr(document_processing, "is_reprocessable_pending_document", lambda _document: False, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await document_processing.retry_document_processing(
@@ -694,7 +690,7 @@ async def test_retry_document_processing_skip_if_unchanged_is_idempotent_and_ret
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry.txt"
     source.write_text("hello", encoding="utf-8")
     document = _make_retry_document(
@@ -714,14 +710,14 @@ async def test_retry_document_processing_skip_if_unchanged_is_idempotent_and_ret
     db = _DB(document, chunk_exists=True)
     audit_events: list[dict[str, object]] = []
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
+    monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
     monkeypatch.setattr(
         documents_module,
         "audit_log_event",
@@ -774,7 +770,7 @@ async def test_retry_document_processing_preserves_existing_versions_and_stable_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry.txt"
     source.write_text("hello", encoding="utf-8")
     document = _make_retry_document(
@@ -796,14 +792,14 @@ async def test_retry_document_processing_preserves_existing_versions_and_stable_
         enqueue_calls.append(kwargs)
         return "task-123"
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda _meta: "next-pipeline", raising=True)
+    monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "next-pipeline", raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _enqueue, raising=True)
     monkeypatch.setattr(
         documents_module,
@@ -859,7 +855,7 @@ async def test_retry_document_processing_object_store_fallback_cleans_temp_file_
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     tenant_id = uuid.uuid4()
     document = _make_retry_document(
         status="failed",
@@ -903,10 +899,10 @@ async def test_retry_document_processing_object_store_fallback_cleans_temp_file_
 
     monkeypatch.setattr(documents_module.settings, "UPLOAD_DIR", str(tmp_path / "uploads"), raising=False)
     monkeypatch.setattr(documents_module.settings, "MAX_FILE_SIZE", 1024, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -918,8 +914,8 @@ async def test_retry_document_processing_object_store_fallback_cleans_temp_file_
         raising=True,
     )
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_task, raising=True)
-    monkeypatch.setattr(documents_module, "_task_queue_required", lambda: False, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _process, raising=True)
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=True)
+    monkeypatch.setattr(documents_module.document_dispatch, "run_document_processing_limited", _process, raising=True)
     monkeypatch.setattr(
         documents_module,
         "reconcile_document_index_channels",

@@ -1,45 +1,13 @@
-"""
-Connector API (enterprise ingestion framework).
-
-This is a minimal v1 implementation focused on:
-- URL batch ingestion as the first connector
-- Run tracking (status/stats/error)
-"""
+"""Connector routes and compatibility exports from their service owners."""
 
 import importlib
-import sys
-from datetime import UTC, datetime
-from uuid import UUID
 
 from fastapi import APIRouter
-from sqlalchemy.orm import Session
 
-from app.api.v1 import (
-    connectors_acl,
-    connectors_artifacts,
-    connectors_catalog,
-    connectors_common,
-    connectors_confluence,
-    connectors_db_catalog,
-    connectors_drive_files,
-    connectors_external,
-    connectors_github_plan,
-    connectors_github_repo,
-    connectors_jira,
-    connectors_minio_bucket,
-    connectors_state,
-    connectors_url_batch,
-    connectors_validation,
-    connectors_web_crawl,
-    connectors_web_crawl_plan,
-)
+from app.api.schemas.document_ingestion import LocalHtmlIngestRequest as LocalHtmlIngestRequest
+from app.api.v1 import connectors_catalog, connectors_validation
+from app.api.v1.connectors_common import _DEFAULT_HTTP_EXCEPTION_RESPONSES as _DEFAULT_HTTP_EXCEPTION_RESPONSES
 from app.api.v1.connectors_validation import validate_connector_config as validate_connector_config
-from app.api.v1.documents import (
-    _ingest_url_upload_request as _ingest_url_upload_request,
-)
-from app.api.v1.documents import (
-    _resolve_writable_dataset as _resolve_writable_dataset,
-)
 from app.core.config import settings as settings
 from app.core.database import SessionLocal as SessionLocal
 from app.core.secrets import (
@@ -48,7 +16,85 @@ from app.core.secrets import (
 from app.core.secrets import (
     encrypt_connector_config_secrets as encrypt_connector_config_secrets,
 )
+from app.services import connector_run_operations as connectors_state
+from app.services import document_ingestion
 from app.services.audit_log_service import audit_log_event as audit_log_event
+from app.services.connector_config_operations import (
+    _DB_CONNECTOR_IDS as _DB_CONNECTOR_IDS,
+)
+from app.services.connector_config_operations import (
+    CONNECTOR_CONFIG_NOT_FOUND_DETAIL as CONNECTOR_CONFIG_NOT_FOUND_DETAIL,
+)
+from app.services.connector_config_operations import (
+    _config_out as _config_out,
+)
+from app.services.connector_document_access import (
+    _apply_document_access_from_config as _apply_document_access_from_config,
+)
+from app.services.connector_document_access import (
+    _delta_sync_confluence_documents_acl_by_page_id as _delta_sync_confluence_documents_acl_by_page_id,
+)
+from app.services.connector_document_access import (
+    _delta_sync_connector_documents_acl_by_source_url as _delta_sync_connector_documents_acl_by_source_url,
+)
+from app.services.connector_document_access import (
+    _delta_sync_jira_documents_acl_by_issue_url as _delta_sync_jira_documents_acl_by_issue_url,
+)
+from app.services.connector_document_access import (
+    _soft_disable_connector_documents_by_source_ref as _soft_disable_connector_documents_by_source_ref,
+)
+from app.services.connector_document_access import (
+    _soft_disable_connector_documents_by_source_url as _soft_disable_connector_documents_by_source_url,
+)
+from app.services.connector_document_access import (
+    _soft_disable_jira_attachment_documents_missing_from_issue as _soft_disable_jira_attachment_documents_missing_from_issue,
+)
+from app.services.connector_document_access import (
+    _soft_disable_jira_linked_artifact_documents_missing_from_issue as _soft_disable_jira_linked_artifact_documents_missing_from_issue,
+)
+from app.services.connector_execution import (
+    confluence as connectors_confluence,
+)
+from app.services.connector_execution import (
+    db_catalog as connectors_db_catalog,
+)
+from app.services.connector_execution import (
+    drive_files as connectors_drive_files,
+)
+from app.services.connector_execution import (
+    github_repo as connectors_github_repo,
+)
+from app.services.connector_execution import (
+    jira as connectors_jira,
+)
+from app.services.connector_execution import (
+    minio_bucket as connectors_minio_bucket,
+)
+from app.services.connector_execution import (
+    url_batch as connectors_url_batch,
+)
+from app.services.connector_execution import (
+    web_crawl as connectors_web_crawl,
+)
+from app.services.connector_execution.plans import (
+    github_repo as connectors_github_plan,
+)
+from app.services.connector_execution.plans import (
+    web_crawl as connectors_web_crawl_plan,
+)
+from app.services.connector_execution.shared import (
+    artifacts as connectors_artifacts,
+)
+from app.services.connector_execution.shared import (
+    common as connectors_common,
+)
+from app.services.connector_execution.shared import (
+    external as connectors_external,
+)
+from app.services.connector_execution.shared.runtime import _now as _now
+from app.services.connector_execution.shared.runtime import (
+    _sync_connector_config_from_run as _sync_connector_config_from_run,
+)
 from app.services.connector_reconcile_service import (
     plan_connector_reconcile as plan_connector_reconcile,
 )
@@ -56,6 +102,21 @@ from app.services.connector_reconcile_service import (
     resolve_connector_reconcile_source_refs as resolve_connector_reconcile_source_refs,
 )
 from app.services.connector_registry import get_connector_definition as get_connector_definition
+from app.services.connector_schedule_operations import (
+    _schedule_due as _schedule_due,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_elapsed_seconds as _schedule_elapsed_seconds,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_interval_from_parts as _schedule_interval_from_parts,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_interval_seconds as _schedule_interval_seconds,
+)
+from app.services.connector_schedule_operations import (
+    _schedule_positive_int as _schedule_positive_int,
+)
 from app.services.connector_sync_state import (
     build_persisted_state as build_persisted_state,
 )
@@ -65,35 +126,19 @@ from app.services.connector_sync_state import (
 from app.services.connector_sync_state import (
     normalize_source_manifest as normalize_source_manifest,
 )
-from app.services.dataset_service import DatasetService as DatasetService
 from app.tasks.queue import enqueue_connector_run as enqueue_connector_run
 from app.tasks.queue import get_queue as get_queue
 
-_THIS_MODULE = sys.modules[__name__]
-connectors_acl._leader_module = _THIS_MODULE
-connectors_artifacts._leader_module = _THIS_MODULE
-connectors_confluence._leader_module = _THIS_MODULE
-connectors_state._leader_module = _THIS_MODULE
-connectors_drive_files._leader_module = _THIS_MODULE
-connectors_github_repo._leader_module = _THIS_MODULE
-connectors_jira._leader_module = _THIS_MODULE
-connectors_minio_bucket._leader_module = _THIS_MODULE
-connectors_web_crawl._leader_module = _THIS_MODULE
-
-_DEFAULT_HTTP_EXCEPTION_RESPONSES = {
-    400: {"description": "Bad Request"},
-    403: {"description": "Forbidden"},
-    404: {"description": "Not Found"},
-    409: {"description": "Conflict"},
-    416: {"description": "Range Not Satisfiable"},
-}
+_ingest_local_html_request = document_ingestion.ingest_html
+_ingest_url_upload_request = document_ingestion.ingest_url
 
 _router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+
 _router.routes.extend(connectors_catalog.router.routes)
+
 _router.routes.extend(connectors_validation.router.routes)
-_DB_CONNECTOR_IDS = {"mysql_catalog", "sqlserver_catalog"}
+
 URL_SHA256_PREFIX = "url_sha256:"
-CONNECTOR_CONFIG_NOT_FOUND_DETAIL = "Connector config not found"
 JIRA_UPDATED_SOURCE = "connector:jira:updated"
 UNSUPPORTED_CONNECTOR_ID_DETAIL = "Unsupported connector_id"
 URL_INGEST_DISABLED_DETAIL = "URL ingestion is disabled"
@@ -117,6 +162,7 @@ _emit_db_catalog_sync_failed = connectors_db_catalog._emit_db_catalog_sync_faile
 _emit_db_catalog_failure_audit = connectors_db_catalog._emit_db_catalog_failure_audit
 _mark_db_catalog_run_failed = connectors_db_catalog._mark_db_catalog_run_failed
 _execute_db_catalog_run = connectors_db_catalog._execute_db_catalog_run
+
 _safe_error_str = connectors_common._safe_error_str
 _connector_error_code_from_message = connectors_common._connector_error_code_from_message
 _classify_connector_error = connectors_common._classify_connector_error
@@ -127,6 +173,7 @@ _append_connector_error = connectors_common._append_connector_error
 _finalize_connector_stats = connectors_common._finalize_connector_stats
 _connector_run_completion_status = connectors_common._connector_run_completion_status
 _connector_config_id_from_run = connectors_common._connector_config_id_from_run
+
 _build_auth_headers = connectors_external._build_auth_headers
 _build_basic_auth_header = connectors_external._build_basic_auth_header
 _is_http_or_https_url = connectors_external._is_http_or_https_url
@@ -145,28 +192,12 @@ _parse_link_header_next = connectors_external._parse_link_header_next
 _github_team_principal_key_from_repo_team_item = connectors_external._github_team_principal_key_from_repo_team_item
 _github_fetch_repo_team_principal_keys = connectors_external._github_fetch_repo_team_principal_keys
 _resolve_tenant_group_ids_by_external_id = connectors_external._resolve_tenant_group_ids_by_external_id
+
 _unknown_tenant_groups = connectors_state._unknown_tenant_groups
 _normalize_doc_access_mode = connectors_state._normalize_doc_access_mode
 _fetch_connector_run_acl_summaries = connectors_state._fetch_connector_run_acl_summaries
 _run_out = connectors_state._run_out
-_config_out = connectors_state._config_out
-_schedule_elapsed_seconds = connectors_state._schedule_elapsed_seconds
-_schedule_positive_int = connectors_state._schedule_positive_int
-_schedule_interval_from_parts = connectors_state._schedule_interval_from_parts
-_schedule_interval_seconds = connectors_state._schedule_interval_seconds
-_schedule_due = connectors_state._schedule_due
-_sync_connector_config_from_run = connectors_state._sync_connector_config_from_run
-_apply_document_access_from_config = connectors_acl._apply_document_access_from_config
-_delta_sync_connector_documents_acl_by_source_url = connectors_acl._delta_sync_connector_documents_acl_by_source_url
-_soft_disable_connector_documents_by_source_url = connectors_acl._soft_disable_connector_documents_by_source_url
-_soft_disable_connector_documents_by_source_ref = connectors_acl._soft_disable_connector_documents_by_source_ref
-_delta_sync_jira_documents_acl_by_issue_url = connectors_acl._delta_sync_jira_documents_acl_by_issue_url
-_soft_disable_jira_attachment_documents_missing_from_issue = (
-    connectors_acl._soft_disable_jira_attachment_documents_missing_from_issue
-)
-_soft_disable_jira_linked_artifact_documents_missing_from_issue = (
-    connectors_acl._soft_disable_jira_linked_artifact_documents_missing_from_issue
-)
+
 _apply_connector_identity_metadata = connectors_artifacts._apply_connector_identity_metadata
 _normalize_connector_string_list = connectors_artifacts._normalize_connector_string_list
 _normalize_connector_principal_list = connectors_artifacts._normalize_connector_principal_list
@@ -174,6 +205,7 @@ _db_row_sidecar_file_path = connectors_artifacts._db_row_sidecar_file_path
 _db_row_sidecar_filename = connectors_artifacts._db_row_sidecar_filename
 _build_db_row_source_manifest = connectors_artifacts._build_db_row_source_manifest
 _upsert_db_row_sidecar_document = connectors_artifacts._upsert_db_row_sidecar_document
+
 _get_url_batch_run = connectors_url_batch._get_url_batch_run
 _mark_url_batch_run_running = connectors_url_batch._mark_url_batch_run_running
 _build_url_batch_run_settings = connectors_url_batch._build_url_batch_run_settings
@@ -187,12 +219,14 @@ _process_url_batch_urls = connectors_url_batch._process_url_batch_urls
 _finalize_cancelled_url_batch_run = connectors_url_batch._finalize_cancelled_url_batch_run
 _finalize_url_batch_run_success = connectors_url_batch._finalize_url_batch_run_success
 _mark_url_batch_run_failed = connectors_url_batch._mark_url_batch_run_failed
-_execute_url_batch_run = connectors_url_batch._execute_url_batch_run
+_execute_url_batch_run = connectors_url_batch.execute
+
 _github_repo_path_is_included = connectors_github_plan._github_repo_path_is_included
 _github_repo_listed_files_and_observed_paths = connectors_github_plan._github_repo_listed_files_and_observed_paths
 _github_repo_delta_files = connectors_github_plan._github_repo_delta_files
 _build_github_repo_execution_plan = connectors_github_plan._build_github_repo_execution_plan
 _initialize_github_repo_run_stats = connectors_github_plan._initialize_github_repo_run_stats
+
 _get_github_repo_run = connectors_github_repo._get_github_repo_run
 _mark_github_repo_run_running = connectors_github_repo._mark_github_repo_run_running
 _normalize_github_include_set = connectors_github_repo._normalize_github_include_set
@@ -211,7 +245,8 @@ _reconcile_removed_github_repo_paths = connectors_github_repo._reconcile_removed
 _emit_github_repo_source_acl_delta_sync_audit = connectors_github_repo._emit_github_repo_source_acl_delta_sync_audit
 _finalize_github_repo_run_success = connectors_github_repo._finalize_github_repo_run_success
 _mark_github_repo_run_failed = connectors_github_repo._mark_github_repo_run_failed
-_execute_github_repo_run = connectors_github_repo._execute_github_repo_run
+_execute_github_repo_run = connectors_github_repo.execute
+
 _get_drive_files_run = connectors_drive_files._get_drive_files_run
 _mark_drive_files_run_running = connectors_drive_files._mark_drive_files_run_running
 _build_drive_files_run_settings = connectors_drive_files._build_drive_files_run_settings
@@ -228,7 +263,8 @@ _reconcile_removed_drive_sources = connectors_drive_files._reconcile_removed_dri
 _emit_drive_files_source_acl_delta_sync_audit = connectors_drive_files._emit_drive_files_source_acl_delta_sync_audit
 _finalize_drive_files_run_success = connectors_drive_files._finalize_drive_files_run_success
 _mark_drive_files_run_failed = connectors_drive_files._mark_drive_files_run_failed
-_execute_drive_files_run = connectors_drive_files._execute_drive_files_run
+_execute_drive_files_run = connectors_drive_files.execute
+
 _get_minio_bucket_run = connectors_minio_bucket._get_minio_bucket_run
 _mark_minio_bucket_run_running = connectors_minio_bucket._mark_minio_bucket_run_running
 _normalize_minio_include_set = connectors_minio_bucket._normalize_minio_include_set
@@ -248,7 +284,8 @@ _finalize_cancelled_minio_bucket_run = connectors_minio_bucket._finalize_cancell
 _reconcile_removed_minio_bucket_paths = connectors_minio_bucket._reconcile_removed_minio_bucket_paths
 _finalize_minio_bucket_run_success = connectors_minio_bucket._finalize_minio_bucket_run_success
 _mark_minio_bucket_run_failed = connectors_minio_bucket._mark_minio_bucket_run_failed
-_execute_minio_bucket_run = connectors_minio_bucket._execute_minio_bucket_run
+_execute_minio_bucket_run = connectors_minio_bucket.execute
+
 _confluence_api_base_url = connectors_confluence._confluence_api_base_url
 _confluence_request = connectors_confluence._confluence_request
 _confluence_join_webui = connectors_confluence._confluence_join_webui
@@ -264,7 +301,6 @@ _confluence_extract_attachments = connectors_confluence._confluence_extract_atta
 _confluence_attachment_connector_metadata = connectors_confluence._confluence_attachment_connector_metadata
 _normalize_connector_sync_mode = connectors_confluence._normalize_connector_sync_mode
 _resolve_connector_effective_mode = connectors_confluence._resolve_connector_effective_mode
-_confluence_source_acl_settings = connectors_confluence._confluence_source_acl_settings
 _build_confluence_space_run_settings = connectors_confluence._build_confluence_space_run_settings
 _build_confluence_space_search_cql = connectors_confluence._build_confluence_space_search_cql
 _initialize_confluence_space_run_stats = connectors_confluence._initialize_confluence_space_run_stats
@@ -287,6 +323,7 @@ _finalize_cancelled_confluence_space_run = connectors_confluence._finalize_cance
 _emit_confluence_source_acl_delta_sync_audit = connectors_confluence._emit_confluence_source_acl_delta_sync_audit
 _finalize_confluence_space_run_success = connectors_confluence._finalize_confluence_space_run_success
 _mark_confluence_space_run_failed = connectors_confluence._mark_confluence_space_run_failed
+
 _jira_api_base_url = connectors_jira._jira_api_base_url
 _jira_request = connectors_jira._jira_request
 _jira_extract_issue_updated = connectors_jira._jira_extract_issue_updated
@@ -373,6 +410,7 @@ _jira_project_search_params = connectors_jira._jira_project_search_params
 _jira_project_parse_search_payload = connectors_jira._jira_project_parse_search_payload
 _jira_project_fetch_issue_page = connectors_jira._jira_project_fetch_issue_page
 _process_jira_project_issues = connectors_jira._process_jira_project_issues
+
 _web_crawl_content_fingerprint = connectors_web_crawl_plan._web_crawl_content_fingerprint
 _web_crawl_token_is_content_aware = connectors_web_crawl_plan._web_crawl_token_is_content_aware
 _web_crawl_manifest_token_changed = connectors_web_crawl_plan._web_crawl_manifest_token_changed
@@ -381,6 +419,7 @@ _web_crawl_build_doc_sync_token = connectors_web_crawl_plan._web_crawl_build_doc
 _web_crawl_source_manifest = connectors_web_crawl_plan._web_crawl_source_manifest
 _build_web_crawl_execution_plan = connectors_web_crawl_plan._build_web_crawl_execution_plan
 _initialize_web_crawl_run_stats = connectors_web_crawl_plan._initialize_web_crawl_run_stats
+
 _build_web_crawl_run_settings = connectors_web_crawl._build_web_crawl_run_settings
 _get_web_crawl_run = connectors_web_crawl._get_web_crawl_run
 _mark_web_crawl_run_running = connectors_web_crawl._mark_web_crawl_run_running
@@ -392,66 +431,11 @@ _finalize_cancelled_web_crawl_run = connectors_web_crawl._finalize_cancelled_web
 _reconcile_removed_web_crawl_urls = connectors_web_crawl._reconcile_removed_web_crawl_urls
 _finalize_web_crawl_run_success = connectors_web_crawl._finalize_web_crawl_run_success
 _mark_web_crawl_run_failed = connectors_web_crawl._mark_web_crawl_run_failed
+_execute_web_crawl_run = connectors_web_crawl.execute
 
+_execute_jira_project_run = connectors_jira.execute
 
-def _now() -> datetime:
-    return datetime.now(UTC)
-
-
-async def _execute_web_crawl_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    connectors_web_crawl._leader_module = _THIS_MODULE
-    return await connectors_web_crawl._execute_web_crawl_run(
-        run_id=run_id,
-        tenant_id=tenant_id,
-        requested_by=requested_by,
-    )
-
-
-def _delta_sync_confluence_documents_acl_by_page_id(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    dataset_id: UUID | None,
-    base_url: str,
-    space_key: str,
-    page_id: str,
-    requested_by: str,
-    access: dict | None,
-    acl_provenance: dict | None,
-    max_docs_scan: int = 5000,
-) -> int:
-    connectors_confluence._leader_module = _THIS_MODULE
-    return connectors_confluence._delta_sync_confluence_documents_acl_by_page_id(
-        db,
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        base_url=base_url,
-        space_key=space_key,
-        page_id=page_id,
-        requested_by=requested_by,
-        access=access,
-        acl_provenance=acl_provenance,
-        max_docs_scan=max_docs_scan,
-    )
-
-
-async def _execute_jira_project_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    connectors_jira._leader_module = _THIS_MODULE
-    return await connectors_jira._execute_jira_project_run(
-        run_id=run_id,
-        tenant_id=tenant_id,
-        requested_by=requested_by,
-    )
-
-
-async def _execute_confluence_space_run(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-    connectors_confluence._leader_module = _THIS_MODULE
-    return await connectors_confluence._execute_confluence_space_run(
-        run_id=run_id,
-        tenant_id=tenant_id,
-        requested_by=requested_by,
-    )
-
+_execute_confluence_space_run = connectors_confluence.execute
 
 _ROUTE_MODULE_NAMES = (
     "app.api.v1.connectors_runs",

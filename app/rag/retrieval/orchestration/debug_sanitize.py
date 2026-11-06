@@ -159,17 +159,21 @@ def _sanitize_retriever_debug(dbg: dict[str, Any] | None) -> dict[str, Any] | No
         return None
 
     out: dict[str, Any] = {}
-    _copy_present_debug_keys(out, dbg, (
-        "requested_k",
-        "search_k",
-        "fetch_k",
-        "overfetch_enabled",
-        "overfetch_reasons",
-        "overfetch_multiplier",
-        "overfetch_cap_k",
-        "milvus_doc_id_pushdown_skipped",
-        "milvus_expr_max_doc_ids",
-    ))
+    _copy_present_debug_keys(
+        out,
+        dbg,
+        (
+            "requested_k",
+            "search_k",
+            "fetch_k",
+            "overfetch_enabled",
+            "overfetch_reasons",
+            "overfetch_multiplier",
+            "overfetch_cap_k",
+            "milvus_doc_id_pushdown_skipped",
+            "milvus_expr_max_doc_ids",
+        ),
+    )
 
     qn = _sanitize_query_normalization_debug(dbg.get("query_normalization"))
     if qn is not None:

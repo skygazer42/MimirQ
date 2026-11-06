@@ -6,31 +6,24 @@ import { formatApiError } from '@/lib/api-errors'
 import { reportClientError } from '@/lib/client-logging'
 import { sanitizeFilename } from '@/lib/sanitize'
 
-import type { DatasetReport } from '@/types'
+import type { DatasetReport } from '@/types/datasets'
 
-import type {
-  CategoryMetricDatum,
-  CoverageRow,
-  ReportExportParams,
-  ReportFinding,
-  ReportMetricDatum,
-} from './types'
+import type { CategoryMetricDatum, CoverageRow, ReportExportParams, ReportFinding, ReportMetricDatum } from './types'
 
-type ReportBlobExporter = (
-  datasetId: string,
-  params: ReportExportParams
-) => Promise<Blob>
+type ReportBlobExporter = (datasetId: string, params: ReportExportParams) => Promise<Blob>
 
-async function reportExportError(error:unknown):Promise<unknown> {
-  if(!error||typeof error!=='object') return error
-  const original=error as {response?:{data?:unknown}}
-  const data=original.response?.data
-  if(!(data instanceof Blob)||data.size>1_048_576) return error
+async function reportExportError(error: unknown): Promise<unknown> {
+  if (!error || typeof error !== 'object') return error
+  const original = error as { response?: { data?: unknown } }
+  const data = original.response?.data
+  if (!(data instanceof Blob) || data.size > 1_048_576) return error
   try {
-    const parsed:unknown=JSON.parse(await data.text())
-    if(!parsed||typeof parsed!=='object'||Array.isArray(parsed)) return error
-    return {...error,response:{...original.response,data:parsed}}
-  } catch { return error }
+    const parsed: unknown = JSON.parse(await data.text())
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return error
+    return { ...error, response: { ...original.response, data: parsed } }
+  } catch {
+    return error
+  }
 }
 
 export function downloadBlob(blob: Blob, filename: string) {
@@ -50,7 +43,7 @@ export function reportPipelineSuffix(pipelineHash: string) {
 export function reportExportParams(
   pipelineHash: string,
   connectorRunsLimit: number,
-  redact?: boolean
+  redact?: boolean,
 ): ReportExportParams {
   const params: ReportExportParams = {
     connector_runs_limit: connectorRunsLimit,
@@ -87,10 +80,7 @@ export async function exportReportBlobFile({
   if (!datasetId) return
   setLoading(true)
   try {
-    const blob = await getBlob(
-      datasetId,
-      reportExportParams(pipelineHash, connectorRunsLimit, redact)
-    )
+    const blob = await getBlob(datasetId, reportExportParams(pipelineHash, connectorRunsLimit, redact))
     const safe = sanitizeFilename(datasetName || 'dataset')
     downloadBlob(blob, `${safe}.${filenameStem}${reportPipelineSuffix(pipelineHash)}.${extension}`)
   } catch (e: unknown) {

@@ -1,16 +1,8 @@
-
 from typing import Any
 
 
 def _stable_unique(values: list[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for value in sorted({str(v or "").strip() for v in (values or []) if str(v or "").strip()}):
-        if value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
-    return out
+    return sorted({str(v or "").strip() for v in (values or []) if str(v or "").strip()})
 
 
 def build_lazy_index_plan(

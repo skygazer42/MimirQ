@@ -10,7 +10,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -203,7 +202,7 @@ class LawsStructuredChunker(BaseChunker):
     Chunker optimized for legal-style documents (laws, policies, contracts).
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -237,7 +236,7 @@ class LawsStructuredChunker(BaseChunker):
         meta["end_char"] = abs_end
         if heading is not None:
             meta["law_heading"] = heading.text
-            meta["law_level"] = int(heading.level)
+            meta["law_level"] = heading.level
             meta["law_kind"] = heading.kind
             if heading.number:
                 meta["law_number"] = heading.number

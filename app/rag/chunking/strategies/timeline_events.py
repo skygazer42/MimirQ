@@ -129,7 +129,7 @@ def _event_chunk_document(
     meta["chunk_strategy"] = "timeline_events"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["event_count"] = int(end_idx - start_idx)
+    meta["event_count"] = end_idx - start_idx
     meta["first_event"] = first_date
     meta["last_event"] = last_date
     if previews:
@@ -138,7 +138,7 @@ def _event_chunk_document(
 
 
 class TimelineEventsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

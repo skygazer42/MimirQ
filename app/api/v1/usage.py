@@ -4,7 +4,6 @@ Usage / cost endpoints (admin-only).
 Focus: low-friction, DB-backed aggregates for chat token usage.
 """
 
-
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
@@ -149,7 +148,7 @@ def get_chat_token_quota_status(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> ChatTokenQuotaStatus:
     """
     Return the current rolling assistant-token quota status for this tenant.
 
@@ -186,7 +185,7 @@ def get_tenant_quota_summary(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantQuotaSummary:
     """
     Return tenant quota status (docs/storage/embedding/QPS).
 
@@ -269,7 +268,7 @@ def get_chat_token_usage_summary(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> ChatTokenUsageSummary:
     """
     Summarize assistant token usage grouped by dataset_id (when available).
 
@@ -337,7 +336,7 @@ def get_chat_cost_usage_summary(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> ChatCostUsageSummary:
     """
     Summarize per-request cost attribution grouped by dataset_id (best-effort).
 

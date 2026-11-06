@@ -8,7 +8,7 @@ collection-collection similarity heatmaps similar to Kumi.
 
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import numpy as np
@@ -23,8 +23,13 @@ from app.models.document import DocumentChunk
 from app.models.evaluation import RagasRegressionCase
 from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
-from app.services.dataset_service import DatasetService
-from app.services.document_access import filter_allowed_document_ids
+from app.services import dataset_service
+from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Query
+
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
 
 @dataclass(frozen=True)
@@ -36,7 +41,7 @@ class RagvizCollection:
     meta: dict[str, Any]
 
 
-_embeddings_adapter = None
+_embeddings_adapter: "LangChainEmbeddingsAdapter | None" = None
 _DEFAULT_SIMILARITY_MAX_ITEMS = 100
 
 
@@ -46,7 +51,7 @@ class SimilarityLimitError(ValueError):
         self.detail = detail or {}
 
 
-def _get_embeddings_adapter():
+def _get_embeddings_adapter() -> "LangChainEmbeddingsAdapter":
     global _embeddings_adapter
     if _embeddings_adapter is not None:
         return _embeddings_adapter
@@ -79,11 +84,11 @@ def _parse_collection_id(collection_id: str) -> tuple[str, str]:
 
 
 def _similarity_axis_limit() -> int:
-    return max(1, int(getattr(settings, "RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS", 500) or 500))
+    return max(1, int(settings.RAGVIZ_SIMILARITY_MAX_AXIS_ITEMS or 500))
 
 
 def _similarity_pair_limit() -> int:
-    return max(1, int(getattr(settings, "RAGVIZ_SIMILARITY_MAX_PAIRS", 200_000) or 200_000))
+    return max(1, int(settings.RAGVIZ_SIMILARITY_MAX_PAIRS or 200_000))
 
 
 def resolve_similarity_request_limits(
@@ -143,7 +148,7 @@ def _is_dataset_readable(ds: Dataset, account_id: str, *, allowed_partial_ids: s
 
 
 def list_similarity_collections(db: Session, tenant_id: UUID, account_id: str) -> list[RagvizCollection]:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     datasets = db.query(Dataset).filter(Dataset.tenant_id == tenant_id).order_by(Dataset.created_at.desc()).all()
     partial_ids = [
@@ -241,7 +246,7 @@ def _dataset_chunks_items(
     ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if not ds:
         raise ValueError("Dataset not found")
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     rows = (
         db.query(DocumentChunk, DBDocument.filename, DBDocument.id, DBDocument.file_type)
@@ -256,6 +261,15 @@ def _dataset_chunks_items(
         .limit(max_items)
         .all()
     )
+
+    allowed_document_ids, _missing_document_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        [document_id for _chunk, _filename, document_id, _file_type in rows],
+        check_member=False,
+    )
+    rows = [row for row in rows if row[2] in allowed_document_ids]
 
     items: list[dict[str, Any]] = []
     texts: list[str] = []
@@ -324,11 +338,11 @@ def _regression_cases_base_query(
     tenant_id: UUID,
     account_id: str,
     dataset_id: UUID,
-):
+) -> "Query[RagasRegressionCase]":
     ds = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.id == dataset_id).first()
     if not ds:
         raise ValueError("Dataset not found")
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     return (
         db.query(RagasRegressionCase)
@@ -418,6 +432,15 @@ def _regression_chunks_items(
         )
         .all()
     )
+    allowed_document_ids, _missing_document_ids = get_allowed_document_id_sets(
+        db,
+        tenant_id,
+        account_id,
+        [doc_id for _chunk, _filename, doc_id, _file_type in chunk_rows],
+        check_member=False,
+    )
+    chunk_rows = [row for row in chunk_rows if row[2] in allowed_document_ids]
+
     chunk_map: dict[UUID, tuple[DocumentChunk, str, UUID, str]] = {}
     for chunk, filename, doc_id, file_type in chunk_rows:
         chunk_map[chunk.id] = (chunk, str(filename or ""), doc_id, str(file_type or ""))
@@ -558,8 +581,8 @@ def calculate_similarity_matrix(
         "metadata": {
             "x_collection": x_collection,
             "y_collection": y_collection,
-            "x_max_items": int(x_max_items),
-            "y_max_items": int(y_max_items),
+            "x_max_items": x_max_items,
+            "y_max_items": y_max_items,
             "calculation_time": time.time() - start,
         },
     }

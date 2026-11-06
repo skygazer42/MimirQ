@@ -33,9 +33,9 @@ def _build_client(monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str, str
     app.dependency_overrides[get_current_account_id] = lambda: "reader-1"
     app.dependency_overrides[get_db] = lambda: object()
 
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_analysis_api.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(id=dataset_id, name="Dataset A"),
         raising=True,
@@ -127,13 +127,13 @@ def test_dataset_analysis_read_endpoints_require_dataset_readable(
     writable_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_readable",
         lambda _db, dataset, account_id: readable_calls.append((str(dataset.id), account_id)),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_writable",
         lambda _db, dataset, account_id: writable_calls.append((str(dataset.id), account_id)),
         raising=True,
@@ -152,13 +152,13 @@ def test_glossary_writeback_requires_dataset_writable(monkeypatch: pytest.Monkey
     writable_calls: list[tuple[str, str]] = []
 
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_readable",
         lambda _db, dataset, account_id: readable_calls.append((str(dataset.id), account_id)),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "assert_dataset_writable",
         lambda _db, dataset, account_id: writable_calls.append((str(dataset.id), account_id)),
         raising=True,
@@ -196,7 +196,7 @@ def test_png_task_endpoints_forward_current_account(
     seen: list[str] = []
 
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+        dataset_analysis_api.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
     )
 
     def _capture(**kwargs):

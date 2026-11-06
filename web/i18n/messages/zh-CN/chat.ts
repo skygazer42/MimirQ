@@ -1,5 +1,5 @@
 const chatMessages = {
-Chat: {
+  Chat: {
     requestFailed: '聊天请求失败',
     openRagConfig: '已打开 RAG 配置',
     clearInput: '已清空当前输入',
@@ -104,8 +104,7 @@ Chat: {
       evening: '晚上好',
     },
     explorer: '探索者',
-    welcomeLead:
-      '检索文档，查看引用。',
+    welcomeLead: '检索文档，查看引用。',
     quickStart: {
       title: '快速开始',
       description: '点击任意问题直接填入输入框，再按 Enter 发送。',
@@ -139,14 +138,12 @@ Chat: {
       actionLabel: '前往知识库',
     },
     promptTemplatesAvailable: '{count} 个 Prompt 模板可用',
-    promptTemplatesAvailableDescription:
-      '你可以在输入框上方切换模板，快速进入摘要、行动项或结构化输出模式。',
+    promptTemplatesAvailableDescription: '你可以在输入框上方切换模板，快速进入摘要、行动项或结构化输出模式。',
     noPromptTemplateDescription: '当前没有启用额外模板，直接提问即可，后续也可以再细化策略。',
     firstUseAdviceTitle: '第一次使用建议',
-    firstUseAdviceDescription:
-      '先问一个具体问题，再用 / 快捷指令或 RAG 配置逐步缩小范围，会比一次性堆太多要求更稳。',
+    firstUseAdviceDescription: '先问一个具体问题，再用 / 快捷指令或 RAG 配置逐步缩小范围，会比一次性堆太多要求更稳。',
   },
-History: {
+  History: {
     loadingPage: '正在加载历史记录...',
     loadingPageSr: 'Loading history',
     pageTitle: '问答历史',
@@ -173,11 +170,9 @@ History: {
     loading: '加载中…',
     loadOlderMessages: '加载更早消息',
     noConversationSelected: '选择一段对话',
-    noConversationSelectedDescription:
-      '从左侧打开记录，查看回答和引用，或继续提问。',
+    noConversationSelectedDescription: '从左侧打开记录，查看回答和引用，或继续提问。',
     startFirstConversation: '暂无问答记录',
-    startFirstConversationDescription:
-      '对话会保存在这里，方便随时查看回答和引用。',
+    startFirstConversationDescription: '对话会保存在这里，方便随时查看回答和引用。',
     startNewConversation: '新建对话',
     selectConversation: '选择对话',
     noMessage: '暂无消息',
@@ -196,7 +191,7 @@ History: {
     groupLast30Days: '最近30天',
     groupEarlier: '更早',
   },
-Navbar: {
+  Navbar: {
     brand: {
       tagline: '智能知识库',
     },
@@ -279,7 +274,7 @@ Navbar: {
       requestIdHint: '请求包含 X-Request-ID',
     },
   },
-SlashMenu: {
+  SlashMenu: {
     placeholder: '搜索命令或用途...',
     empty: '未找到匹配命令',
     heading: '快捷指令',
@@ -315,7 +310,7 @@ SlashMenu: {
         keywords: ['clear', 'erase', '清空'],
       },
     },
-  }
+  },
 } as const
 
 export default chatMessages

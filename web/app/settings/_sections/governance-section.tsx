@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,8 +9,11 @@ import { DangerZonePanel } from '@/components/settings/danger-zone-panel'
 import { GovernanceOpsPanel } from '@/components/settings/governance-ops-panel'
 import { SettingsSwitch } from '@/components/settings/settings-switch'
 import { settingsLayoutTokens, settingsTextTokens } from '@/components/ui/system-page-tokens'
-import { rbacApi, rtbfApi, type SystemSettings, type TenantMember } from '@/lib/api'
+import { rbacApi, type TenantMember } from '@/lib/api/access'
+import type { SystemSettings } from '@/types/settings'
 import { formatApiError } from '@/lib/api-errors'
+import { getAuthSessionRevision } from '@/lib/auth-storage'
+import { rtbfApi } from '@/lib/api/rtbf'
 import { queryKeys } from '@/lib/query-keys'
 import { cn, detachPromise } from '@/lib/utils'
 import { Loader2 } from '@/components/icons'
@@ -89,12 +92,7 @@ function rtbfNoteCopy(value: string): string {
   return value
 }
 
-function rtbfResultTitle(
-  errors: number,
-  isStatusOnly: boolean,
-  dryRun: boolean,
-  statusLabel: string
-): string {
+function rtbfResultTitle(errors: number, isStatusOnly: boolean, dryRun: boolean, statusLabel: string): string {
   if (errors > 0) return 'RTBF 执行存在错误'
   if (isStatusOnly) return `状态查询：${statusLabel}`
   if (dryRun) return '安全预演完成'
@@ -106,7 +104,7 @@ function rtbfResultDescription(
   message: string,
   dryRun: boolean,
   eligible: number,
-  deleted: number
+  deleted: number,
 ): string {
   if (note) return note
   if (message) return message
@@ -120,20 +118,13 @@ function rtbfResultTone(errors: number, isStatusOnly: boolean): RtbfTone {
   return 'success'
 }
 
-function rtbfResultBadge(
-  errors: number,
-  dryRun: boolean,
-  statusLabel: string
-): string {
+function rtbfResultBadge(errors: number, dryRun: boolean, statusLabel: string): string {
   if (errors > 0) return '需排查'
   if (dryRun) return '安全预演'
   return statusLabel || '已执行'
 }
 
-function selectedRtbfSubjectValue(
-  source: RtbfSubjectSource,
-  selectedMember: TenantMember | null
-): string {
+function selectedRtbfSubjectValue(source: RtbfSubjectSource, selectedMember: TenantMember | null): string {
   if (source === 'current') return RTBF_CURRENT_ACCOUNT_VALUE
   if (source === 'member' && selectedMember) {
     return String(selectedMember.user_id || '').trim()
@@ -216,7 +207,11 @@ function buildRtbfResultView(value: unknown): RtbfResultView {
     tone: rtbfResultTone(errors, isStatusOnly),
     badge: rtbfResultBadge(errors, dryRun, statusLabel),
     metrics: [
-      { label: '候选文档', value: String(eligible || documents || 0), hint: subject ? `账号 ${subject}` : '按账号匹配' },
+      {
+        label: '候选文档',
+        value: String(eligible || documents || 0),
+        hint: subject ? `账号 ${subject}` : '按账号匹配',
+      },
       { label: '已删除', value: String(deleted), hint: dryRun ? '安全预演未删除' : '实际删除数' },
       { label: '错误', value: String(errors), hint: errors > 0 ? '查看原始响应' : '无错误' },
       { label: '缓存刷新', value: String(cacheInvalidations), hint: '相关数据集缓存' },
@@ -242,21 +237,32 @@ function rtbfMemberLabel(member: TenantMember): { primary: string; secondary: st
   return { primary: id.length > 18 ? `${id.slice(0, 10)}...${id.slice(-6)}` : id, secondary: '账号 ID' }
 }
 
+function parseRtbfLimit(raw: string, label: string, minimum: number, maximum: number): number {
+  const trimmed = raw.trim()
+  const value = Number(trimmed)
+  if (!/^\d+$/.test(trimmed) || !Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${label}应为 ${minimum}-${maximum} 的整数`)
+  }
+  return value
+}
+
 function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
   if (value == null) return null
   const result = buildRtbfResultView(value)
 
   return (
-    <div
-      data-testid="rtbf-result-summary"
-      className="mt-5 space-y-4 border-t border-border/60 pt-4"
-    >
+    <div data-testid="rtbf-result-summary" className="mt-5 space-y-4 border-t border-border/60 pt-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h3 className={settingsTextTokens.panelTitle}>{result.title}</h3>
           <p className="mt-1 max-w-3xl text-[13px] leading-[1.55] text-muted-foreground">{result.description}</p>
         </div>
-        <span className={cn('inline-flex w-fit shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-semibold', rtbfToneClass(result.tone))}>
+        <span
+          className={cn(
+            'inline-flex w-fit shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-semibold',
+            rtbfToneClass(result.tone),
+          )}
+        >
           {result.badge}
         </span>
       </div>
@@ -268,15 +274,14 @@ function RtbfResultSummary({ value }: Readonly<{ value: unknown }>) {
               <div className="text-[13px] font-medium text-muted-foreground/85">{metric.label}</div>
               <div className="text-[13px] font-medium tabular-nums text-foreground">{metric.value}</div>
             </div>
-            {metric.hint ? <div className="mt-1 break-words text-xs leading-5 text-muted-foreground">{metric.hint}</div> : null}
+            {metric.hint ? (
+              <div className="mt-1 break-words text-xs leading-5 text-muted-foreground">{metric.hint}</div>
+            ) : null}
           </div>
         ))}
       </div>
 
-      <details
-        data-testid="rtbf-raw-response"
-        className="group mt-2.5 text-[13px] text-muted-foreground"
-      >
+      <details data-testid="rtbf-raw-response" className="group mt-2.5 text-[13px] text-muted-foreground">
         <summary className="cursor-pointer select-none font-medium text-muted-foreground transition-colors hover:text-foreground">
           原始响应（排障时展开）
         </summary>
@@ -304,12 +309,20 @@ export function GovernanceSection({
   const [rtbfAccountId, setRtbfAccountId] = useState('')
   const [rtbfTicketId, setRtbfTicketId] = useState('')
   const [rtbfDryRun, setRtbfDryRun] = useState(true)
-  const [rtbfMaxDocs, setRtbfMaxDocs] = useState(100)
-  const [rtbfMaxRetries, setRtbfMaxRetries] = useState(1)
+  const [rtbfMaxDocs, setRtbfMaxDocs] = useState('100')
+  const [rtbfMaxRetries, setRtbfMaxRetries] = useState('1')
   const [rtbfRunningKey, setRtbfRunningKey] = useState<string | null>(null)
   const [rtbfResult, setRtbfResult] = useState<unknown>(null)
-  const [rtbfSubjectSource, setRtbfSubjectSource] =
-    useState<RtbfSubjectSource>('current')
+  const [rtbfSubjectSource, setRtbfSubjectSource] = useState<RtbfSubjectSource>('current')
+  const rtbfOwnerRef = useRef({ active: true, running: false })
+
+  useEffect(() => {
+    const owner = rtbfOwnerRef.current
+    owner.active = true
+    return () => {
+      owner.active = false
+    }
+  }, [])
 
   const currentAccessQuery = useQuery({
     queryKey: queryKeys.access.current,
@@ -318,10 +331,8 @@ export function GovernanceSection({
   })
   const membersQuery = useQuery({
     queryKey: queryKeys.rbac.members(RTBF_MEMBERS_PARAMS),
-    queryFn: async () => {
-      const res = await rbacApi.listTenantMembers(RTBF_MEMBERS_PARAMS)
-      return Array.isArray(res.items) ? res.items : []
-    },
+    queryFn: () => rbacApi.listTenantMembers(RTBF_MEMBERS_PARAMS),
+    select: (response) => response.items ?? [],
     retry: false,
   })
   const members = useMemo(() => membersQuery.data || [], [membersQuery.data])
@@ -345,12 +356,9 @@ export function GovernanceSection({
   }, [autoSubjectId, members])
   const selectedMember = useMemo(
     () => members.find((member) => String(member.user_id || '').trim() === rtbfAccountId.trim()) || null,
-    [members, rtbfAccountId]
+    [members, rtbfAccountId],
   )
-  const selectedSubjectValue = selectedRtbfSubjectValue(
-    rtbfSubjectSource,
-    selectedMember
-  )
+  const selectedSubjectValue = selectedRtbfSubjectValue(rtbfSubjectSource, selectedMember)
   const subjectSourceLabel = rtbfSubjectSourceLabel(rtbfSubjectSource)
   const isDeleteMode = rtbfDryRun === false
 
@@ -361,19 +369,28 @@ export function GovernanceSection({
   }, [autoSubjectId, rtbfSubjectSource])
 
   async function runRtbfAction(key: string, title: string, action: () => Promise<unknown>) {
+    const owner = rtbfOwnerRef.current
+    if (!owner.active || owner.running) return
+    owner.running = true
+    const sessionRevision = getAuthSessionRevision()
+    const submittedTicket = rtbfTicketId
+    const isCurrent = () => owner.active && sessionRevision === getAuthSessionRevision()
     setRtbfRunningKey(key)
     try {
       const payload = await action()
+      if (!isCurrent()) return
       setRtbfResult(payload)
-      const ticketId = typeof (payload as { ticket_id?: unknown })?.ticket_id === 'string'
-        ? String((payload as { ticket_id: string }).ticket_id)
-        : ''
-      if (ticketId) setRtbfTicketId(ticketId)
+      const ticketId =
+        typeof (payload as { ticket_id?: unknown })?.ticket_id === 'string'
+          ? String((payload as { ticket_id: string }).ticket_id)
+          : ''
+      if (ticketId) setRtbfTicketId((current) => (current === submittedTicket ? ticketId : current))
       toast.success(`${title}完成`)
     } catch (error) {
-      toast.error(formatApiError(error, `${title}失败`))
+      if (isCurrent()) toast.error(formatApiError(error, `${title}失败`))
     } finally {
-      setRtbfRunningKey(null)
+      owner.running = false
+      if (owner.active) setRtbfRunningKey(null)
     }
   }
 
@@ -412,9 +429,7 @@ export function GovernanceSection({
           <div className={cn(settingsLayoutTokens.row, 'border-b border-border/60')}>
             <div>
               <div className={settingsTextTokens.fieldLabel}>密钥信息脱敏</div>
-              <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>
-                识别并遮蔽 API 密钥、访问令牌等凭据。
-              </div>
+              <div className={cn(settingsTextTokens.helpText, 'mt-0.5')}>识别并遮蔽 API 密钥、访问令牌等凭据。</div>
             </div>
             <SettingsSwitch
               checked={isSecretsRedactEnabled}
@@ -454,24 +469,28 @@ export function GovernanceSection({
               onClick={() => setRtbfDryRun(true)}
               className={cn(
                 'min-h-11 border-b-2 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                rtbfModeButtonClass(rtbfDryRun, 'info')
+                rtbfModeButtonClass(rtbfDryRun, 'info'),
               )}
               aria-pressed={rtbfDryRun}
             >
               <div className="text-[13px] font-medium">安全预演</div>
-              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">评估命中文档和影响范围，不删除数据。</div>
+              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">
+                评估命中文档和影响范围，不删除数据。
+              </div>
             </button>
             <button
               type="button"
               onClick={() => setRtbfDryRun(false)}
               className={cn(
                 'min-h-11 border-b-2 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                rtbfModeButtonClass(isDeleteMode, 'destructive')
+                rtbfModeButtonClass(isDeleteMode, 'destructive'),
               )}
               aria-pressed={isDeleteMode}
             >
               <div className="text-[13px] font-medium">执行删除</div>
-              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">确认预演范围后使用，将级联删除并刷新相关缓存。</div>
+              <div className="mt-1 text-[13px] leading-5 text-muted-foreground">
+                确认预演范围后使用，将级联删除并刷新相关缓存。
+              </div>
             </button>
           </div>
 
@@ -480,9 +499,7 @@ export function GovernanceSection({
               <div className="space-y-1.5 md:col-span-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className={FIELD_LABEL}>目标账号</div>
-                  <span className={settingsTextTokens.microText}>
-                    {subjectSourceLabel}
-                  </span>
+                  <span className={settingsTextTokens.microText}>{subjectSourceLabel}</span>
                 </div>
                 <Select
                   value={selectedSubjectValue}
@@ -516,14 +533,16 @@ export function GovernanceSection({
                         </SelectItem>
                       )
                     })}
-                    <SelectItem value={RTBF_MANUAL_ACCOUNT_VALUE}>
-                      手动输入账号 ID
-                    </SelectItem>
+                    <SelectItem value={RTBF_MANUAL_ACCOUNT_VALUE}>手动输入账号 ID</SelectItem>
                   </SelectContent>
                 </Select>
                 <div className={cn('break-words', settingsTextTokens.helpText)}>
-                  将提交：<span className="break-all font-mono text-foreground">{rtbfAccountId.trim() || '等待自动绑定'}</span>。
-                  {membersQuery.isError ? '成员列表加载失败时仍可使用手动输入' : '下拉会优先使用当前账号，也可切换到其他租户成员'}
+                  将提交：
+                  <span className="break-all font-mono text-foreground">{rtbfAccountId.trim() || '等待自动绑定'}</span>
+                  。
+                  {membersQuery.isError
+                    ? '成员列表加载失败时仍可使用手动输入'
+                    : '下拉会优先使用当前账号，也可切换到其他租户成员'}
                 </div>
               </div>
               <div className="space-y-1.5 md:col-span-2">
@@ -538,14 +557,15 @@ export function GovernanceSection({
                   placeholder="例如 user-123 / acct-1 / 用户 UUID"
                 />
                 <div className={settingsTextTokens.helpText}>
-                  后端会按文档归属账号和生命周期负责人匹配；如果填写用户 UUID，也会一并匹配建议从成员权限或审计日志复制，不要填昵称
+                  后端会按文档归属账号和生命周期负责人匹配；如果填写用户
+                  UUID，也会一并匹配建议从成员权限或审计日志复制，不要填昵称
                 </div>
               </div>
               <div className="space-y-1.5">
                 <div className={FIELD_LABEL}>最多扫描文档</div>
                 <Input
                   value={String(rtbfMaxDocs)}
-                  onChange={(event) => setRtbfMaxDocs(Number.parseInt(event.target.value || '0', 10) || 100)}
+                  onChange={(event) => setRtbfMaxDocs(event.target.value)}
                   className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
                   inputMode="numeric"
                 />
@@ -555,7 +575,7 @@ export function GovernanceSection({
                 <div className={FIELD_LABEL}>失败重试</div>
                 <Input
                   value={String(rtbfMaxRetries)}
-                  onChange={(event) => setRtbfMaxRetries(Number.parseInt(event.target.value || '0', 10) || 1)}
+                  onChange={(event) => setRtbfMaxRetries(event.target.value)}
                   className="h-11 sm:h-9 rounded-md border-input bg-background text-[13px]"
                   inputMode="numeric"
                 />
@@ -586,14 +606,16 @@ export function GovernanceSection({
                           rtbfApi.request({
                             subject_account_id: rtbfAccountId.trim(),
                             dry_run: rtbfDryRun,
-                            max_docs: rtbfMaxDocs,
-                            max_retries: rtbfMaxRetries,
-                          })
-                        )
+                            max_docs: parseRtbfLimit(rtbfMaxDocs, '最多扫描文档', 1, 1000),
+                            max_retries: parseRtbfLimit(rtbfMaxRetries, '失败重试', 0, 10),
+                          }),
+                        ),
                       )
                     }
                   >
-                    {rtbfRunningKey === 'RTBF 请求' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
+                    {rtbfRunningKey === 'RTBF 请求' ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                    ) : null}
                     {rtbfDryRun ? '开始安全预演' : '确认执行删除'}
                   </Button>
                   <Button
@@ -601,9 +623,15 @@ export function GovernanceSection({
                     variant="outline"
                     className="h-11 sm:h-9 gap-1.5 rounded-lg px-3 text-xs font-semibold"
                     disabled={Boolean(rtbfRunningKey) || !rtbfTicketId.trim()}
-                    onClick={() => detachPromise(runRtbfAction('RTBF 状态', 'RTBF 状态查询', () => rtbfApi.getStatus(rtbfTicketId.trim())))}
+                    onClick={() =>
+                      detachPromise(
+                        runRtbfAction('RTBF 状态', 'RTBF 状态查询', () => rtbfApi.getStatus(rtbfTicketId.trim())),
+                      )
+                    }
                   >
-                    {rtbfRunningKey === 'RTBF 状态' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : null}
+                    {rtbfRunningKey === 'RTBF 状态' ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+                    ) : null}
                     查询工单状态
                   </Button>
                 </div>

@@ -26,13 +26,10 @@ const SETTINGS_THEME_FILES = [
 ] as const
 
 function readSettingsThemeSources(): string {
-  return SETTINGS_THEME_FILES
-    .map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8'))
-    .join('\n')
+  return SETTINGS_THEME_FILES.map((file) => fs.readFileSync(path.resolve(__dirname, file), 'utf8')).join('\n')
 }
 
 describe('settings theme boundaries', () => {
-
   it('does not invert persistent settings surfaces across themes', () => {
     const src = readSettingsThemeSources()
 
@@ -42,19 +39,12 @@ describe('settings theme boundaries', () => {
     expectSourceNotToContain(src, 'bg-background/60')
   })
 
-
   it('uses one active feature style instead of decorative warning and success colors', () => {
-    const src = fs.readFileSync(
-      path.resolve(__dirname, '_sections/feature-flags-section.tsx'),
-      'utf8'
-    )
+    const src = fs.readFileSync(path.resolve(__dirname, '_sections/feature-flags-section.tsx'), 'utf8')
 
     expectSourceNotToContain(src, "color: 'orange'")
     expectSourceNotToContain(src, "color: 'green'")
     expectSourceNotToContain(src, 'bg-warning/10')
     expectSourceNotToContain(src, 'bg-success/10')
   })
-
-
-
 })

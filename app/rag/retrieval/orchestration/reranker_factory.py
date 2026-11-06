@@ -3,7 +3,8 @@
 from typing import Any
 
 from app.rag.reranker.capabilities import describe_reranker_provider
-from app.rag.reranker.types import RerankCandidate, RerankResult
+from app.rag.reranker.registry import get_reranker_provider_family
+from app.rag.reranker.types import RerankCandidate, RerankResult, SyncReranker
 
 
 class _IdentityReranker:
@@ -12,21 +13,19 @@ class _IdentityReranker:
         self.model_name = None
 
     def rerank(self, query: str, candidates: list[RerankCandidate], **kwargs: Any) -> RerankResult:  # noqa: ARG002
-        ordered_ids = [
-            str(getattr(c, "id", "") or "").strip() for c in candidates if str(getattr(c, "id", "") or "").strip()
-        ]
+        ordered_ids: list[str] = []
         score_map: dict[str, float] = {}
         for candidate in candidates:
-            cid = str(getattr(candidate, "id", "") or "").strip()
-            if not cid:
+            candidate_id = candidate.id.strip()
+            if not candidate_id:
                 continue
-            meta = getattr(candidate, "metadata", None)
-            meta = meta if isinstance(meta, dict) else {}
+            ordered_ids.append(candidate_id)
+            metadata = candidate.metadata
+            score_value = metadata.get("score") or metadata.get("retrieval_score") or 0.0
             try:
-                score = float(meta.get("score") or meta.get("retrieval_score") or 0.0)
-            except Exception:
-                score = 0.0
-            score_map[cid] = score
+                score_map[candidate_id] = float(score_value)
+            except (OverflowError, TypeError, ValueError):
+                score_map[candidate_id] = 0.0
         return RerankResult(
             ordered_ids=ordered_ids,
             score_map=score_map,
@@ -39,12 +38,16 @@ class _IdentityReranker:
         )
 
 
-def get_reranker(provider: str | None = None, **kwargs: Any):  # noqa: ANN401
+def get_reranker(provider: str | None = None, **kwargs: Any) -> SyncReranker:
+    provider_family = get_reranker_provider_family(provider)
+    if not provider or not provider.strip() or (provider_family and provider_family.canonical_name == "none"):
+        return _IdentityReranker(provider=provider)
+
     try:
         from app.rag.reranker.factory import get_reranker as _real_get_reranker
 
         return _real_get_reranker(provider, **kwargs)
-    except Exception:
+    except ModuleNotFoundError:
         return _IdentityReranker(provider=provider)
 
 

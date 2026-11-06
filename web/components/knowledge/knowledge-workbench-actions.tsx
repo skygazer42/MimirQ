@@ -1,5 +1,7 @@
 'use client'
 
+import type { LoadConnectorRuns } from '@/hooks/use-connector-runs'
+
 import type { ConnectorRunOut, Dataset } from '@/types'
 import type { ChangeEvent, Ref } from 'react'
 import { useCallback, useImperativeHandle, useRef, useState } from 'react'
@@ -13,11 +15,7 @@ import { KnowledgeUrlBatchDialog } from '@/components/knowledge/import/knowledge
 import { KnowledgeUrlImportDialog } from '@/components/knowledge/import/knowledge-url-import-dialog'
 import { KnowledgeWebCrawlDialog } from '@/components/knowledge/import/knowledge-web-crawl-dialog'
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
 import { cn } from '@/lib/utils'
 
@@ -35,7 +33,7 @@ type KnowledgeWorkbenchActionsProps = {
   handleFileUpload: (event: ChangeEvent<HTMLInputElement>) => void
   uploadDocumentFromUrl: (params: { url: string; filename?: string; dataset_id?: string }) => Promise<unknown>
   loadDocuments: () => void | Promise<void>
-  loadConnectorRuns: (params?: { datasetId?: string }) => void | Promise<void>
+  loadConnectorRuns: LoadConnectorRuns
   onConnectorRunCreated?: (run: ConnectorRunOut) => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -70,16 +68,20 @@ export function KnowledgeWorkbenchActions({
     fileInputRef.current?.click()
   }, [])
 
-  useImperativeHandle(actionsRef, () => ({
-    openImport: source => {
-      if (source === 'files') handleOpenFilePicker()
-      else {
-        returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
-        if (source === 'url') setUrlImportOpen(true)
-        else setWebCrawlOpen(true)
-      }
-    },
-  }), [handleOpenFilePicker])
+  useImperativeHandle(
+    actionsRef,
+    () => ({
+      openImport: (source) => {
+        if (source === 'files') handleOpenFilePicker()
+        else {
+          returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
+          if (source === 'url') setUrlImportOpen(true)
+          else setWebCrawlOpen(true)
+        }
+      },
+    }),
+    [handleOpenFilePicker],
+  )
 
   const restoreImportFocus = (event: Event) => {
     const element = returnFocusRef.current
@@ -103,14 +105,7 @@ export function KnowledgeWorkbenchActions({
 
       <DropdownMenu open={open} onOpenChange={onOpenChange}>
         <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            size="sm"
-            className={cn(
-              'gap-2 shadow-none',
-              className,
-            )}
-          >
+          <Button type="button" size="sm" className={cn('gap-2 shadow-none', className)}>
             <Plus className="size-4" />
             <span>{t('importOrCreate')}</span>
             <ChevronDown className="size-3.5" />

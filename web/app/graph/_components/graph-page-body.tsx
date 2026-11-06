@@ -37,23 +37,54 @@ type GraphPageBodyProps = Readonly<{
 }>
 
 export function GraphPageBody({
-  canvasProps, contextMenuProps, explainabilityOpen, explainSteps, currentStepIndex, displayNodes,
-  networkAnalysisNodes, networkAnalysisLinks, networkAnalysisSelectedNodeId,
-  floatingControlsProps, nodeDetailPanelProps, linkDetailPanelProps,
-  summary, canvasLabel, analysisOpen, onAnalysisOpenChange,
+  canvasProps,
+  contextMenuProps,
+  explainabilityOpen,
+  explainSteps,
+  currentStepIndex,
+  displayNodes,
+  networkAnalysisNodes,
+  networkAnalysisLinks,
+  networkAnalysisSelectedNodeId,
+  floatingControlsProps,
+  nodeDetailPanelProps,
+  linkDetailPanelProps,
+  summary,
+  canvasLabel,
+  analysisOpen,
+  onAnalysisOpenChange,
 }: GraphPageBodyProps) {
-  return <div className={styles.canvasRegion} data-graph-canvas-zone>
-    {canvasLabel}
-    <div className={styles.graphViewport}><GraphCanvas {...canvasProps} showSemanticPanel={false} /></div>
-    <GraphContextMenu {...contextMenuProps} />
-    <GraphExplainabilityPanel open={explainabilityOpen} explainSteps={explainSteps} currentStepIndex={currentStepIndex} nodes={displayNodes} />
-    {summary}
-    <GraphFloatingControls {...floatingControlsProps} />
-    {nodeDetailPanelProps.open ? <GraphNodeDetailPanel {...nodeDetailPanelProps} /> : null}
-    {linkDetailPanelProps.open ? <GraphLinkDetailPanel {...linkDetailPanelProps} /> : null}
-    <Dialog open={analysisOpen} onOpenChange={onAnalysisOpenChange}><DialogContent className="max-h-[calc(100dvh-32px)] max-w-2xl overflow-y-auto">
-      <DialogHeader><DialogTitle>网络分析</DialogTitle><DialogDescription>分析当前已加载图谱的节点与关系</DialogDescription></DialogHeader>
-      <KgNetworkAnalysisPanel nodes={networkAnalysisNodes} links={networkAnalysisLinks} selectedNodeId={networkAnalysisSelectedNodeId} embedded />
-    </DialogContent></Dialog>
-  </div>
+  return (
+    <div className={styles.canvasRegion} data-graph-canvas-zone>
+      {canvasLabel}
+      <div className={styles.graphViewport}>
+        <GraphCanvas {...canvasProps} showSemanticPanel={false} />
+      </div>
+      <GraphContextMenu {...contextMenuProps} />
+      <GraphExplainabilityPanel
+        open={explainabilityOpen}
+        explainSteps={explainSteps}
+        currentStepIndex={currentStepIndex}
+        nodes={displayNodes}
+      />
+      {summary}
+      <GraphFloatingControls {...floatingControlsProps} />
+      {nodeDetailPanelProps.open ? <GraphNodeDetailPanel {...nodeDetailPanelProps} /> : null}
+      {linkDetailPanelProps.open ? <GraphLinkDetailPanel {...linkDetailPanelProps} /> : null}
+      <Dialog open={analysisOpen} onOpenChange={onAnalysisOpenChange}>
+        <DialogContent className="max-h-[calc(100dvh-32px)] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>网络分析</DialogTitle>
+            <DialogDescription>分析当前已加载图谱的节点与关系</DialogDescription>
+          </DialogHeader>
+          <KgNetworkAnalysisPanel
+            nodes={networkAnalysisNodes}
+            links={networkAnalysisLinks}
+            selectedNodeId={networkAnalysisSelectedNodeId}
+            embedded
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
 }

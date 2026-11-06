@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -43,7 +42,7 @@ def summarize_graphrag_bench(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "schema": "mimirq.graphrag_bench.v1",
         "summary": {
-            "systems_compared": int(len(systems)),
+            "systems_compared": len(systems),
             "best_recall_system": _best("recall", reverse=True),
             "lowest_cost_system": _best("cost_usd", reverse=False),
             "fastest_system": _best("latency_ms", reverse=False),

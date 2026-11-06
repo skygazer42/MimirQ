@@ -7,44 +7,36 @@
  * - Use Radix/shadcn primitives instead: AlertDialog/Dialog.
  */
 
-import fs from "node:fs/promises"
-import path from "node:path"
-import { fileURLToPath } from "node:url"
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 // Always scan from the web/ project root (not the caller's CWD).
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
-const WEB_ROOT = path.resolve(SCRIPT_DIR, "..")
+const WEB_ROOT = path.resolve(SCRIPT_DIR, '..')
 
-const IGNORE_DIRS = new Set([
-  "node_modules",
-  ".next",
-  ".next_build",
-  "dist",
-  "build",
-])
+const IGNORE_DIRS = new Set(['node_modules', '.next', '.next_build', 'dist', 'build'])
 
 const IGNORE_FILES = new Set([
-  path.join("types", "openapi.ts"),
-  "openapi.json",
-  path.join("scripts", "check-native-dialogs.mjs"),
-  path.join("scripts", "check-design-tokens.mjs"),
+  path.join('types', 'openapi.ts'),
+  'openapi.json',
+  path.join('scripts', 'check-native-dialogs.mjs'),
+  path.join('scripts', 'check-design-tokens.mjs'),
 ])
 
-const IGNORE_PATH_PREFIXES = new Set([
-  path.join("public", "monaco"),
-])
+const IGNORE_PATH_PREFIXES = new Set([path.join('public', 'monaco')])
 
-const INCLUDE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs"])
+const INCLUDE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs'])
 
 const RULES = [
   {
-    id: "confirm",
-    description: "Avoid native confirm dialogs; use AlertDialog/ConfirmDialog.",
+    id: 'confirm',
+    description: 'Avoid native confirm dialogs; use AlertDialog/ConfirmDialog.',
     re: /\b(?:window\.)?confirm\s*\(/g,
   },
   {
-    id: "prompt",
-    description: "Avoid native prompt dialogs; use Dialog with Input/Textarea.",
+    id: 'prompt',
+    description: 'Avoid native prompt dialogs; use Dialog with Input/Textarea.',
     re: /\b(?:window\.)?prompt\s*\(/g,
   },
 ]
@@ -62,9 +54,9 @@ async function collectFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true })
   const out = []
   for (const ent of entries) {
-    if (ent.name.startsWith(".")) {
+    if (ent.name.startsWith('.')) {
       // Skip dotfolders (handled explicitly above where needed).
-      if (ent.name !== ".next" && ent.name !== ".next_build") continue
+      if (ent.name !== '.next' && ent.name !== '.next_build') continue
     }
 
     const abs = path.join(dir, ent.name)
@@ -100,7 +92,7 @@ function excerptAt(text, index, length) {
   const start = Math.max(0, index - 20)
   const end = Math.min(text.length, index + length + 20)
   const raw = text.slice(start, end)
-  return raw.replace(/\s+/g, " ").trim()
+  return raw.replace(/\s+/g, ' ').trim()
 }
 
 async function main() {
@@ -110,7 +102,7 @@ async function main() {
   for (const { abs, rel } of files) {
     let text
     try {
-      text = await fs.readFile(abs, "utf8")
+      text = await fs.readFile(abs, 'utf8')
     } catch {
       continue
     }
@@ -133,7 +125,7 @@ async function main() {
   }
 
   if (!violations.length) {
-    process.stdout.write("ui-check(native-dialogs): OK (no confirm()/prompt() found)\n")
+    process.stdout.write('ui-check(native-dialogs): OK (no confirm()/prompt() found)\n')
     return
   }
 
@@ -146,11 +138,11 @@ async function main() {
     process.stderr.write(`\n...and ${violations.length - 200} more\n`)
   }
 
-  process.stderr.write("\nBanned patterns:\n")
+  process.stderr.write('\nBanned patterns:\n')
   for (const rule of RULES) {
     process.stderr.write(`- ${rule.id}: ${rule.description}\n`)
   }
-  process.stderr.write("\n")
+  process.stderr.write('\n')
 
   process.exit(1)
 }

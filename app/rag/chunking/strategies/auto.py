@@ -79,7 +79,7 @@ from app.rag.chunking.strategies.yaml_manifest import YAMLManifestChunker, looks
 
 
 def _clamp_int(v: int, lo: int, hi: int) -> int:
-    return max(int(lo), min(int(v), int(hi)))
+    return max(lo, min(v, hi))
 
 
 def _density_metrics(text: str, *, sample_chars: int = 50_000) -> dict[str, float]:
@@ -104,9 +104,9 @@ def _density_metrics(text: str, *, sample_chars: int = 50_000) -> dict[str, floa
     non_ws_ratio = float(n - ws) / float(n)
     return {
         "sample_chars": float(n),
-        "line_count": float(line_count),
-        "avg_line_len": float(avg_line_len),
-        "non_ws_ratio": float(non_ws_ratio),
+        "line_count": line_count,
+        "avg_line_len": avg_line_len,
+        "non_ws_ratio": non_ws_ratio,
     }
 
 
@@ -127,8 +127,8 @@ def _adaptive_chunk_params(
     bo = max(0, int(base_overlap or 0))
 
     metrics = _density_metrics(text)
-    avg_line_len = float(metrics.get("avg_line_len") or 0.0)
-    line_count = float(metrics.get("line_count") or 0.0)
+    avg_line_len = metrics["avg_line_len"]
+    line_count = metrics["line_count"]
 
     # Start from defaults.
     size = bs
@@ -139,17 +139,17 @@ def _adaptive_chunk_params(
     sel = str(selected or "").strip().lower()
     if ft in {"pdf"} and sel in {"langchain_recursive", "semantic_sentence", "markdown_aware"}:
         # PDFs often have hard line breaks; slightly larger chunks help preserve paragraph context.
-        size = int(round(bs * 1.1))
+        size = round(bs * 1.1)
         reason = "file_type_pdf"
 
     # Density-based adjustments (dominant).
     # Long lines + few breaks => dense blocks; reduce size.
     if avg_line_len >= 140:
-        size = int(round(bs * 0.8))
+        size = round(bs * 0.8)
         reason = "dense_long_lines"
     # Many short lines => sparse layout; increase size.
     elif avg_line_len <= 30 and line_count >= 80:
-        size = int(round(bs * 1.3))
+        size = round(bs * 1.3)
         reason = "sparse_short_lines"
 
     # Clamp to safe bounds; keep within the docs-recommended range.
@@ -157,14 +157,14 @@ def _adaptive_chunk_params(
 
     # Keep overlap ratio stable relative to base settings.
     ratio = float(bo) / float(bs) if bs > 0 else 0.2
-    overlap = int(round(float(size) * ratio))
+    overlap = round(float(size) * ratio)
     overlap = _clamp_int(overlap, 0, max(0, size - 1))
 
     # Some strategies don't want overlap (e.g. JSON).
     if sel == "json":
         overlap = 0
 
-    return int(size), int(overlap), str(reason), metrics
+    return size, overlap, reason, metrics
 
 
 _MD_HINT_RES = (
@@ -262,7 +262,7 @@ class AutoChunker(BaseChunker):
     - Default -> langchain_recursive (general purpose)
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -692,11 +692,11 @@ class AutoChunker(BaseChunker):
                 meta = dict(item.metadata or {})
                 meta["chunk_strategy_auto"] = True
                 meta.setdefault("chunk_strategy_selected", selected)
-                meta["chunk_size_base"] = int(self.chunk_size)
-                meta["chunk_overlap_base"] = int(self.chunk_overlap)
-                meta["chunk_size_effective"] = int(eff_size)
-                meta["chunk_overlap_effective"] = int(eff_overlap)
-                meta["adaptive_chunk_reason"] = str(reason)
+                meta["chunk_size_base"] = self.chunk_size
+                meta["chunk_overlap_base"] = self.chunk_overlap
+                meta["chunk_size_effective"] = eff_size
+                meta["chunk_overlap_effective"] = eff_overlap
+                meta["adaptive_chunk_reason"] = reason
                 meta["adaptive_density"] = metrics
                 item.metadata = meta
             chunks.extend(produced)

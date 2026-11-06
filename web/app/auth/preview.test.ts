@@ -23,8 +23,10 @@ describe('auth design preview handoff', () => {
     new Function(script!)()
     document.querySelector<HTMLButtonElement>('#mode-switch')!.click()
     for (const [id, value] of Object.entries({
-      email: 'reader@example.com', username: 'reader',
-      password: 'valid-reader-password', 'confirm-password': 'valid-reader-password',
+      email: 'reader@example.com',
+      username: 'reader',
+      password: 'valid-reader-password',
+      'confirm-password': 'valid-reader-password',
     })) {
       document.querySelector<HTMLInputElement>(`#${id}`)!.value = value
     }

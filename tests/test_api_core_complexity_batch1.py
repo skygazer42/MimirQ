@@ -1,4 +1,3 @@
-
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -69,7 +68,7 @@ def test_update_rag_config_template_applies_explicit_fields_in_one_write(monkeyp
         ab_variant=" variant ",
         ab_weight=0.4,
     )
-    monkeypatch.setattr(rag_config_templates.DatasetService, "ensure_member", lambda *_args: None)
+    monkeypatch.setattr(rag_config_templates.dataset_service, "ensure_member", lambda *_args: None)
     monkeypatch.setattr(rag_config_templates, "_ensure_write", lambda *_args: None)
 
     result = rag_config_templates.update_rag_config_template(

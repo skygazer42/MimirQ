@@ -7,7 +7,6 @@ Targets .graphql/.gql schema files and splits by top-level definitions such as:
 Offsets are preserved.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -99,9 +98,9 @@ def _iter_defs(text: str) -> list[_Def]:
         kind, name = parsed
         defs.append(
             _Def(
-                start=int(line_start),
-                end=int(line_start + len(raw_line)),
-                kind=str(kind),
+                start=line_start,
+                end=line_start + len(raw_line),
+                kind=kind,
                 name=name,
                 index=len(defs),
             )
@@ -145,7 +144,7 @@ def looks_like_graphql_schema(text: str) -> bool:
 
 
 class GraphQLSchemaChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

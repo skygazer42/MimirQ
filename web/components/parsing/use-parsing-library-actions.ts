@@ -4,10 +4,17 @@ import { useCallback, type ChangeEvent, type Dispatch, type RefObject, type SetS
 
 import { toast } from 'sonner'
 
-import { documentApi, parsingApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
+import { parsingApi } from '@/lib/api/parsing'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
-import { deleteDocContentFromCache, deleteDocSourceFromCache, getDocContentFromCache, getDocSourceFromCache, saveDocSourceToCache } from '@/lib/doc-content-cache'
+import {
+  deleteDocContentFromCache,
+  deleteDocSourceFromCache,
+  getDocContentFromCache,
+  getDocSourceFromCache,
+  saveDocSourceToCache,
+} from '@/lib/doc-content-cache'
 import { getParserLabel } from '@/lib/parser-options'
 import { resolveParserBackendForFilename } from '@/lib/parser-compat'
 import { restoreParsingRunFromMarkdown, shouldRefreshParsingContentFromRemote } from '@/lib/parsing-run-restore'
@@ -19,38 +26,30 @@ import { ZIP_ALLOWED_EXTENSIONS } from '@/lib/upload-extensions'
 import { type FileStatus } from '@/components/ui/file-queue-item'
 
 import type { ParseRun, ParsedFile } from './parsing-types'
+import {
+  countMarkdownHeadings,
+  mapBackendStatusToLibraryStatus,
+  normalizeParsingBackendCandidate,
+  readPersistedParsingElements,
+} from './parsing-page-utils'
 
 type RebindTarget = {
   libraryId: string
   autoParse: boolean
 }
 
-type MutableRef<T> = {
-  current: T
-}
-
-const normalizeBackendCandidate = (value: unknown): string =>
-  typeof value === 'string' && value.trim() ? value.trim() : ''
-
-function readPersistedElements(value: unknown): NonNullable<ParsedFileData['elements']> {
-  if (!Array.isArray(value)) return []
-  return value.filter((item): item is NonNullable<ParsedFileData['elements']>[number] => Boolean(item) && typeof item === 'object')
-}
-
 type UseParsingLibraryActionsOptions = {
   activeFolderId: string | null
-  countMarkdownHeadings: (markdown: string) => number
   createFolder: (name: string, parentId?: string) => string
   fileInputRef: RefObject<HTMLInputElement | null>
-  filesRef: MutableRef<ParsedFile[]>
+  filesRef: RefObject<ParsedFile[]>
   folderInputRef: RefObject<HTMLInputElement | null>
   folders: FolderNode[]
   libraryFiles: ParsedFileData[]
-  mapBackendStatusToLibraryStatus: (status?: string) => FileStatus
   parserBackend: string
   selectedDatasetId: string | null
   rebindInputRef: RefObject<HTMLInputElement | null>
-  rebindTargetRef: MutableRef<RebindTarget | null>
+  rebindTargetRef: RefObject<RebindTarget | null>
   setActiveBlockId: Dispatch<SetStateAction<string | null>>
   setActiveFileId: Dispatch<SetStateAction<string | null>>
   setActiveFolderId: (folderId: string) => void
@@ -61,20 +60,18 @@ type UseParsingLibraryActionsOptions = {
   setHoveredBlockId: Dispatch<SetStateAction<string | null>>
   setRightPanelMode: Dispatch<SetStateAction<'blocks' | 'markdown'>>
   updateParsedFile: (id: string, updates: Partial<Omit<ParsedFileData, 'id'>>) => void
-  uploadTargetFolderIdRef: MutableRef<string | null>
+  uploadTargetFolderIdRef: RefObject<string | null>
   upsertParsedFile: (file: ParsedFileData) => void
 }
 
 export function useParsingLibraryActions({
   activeFolderId,
-  countMarkdownHeadings,
   createFolder,
   fileInputRef,
   filesRef,
   folderInputRef,
   folders,
   libraryFiles,
-  mapBackendStatusToLibraryStatus,
   parserBackend,
   selectedDatasetId,
   rebindInputRef,
@@ -92,8 +89,6 @@ export function useParsingLibraryActions({
   uploadTargetFolderIdRef,
   upsertParsedFile,
 }: Readonly<UseParsingLibraryActionsOptions>) {
-  const generateId = useCallback(() => generateRequestId(), [])
-
   const requestUploadToFolder = useCallback(
     (folderId: string) => {
       const targetId = folderId || ROOT_FOLDER_ID
@@ -104,7 +99,7 @@ export function useParsingLibraryActions({
         fileInputRef.current.click()
       }
     },
-    [fileInputRef, setActiveFolderId, uploadTargetFolderIdRef]
+    [fileInputRef, setActiveFolderId, uploadTargetFolderIdRef],
   )
 
   const requestUploadFolder = useCallback(
@@ -117,7 +112,7 @@ export function useParsingLibraryActions({
         folderInputRef.current.click()
       }
     },
-    [folderInputRef, setActiveFolderId, uploadTargetFolderIdRef]
+    [folderInputRef, setActiveFolderId, uploadTargetFolderIdRef],
   )
 
   const requestRebindForLibraryFile = useCallback(
@@ -130,14 +125,14 @@ export function useParsingLibraryActions({
         rebindInputRef.current.click()
       }
     },
-    [rebindInputRef, rebindTargetRef]
+    [rebindInputRef, rebindTargetRef],
   )
 
   const mountLibraryFileToQueue = useCallback(
     async (
       libraryId: string,
       sourceFile: File,
-      options: { autoParse?: boolean; select?: boolean; forceRefresh?: boolean } = {}
+      options: { autoParse?: boolean; select?: boolean; forceRefresh?: boolean } = {},
     ) => {
       const id = (libraryId || '').trim()
       if (!id || !sourceFile) return null
@@ -155,7 +150,7 @@ export function useParsingLibraryActions({
       const folderId = libEntry.folderId || ROOT_FOLDER_ID
       const parsedAtTs = Date.parse(libEntry.parsedAt || '')
       const createdAt = Number.isFinite(parsedAtTs) ? parsedAtTs : Date.now()
-      const queueId = generateId()
+      const queueId = generateRequestId()
       const autoParse = libEntry.source === 'knowledge_base' ? false : Boolean(options.autoParse)
       const select = options.select ?? true
       const forceRefresh = Boolean(options.forceRefresh)
@@ -190,7 +185,12 @@ export function useParsingLibraryActions({
         try {
           const cached = await getDocContentFromCache(id)
           let cleaned = (cached?.markdownContent || libEntry.markdownContent || '').trim()
-          let raw = (cached?.originalMarkdownContent || cached?.markdownContent || libEntry.markdownContent || '').trim()
+          let raw = (
+            cached?.originalMarkdownContent ||
+            cached?.markdownContent ||
+            libEntry.markdownContent ||
+            ''
+          ).trim()
 
           const needsRemoteContent =
             !raw ||
@@ -211,10 +211,10 @@ export function useParsingLibraryActions({
                       ? (remote.persisted_meta as Record<string, unknown>)
                       : {}
                   const remoteBackend =
-                    normalizeBackendCandidate(persistedMeta.parser_backend) ||
-                    normalizeBackendCandidate(persistedMeta.parser_backend_requested) ||
+                    normalizeParsingBackendCandidate(persistedMeta.parser_backend) ||
+                    normalizeParsingBackendCandidate(persistedMeta.parser_backend_requested) ||
                     backend
-                  restoredElements = readPersistedElements(persistedMeta.elements)
+                  restoredElements = readPersistedParsingElements(persistedMeta.elements)
                   updateParsedFile(id, {
                     markdownContent: cleaned || raw,
                     originalMarkdownContent: raw || cleaned,
@@ -270,7 +270,7 @@ export function useParsingLibraryActions({
               },
             ]
             activeRunId = runId
-            const restoredMarkdown = markdownContent || ""
+            const restoredMarkdown = markdownContent || ''
             stats = {
               charCount: restoredMarkdown.length,
               lineCount: restoredMarkdown.split('\n').length,
@@ -340,8 +340,6 @@ export function useParsingLibraryActions({
       return queueId
     },
     [
-      countMarkdownHeadings,
-      generateId,
       libraryFiles,
       parserBackend,
       setActiveBlockId,
@@ -352,7 +350,7 @@ export function useParsingLibraryActions({
       setHoveredBlockId,
       setRightPanelMode,
       updateParsedFile,
-    ]
+    ],
   )
 
   const handleRebindFileSelect = useCallback(
@@ -375,7 +373,7 @@ export function useParsingLibraryActions({
 
       detachPromise(mountLibraryFileToQueue(target.libraryId, selectedFile, { autoParse: target.autoParse }))
     },
-    [mountLibraryFileToQueue, rebindTargetRef, setActiveLibrarySourceStatus]
+    [mountLibraryFileToQueue, rebindTargetRef, setActiveLibrarySourceStatus],
   )
 
   const restoreLibraryFileFromCache = useCallback(
@@ -390,7 +388,7 @@ export function useParsingLibraryActions({
             mountLibraryFileToQueue(id, existing.file, {
               autoParse: false,
               forceRefresh: true,
-            })
+            }),
           )
           return
         }
@@ -434,7 +432,7 @@ export function useParsingLibraryActions({
       setActiveLibraryFileId,
       setActiveLibrarySourceStatus,
       setAutoParseFileId,
-    ]
+    ],
   )
 
   const addFiles = useCallback(
@@ -455,7 +453,9 @@ export function useParsingLibraryActions({
         const cached = folderIdByKey.get(key)
         if (cached) return cached
 
-        const existing = folders.find((folder) => (folder.parentId || ROOT_FOLDER_ID) === parentId && folder.name === trimmed)
+        const existing = folders.find(
+          (folder) => (folder.parentId || ROOT_FOLDER_ID) === parentId && folder.name === trimmed,
+        )
         if (existing) {
           folderIdByKey.set(key, existing.id)
           return existing.id
@@ -490,7 +490,7 @@ export function useParsingLibraryActions({
 
           const resolvedParser = resolveParserBackendForFilename(filename, parserBackend)
           queued.push({
-            id: generateId(),
+            id: generateRequestId(),
             file,
             folderId: currentFolderId,
             name: filename,
@@ -501,6 +501,7 @@ export function useParsingLibraryActions({
             error: undefined,
             parserBackend: resolvedParser.backend,
             parserLabel: getParserLabel(resolvedParser.backend),
+            datasetId: selectedDatasetId,
             createdAt: now,
           })
           added += 1
@@ -535,7 +536,7 @@ export function useParsingLibraryActions({
 
               const resolvedParser = resolveParserBackendForFilename(filename, parserBackend)
               queued.push({
-                id: generateId(),
+                id: generateRequestId(),
                 file: item.file,
                 folderId,
                 name: item.file.name,
@@ -559,13 +560,13 @@ export function useParsingLibraryActions({
 
           if (addedInZip === 0) {
             toast.warning(
-              extractedCount === 0 ? `ZIP 中未找到文件：${file.name}` : `ZIP 中没有可解析文件：${file.name}`
+              extractedCount === 0 ? `ZIP 中未找到文件：${file.name}` : `ZIP 中没有可解析文件：${file.name}`,
             )
           } else {
             toast.success(
               skippedInZip > 0
                 ? `已从 ZIP 添加 ${addedInZip} 个文件（跳过 ${skippedInZip} 个）`
-                : `已从 ZIP 添加 ${addedInZip} 个文件`
+                : `已从 ZIP 添加 ${addedInZip} 个文件`,
             )
           }
           continue
@@ -579,7 +580,7 @@ export function useParsingLibraryActions({
 
         const resolvedParser = resolveParserBackendForFilename(file.name, parserBackend)
         queued.push({
-          id: generateId(),
+          id: generateRequestId(),
           file,
           folderId: baseFolderId,
           name: file.name,
@@ -614,16 +615,10 @@ export function useParsingLibraryActions({
 
           const metadata = doc.metadata
           const targetDatasetId =
-            normalizeBackendCandidate(metadata?.target_dataset_id) ||
-            selectedDatasetId ||
-            null
-          const targetDatasetName =
-            normalizeBackendCandidate(metadata?.target_dataset_name) ||
-            null
+            normalizeParsingBackendCandidate(metadata?.target_dataset_id) || selectedDatasetId || null
+          const targetDatasetName = normalizeParsingBackendCandidate(metadata?.target_dataset_name) || null
           const requestedBackend =
-            normalizeBackendCandidate(metadata?.parser_backend_requested) ||
-            queuedFile.parserBackend ||
-            'auto'
+            normalizeParsingBackendCandidate(metadata?.parser_backend_requested) || queuedFile.parserBackend || 'auto'
 
           upsertParsedFile({
             id: libId,
@@ -663,7 +658,9 @@ export function useParsingLibraryActions({
       setActiveFileId((prev) => prev ?? queuedWithLibrary[0].id)
 
       if (added > 0) {
-        toast.success(selectedDatasetId ? `已添加到当前数据集解析区：${added} 个文件` : `已添加到解析列表：${added} 个文件`)
+        toast.success(
+          selectedDatasetId ? `已添加到当前数据集解析区：${added} 个文件` : `已添加到解析列表：${added} 个文件`,
+        )
       }
       if (uploadFailed > 0) toast.warning(`有 ${uploadFailed} 个文件上传失败（可稍后重试）`)
       if (skipped > 0) toast.warning(`已跳过 ${skipped} 个不支持的文件`)
@@ -672,14 +669,12 @@ export function useParsingLibraryActions({
       activeFolderId,
       createFolder,
       folders,
-      generateId,
-      mapBackendStatusToLibraryStatus,
       parserBackend,
       selectedDatasetId,
       setActiveFileId,
       setFiles,
       upsertParsedFile,
-    ]
+    ],
   )
 
   const removeLibraryCaches = useCallback((fileId: string) => {

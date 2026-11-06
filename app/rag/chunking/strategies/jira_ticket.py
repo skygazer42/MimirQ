@@ -10,7 +10,6 @@ fallback RecursiveCharacterTextSplitter inside each section while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -284,7 +283,7 @@ def looks_like_jira_ticket(text: str) -> bool:
 
 
 class JiraTicketChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

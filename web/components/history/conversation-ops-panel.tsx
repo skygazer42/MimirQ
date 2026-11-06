@@ -55,7 +55,10 @@ function formatResultSummary(payload: unknown) {
   return `操作已完成，返回 ${Object.keys(record).length} 个字段。`
 }
 
-export function ConversationOpsPanel({ conversationId, initiallyExpanded = false }: Readonly<{ conversationId?: string | null; initiallyExpanded?: boolean }>) {
+export function ConversationOpsPanel({
+  conversationId,
+  initiallyExpanded = false,
+}: Readonly<{ conversationId?: string | null; initiallyExpanded?: boolean }>) {
   const [manualConversationId, setManualConversationId] = useState(conversationId || '')
   const [panelOpen, setPanelOpen] = useState(initiallyExpanded)
   const [resultDetailsOpen, setResultDetailsOpen] = useState(false)
@@ -75,7 +78,8 @@ export function ConversationOpsPanel({ conversationId, initiallyExpanded = false
       const payload = await action()
       setResult({ title, payload })
       setResultDetailsOpen(false)
-      const createdId = typeof (payload as { id?: unknown })?.id === 'string' ? String((payload as { id: string }).id) : ''
+      const createdId =
+        typeof (payload as { id?: unknown })?.id === 'string' ? String((payload as { id: string }).id) : ''
       if (createdId) setManualConversationId(createdId)
       toast.success(`${title}完成`)
     } catch (error) {
@@ -93,30 +97,29 @@ export function ConversationOpsPanel({ conversationId, initiallyExpanded = false
       padding="none"
       className="border-border pb-2"
     >
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-11 w-full justify-start gap-2 px-2 text-[13px] sm:h-9"
-          aria-expanded={panelOpen}
-          aria-controls="history-conversation-actions"
-          onClick={() => setPanelOpen((open) => !open)}
-        >
-          <ChevronDown className={cn('size-4 text-muted-foreground transition-transform motion-reduce:transition-none', panelOpen ? 'rotate-0' : '-rotate-90')} />
-          <span>对话操作</span>
-          <span className="hidden text-xs font-normal text-muted-foreground sm:inline">导出与检查点</span>
-          <span className="ml-auto text-xs font-normal text-muted-foreground">
-            {panelOpen ? '收起' : '展开'}
-          </span>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
-        </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        className="h-11 w-full justify-start gap-2 px-2 text-[13px] sm:h-9"
+        aria-expanded={panelOpen}
+        aria-controls="history-conversation-actions"
+        onClick={() => setPanelOpen((open) => !open)}
+      >
+        <ChevronDown
+          className={cn(
+            'size-4 text-muted-foreground transition-transform motion-reduce:transition-none',
+            panelOpen ? 'rotate-0' : '-rotate-90',
+          )}
+        />
+        <span>对话操作</span>
+        <span className="hidden text-xs font-normal text-muted-foreground sm:inline">导出与检查点</span>
+        <span className="ml-auto text-xs font-normal text-muted-foreground">{panelOpen ? '收起' : '展开'}</span>
+        {busy ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground motion-reduce:animate-none" /> : null}
+      </Button>
 
       {panelOpen ? (
         <div id="history-conversation-actions">
-          {!hasConversation && (
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
-              请先选择一段对话。
-            </p>
-          )}
+          {!hasConversation && <p className="mt-3 text-sm leading-6 text-muted-foreground">请先选择一段对话。</p>}
 
           <div className="mt-3 flex flex-wrap gap-2">
             <ActionButton
@@ -139,7 +142,7 @@ export function ConversationOpsPanel({ conversationId, initiallyExpanded = false
                     })
                     downloadBlob(blob, 'conversation.md')
                     return { bytes: blob.size, type: blob.type }
-                  })
+                  }),
                 )
               }
             >
@@ -159,7 +162,7 @@ export function ConversationOpsPanel({ conversationId, initiallyExpanded = false
                     })
                     downloadBlob(blob, 'conversation.json')
                     return { bytes: blob.size, type: blob.type }
-                  })
+                  }),
                 )
               }
             >
@@ -173,7 +176,7 @@ export function ConversationOpsPanel({ conversationId, initiallyExpanded = false
               label="检查点列表"
               onClick={() =>
                 runAction('checkpoints', '检查点列表', () =>
-                  chatApi.listCheckpoints(effectiveConversationId, { limit: 20, include_values: false })
+                  chatApi.listCheckpoints(effectiveConversationId, { limit: 20, include_values: false }),
                 )
               }
             />
@@ -226,7 +229,7 @@ export function ConversationOpsPanel({ conversationId, initiallyExpanded = false
             <pre
               className={cn(
                 'mt-2 max-h-48 overflow-auto rounded-md border border-border/60 bg-background p-2 text-xs',
-                'whitespace-pre-wrap break-words'
+                'whitespace-pre-wrap break-words',
               )}
             >
               {prettyJson(result.payload)}
@@ -252,7 +255,12 @@ function ActionButton({
   onClick: () => Promise<void>
 }>) {
   return (
-    <Button variant="outline" className="h-11 px-3 text-[13px] sm:h-9" disabled={disabled} onClick={() => detachPromise(onClick())}>
+    <Button
+      variant="outline"
+      className="h-11 px-3 text-[13px] sm:h-9"
+      disabled={disabled}
+      onClick={() => detachPromise(onClick())}
+    >
       {busy ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <Icon className="size-4" />}
       {label}
     </Button>

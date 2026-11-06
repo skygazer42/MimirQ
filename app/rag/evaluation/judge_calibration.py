@@ -1,6 +1,5 @@
 """Human-label calibration contract for the unified LLM judge."""
 
-
 from collections import Counter
 from datetime import datetime
 from typing import Any
@@ -93,13 +92,12 @@ def build_calibration_report(
     payload_dict = payload if isinstance(payload, dict) else {}
     kappa = cohens_kappa(rows)
     confusion: dict[str, dict[str, int]] = {
-        human: {judge: 0 for judge in CALIBRATION_LABELS}
-        for human in CALIBRATION_LABELS
+        human: {judge: 0 for judge in CALIBRATION_LABELS} for human in CALIBRATION_LABELS
     }
     for row in rows:
         confusion[row["human_label"]][row["judge_label"]] += 1
     reviewer_count = len({row["reviewer_hash"] for row in rows})
-    passed = kappa is not None and float(kappa) >= float(min_kappa)
+    passed = kappa is not None and kappa >= float(min_kappa)
     return {
         "schema": "mimirq.llm_judge_calibration_report.v1",
         "items": len(rows),

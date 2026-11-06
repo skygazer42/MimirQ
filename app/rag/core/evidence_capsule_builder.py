@@ -95,10 +95,8 @@ def _capsule_payload_without_hash(
     query_debug: dict[str, Any] | None,
     request_context: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    sanitized_citations = [_sanitize_citation(c) for c in citations if isinstance(c, dict)]
-    citation_hashes = [
-        str(c.get("citation_hash") or "") for c in sanitized_citations if str(c.get("citation_hash") or "").strip()
-    ]
+    sanitized_citations = [_sanitize_citation(c) for c in citations]
+    citation_hashes = [citation["citation_hash"] for citation in sanitized_citations]
     must_recall = {
         "status": str(metrics.get("must_recall_status") or ""),
         "passed": _coerce_bool(metrics.get("must_recall_passed")),
@@ -124,7 +122,7 @@ def _capsule_payload_without_hash(
         "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
         "retrieval_elapsed_sec": _coerce_float(metrics.get("retrieval_elapsed_sec")),
         "retrieval_config_hash": str(metrics.get("retrieval_config_hash") or ""),
-        "citations_count": int(len(sanitized_citations)),
+        "citations_count": len(sanitized_citations),
         "top_relevance_score": _coerce_float(metrics.get("top_relevance_score")),
         "abstain_triggered": _coerce_bool(metrics.get("abstain_triggered")),
         "abstain_reason": str(metrics.get("abstain_reason") or ""),

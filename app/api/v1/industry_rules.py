@@ -1,4 +1,3 @@
-
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -48,7 +47,7 @@ _UPDATE_SCHEMA = "mimirq.industry_rules_update.v1"
 
 def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
     try:
-        system_tenant_id = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or ""))
+        system_tenant_id = UUID(str(settings.DEFAULT_TENANT_ID or ""))
     except ValueError as exc:
         raise HTTPException(status_code=500, detail="DEFAULT_TENANT_ID is invalid") from exc
     if tenant_id != system_tenant_id:
@@ -60,7 +59,7 @@ def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage industry rules",
     )
-    if str(getattr(member, "role", "") or "").strip().lower() != "owner":
+    if str(member.role or "").strip().lower() != "owner":
         raise HTTPException(status_code=403, detail="No permission to manage industry rules")
 
 
@@ -68,9 +67,9 @@ def _ruleset_summary(name: str) -> dict[str, Any]:
     ruleset = load_ruleset(name)
     return {
         "name": ruleset.name,
-        "glossary_count": int(len(ruleset.glossary)),
-        "pattern_count": int(len(ruleset.patterns)),
-        "intent_count": int(len(ruleset.intents)),
+        "glossary_count": len(ruleset.glossary),
+        "pattern_count": len(ruleset.patterns),
+        "intent_count": len(ruleset.intents),
     }
 
 
@@ -78,9 +77,9 @@ def _ruleset_detail(name: str) -> dict[str, Any]:
     ruleset = load_ruleset(name)
     return {
         "name": ruleset.name,
-        "glossary_count": int(len(ruleset.glossary)),
-        "pattern_count": int(len(ruleset.patterns)),
-        "intent_count": int(len(ruleset.intents)),
+        "glossary_count": len(ruleset.glossary),
+        "pattern_count": len(ruleset.patterns),
+        "intent_count": len(ruleset.intents),
         "glossary": dict(ruleset.glossary),
         "patterns": list(ruleset.patterns),
         "intents": list(ruleset.intents),
@@ -111,7 +110,7 @@ def get_industry_rulesets() -> dict[str, Any]:
     rows = [_ruleset_summary(name) for name in names]
     return {
         "schema": _INDEX_SCHEMA,
-        "count": int(len(rows)),
+        "count": len(rows),
         "rulesets": rows,
     }
 
@@ -141,8 +140,7 @@ def get_industry_ruleset(name: str) -> dict[str, Any]:
     response_model=IndustryRulesUpdateResponse,
     summary="整体替换术语映射表",
     description=(
-        "用请求体中的 glossary 全量替换指定规则集的术语映射表(非增量合并)。"
-        "返回写入条目数。规则集不存在时返回 404。"
+        "用请求体中的 glossary 全量替换指定规则集的术语映射表(非增量合并)。返回写入条目数。规则集不存在时返回 404。"
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
@@ -165,8 +163,7 @@ def put_industry_ruleset_glossary(
     response_model=IndustryRulesUpdateResponse,
     summary="整体替换问题模式",
     description=(
-        "用请求体中的 patterns 全量替换指定规则集的问题模式列表(非增量合并)。"
-        "返回写入条目数。规则集不存在时返回 404。"
+        "用请求体中的 patterns 全量替换指定规则集的问题模式列表(非增量合并)。返回写入条目数。规则集不存在时返回 404。"
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )
@@ -189,8 +186,7 @@ def put_industry_ruleset_patterns(
     response_model=IndustryRulesUpdateResponse,
     summary="整体替换意图分类",
     description=(
-        "用请求体中的 intents 全量替换指定规则集的意图分类列表(非增量合并)。"
-        "返回写入条目数。规则集不存在时返回 404。"
+        "用请求体中的 intents 全量替换指定规则集的意图分类列表(非增量合并)。返回写入条目数。规则集不存在时返回 404。"
     ),
     responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES,
 )

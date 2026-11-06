@@ -42,7 +42,9 @@ function useRequestIntent(key: string | null) {
   const ref = useRef({ key, sequence: 0 })
   useLayoutEffect(() => {
     ref.current = { key, sequence: 0 }
-    return () => { ref.current = { key, sequence: 0 } }
+    return () => {
+      ref.current = { key, sequence: 0 }
+    }
   }, [key])
   return useMemo(() => ({ key, ref }), [key])
 }
@@ -72,7 +74,10 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const [includeArchivedSuites, setIncludeArchivedSuites] = useState(false)
 
   const [selectedSuiteId, setSelectedSuiteId] = useState<string>('')
-  const selectedSuite = useMemo(() => suites.find((suite) => suite.id === selectedSuiteId) || null, [selectedSuiteId, suites])
+  const selectedSuite = useMemo(
+    () => suites.find((suite) => suite.id === selectedSuiteId) || null,
+    [selectedSuiteId, suites],
+  )
 
   const [items, setItems] = useState<EvidenceItem[]>([])
   const [itemsLoading, setItemsLoading] = useState(false)
@@ -109,7 +114,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const [hardcaseTags, setHardcaseTags] = useState<string[]>(['hardcase'])
 
   const [convertingFeedbackId, setConvertingFeedbackId] = useState<string>('')
-  const [pendingFeedbackId, setPendingFeedbackId] = useState<string>(() => String(options?.initialFeedbackId || '').trim())
+  const [pendingFeedbackId, setPendingFeedbackId] = useState<string>(() =>
+    String(options?.initialFeedbackId || '').trim(),
+  )
 
   const [createSuiteOpen, setCreateSuiteOpen] = useState(false)
   const [suiteName, setSuiteName] = useState('')
@@ -147,37 +154,62 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const suitesRead = useRequestIntent(JSON.stringify([datasetId, includeArchivedSuites]))
   const itemsRead = useRequestIntent(JSON.stringify([datasetId, selectedSuiteId, statusFilter]))
   const dashboardRead = useRequestIntent(JSON.stringify([datasetId, selectedSuiteId, dashboardIncludeArchived]))
-  const hardcaseRead = useRequestIntent(JSON.stringify([datasetId, selectedSuiteId, hardcaseMaxRating, hardcaseIncludeExisting, hardcaseMaxCandidates]))
+  const hardcaseRead = useRequestIntent(
+    JSON.stringify([datasetId, selectedSuiteId, hardcaseMaxRating, hardcaseIncludeExisting, hardcaseMaxCandidates]),
+  )
   const retrieveRead = useRequestIntent(JSON.stringify([datasetId, selectedSuiteId, newQuery, profile]))
   const importRead = useRequestIntent(JSON.stringify([datasetId, selectedSuiteId, createItemOpen]))
   const driftRead = useRequestIntent(JSON.stringify([datasetId, selectedSuiteId, selectedItemId]))
-  const whyRetrieveRead = useRequestIntent(JSON.stringify([datasetId, selectedSuiteId, selectedItemId, selectedItem?.query, whyMissedProfile]))
+  const whyRetrieveRead = useRequestIntent(
+    JSON.stringify([datasetId, selectedSuiteId, selectedItemId, selectedItem?.query, whyMissedProfile]),
+  )
   useLayoutEffect(() => {
-    setDataset(null); setSuites([]); setSelectedSuiteId(''); setSuitesError(null)
-    setDatasetLoading(false); setSuitesLoading(false); setCreatingSuite(false)
+    setDataset(null)
+    setSuites([])
+    setSelectedSuiteId('')
+    setSuitesError(null)
+    setDatasetLoading(false)
+    setSuitesLoading(false)
+    setCreatingSuite(false)
   }, [datasetId])
   useLayoutEffect(() => {
-    setItems([]); setItemsError(null); setItemsLoading(false); setSelectedItemId('')
-    setDashboard(null); setDashboardError(null); setDashboardLoading(false)
-    setHardcaseRes(null); setHardcaseError(null); setHardcaseLoading(false)
-    setCreatingItem(false); setImportingQAFaq(false); setConvertingFeedbackId('')
+    setItems([])
+    setItemsError(null)
+    setItemsLoading(false)
+    setSelectedItemId('')
+    setDashboard(null)
+    setDashboardError(null)
+    setDashboardLoading(false)
+    setHardcaseRes(null)
+    setHardcaseError(null)
+    setHardcaseLoading(false)
+    setCreatingItem(false)
+    setImportingQAFaq(false)
+    setConvertingFeedbackId('')
   }, [datasetId, selectedSuiteId])
   useLayoutEffect(() => {
-    setRetrieveRes(null); setRetrieveError(null); setRetrieving(false); setSelectedChunkIds([])
+    setRetrieveRes(null)
+    setRetrieveError(null)
+    setRetrieving(false)
+    setSelectedChunkIds([])
   }, [datasetId, selectedSuiteId, newQuery, profile])
   useLayoutEffect(() => {
-    setWhyMissedCitations([]); setWhyMissedError(null); setWhyMissedRanRetrieve(false); setWhyMissedRetrieving(false)
+    setWhyMissedCitations([])
+    setWhyMissedError(null)
+    setWhyMissedRanRetrieve(false)
+    setWhyMissedRetrieving(false)
   }, [datasetId, selectedSuiteId, selectedItemId, selectedItem?.query, whyMissedProfile])
   useLayoutEffect(() => {
-    setWhyMissedDriftedRefs([]); setWhyMissedDriftError(null); setWhyMissedDriftLoading(false)
+    setWhyMissedDriftedRefs([])
+    setWhyMissedDriftError(null)
+    setWhyMissedDriftLoading(false)
   }, [datasetId, selectedSuiteId, selectedItemId])
 
   const filteredSuites = useMemo(() => {
     const query = suiteQuery.trim().toLowerCase()
-    const base = suites || []
-    if (!query) return base
-    return base.filter((suite) => {
-      const haystack = `${suite.name || ''} ${(suite.description || '')} ${(suite.tags || []).join(' ')}`.toLowerCase()
+    if (!query) return suites
+    return suites.filter((suite) => {
+      const haystack = `${suite.name || ''} ${suite.description || ''} ${(suite.tags || []).join(' ')}`.toLowerCase()
       return haystack.includes(query)
     })
   }, [suiteQuery, suites])
@@ -185,11 +217,11 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const filteredItems = useMemo(() => {
     const query = itemQuery.trim().toLowerCase()
     const filter = statusFilter
-    return (items || [])
+    return items
       .filter((item) => (filter === '__all__' ? true : String(item.status || '').toLowerCase() === filter))
       .filter((item) => {
         if (!query) return true
-        const haystack = `${item.query || ''} ${(item.notes || '')}`.toLowerCase()
+        const haystack = `${item.query || ''} ${item.notes || ''}`.toLowerCase()
         return haystack.includes(query)
       })
   }, [items, itemQuery, statusFilter])
@@ -211,10 +243,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       toast.error(formatApiError(error, '加载数据集失败'))
     } finally {
       if (isCurrent()) {
-
-      setDatasetLoading(false)
-          }
-}
+        setDatasetLoading(false)
+      }
+    }
   }, [datasetId, datasetRead])
 
   const loadSuites = useCallback(async () => {
@@ -234,17 +265,16 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
 
       const next = res.items || []
       setSuites(next)
-      setSelectedSuiteId(current => next.some(suite => suite.id === current) ? current : next[0]?.id || '')
+      setSelectedSuiteId((current) => (next.some((suite) => suite.id === current) ? current : next[0]?.id || ''))
     } catch (error: unknown) {
       if (!isCurrent()) return
 
       setSuitesError(formatApiError(error, '加载 Evidence Suites 失败'))
     } finally {
       if (isCurrent()) {
-
-      setSuitesLoading(false)
-          }
-}
+        setSuitesLoading(false)
+      }
+    }
   }, [datasetId, includeArchivedSuites, suitesRead])
 
   const loadItems = useCallback(async () => {
@@ -267,17 +297,16 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
 
       const next = res.items || []
       setItems(next)
-      setSelectedItemId(current => current && !next.some(item => item.id === current) ? '' : current)
+      setSelectedItemId((current) => (current && !next.some((item) => item.id === current) ? '' : current))
     } catch (error: unknown) {
       if (!isCurrent()) return
 
       setItemsError(formatApiError(error, '加载 Evidence Items 失败'))
     } finally {
       if (isCurrent()) {
-
-      setItemsLoading(false)
-          }
-}
+        setItemsLoading(false)
+      }
+    }
   }, [selectedSuiteId, statusFilter, itemsRead])
 
   const loadDashboard = useCallback(async () => {
@@ -304,10 +333,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       setDashboardError(formatApiError(error, '加载 Dashboard 失败'))
     } finally {
       if (isCurrent()) {
-
-      setDashboardLoading(false)
-          }
-}
+        setDashboardLoading(false)
+      }
+    }
   }, [dashboardIncludeArchived, selectedSuiteId, dashboardRead])
 
   const loadHardcases = useCallback(async () => {
@@ -337,15 +365,24 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       setHardcaseRes(null)
     } finally {
       if (isCurrent()) {
-
-      setHardcaseLoading(false)
-          }
-}
+        setHardcaseLoading(false)
+      }
+    }
   }, [hardcaseIncludeExisting, hardcaseMaxCandidates, hardcaseMaxRating, selectedSuiteId, hardcaseRead])
 
-  const currentLoaders = useRef({ suites: loadSuites, items: loadItems, dashboard: loadDashboard, hardcases: loadHardcases })
+  const currentLoaders = useRef({
+    suites: loadSuites,
+    items: loadItems,
+    dashboard: loadDashboard,
+    hardcases: loadHardcases,
+  })
   useLayoutEffect(() => {
-    currentLoaders.current = { suites: loadSuites, items: loadItems, dashboard: loadDashboard, hardcases: loadHardcases }
+    currentLoaders.current = {
+      suites: loadSuites,
+      items: loadItems,
+      dashboard: loadDashboard,
+      hardcases: loadHardcases,
+    }
   }, [loadSuites, loadItems, loadDashboard, loadHardcases])
   const reloadSuites = useCallback(() => currentLoaders.current.suites(), [])
   const reloadItems = useCallback(() => currentLoaders.current.items(), [])
@@ -364,12 +401,8 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   }, [])
 
   const handleConvertFeedbackToEvidence = useCallback(
-    async (
-      feedbackId: string,
-      questionHash?: string,
-      options?: { tags?: string[]; source?: string }
-    ) => {
-    const isCurrent = sameOwner(suiteOwner)
+    async (feedbackId: string, questionHash?: string, options?: { tags?: string[]; source?: string }) => {
+      const isCurrent = sameOwner(suiteOwner)
 
       if (!selectedSuiteId) return
       const id = String(feedbackId || '').trim()
@@ -388,26 +421,25 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
         if (!isCurrent()) return createdId || null
         toast.success('已创建 draft EvidenceItem')
         await currentLoaders.current.items()
-      if (!isCurrent()) return createdId || null
+        if (!isCurrent()) return createdId || null
 
         await currentLoaders.current.hardcases()
-      if (!isCurrent()) return createdId || null
+        if (!isCurrent()) return createdId || null
 
         if (createdId) setSelectedItemId(createdId)
         return createdId || null
       } catch (error: unknown) {
-      if (!isCurrent()) return null
+        if (!isCurrent()) return null
 
         toast.error(formatApiError(error, '转为 EvidenceItem 失败'))
         return null
       } finally {
-      if (isCurrent()) {
-
-        setConvertingFeedbackId('')
-            }
-}
+        if (isCurrent()) {
+          setConvertingFeedbackId('')
+        }
+      }
     },
-    [hardcaseTags, selectedSuiteId, suiteOwner]
+    [hardcaseTags, selectedSuiteId, suiteOwner],
   )
 
   useEffect(() => {
@@ -460,14 +492,14 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
         dataset_id: datasetId,
         name,
         description: suiteDesc.trim() || null,
-        tags: suiteTags || [],
+        tags: suiteTags,
         config: {},
       })
       if (!isCurrent()) return
 
       toast.success('已创建 Evidence Suite')
       setCreateSuiteOpen(false)
-      setSuites((prev) => [suite, ...(prev || [])])
+      setSuites((prev) => [suite, ...prev])
       if (sameSuiteSelection()) setSelectedSuiteId(suite.id)
       detachPromise(currentLoaders.current.suites())
     } catch (error: unknown) {
@@ -476,10 +508,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       toast.error(formatApiError(error, '创建 Suite 失败'))
     } finally {
       if (isCurrent()) {
-
-      setCreatingSuite(false)
-          }
-}
+        setCreatingSuite(false)
+      }
+    }
   }, [datasetId, suiteDesc, suiteName, suiteTags, datasetOwner, suiteOwner])
 
   const openCreateItem = useCallback(() => {
@@ -541,17 +572,16 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       setRetrieveError(formatApiError(error, '检索失败'))
     } finally {
       if (isCurrent()) {
-
-      setRetrieving(false)
-          }
-}
+        setRetrieving(false)
+      }
+    }
   }, [datasetId, newQuery, profile, retrieveRead])
 
   const toggleChunkSelection = useCallback((chunkId: string, mode: 'retrieve' | 'import') => {
     if (!chunkId) return
     if (mode === 'retrieve') {
       setSelectedChunkIds((prev) => {
-        const next = new Set(prev || [])
+        const next = new Set(prev)
         if (next.has(chunkId)) next.delete(chunkId)
         else next.add(chunkId)
         return Array.from(next)
@@ -559,37 +589,40 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       return
     }
     setImportSelectedChunkIds((prev) => {
-      const next = new Set(prev || [])
+      const next = new Set(prev)
       if (next.has(chunkId)) next.delete(chunkId)
       else next.add(chunkId)
       return Array.from(next)
     })
   }, [])
 
-  const handlePickPackFile = useCallback(async (file: File) => {
-    const isCurrent = latestRequest(importRead)
-    if (!isCurrent()) return
-
-    setImportError(null)
-    setImportPack(null)
-    setImportSelectedChunkIds([])
-    try {
-      const text = await file.text()
+  const handlePickPackFile = useCallback(
+    async (file: File) => {
+      const isCurrent = latestRequest(importRead)
       if (!isCurrent()) return
 
-      const parsed = JSON.parse(text) as unknown
-      const payload = normalizeImportPack(parsed)
-      if (!payload) {
-        throw new Error('invalid evidence pack')
+      setImportError(null)
+      setImportPack(null)
+      setImportSelectedChunkIds([])
+      try {
+        const text = await file.text()
+        if (!isCurrent()) return
+
+        const parsed = JSON.parse(text) as unknown
+        const payload = normalizeImportPack(parsed)
+        if (!payload) {
+          throw new Error('invalid evidence pack')
+        }
+        setImportPack(payload)
+        setImportSelectedChunkIds(payload.selected_chunk_ids ?? [])
+      } catch (error: unknown) {
+        if (!isCurrent()) return
+
+        setImportError(`解析失败：${getErrorMessage(error)}`)
       }
-      setImportPack(payload)
-      setImportSelectedChunkIds(payload.selected_chunk_ids ?? [])
-    } catch (error: unknown) {
-      if (!isCurrent()) return
-
-      setImportError(`解析失败：${getErrorMessage(error)}`)
-    }
-  }, [importRead])
+    },
+    [importRead],
+  )
 
   const handleCreateItem = useCallback(async () => {
     const isCurrent = sameOwner(suiteOwner)
@@ -612,7 +645,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
 
     if (createItemTab === 'retrieve') {
       citations = retrieveRes?.citations || []
-      selected = selectedChunkIds || []
+      selected = selectedChunkIds
       retrievalSnapshot = retrieveRes
         ? {
             ...retrieveRes,
@@ -626,7 +659,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       ragSnapshot = { retrieval_profile: profile, created_from: 'retrieve' }
     } else {
       citations = importPack?.citations || []
-      selected = importSelectedChunkIds || []
+      selected = importSelectedChunkIds
       retrievalSnapshot = {
         ...importPack,
         selected_chunk_ids: selected,
@@ -662,7 +695,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
 
       toast.success('已创建 Evidence Item（draft）')
       setCreateItemOpen(false)
-      setItems((prev) => [created, ...(prev || [])])
+      setItems((prev) => [created, ...prev])
       if (sameItemSelection()) setSelectedItemId(created.id)
       detachPromise(currentLoaders.current.suites())
       detachPromise(currentLoaders.current.items())
@@ -672,15 +705,29 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       toast.error(formatApiError(error, '创建 Evidence Item 失败'))
     } finally {
       if (isCurrent()) {
-
-      setCreatingItem(false)
-          }
-}
-  }, [createItemTab, datasetId, importPack, importSelectedChunkIds, newExpected, newNotes, newQuery, profile, retrieveRes, selectedChunkIds, selectedSuite, selectedSuiteId, suiteOwner, itemOwner])
+        setCreatingItem(false)
+      }
+    }
+  }, [
+    createItemTab,
+    datasetId,
+    importPack,
+    importSelectedChunkIds,
+    newExpected,
+    newNotes,
+    newQuery,
+    profile,
+    retrieveRes,
+    selectedChunkIds,
+    selectedSuite,
+    selectedSuiteId,
+    suiteOwner,
+    itemOwner,
+  ])
 
   const handleImportQAFaq = useCallback(
     async (file: File) => {
-    const isCurrent = sameOwner(suiteOwner)
+      const isCurrent = sameOwner(suiteOwner)
 
       if (!selectedSuite?.id) return
 
@@ -693,26 +740,25 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       setImportingQAFaq(true)
       try {
         const res = await evidenceApi.importItems(String(selectedSuite.id), file)
-      if (!isCurrent()) return
+        if (!isCurrent()) return
 
         toast.success(
-          `导入完成：parsed=${res.parsed} created=${res.created} skipped=${res.skipped} errors=${(res.errors || []).length}`
+          `导入完成：parsed=${res.parsed} created=${res.created} skipped=${res.skipped} errors=${(res.errors || []).length}`,
         )
         detachPromise(currentLoaders.current.items())
         detachPromise(currentLoaders.current.suites())
       } catch (error: unknown) {
-      if (!isCurrent()) return
+        if (!isCurrent()) return
 
         toast.error(formatApiError(error, '导入失败'))
       } finally {
-      if (isCurrent()) {
-
-        setImportingQAFaq(false)
-        if (qaFaqInputRef.current) qaFaqInputRef.current.value = ''
-            }
-}
+        if (isCurrent()) {
+          setImportingQAFaq(false)
+          if (qaFaqInputRef.current) qaFaqInputRef.current.value = ''
+        }
+      }
     },
-    [selectedSuite, suiteOwner]
+    [selectedSuite, suiteOwner],
   )
 
   const handleExportSuite = useCallback(async () => {
@@ -754,7 +800,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
 
       const errors = Array.isArray(res?.errors) ? res.errors : []
       if (errors.length) {
-        toast.warning(`同步完成：created=${res.created} updated=${res.updated} skipped=${res.skipped} errors=${errors.length}`)
+        toast.warning(
+          `同步完成：created=${res.created} updated=${res.updated} skipped=${res.skipped} errors=${errors.length}`,
+        )
       } else {
         toast.success(`同步完成：created=${res.created} updated=${res.updated} skipped=${res.skipped}`)
       }
@@ -767,62 +815,71 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     }
   }, [selectedSuite, suiteOwner])
 
-  const handleArchiveItem = useCallback(async (itemId: string) => {
-    const isCurrent = sameOwner(suiteOwner)
+  const handleArchiveItem = useCallback(
+    async (itemId: string) => {
+      const isCurrent = sameOwner(suiteOwner)
 
-    if (!itemId) return
-    try {
-      const updated = await evidenceApi.archiveItem(itemId)
-      if (!isCurrent()) return
+      if (!itemId) return
+      try {
+        const updated = await evidenceApi.archiveItem(itemId)
+        if (!isCurrent()) return
 
-      setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
-      toast.success('已归档')
-      detachPromise(currentLoaders.current.suites())
-      detachPromise(currentLoaders.current.items())
-    } catch (error: unknown) {
-      if (!isCurrent()) return
+        setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
+        toast.success('已归档')
+        detachPromise(currentLoaders.current.suites())
+        detachPromise(currentLoaders.current.items())
+      } catch (error: unknown) {
+        if (!isCurrent()) return
 
-      toast.error(formatApiError(error, '归档失败'))
-    }
-  }, [suiteOwner])
+        toast.error(formatApiError(error, '归档失败'))
+      }
+    },
+    [suiteOwner],
+  )
 
-  const handleReviewItem = useCallback(async (itemId: string) => {
-    const isCurrent = sameOwner(suiteOwner)
+  const handleReviewItem = useCallback(
+    async (itemId: string) => {
+      const isCurrent = sameOwner(suiteOwner)
 
-    if (!itemId) return
-    try {
-      const updated = await evidenceApi.reviewItem(itemId)
-      if (!isCurrent()) return
+      if (!itemId) return
+      try {
+        const updated = await evidenceApi.reviewItem(itemId)
+        if (!isCurrent()) return
 
-      setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
-      toast.success('已提交 Review')
-      detachPromise(currentLoaders.current.suites())
-      detachPromise(currentLoaders.current.items())
-    } catch (error: unknown) {
-      if (!isCurrent()) return
+        setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
+        toast.success('已提交 Review')
+        detachPromise(currentLoaders.current.suites())
+        detachPromise(currentLoaders.current.items())
+      } catch (error: unknown) {
+        if (!isCurrent()) return
 
-      toast.error(formatApiError(error, '提交 Review 失败'))
-    }
-  }, [suiteOwner])
+        toast.error(formatApiError(error, '提交 Review 失败'))
+      }
+    },
+    [suiteOwner],
+  )
 
-  const handleApproveItem = useCallback(async (itemId: string) => {
-    const isCurrent = sameOwner(suiteOwner)
+  const handleApproveItem = useCallback(
+    async (itemId: string) => {
+      const isCurrent = sameOwner(suiteOwner)
 
-    if (!itemId) return
-    try {
-      const updated = await evidenceApi.approveItem(itemId)
-      if (!isCurrent()) return
+      if (!itemId) return
+      try {
+        const updated = await evidenceApi.approveItem(itemId)
+        if (!isCurrent()) return
 
-      setItems((prev) => (prev || []).map((item) => (item.id === itemId ? updated : item)))
-      toast.success('已批准（approved）')
-      detachPromise(currentLoaders.current.suites())
-      detachPromise(currentLoaders.current.items())
-    } catch (error: unknown) {
-      if (!isCurrent()) return
+        setItems((prev) => prev.map((item) => (item.id === itemId ? updated : item)))
+        toast.success('已批准（approved）')
+        detachPromise(currentLoaders.current.suites())
+        detachPromise(currentLoaders.current.items())
+      } catch (error: unknown) {
+        if (!isCurrent()) return
 
-      toast.error(formatApiError(error, '批准失败'))
-    }
-  }, [suiteOwner])
+        toast.error(formatApiError(error, '批准失败'))
+      }
+    },
+    [suiteOwner],
+  )
 
   const suiteCounts = useMemo(() => {
     const counts = selectedSuite?.item_counts || null
@@ -840,10 +897,13 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const importCitations = useMemo(() => importPack?.citations ?? EMPTY_CITATIONS, [importPack])
 
   const expectedNeedles = useMemo(() => extractEvidenceNeedles(newExpected), [newExpected])
-  const retrieveRanked = useMemo(() => rankEvidenceCitations(retrieveCitations, expectedNeedles), [expectedNeedles, retrieveCitations])
+  const retrieveRanked = useMemo(
+    () => rankEvidenceCitations(retrieveCitations, expectedNeedles),
+    [expectedNeedles, retrieveCitations],
+  )
   const suggestedRetrieveChunkIds = useMemo(() => {
     const out: string[] = []
-    for (const ranked of retrieveRanked || []) {
+    for (const ranked of retrieveRanked) {
       if (ranked.score <= 0) continue
       const chunkId = String(ranked.citation.chunk_id || '')
       if (!chunkId) continue
@@ -856,7 +916,7 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
   const applyRetrieveSuggestions = useCallback(() => {
     if (!suggestedRetrieveChunkIds.length) return
     setSelectedChunkIds((prev) => {
-      const next = new Set(prev || [])
+      const next = new Set(prev)
       for (const chunkId of suggestedRetrieveChunkIds) next.add(chunkId)
       return Array.from(next)
     })
@@ -906,10 +966,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       setWhyMissedDriftError(formatApiError(error, '加载 Drift Audit 失败'))
     } finally {
       if (isCurrent()) {
-
-      setWhyMissedDriftLoading(false)
-          }
-}
+        setWhyMissedDriftLoading(false)
+      }
+    }
   }, [selectedItem?.id, selectedSuiteId, driftRead])
 
   useEffect(() => {
@@ -962,10 +1021,9 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       setWhyMissedError(formatApiError(error, '检索失败'))
     } finally {
       if (isCurrent()) {
-
-      setWhyMissedRetrieving(false)
-          }
-}
+        setWhyMissedRetrieving(false)
+      }
+    }
   }, [datasetId, selectedItem?.query, whyMissedProfile, whyRetrieveRead])
 
   const whyMissedReport = useMemo(() => {
@@ -973,8 +1031,8 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     if (!whyMissedRanRetrieve) return null
     return buildWhyMissedReport({
       reference_sources: selectedItem.reference_sources || [],
-      citations: whyMissedCitations || [],
-      drifted_references: whyMissedDriftedRefs || [],
+      citations: whyMissedCitations,
+      drifted_references: whyMissedDriftedRefs,
     })
   }, [selectedItem, whyMissedCitations, whyMissedDriftedRefs, whyMissedRanRetrieve])
 
@@ -1016,7 +1074,16 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
       report: whyMissedReport,
     })
     toast.success('已导出 Why-missed 报告')
-  }, [datasetId, selectedItem?.id, selectedSuite?.id, selectedSuite?.name, whyMissedCitations, whyMissedDriftedRefs, whyMissedProfile, whyMissedReport])
+  }, [
+    datasetId,
+    selectedItem?.id,
+    selectedSuite?.id,
+    selectedSuite?.name,
+    whyMissedCitations,
+    whyMissedDriftedRefs,
+    whyMissedProfile,
+    whyMissedReport,
+  ])
 
   return {
     applyRetrieveSuggestions,

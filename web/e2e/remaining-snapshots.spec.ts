@@ -69,14 +69,16 @@ test('snapshot failure retains scope, and phone node details close back to the g
   await page.getByRole('button', { name: '重新读取图谱', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '预览图谱暂不可用' })).toBeVisible()
   await expect(page.getByTestId('kg-snapshot-graph-canvas')).toHaveCount(0)
-  expect(state.exports.some(query => query.includes(doc))).toBeTruthy()
+  expect(state.exports.some((query) => query.includes(doc))).toBeTruthy()
 })
 
 test('summary-only comparison retains real deltas and does not fabricate snapshot totals', async ({ page }) => {
   const state = await snapshotFixture(page)
   await openRemaining(page, snapshotRoute, '图谱快照')
   await page.getByRole('button', { name: '版本与范围', exact: true }).click()
-  const response = page.waitForResponse(value => new URL(value.url()).pathname === '/api/v1/kg/snapshots/compare' && value.ok())
+  const response = page.waitForResponse(
+    (value) => new URL(value.url()).pathname === '/api/v1/kg/snapshots/compare' && value.ok(),
+  )
   await page.getByRole('dialog').getByRole('button', { name: '仅比较摘要', exact: true }).click()
   await response
   await expect(page.getByRole('dialog')).toHaveCount(0)

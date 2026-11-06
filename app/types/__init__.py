@@ -6,5 +6,3 @@ Internal type definitions (not API Schema)
 """
 
 __all__ = []
-
-

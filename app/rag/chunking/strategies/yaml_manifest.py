@@ -210,7 +210,7 @@ def _looks_like_structured_yaml(text: str) -> bool:
     if ratio < 0.25:
         return False
 
-    return bool(stats.key_only >= 1 or stats.indented >= 2 or stats.list_items >= 2)
+    return stats.key_only >= 1 or stats.indented >= 2 or stats.list_items >= 2
 
 
 def _build_yaml_chunk_metadata(
@@ -228,8 +228,8 @@ def _build_yaml_chunk_metadata(
     meta["start_char"] = abs_start
     meta["end_char"] = abs_end
     meta.setdefault("doc_type_kwd", "yaml")
-    meta["yaml_doc_index"] = int(doc_info.index)
-    meta["yaml_doc_count"] = int(doc_count)
+    meta["yaml_doc_index"] = doc_info.index
+    meta["yaml_doc_count"] = doc_count
     if doc_info.api_version:
         meta["yaml_api_version"] = doc_info.api_version
     if doc_info.kind:
@@ -257,7 +257,7 @@ def looks_like_yaml_manifest(text: str) -> bool:
 
 
 class YAMLManifestChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

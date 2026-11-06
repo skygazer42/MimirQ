@@ -5,7 +5,6 @@ This module is intentionally located under app.core to avoid import cycles and t
 ensure PII_REDACTION_ENABLED cannot be silently bypassed by internal try-imports.
 """
 
-
 import re
 from dataclasses import dataclass
 from functools import lru_cache
@@ -19,9 +18,7 @@ DEFAULT_MASK = "[REDACTED]"
 
 # \b also fails between a Chinese char and an ASCII email local-part, so anchor
 # with character-class lookarounds that tolerate CJK/punctuation on both sides.
-_EMAIL_RE = re.compile(
-    r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])"
-)
+_EMAIL_RE = re.compile(r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?![A-Za-z])")
 # Use digit-boundary lookarounds instead of \b: a \b between a Chinese char and
 # a digit does not match (both are \w in Unicode), so "\b1[3-9]\d{9}\b" silently
 # fails to redact a phone number embedded in Chinese text like "电话13800138000".
@@ -29,18 +26,16 @@ _CN_MOBILE_RE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
 _CN_ID_RE = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
 _OPENAI_KEY_RE = re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")
 _AWS_ACCESS_KEY_RE = re.compile(r"\bAKIA[0-9A-Z]{16}\b")
-_GENERIC_KV_SECRET_RE = re.compile(
-    r"(?i)\b(api[_-]?key|access[_-]?key|secret|token|bearer)\b\s*[:=]\s*([^\s,;]{8,})"
-)
+_GENERIC_KV_SECRET_RE = re.compile(r"(?i)\b(api[_-]?key|access[_-]?key|secret|token|bearer)\b\s*[:=]\s*([^\s,;]{8,})")
 _CARD_CANDIDATE_RE = re.compile(r"\b(?:\d[ -]*){13,19}\b")
 
 
 def pii_redaction_enabled() -> bool:
-    return bool(getattr(settings, "PII_REDACTION_ENABLED", False))
+    return settings.PII_REDACTION_ENABLED
 
 
 def _current_mask() -> str:
-    mask = str(getattr(settings, "PII_REDACTION_MASK", DEFAULT_MASK) or DEFAULT_MASK).strip()
+    mask = (settings.PII_REDACTION_MASK or DEFAULT_MASK).strip()
     return mask or DEFAULT_MASK
 
 
@@ -71,12 +66,12 @@ class PIIRedactor:
         def _mark(kind: str, n: int = 1) -> None:
             meta["redacted"] = True
             hits = meta["hits"]
-            hits[kind] = int(hits.get(kind, 0) or 0) + int(n or 0)
+            hits[kind] = hits.get(kind, 0) + n
 
         out = raw
 
         # Key/value style secrets: keep the key name but mask the value.
-        def _kv_repl(match: re.Match) -> str:
+        def _kv_repl(match: re.Match[str]) -> str:
             _mark("secret_kv")
             return f"{match.group(1)}={self.mask}"
 
@@ -94,7 +89,7 @@ class PIIRedactor:
                 _mark(kind, n)
 
         # Credit card candidates: validate with Luhn to reduce false positives.
-        def _card_repl(match: re.Match) -> str:
+        def _card_repl(match: re.Match[str]) -> str:
             s = match.group(0) or ""
             digits = "".join(ch for ch in s if ch.isdigit())
             if _luhn_ok(digits):
@@ -120,8 +115,7 @@ class PIIRedactor:
 
 @lru_cache(maxsize=8)
 def _get_redactor(mask: str) -> PIIRedactor:
-    normalized_mask = str(mask or DEFAULT_MASK).strip() or DEFAULT_MASK
-    return PIIRedactor(mask=normalized_mask)
+    return PIIRedactor(mask=mask)
 
 
 def redact_text(text: str) -> str:

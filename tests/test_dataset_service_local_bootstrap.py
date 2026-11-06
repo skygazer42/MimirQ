@@ -11,7 +11,7 @@ from app.core.config import Settings
 from app.core.database import Base
 from app.core.request_state import bind_request_state, reset_request_state
 from app.models.tenant import Tenant, TenantMember
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 
 
 def _session_factory():
@@ -29,16 +29,14 @@ def test_default_tenant_bootstrap_requires_implicit_default_tenant_resolution(mo
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr(
-        "app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
-    )
+    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="header", client_host="127.0.0.1"))
     try:
         with test_session() as db:
             with pytest.raises(HTTPException) as excinfo:
-                DatasetService.ensure_member(db, tenant_id, "acct-1")
+                dataset_service.ensure_member(db, tenant_id, "acct-1")
         assert excinfo.value.status_code == 403
     finally:
         reset_request_state(token)
@@ -50,16 +48,14 @@ def test_default_tenant_bootstrap_requires_loopback_header_auth(monkeypatch: pyt
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr(
-        "app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
-    )
+    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="default", client_host="198.51.100.8"))
     try:
         with test_session() as db:
             with pytest.raises(HTTPException) as excinfo:
-                DatasetService.ensure_member(db, tenant_id, "acct-1")
+                dataset_service.ensure_member(db, tenant_id, "acct-1")
         assert excinfo.value.status_code == 403
     finally:
         reset_request_state(token)
@@ -73,15 +69,13 @@ def test_default_tenant_bootstrap_allows_loopback_header_auth_without_client_ten
     tenant_id = uuid4()
     monkeypatch.delenv("ENV", raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.AUTH_MODE", "header", raising=False)
-    monkeypatch.setattr(
-        "app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False
-    )
+    monkeypatch.setattr("app.services.dataset_service.settings.LOCAL_DEV_TENANT_BOOTSTRAP_ENABLED", True, raising=False)
     monkeypatch.setattr("app.services.dataset_service.settings.DEFAULT_TENANT_ID", str(tenant_id), raising=False)
 
     token = bind_request_state(SimpleNamespace(tenant_id_source="default", client_host="127.0.0.1"))
     try:
         with test_session() as db:
-            member = DatasetService.ensure_member(db, tenant_id, "acct-1")
+            member = dataset_service.ensure_member(db, tenant_id, "acct-1")
 
             assert member.role == "owner"
             assert db.query(TenantMember).count() == 1
@@ -105,7 +99,7 @@ def test_default_tenant_bootstrap_is_disabled_without_explicit_flag(monkeypatch:
     try:
         with test_session() as db:
             with pytest.raises(HTTPException) as excinfo:
-                DatasetService.ensure_member(db, tenant_id, "acct-1")
+                dataset_service.ensure_member(db, tenant_id, "acct-1")
         assert excinfo.value.status_code == 403
         with test_session() as db:
             assert db.query(TenantMember).count() == 0

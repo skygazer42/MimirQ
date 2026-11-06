@@ -5,7 +5,6 @@ Goal: speed up interactive tuning on large documents by avoiding repeated parsin
 Scope: best-effort, per-process only (works even without Redis).
 """
 
-
 import asyncio
 import threading
 import time
@@ -59,7 +58,7 @@ class PreviewParseCache:
             self._entries[key] = entry
             self._entries.move_to_end(key, last=True)
             # LRU eviction
-            cap = int(max_entries or 0)
+            cap = max_entries or 0
             if cap > 0:
                 while len(self._entries) > cap:
                     self._entries.popitem(last=False)
@@ -83,13 +82,13 @@ class PreviewParseLocks:
     Notes:
     - Best-effort, per-process only.
     - Locks are bounded with a small LRU to avoid unbounded growth.
-    - Locks are created lazily inside an active event loop.
+    - Locks are created lazily; asyncio binds the loop when waiting is needed.
     """
 
     def __init__(self, *, max_locks: int = 128) -> None:
         self._lock = threading.Lock()
         self._locks: "OrderedDict[str, asyncio.Lock]" = OrderedDict()
-        self._max_locks = int(max_locks or 0) or 128
+        self._max_locks = max_locks or 128
 
     def get(self, key: str) -> asyncio.Lock | None:
         if not key:
@@ -97,11 +96,7 @@ class PreviewParseLocks:
         with self._lock:
             lock = self._locks.get(key)
             if lock is None:
-                try:
-                    lock = asyncio.Lock()
-                except RuntimeError:
-                    # No running loop (shouldn't happen inside FastAPI request context).
-                    return None
+                lock = asyncio.Lock()
                 self._locks[key] = lock
             self._locks.move_to_end(key, last=True)
             while len(self._locks) > self._max_locks:

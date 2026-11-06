@@ -33,9 +33,12 @@ vi.mock('@/hooks/use-tenant-access', () => ({ useTenantAccess: () => ({ data: un
 vi.mock('@/lib/navigation-visibility', () => ({ canShowAdminControlledNavigationModule: () => true }))
 vi.mock('@/lib/api', () => ({ documentApi: {}, datasetApi: {}, chatApi: {} }))
 vi.mock('@/store/command-menu', () => ({
-  useCommandMenuState: (select: (state: unknown) => unknown) => select({
-    open: true, setOpen: mocks.setOpen, toggle: mocks.toggle,
-  }),
+  useCommandMenuState: (select: (state: unknown) => unknown) =>
+    select({
+      open: true,
+      setOpen: mocks.setOpen,
+      toggle: mocks.toggle,
+    }),
 }))
 vi.mock('@/store/document-view', () => ({
   useDocumentView: () => ({
@@ -57,9 +60,13 @@ beforeEach(async () => {
   root = createRoot(container)
   await act(async () => {
     root.render(
-      <NextIntlClientProvider locale="zh-CN" timeZone="Asia/Shanghai" messages={{ ...commonMessages, ...commandMessages }}>
+      <NextIntlClientProvider
+        locale="zh-CN"
+        timeZone="Asia/Shanghai"
+        messages={{ ...commonMessages, ...commandMessages }}
+      >
         <CommandMenu />
-      </NextIntlClientProvider>
+      </NextIntlClientProvider>,
     )
   })
 })
@@ -164,12 +171,11 @@ describe('command menu explicit execution', () => {
 
   it('keeps text search working and distinguishes results that share a filename', async () => {
     vi.useFakeTimers()
-    mocks.documents.push(
-      { id: 'doc-1', filename: '设计说明.pdf' },
-      { id: 'doc-2', filename: '设计说明.pdf' },
-    )
+    mocks.documents.push({ id: 'doc-1', filename: '设计说明.pdf' }, { id: 'doc-2', filename: '设计说明.pdf' })
     await query('设计')
-    await act(async () => { await vi.advanceTimersByTimeAsync(220) })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(220)
+    })
     const input = document.querySelector('[cmdk-input]')!
     await pressKey(input, 'ArrowDown')
     await pressKey(input, 'ArrowDown')

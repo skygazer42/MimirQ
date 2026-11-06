@@ -7,7 +7,7 @@ import { useParserBackendPreference } from '@/contexts/parser-backend-context'
 import { ParserDropdown } from '@/components/business/parser-dropdown'
 import { Panel } from '@/components/ui/panel'
 
-interface ParserBackendSelectProps {
+type ParserBackendSelectProps = {
   label?: string
   className?: string
   compact?: boolean
@@ -22,10 +22,7 @@ export function ParserBackendSelect({
   const currentOption = getParserOption(parserBackend)
 
   return (
-    <Panel
-      padding={compact ? "sm" : "md"}
-      className={cn("space-y-2", className)}
-    >
+    <Panel padding={compact ? 'sm' : 'md'} className={cn('space-y-2', className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-0.5">
           <div className="text-xs font-semibold text-foreground">{label}</div>
@@ -40,11 +37,7 @@ export function ParserBackendSelect({
 
       <ParserDropdown value={parserBackend} onChange={setParserBackend} compact={compact} />
 
-      {compact ? null : (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {currentOption.description}
-        </p>
-      )}
+      {compact ? null : <p className="text-xs leading-relaxed text-muted-foreground">{currentOption.description}</p>}
     </Panel>
   )
 }

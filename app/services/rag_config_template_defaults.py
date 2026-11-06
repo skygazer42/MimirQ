@@ -6,7 +6,6 @@ We treat dataset default selectors as *fallbacks*:
 - Otherwise, apply the dataset default (if present).
 """
 
-
 from collections.abc import Iterable
 from typing import Any
 from uuid import UUID

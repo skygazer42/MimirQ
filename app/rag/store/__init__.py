@@ -9,4 +9,3 @@ only provide a minimal factory for future memory work.
 from app.rag.store.factory import get_langgraph_store
 
 __all__ = ["get_langgraph_store"]
-

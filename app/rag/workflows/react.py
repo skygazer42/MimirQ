@@ -10,7 +10,7 @@ Pattern: Think -> Act -> Observe -> Think -> ... -> Answer
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.rag.core.logging import get_logger
 from app.rag.middleware import ToolMiddlewareChain
@@ -26,6 +26,13 @@ from app.rag.workflows.base import (
 logger = get_logger("rag.workflows.react")
 
 
+class _ReasoningResult(TypedDict):
+    thought: str
+    action: str
+    action_input: str
+    answer: str
+
+
 class Tool:
     """A tool that can be invoked by the ReAct agent."""
 
@@ -34,7 +41,7 @@ class Tool:
         name: str,
         func: Callable[[str], Awaitable[str]],
         description: str = "",
-    ):
+    ) -> None:
         self.name = name
         self.func = func
         self.description = description
@@ -62,8 +69,8 @@ class ReActWorkflow(BaseWorkflow):
         self,
         llm: Any | None = None,
         max_steps: int = 10,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the ReAct workflow.
 
@@ -204,7 +211,7 @@ class ReActWorkflow(BaseWorkflow):
             lines.append(f"- {name}: {tool.description}")
         return "\n".join(lines)
 
-    async def _reason(self, state: dict[str, Any]) -> dict[str, str]:
+    async def _reason(self, state: dict[str, Any]) -> _ReasoningResult:
         """
         Generate next thought and action.
 
@@ -247,10 +254,10 @@ Your response:"""
         content = response.content if hasattr(response, "content") else str(response)
 
         # Parse response
-        result = {"thought": "", "action": "", "action_input": "", "answer": ""}
+        result: _ReasoningResult = {"thought": "", "action": "", "action_input": "", "answer": ""}
 
         lines = content.strip().split("\n")
-        current_key = None
+        current_key: Literal["thought", "action", "action_input", "answer"] | None = None
 
         for line in lines:
             line = line.strip()
@@ -374,10 +381,10 @@ Your response:"""
                     iterations=iterations,
                 )
 
-            thought = reasoning.get("thought", "")
-            action = reasoning.get("action", "")
-            action_input = reasoning.get("action_input", "")
-            answer = reasoning.get("answer", "")
+            thought = reasoning["thought"]
+            action = reasoning["action"]
+            action_input = reasoning["action_input"]
+            answer = reasoning["answer"]
 
             # Add thought to trace
             if thought:

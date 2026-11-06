@@ -12,7 +12,7 @@ import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -72,7 +72,7 @@ def _normalize_ts(generated_at: str | datetime | None) -> str:
 
 
 def _metric_delta(current: float, previous: float, digits: int = 6) -> float:
-    return round(float(current) - float(previous), int(digits))
+    return round(current - previous, int(digits))
 
 
 def _strict_number(value: Any, *, key: str) -> float:
@@ -88,14 +88,14 @@ def _strict_rate(value: Any, *, key: str) -> float:
     out = _strict_number(value, key=key)
     if out < 0.0 or out > 1.0:
         raise ValueError(f"{key} must be within [0, 1]")
-    return round(float(out), 6)
+    return round(out, 6)
 
 
 def _strict_non_negative(value: Any, *, key: str) -> float:
     out = _strict_number(value, key=key)
     if out < 0.0:
         raise ValueError(f"{key} must be >= 0")
-    return round(float(out), 6)
+    return round(out, 6)
 
 
 def _strict_positive_int(value: Any, *, key: str) -> int:
@@ -131,10 +131,6 @@ def validate_and_normalize_queryset_health_policy(policy: Mapping[str, Any] | No
     return resolved
 
 
-def _resolve_policy(policy: Mapping[str, Any] | None) -> dict[str, float | int]:
-    return validate_and_normalize_queryset_health_policy(policy)
-
-
 def _policy_hash(policy: Mapping[str, Any]) -> str:
     payload = json.dumps(dict(policy), ensure_ascii=False, sort_keys=True)
     return stable_hash(payload, length=24)
@@ -147,12 +143,21 @@ def _clip_text(value: Any, *, max_len: int = 160) -> str:
     return f"{text[: max_len - 3].rstrip()}..."
 
 
-def _normalize_benchmark_cases(benchmark_report: Mapping[str, Any]) -> list[dict[str, Any]]:
+class _BenchmarkCase(TypedDict):
+    id: str
+    question: str
+    hit_at_k: float
+    reciprocal_rank: float
+    ndcg_at_k: float
+    latency_ms: float
+
+
+def _normalize_benchmark_cases(benchmark_report: Mapping[str, Any]) -> list[_BenchmarkCase]:
     rows_raw = benchmark_report.get("cases")
     if not isinstance(rows_raw, Sequence):
         return []
 
-    out: list[dict[str, Any]] = []
+    out: list[_BenchmarkCase] = []
     for i, row in enumerate(rows_raw):
         if not isinstance(row, Mapping):
             continue
@@ -177,7 +182,7 @@ def _build_case_risk(
     hard_cases_limit: int = 5,
 ) -> dict[str, Any]:
     rows = _normalize_benchmark_cases(benchmark_report)
-    total = int(len(rows))
+    total = len(rows)
     if total <= 0:
         return {
             "cases_analyzed": 0,
@@ -189,11 +194,11 @@ def _build_case_risk(
             "hard_cases": [],
         }
 
-    miss_rows: list[dict[str, Any]] = []
-    weak_rows: list[dict[str, Any]] = []
+    miss_rows: list[_BenchmarkCase] = []
+    weak_rows: list[_BenchmarkCase] = []
     for row in rows:
-        hit_at_k = _as_float(row.get("hit_at_k"), 0.0)
-        rr = _as_float(row.get("reciprocal_rank"), 0.0)
+        hit_at_k = row["hit_at_k"]
+        rr = row["reciprocal_rank"]
         if hit_at_k <= 0.0:
             miss_rows.append(row)
         if hit_at_k > 0.0 and rr <= float(weak_hit_rr_threshold):
@@ -202,11 +207,11 @@ def _build_case_risk(
     ranked_hard_cases = sorted(
         rows,
         key=lambda x: (
-            _as_float(x.get("hit_at_k"), 0.0),
-            _as_float(x.get("reciprocal_rank"), 0.0),
-            _as_float(x.get("ndcg_at_k"), 0.0),
-            -_as_float(x.get("latency_ms"), 0.0),
-            str(x.get("id") or ""),
+            x["hit_at_k"],
+            x["reciprocal_rank"],
+            x["ndcg_at_k"],
+            -x["latency_ms"],
+            x["id"],
         ),
     )[: max(1, int(hard_cases_limit or 1))]
 
@@ -227,9 +232,9 @@ def _build_case_risk(
     weak_rate = round(float(len(weak_rows)) / float(total), 6)
     return {
         "cases_analyzed": total,
-        "miss_count": int(len(miss_rows)),
+        "miss_count": len(miss_rows),
         "miss_rate": miss_rate,
-        "weak_hit_count": int(len(weak_rows)),
+        "weak_hit_count": len(weak_rows),
         "weak_hit_rate": weak_rate,
         "weak_hit_rr_threshold": round(float(weak_hit_rr_threshold), 6),
         "hard_cases": hard_cases,
@@ -245,7 +250,7 @@ def build_queryset_health_snapshot(
     policy: Mapping[str, Any] | None = None,
     policy_source: str | None = None,
 ) -> dict[str, Any]:
-    resolved_policy = _resolve_policy(policy)
+    resolved_policy = validate_and_normalize_queryset_health_policy(policy)
     policy_source_norm = str(policy_source or "").strip() or "default"
     policy_hash = _policy_hash(resolved_policy)
     summary = benchmark_report.get("summary") if isinstance(benchmark_report.get("summary"), Mapping) else {}

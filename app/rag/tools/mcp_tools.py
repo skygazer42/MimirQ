@@ -20,8 +20,8 @@ import math
 import operator
 import re
 from collections.abc import Iterator
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, datetime, tzinfo
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -32,6 +32,12 @@ from app.rag.tools.mcp_client import (
     ToolParameter,
     get_mcp_registry,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
 
 logger = get_logger("rag.tools.mcp_tools")
 
@@ -45,11 +51,11 @@ _DOCUMENT_ID_UUID_DESCRIPTION = "Document ID (UUID)"
 _ACL_ACCOUNT_ID_DESCRIPTION = "Optional account/user id for ACL trimming"
 
 # Configuration
-MCP_ENABLED = getattr(settings, "MCP_ENABLED", False)
+MCP_ENABLED = settings.MCP_ENABLED
 
 
 @contextlib.contextmanager
-def _db_session() -> Iterator[Any]:
+def _db_session() -> Iterator["Session"]:
     # Helper kept at module scope so unit tests can monkeypatch it.
     from app.core.database import SessionLocal
 
@@ -61,7 +67,7 @@ def _db_session() -> Iterator[Any]:
 
 
 def _document_permission_exists(
-    db: Any,
+    db: "Session",
     *,
     tenant_id: UUID,
     document_id: UUID,
@@ -186,7 +192,7 @@ def _document_content_ids(
     except Exception:
         return _document_content_error(document_id, page, "document_id must be a UUID")
     try:
-        tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+        tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID or "").strip())
     except Exception:
         return _document_content_error(document_id, page, "DEFAULT_TENANT_ID is invalid")
     return dataset_uuid, document_uuid, tenant_uuid
@@ -198,13 +204,13 @@ def _document_content_limit(max_chars: int) -> int:
 
 
 def _load_scoped_document(
-    db: Any,
-    document_model: Any,
+    db: "Session",
+    document_model: "type[DBDocument]",
     *,
     document_id: UUID,
     tenant_id: UUID,
     dataset_id: UUID,
-) -> Any | None:
+) -> "DBDocument | None":
     document = (
         db.query(document_model)
         .filter(
@@ -214,14 +220,14 @@ def _load_scoped_document(
         )
         .first()
     )
-    if document is None or getattr(document, "dataset_id", None) != dataset_id:
+    if document is None or document.dataset_id != dataset_id:
         return None
     return document
 
 
 def _can_read_document_content(
-    db: Any,
-    document: Any,
+    db: "Session",
+    document: "DBDocument",
     *,
     tenant_id: UUID,
     document_id: UUID,
@@ -229,8 +235,8 @@ def _can_read_document_content(
 ) -> bool:
     if not account_id:
         return True
-    mode = str(getattr(document, "access_mode", "") or "").strip().lower()
-    owner = str(getattr(document, "owner_id", "") or "").strip()
+    mode = (document.access_mode or "").strip().lower()
+    owner = (document.owner_id or "").strip()
     actor = str(account_id or "").strip()
     if not mode or mode in {"inherit", "all_team_members"} or (owner and owner == actor):
         return True
@@ -245,13 +251,13 @@ def _can_read_document_content(
 
 
 def _load_document_content_chunks(
-    db: Any,
-    chunk_model: Any,
+    db: "Session",
+    chunk_model: "type[DocumentChunk]",
     *,
     tenant_id: UUID,
     document_id: UUID,
     active_key: str | None,
-) -> list[Any]:
+) -> list["DocumentChunk"]:
     query = (
         db.query(chunk_model)
         .filter(
@@ -270,20 +276,20 @@ def _load_document_content_chunks(
 
 
 def _filter_document_chunks_by_page(
-    chunks: list[Any],
+    chunks: list["DocumentChunk"],
     page: int | None,
-) -> list[Any] | None:
+) -> list["DocumentChunk"] | None:
     if page is None:
         return chunks
     try:
         page_number = int(page)
     except Exception:
         return None
-    return [chunk for chunk in chunks if int(getattr(chunk, "page_number", -1) or -1) == page_number]
+    return [chunk for chunk in chunks if (chunk.page_number or -1) == page_number]
 
 
 def _assemble_document_content(
-    chunks: list[Any],
+    chunks: list["DocumentChunk"],
     *,
     max_chars: int,
 ) -> tuple[str, int, list[int], bool]:
@@ -293,7 +299,7 @@ def _assemble_document_content(
     returned_chunks = 0
     pages: list[int] = []
     for chunk in chunks:
-        text = str(getattr(chunk, "content", "") or "")
+        text = chunk.content
         if not text.strip():
             continue
         separator = "\n\n" if parts else ""
@@ -305,8 +311,8 @@ def _assemble_document_content(
         parts.append(separator + (text[:remaining] if clipped else text))
         total += len(separator) + (remaining if clipped else len(text))
         returned_chunks += 1
-        if getattr(chunk, "page_number", None) is not None:
-            pages.append(int(chunk.page_number))
+        if chunk.page_number is not None:
+            pages.append(chunk.page_number)
         if clipped:
             truncated = True
             break
@@ -352,7 +358,7 @@ def _get_document_content_sync(
                 account_id=account_id,
             ):
                 return _document_content_error(document_id, page, _NO_DOCUMENT_ACCESS_ERROR)
-            active_hash = get_active_pipeline_hash(getattr(document, "doc_metadata", None))
+            active_hash = get_active_pipeline_hash(document.doc_metadata)
             active_key = build_doc_pipeline_key(document_uuid, active_hash) if active_hash else None
             chunks = _load_document_content_chunks(
                 db,
@@ -371,13 +377,13 @@ def _get_document_content_sync(
         return {
             "document_id": document_id,
             "dataset_id": str(dataset_uuid),
-            "filename": str(getattr(document, "filename", "") or ""),
-            "file_type": str(getattr(document, "file_type", "") or ""),
+            "filename": document.filename,
+            "file_type": document.file_type,
             "page": page,
-            "chunk_count": int(len(chunks)),
-            "returned_chunks": int(returned_chunks),
+            "chunk_count": len(chunks),
+            "returned_chunks": returned_chunks,
             "pages": sorted(set(pages)),
-            "truncated": bool(truncated),
+            "truncated": truncated,
             "content": content,
         }
     except Exception as exc:
@@ -427,7 +433,7 @@ def _get_document_sync(
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
-            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID or "").strip())
         except Exception:
             return {"document_id": document_id, "error": "dataset_id/document_id/DEFAULT_TENANT_ID must be UUIDs"}
 
@@ -445,8 +451,8 @@ def _get_document_sync(
             if not document:
                 return {"document_id": document_id, "error": _DOCUMENT_NOT_FOUND_ERROR}
 
-            mode = str(getattr(document, "access_mode", "") or "").strip().lower()
-            owner = str(getattr(document, "owner_id", "") or "").strip()
+            mode = (document.access_mode or "").strip().lower()
+            owner = (document.owner_id or "").strip()
             if account_id:
                 actor = str(account_id or "").strip()
                 is_owner = bool(owner and owner == actor)
@@ -461,15 +467,15 @@ def _get_document_sync(
                     ):
                         return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
 
-            meta = getattr(document, "doc_metadata", None)
+            meta = document.doc_metadata
             meta = meta if isinstance(meta, dict) else {}
             return {
                 "document_id": str(document.id),
                 "dataset_id": str(ds_uuid),
-                "filename": str(getattr(document, "filename", "") or ""),
-                "file_type": str(getattr(document, "file_type", "") or ""),
-                "chunk_count": int(getattr(document, "chunk_count", 0) or 0),
-                "total_characters": int(getattr(document, "total_characters", 0) or 0),
+                "filename": document.filename,
+                "file_type": document.file_type,
+                "chunk_count": document.chunk_count or 0,
+                "total_characters": document.total_characters or 0,
                 "page_count": meta.get("page_count"),
                 "description": meta.get("doc_description") or meta.get("description"),
             }
@@ -508,7 +514,7 @@ def _get_document_structure_sync(
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
-            tenant_uuid = UUID(str(getattr(settings, "DEFAULT_TENANT_ID", "") or "").strip())
+            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID or "").strip())
         except Exception:
             return {
                 "schema": _DOCUMENT_STRUCTURE_SCHEMA,
@@ -647,8 +653,8 @@ def _get_page_content_sync(
         "file_type": last.get("file_type"),
         "pages_requested": selected_pages,
         "pages": selected_pages,
-        "returned_chunks": int(returned_chunks),
-        "truncated": bool(truncated),
+        "returned_chunks": returned_chunks,
+        "truncated": truncated,
         "content": "".join(parts),
     }
 
@@ -832,7 +838,7 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
     return _SafeMathEvaluator(allowed_names).evaluate(tree)
 
 
-def _resolve_timezone(name: str | None):
+def _resolve_timezone(name: str | None) -> tzinfo:
     raw = str(name or "").strip()
     if not raw:
         return UTC
@@ -919,7 +925,7 @@ def format_number(
     number: float,
     decimals: int = 2,
     thousands_separator: bool = True,
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
     """
     Format a number for display.
 

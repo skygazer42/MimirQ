@@ -1,32 +1,35 @@
 'use client'
 import { FeedbackToast } from '@/components/feedback-toast'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, ChevronRight, FileText, ListChecks, Loader2, ScanLine, Wrench } from '@/components/icons'
 import { useTranslations } from 'next-intl'
-import { pipelineApi } from '@/lib/api'
+import { pipelineApi } from '@/lib/api/pipeline'
 import { reportClientError } from '@/lib/client-logging'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import styles from './governance-inbox.module.css'
+import type { GovernanceIssue } from '@/types/processing'
 
-interface QualityIssue {
+type QualityIssue = {
   id: string
   type: 'error' | 'warning' | 'info'
   message: string
   position?: { start: number; end: number }
 }
-interface QualityCheckerProps {
+type QualityCheckerProps = {
   content: string
   initialScore?: number
   initialIssues?: QualityIssue[]
   checked?: boolean
   disabled?: boolean
   activeIssueId?: string | null
+  resetRevision?: number
   onComplete: (result: { score: number; issues: QualityIssue[] }) => void
   onSelectIssue?: (issue: QualityIssue) => void
   onCleanRequest?: () => void
 }
+
 type Translate = (key: string, values?: Record<string, string | number>) => string
 
 function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[] {
@@ -98,7 +101,10 @@ function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[
       for (const line of content.split('\n')) {
         if (line.trim().length > 20) {
           const key = line.trim().substring(0, 50)
-          if (seen.has(key)) { issue.position = { start: offset, end: offset + line.length }; break }
+          if (seen.has(key)) {
+            issue.position = { start: offset, end: offset + line.length }
+            break
+          }
           seen.add(key)
         }
         offset += line.length + 1
@@ -108,7 +114,7 @@ function collectLocalQualityIssues(content: string, t: Translate): QualityIssue[
   return detectedIssues
 }
 
-function getBackendIssueType(severity: string | null | undefined): QualityIssue['type'] {
+function getBackendIssueType(severity: GovernanceIssue['severity']): QualityIssue['type'] {
   if (severity === 'error') return 'error'
   if (severity === 'warning') return 'warning'
   return 'info'
@@ -117,7 +123,7 @@ function getBackendIssueType(severity: string | null | undefined): QualityIssue[
 async function getBackendQualityIssues(
   content: string,
   inputFormat: 'html' | 'markdown',
-  t: Translate
+  t: Translate,
 ): Promise<QualityIssue[]> {
   try {
     const response = await pipelineApi.governanceAnalyze({
@@ -128,9 +134,7 @@ async function getBackendQualityIssues(
     const detectedIssues = (response.issues || []).slice(0, 10).map((issue) => {
       const label = ({ pii_email: '邮箱地址', pii_phone: '电话号码' } as Record<string, string>)[issue.code]
       const countSuffix =
-        typeof issue.count === 'number' && issue.count > 0
-          ? t('backendIssues.countSuffix', { count: issue.count })
-          : ''
+        typeof issue.count === 'number' && issue.count > 0 ? t('backendIssues.countSuffix', { count: issue.count }) : ''
 
       return {
         id: `backend:${issue.code}`,
@@ -177,49 +181,104 @@ function calculateQualityScore(issues: QualityIssue[]): number {
 }
 
 export function QualityChecker({
-  content, initialScore = 0, initialIssues = [], checked = false, disabled = false,
-  activeIssueId, onComplete, onSelectIssue, onCleanRequest,
+  content,
+  initialScore = 0,
+  initialIssues = [],
+  checked = false,
+  disabled = false,
+  activeIssueId,
+  resetRevision = 0,
+  onComplete,
+  onSelectIssue,
+  onCleanRequest,
 }: Readonly<QualityCheckerProps>) {
   const t = useTranslations('QualityChecker')
   const [isScanning, setIsScanning] = useState(false)
   const [backendScanEnabled, setBackendScanEnabled] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const activeScanRef = useRef<symbol | null>(null)
+  const onCompleteRef = useRef(onComplete)
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+  useEffect(() => {
+    activeScanRef.current = null
+    setIsScanning(false)
+    setError(null)
+    return () => {
+      activeScanRef.current = null
+    }
+  }, [content, resetRevision])
   const handleScan = useCallback(async () => {
     if (!content.trim() || isScanning || disabled) return
+    const scan = Symbol()
+    activeScanRef.current = scan
     setIsScanning(true)
     setError(null)
     try {
       const issues = collectLocalQualityIssues(content, t)
       if (backendScanEnabled) {
         const backend = await getBackendQualityIssues(content, content.includes('<html') ? 'html' : 'markdown', t)
-        if (backend.some(issue => issue.id === 'backend:failed')) {
+        if (activeScanRef.current !== scan) return
+        if (backend.some((issue) => issue.id === 'backend:failed')) {
           setError('完整检测未完成，检测服务暂时不可用。可重试，或关闭完整检测后运行基础检查。')
           return
         }
         issues.push(...backend)
       }
-      onComplete({ score: calculateQualityScore(issues), issues })
-    } finally { setIsScanning(false) }
-  }, [backendScanEnabled, content, disabled, isScanning, onComplete, t])
-  const stats = useMemo(() => ({
-    chars: content.length,
-    charsNoSpaces: content.replace(/\s/g, '').length,
-    words: content.trim() ? content.trim().split(/\s+/).length : 0,
-    lines: content ? content.split('\n').length : 0,
-    paragraphs: content.split(/\n\s*\n/).filter(value => value.trim()).length,
-    chinese: (content.match(/[\u4e00-\u9fff]/g) || []).length,
-    english: (content.match(/[a-zA-Z]+/g) || []).length,
-    numbers: (content.match(/\d+/g) || []).length,
-  }), [content])
+      if (activeScanRef.current !== scan) return
+      onCompleteRef.current({ score: calculateQualityScore(issues), issues })
+    } finally {
+      if (activeScanRef.current === scan) {
+        activeScanRef.current = null
+        setIsScanning(false)
+      }
+    }
+  }, [backendScanEnabled, content, disabled, isScanning, t])
+  const stats = useMemo(
+    () => ({
+      chars: content.length,
+      charsNoSpaces: content.replace(/\s/g, '').length,
+      words: content.trim() ? content.trim().split(/\s+/).length : 0,
+      lines: content ? content.split('\n').length : 0,
+      paragraphs: content.split(/\n\s*\n/).filter((value) => value.trim()).length,
+      chinese: (content.match(/[\u4e00-\u9fff]/g) || []).length,
+      english: (content.match(/[a-zA-Z]+/g) || []).length,
+      numbers: (content.match(/\d+/g) || []).length,
+    }),
+    [content],
+  )
   const scoreTone = initialScore >= 80 ? 'success' : initialScore >= 60 ? 'warning' : 'danger'
   return (
     <>
       <div className={styles.toolLine}>
-        <div className={styles.toolIdentity}><strong>质量检测</strong></div>
+        <div className={styles.toolIdentity}>
+          <strong>质量检测</strong>
+        </div>
         <div className={styles.toolActions}>
-          <label className={styles.checkControl}><input type="checkbox" checked={backendScanEnabled} disabled={isScanning || disabled} onChange={event => setBackendScanEnabled(event.target.checked)} />完整检测</label>
-          <Button variant={checked ? 'outline' : 'default'} disabled={isScanning || disabled} onClick={() => void handleScan()}>{isScanning ? <Loader2 className={styles.spinner} /> : <ScanLine className="size-4" />}{isScanning ? '正在检测…' : checked ? '重新检测' : '开始检测'}</Button>
-          {initialIssues.length > 0 && <Button variant="outline" disabled={disabled || isScanning} onClick={onCleanRequest}><Wrench className="size-4" />清洗文档</Button>}
+          <label className={styles.checkControl}>
+            <input
+              type="checkbox"
+              checked={backendScanEnabled}
+              disabled={isScanning || disabled}
+              onChange={(event) => setBackendScanEnabled(event.target.checked)}
+            />
+            完整检测
+          </label>
+          <Button
+            variant={checked ? 'outline' : 'default'}
+            disabled={isScanning || disabled}
+            onClick={() => void handleScan()}
+          >
+            {isScanning ? <Loader2 className={styles.spinner} /> : <ScanLine className="size-4" />}
+            {isScanning ? '正在检测…' : checked ? '重新检测' : '开始检测'}
+          </Button>
+          {initialIssues.length > 0 && (
+            <Button variant="outline" disabled={disabled || isScanning} onClick={onCleanRequest}>
+              <Wrench className="size-4" />
+              清洗文档
+            </Button>
+          )}
         </div>
       </div>
       <FeedbackToast type="error" message={error} id="governance-quality-feedback" />
@@ -227,24 +286,83 @@ export function QualityChecker({
         <div className={styles.qualityCard} data-tone={checked ? scoreTone : 'pending'}>
           <span>数据质量评分</span>
           <div className={styles.qualitySummary}>
-            {checked ? <strong className={cn(styles.score, styles[scoreTone])}>{initialScore}<small>/ 100</small></strong> : <strong>尚未检测</strong>}
-            <span>{checked ? initialIssues.length ? initialIssues.length + ' 项待核对' : '未发现问题' : '运行检测后查看结果'}</span>
+            {checked ? (
+              <strong className={cn(styles.score, styles[scoreTone])}>
+                {initialScore}
+                <small>/ 100</small>
+              </strong>
+            ) : (
+              <strong>尚未检测</strong>
+            )}
+            <span>
+              {checked
+                ? initialIssues.length
+                  ? initialIssues.length + ' 项待核对'
+                  : '未发现问题'
+                : '运行检测后查看结果'}
+            </span>
           </div>
         </div>
         <details className={styles.toolSection} open>
-          <summary><FileText /><span>字符统计</span><ChevronRight /></summary>
+          <summary>
+            <FileText />
+            <span>字符统计</span>
+            <ChevronRight />
+          </summary>
           <dl className={styles.textStats}>
-            {([['总字符数', stats.chars], ['不含空格', stats.charsNoSpaces], ['单词数', stats.words], ['行数', stats.lines], ['段落数', stats.paragraphs], ['中文字符', stats.chinese], ['英文单词', stats.english], ['数字数量', stats.numbers]] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value.toLocaleString()}</dd></div>)}
+            {(
+              [
+                ['总字符数', stats.chars],
+                ['不含空格', stats.charsNoSpaces],
+                ['单词数', stats.words],
+                ['行数', stats.lines],
+                ['段落数', stats.paragraphs],
+                ['中文字符', stats.chinese],
+                ['英文单词', stats.english],
+                ['数字数量', stats.numbers],
+              ] as const
+            ).map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd>{value.toLocaleString()}</dd>
+              </div>
+            ))}
           </dl>
         </details>
-        {checked && <details className={styles.toolSection} open>
-          <summary><ListChecks /><span>问题识别</span><span className={styles.count}>{initialIssues.length}</span><ChevronRight /></summary>
-          {initialIssues.length > 0 ? <div className={styles.issueNav} aria-label="检测问题">
-            {initialIssues.map(issue => <button key={issue.id} type="button" title={issue.message} className={styles.issueButton} aria-pressed={activeIssueId === issue.id} onClick={() => onSelectIssue?.(issue)}>
-              <AlertTriangle className={issue.type === 'error' ? styles.danger : issue.type === 'warning' ? styles.warning : styles.info} /><span>{issue.message}</span><ChevronRight />
-            </button>)}
-          </div> : <p className={styles.fieldHint}>未发现需要处理的问题</p>}
-        </details>}
+        {checked && (
+          <details className={styles.toolSection} open>
+            <summary>
+              <ListChecks />
+              <span>问题识别</span>
+              <span className={styles.count}>{initialIssues.length}</span>
+              <ChevronRight />
+            </summary>
+            {initialIssues.length > 0 ? (
+              <div className={styles.issueNav} aria-label="检测问题">
+                {initialIssues.map((issue) => (
+                  <button
+                    key={issue.id}
+                    type="button"
+                    title={issue.message}
+                    className={styles.issueButton}
+                    aria-pressed={activeIssueId === issue.id}
+                    onClick={() => onSelectIssue?.(issue)}
+                  >
+                    <AlertTriangle
+                      className={
+                        issue.type === 'error' ? styles.danger : issue.type === 'warning' ? styles.warning : styles.info
+                      }
+                    />
+                    <span>{issue.message}</span>
+                    <ChevronRight />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className={styles.fieldHint}>未发现需要处理的问题</p>
+            )}
+          </details>
+        )}
       </div>
     </>
   )

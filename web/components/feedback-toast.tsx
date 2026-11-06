@@ -8,7 +8,11 @@ export const FEEDBACK_DURATION = 4000
 type FeedbackType = 'success' | 'error' | 'warning' | 'info'
 
 /** Present state-based action feedback through the shared, transient notification surface. */
-export function FeedbackToast({ message, type = 'info', id }: Readonly<{
+export function FeedbackToast({
+  message,
+  type = 'info',
+  id,
+}: Readonly<{
   message?: string | null
   type?: FeedbackType
   id?: string

@@ -55,9 +55,9 @@ def summarize_level(*, concurrency: int, elapsed_sec: float, results: list[dict[
     request_count = len(results)
     return {
         "concurrency": int(concurrency),
-        "request_count": int(request_count),
-        "success_count": int(success_count),
-        "failure_count": int(request_count - success_count),
+        "request_count": request_count,
+        "success_count": success_count,
+        "failure_count": request_count - success_count,
         "elapsed_sec": round(float(elapsed_sec), 3),
         "throughput_rps": round((float(request_count) / float(elapsed_sec)) if elapsed_sec > 0 else 0.0, 3),
         "latency_p50_sec": round(percentile(latencies, 50), 3),

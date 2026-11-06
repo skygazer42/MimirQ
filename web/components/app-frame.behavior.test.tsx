@@ -25,9 +25,7 @@ vi.mock('@/store/document-view', () => ({
 import { AppFrame } from './app-frame'
 
 function renderFrame(isMobile: boolean) {
-  ;(
-    globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
-  ).IS_REACT_ACT_ENVIRONMENT = true
+  ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
   Object.defineProperty(window, 'matchMedia', {
     configurable: true,

@@ -1,6 +1,5 @@
 'use client'
 
-
 import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import type { ReactNode, RefObject } from 'react'
 import { FileUp, Loader2, Search } from '@/components/icons'
@@ -13,7 +12,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { FeedbackToast } from '@/components/feedback-toast'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Panel } from '@/components/ui/panel'
@@ -22,10 +28,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
-const RETRIEVAL_PROFILE_VALUES = ['recall50', 'coverage80', 'recall20'] as const
-const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
+import { RETRIEVAL_PROFILE_VALUES, type RetrievalProfile } from './evidence-suite-workbench-utils'
 
-type RetrievalProfile = (typeof RETRIEVAL_PROFILE_VALUES)[number]
+const CREATE_ITEM_TAB_VALUES = ['retrieve', 'import'] as const
 type CreateItemTab = (typeof CREATE_ITEM_TAB_VALUES)[number]
 
 type CreateItemDialogProps = {
@@ -67,7 +72,12 @@ type CreateItemDialogProps = {
 
 function citationScoreLabel(citation: Citation): string {
   const raw =
-    citation.retrieval_score ?? citation.rerank_score ?? citation.relevance_score ?? citation.vector_score ?? citation.bm25_score ?? 0
+    citation.retrieval_score ??
+    citation.rerank_score ??
+    citation.relevance_score ??
+    citation.vector_score ??
+    citation.bm25_score ??
+    0
   const value = Number(raw)
   if (Number.isFinite(value)) return value.toFixed(4)
   return '0.0000'
@@ -115,20 +125,21 @@ export function CreateItemDialog({
       <div className="text-sm text-muted-foreground text-pretty">运行检索后在此勾选 Ground Truth 引用。</div>
     )
   } else if (retrieveRanked.length === 0) {
-    retrieveListContent = (
-      <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
-    )
+    retrieveListContent = <div className="text-sm text-muted-foreground text-pretty">无 citations。</div>
   } else {
     retrieveListContent = (
       <>
         {retrieveRanked.map((ranked) => {
           const citation = ranked.citation
           const assistScore = ranked.score
-          const hits = ranked.hits || []
+          const hits = ranked.hits
           const chunkId = String(citation.chunk_id || '')
           const checked = !!chunkId && selectedChunkIds.includes(chunkId)
           return (
-            <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
+            <div
+              key={chunkId || `${citation.document_id}:${citation.chunk_index}`}
+              className="rounded-lg border border-border/60 p-2"
+            >
               <div className="flex items-start gap-2">
                 <Checkbox
                   checked={checked}
@@ -165,7 +176,9 @@ export function CreateItemDialog({
                       )}
                     </div>
                   </div>
-                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
+                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">
+                    {citation.chunk_content}
+                  </div>
                   {hits.length ? (
                     <div className="mt-2 flex flex-wrap gap-1">
                       {hits.slice(0, 4).map((hit) => (
@@ -202,9 +215,7 @@ export function CreateItemDialog({
       <div className="text-sm text-muted-foreground text-pretty">导入后在此勾选 Ground Truth 引用。</div>
     )
   } else if (importCitations.length === 0) {
-    importListContent = (
-      <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
-    )
+    importListContent = <div className="text-sm text-muted-foreground text-pretty">pack 中没有 citations。</div>
   } else {
     importListContent = (
       <>
@@ -212,7 +223,10 @@ export function CreateItemDialog({
           const chunkId = String(citation.chunk_id || '')
           const checked = !!chunkId && importSelectedChunkIds.includes(chunkId)
           return (
-            <div key={chunkId || `${citation.document_id}:${citation.chunk_index}`} className="rounded-lg border border-border/60 p-2">
+            <div
+              key={chunkId || `${citation.document_id}:${citation.chunk_index}`}
+              className="rounded-lg border border-border/60 p-2"
+            >
               <div className="flex items-start gap-2">
                 <Checkbox
                   checked={checked}
@@ -242,7 +256,9 @@ export function CreateItemDialog({
                       </Badge>
                     )}
                   </div>
-                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{citation.chunk_content}</div>
+                  <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">
+                    {citation.chunk_content}
+                  </div>
                 </div>
               </div>
             </div>
@@ -254,161 +270,170 @@ export function CreateItemDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent  className={ws.dialog}>
-<DialogHeader  className={ws.dialogHeader}>
+      <DialogContent className={ws.dialog}>
+        <DialogHeader className={ws.dialogHeader}>
           <DialogTitle>新建 Evidence Item</DialogTitle>
           <DialogDescription className="text-pretty">
             先用检索找到证据切片，再将选中的引用保存为 <span className="font-mono">reference_sources</span>。
           </DialogDescription>
         </DialogHeader>
-<div className={ws.dialogBody}>
-
-<div className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div className="space-y-1">
-              <Label htmlFor="item-query">Query</Label>
-              <Input
-                id="item-query"
-                value={newQuery}
-                onChange={(event) => onNewQueryChange(event.target.value)}
-                placeholder="输入要标注/回归的查询…"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="item-expected">Expected Answer（可选）</Label>
-              <Input
-                id="item-expected"
-                value={newExpected}
-                onChange={(event) => onNewExpectedChange(event.target.value)}
-                placeholder="用于人工对照（可留空）"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="item-notes">Notes（可选）</Label>
-            <Textarea
-              id="item-notes"
-              value={newNotes}
-              onChange={(event) => onNewNotesChange(event.target.value)}
-              placeholder="记录为什么这些引用是 Ground Truth / 边界条件 / 预期召回方式…"
-              rows={2}
-            />
-          </div>
-
-          <Tabs
-            value={createItemTab}
-            onValueChange={(value) => onCreateItemTabChange(coerceOneOf(CREATE_ITEM_TAB_VALUES, value, 'retrieve'))}
-          >
-            <TabsList>
-              <TabsTrigger value="retrieve">检索选择</TabsTrigger>
-              <TabsTrigger value="import">导入 Evidence Pack</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="retrieve" className="mt-3 space-y-3">
-              <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                <div className="w-full md:w-[220px]">
-                  <div className="mb-1 text-xs text-muted-foreground">Retrieval Profile</div>
-                  <Select value={profile} onValueChange={(value) => onProfileChange(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="选择 profile" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="recall50">recall50 (默认)</SelectItem>
-                      <SelectItem value="coverage80">coverage80</SelectItem>
-                      <SelectItem value="recall20">recall20</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Button className="gap-2" onClick={onRunRetrieve} disabled={retrieving || !newQuery.trim() || !datasetId}>
-                  {retrieving ? (
-                    <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                  ) : (
-                    <Search className="size-4" aria-hidden="true" />
-                  )}
-                  运行检索
-                </Button>
-
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={onApplyRetrieveSuggestions}
-                  disabled={retrieving || !hasRetrieveResult || suggestedRetrieveChunkIds.length === 0}
-                >
-                  Suggest ({suggestedRetrieveChunkIds.length})
-                </Button>
-
-                <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">已选 {selectedChunkIds.length}</div>
-              </div>
-
-              <FeedbackToast type="error" message={retrieveError} id="evidence-retrieve-feedback" />
-
-              {expectedNeedles.length ? (
-                <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                  <span className="font-mono">needles:</span>
-                  {expectedNeedles.slice(0, 10).map((needle) => (
-                    <Badge key={`needle:${needle}`} variant="secondary" className="text-[11px] font-mono">
-                      {needle}
-                    </Badge>
-                  ))}
-                </div>
-              ) : null}
-
-              <Panel className="p-3">
-                <ScrollArea className="h-[320px] pr-2">
-                  <div className="space-y-2">
-                    {retrieveListContent}
-                  </div>
-                </ScrollArea>
-              </Panel>
-            </TabsContent>
-
-            <TabsContent value="import" className="mt-3 space-y-3">
-              <div className="flex items-center gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/json,.json"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    if (file) onPickPackFile(file)
-                  }}
+        <div className={ws.dialogBody}>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label htmlFor="item-query">Query</Label>
+                <Input
+                  id="item-query"
+                  value={newQuery}
+                  onChange={(event) => onNewQueryChange(event.target.value)}
+                  placeholder="输入要标注/回归的查询…"
                 />
-                <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()}>
-                  <FileUp className="size-4" aria-hidden="true" />
-                  选择 JSON
-                </Button>
-                {importPackSummary}
-
-                <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">已选 {importSelectedChunkIds.length}</div>
               </div>
+              <div className="space-y-1">
+                <Label htmlFor="item-expected">Expected Answer（可选）</Label>
+                <Input
+                  id="item-expected"
+                  value={newExpected}
+                  onChange={(event) => onNewExpectedChange(event.target.value)}
+                  placeholder="用于人工对照（可留空）"
+                />
+              </div>
+            </div>
 
-              <FeedbackToast type="error" message={importError} id="evidence-import-feedback" />
+            <div className="space-y-1">
+              <Label htmlFor="item-notes">Notes（可选）</Label>
+              <Textarea
+                id="item-notes"
+                value={newNotes}
+                onChange={(event) => onNewNotesChange(event.target.value)}
+                placeholder="记录为什么这些引用是 Ground Truth / 边界条件 / 预期召回方式…"
+                rows={2}
+              />
+            </div>
 
-              <Panel className="p-3">
-                <ScrollArea className="h-[320px] pr-2">
-                  <div className="space-y-2">
-                    {importListContent}
+            <Tabs
+              value={createItemTab}
+              onValueChange={(value) => onCreateItemTabChange(coerceOneOf(CREATE_ITEM_TAB_VALUES, value, 'retrieve'))}
+            >
+              <TabsList>
+                <TabsTrigger value="retrieve">检索选择</TabsTrigger>
+                <TabsTrigger value="import">导入 Evidence Pack</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="retrieve" className="mt-3 space-y-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                  <div className="w-full md:w-[220px]">
+                    <div className="mb-1 text-xs text-muted-foreground">Retrieval Profile</div>
+                    <Select
+                      value={profile}
+                      onValueChange={(value) =>
+                        onProfileChange(coerceOneOf(RETRIEVAL_PROFILE_VALUES, value, 'recall50'))
+                      }
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="选择 profile" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="recall50">recall50 (默认)</SelectItem>
+                        <SelectItem value="coverage80">coverage80</SelectItem>
+                        <SelectItem value="recall20">recall20</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                </ScrollArea>
-              </Panel>
-            </TabsContent>
-          </Tabs>
-        </div>
 
-</div>
-<DialogFooter  className={ws.dialogFooter}>
+                  <Button
+                    className="gap-2"
+                    onClick={onRunRetrieve}
+                    disabled={retrieving || !newQuery.trim() || !datasetId}
+                  >
+                    {retrieving ? (
+                      <Loader2 className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                    ) : (
+                      <Search className="size-4" aria-hidden="true" />
+                    )}
+                    运行检索
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={onApplyRetrieveSuggestions}
+                    disabled={retrieving || !hasRetrieveResult || suggestedRetrieveChunkIds.length === 0}
+                  >
+                    Suggest ({suggestedRetrieveChunkIds.length})
+                  </Button>
+
+                  <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
+                    已选 {selectedChunkIds.length}
+                  </div>
+                </div>
+
+                <FeedbackToast type="error" message={retrieveError} id="evidence-retrieve-feedback" />
+
+                {expectedNeedles.length ? (
+                  <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                    <span className="font-mono">needles:</span>
+                    {expectedNeedles.slice(0, 10).map((needle) => (
+                      <Badge key={`needle:${needle}`} variant="secondary" className="text-[11px] font-mono">
+                        {needle}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+
+                <Panel className="p-3">
+                  <ScrollArea className="h-[320px] pr-2">
+                    <div className="space-y-2">{retrieveListContent}</div>
+                  </ScrollArea>
+                </Panel>
+              </TabsContent>
+
+              <TabsContent value="import" className="mt-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0]
+                      if (file) onPickPackFile(file)
+                    }}
+                  />
+                  <Button variant="outline" className="gap-2" onClick={() => fileInputRef.current?.click()}>
+                    <FileUp className="size-4" aria-hidden="true" />
+                    选择 JSON
+                  </Button>
+                  {importPackSummary}
+
+                  <div className="ml-auto text-xs text-muted-foreground font-mono tabular-nums">
+                    已选 {importSelectedChunkIds.length}
+                  </div>
+                </div>
+
+                <FeedbackToast type="error" message={importError} id="evidence-import-feedback" />
+
+                <Panel className="p-3">
+                  <ScrollArea className="h-[320px] pr-2">
+                    <div className="space-y-2">{importListContent}</div>
+                  </ScrollArea>
+                </Panel>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+        <DialogFooter className={ws.dialogFooter}>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
           <Button onClick={onCreateItem} disabled={creatingItem || !selectedSuiteId || !newQuery.trim()}>
-            {creatingItem ? <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
+            {creatingItem ? (
+              <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            ) : null}
             创建 Item（draft）
           </Button>
         </DialogFooter>
-</DialogContent>
+      </DialogContent>
     </Dialog>
   )
 }

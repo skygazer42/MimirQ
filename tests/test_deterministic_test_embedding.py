@@ -10,9 +10,7 @@ from app.rag.embedding.providers.deterministic_test import DeterministicTestEmbe
 
 def _cosine(left: list[float], right: list[float]) -> float:
     numerator = sum(a * b for a, b in zip(left, right, strict=True))
-    denominator = math.sqrt(sum(value * value for value in left)) * math.sqrt(
-        sum(value * value for value in right)
-    )
+    denominator = math.sqrt(sum(value * value for value in left)) * math.sqrt(sum(value * value for value in right))
     return numerator / denominator if denominator else 0.0
 
 

@@ -2,15 +2,58 @@ import type { GovernanceProfileSummary } from '@/types'
 
 const GROUPS: Record<string, string[]> = {
   通用文档: ['kb_default', 'pdf_text', 'policy_manual_pdf', 'pdf_scanned_ocr', 'wiki_longform'],
-  网页与协作: ['html_web', 'html_xpath_main', 'chat_exports', 'confluence_enterprise', 'sharepoint_o365', 'notion_database', 'feishu_lark_doc'],
+  网页与协作: [
+    'html_web',
+    'html_xpath_main',
+    'chat_exports',
+    'confluence_enterprise',
+    'sharepoint_o365',
+    'notion_database',
+    'feishu_lark_doc',
+  ],
   代码与结构: ['code_repo', 'structured_data', 'metadata_enrich'],
-  合规与行业: ['legal_compliance', 'quality_gate_quarantine', 'pii_secrets_quarantine', 'cn_a_share_annual_report', 'cn_prospectus', 'bank_compliance_report', 'insurance_policy_pdf', 'medical_emr', 'government_redhead', 'china_law_regulation', 'court_judgment'],
+  合规与行业: [
+    'legal_compliance',
+    'quality_gate_quarantine',
+    'pii_secrets_quarantine',
+    'cn_a_share_annual_report',
+    'cn_prospectus',
+    'bank_compliance_report',
+    'insurance_policy_pdf',
+    'medical_emr',
+    'government_redhead',
+    'china_law_regulation',
+    'court_judgment',
+  ],
 }
 
 const NAMES: Record<string, string> = {
-  kb_default: '知识库默认', pdf_text: 'PDF 文本版', policy_manual_pdf: '制度与手册', pdf_scanned_ocr: '扫描件与 OCR', wiki_longform: '长文与 Wiki',
-  html_web: '网页 HTML', html_xpath_main: '网页正文提取', chat_exports: '聊天记录', confluence_enterprise: 'Confluence 导出', sharepoint_o365: 'SharePoint 导出', notion_database: 'Notion 导出', feishu_lark_doc: '飞书知识库',
-  code_repo: '代码仓库', structured_data: '结构化数据', metadata_enrich: '元数据增强', legal_compliance: '合规脱敏', quality_gate_quarantine: '质量门禁', pii_secrets_quarantine: '合规门禁', cn_a_share_annual_report: 'A 股年报', cn_prospectus: 'A 股招股书', bank_compliance_report: '金融合规报告', insurance_policy_pdf: '保险合同', medical_emr: '电子病历', government_redhead: '政府公文', china_law_regulation: '法规条例', court_judgment: '法院判决书',
+  kb_default: '知识库默认',
+  pdf_text: 'PDF 文本版',
+  policy_manual_pdf: '制度与手册',
+  pdf_scanned_ocr: '扫描件与 OCR',
+  wiki_longform: '长文与 Wiki',
+  html_web: '网页 HTML',
+  html_xpath_main: '网页正文提取',
+  chat_exports: '聊天记录',
+  confluence_enterprise: 'Confluence 导出',
+  sharepoint_o365: 'SharePoint 导出',
+  notion_database: 'Notion 导出',
+  feishu_lark_doc: '飞书知识库',
+  code_repo: '代码仓库',
+  structured_data: '结构化数据',
+  metadata_enrich: '元数据增强',
+  legal_compliance: '合规脱敏',
+  quality_gate_quarantine: '质量门禁',
+  pii_secrets_quarantine: '合规门禁',
+  cn_a_share_annual_report: 'A 股年报',
+  cn_prospectus: 'A 股招股书',
+  bank_compliance_report: '金融合规报告',
+  insurance_policy_pdf: '保险合同',
+  medical_emr: '电子病历',
+  government_redhead: '政府公文',
+  china_law_regulation: '法规条例',
+  court_judgment: '法院判决书',
 }
 
 export function profileRef(profile: GovernanceProfileSummary) {
@@ -19,11 +62,20 @@ export function profileRef(profile: GovernanceProfileSummary) {
 
 export function profileIdentity(profile: GovernanceProfileSummary) {
   const id = profile.is_system ? profile.key.replace(/^builtin:/, '') : ''
-  const group = profile.is_system ? Object.entries(GROUPS).find(([, keys]) => keys.includes(id))?.[0] || '其他模板' : '自定义配置'
-  const kind = /pdf|report|prospectus|policy|manual|government|law|judgment/.test(id) ? 'pdf'
-    : /html|confluence|sharepoint|notion|feishu/.test(id) ? 'web'
-      : /legal|pii|medical|quarantine/.test(id) ? 'privacy'
-        : /code/.test(id) ? 'code' : /structured/.test(id) ? 'data' : 'text'
+  const group = profile.is_system
+    ? Object.entries(GROUPS).find(([, keys]) => keys.includes(id))?.[0] || '其他模板'
+    : '自定义配置'
+  const kind = /pdf|report|prospectus|policy|manual|government|law|judgment/.test(id)
+    ? 'pdf'
+    : /html|confluence|sharepoint|notion|feishu/.test(id)
+      ? 'web'
+      : /legal|pii|medical|quarantine/.test(id)
+        ? 'privacy'
+        : /code/.test(id)
+          ? 'code'
+          : /structured/.test(id)
+            ? 'data'
+            : 'text'
   return { group, kind, name: NAMES[id] || profile.name }
 }
 
@@ -105,11 +157,27 @@ export function profileValue(value: unknown, field?: string): string {
   if (value === null || value === undefined) return '沿用默认'
   if (typeof value === 'boolean') return value ? '启用' : '关闭'
   if (typeof value === 'string') {
-    const names: Record<string, string> = field === 'governance_remove_images' ? { none: '保留全部图片', all: '移除全部图片', decorative: '移除装饰图片' }
-      : field === 'governance_pii_mode' || field === 'governance_secrets_mode' ? { mask: '遮盖', hash: '哈希替换' }
-        : field === 'governance_keywords_provider' ? { auto: '自动' } : {}
+    const names: Record<string, string> =
+      field === 'governance_remove_images'
+        ? { none: '保留全部图片', all: '移除全部图片', decorative: '移除装饰图片' }
+        : field === 'governance_pii_mode' || field === 'governance_secrets_mode'
+          ? { mask: '遮盖', hash: '哈希替换' }
+          : field === 'governance_keywords_provider'
+            ? { auto: '自动' }
+            : {}
     return names[value] || value || '空文本'
   }
-  if (Array.isArray(value)) return value.length ? value.map(item => typeof item === 'string' ? field === 'governance_rule_packs' ? RULE_PACK_NAMES[item] || item : item : JSON.stringify(item)).join('、') : '未配置'
+  if (Array.isArray(value))
+    return value.length
+      ? value
+          .map((item) =>
+            typeof item === 'string'
+              ? field === 'governance_rule_packs'
+                ? RULE_PACK_NAMES[item] || item
+                : item
+              : JSON.stringify(item),
+          )
+          .join('、')
+      : '未配置'
   return typeof value === 'object' ? JSON.stringify(value) : String(value)
 }

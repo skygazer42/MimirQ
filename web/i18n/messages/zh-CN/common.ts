@@ -1,8 +1,8 @@
 const commonMessages = {
-Layout: {
+  Layout: {
     skipToMainContent: '跳到主要内容',
   },
-Common: {
+  Common: {
     loading: '加载中...',
     error: '发生错误',
     retry: '重试',
@@ -10,7 +10,7 @@ Common: {
     save: '保存',
     close: '关闭',
   },
-CommonUi: {
+  CommonUi: {
     modeToggle: {
       ariaLabel: '切换主题',
       light: '浅色',
@@ -130,7 +130,7 @@ CommonUi: {
       removeTitle: '移除',
     },
   },
-RouteBoundaries: {
+  RouteBoundaries: {
     notFound: {
       title: '页面不存在',
       description: '你访问的地址可能已被移除或暂时不可用。',
@@ -148,7 +148,7 @@ RouteBoundaries: {
       requestId: '请求 ID：request_id={requestId}',
       errorId: '错误 ID：{errorId}',
     },
-  }
+  },
 } as const
 
 export default commonMessages

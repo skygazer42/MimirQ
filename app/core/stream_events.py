@@ -9,7 +9,6 @@ Implementation notes:
 - Emission is best-effort and never raises to callers.
 """
 
-
 import asyncio
 import contextvars
 from dataclasses import dataclass, field
@@ -86,7 +85,7 @@ def emit_stream_event(
         return
     emitter.emit(
         {
-            "type": str(event_type or ""),
+            "type": event_type or "",
             "data": data or {},
         },
         dedupe_key=dedupe_key,
@@ -100,4 +99,3 @@ __all__ = [
     "get_stream_emitter",
     "emit_stream_event",
 ]
-

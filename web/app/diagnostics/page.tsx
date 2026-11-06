@@ -9,11 +9,7 @@ import { TENANT_PERMISSIONS } from '@/lib/tenant-permissions'
 const DiagnosticsPageClient = dynamic(() => import('./page-client'), {
   ssr: false,
   loading: () => (
-    <PageLoading
-      className="min-h-dvh bg-background"
-      message="正在加载诊断..."
-      srMessage="正在加载诊断概览"
-    />
+    <PageLoading className="min-h-dvh bg-background" message="正在加载诊断..." srMessage="正在加载诊断概览" />
   ),
 })
 

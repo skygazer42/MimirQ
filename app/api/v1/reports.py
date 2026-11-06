@@ -8,7 +8,7 @@ import json
 import re
 import zipfile
 from dataclasses import dataclass
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -23,8 +23,12 @@ from app.api.utils.http_exception_responses import (
 from app.api.utils.response_headers import download_response_headers
 from app.core.database import get_db
 from app.rag.core.logging import get_logger
+from app.services import report_service
 from app.services.report_html import _scrub_report_for_redaction, render_dataset_report_html, render_rag_audit_html
-from app.services.report_service import DatasetReportRequest, ReportService
+from app.services.report_service import DatasetReportRequest
+
+if TYPE_CHECKING:
+    from app.models.evaluation import RagasRegressionRun
 
 logger = get_logger(__name__)
 
@@ -59,7 +63,7 @@ def _build_report(
     pipeline_hash: str | None,
     connector_runs_limit: int,
 ) -> DatasetReportOut:
-    return ReportService.build_dataset_report(
+    return report_service.build_dataset_report(
         context.db,
         request=DatasetReportRequest(
             tenant_id=context.tenant_id,
@@ -113,14 +117,14 @@ def _report_bundle_manifest(
     return manifest
 
 
-def _regression_run_payload(row: object) -> dict:
+def _regression_run_payload(row: "RagasRegressionRun") -> dict:
     return {
-        "run_id": str(getattr(row, "id", "")),
-        "status": str(getattr(row, "status", "")),
-        "params": dict(getattr(row, "params", None) or {}),
-        "summary": dict(getattr(row, "summary", None) or {}),
-        "created_at": getattr(row, "created_at", None),
-        "finished_at": getattr(row, "finished_at", None),
+        "run_id": str(row.id),
+        "status": str(row.status),
+        "params": dict(row.params or {}),
+        "summary": dict(row.summary or {}),
+        "created_at": row.created_at,
+        "finished_at": row.finished_at,
     }
 
 
@@ -136,12 +140,14 @@ def _redact_regression_diff(diff_payload: dict) -> dict:
     return redacted
 
 
-def _regression_diff_artifacts(base: object, target: object, *, redact: bool) -> dict[str, str]:
+def _regression_diff_artifacts(
+    base: "RagasRegressionRun", target: "RagasRegressionRun", *, redact: bool
+) -> dict[str, str]:
     from app.services.regression_run_diff import diff_regression_run_summaries
     from app.services.regression_run_diff_html import render_regression_run_diff_html
 
-    base_summary = getattr(base, "summary", None)
-    target_summary = getattr(target, "summary", None)
+    base_summary = base.summary
+    target_summary = target.summary
     base_summary = base_summary if isinstance(base_summary, dict) else {}
     target_summary = target_summary if isinstance(target_summary, dict) else {}
     if not base_summary or not target_summary:
@@ -154,8 +160,8 @@ def _regression_diff_artifacts(base: object, target: object, *, redact: bool) ->
         target_summary=target_summary,
         max_slice_buckets=40,
     )
-    diff_payload["base_params"] = dict(getattr(base, "params", None) or {})
-    diff_payload["target_params"] = dict(getattr(target, "params", None) or {})
+    diff_payload["base_params"] = dict(base.params or {})
+    diff_payload["target_params"] = dict(target.params or {})
     if redact:
         diff_payload = _redact_regression_diff(diff_payload)
 
@@ -163,8 +169,8 @@ def _regression_diff_artifacts(base: object, target: object, *, redact: bool) ->
         "regression_diff.json": _json_compact(diff_payload, default=str),
         "regression_diff.html": render_regression_run_diff_html(
             title="MimirQ · Regression Run Diff（Baseline vs Latest）",
-            base_run_id=str(getattr(base, "id", "")),
-            target_run_id=str(getattr(target, "id", "")),
+            base_run_id=str(base.id),
+            target_run_id=str(target.id),
             generated_at=diff_payload.get("generated_at"),
             diff=diff_payload,
             redact=redact,

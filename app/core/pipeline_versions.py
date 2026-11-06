@@ -6,7 +6,6 @@ pipeline version (`pipeline_hash`) and the derived `doc_pipeline_key` that ties
 chunks/vectors/BM25 entries to a specific processing configuration.
 """
 
-
 from collections.abc import Mapping
 from typing import Any
 from uuid import UUID
@@ -31,7 +30,7 @@ def get_selected_pipeline_hash(doc_metadata: Mapping[str, Any] | None, pipeline_
     - explicit pipeline_hash param wins
     - otherwise fallback to active pipeline hash
     """
-    explicit = str(pipeline_hash or "").strip()
+    explicit = (pipeline_hash or "").strip()
     if explicit:
         return explicit
     return get_active_pipeline_hash(doc_metadata)
@@ -45,7 +44,7 @@ def should_preserve_existing_versions(doc_metadata: Mapping[str, Any] | None) ->
     This is used to avoid clobbering active-version stats/indexes during retries.
     """
     meta = doc_metadata or {}
-    if not bool(meta.get("active_pipeline_ready")):
+    if not meta.get("active_pipeline_ready"):
         return False
     active_hash = str(meta.get("active_pipeline_hash") or "").strip()
     current_hash = str(meta.get("pipeline_hash") or "").strip()

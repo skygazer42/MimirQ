@@ -10,23 +10,36 @@ const successText = '已应用入库策略，共 4 条规则'
 async function capture(page: Page, name: string) {
   await page.screenshot({ path: path.join(evidence, `${name}.png`), fullPage: true, animations: 'disabled' })
   fs.writeFileSync(path.join(evidence, `${name}.txt`), await page.locator('body').innerText())
-  const geometry = await page.locator('[role="dialog"], [role="dialog"] h2, [role="dialog"] button, [data-sonner-toast]').evaluateAll(elements => elements.map(el => {
-    const bounds = el.getBoundingClientRect()
-    const style = getComputedStyle(el)
-    return {
-      tag: el.tagName, text: (el.textContent || '').trim(), role: el.getAttribute('role'), label: el.getAttribute('aria-label'),
-      bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
-      display: style.display, visibility: style.visibility, opacity: style.opacity,
-      state: el.getAttribute('data-state'), removed: el.getAttribute('data-removed'),
-    }
-  }))
+  const geometry = await page
+    .locator('[role="dialog"], [role="dialog"] h2, [role="dialog"] button, [data-sonner-toast]')
+    .evaluateAll((elements) =>
+      elements.map((el) => {
+        const bounds = el.getBoundingClientRect()
+        const style = getComputedStyle(el)
+        return {
+          tag: el.tagName,
+          text: (el.textContent || '').trim(),
+          role: el.getAttribute('role'),
+          label: el.getAttribute('aria-label'),
+          bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          state: el.getAttribute('data-state'),
+          removed: el.getAttribute('data-removed'),
+        }
+      }),
+    )
   fs.writeFileSync(path.join(evidence, `${name}-geometry.json`), JSON.stringify(geometry, null, 2))
   console.log(`EVIDENCE ${name}`)
 }
 
 test.setTimeout(120000)
 
-for (const viewport of [{ name: 'desktop', width: 1600, height: 1000 }, { name: 'mobile', width: 390, height: 844 }]) {
+for (const viewport of [
+  { name: 'desktop', width: 1600, height: 1000 },
+  { name: 'mobile', width: 390, height: 844 },
+]) {
   test(`UX recheck: original policy task and apply recovery - ${viewport.name}`, async ({ page }) => {
     const state = await precheckFixture(page)
     await page.setViewportSize({ width: viewport.width, height: viewport.height })
@@ -51,7 +64,8 @@ for (const viewport of [{ name: 'desktop', width: 1600, height: 1000 }, { name: 
       await expect.poll(() => state.applies.length).toBe(1)
       await expect(page.getByText(successText, { exact: true }).first()).toBeVisible()
       await capture(page, `05-${viewport.name}-policy-applied`)
-      if (await page.getByRole('dialog').isVisible()) await page.getByRole('button', { name: '关闭', exact: true }).click()
+      if (await page.getByRole('dialog').isVisible())
+        await page.getByRole('button', { name: '关闭', exact: true }).click()
 
       await page.getByRole('button', { name: '生成策略', exact: true }).click()
       await expect(page.getByRole('heading', { name: '生成入库策略', exact: true })).toBeVisible()
@@ -67,8 +81,16 @@ for (const viewport of [{ name: 'desktop', width: 1600, height: 1000 }, { name: 
       await expect(page.getByText('"pdf-text"', { exact: false }).first()).toBeVisible()
       observations.oldSuccessVisibleAtFailure = await page.getByText(successText, { exact: true }).first().isVisible()
       const dismissalStart = Date.now()
-      await expect.soft(page.getByText(successText, { exact: true }).first(), 'Previous success must leave the current failure context within Sonner exit allowance').toBeHidden({ timeout: 2000 })
-      observations.oldSuccessVisibilityAfterExitAllowance = await page.getByText(successText, { exact: true }).first().isVisible()
+      await expect
+        .soft(
+          page.getByText(successText, { exact: true }).first(),
+          'Previous success must leave the current failure context within Sonner exit allowance',
+        )
+        .toBeHidden({ timeout: 2000 })
+      observations.oldSuccessVisibilityAfterExitAllowance = await page
+        .getByText(successText, { exact: true })
+        .first()
+        .isVisible()
       observations.exitObservationMs = Date.now() - dismissalStart
       await capture(page, `07-${viewport.name}-apply-failed-context`)
       state.failApply = ''
@@ -81,10 +103,24 @@ for (const viewport of [{ name: 'desktop', width: 1600, height: 1000 }, { name: 
       await capture(page, `99-${viewport.name}-interrupted`)
       throw error
     } finally {
-      fs.writeFileSync(path.join(evidence, `09-${viewport.name}-fixture-state.json`), JSON.stringify({
-        observations, applies: state.applies, reads: state.reads, starts: state.starts, cancels: state.cancels,
-        blocked: state.base.blocked, errors: state.base.errors, url: page.url(), viewport: page.viewportSize(),
-      }, null, 2))
+      fs.writeFileSync(
+        path.join(evidence, `09-${viewport.name}-fixture-state.json`),
+        JSON.stringify(
+          {
+            observations,
+            applies: state.applies,
+            reads: state.reads,
+            starts: state.starts,
+            cancels: state.cancels,
+            blocked: state.base.blocked,
+            errors: state.base.errors,
+            url: page.url(),
+            viewport: page.viewportSize(),
+          },
+          null,
+          2,
+        ),
+      )
     }
   })
 }

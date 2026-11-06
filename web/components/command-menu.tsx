@@ -1,6 +1,7 @@
-"use client"
+'use client'
 
-import * as React from "react"
+import * as React from 'react'
+import type { ComponentType } from 'react'
 import {
   Chunking,
   DataGovernance,
@@ -27,21 +28,24 @@ import {
   Workflow,
   Keyboard,
   CornerDownLeft,
-} from "@/components/icons"
-import { useCommandState } from "cmdk"
-import { useTheme } from "next-themes"
+} from '@/components/icons'
+import { useCommandState } from 'cmdk'
+import { useTheme } from 'next-themes'
 import { useTranslations } from 'next-intl'
 import { useQuery } from '@tanstack/react-query'
 
-import type { Conversation, Dataset, Document } from "@/types"
-import { chatApi, datasetApi, documentApi } from "@/lib/api"
-import { globalEventBus } from "@/lib/event-bus"
+import type { Conversation, Dataset, Document } from '@/types'
+import { chatApi, datasetApi, documentApi } from '@/lib/api'
+import { globalEventBus } from '@/lib/event-bus'
 import { queryKeys } from '@/lib/query-keys'
-import { usePathname, useRouter } from "@/i18n/navigation"
-import { useCommandMenuState } from "@/store/command-menu"
-import { useDocumentView } from "@/store/document-view"
+import { usePathname, useRouter } from '@/i18n/navigation'
+import { useCommandMenuState } from '@/store/command-menu'
+import { useDocumentView } from '@/store/document-view'
 import { useTenantAccess } from '@/hooks/use-tenant-access'
-import { canShowAdminControlledNavigationModule, type AdminControlledNavigationModule } from '@/lib/navigation-visibility'
+import {
+  canShowAdminControlledNavigationModule,
+  type AdminControlledNavigationModule,
+} from '@/lib/navigation-visibility'
 
 import {
   CommandDialog,
@@ -52,28 +56,28 @@ import {
   CommandList,
   CommandShortcut,
   CommandSeparator,
-} from "@/components/ui/command"
-import { Button } from "@/components/ui/button"
-import { FileTypeIcon } from "@/components/ui/file-type-icon"
+} from '@/components/ui/command'
+import { Button } from '@/components/ui/button'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 
 type SlashCommandId =
-  | "resume"
-  | "upload"
-  | "analyze"
-  | "report"
-  | "stats"
-  | "retryFailed"
-  | "pauseActive"
-  | "precheck"
-  | "datasets"
-  | "history"
-  | "graph"
-  | "diagnostics"
-  | "settings"
-  | "parsing"
-  | "reports"
-  | "observability"
-  | "governance"
+  | 'resume'
+  | 'upload'
+  | 'analyze'
+  | 'report'
+  | 'stats'
+  | 'retryFailed'
+  | 'pauseActive'
+  | 'precheck'
+  | 'datasets'
+  | 'history'
+  | 'graph'
+  | 'diagnostics'
+  | 'settings'
+  | 'parsing'
+  | 'reports'
+  | 'observability'
+  | 'governance'
 
 type SlashCommand = {
   id: SlashCommandId
@@ -81,19 +85,19 @@ type SlashCommand = {
   description: string
   shortcut: string
   keywords: string[]
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
 
-type KeyChordCommandId = "documents" | "chat" | "graph" | "observability" | "slice" | "resume"
+type KeyChordCommandId = 'documents' | 'chat' | 'graph' | 'observability' | 'slice' | 'resume'
 
 type KeyChordCommand = {
   id: KeyChordCommandId
   key: string
   label: string
   description: string
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
@@ -104,7 +108,7 @@ type ShortcutGuideItem = {
   description: string
 }
 
-type ViewerShortcutId = "resume" | "focusSearch" | "cycleHits" | "find" | "dismiss"
+type ViewerShortcutId = 'resume' | 'focusSearch' | 'cycleHits' | 'find' | 'dismiss'
 
 type ShortcutDocItem = {
   key: string
@@ -112,28 +116,21 @@ type ShortcutDocItem = {
   description: string
 }
 
-type ModuleWorkbenchId =
-  | "knowledge"
-  | "graph"
-  | "slices"
-  | "parsing"
-  | "reports"
-  | "observability"
-  | "governance"
+type ModuleWorkbenchId = 'knowledge' | 'graph' | 'slices' | 'parsing' | 'reports' | 'observability' | 'governance'
 
 type ModuleWorkbenchItem = {
   id: ModuleWorkbenchId
   label: string
   description: string
   keywords: string[]
-  icon: React.ComponentType<{ className?: string }>
+  icon: ComponentType<{ className?: string }>
   visibilityKey?: AdminControlledNavigationModule
   run: () => void
 }
 
 type CommandMenuTranslationGetter = (key: string) => string
 
-type CommandActionKind = "open" | "run" | "ask" | "switch"
+type CommandActionKind = 'open' | 'run' | 'ask' | 'switch'
 type CommandAction = {
   label: string
   kind: CommandActionKind
@@ -152,14 +149,17 @@ function CommandExecutionBar({
   const onlyAction = actions.size === 1 ? actions.values().next().value : undefined
   const action = actions.get(selectedValue) || (onlyAction?.disabled ? onlyAction : undefined)
   const t = useTranslations('CommandMenu')
-  const verb = t(`execution.${action?.kind || "run"}`)
+  const verb = t(`execution.${action?.kind || 'run'}`)
 
   return (
-    <div data-command-execution-bar className="flex shrink-0 items-center justify-between gap-3 border-t border-foreground/10 bg-muted/20 px-5 py-2.5">
+    <div
+      data-command-execution-bar
+      className="flex shrink-0 items-center justify-between gap-3 border-t border-foreground/10 bg-muted/20 px-5 py-2.5"
+    >
       <div className="min-w-0 flex-1" aria-live="polite" aria-atomic="true">
-        <div className="text-xs leading-5 text-muted-foreground">{t("execution.current")}</div>
+        <div className="text-xs leading-5 text-muted-foreground">{t('execution.current')}</div>
         <div className="truncate text-[15px] font-medium leading-[22px] text-foreground">
-          {action?.label || t("execution.choose")}
+          {action?.label || t('execution.choose')}
         </div>
       </div>
       <Button
@@ -167,11 +167,11 @@ function CommandExecutionBar({
         size="lg"
         data-command-execute
         disabled={!action || action.disabled}
-        aria-label={action ? `${verb}：${action.label}` : t("execution.choose")}
+        aria-label={action ? `${verb}：${action.label}` : t('execution.choose')}
         className="h-11 shrink-0 gap-3 rounded-lg px-4 text-sm active:scale-[0.98] motion-reduce:transform-none"
         onKeyDown={(event) => {
           // Keep cmdk's Enter handler from also executing the selected row.
-          if (event.key === "Enter" || event.key === " ") event.stopPropagation()
+          if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
         }}
         onClick={() => onExecute(selectedValue)}
       >
@@ -194,65 +194,76 @@ const COMMAND_MENU_ENTITY_SEARCH_LIMIT = 6
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   const tagName = target.tagName
-  return target.isContentEditable || tagName === "INPUT" || tagName === "TEXTAREA" || tagName === "SELECT"
+  return target.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
 }
 
 function normalizeChordKey(key: string): string {
-  return String(key || "").trim().toLowerCase()
+  return String(key || '')
+    .trim()
+    .toLowerCase()
 }
 
-function buildCurrentViewPrompt(pathname: string, t: CommandMenuTranslationGetter): { prompt: string; description: string } {
-  if (pathname.startsWith("/graph")) {
+function buildCurrentViewPrompt(
+  pathname: string,
+  t: CommandMenuTranslationGetter,
+): { prompt: string; description: string } {
+  if (pathname.startsWith('/graph')) {
     return {
-      prompt: t("currentView.graph.prompt"),
-      description: t("currentView.graph.description"),
+      prompt: t('currentView.graph.prompt'),
+      description: t('currentView.graph.description'),
     }
   }
 
-  if (pathname.startsWith("/knowledge")) {
+  if (pathname.startsWith('/knowledge')) {
     return {
-      prompt: t("currentView.knowledge.prompt"),
-      description: t("currentView.knowledge.description"),
+      prompt: t('currentView.knowledge.prompt'),
+      description: t('currentView.knowledge.description'),
     }
   }
 
-  if (pathname.startsWith("/datasets")) {
+  if (pathname.startsWith('/datasets')) {
     return {
-      prompt: t("currentView.datasets.prompt"),
-      description: t("currentView.datasets.description"),
+      prompt: t('currentView.datasets.prompt'),
+      description: t('currentView.datasets.description'),
     }
   }
 
-  if (pathname.startsWith("/settings")) {
+  if (pathname.startsWith('/settings')) {
     return {
-      prompt: t("currentView.settings.prompt"),
-      description: t("currentView.settings.description"),
+      prompt: t('currentView.settings.prompt'),
+      description: t('currentView.settings.description'),
     }
   }
 
-  if (pathname.startsWith("/observability") || pathname.startsWith("/reports")) {
+  if (pathname.startsWith('/observability') || pathname.startsWith('/reports')) {
     return {
-      prompt: t("currentView.observability.prompt"),
-      description: t("currentView.observability.description"),
+      prompt: t('currentView.observability.prompt'),
+      description: t('currentView.observability.description'),
     }
   }
 
   return {
-    prompt: t("currentView.default.prompt"),
-    description: t("currentView.default.description"),
+    prompt: t('currentView.default.prompt'),
+    description: t('currentView.default.description'),
   }
 }
 
 function matchesSearchNeedle(values: Array<string | null | undefined>, needle: string): boolean {
-  const normalizedNeedle = String(needle || "").trim().toLowerCase()
+  const normalizedNeedle = String(needle || '')
+    .trim()
+    .toLowerCase()
   if (!normalizedNeedle) return true
 
-  return values.some((value) => String(value || "").toLowerCase().includes(normalizedNeedle))
+  return values.some((value) =>
+    String(value || '')
+      .toLowerCase()
+      .includes(normalizedNeedle),
+  )
 }
 
 export function CommandMenu() {
-  const [query, setQuery] = React.useState("")
-  const [debouncedSearchQuery, setDebouncedSearchQuery] = React.useState("")
+  const [query, setQuery] = React.useState('')
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = React.useState('')
   const [pendingChordPrefix, setPendingChordPrefix] = React.useState<string | null>(null)
   const [showShortcutHelp, setShowShortcutHelp] = React.useState(false)
   const chordTimerRef = React.useRef<number | null>(null)
@@ -267,7 +278,7 @@ export function CommandMenu() {
   const tenantAccess = useTenantAccess({ enabled: !pathname.startsWith('/auth') })
   const currentViewPrompt = React.useMemo(() => buildCurrentViewPrompt(pathname || '/', t), [pathname, t])
   const trimmedQuery = query.trim().slice(0, COMMAND_MENU_SEARCH_MAX_LENGTH)
-  const isSlashMode = trimmedQuery.startsWith("/")
+  const isSlashMode = trimmedQuery.startsWith('/')
   const slashNeedle = trimmedQuery.slice(1).toLowerCase()
   const shouldShowShortcutReference = trimmedQuery.length === 0 && showShortcutHelp
   const hasTypedSearchQuery = trimmedQuery.length >= 2 && !isSlashMode
@@ -278,17 +289,17 @@ export function CommandMenu() {
   const canShowNavigationModule = React.useCallback(
     (moduleKey?: AdminControlledNavigationModule) =>
       canShowAdminControlledNavigationModule(tenantAccess.data, moduleKey),
-    [tenantAccess.data]
+    [tenantAccess.data],
   )
 
   const documentSearchParams = React.useMemo(
     () => ({
       q: debouncedSearchQuery,
       limit: COMMAND_MENU_DOCUMENT_SEARCH_LIMIT,
-      order_by: "created_at" as const,
-      order_dir: "desc" as const,
+      order_by: 'created_at' as const,
+      order_dir: 'desc' as const,
     }),
-    [debouncedSearchQuery]
+    [debouncedSearchQuery],
   )
 
   const documentSearchQuery = useQuery<Document[]>({
@@ -303,7 +314,7 @@ export function CommandMenu() {
 
   const datasetSearchParams = React.useMemo(
     () => ({ q: debouncedSearchQuery, limit: COMMAND_MENU_ENTITY_SEARCH_LIMIT }),
-    [debouncedSearchQuery]
+    [debouncedSearchQuery],
   )
   const datasetSearchQuery = useQuery<Dataset[]>({
     queryKey: queryKeys.datasets.list(datasetSearchParams),
@@ -317,7 +328,7 @@ export function CommandMenu() {
 
   const conversationSearchParams = React.useMemo(
     () => ({ q: debouncedSearchQuery, limit: COMMAND_MENU_ENTITY_SEARCH_LIMIT }),
-    [debouncedSearchQuery]
+    [debouncedSearchQuery],
   )
   const conversationSearchQuery = useQuery<Conversation[]>({
     queryKey: queryKeys.chat.conversations(conversationSearchParams),
@@ -340,7 +351,7 @@ export function CommandMenu() {
   const resumeLastDocumentContext = React.useCallback(() => {
     if (!hasResumeTarget) return
     reopenLastDocument()
-    router.push("/")
+    router.push('/')
   }, [hasResumeTarget, reopenLastDocument, router])
 
   const clearPendingChord = React.useCallback(() => {
@@ -351,30 +362,27 @@ export function CommandMenu() {
     }
   }, [])
 
-  const armPendingChord = React.useCallback(
-    (prefix: string) => {
-      setPendingChordPrefix(prefix)
-      if (chordTimerRef.current != null) {
-        globalThis.window.clearTimeout(chordTimerRef.current)
-      }
-      chordTimerRef.current = globalThis.window.setTimeout(() => {
-        setPendingChordPrefix(null)
-        chordTimerRef.current = null
-      }, KEY_CHORD_TIMEOUT_MS)
-    },
-    []
-  )
+  const armPendingChord = React.useCallback((prefix: string) => {
+    setPendingChordPrefix(prefix)
+    if (chordTimerRef.current != null) {
+      globalThis.window.clearTimeout(chordTimerRef.current)
+    }
+    chordTimerRef.current = globalThis.window.setTimeout(() => {
+      setPendingChordPrefix(null)
+      chordTimerRef.current = null
+    }, KEY_CHORD_TIMEOUT_MS)
+  }, [])
 
   React.useEffect(() => {
-    const offSetOpen = globalEventBus.on("command-menu:set-open", (payload) => {
-      if (typeof payload?.open === "boolean") {
-        if (typeof payload.query === "string") {
+    const offSetOpen = globalEventBus.on('command-menu:set-open', (payload) => {
+      if (typeof payload?.open === 'boolean') {
+        if (typeof payload.query === 'string') {
           setQuery(payload.query)
         }
         setOpen(payload.open)
       }
     })
-    const offToggle = globalEventBus.on("command-menu:toggle", () => {
+    const offToggle = globalEventBus.on('command-menu:toggle', () => {
       toggleOpen()
     })
 
@@ -386,14 +394,14 @@ export function CommandMenu() {
 
   React.useEffect(() => {
     if (!open) {
-      setQuery("")
+      setQuery('')
       setShowShortcutHelp(false)
     }
   }, [open])
 
   React.useEffect(() => {
     if (!isTypedSearchActive) {
-      setDebouncedSearchQuery("")
+      setDebouncedSearchQuery('')
       return
     }
 
@@ -406,240 +414,274 @@ export function CommandMenu() {
 
   const runCommand = React.useCallback(
     (command: () => unknown) => {
-      setQuery("")
-      setDebouncedSearchQuery("")
+      setQuery('')
+      setDebouncedSearchQuery('')
       setOpen(false)
       command()
     },
-    [setOpen]
+    [setOpen],
   )
 
   const keyChordCommands = React.useMemo<KeyChordCommand[]>(
     () =>
-      ([
-        { id: "documents", key: "g d", icon: FileText, visibilityKey: undefined, run: () => router.push("/knowledge") },
-        { id: "chat", key: "g c", icon: MessageSquare, visibilityKey: undefined, run: () => router.push("/") },
-        { id: "graph", key: "g g", icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
-        { id: "observability", key: "g o", icon: Diagnostics, visibilityKey: undefined, run: () => router.push("/observability") },
-        { id: "slice", key: "f s", icon: Search, visibilityKey: undefined, run: () => router.push("/chunk-preview") },
-        { id: "resume", key: "g v", icon: History, visibilityKey: undefined, run: resumeLastDocumentContext },
-      ] as const).filter((command) => canShowNavigationModule(command.visibilityKey)).map(({ id, key, icon, visibilityKey, run }) => ({
-        id,
-        key,
-        icon,
-        visibilityKey,
-        label: t(`keyChords.${id}.label`),
-        description:
-          id === "resume" && !hasResumeTarget
-            ? t("keyChords.resume.emptyDescription")
-            : t(`keyChords.${id}.description`),
-        run,
-      })),
-    [canShowNavigationModule, hasResumeTarget, resumeLastDocumentContext, router, t]
+      (
+        [
+          {
+            id: 'documents',
+            key: 'g d',
+            icon: FileText,
+            visibilityKey: undefined,
+            run: () => router.push('/knowledge'),
+          },
+          { id: 'chat', key: 'g c', icon: MessageSquare, visibilityKey: undefined, run: () => router.push('/') },
+          {
+            id: 'graph',
+            key: 'g g',
+            icon: KnowledgeGraph,
+            visibilityKey: 'knowledgeGraph',
+            run: () => router.push('/graph'),
+          },
+          {
+            id: 'observability',
+            key: 'g o',
+            icon: Diagnostics,
+            visibilityKey: undefined,
+            run: () => router.push('/observability'),
+          },
+          { id: 'slice', key: 'f s', icon: Search, visibilityKey: undefined, run: () => router.push('/chunk-preview') },
+          { id: 'resume', key: 'g v', icon: History, visibilityKey: undefined, run: resumeLastDocumentContext },
+        ] as const
+      )
+        .filter((command) => canShowNavigationModule(command.visibilityKey))
+        .map(({ id, key, icon, visibilityKey, run }) => ({
+          id,
+          key,
+          icon,
+          visibilityKey,
+          label: t(`keyChords.${id}.label`),
+          description:
+            id === 'resume' && !hasResumeTarget
+              ? t('keyChords.resume.emptyDescription')
+              : t(`keyChords.${id}.description`),
+          run,
+        })),
+    [canShowNavigationModule, hasResumeTarget, resumeLastDocumentContext, router, t],
   )
 
   const chordPrefixes = React.useMemo(
-    () => new Set(keyChordCommands.map((command) => command.key.split(" ")[0] || "")),
-    [keyChordCommands]
+    () => new Set(keyChordCommands.map((command) => command.key.split(' ')[0] || '')),
+    [keyChordCommands],
   )
 
   const keyChordCommandMap = React.useMemo(
     () => new Map(keyChordCommands.map((command) => [command.key, command.run])),
-    [keyChordCommands]
+    [keyChordCommands],
   )
 
   const shortcutGuideItems = React.useMemo<ShortcutGuideItem[]>(
     () => [
       {
-        shortcut: "⌘K / Ctrl+K",
-        label: t("shortcutGuide.open.label"),
-        description: t("shortcutGuide.open.description"),
+        shortcut: '⌘K / Ctrl+K',
+        label: t('shortcutGuide.open.label'),
+        description: t('shortcutGuide.open.description'),
       },
       {
-        shortcut: "?",
-        label: t("shortcutGuide.help.label"),
-        description: t("shortcutGuide.help.description"),
+        shortcut: '?',
+        label: t('shortcutGuide.help.label'),
+        description: t('shortcutGuide.help.description'),
       },
       ...keyChordCommands.map((command) => ({
         shortcut: command.key,
         label: command.label,
-        description: `${t("shortcutGuide.chordPrefix")} ${command.description}`,
+        description: `${t('shortcutGuide.chordPrefix')} ${command.description}`,
       })),
       {
-        shortcut: "h / l",
-        label: t("shortcutGuide.stagePrevNext.label"),
-        description: t("shortcutGuide.stagePrevNext.description"),
+        shortcut: 'h / l',
+        label: t('shortcutGuide.stagePrevNext.label'),
+        description: t('shortcutGuide.stagePrevNext.description'),
       },
       {
-        shortcut: "← / →",
-        label: t("shortcutGuide.stageArrows.label"),
-        description: t("shortcutGuide.stageArrows.description"),
+        shortcut: '← / →',
+        label: t('shortcutGuide.stageArrows.label'),
+        description: t('shortcutGuide.stageArrows.description'),
       },
       {
-        shortcut: "j / k",
-        label: t("shortcutGuide.sliceFocus.label"),
-        description: t("shortcutGuide.sliceFocus.description"),
+        shortcut: 'j / k',
+        label: t('shortcutGuide.sliceFocus.label'),
+        description: t('shortcutGuide.sliceFocus.description'),
       },
     ],
-    [keyChordCommands, t]
+    [keyChordCommands, t],
   )
 
   const slashCommands = React.useMemo<SlashCommand[]>(
     () =>
-      ([
-        { id: "resume", shortcut: "/resume", icon: FileText, visibilityKey: undefined },
-        { id: "upload", shortcut: "/upload", icon: Upload, visibilityKey: undefined },
-        { id: "analyze", shortcut: "/analyze", icon: Sparkles, visibilityKey: undefined },
-        { id: "report", shortcut: "/report", icon: Reports, visibilityKey: undefined },
-        { id: "stats", shortcut: "/stats", icon: Coins, visibilityKey: undefined },
-        { id: "retryFailed", shortcut: "/retry-failed", icon: RefreshCw, visibilityKey: undefined },
-        { id: "pauseActive", shortcut: "/pause-active", icon: Activity, visibilityKey: undefined },
-        { id: "precheck", shortcut: "/precheck", icon: Workflow, visibilityKey: undefined },
-        { id: "datasets", shortcut: "/datasets", icon: DatasetIcon, visibilityKey: undefined },
-        { id: "history", shortcut: "/history", icon: History, visibilityKey: undefined },
-        { id: "graph", shortcut: "/graph", icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph' },
-        { id: "diagnostics", shortcut: "/diagnostics", icon: Diagnostics, visibilityKey: undefined },
-        { id: "settings", shortcut: "/settings", icon: Settings, visibilityKey: undefined },
-        { id: "parsing", shortcut: "/parsing", icon: Parsing, visibilityKey: undefined },
-        { id: "reports", shortcut: "/reports", icon: Reports, visibilityKey: 'reports' },
-        { id: "observability", shortcut: "/observability", icon: Diagnostics, visibilityKey: undefined },
-        { id: "governance", shortcut: "/governance", icon: DataGovernance, visibilityKey: undefined },
-      ] as const).map(({ id, shortcut, icon, visibilityKey }) => ({
+      (
+        [
+          { id: 'resume', shortcut: '/resume', icon: FileText, visibilityKey: undefined },
+          { id: 'upload', shortcut: '/upload', icon: Upload, visibilityKey: undefined },
+          { id: 'analyze', shortcut: '/analyze', icon: Sparkles, visibilityKey: undefined },
+          { id: 'report', shortcut: '/report', icon: Reports, visibilityKey: undefined },
+          { id: 'stats', shortcut: '/stats', icon: Coins, visibilityKey: undefined },
+          { id: 'retryFailed', shortcut: '/retry-failed', icon: RefreshCw, visibilityKey: undefined },
+          { id: 'pauseActive', shortcut: '/pause-active', icon: Activity, visibilityKey: undefined },
+          { id: 'precheck', shortcut: '/precheck', icon: Workflow, visibilityKey: undefined },
+          { id: 'datasets', shortcut: '/datasets', icon: DatasetIcon, visibilityKey: undefined },
+          { id: 'history', shortcut: '/history', icon: History, visibilityKey: undefined },
+          { id: 'graph', shortcut: '/graph', icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph' },
+          { id: 'diagnostics', shortcut: '/diagnostics', icon: Diagnostics, visibilityKey: undefined },
+          { id: 'settings', shortcut: '/settings', icon: Settings, visibilityKey: undefined },
+          { id: 'parsing', shortcut: '/parsing', icon: Parsing, visibilityKey: undefined },
+          { id: 'reports', shortcut: '/reports', icon: Reports, visibilityKey: 'reports' },
+          { id: 'observability', shortcut: '/observability', icon: Diagnostics, visibilityKey: undefined },
+          { id: 'governance', shortcut: '/governance', icon: DataGovernance, visibilityKey: undefined },
+        ] as const
+      ).map(({ id, shortcut, icon, visibilityKey }) => ({
         id,
         visibilityKey,
         label: t(`slash.commands.${id}.label`),
         description:
-          id === "analyze"
+          id === 'analyze'
             ? currentViewPrompt.description
-            : id === "resume" && !hasResumeTarget
-              ? t("slash.commands.resume.emptyDescription")
+            : id === 'resume' && !hasResumeTarget
+              ? t('slash.commands.resume.emptyDescription')
               : t(`slash.commands.${id}.description`),
         shortcut,
         keywords: t.raw(`slash.commands.${id}.keywords`) as string[],
         icon,
         run: () => {
-          if (id === "resume") {
+          if (id === 'resume') {
             resumeLastDocumentContext()
             return
           }
 
-          if (id === "analyze") {
+          if (id === 'analyze') {
             const params = new URLSearchParams({
               prompt: currentViewPrompt.prompt,
-              autorun: "1",
+              autorun: '1',
             })
             router.push(`/?${params.toString()}`)
             return
           }
 
-          if (id === "report") {
-            if (pathname.startsWith("/knowledge/ingestion")) {
+          if (id === 'report') {
+            if (pathname.startsWith('/knowledge/ingestion')) {
               globalEventBus.emit('ingestion:download-report', undefined)
               return
             }
-            router.push("/knowledge/ingestion")
+            router.push('/knowledge/ingestion')
             return
           }
 
-          if (id === "upload") {
-            router.push("/knowledge")
+          if (id === 'upload') {
+            router.push('/knowledge')
             return
           }
 
-          if (id === "stats") {
-            router.push("/usage")
+          if (id === 'stats') {
+            router.push('/usage')
             return
           }
 
-          if (id === "retryFailed") {
-            if (pathname.startsWith("/knowledge/ingestion")) {
+          if (id === 'retryFailed') {
+            if (pathname.startsWith('/knowledge/ingestion')) {
               globalEventBus.emit('ingestion:retry-all-failed', undefined)
               return
             }
-            router.push("/knowledge/ingestion")
+            router.push('/knowledge/ingestion')
             return
           }
 
-          if (id === "pauseActive") {
-            if (pathname.startsWith("/knowledge/ingestion")) {
+          if (id === 'pauseActive') {
+            if (pathname.startsWith('/knowledge/ingestion')) {
               globalEventBus.emit('ingestion:cancel-all-active', undefined)
               return
             }
-            router.push("/knowledge/ingestion")
+            router.push('/knowledge/ingestion')
             return
           }
 
-          if (id === "precheck") {
-            if (pathname.startsWith("/knowledge/ingestion")) {
+          if (id === 'precheck') {
+            if (pathname.startsWith('/knowledge/ingestion')) {
               globalEventBus.emit('ingestion:open-precheck', undefined)
               return
             }
-            router.push("/datasets")
+            router.push('/datasets')
             return
           }
 
-          if (id === "datasets") {
-            router.push("/datasets")
+          if (id === 'datasets') {
+            router.push('/datasets')
             return
           }
 
-          if (id === "history") {
-            router.push("/history")
+          if (id === 'history') {
+            router.push('/history')
             return
           }
 
-          if (id === "graph") {
-            router.push("/graph")
+          if (id === 'graph') {
+            router.push('/graph')
             return
           }
 
-          if (id === "diagnostics") {
-            router.push("/diagnostics")
+          if (id === 'diagnostics') {
+            router.push('/diagnostics')
             return
           }
 
-          if (id === "settings") {
-            router.push("/settings")
+          if (id === 'settings') {
+            router.push('/settings')
             return
           }
 
-          if (id === "parsing") {
-            router.push("/parsing")
+          if (id === 'parsing') {
+            router.push('/parsing')
             return
           }
 
-          if (id === "reports") {
-            router.push("/reports")
+          if (id === 'reports') {
+            router.push('/reports')
             return
           }
 
-          if (id === "observability") {
-            router.push("/observability")
+          if (id === 'observability') {
+            router.push('/observability')
             return
           }
 
-          if (id === "governance") {
-            router.push("/data-governance")
+          if (id === 'governance') {
+            router.push('/data-governance')
           }
         },
       })),
-    [currentViewPrompt.description, currentViewPrompt.prompt, hasResumeTarget, pathname, resumeLastDocumentContext, router, t]
+    [
+      currentViewPrompt.description,
+      currentViewPrompt.prompt,
+      hasResumeTarget,
+      pathname,
+      resumeLastDocumentContext,
+      router,
+      t,
+    ],
   )
 
   const viewerShortcutDocs = React.useMemo<ShortcutDocItem[]>(
     () =>
-      ([
-        { id: "resume", key: "g v" },
-        { id: "focusSearch", key: "/" },
-        { id: "cycleHits", key: "j / k" },
-        { id: "find", key: "Ctrl/Cmd+F" },
-        { id: "dismiss", key: "Esc" },
-      ] as const).map(({ id, key }) => ({
+      (
+        [
+          { id: 'resume', key: 'g v' },
+          { id: 'focusSearch', key: '/' },
+          { id: 'cycleHits', key: 'j / k' },
+          { id: 'find', key: 'Ctrl/Cmd+F' },
+          { id: 'dismiss', key: 'Esc' },
+        ] as const
+      ).map(({ id, key }) => ({
         key,
         label: t(`viewerShortcuts.${id}.label`),
         description: t(`viewerShortcuts.${id}.description`),
       })),
-    [t]
+    [t],
   )
 
   const filteredSlashCommands = React.useMemo(
@@ -648,35 +690,47 @@ export function CommandMenu() {
         if (!canShowNavigationModule(command.visibilityKey)) return false
         if (!slashNeedle) return true
         const haystack = [command.shortcut, command.label, command.description, ...command.keywords]
-          .join(" ")
+          .join(' ')
           .toLowerCase()
         return haystack.includes(slashNeedle)
       }),
-    [canShowNavigationModule, slashCommands, slashNeedle]
+    [canShowNavigationModule, slashCommands, slashNeedle],
   )
 
   const moduleWorkbenchItems = React.useMemo<ModuleWorkbenchItem[]>(
     () =>
-      ([
-        { id: "knowledge", icon: Database, visibilityKey: undefined, run: () => router.push("/knowledge") },
-        { id: "graph", icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph', run: () => router.push("/graph") },
-        { id: "slices", icon: Chunking, visibilityKey: undefined, run: () => router.push("/chunk-preview") },
-        { id: "parsing", icon: Parsing, visibilityKey: undefined, run: () => router.push("/parsing") },
-        { id: "reports", icon: Reports, visibilityKey: 'reports', run: () => router.push("/reports") },
-        { id: "observability", icon: Diagnostics, visibilityKey: undefined, run: () => router.push("/observability") },
-        { id: "governance", icon: DataGovernance, visibilityKey: undefined, run: () => router.push("/data-governance") },
-      ] as const)
+      (
+        [
+          { id: 'knowledge', icon: Database, visibilityKey: undefined, run: () => router.push('/knowledge') },
+          { id: 'graph', icon: KnowledgeGraph, visibilityKey: 'knowledgeGraph', run: () => router.push('/graph') },
+          { id: 'slices', icon: Chunking, visibilityKey: undefined, run: () => router.push('/chunk-preview') },
+          { id: 'parsing', icon: Parsing, visibilityKey: undefined, run: () => router.push('/parsing') },
+          { id: 'reports', icon: Reports, visibilityKey: 'reports', run: () => router.push('/reports') },
+          {
+            id: 'observability',
+            icon: Diagnostics,
+            visibilityKey: undefined,
+            run: () => router.push('/observability'),
+          },
+          {
+            id: 'governance',
+            icon: DataGovernance,
+            visibilityKey: undefined,
+            run: () => router.push('/data-governance'),
+          },
+        ] as const
+      )
         .filter((item) => canShowNavigationModule(item.visibilityKey))
         .map(({ id, icon, visibilityKey, run }) => ({
-        id,
-        visibilityKey,
-        label: t(`modules.${id}.label`),
-        description: t(`modules.${id}.description`),
-        keywords: t.raw(`modules.${id}.keywords`) as string[],
-        icon,
-        run,
-      })),
-    [canShowNavigationModule, router, t]
+          id,
+          visibilityKey,
+          label: t(`modules.${id}.label`),
+          description: t(`modules.${id}.description`),
+          keywords: t.raw(`modules.${id}.keywords`) as string[],
+          icon,
+          run,
+        })),
+    [canShowNavigationModule, router, t],
   )
 
   const moduleWorkbenchResults = React.useMemo(() => {
@@ -685,49 +739,50 @@ export function CommandMenu() {
     if (needle.length < 2) return []
 
     return moduleWorkbenchItems.filter((item) =>
-      matchesSearchNeedle([item.label, item.description, item.keywords.join(" ")], needle)
+      matchesSearchNeedle([item.label, item.description, item.keywords.join(' ')], needle),
     )
   }, [isSlashMode, moduleWorkbenchItems, query])
 
   const navigationItems = React.useMemo(
     () => [
-      { icon: Home, label: t("navigation.home"), run: () => router.push("/") },
-      { icon: MessageSquare, label: t("navigation.newConversation"), run: () => router.push("/") },
-      { icon: Database, label: t("navigation.knowledge"), run: () => router.push("/knowledge") },
-      { icon: Parsing, label: t("navigation.parsing"), run: () => router.push("/parsing") },
-      { icon: History, label: t("navigation.history"), run: () => router.push("/history") },
-      { icon: Settings, label: t("navigation.settings"), run: () => router.push("/settings") },
+      { icon: Home, label: t('navigation.home'), run: () => router.push('/') },
+      { icon: MessageSquare, label: t('navigation.newConversation'), run: () => router.push('/') },
+      { icon: Database, label: t('navigation.knowledge'), run: () => router.push('/knowledge') },
+      { icon: Parsing, label: t('navigation.parsing'), run: () => router.push('/parsing') },
+      { icon: History, label: t('navigation.history'), run: () => router.push('/history') },
+      { icon: Settings, label: t('navigation.settings'), run: () => router.push('/settings') },
     ],
-    [router, t]
+    [router, t],
   )
 
   const actionItems = React.useMemo(
     () => [
-      { icon: Upload, label: t("actions.uploadDocument"), run: () => router.push("/knowledge") },
-      { icon: Settings, label: t("actions.ragSettings"), run: () => router.push("/?rag=1") },
+      { icon: Upload, label: t('actions.uploadDocument'), run: () => router.push('/knowledge') },
+      { icon: Settings, label: t('actions.ragSettings'), run: () => router.push('/?rag=1') },
     ],
-    [router, t]
+    [router, t],
   )
 
   const themeItems = React.useMemo(
     () => [
-      { icon: Sun, label: t("theme.light"), run: () => setTheme("light") },
-      { icon: Moon, label: t("theme.dark"), run: () => setTheme("dark") },
-      { icon: Laptop, label: t("theme.system"), run: () => setTheme("system") },
+      { icon: Sun, label: t('theme.light'), run: () => setTheme('light') },
+      { icon: Moon, label: t('theme.dark'), run: () => setTheme('dark') },
+      { icon: Laptop, label: t('theme.system'), run: () => setTheme('system') },
     ],
-    [setTheme, t]
+    [setTheme, t],
   )
 
   // Both row selection and the footer resolve the same currently visible action.
   const commandActions = new Map<string, CommandAction>()
   if (isSlashMode) {
     for (const command of filteredSlashCommands) {
-      const runsInCurrentView = pathname.startsWith("/knowledge/ingestion") &&
-        ["report", "retryFailed", "pauseActive", "precheck"].includes(command.id)
+      const runsInCurrentView =
+        pathname.startsWith('/knowledge/ingestion') &&
+        ['report', 'retryFailed', 'pauseActive', 'precheck'].includes(command.id)
       commandActions.set(`slash:${command.id}`, {
         label: command.label,
-        kind: command.id === "analyze" ? "ask" : runsInCurrentView ? "run" : "open",
-        disabled: command.id === "resume" && !hasResumeTarget,
+        kind: command.id === 'analyze' ? 'ask' : runsInCurrentView ? 'run' : 'open',
+        disabled: command.id === 'resume' && !hasResumeTarget,
         run: command.run,
       })
     }
@@ -736,41 +791,41 @@ export function CommandMenu() {
     for (const command of keyChordCommands) {
       commandActions.set(`workflow:${command.id}`, {
         label: command.label,
-        kind: "open",
-        disabled: command.id === "resume" && !hasResumeTarget,
+        kind: 'open',
+        disabled: command.id === 'resume' && !hasResumeTarget,
         run: command.run,
       })
     }
     for (const item of navigationItems) {
-      commandActions.set(`navigation:${item.label}`, { ...item, kind: "open" })
+      commandActions.set(`navigation:${item.label}`, { ...item, kind: 'open' })
     }
     for (const item of actionItems) {
-      commandActions.set(`action:${item.label}`, { ...item, kind: "open" })
+      commandActions.set(`action:${item.label}`, { ...item, kind: 'open' })
     }
     for (const item of themeItems) {
-      commandActions.set(`theme:${item.label}`, { ...item, kind: "switch" })
+      commandActions.set(`theme:${item.label}`, { ...item, kind: 'switch' })
     }
   }
   if (hasTypedSearchQuery) {
     commandActions.set(`ai ${trimmedQuery}`, {
-      label: t("aiAction.label"),
-      kind: "ask",
+      label: t('aiAction.label'),
+      kind: 'ask',
       run: () => {
-        const params = new URLSearchParams({ prompt: trimmedQuery, autorun: "1" })
+        const params = new URLSearchParams({ prompt: trimmedQuery, autorun: '1' })
         router.push(`/?${params.toString()}`)
       },
     })
     for (const item of moduleWorkbenchResults) {
-      commandActions.set(`module:${item.id}`, { ...item, kind: "open" })
+      commandActions.set(`module:${item.id}`, { ...item, kind: 'open' })
     }
     if (!docLoading) {
       for (const doc of docResults) {
         commandActions.set(`document:${doc.id}`, {
           label: doc.filename,
-          kind: "open",
+          kind: 'open',
           run: () => {
             openDocument(doc.id)
-            router.push("/")
+            router.push('/')
           },
         })
       }
@@ -779,7 +834,7 @@ export function CommandMenu() {
       for (const dataset of datasetResults) {
         commandActions.set(`dataset:${dataset.id}`, {
           label: dataset.name,
-          kind: "open",
+          kind: 'open',
           run: () => router.push(`/datasets/${dataset.id}/profile`),
         })
       }
@@ -787,8 +842,8 @@ export function CommandMenu() {
     if (!conversationLoading) {
       for (const conversation of conversationResults) {
         commandActions.set(`conversation:${conversation.id}`, {
-          label: conversation.title || t("results.untitledConversation"),
-          kind: "open",
+          label: conversation.title || t('results.untitledConversation'),
+          kind: 'open',
           run: () => router.push(`/history?id=${conversation.id}`),
         })
       }
@@ -802,14 +857,14 @@ export function CommandMenu() {
 
   React.useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
         toggleOpen()
         clearPendingChord()
         return
       }
 
-      if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey && !isEditableTarget(e.target)) {
         e.preventDefault()
         setShowShortcutHelp(true)
         setOpen(true)
@@ -822,7 +877,7 @@ export function CommandMenu() {
 
       const key = normalizeChordKey(e.key)
       if (key?.length !== 1) {
-        if (key === "escape") clearPendingChord()
+        if (key === 'escape') clearPendingChord()
         return
       }
 
@@ -846,9 +901,18 @@ export function CommandMenu() {
       clearPendingChord()
     }
 
-    document.addEventListener("keydown", down)
-    return () => document.removeEventListener("keydown", down)
-  }, [armPendingChord, chordPrefixes, clearPendingChord, keyChordCommandMap, open, pendingChordPrefix, setOpen, toggleOpen])
+    document.addEventListener('keydown', down)
+    return () => document.removeEventListener('keydown', down)
+  }, [
+    armPendingChord,
+    chordPrefixes,
+    clearPendingChord,
+    keyChordCommandMap,
+    open,
+    pendingChordPrefix,
+    setOpen,
+    toggleOpen,
+  ])
 
   React.useEffect(() => {
     if (open) clearPendingChord()
@@ -860,7 +924,7 @@ export function CommandMenu() {
         globalThis.window.clearTimeout(chordTimerRef.current)
       }
     },
-    []
+    [],
   )
 
   return (
@@ -871,7 +935,7 @@ export function CommandMenu() {
         className="flex min-h-14 shrink-0 items-center justify-between gap-3 bg-background px-5 py-1.5 pr-14"
       >
         <div className="min-w-0">
-          <div className="text-base font-medium leading-6 text-foreground">{t("header.title")}</div>
+          <div className="text-base font-medium leading-6 text-foreground">{t('header.title')}</div>
         </div>
         {trimmedQuery.length === 0 ? (
           <Button
@@ -882,12 +946,12 @@ export function CommandMenu() {
             aria-expanded={showShortcutHelp}
             aria-controls="command-shortcut-reference"
             onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") event.stopPropagation()
+              if (event.key === 'Enter' || event.key === ' ') event.stopPropagation()
             }}
             onClick={() => setShowShortcutHelp((shown) => !shown)}
           >
             <Keyboard className="size-4" aria-hidden="true" />
-            {t("header.hint")}
+            {t('header.hint')}
           </Button>
         ) : null}
       </div>
@@ -912,15 +976,19 @@ export function CommandMenu() {
                     key={command.id}
                     value={`slash:${command.id}`}
                     keywords={[command.shortcut, command.label, command.description, ...command.keywords]}
-                    disabled={command.id === "resume" && !hasResumeTarget}
+                    disabled={command.id === 'resume' && !hasResumeTarget}
                     onSelect={() => executeAction(`slash:${command.id}`)}
                   >
                     <Icon className="size-4" aria-hidden="true" />
                     <div className="min-w-0 flex-1">
                       <div className="break-words font-medium leading-[22px] text-foreground">{command.label}</div>
-                      <div className="mt-0.5 break-words text-[13px] leading-5 text-muted-foreground">{command.description}</div>
+                      <div className="mt-0.5 break-words text-[13px] leading-5 text-muted-foreground">
+                        {command.description}
+                      </div>
                     </div>
-                    <CommandShortcut className="shrink-0 self-start rounded-none border-0 bg-transparent px-0 text-xs font-normal leading-[22px]">{command.shortcut}</CommandShortcut>
+                    <CommandShortcut className="shrink-0 self-start rounded-none border-0 bg-transparent px-0 text-xs font-normal leading-[22px]">
+                      {command.shortcut}
+                    </CommandShortcut>
                   </CommandItem>
                 )
               })}
@@ -931,7 +999,7 @@ export function CommandMenu() {
 
         {showBaseCommandGroups ? (
           <>
-            <CommandGroup data-command-workflow-group="true" heading={t("groups.keyboardWorkflow")}>
+            <CommandGroup data-command-workflow-group="true" heading={t('groups.keyboardWorkflow')}>
               {keyChordCommands.map((command) => {
                 const Icon = command.icon
                 return (
@@ -939,7 +1007,7 @@ export function CommandMenu() {
                     key={command.key}
                     value={`workflow:${command.id}`}
                     keywords={[command.label, command.description, command.key]}
-                    disabled={command.id === "resume" && !hasResumeTarget}
+                    disabled={command.id === 'resume' && !hasResumeTarget}
                     onSelect={() => executeAction(`workflow:${command.id}`)}
                   >
                     <Icon className="size-4" aria-hidden="true" />
@@ -947,7 +1015,9 @@ export function CommandMenu() {
                       <span className="font-medium text-foreground">{command.label}</span>
                       <span className="mt-0.5 text-[13px] leading-5 text-muted-foreground">{command.description}</span>
                     </div>
-                    <CommandShortcut className="shrink-0 self-start text-xs font-normal leading-5">{command.key.toUpperCase()}</CommandShortcut>
+                    <CommandShortcut className="shrink-0 self-start text-xs font-normal leading-5">
+                      {command.key.toUpperCase()}
+                    </CommandShortcut>
                   </CommandItem>
                 )
               })}
@@ -959,11 +1029,17 @@ export function CommandMenu() {
               <div id="command-shortcut-reference">
                 <CommandGroup heading={t('groups.viewerShortcuts')}>
                   {viewerShortcutDocs.map((shortcut) => (
-                    <CommandItem key={shortcut.key} value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`} disabled>
+                    <CommandItem
+                      key={shortcut.key}
+                      value={`viewer-shortcut ${shortcut.key} ${shortcut.label}`}
+                      disabled
+                    >
                       <FileText className="mr-2 size-4" />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span>{shortcut.label}</span>
-                        <span className="break-words text-[13px] leading-5 text-muted-foreground">{shortcut.description}</span>
+                        <span className="break-words text-[13px] leading-5 text-muted-foreground">
+                          {shortcut.description}
+                        </span>
                       </div>
                       <CommandShortcut className="shrink-0 text-[11px] font-normal">{shortcut.key}</CommandShortcut>
                     </CommandItem>
@@ -974,11 +1050,17 @@ export function CommandMenu() {
 
                 <CommandGroup heading={t('groups.shortcutMap')}>
                   {shortcutGuideItems.map((item) => (
-                    <CommandItem key={`${item.shortcut}:${item.label}`} disabled value={`${item.shortcut} ${item.label}`}>
+                    <CommandItem
+                      key={`${item.shortcut}:${item.label}`}
+                      disabled
+                      value={`${item.shortcut} ${item.label}`}
+                    >
                       <Keyboard className="mr-2 size-4" />
                       <div className="flex min-w-0 flex-1 flex-col">
                         <span>{item.label}</span>
-                        <span className="break-words text-[13px] leading-5 text-muted-foreground">{item.description}</span>
+                        <span className="break-words text-[13px] leading-5 text-muted-foreground">
+                          {item.description}
+                        </span>
                       </div>
                       <CommandShortcut className="shrink-0 text-[11px] font-normal">{item.shortcut}</CommandShortcut>
                     </CommandItem>
@@ -991,7 +1073,12 @@ export function CommandMenu() {
 
             <CommandGroup heading={t('groups.navigation')}>
               {navigationItems.map((item) => (
-                <CommandItem key={item.label} value={`navigation:${item.label}`} keywords={[item.label]} onSelect={() => executeAction(`navigation:${item.label}`)}>
+                <CommandItem
+                  key={item.label}
+                  value={`navigation:${item.label}`}
+                  keywords={[item.label]}
+                  onSelect={() => executeAction(`navigation:${item.label}`)}
+                >
                   <item.icon className="mr-2 size-4" />
                   <span>{item.label}</span>
                 </CommandItem>
@@ -1007,13 +1094,15 @@ export function CommandMenu() {
             <CommandGroup heading={t('groups.aiActions')}>
               <CommandItem
                 value={`ai ${trimmedQuery}`}
-                keywords={[trimmedQuery, t("aiAction.label")]}
+                keywords={[trimmedQuery, t('aiAction.label')]}
                 onSelect={() => executeAction(`ai ${trimmedQuery}`)}
               >
                 <MessageSquare className="size-4" aria-hidden="true" />
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="font-medium">{t("aiAction.label")}</span>
-                  <span className="mt-0.5 line-clamp-2 break-words text-[13px] leading-5 text-muted-foreground">{trimmedQuery}</span>
+                  <span className="font-medium">{t('aiAction.label')}</span>
+                  <span className="mt-0.5 line-clamp-2 break-words text-[13px] leading-5 text-muted-foreground">
+                    {trimmedQuery}
+                  </span>
                 </div>
               </CommandItem>
             </CommandGroup>
@@ -1042,7 +1131,7 @@ export function CommandMenu() {
               ) : (
                 <CommandItem disabled value="workbench:empty">
                   <Workflow className="mr-2 size-4" />
-                  <span>{t("results.modulesEmpty")}</span>
+                  <span>{t('results.modulesEmpty')}</span>
                 </CommandItem>
               )}
             </CommandGroup>
@@ -1053,7 +1142,7 @@ export function CommandMenu() {
               {docLoading ? (
                 <CommandItem disabled value="doc:loading">
                   <FileText className="mr-2 size-4" />
-                  <span>{t("results.documentsLoading")}</span>
+                  <span>{t('results.documentsLoading')}</span>
                 </CommandItem>
               ) : docResults.length ? (
                 docResults.map((doc) => (
@@ -1070,7 +1159,7 @@ export function CommandMenu() {
               ) : (
                 <CommandItem disabled value="doc:empty">
                   <FileText className="mr-2 size-4" />
-                  <span>{t("results.documentsEmpty")}</span>
+                  <span>{t('results.documentsEmpty')}</span>
                 </CommandItem>
               )}
             </CommandGroup>
@@ -1081,21 +1170,23 @@ export function CommandMenu() {
               {datasetLoading ? (
                 <CommandItem disabled value="dataset:loading">
                   <Database className="mr-2 size-4" />
-                  <span>{t("results.datasetsLoading")}</span>
+                  <span>{t('results.datasetsLoading')}</span>
                 </CommandItem>
               ) : datasetResults.length ? (
                 datasetResults.map((dataset) => (
                   <CommandItem
                     key={dataset.id}
                     value={`dataset:${dataset.id}`}
-                    keywords={[dataset.name, dataset.description || ""]}
+                    keywords={[dataset.name, dataset.description || '']}
                     onSelect={() => executeAction(`dataset:${dataset.id}`)}
                   >
                     <Database className="mr-2 size-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{dataset.name}</span>
                       {dataset.description ? (
-                        <span className="truncate text-[13px] leading-5 text-muted-foreground">{dataset.description}</span>
+                        <span className="truncate text-[13px] leading-5 text-muted-foreground">
+                          {dataset.description}
+                        </span>
                       ) : null}
                     </div>
                   </CommandItem>
@@ -1103,7 +1194,7 @@ export function CommandMenu() {
               ) : (
                 <CommandItem disabled value="dataset:empty">
                   <Database className="mr-2 size-4" />
-                  <span>{t("results.datasetsEmpty")}</span>
+                  <span>{t('results.datasetsEmpty')}</span>
                 </CommandItem>
               )}
             </CommandGroup>
@@ -1114,21 +1205,23 @@ export function CommandMenu() {
               {conversationLoading ? (
                 <CommandItem disabled value="conversation:loading">
                   <MessageSquare className="mr-2 size-4" />
-                  <span>{t("results.conversationsLoading")}</span>
+                  <span>{t('results.conversationsLoading')}</span>
                 </CommandItem>
               ) : conversationResults.length ? (
                 conversationResults.map((conversation) => (
                   <CommandItem
                     key={conversation.id}
                     value={`conversation:${conversation.id}`}
-                    keywords={[conversation.title || "", conversation.last_message || ""]}
+                    keywords={[conversation.title || '', conversation.last_message || '']}
                     onSelect={() => executeAction(`conversation:${conversation.id}`)}
                   >
                     <MessageSquare className="mr-2 size-4" />
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{conversation.title || t("results.untitledConversation")}</span>
+                      <span className="truncate">{conversation.title || t('results.untitledConversation')}</span>
                       {conversation.last_message ? (
-                        <span className="truncate text-[13px] leading-5 text-muted-foreground">{conversation.last_message}</span>
+                        <span className="truncate text-[13px] leading-5 text-muted-foreground">
+                          {conversation.last_message}
+                        </span>
                       ) : null}
                     </div>
                   </CommandItem>
@@ -1136,7 +1229,7 @@ export function CommandMenu() {
               ) : (
                 <CommandItem disabled value="conversation:empty">
                   <MessageSquare className="mr-2 size-4" />
-                  <span>{t("results.conversationsEmpty")}</span>
+                  <span>{t('results.conversationsEmpty')}</span>
                 </CommandItem>
               )}
             </CommandGroup>
@@ -1147,9 +1240,14 @@ export function CommandMenu() {
 
         {showBaseCommandGroups ? (
           <>
-            <CommandGroup heading={t("groups.actions")}>
+            <CommandGroup heading={t('groups.actions')}>
               {actionItems.map((item) => (
-                <CommandItem key={item.label} value={`action:${item.label}`} keywords={[item.label]} onSelect={() => executeAction(`action:${item.label}`)}>
+                <CommandItem
+                  key={item.label}
+                  value={`action:${item.label}`}
+                  keywords={[item.label]}
+                  onSelect={() => executeAction(`action:${item.label}`)}
+                >
                   <item.icon className="mr-2 size-4" />
                   <span>{item.label}</span>
                 </CommandItem>
@@ -1160,7 +1258,12 @@ export function CommandMenu() {
 
             <CommandGroup heading={t('groups.theme')}>
               {themeItems.map((item) => (
-                <CommandItem key={item.label} value={`theme:${item.label}`} keywords={[item.label]} onSelect={() => executeAction(`theme:${item.label}`)}>
+                <CommandItem
+                  key={item.label}
+                  value={`theme:${item.label}`}
+                  keywords={[item.label]}
+                  onSelect={() => executeAction(`theme:${item.label}`)}
+                >
                   <item.icon className="mr-2 size-4" />
                   <span>{item.label}</span>
                 </CommandItem>

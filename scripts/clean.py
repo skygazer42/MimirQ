@@ -1,4 +1,3 @@
-
 import argparse
 import shutil
 from pathlib import Path
@@ -52,4 +51,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

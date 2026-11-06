@@ -8,7 +8,7 @@ describe('api-client source dedupe', () => {
   it('reuses extractRateLimitDetail from api-errors', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'api/core.ts'), 'utf8')
 
-    expect(src).toContain("extractRateLimitDetail")
+    expect(src).toContain('extractRateLimitDetail')
     expect(src).not.toContain('function extractRateLimitDetail(')
   })
 

@@ -1,4 +1,3 @@
-
 import json
 import logging
 import re
@@ -25,8 +24,8 @@ def normalize_claim_nli_provider(value: str | None) -> str:
 
 def describe_claim_nli_provider(provider: str | None, *, enabled: bool | None = None) -> dict[str, Any]:
     normalized = normalize_claim_nli_provider(provider)
-    enabled_flag = bool(enabled) if enabled is not None else bool(
-        getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)
+    enabled_flag = (
+        bool(enabled) if enabled is not None else bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False))
     )
     if not enabled_flag or normalized == "none":
         return {"provider": "none", "tier": "disabled", "enabled": False}
@@ -75,8 +74,8 @@ def verify_claim_with_nli(
     api_base: str | None = None,
     timeout_sec: float | None = None,
 ) -> ClaimNLIVerificationResult:
-    enabled_flag = bool(enabled) if enabled is not None else bool(
-        getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)
+    enabled_flag = (
+        bool(enabled) if enabled is not None else bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False))
     )
     provider_norm = normalize_claim_nli_provider(
         provider if provider is not None else getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none")
@@ -101,16 +100,10 @@ def verify_claim_with_nli(
         )
 
     resolved_model = str(
-        model_name
-        or getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "")
-        or getattr(settings, "LLM_MODEL", "")
-        or ""
+        model_name or getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or getattr(settings, "LLM_MODEL", "") or ""
     ).strip()
     resolved_api_key = str(
-        api_key
-        or getattr(settings, "RAG_CLAIM_NLI_VERIFIER_API_KEY", "")
-        or getattr(settings, "LLM_API_KEY", "")
-        or ""
+        api_key or getattr(settings, "RAG_CLAIM_NLI_VERIFIER_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or ""
     ).strip()
     resolved_api_base = normalize_openai_compatible_base_url(
         api_base
@@ -119,9 +112,7 @@ def verify_claim_with_nli(
         or ""
     )
     resolved_timeout = float(
-        timeout_sec
-        if timeout_sec is not None
-        else getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8
+        timeout_sec if timeout_sec is not None else getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8
     )
 
     if not resolved_model or not resolved_api_key or not resolved_api_base:
@@ -149,12 +140,7 @@ def verify_claim_with_nli(
             },
             {
                 "role": "user",
-                "content": (
-                    "Claim:\n"
-                    f"{str(claim or '').strip()}\n\n"
-                    "Evidence:\n"
-                    f"{str(evidence or '').strip()}\n"
-                ),
+                "content": (f"Claim:\n{str(claim or '').strip()}\n\nEvidence:\n{str(evidence or '').strip()}\n"),
             },
         ],
     }

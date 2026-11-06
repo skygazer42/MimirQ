@@ -18,6 +18,7 @@ pnpm dev
 ```
 
 Notes:
+
 - `pnpm dev` now binds `127.0.0.1` by default and will automatically fall forward to the next free port when `3000` is busy.
 - `pnpm dev -- --port 3001` or `PORT=3001 pnpm dev` lets you pick another port explicitly.
 - `pnpm dev:public` keeps the old `0.0.0.0` behavior for LAN/device testing.
@@ -55,6 +56,7 @@ Frontend env vars (client-side):
 - `NEXT_PUBLIC_OIDC_ENABLED` (optional; set false to force-disable)
 
 Single-provider (backward compatible):
+
 - `NEXT_PUBLIC_OIDC_ISSUER` (e.g. `https://idp.example`)
 - `NEXT_PUBLIC_OIDC_CLIENT_ID`
 - `NEXT_PUBLIC_OIDC_SCOPES` (default: `openid profile email`)
@@ -62,6 +64,7 @@ Single-provider (backward compatible):
 - `NEXT_PUBLIC_OIDC_AUTH_PARAMS` (optional; querystring like `audience=...&prompt=login`)
 
 Multi-provider:
+
 - `NEXT_PUBLIC_OIDC_PROVIDERS_JSON` (JSON array; preferred)
   - shape: `{ id, name?, issuer, client_id, scopes?, auth_params? }`
   - example:
@@ -88,11 +91,13 @@ Notes:
 Optional server-side env vars (Next.js server only):
 
 Single-provider (backward compatible):
+
 - `OIDC_CLIENT_SECRET` (confidential clients)
 - `OIDC_CLIENT_AUTH_METHOD` (`basic` default | `post`)
 - `OIDC_SERVER_EXCHANGE_ENABLED` (optional; set false to force-disable server exchange)
 
 Multi-provider:
+
 - `OIDC_PROVIDERS_JSON` (JSON array)
   - shape: `{ id, name?, issuer, client_id, client_secret?, client_auth_method? }`
   - note: `client_secret` is optional; when missing, the route handler still works for public clients (but refresh via httpOnly cookie may be unavailable).

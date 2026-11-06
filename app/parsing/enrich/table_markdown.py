@@ -1,4 +1,3 @@
-
 from pathlib import Path
 
 from PIL import Image
@@ -7,7 +6,7 @@ from app.parsing.quality.ocr_validator import rapid_ocr_service
 
 
 def _normalize_lines(text: str) -> tuple[list[str], int | None]:
-    lines = [" ".join(line.split()) for line in str(text or "").splitlines()]
+    lines = [" ".join(line.split()) for line in text.splitlines()]
     lines = [line for line in lines if line]
     expected_rows: int | None = None
     if lines:

@@ -1,4 +1,3 @@
-
 import datetime as dt
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -20,6 +19,7 @@ if not hasattr(starlette_status, "HTTP_422_UNPROCESSABLE_CONTENT"):
     vars(starlette_status)["HTTP_422_UNPROCESSABLE_CONTENT"] = 422
 
 import app.rag.agents.multi_agent as multi_agent
+import app.services.document_access as document_access_module
 from app.api.v1.document_duplicates import list_document_duplicates
 from app.api.v1.document_listing import ListDocumentsQueryFields, list_documents
 from app.core.database import Base
@@ -285,10 +285,10 @@ def test_list_document_duplicates_python_fallback_preserves_group_order_and_limi
         )
     db.commit()
 
-    monkeypatch.setattr(duplicates_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(duplicates_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(duplicates_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(duplicates_module.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        duplicates_module.DatasetService,
+        duplicates_module.dataset_service,
         "assert_dataset_readable",
         lambda *_a, **_k: None,
         raising=True,
@@ -386,15 +386,15 @@ def test_list_documents_applies_processing_lifecycle_prefix_and_ordering(
     db.commit()
 
     touched: list[UUID] = []
-    monkeypatch.setattr(listing_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(listing_module.DatasetService, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(listing_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(listing_module.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        listing_module.DatasetService,
+        listing_module.dataset_service,
         "assert_dataset_readable",
         lambda *_a, **_k: None,
         raising=True,
     )
-    monkeypatch.setattr(listing_module, "build_dataset_read_filter", lambda **_k: True, raising=True)
+    monkeypatch.setattr(document_access_module, "build_dataset_read_filter", lambda **_k: True, raising=True)
     monkeypatch.setattr(listing_module, "build_document_read_filter", lambda **_k: True, raising=True)
     monkeypatch.setattr(
         listing_module,

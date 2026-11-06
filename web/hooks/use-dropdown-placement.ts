@@ -21,7 +21,7 @@ type DropdownPlacement = {
 export function useDropdownPlacement(
   open: boolean,
   triggerRef: RefObject<HTMLButtonElement | null>,
-  { side, align = 'start', minWidth = 360, maxHeight = 420, onOpenChange }: DropdownPlacementOptions
+  { side, align = 'start', minWidth = 360, maxHeight = 420, onOpenChange }: DropdownPlacementOptions,
 ) {
   const [placement, setPlacement] = useState<DropdownPlacement | null>(null)
 
@@ -44,9 +44,8 @@ export function useDropdownPlacement(
       const above = Math.max(0, rect.top - padding - gap)
       const below = Math.max(0, viewportHeight - rect.bottom - padding - gap)
       // A preferred top menu may shrink to a useful scrollable height before flipping.
-      const upward = side === 'top'
-        ? above >= Math.min(160, maxHeight) || above > below
-        : below < maxHeight && above > below
+      const upward =
+        side === 'top' ? above >= Math.min(160, maxHeight) || above > below : below < maxHeight && above > below
       const availableHeight = upward ? above : below
       const width = Math.min(Math.max(rect.width, minWidth), Math.max(0, viewportWidth - padding * 2))
       const alignedLeft = align === 'end' ? rect.right - width : rect.left
@@ -60,9 +59,7 @@ export function useDropdownPlacement(
           left,
           width,
           maxHeight: height,
-          ...(upward
-            ? { bottom: viewportHeight - rect.top + gap }
-            : { top: rect.bottom + gap }),
+          ...(upward ? { bottom: viewportHeight - rect.top + gap } : { top: rect.bottom + gap }),
         },
       })
     }

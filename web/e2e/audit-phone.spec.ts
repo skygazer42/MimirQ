@@ -4,16 +4,26 @@ import { auditEvidence, auditFixture, openAudit, waitAudit } from './audit-table
 test('phone fixed columns leave the resource label and identifier exposed at the right edge', async ({ page }) => {
   const state = await auditFixture(page)
   state.rows[0] = { ...state.rows[0], resource_type: 'settings', resource_id: 'env', details: {} }
-  await page.setViewportSize({ width: 390, height: 844 }); await openAudit(page); await waitAudit(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openAudit(page)
+  await waitAudit(page)
   const scroll = page.getByRole('region', { name: '审计记录表，可横向滚动', exact: true })
-  await scroll.evaluate(element => { element.scrollLeft = element.scrollWidth })
+  await scroll.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth
+  })
   const row = scroll.locator('tbody tr').first()
-  const geometry = await row.evaluate(element => {
-    const cells = Array.from(element.querySelectorAll('td')).filter(cell => getComputedStyle(cell).display !== 'none')
-    const timeRight = cells[1].getBoundingClientRect().right, resource = cells[3]
+  const geometry = await row.evaluate((element) => {
+    const cells = Array.from(element.querySelectorAll('td')).filter((cell) => getComputedStyle(cell).display !== 'none')
+    const timeRight = cells[1].getBoundingClientRect().right,
+      resource = cells[3]
     const label = resource.querySelector('small')!
-    const range = document.createRange(); range.selectNodeContents(label)
-    return { timeRight, idLeft: range.getBoundingClientRect().left, resourceLeft: resource.getBoundingClientRect().left }
+    const range = document.createRange()
+    range.selectNodeContents(label)
+    return {
+      timeRight,
+      idLeft: range.getBoundingClientRect().left,
+      resourceLeft: resource.getBoundingClientRect().left,
+    }
   })
   expect(geometry.idLeft).toBeGreaterThanOrEqual(geometry.timeRight)
   await expect(page.getByText('左右滑动查看表格，更多信息见明细', { exact: true })).toBeVisible()

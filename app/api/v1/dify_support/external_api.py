@@ -4,23 +4,29 @@ import hashlib
 import hmac
 import re
 import uuid
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import Header, HTTPException, Request
-from pydantic import BaseModel, Field
 from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
-from app.api.v1.dify_support.anchor_strength import _dify_kg_bool, _dify_kg_float, _dify_kg_int
-from app.api.v1.dify_support.common import _clamp_score
-from app.api.v1.dify_support.scoring import _diagnostic_query_hash
+from app.api.schemas.dify import DifyConversationTurnRequest as DifyConversationTurnRequest
+from app.api.schemas.dify import DifyConversationTurnResponse as DifyConversationTurnResponse
+from app.api.schemas.dify import DifyExternalKnowledgeRecord as DifyExternalKnowledgeRecord
+from app.api.schemas.dify import DifyExternalKnowledgeRequest as DifyExternalKnowledgeRequest
+from app.api.schemas.dify import DifyExternalKnowledgeResponse as DifyExternalKnowledgeResponse
+from app.api.schemas.dify import DifyRetrievalSetting as DifyRetrievalSetting
 from app.core.config import settings
 from app.models.chat import Conversation, Message
 from app.rag.core.logging import get_logger
+from app.services.dify_integration.anchor_strength import _dify_kg_bool, _dify_kg_float, _dify_kg_int
+from app.services.dify_integration.common import _clamp_score
+from app.services.dify_integration.scoring import _diagnostic_query_hash
 from app.services.external_conversation_ingest import _mimirq_citations_for_storage
+from app.types.dify_integration import DifyActor as _DifyActor
+from app.types.dify_integration import DifyKGFlags as _DifyKGFlags
 
 logger = get_logger("app.api.v1.integrations_dify")
 
@@ -57,48 +63,21 @@ _DIFY_TRACE_CITATION_METADATA_KEYS = (
 )
 
 
+def _request_client_ip(request: Request) -> str:
+    forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
+    if forwarded_for:
+        first = forwarded_for.split(",", 1)[0].strip()
+        if first:
+            return first
+    return str(getattr(getattr(request, "client", None), "host", "") or "").strip()
+
+
 def _api():
     # Resolve helpers from integrations_dify at call time so existing
     # monkeypatch targets in tests keep affecting moved implementations.
     from app.api.v1 import integrations_dify
 
     return integrations_dify
-
-
-@dataclass(frozen=True)
-class _DifyActor:
-    tenant_id: UUID
-    account_id: str
-
-
-class DifyRetrievalSetting(BaseModel):
-    top_k: int = Field(default=5, ge=1, le=200)
-    score_threshold: float = Field(default=0.0, ge=0.0, le=1.0)
-    # MimirQ extension: "fast" keeps online chat latency low by disabling
-    # expensive fallback/rerank branches. Omit for the existing quality path.
-    latency_profile: str | None = Field(default=None, max_length=32)
-    # MimirQ-compatible extension for direct gates and internal probes.
-    # Dify's standard payload can omit these fields; None keeps env/default behavior.
-    enable_kg_query_expansion: bool | None = None
-    enable_kg_chunk_injection: bool | None = None
-    kg_chunk_injection_max_chunks: int | None = Field(default=None, ge=0, le=50)
-    enable_kg_chunk_boost: bool | None = None
-    kg_chunk_boost_weight: float | None = Field(default=None, ge=0.0, le=1.0)
-    kg_chunk_boost_max_promoted: int | None = Field(default=None, ge=0, le=20)
-
-
-@dataclass(frozen=True)
-class _DifyKGFlags:
-    enable_query_expansion: bool
-    enable_chunk_injection: bool
-    chunk_injection_max_chunks: int
-    enable_chunk_boost: bool
-    chunk_boost_weight: float
-    chunk_boost_max_promoted: int
-
-    @property
-    def enabled(self) -> bool:
-        return bool(self.enable_query_expansion or self.enable_chunk_injection or self.enable_chunk_boost)
 
 
 def _disabled_dify_kg_flags() -> _DifyKGFlags:
@@ -147,34 +126,6 @@ def _resolve_dify_kg_flags(setting: DifyRetrievalSetting) -> _DifyKGFlags:
     )
 
 
-class DifyExternalKnowledgeRequest(BaseModel):
-    knowledge_id: str = Field(min_length=1)
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    retrieval_setting: DifyRetrievalSetting = Field(default_factory=DifyRetrievalSetting)
-    metadata_condition: dict[str, Any] | None = None
-    # MimirQ extension: lets Dify HTTP/workflow calls attach retrieval traces
-    # to the existing History RAG Trace panel.
-    conversation_id: UUID | str | None = None
-    request_id: str | None = Field(default=None, min_length=1, max_length=200)
-    source_conversation_id: str | None = Field(default=None, max_length=255)
-    source_message_id: str | None = Field(default=None, max_length=255)
-    source_run_id: str | None = Field(default=None, max_length=255)
-    dify_conversation_id: str | None = Field(default=None, max_length=255)
-    dify_message_id: str | None = Field(default=None, max_length=200)
-    dify_workflow_run_id: str | None = Field(default=None, max_length=200)
-
-
-class DifyExternalKnowledgeRecord(BaseModel):
-    content: str
-    score: float
-    title: str
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class DifyExternalKnowledgeResponse(BaseModel):
-    records: list[DifyExternalKnowledgeRecord]
-
-
 def _resolve_dify_latency_profile(setting: DifyRetrievalSetting) -> str:
     raw = str(setting.latency_profile or "").strip().lower().replace("-", "_")
     if not raw or raw in {"default", "quality", "standard"}:
@@ -185,28 +136,6 @@ def _resolve_dify_latency_profile(setting: DifyRetrievalSetting) -> str:
         status_code=400,
         detail=f"Unsupported Dify retrieval latency_profile: {setting.latency_profile}",
     )
-
-
-class DifyConversationTurnRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    answer: str = Field(min_length=1)
-    conversation_id: UUID | str | None = None
-    trace_request_id: str | None = Field(default=None, max_length=200)
-    source_conversation_id: str | None = Field(default=None, max_length=255)
-    source_message_id: str | None = Field(default=None, max_length=255)
-    source_run_id: str | None = Field(default=None, max_length=255)
-    dify_conversation_id: str | None = Field(default=None, max_length=255)
-    dify_message_id: str | None = Field(default=None, max_length=200)
-    dify_workflow_run_id: str | None = Field(default=None, max_length=200)
-    citations: list[dict[str, Any]] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class DifyConversationTurnResponse(BaseModel):
-    conversation_id: UUID
-    user_message_id: UUID
-    assistant_message_id: UUID
-    reused_user_message: bool
 
 
 def _first_nonempty_str(*values: object) -> str | None:
@@ -478,7 +407,7 @@ def _find_dify_trace_conversation(
 def _conversation_owner_matches_account(conversation: Conversation | None, *, account_id: str) -> bool:
     if conversation is None:
         return False
-    owner_account_id = str(getattr(conversation, "owner_account_id", "") or "").strip()
+    owner_account_id = str(conversation.owner_account_id or "").strip()
     return bool(owner_account_id) and owner_account_id == str(account_id or "").strip()
 
 
@@ -1019,10 +948,10 @@ def _require_dify_actor(
     authorization: Annotated[str | None, Header(alias="Authorization")] = None,
 ) -> _DifyActor:
     api = _api()
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED):
         raise HTTPException(status_code=404, detail="Dify external knowledge is disabled")
 
-    expected_tokens = _split_items(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS", ""))
+    expected_tokens = _split_items(settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS)
     if not expected_tokens:
         raise HTTPException(status_code=503, detail="Dify external knowledge API key is not configured")
 
@@ -1030,7 +959,7 @@ def _require_dify_actor(
     if not any(_token_matches(provided, expected) for expected in expected_tokens):
         raise HTTPException(status_code=401, detail="Invalid Dify API key")
 
-    raw_tenant = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or "").strip()
+    raw_tenant = str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID or "").strip()
     if not raw_tenant:
         if api.is_production_env():
             raise HTTPException(
@@ -1038,11 +967,10 @@ def _require_dify_actor(
                 detail="Dify external knowledge tenant is not configured",
             )
         raw_tenant = str(
-            request.headers.get(str(getattr(settings, "TENANT_HEADER", "X-Tenant-ID") or "X-Tenant-ID"))
-            or getattr(settings, "DEFAULT_TENANT_ID", "")
+            request.headers.get(str(settings.TENANT_HEADER or "X-Tenant-ID")) or settings.DEFAULT_TENANT_ID
         ).strip()
     tenant_id = _coerce_uuid(raw_tenant, label="Dify tenant id")
-    account_id = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify").strip()
+    account_id = str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or "system:dify").strip()
     if not account_id:
         raise HTTPException(status_code=503, detail="Dify external knowledge account is not configured")
     return _DifyActor(tenant_id=tenant_id, account_id=account_id)

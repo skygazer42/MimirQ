@@ -39,24 +39,24 @@ def _delta_float(a: Any, b: Any) -> float | None:
     fb = _to_float(b)
     if fa is None or fb is None:
         return None
-    return round(float(fb - fa), 6)
+    return round(fb - fa, 6)
 
 
 def _counter_sorted(counter: Counter[str]) -> dict[str, int]:
     # Stable ordering: higher count first, then key.
-    items = sorted(counter.items(), key=lambda x: (-int(x[1] or 0), str(x[0] or "")))
-    return {str(k): int(v) for k, v in items if k}
+    items = sorted(counter.items(), key=lambda x: (-x[1], str(x[0] or "")))
+    return {str(k): v for k, v in items if k}
 
 
 def _delta_counter(a: Counter[str], b: Counter[str]) -> dict[str, int]:
     out: dict[str, int] = {}
     keys = sorted(set(a.keys()) | set(b.keys()))
     for k in keys:
-        d = int(b.get(k, 0) or 0) - int(a.get(k, 0) or 0)
+        d = b.get(k, 0) - a.get(k, 0)
         if d:
-            out[str(k)] = int(d)
+            out[str(k)] = d
     # Stable ordering: larger magnitude first, then key.
-    return dict(sorted(out.items(), key=lambda x: (-abs(int(x[1] or 0)), str(x[0] or ""))))
+    return dict(sorted(out.items(), key=lambda x: (-abs(x[1]), str(x[0] or ""))))
 
 
 def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
@@ -74,16 +74,16 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
     role_b: Counter[str] = Counter()
 
     for c in ta.citations or []:
-        ht = str(getattr(c, "hit_type", None) or "").strip() or ""
-        rr = str(getattr(c, "retrieval_role", None) or "").strip() or ""
+        ht = str(c.hit_type or "").strip() or ""
+        rr = str(c.retrieval_role or "").strip() or ""
         if ht:
             hit_a[ht] += 1
         if rr:
             role_a[rr] += 1
 
     for c in tb.citations or []:
-        ht = str(getattr(c, "hit_type", None) or "").strip() or ""
-        rr = str(getattr(c, "retrieval_role", None) or "").strip() or ""
+        ht = str(c.hit_type or "").strip() or ""
+        rr = str(c.retrieval_role or "").strip() or ""
         if ht:
             hit_b[ht] += 1
         if rr:
@@ -93,16 +93,12 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
         "schema": RAG_TRACE_DIFF_SCHEMA_V1,
         "request_id_a": ta.request_id,
         "request_id_b": tb.request_id,
-        "retrieval_config_hash_a": getattr(getattr(ta, "retrieval", None), "retrieval_config_hash", None),
-        "retrieval_config_hash_b": getattr(getattr(tb, "retrieval", None), "retrieval_config_hash", None),
+        "retrieval_config_hash_a": ta.retrieval.retrieval_config_hash,
+        "retrieval_config_hash_b": tb.retrieval.retrieval_config_hash,
         "delta": {
             "citations_count": _to_int(tb.citations_count) - _to_int(ta.citations_count),
-            "retrieval_elapsed_sec": _delta_float(
-                getattr(ta.retrieval, "elapsed_sec", None), getattr(tb.retrieval, "elapsed_sec", None)
-            ),
-            "rerank_elapsed_sec": _delta_float(
-                getattr(ta.rerank, "elapsed_sec", None), getattr(tb.rerank, "elapsed_sec", None)
-            ),
+            "retrieval_elapsed_sec": _delta_float(ta.retrieval.elapsed_sec, tb.retrieval.elapsed_sec),
+            "rerank_elapsed_sec": _delta_float(ta.rerank.elapsed_sec, tb.rerank.elapsed_sec),
         },
         # Field-level comparisons (stable key set; values may be null).
         "fields": {

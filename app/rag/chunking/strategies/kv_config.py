@@ -207,7 +207,7 @@ def _next_kv_start(
 
 
 class KVConfigChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -286,7 +286,7 @@ class KVConfigChunker(BaseChunker):
                     "chunk_strategy": "kv_config",
                     "start_char": chunk_start,
                     "end_char": chunk_end,
-                    "kv_count": int(end_idx - start_idx),
+                    "kv_count": end_idx - start_idx,
                 }
             )
             meta.setdefault("doc_type_kwd", "config")
@@ -311,13 +311,11 @@ class KVConfigChunker(BaseChunker):
         if not text.strip():
             return
 
-        any_kv = False
         for section in _build_sections(text):
             if not text[section.start : section.end].strip():
                 continue
             kvs = _iter_kv(text, start=section.start, end=section.end)
             if kvs:
-                any_kv = True
                 self._append_kv_section_chunks(
                     out,
                     text=text,
@@ -333,15 +331,6 @@ class KVConfigChunker(BaseChunker):
                 end=section.end,
                 base_meta=base_meta,
                 section_name=section.name,
-            )
-
-        if not any_kv:
-            self._append_fallback_chunks(
-                out,
-                text=text,
-                start=0,
-                end=len(text),
-                base_meta=base_meta,
             )
 
     def split_documents(self, documents: list[Document]) -> list[Document]:

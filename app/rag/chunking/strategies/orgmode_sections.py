@@ -9,7 +9,6 @@ The chunker splits the document into heading blocks first, then applies a
 fallback RecursiveCharacterTextSplitter while preserving character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -113,7 +112,7 @@ def _parse_heading_line(line: str) -> tuple[int, str] | None:
     title = _clean_title(plain[i:])
     if not title:
         return None
-    return max(1, min(10, int(level))), title
+    return max(1, min(10, level)), title
 
 
 def _iter_headings(text: str) -> list[OrgHeading]:
@@ -127,7 +126,7 @@ def _iter_headings(text: str) -> list[OrgHeading]:
             OrgHeading(
                 start=ln.start,
                 end=ln.end,
-                level=max(1, min(10, int(level))),
+                level=max(1, min(10, level)),
                 title=title,
             )
         )
@@ -157,7 +156,7 @@ def _build_sections(text: str, headings: list[OrgHeading]) -> list[_Section]:
 
 
 def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     while len(stack) >= level:
         stack.pop()
     stack.append(heading_text)
@@ -175,7 +174,7 @@ def looks_like_orgmode(text: str) -> bool:
 
 
 class OrgModeSectionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -212,7 +211,7 @@ class OrgModeSectionsChunker(BaseChunker):
 
             if section.heading is not None:
                 meta["org_heading"] = section.heading.title
-                meta["org_level"] = int(section.heading.level)
+                meta["org_level"] = section.heading.level
             if path:
                 meta["org_path"] = path
             if path_str:

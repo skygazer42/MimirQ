@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -27,14 +26,14 @@ def evaluate_retrieval_verdict(
     verdict = "incorrect"
     if abstain_triggered:
         reason_codes.append("abstain_triggered")
-    elif citations_total >= max(1, int(min_citations or 1)) and float(top_score or 0.0) >= float(min_top_score or 0.0):
+    elif citations_total >= max(1, int(min_citations or 1)) and (top_score or 0.0) >= float(min_top_score or 0.0):
         verdict = "correct"
         reason_codes.append("citations_and_score_sufficient")
-    elif citations_total > 0 or float(top_score or 0.0) > 0.0:
+    elif citations_total > 0 or (top_score or 0.0) > 0.0:
         verdict = "ambiguous"
         if citations_total < max(1, int(min_citations or 1)):
             reason_codes.append("citations_below_min")
-        if float(top_score or 0.0) < float(min_top_score or 0.0):
+        if (top_score or 0.0) < float(min_top_score or 0.0):
             reason_codes.append("top_score_below_min")
     else:
         reason_codes.append("no_evidence")
@@ -42,9 +41,9 @@ def evaluate_retrieval_verdict(
     return {
         "schema": "mimirq.retrieval_evaluator.v1",
         "verdict": verdict,
-        "citations_total": int(citations_total),
-        "top_relevance_score": float(top_score or 0.0),
-        "abstain_triggered": bool(abstain_triggered),
+        "citations_total": citations_total,
+        "top_relevance_score": top_score or 0.0,
+        "abstain_triggered": abstain_triggered,
         "reason_codes": reason_codes,
     }
 
@@ -61,10 +60,10 @@ def summarize_retrieval_evaluator_decisions(rows: list[dict[str, Any]]) -> dict[
     return {
         "schema": "mimirq.retrieval_evaluator_summary.v1",
         "summary": {
-            "evaluated": int(total),
-            "correct": int(counts["correct"]),
-            "ambiguous": int(counts["ambiguous"]),
-            "incorrect": int(counts["incorrect"]),
+            "evaluated": total,
+            "correct": counts["correct"],
+            "ambiguous": counts["ambiguous"],
+            "incorrect": counts["incorrect"],
             "correct_rate": round(counts["correct"] / total, 4) if total else 0.0,
             "ambiguous_rate": round(counts["ambiguous"] / total, 4) if total else 0.0,
             "incorrect_rate": round(counts["incorrect"] / total, 4) if total else 0.0,

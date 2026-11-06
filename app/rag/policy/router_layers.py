@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -73,7 +72,9 @@ def build_router_layers(
     partition_keys: list[str] | None = None,
     entity_candidates: list[str] | None = None,
     intent_meta: dict[str, Any] | None = None,
+    max_reason_codes: int = 8,
 ) -> dict[str, Any]:
+    """Build routing diagnostics; orchestration retains its six-reason trace budget."""
     explicit_partition_keys = _normalize_partition_keys(partition_keys)
     explicit_entity_key = str(entity_key or "").strip()
 
@@ -94,7 +95,7 @@ def build_router_layers(
         "decision": "partition_keys" if entity_keys else "none",
         "used": bool(entity_keys),
         "partition_keys": list(entity_keys),
-        "reason_codes": _bounded_reason_codes(entity_reason_codes),
+        "reason_codes": _bounded_reason_codes(entity_reason_codes, max_items=max_reason_codes),
     }
 
     intent_payload = dict(intent_meta or {})
@@ -103,7 +104,7 @@ def build_router_layers(
     intent_layer = {
         "decision": str(intent_payload.get("intent") or "general"),
         "used": bool(intent_payload.get("skip_retrieval") or intent_payload.get("used") or False),
-        "reason_codes": _bounded_reason_codes(list(intent_payload.get("reasons") or [])),
+        "reason_codes": _bounded_reason_codes(list(intent_payload.get("reasons") or []), max_items=max_reason_codes),
         "skip_retrieval": bool(intent_payload.get("skip_retrieval") or False),
     }
 
@@ -111,7 +112,7 @@ def build_router_layers(
     composite_layer = {
         "decision": composite_decision,
         "used": bool(composite_decision != "single"),
-        "reason_codes": _bounded_reason_codes(composite_reasons),
+        "reason_codes": _bounded_reason_codes(composite_reasons, max_items=max_reason_codes),
     }
 
     return {

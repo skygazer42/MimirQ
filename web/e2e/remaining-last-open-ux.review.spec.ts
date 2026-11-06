@@ -18,7 +18,10 @@ async function capture(page: Page, name: string) {
 test('independent chosen task - maintenance evidence', async ({ page }) => {
   test.setTimeout(600_000)
   await lastBatchFixture(page, 'light')
-  for (const viewport of [{ width: 1600, height: 1000 }, { width: 390, height: 844 }]) {
+  for (const viewport of [
+    { width: 1600, height: 1000 },
+    { width: 390, height: 844 },
+  ]) {
     await page.setViewportSize(viewport)
     const size = viewport.width === 1600 ? 'desktop' : 'mobile'
     await page.goto('/knowledge/evidence', { waitUntil: 'domcontentloaded' })
@@ -26,7 +29,9 @@ test('independent chosen task - maintenance evidence', async ({ page }) => {
     await page.getByRole('textbox', { name: '检索问题', exact: true }).fill('设备维护应该多久执行一次？')
     await capture(page, `${size}-evidence-question`)
     await page.getByRole('button', { name: '运行检索', exact: true }).click()
-    await expect(page.getByText('维护周期为六个月，完成例行检查后记录维护日期。', { exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText('维护周期为六个月，完成例行检查后记录维护日期。', { exact: true })).toBeVisible({
+      timeout: 60_000,
+    })
     await capture(page, `${size}-evidence-result`)
   }
 })
@@ -34,7 +39,10 @@ test('independent chosen task - maintenance evidence', async ({ page }) => {
 test('independent remaining entries and recovery observation', async ({ page }) => {
   test.setTimeout(600_000)
   await lastBatchFixture(page, 'light')
-  for (const viewport of [{ width: 1600, height: 1000 }, { width: 390, height: 844 }]) {
+  for (const viewport of [
+    { width: 1600, height: 1000 },
+    { width: 390, height: 844 },
+  ]) {
     await page.setViewportSize(viewport)
     const size = viewport.width === 1600 ? 'desktop' : 'mobile'
     if (size === 'mobile') {
@@ -65,9 +73,14 @@ test('independent remaining entries and recovery observation', async ({ page }) 
     await page.getByRole('combobox', { name: '定位切片', exact: true }).selectOption({ index: 2 })
     await capture(page, `${size}-nebula-after-selection`)
     if (await page.getByRole('dialog', { name: '图例与定位', exact: true }).isVisible()) {
-      await page.getByRole('dialog', { name: '图例与定位', exact: true }).getByRole('button', { name: '完成', exact: true }).click()
+      await page
+        .getByRole('dialog', { name: '图例与定位', exact: true })
+        .getByRole('button', { name: '完成', exact: true })
+        .click()
     }
-    await expect(page.getByText('设备维护第 2 节：每六个月进行例行检查，确认电源和润滑状态。', { exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(
+      page.getByText('设备维护第 2 节：每六个月进行例行检查，确认电源和润滑状态。', { exact: true }),
+    ).toBeVisible({ timeout: 60_000 })
     await capture(page, `${size}-nebula-selected-chunk`)
     await page.getByRole('link', { name: '查看文档审计', exact: true }).click()
     await expect(page.getByRole('heading', { name: '文档健康审计', exact: true })).toBeVisible({ timeout: 60_000 })
@@ -92,15 +105,22 @@ test('independent remaining entries and recovery observation', async ({ page }) 
 test('independent canvas ready observation', async ({ page }) => {
   test.setTimeout(240_000)
   await lastBatchFixture(page, 'light')
-  for (const viewport of [{ width: 1600, height: 1000 }, { width: 390, height: 844 }]) {
+  for (const viewport of [
+    { width: 1600, height: 1000 },
+    { width: 390, height: 844 },
+  ]) {
     await page.setViewportSize(viewport)
     const size = viewport.width === 1600 ? 'desktop' : 'mobile'
     await page.goto('/knowledge/nebula', { waitUntil: 'domcontentloaded' })
     await expect(page.getByText('1 文档 · 4 切片')).toBeVisible({ timeout: 60_000 })
-    await expect(page.getByRole('region', { name: '三维切片画布', exact: true }).locator('canvas')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('region', { name: '三维切片画布', exact: true }).locator('canvas')).toBeVisible({
+      timeout: 60_000,
+    })
     await capture(page, `${size}-nebula-canvas-ready`)
     await page.getByRole('button', { name: '重置视角', exact: true }).click()
-    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await page.evaluate(
+      () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))),
+    )
     await capture(page, `${size}-nebula-after-reset`)
   }
 })

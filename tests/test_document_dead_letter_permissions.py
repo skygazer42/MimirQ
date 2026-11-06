@@ -306,7 +306,7 @@ def test_dead_letter_replay_uses_lifecycle_write_gate(monkeypatch: pytest.Monkey
         raise AssertionError("retry_document_processing should not run when lifecycle gate denies replay")
 
     monkeypatch.setattr(
-        document_dead_letters.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True
+        document_dead_letters.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True
     )
     monkeypatch.setattr(
         document_dead_letters,

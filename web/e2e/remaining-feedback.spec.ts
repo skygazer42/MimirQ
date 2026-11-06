@@ -6,7 +6,15 @@ test('transient feedback permits underlying actions, expires and can still be cl
   await page.setViewportSize({ width: 390, height: 844 })
   await openRemaining(page, '/data-governance/common-lines', '重复内容规则')
   await expect(page.getByRole('button', { name: '导入脚本草案', exact: true })).toBeEnabled()
-  const upload = () => page.locator('input[type=file]').first().setInputFiles({ name: 'ui-feedback-draft.py', mimeType: 'text/x-python', buffer: Buffer.from('# isolated feedback verification\n') })
+  const upload = () =>
+    page
+      .locator('input[type=file]')
+      .first()
+      .setInputFiles({
+        name: 'ui-feedback-draft.py',
+        mimeType: 'text/x-python',
+        buffer: Buffer.from('# isolated feedback verification\n'),
+      })
   await upload()
   const toast = page.locator('[data-sonner-toast]').filter({ hasText: '已导入 1 个处理脚本草案' })
   await expect(toast).toBeVisible()

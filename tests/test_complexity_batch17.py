@@ -1,4 +1,3 @@
-
 import builtins
 import datetime as _datetime
 import json
@@ -217,7 +216,7 @@ def test_paddle_vl_normalize_local_files_rewrites_images_json_and_markdown(
     )
     markdown_path = nested_dir / "source.md"
     markdown_path.write_text(
-        f"![figure](./{old_name})\n<img src=\"{old_name}\" alt=\"figure\">",
+        f'![figure](./{old_name})\n<img src="{old_name}" alt="figure">',
         encoding="utf-8",
     )
 

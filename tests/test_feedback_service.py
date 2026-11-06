@@ -1,4 +1,3 @@
-
 import asyncio
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -13,7 +12,7 @@ from app.models.feedback import MessageFeedback
 from app.rag.feedback_loop.candidates import build_feedback_loop_candidates
 from app.rag.feedback_loop.dispatcher import dispatch_feedback_loop_batch
 from app.rag.trace_schema import RagTrace, RagTraceListResponse
-from app.services.feedback_service import FeedbackService
+from app.services import feedback_service
 
 
 class _FakeQuery:
@@ -103,13 +102,10 @@ class _FakeQuery:
     def join(self, model, *_args, **_kwargs):  # noqa: ANN001,D401
         if self._model is MessageFeedback and model is Conversation:
             self._joined_conversations = {
-                (row.tenant_id, row.id): row
-                for row in self._related_rows.get(Conversation, [])
+                (row.tenant_id, row.id): row for row in self._related_rows.get(Conversation, [])
             }
             self._items = [
-                row
-                for row in self._items
-                if (row.tenant_id, row.conversation_id) in self._joined_conversations
+                row for row in self._items if (row.tenant_id, row.conversation_id) in self._joined_conversations
             ]
         return self
 
@@ -189,7 +185,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
     )
     db = _FakeDB(feedback_rows=[], messages=[user_msg, assistant_msg], conversations=[conv])
 
-    row = FeedbackService.upsert_message_feedback(
+    row = feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -241,7 +237,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
         "eval_case_status": "promoted",
         "eval_case_id": "case-1",
     }
-    updated = FeedbackService.upsert_message_feedback(
+    updated = feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -267,7 +263,7 @@ def test_upsert_message_feedback_persists_trace_and_snapshot_metadata() -> None:
     assert updated.extra["eval_case_status"] == "promoted"
     assert updated.extra["eval_case_id"] == "case-1"
 
-    user_retry = FeedbackService.upsert_message_feedback(
+    user_retry = feedback_service.upsert_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -331,7 +327,7 @@ def test_upsert_message_feedback_rejects_other_accounts_conversation() -> None:
     db = _FakeDB(feedback_rows=[], messages=[user_msg, assistant_msg], conversations=[conv])
 
     with pytest.raises(HTTPException) as exc_info:
-        FeedbackService.upsert_message_feedback(
+        feedback_service.upsert_message_feedback(
             db=db,
             tenant_id=tenant_id,
             account_id="intruder",
@@ -473,7 +469,7 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
         conversations=[conv_a, conv_b],
     )
 
-    listed = FeedbackService.list_message_feedback(
+    listed = feedback_service.list_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -485,7 +481,7 @@ def test_list_message_feedback_enriched_filters_sorts_and_truncates() -> None:
         limit=10,
         ensure_member_fn=lambda *_args, **_kwargs: None,
     )
-    enriched = FeedbackService.list_message_feedback_enriched(
+    enriched = feedback_service.list_message_feedback_enriched(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -554,8 +550,8 @@ def test_list_message_feedback_uses_stable_sql_page_boundaries() -> None:
         "ensure_member_fn": lambda *_args, **_kwargs: None,
     }
 
-    first = FeedbackService.list_message_feedback(skip=0, **args)
-    second = FeedbackService.list_message_feedback(skip=1, **args)
+    first = feedback_service.list_message_feedback(skip=0, **args)
+    second = feedback_service.list_message_feedback(skip=1, **args)
 
     assert first["total"] == second["total"] == 2
     assert [row.id for row in first["items"]] == [newer_id.id]
@@ -630,7 +626,7 @@ def test_build_feedback_loop_candidates_uses_negative_feedback_context() -> None
     )
     db = _FakeDB(feedback_rows=[feedback], messages=[user_msg, assistant_msg], conversations=[conv])
 
-    out = FeedbackService.build_feedback_loop_candidates(
+    out = feedback_service.build_feedback_loop_candidates(
         db=db,
         tenant_id=tenant_id,
         account_id="u",
@@ -680,9 +676,7 @@ def test_eval_case_candidate_falls_back_to_trace_citations() -> None:
         ]
     )
 
-    assert out["eval_case_candidates"][0]["reference_sources"] == [
-        {"document_id": "doc-1", "chunk_id": "chunk-1"}
-    ]
+    assert out["eval_case_candidates"][0]["reference_sources"] == [{"document_id": "doc-1", "chunk_id": "chunk-1"}]
 
     promoted = build_feedback_loop_candidates(
         [
@@ -718,7 +712,7 @@ def test_feedback_promotion_requires_write_permission(monkeypatch: pytest.Monkey
     def deny(*_args, **_kwargs):  # noqa: ANN002,ANN003
         raise HTTPException(status_code=403, detail="denied")
 
-    monkeypatch.setattr(feedback_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(feedback_api, "ensure_tenant_permission", deny)
 
     with pytest.raises(HTTPException) as exc_info:
@@ -792,12 +786,12 @@ def test_feedback_promotion_keeps_server_lineage(monkeypatch: pytest.MonkeyPatch
         messages=[user_message, assistant],
         conversations=[conversation],
     )
-    monkeypatch.setattr(feedback_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(feedback_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(feedback_api, "ensure_tenant_permission", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(feedback_api.DatasetService, "get_dataset", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(feedback_api.dataset_service, "get_dataset", lambda *_args, **_kwargs: object())
     writable_checks: list[tuple[object, str]] = []
     monkeypatch.setattr(
-        feedback_api.DatasetService,
+        feedback_api.dataset_service,
         "assert_dataset_writable",
         lambda _db, dataset, account_id: writable_checks.append((dataset, account_id)),
     )
@@ -849,7 +843,7 @@ def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
     )
     db = _FakeDB(feedback_rows=[feedback_row], messages=[], conversations=[])
 
-    archived = FeedbackService.patch_message_feedback(
+    archived = feedback_service.patch_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="reviewer",
@@ -864,7 +858,7 @@ def test_patch_message_feedback_archive_state_persists_in_extra() -> None:
     assert archived.category == "wrong_answer"
     assert archived.category_source == "reviewer"
 
-    unarchived = FeedbackService.patch_message_feedback(
+    unarchived = feedback_service.patch_message_feedback(
         db=db,
         tenant_id=tenant_id,
         account_id="reviewer",

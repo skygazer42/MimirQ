@@ -63,9 +63,7 @@ export function SuiteListPanel({
                   </Badge>
                 ))}
                 {overflowCount > 0 ? (
-                  <span className="text-xs font-mono text-muted-foreground">
-                    +{overflowCount}
-                  </span>
+                  <span className="text-xs font-mono text-muted-foreground">+{overflowCount}</span>
                 ) : null}
               </div>
             )
@@ -75,9 +73,7 @@ export function SuiteListPanel({
             <button
               key={suite.id}
               type="button"
-              className={cn(
-                ws.directoryRow
-              )}
+              className={cn(ws.directoryRow)}
               data-selected={active}
               aria-pressed={active}
               onClick={() => onSelectSuite(String(suite.id))}
@@ -109,11 +105,7 @@ export function SuiteListPanel({
       </>
     )
   } else {
-    suitesContent = (
-      <div className="text-xs text-muted-foreground text-pretty">
-        暂无证据集
-      </div>
-    )
+    suitesContent = <div className="text-xs text-muted-foreground text-pretty">暂无证据集</div>
   }
 
   return (
@@ -124,9 +116,7 @@ export function SuiteListPanel({
             <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
             证据集
           </div>
-          <div className="mt-1 text-xs text-muted-foreground text-pretty">
-            数据集：{datasetLabel}
-          </div>
+          <div className="mt-1 text-xs text-muted-foreground text-pretty">数据集：{datasetLabel}</div>
         </div>
         <Button size="sm" className="gap-2" onClick={onCreateSuite}>
           <Plus className="size-4" aria-hidden="true" />
@@ -144,7 +134,10 @@ export function SuiteListPanel({
           onClick={onRefresh}
           disabled={suitesLoading}
         >
-          <RefreshCw className={cn('size-4', suitesLoading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
+          <RefreshCw
+            className={cn('size-4', suitesLoading ? 'animate-spin motion-reduce:animate-none' : '')}
+            aria-hidden="true"
+          />
         </Button>
       </div>
 
@@ -160,15 +153,11 @@ export function SuiteListPanel({
         <span className="font-mono tabular-nums">{filteredSuites.length}</span>
       </div>
 
-      {suitesError ? (
-        <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div>
-      ) : null}
+      {suitesError ? <div className="mt-3 text-xs text-destructive text-pretty">{suitesError}</div> : null}
 
       <div className="mt-3">
         <div>
-          <div>
-            {suitesContent}
-          </div>
+          <div>{suitesContent}</div>
         </div>
       </div>
     </Panel>

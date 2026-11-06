@@ -2,7 +2,11 @@ import path from 'node:path'
 
 import { expect, test, type Page, type Route } from '@playwright/test'
 
-import { installCommonApiMocks, installDeterministicRandom, type EnterpriseTelemetryMockState } from './enterprise-quality-telemetry.helpers'
+import {
+  installCommonApiMocks,
+  installDeterministicRandom,
+  type EnterpriseTelemetryMockState,
+} from './enterprise-quality-telemetry.helpers'
 
 async function fulfillJson(route: Route, payload: unknown) {
   await route.fulfill({
@@ -60,17 +64,14 @@ async function captureGuideScreenshot(page: Page, filename: string) {
 
 async function expectReadableManagementHeaders(
   page: Page,
-  surfaces: ReadonlyArray<{ route: string; heading: string }>
+  surfaces: ReadonlyArray<{ route: string; heading: string }>,
 ) {
   for (const surface of surfaces) {
     await page.goto(surface.route, { waitUntil: 'domcontentloaded' })
 
     const heading = page.getByRole('heading', { name: surface.heading, exact: true }).first()
     await expect(heading, `${surface.route} heading`).toBeVisible({ timeout: 60_000 })
-    await expect(
-      heading.locator('xpath=ancestor::header[1]'),
-      `${surface.route} header shell`
-    ).toBeVisible()
+    await expect(heading.locator('xpath=ancestor::header[1]'), `${surface.route} header shell`).toBeVisible()
 
     expect(await documentHorizontalOverflow(page), `${surface.route} page overflow`).toBeLessThanOrEqual(1)
   }
@@ -108,17 +109,20 @@ async function visibleLegacyDarkSurfaceClasses(page: Page) {
 }
 
 async function textAndSemanticForeground(page: Page, selector: string) {
-  return page.locator(selector).first().evaluate((element) => {
-    const probe = document.createElement('span')
-    probe.style.color = 'hsl(var(--foreground))'
-    document.body.appendChild(probe)
-    const result = {
-      actual: window.getComputedStyle(element).color,
-      expected: window.getComputedStyle(probe).color,
-    }
-    probe.remove()
-    return result
-  })
+  return page
+    .locator(selector)
+    .first()
+    .evaluate((element) => {
+      const probe = document.createElement('span')
+      probe.style.color = 'hsl(var(--foreground))'
+      document.body.appendChild(probe)
+      const result = {
+        actual: window.getComputedStyle(element).color,
+        expected: window.getComputedStyle(probe).color,
+      }
+      probe.remove()
+      return result
+    })
 }
 
 async function installManagementSurfaceMocks(page: Page) {
@@ -510,12 +514,8 @@ test.describe('management surfaces smoke', () => {
       await expect(heading, `${surface.route} heading`).toBeVisible({ timeout: 60_000 })
 
       const colors = await textAndSemanticForeground(page, `h1:has-text("${surface.heading}")`)
-      expect(colors.actual, `${surface.route} title should use semantic foreground ink`).toBe(
-        colors.expected
-      )
-      expect(colors.actual, `${surface.route} title should stay opaque`).not.toBe(
-        'rgba(0, 0, 0, 0)'
-      )
+      expect(colors.actual, `${surface.route} title should use semantic foreground ink`).toBe(colors.expected)
+      expect(colors.actual, `${surface.route} title should stay opaque`).not.toBe('rgba(0, 0, 0, 0)')
     }
   })
 
@@ -557,14 +557,10 @@ test.describe('management surfaces smoke', () => {
     await page.goto('/evaluations', { waitUntil: 'domcontentloaded' })
     const evaluationHeading = page.getByRole('heading', { name: 'RAG 评测', exact: true })
     await expect(evaluationHeading).toBeVisible({ timeout: 15_000 })
-    const evaluationHero = evaluationHeading.locator(
-      'xpath=ancestor::header[1]'
-    )
+    const evaluationHero = evaluationHeading.locator('xpath=ancestor::header[1]')
     const evaluationGeometry = await evaluationHero.evaluate((element) => ({
       height: element.getBoundingClientRect().height,
-      pageOverflow:
-        Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) -
-        window.innerWidth,
+      pageOverflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth,
     }))
     expect(evaluationGeometry.height).toBeGreaterThan(0)
     expect(evaluationGeometry.pageOverflow).toBeLessThanOrEqual(1)
@@ -586,9 +582,7 @@ test.describe('management surfaces smoke', () => {
     test.setTimeout(180_000)
     await page.setViewportSize({ width: 1280, height: 720 })
     await page.goto('/evaluations', { waitUntil: 'domcontentloaded' })
-    await expect(
-      page.getByRole('heading', { name: 'RAG 评测', exact: true })
-    ).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('heading', { name: 'RAG 评测', exact: true })).toBeVisible({ timeout: 60_000 })
     await page.getByRole('button', { name: '切换主题' }).last().click()
     const darkThemeItem = page.getByRole('menuitem', { name: '深色' })
     await expect(darkThemeItem).toBeVisible({ timeout: 10_000 })
@@ -606,15 +600,9 @@ test.describe('management surfaces smoke', () => {
       await expect(heading).toBeVisible({ timeout: 60_000 })
 
       const legacyClasses = await visibleLegacyDarkSurfaceClasses(page)
-      expect(
-        legacyClasses,
-        `${surface.route} still renders light-only utility classes in dark mode`
-      ).toEqual([])
+      expect(legacyClasses, `${surface.route} still renders light-only utility classes in dark mode`).toEqual([])
 
-      const colors = await textAndSemanticForeground(
-        page,
-        `h1:has-text("${surface.heading}")`
-      )
+      const colors = await textAndSemanticForeground(page, `h1:has-text("${surface.heading}")`)
       expect(colors.actual).toBe(colors.expected)
     }
   })
@@ -626,22 +614,23 @@ test.describe('management surfaces smoke', () => {
     const create = header.getByRole('button', { name: '新建数据集', exact: true })
     await expect(create).toBeVisible({ timeout: 60_000 })
 
-    const colors = async () => page.evaluate(() => {
-      const probe = document.createElement('span')
-      document.body.appendChild(probe)
-      const value = (token: string) => {
-        probe.style.backgroundColor = `hsl(var(${token}))`
-        return getComputedStyle(probe).backgroundColor
-      }
-      const result = {
-        background: value('--background'),
-        sidebar: value('--sidebar-background'),
-        primary: value('--primary'),
-        primaryForeground: value('--primary-foreground'),
-      }
-      probe.remove()
-      return result
-    })
+    const colors = async () =>
+      page.evaluate(() => {
+        const probe = document.createElement('span')
+        document.body.appendChild(probe)
+        const value = (token: string) => {
+          probe.style.backgroundColor = `hsl(var(${token}))`
+          return getComputedStyle(probe).backgroundColor
+        }
+        const result = {
+          background: value('--background'),
+          sidebar: value('--sidebar-background'),
+          primary: value('--primary'),
+          primaryForeground: value('--primary-foreground'),
+        }
+        probe.remove()
+        return result
+      })
 
     for (const preset of [
       { key: 'ocean', label: '默认配色' },
@@ -655,7 +644,10 @@ test.describe('management surfaces smoke', () => {
       await page.keyboard.press('Escape')
       await expect(page.locator('html')).toHaveAttribute('data-surface-theme', preset.key)
       const expected = await colors()
-      await expect(page.getByRole('navigation', { name: '主导航', exact: true })).toHaveCSS('background-color', expected.sidebar)
+      await expect(page.getByRole('navigation', { name: '主导航', exact: true })).toHaveCSS(
+        'background-color',
+        expected.sidebar,
+      )
       await expect(header).toHaveCSS('background-color', expected.background)
       await expect(create).toHaveCSS('background-color', expected.primary)
       await expect(create).toHaveCSS('color', expected.primaryForeground)
@@ -670,7 +662,11 @@ test.describe('management surfaces smoke', () => {
     await expect(page.getByRole('heading', { name: '入库管理', exact: true })).toBeVisible({ timeout: 60_000 })
     const settings = page.locator('[data-ingestion-context-panel]')
     await expect(settings.getByRole('combobox', { name: '目标数据集', exact: true })).toContainText('Smoke Dataset')
-    await page.getByLabel('选择待入库文件', { exact: true }).setInputFiles({ name: 'theme-check.docx', mimeType: 'application/octet-stream', buffer: Buffer.from('UI appearance test only') })
+    await page.getByLabel('选择待入库文件', { exact: true }).setInputFiles({
+      name: 'theme-check.docx',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('UI appearance test only'),
+    })
     const submit = page.locator('[data-ingestion-submit]')
     await expect(submit).toBeEnabled()
     const expected = await colors()
@@ -723,9 +719,7 @@ test.describe('management surfaces smoke', () => {
       waitUntil: 'domcontentloaded',
       timeout: 150_000,
     })
-    const goldenWorkspaceTitle = page
-      .getByText('Golden 评测集', { exact: true })
-      .last()
+    const goldenWorkspaceTitle = page.getByText('Golden 评测集', { exact: true }).last()
     await expect(goldenWorkspaceTitle).toBeVisible({ timeout: 60_000 })
     const goldenTitleBox = await goldenWorkspaceTitle.boundingBox()
     expect(goldenTitleBox?.width).toBeGreaterThan(90)
@@ -733,9 +727,7 @@ test.describe('management surfaces smoke', () => {
 
     const runHistoryTitle = page.getByText('运行历史', { exact: true })
     const runHistoryCardHeight = await runHistoryTitle.evaluate(
-      (element) =>
-        element.parentElement?.parentElement?.parentElement?.getBoundingClientRect()
-          .height ?? 0
+      (element) => element.parentElement?.parentElement?.parentElement?.getBoundingClientRect().height ?? 0,
     )
     expect(runHistoryCardHeight).toBeGreaterThan(100)
   })
@@ -807,7 +799,7 @@ test.describe('management surfaces smoke', () => {
 
       const metrics = await scrollContainerMetrics(
         page,
-        '[data-quarantine-page-root="true"] [data-page-scroll-container]'
+        '[data-quarantine-page-root="true"] [data-page-scroll-container]',
       )
       expect(metrics.clientHeight).toBeGreaterThan(0)
       expect(['auto', 'scroll']).toContain(metrics.overflowY)
@@ -859,9 +851,7 @@ test.describe('management surfaces smoke', () => {
         waitUntil: 'domcontentloaded',
         timeout: 150_000,
       })
-      await expect(
-        page.getByRole('heading', { name: '证据库（Evidence Workbench）' })
-      ).toBeVisible({ timeout: 60_000 })
+      await expect(page.getByRole('heading', { name: '证据库（Evidence Workbench）' })).toBeVisible({ timeout: 60_000 })
 
       const suitePanel = page.getByText('Evidence Suites', { exact: true })
       const itemPanel = page.getByText('Evidence Items', { exact: true })
@@ -939,9 +929,7 @@ test.describe('management surfaces smoke', () => {
       waitUntil: 'domcontentloaded',
       timeout: 150_000,
     })
-    await expect(
-      page.getByRole('heading', { name: '跨集合相似度热力图' })
-    ).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByRole('heading', { name: '跨集合相似度热力图' })).toBeVisible({ timeout: 60_000 })
 
     const dataSourcePanelTitle = page.getByText('数据源配置', { exact: true }).last()
     await expect(dataSourcePanelTitle).not.toBeVisible()
@@ -1046,23 +1034,19 @@ test.describe('management surfaces smoke', () => {
     })
 
     await page.goto('/knowledge?tab=retrieval&dataset=ds-smoke')
-    const searchInput = page.getByPlaceholder(
-      '例如：请按第十二条说明例外条件，并指出适用范围与例外条款'
-    )
+    const searchInput = page.getByPlaceholder('例如：请按第十二条说明例外条件，并指出适用范围与例外条款')
     await expect(searchInput).toBeVisible({ timeout: 60_000 })
     await searchInput.fill('发布验收')
     await page.getByRole('button', { name: '开始检索' }).click()
     await expect(page.getByText('发布验收规范.pdf').first()).toBeVisible()
-    await expect(
-      page.locator('[aria-label="检索结果排名列表"] button button')
-    ).toHaveCount(0)
+    await expect(page.locator('[aria-label="检索结果排名列表"] button button')).toHaveCount(0)
     expect(nestedControlErrors).toEqual([])
   })
 
   test('captures the documented knowledge-base journey on demand', async ({ page }) => {
     test.skip(
       process.env.CAPTURE_DOCS_SCREENSHOTS !== '1',
-      'Set CAPTURE_DOCS_SCREENSHOTS=1 to refresh committed guide screenshots.'
+      'Set CAPTURE_DOCS_SCREENSHOTS=1 to refresh committed guide screenshots.',
     )
     test.setTimeout(240_000)
     await page.setViewportSize({ width: 1600, height: 1000 })
@@ -1071,8 +1055,7 @@ test.describe('management surfaces smoke', () => {
       document_id: 'doc-guide-1',
       document_name: '企业知识库操作规范.pdf',
       chunk_id: 'chunk-guide-1',
-      chunk_content:
-        '正式发布前应完成数据集权限检查、真实检索验证与引用核对，并保留可回归的 Golden 题集。',
+      chunk_content: '正式发布前应完成数据集权限检查、真实检索验证与引用核对，并保留可回归的 Golden 题集。',
       page_number: 12,
       score: 0.943,
       relevance_score: 0.943,
@@ -1095,8 +1078,7 @@ test.describe('management surfaces smoke', () => {
           {
             ...evidence,
             chunk_id: 'chunk-guide-2',
-            chunk_content:
-              '上线后应通过 request_id 关联 API、Worker、模型服务和检索 Trace，并持续复测关键问题。',
+            chunk_content: '上线后应通过 request_id 关联 API、Worker、模型服务和检索 Trace，并持续复测关键问题。',
             page_number: 13,
             score: 0.887,
             relevance_score: 0.887,
@@ -1124,8 +1106,7 @@ test.describe('management surfaces smoke', () => {
         {
           type: 'token',
           data: {
-            content:
-              '发布前需要完成数据集权限检查、真实检索验证和引用核对，并保存 Golden 题集作为回归基线。',
+            content: '发布前需要完成数据集权限检查、真实检索验证和引用核对，并保存 Golden 题集作为回归基线。',
           },
         },
         {
@@ -1200,7 +1181,10 @@ test.describe('management surfaces smoke', () => {
     const datasetScope = page.getByRole('button', { name: '选择数据集', exact: true })
     await expect(datasetScope).toBeVisible({ timeout: 60_000 })
     await datasetScope.click()
-    await page.getByRole('button', { name: /企业知识库示例/ }).last().click()
+    await page
+      .getByRole('button', { name: /企业知识库示例/ })
+      .last()
+      .click()
     const composer = page.getByPlaceholder('问点什么... (Shift + Enter 换行)')
     await composer.fill('知识库发布前需要完成哪些验收？')
     await page.getByRole('button', { name: '发送' }).click()

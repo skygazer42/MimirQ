@@ -1,9 +1,16 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.core.claim_verifier import verify_claim
 from app.rag.core.text import is_claim_supported, split_into_claims
 
 _DUMMY_EVIDENCE_TOKENS = "dummy evidence tokens"
+
+
+class _ClaimCounts(TypedDict):
+    claims_supported: int
+    claims_noisy: int
+    claims_correct_total: int
+    claims_correct_uncited: int
 
 
 def _is_informative_claim(claim: str) -> bool:
@@ -32,7 +39,7 @@ def _empty_diagnostics(*, chunks_total: int) -> dict[str, Any]:
             "claims_noisy": 0,
             "claims_correct_total": 0,
             "claims_correct_uncited": 0,
-            "chunks_total": int(chunks_total),
+            "chunks_total": chunks_total,
             "chunks_used": 0,
         },
     }
@@ -95,8 +102,8 @@ def _evaluate_claims(
     contexts: list[str],
     relevance: list[bool] | None,
     reference_text: str | None,
-) -> tuple[dict[str, int], set[int]]:
-    counts = {
+) -> tuple[_ClaimCounts, set[int]]:
+    counts: _ClaimCounts = {
         "claims_supported": 0,
         "claims_noisy": 0,
         "claims_correct_total": 0,
@@ -111,7 +118,7 @@ def _evaluate_claims(
         supported = first_support is not None
         if supported:
             counts["claims_supported"] += 1
-            used_chunks.add(int(relevant_support if relevant_support is not None else first_support))
+            used_chunks.add(relevant_support if relevant_support is not None else first_support)
             if relevance is not None and relevant_support is None:
                 counts["claims_noisy"] += 1
         if reference_text and _claim_matches_reference(claim_text, reference_text):
@@ -132,7 +139,7 @@ def _diagnostics_result(
     claims_total: int,
     chunks_total: int,
     used_chunks: set[int],
-    counts: dict[str, int],
+    counts: _ClaimCounts,
     has_relevance: bool,
     has_reference: bool,
 ) -> dict[str, Any]:

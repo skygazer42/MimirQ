@@ -12,7 +12,6 @@ fallback RecursiveCharacterTextSplitter inside each block while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -48,9 +47,7 @@ _OBJ_NAME_RE = re.compile(
     r"(?im)^\s*create\s+(?:or\s+replace\s+)?(?P<kind>table|view|function|procedure|trigger|index)\s+"
     r"(?:if\s+not\s+exists\s+)?(?P<name>[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?(?:\.[`\"\\[]?[A-Z0-9_.$]+[`\"\\]]?)?)"
 )
-_ALTER_NAME_RE = re.compile(
-    r"(?im)^\s*alter\s+table\s+(?:if\s+exists\s+)?(?P<name>[^\s(]+)"
-)
+_ALTER_NAME_RE = re.compile(r"(?im)^\s*alter\s+table\s+(?:if\s+exists\s+)?(?P<name>[^\s(]+)")
 
 
 def _infer_object_name(stmt_text: str) -> tuple[str, str | None]:
@@ -138,7 +135,7 @@ def looks_like_sql_schema(text: str) -> bool:
 
 
 class SqlSchemaChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

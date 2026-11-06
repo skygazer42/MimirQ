@@ -1,4 +1,3 @@
-
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any

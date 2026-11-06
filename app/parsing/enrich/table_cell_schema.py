@@ -1,4 +1,3 @@
-
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -52,8 +51,8 @@ class TableExtraction:
         out: dict[str, Any] = {
             "schema": "mimirq.table_extraction.v1",
             "columns": list(self.columns),
-            "row_count": int(self.row_count),
-            "col_count": int(self.col_count),
+            "row_count": self.row_count,
+            "col_count": self.col_count,
             "header_rows": int(self.header_rows),
             "cells": [cell.to_metadata() for cell in self.cells],
             "rows": [list(row) for row in self.rows],

@@ -55,8 +55,12 @@ def test_blank_env_keeps_credentials_out_of_configuration_until_startup(monkeypa
 @pytest.fixture
 def default_admin_config(tmp_path):
     return SimpleNamespace(
-        DEFAULT_TENANT_ID=str(uuid4()), INITIAL_ADMIN_EMAIL="", INITIAL_ADMIN_USERNAME="",
-        INITIAL_ADMIN_PASSWORD="", INITIAL_ADMIN_PASSWORD_FILE="", PASSWORD_MIN_LENGTH=8,
+        DEFAULT_TENANT_ID=str(uuid4()),
+        INITIAL_ADMIN_EMAIL="",
+        INITIAL_ADMIN_USERNAME="",
+        INITIAL_ADMIN_PASSWORD="",
+        INITIAL_ADMIN_PASSWORD_FILE="",
+        PASSWORD_MIN_LENGTH=8,
         INITIAL_ADMIN_CREDENTIALS_FILE=str(tmp_path / "credentials" / "initial-admin.json"),
     )
 
@@ -140,9 +144,15 @@ def test_default_admin_reuses_saved_credentials_after_database_recreation(defaul
 
     path = Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE)
     path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({
-        "email": "admin@example.com", "username": "admin", "password": "previously-generated-password-for-admin",
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "email": "admin@example.com",
+                "username": "admin",
+                "password": "previously-generated-password-for-admin",
+            }
+        )
+    )
     engine, sessions = _build_test_session()
     try:
         with sessions() as db:
@@ -219,7 +229,9 @@ def test_different_installations_get_different_default_admin_passwords(default_a
         try:
             with sessions() as db:
                 assert bootstrap_initial_admin_if_configured(db, config=default_admin_config) is True
-                passwords.append(json.loads(Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE).read_text())["password"])
+                passwords.append(
+                    json.loads(Path(default_admin_config.INITIAL_ADMIN_CREDENTIALS_FILE).read_text())["password"]
+                )
         finally:
             engine.dispose()
     assert passwords[0] != passwords[1]
@@ -244,7 +256,9 @@ def test_explicit_admin_configuration_takes_priority_over_default_credentials(de
         engine.dispose()
 
 
-@pytest.mark.parametrize("contents", ["{broken json", '{"username":"admin","email":"admin@example.com","password":"short"}'])
+@pytest.mark.parametrize(
+    "contents", ["{broken json", '{"username":"admin","email":"admin@example.com","password":"short"}']
+)
 def test_invalid_saved_default_credentials_do_not_create_an_unknown_admin(default_admin_config, contents):
     from pathlib import Path
 

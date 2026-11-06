@@ -69,9 +69,16 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
     feedback_polarity: polarity === 'all' ? undefined : polarity,
   }
   const safeBase = safeFilename(datasetName || datasetId, 'dataset')
-  const operationResult = result ? { title: result.title, payload: { endpoint: result.endpoint, response: result.payload } } : null
+  const operationResult = result
+    ? { title: result.title, payload: { endpoint: result.endpoint, response: result.payload } }
+    : null
 
-  async function runAction(key: string, title: string, endpoint: string, action: () => Promise<unknown>): Promise<void> {
+  async function runAction(
+    key: string,
+    title: string,
+    endpoint: string,
+    action: () => Promise<unknown>,
+  ): Promise<void> {
     setRunningKey(key)
     try {
       const payload = await action()
@@ -114,12 +121,16 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
           onClick={() =>
             detachPromise(
               runAction('dashboard', '租户分析看板', 'GET /datasets/analysis/dashboard', () =>
-                datasetApi.getAnalysisDashboard({ feedback_polarity: filters.feedback_polarity, limit })
-              )
+                datasetApi.getAnalysisDashboard({ feedback_polarity: filters.feedback_polarity, limit }),
+              ),
             )
           }
         >
-          {runningKey === 'dashboard' ? <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" /> : <Activity className="h-3.5 w-3.5" />}
+          {runningKey === 'dashboard' ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" />
+          ) : (
+            <Activity className="h-3.5 w-3.5" />
+          )}
           看板
         </Button>
       </div>
@@ -129,13 +140,24 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
           <Label htmlFor="dataset-analysis-ruleset" className="text-xs text-muted-foreground">
             规则集
           </Label>
-          <Input id="dataset-analysis-ruleset" value={ruleset} onChange={(event) => setRuleset(event.target.value)} className="h-9" />
+          <Input
+            id="dataset-analysis-ruleset"
+            value={ruleset}
+            onChange={(event) => setRuleset(event.target.value)}
+            className="h-9"
+          />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="dataset-analysis-category" className="text-xs text-muted-foreground">
             分类过滤
           </Label>
-          <Input id="dataset-analysis-category" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="可选 category" className="h-9" />
+          <Input
+            id="dataset-analysis-category"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            placeholder="可选 category"
+            className="h-9"
+          />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="dataset-analysis-polarity" className="text-xs text-muted-foreground">
@@ -175,8 +197,8 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
           onClick={() =>
             detachPromise(
               runAction('summary', '分析摘要', 'GET /datasets/{id}/analysis/summary', () =>
-                datasetApi.getAnalysisSummary(datasetIdOrThrow(), filters)
-              )
+                datasetApi.getAnalysisSummary(datasetIdOrThrow(), filters),
+              ),
             )
           }
         >
@@ -190,8 +212,8 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
           onClick={() =>
             detachPromise(
               runAction('examples', '分析样例', 'GET /datasets/{id}/analysis/examples', () =>
-                datasetApi.getAnalysisExamples(datasetIdOrThrow(), { ...filters, limit })
-              )
+                datasetApi.getAnalysisExamples(datasetIdOrThrow(), { ...filters, limit }),
+              ),
             )
           }
         >
@@ -209,8 +231,8 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
                   ruleset: ruleset.trim(),
                   feedback_polarity: filters.feedback_polarity,
                   limit,
-                })
-              )
+                }),
+              ),
             )
           }
         >
@@ -224,8 +246,12 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
           onClick={() =>
             detachPromise(
               runAction('writeback', '术语写回', 'POST /datasets/{id}/analysis/glossary-writeback', () =>
-                datasetApi.writebackAnalysisGlossary(datasetIdOrThrow(), { ...filters, ruleset: ruleset.trim(), limit })
-              )
+                datasetApi.writebackAnalysisGlossary(datasetIdOrThrow(), {
+                  ...filters,
+                  ruleset: ruleset.trim(),
+                  limit,
+                }),
+              ),
             )
           }
         >
@@ -242,7 +268,7 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
                 const payload = await datasetApi.exportAnalysisJson(datasetIdOrThrow(), filters)
                 downloadText(prettyJson(payload), `${safeBase}.analysis.json`, 'application/json;charset=utf-8')
                 return payload
-              })
+              }),
             )
           }
         >
@@ -259,7 +285,7 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
                 const payload = await datasetApi.exportAnalysisJsonl(datasetIdOrThrow(), filters)
                 downloadText(payload, `${safeBase}.analysis.jsonl`, 'application/x-ndjson;charset=utf-8')
                 return { bytes: payload.length }
-              })
+              }),
             )
           }
         >
@@ -276,7 +302,7 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
                 const payload = await datasetApi.exportAnalysisHtmlReport(datasetIdOrThrow(), filters)
                 downloadText(payload, `${safeBase}.analysis.html`, 'text/html;charset=utf-8')
                 return { bytes: payload.length }
-              })
+              }),
             )
           }
         >
@@ -299,7 +325,7 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
                       : ''
                 if (nextTaskId) setTaskId(nextTaskId)
                 return payload
-              })
+              }),
             )
           }
         >
@@ -313,7 +339,12 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
           <Label htmlFor="dataset-analysis-task-id" className="text-xs text-muted-foreground">
             PNG 任务 ID
           </Label>
-          <Input id="dataset-analysis-task-id" value={taskId} onChange={(event) => setTaskId(event.target.value)} className="h-9 font-mono text-xs" />
+          <Input
+            id="dataset-analysis-task-id"
+            value={taskId}
+            onChange={(event) => setTaskId(event.target.value)}
+            className="h-9 font-mono text-xs"
+          />
         </div>
         <div className="flex gap-2">
           <Button
@@ -323,8 +354,8 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
             onClick={() =>
               detachPromise(
                 runAction('png-status', '查询 PNG 任务', 'GET /datasets/{id}/analysis/export-tasks/{task_id}', () =>
-                  datasetApi.getAnalysisPngExportTask(datasetIdOrThrow(), taskId.trim())
-                )
+                  datasetApi.getAnalysisPngExportTask(datasetIdOrThrow(), taskId.trim()),
+                ),
               )
             }
           >
@@ -336,11 +367,16 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
             disabled={disabledDatasetAction || !taskId.trim()}
             onClick={() =>
               detachPromise(
-                runAction('png-download', '下载 PNG 结果', 'GET /datasets/{id}/analysis/export-tasks/{task_id}/result.png', async () => {
-                  const blob = await datasetApi.getAnalysisPngExportResult(datasetIdOrThrow(), taskId.trim())
-                  downloadBlob(blob, `${safeBase}.analysis.png`)
-                  return { bytes: blob.size, type: blob.type }
-                })
+                runAction(
+                  'png-download',
+                  '下载 PNG 结果',
+                  'GET /datasets/{id}/analysis/export-tasks/{task_id}/result.png',
+                  async () => {
+                    const blob = await datasetApi.getAnalysisPngExportResult(datasetIdOrThrow(), taskId.trim())
+                    downloadBlob(blob, `${safeBase}.analysis.png`)
+                    return { bytes: blob.size, type: blob.type }
+                  },
+                ),
               )
             }
           >
@@ -349,7 +385,11 @@ export function DatasetAnalysisPanel({ datasetId, datasetName }: DatasetAnalysis
         </div>
       </div>
 
-      <OperationResultPanel title="分析接口结果" result={operationResult} emptyMessage="选择上方分析动作后，这里展示执行摘要；原始响应默认收起。" />
+      <OperationResultPanel
+        title="分析接口结果"
+        result={operationResult}
+        emptyMessage="选择上方分析动作后，这里展示执行摘要；原始响应默认收起。"
+      />
     </Panel>
   )
 }

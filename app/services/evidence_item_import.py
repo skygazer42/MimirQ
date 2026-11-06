@@ -20,7 +20,7 @@ def _coerce_str(value: Any) -> str:
 
 def _normalize_query(query: str) -> str:
     # Keep it deterministic and user-visible. Collapse whitespace to reduce accidental dupes.
-    return " ".join(str(query or "").strip().split())
+    return " ".join(query.strip().split())
 
 
 def _parse_tags(value: Any) -> list[str]:
@@ -130,7 +130,7 @@ def _build_item(payload: dict[str, Any]) -> dict[str, Any]:
             "source",
         )
     }
-    for k, v in (payload or {}).items():
+    for k, v in payload.items():
         kk = str(k or "").strip()
         if not kk:
             continue

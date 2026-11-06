@@ -6,7 +6,6 @@ Features:
 - Safety: best-effort PII redaction when `settings.PII_REDACTION_ENABLED` is enabled
 """
 
-
 import atexit
 import contextlib
 import contextvars
@@ -18,7 +17,7 @@ import queue
 import socket
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -186,7 +185,6 @@ def _maybe_json_dump_via_method(value: Any, method_name: str) -> Any:
         return None
 
 
-
 def _maybe_redact(obj: Any) -> Any:
     # Do not silently bypass redaction when enabled. The core helper is dependency-free
     # and fails closed on unexpected errors.
@@ -286,7 +284,9 @@ def _sanitize_kg_path_edge(raw: Any) -> dict[str, Any] | None:
     return edge or None
 
 
-def _sanitize_kg_path_items(raw_items: Any, *, sanitizer) -> list[dict[str, Any]] | None:
+def _sanitize_kg_path_items(
+    raw_items: Any, *, sanitizer: Callable[[Any], dict[str, Any] | None]
+) -> list[dict[str, Any]] | None:
     if not isinstance(raw_items, list) or not raw_items:
         return None
     items: list[dict[str, Any]] = []
@@ -361,7 +361,7 @@ def _strip_text_fields_for_metrics(record: dict[str, Any]) -> dict[str, Any]:
     Important: this is separate from PII_REDACTION. Stripping is a stronger guarantee:
     the content is not persisted at all (instead of being best-effort redacted).
     """
-    if bool(getattr(settings, "METRICS_LOG_INCLUDE_TEXT", False)):
+    if bool(settings.METRICS_LOG_INCLUDE_TEXT):
         return record
 
     event = str(record.get("event") or "")
@@ -406,7 +406,7 @@ def _build_record(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 class _MetricsWriter:
     def __init__(self, *, max_queue_size: int = 2000, flush_interval_sec: float = 0.5) -> None:
-        self._queue: queue.Queue[Any] = queue.Queue(maxsize=max_queue_size)
+        self._queue: queue.Queue[dict[str, Any] | None] = queue.Queue(maxsize=max_queue_size)
         self._flush_interval_sec = float(flush_interval_sec)
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="mimirq-metrics-writer", daemon=True)
@@ -442,7 +442,7 @@ class _MetricsWriter:
     def _write_lines(self, lines: list[str]) -> None:
         if not lines:
             return
-        path = Path(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+        path = Path(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("a", encoding="utf-8") as f:
@@ -484,7 +484,7 @@ class _MetricsWriter:
     def _flush(self, batch: list[dict[str, Any]]) -> None:
         try:
             to_write: list[str] = []
-            dropped = int(self._dropped or 0)
+            dropped = self._dropped
             if dropped:
                 self._dropped = 0
                 to_write.append(
@@ -524,7 +524,7 @@ def log_metrics(payload: dict[str, Any]) -> None:
     This call is safe to use in hot paths: it only enqueues a record when enabled.
     """
 
-    if not bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+    if not bool(settings.ENABLE_METRICS_LOG):
         return
 
     try:

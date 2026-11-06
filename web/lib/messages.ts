@@ -46,7 +46,8 @@ export const messages = {
     loading: '加载中…',
     loadOlderMessages: '加载更早消息',
     noConversationSelected: '还没有选择对话',
-    noConversationSelectedDescription: '在这里您可以查看过去的对话记录。\n点击左侧列表开始回顾，或新建一个对话继续交流。',
+    noConversationSelectedDescription:
+      '在这里您可以查看过去的对话记录。\n点击左侧列表开始回顾，或新建一个对话继续交流。',
     startNewConversation: '发起新对话',
     selectConversation: '选择对话',
     noMessage: '暂无消息',

@@ -1,13 +1,13 @@
 const knowledgeMessages = {
-KnowledgeWorkbenchActions: {
+  KnowledgeWorkbenchActions: {
     importOrCreate: '导入文档',
   },
-KnowledgeIngestionPage: {
+  KnowledgeIngestionPage: {
     loadingMessage: '正在加载知识库入库流程...',
     loadingSrMessage: 'Loading knowledge ingestion workspace',
     descriptionMarker: '实时追踪解析、切块、向量化与索引构建进度。',
   },
-KnowledgePage: {
+  KnowledgePage: {
     header: {
       title: '知识库',
       description: '管理文档，查看处理状态与检索结果。',
@@ -85,7 +85,7 @@ KnowledgePage: {
       uploadFailed: '上传失败',
     },
   },
-KnowledgeScopePanel: {
+  KnowledgeScopePanel: {
     header: {
       title: '导航',
       subtitle: 'NAVIGATION',
@@ -130,7 +130,7 @@ KnowledgeScopePanel: {
       all: '全部',
     },
   },
-KnowledgeDocumentsPanel: {
+  KnowledgeDocumentsPanel: {
     status: {
       completed: '已就绪',
       failed: '失败',
@@ -249,7 +249,7 @@ KnowledgeDocumentsPanel: {
       parserAuto: 'Auto',
     },
   },
-KnowledgeRetrievalPanel: {
+  KnowledgeRetrievalPanel: {
     header: {
       badge: '索引审计',
       title: '索引审计',
@@ -281,7 +281,7 @@ KnowledgeRetrievalPanel: {
       waitingForDataset: '等待选择数据集',
     },
   },
-KnowledgeConnectorRunsPanel: {
+  KnowledgeConnectorRunsPanel: {
     runStatus: {
       all: '全部状态',
       pending: '等待',
@@ -381,7 +381,7 @@ KnowledgeConnectorRunsPanel: {
         },
       },
     },
-  }
+  },
 } as const
 
 export default knowledgeMessages

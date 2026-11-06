@@ -5,7 +5,7 @@ import type {
   ChunkPresetUpdateRequest,
   GovernanceRulePackListResponse,
   StaleDocumentsByDatasetResponse,
-} from '@/types'
+} from '@/types/processing'
 
 import { apiClient } from '@/lib/api/core'
 
@@ -27,7 +27,7 @@ export const governanceApi = {
       limit?: number
       order_by?: 'review_due_at' | 'authority_level' | 'updated_at' | 'created_at' | 'filename'
       order_dir?: 'asc' | 'desc'
-    }
+    },
   ): Promise<StaleDocumentsByDatasetResponse> {
     const { data } = await apiClient.get(`/governance/datasets/${encodeURIComponent(datasetId)}/stale-documents`, {
       params,
@@ -37,7 +37,12 @@ export const governanceApi = {
 }
 
 export const chunkPresetApi = {
-  async list(params?: { q?: string; limit?: number; dataset_id?: string; include_global?: boolean }): Promise<ChunkPresetListResponse> {
+  async list(params?: {
+    q?: string
+    limit?: number
+    dataset_id?: string
+    include_global?: boolean
+  }): Promise<ChunkPresetListResponse> {
     const { data } = await apiClient.get('/chunk-presets', { params })
     return data
   },

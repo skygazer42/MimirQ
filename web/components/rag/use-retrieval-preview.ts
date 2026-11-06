@@ -5,7 +5,9 @@ import type { Citation, EvidenceRetrieveRequest, EvidenceRetrieveResponse } from
 import { ragApi } from '@/lib/api'
 import { formatApiError } from '@/lib/api-errors'
 
-export type RetrievePreviewCitation = Partial<Omit<Citation, 'matched_terms' | 'policy_clause_number' | 'policy_path_str'>> & {
+export type RetrievePreviewCitation = Partial<
+  Omit<Citation, 'matched_terms' | 'policy_clause_number' | 'policy_path_str'>
+> & {
   document_id?: string
   document_name?: string
   chunk_id?: string
@@ -34,25 +36,33 @@ export type RetrievalRun = {
 
 export function buildRetrieveDatasetScope(
   selectedDatasetId: string | null | undefined,
-  availableDatasetIds: readonly string[]
+  availableDatasetIds: readonly string[],
 ): Pick<EvidenceRetrieveRequest, 'dataset_id' | 'dataset_ids'> {
   const selected = String(selectedDatasetId || '').trim()
   if (selected) return { dataset_id: selected }
-  const ids = [...new Set(availableDatasetIds.map(id => String(id || '').trim()).filter(Boolean))]
+  const ids = [...new Set(availableDatasetIds.map((id) => String(id || '').trim()).filter(Boolean))]
   return ids.length ? { dataset_ids: ids } : {}
 }
 
 function normalizeCitations(response: EvidenceRetrieveResponse): RetrievePreviewCitation[] {
   return Array.isArray(response.citations)
-    ? response.citations.filter(citation => typeof citation === 'object' && citation !== null && !Array.isArray(citation)) as RetrievePreviewCitation[]
+    ? (response.citations.filter(
+        (citation) => typeof citation === 'object' && citation !== null && !Array.isArray(citation),
+      ) as RetrievePreviewCitation[])
     : []
 }
 
 type PreviewState = { scopeKey: string; run: RetrievalRun | null; isSearching: boolean; error: string | null }
 const EMPTY_DATASET_IDS: readonly string[] = []
 
-export function useRetrievalPreview(selectedDatasetId: string | null | undefined, availableDatasetIds = EMPTY_DATASET_IDS) {
-  const scope = useMemo(() => buildRetrieveDatasetScope(selectedDatasetId, availableDatasetIds), [selectedDatasetId, availableDatasetIds])
+export function useRetrievalPreview(
+  selectedDatasetId: string | null | undefined,
+  availableDatasetIds = EMPTY_DATASET_IDS,
+) {
+  const scope = useMemo(
+    () => buildRetrieveDatasetScope(selectedDatasetId, availableDatasetIds),
+    [selectedDatasetId, availableDatasetIds],
+  )
   const scopeKey = JSON.stringify(scope.dataset_id ?? [...(scope.dataset_ids ?? [])].sort())
   const [draft, setDraft] = useState('')
   const [history, setHistory] = useState<RetrievalRun[]>([])
@@ -65,7 +75,9 @@ export function useRetrievalPreview(selectedDatasetId: string | null | undefined
   useEffect(() => {
     requestRef.current += 1
     inFlightRef.current = false
-    setState(previous => previous.scopeKey === scopeKey ? previous : { scopeKey, run: null, isSearching: false, error: null })
+    setState((previous) =>
+      previous.scopeKey === scopeKey ? previous : { scopeKey, run: null, isSearching: false, error: null },
+    )
     return () => {
       requestRef.current += 1
       inFlightRef.current = false
@@ -93,12 +105,18 @@ export function useRetrievalPreview(selectedDatasetId: string | null | undefined
       })
       if (requestId !== requestRef.current) return
       const run: RetrievalRun = {
-        id: requestId, scopeKey, query,
+        id: requestId,
+        scopeKey,
+        query,
         queryForRetrieval: String(response.query_for_retrieval || query),
-        hits: normalizeCitations(response), timestamp: Date.now(), durationMs: Date.now() - startedAt,
+        hits: normalizeCitations(response),
+        timestamp: Date.now(),
+        durationMs: Date.now() - startedAt,
       }
       setState({ scopeKey, run, isSearching: false, error: null })
-      setHistory(previous => [run, ...previous.filter(item => item.scopeKey !== scopeKey || item.query !== query)].slice(0, 30))
+      setHistory((previous) =>
+        [run, ...previous.filter((item) => item.scopeKey !== scopeKey || item.query !== query)].slice(0, 30),
+      )
     } catch (error) {
       if (requestId !== requestRef.current) return
       setState({ scopeKey, run: null, isSearching: false, error: formatApiError(error, '检索失败，请重试。') })
@@ -107,16 +125,25 @@ export function useRetrievalPreview(selectedDatasetId: string | null | undefined
     }
   }, [draft, hasScope, scope, scopeKey])
 
-  const restore = useCallback((run: RetrievalRun) => {
-    if (run.scopeKey !== scopeKey || inFlightRef.current) return
-    setDraft(run.query)
-    setState({ scopeKey, run, isSearching: false, error: null })
-  }, [scopeKey])
+  const restore = useCallback(
+    (run: RetrievalRun) => {
+      if (run.scopeKey !== scopeKey || inFlightRef.current) return
+      setDraft(run.query)
+      setState({ scopeKey, run, isSearching: false, error: null })
+    },
+    [scopeKey],
+  )
 
   return {
-    draft, setDraft, search, restore, hasScope,
-    run: view.run, isSearching: view.isSearching, error: view.error,
-    history: history.filter(item => item.scopeKey === scopeKey),
-    clearHistory: () => setHistory(previous => previous.filter(item => item.scopeKey !== scopeKey)),
+    draft,
+    setDraft,
+    search,
+    restore,
+    hasScope,
+    run: view.run,
+    isSearching: view.isSearching,
+    error: view.error,
+    history: history.filter((item) => item.scopeKey === scopeKey),
+    clearHistory: () => setHistory((previous) => previous.filter((item) => item.scopeKey !== scopeKey)),
   }
 }

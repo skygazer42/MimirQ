@@ -1,9 +1,9 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { PlatformIcon } from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 
-interface StatCardProps {
+type StatCardProps = {
   icon: PlatformIcon
   label: string
   value: string | number
@@ -103,51 +103,60 @@ export function StatCard({
   if (variant === 'minimal') {
     const Wrapper = onClick ? 'button' : 'div'
     const statusColorStyle = isDimmed
-      ? "bg-muted/18 text-muted-foreground border-foreground/10"
+      ? 'bg-muted/18 text-muted-foreground border-foreground/10'
       : active
-        ? "bg-info/[0.08] text-info border-info/28"
-        : (colorStyles[color] || colorStyles.sky) + " border-info/30"
+        ? 'bg-info/[0.08] text-info border-info/28'
+        : (colorStyles[color] || colorStyles.sky) + ' border-info/30'
 
     return (
       <Wrapper
         onClick={onClick}
         type={onClick ? 'button' : undefined}
         className={cn(
-          "inline-flex items-center gap-2.5 h-9 px-3 rounded-full group/stat transition-colors duration-200 text-left whitespace-nowrap border bg-background",
-          onClick && "cursor-pointer hover:border-primary/18 hover:bg-muted/18",
+          'inline-flex items-center gap-2.5 h-9 px-3 rounded-full group/stat transition-colors duration-200 text-left whitespace-nowrap border bg-background',
+          onClick && 'cursor-pointer hover:border-primary/18 hover:bg-muted/18',
           statusColorStyle,
           className,
         )}
       >
-        <div className={cn(
-          "relative flex size-6 shrink-0 items-center justify-center rounded-md transition-colors duration-200",
-          isDimmed
-            ? "border border-foreground/10 bg-muted/18 text-muted-foreground/70"
-            : active
-              ? "border border-info/20 bg-info/[0.08] text-info"
-              : (iconBgStyles[color] || iconBgStyles.sky)
-        )}>
+        <div
+          className={cn(
+            'relative flex size-6 shrink-0 items-center justify-center rounded-md transition-colors duration-200',
+            isDimmed
+              ? 'border border-foreground/10 bg-muted/18 text-muted-foreground/70'
+              : active
+                ? 'border border-info/20 bg-info/[0.08] text-info'
+                : iconBgStyles[color] || iconBgStyles.sky,
+          )}
+        >
           <Icon className="size-4" />
           {dot && !isDimmed && (
-            <span className={cn("absolute -right-0.5 -top-0.5 inline-block size-2 rounded-full ring-2 ring-background shadow-sm", dotStyles[dot])} />
+            <span
+              className={cn(
+                'absolute -right-0.5 -top-0.5 inline-block size-2 rounded-full ring-2 ring-background shadow-sm',
+                dotStyles[dot],
+              )}
+            />
           )}
         </div>
         <div className="flex flex-col">
-          <span className="text-[9px] font-black uppercase opacity-70 leading-none mb-0.5">
-            {label}
-          </span>
+          <span className="text-[9px] font-black uppercase opacity-70 leading-none mb-0.5">{label}</span>
           <div className="flex items-baseline gap-1">
-            <span className={cn(
-              "text-[14px] font-black font-mono tabular-nums leading-none transition-all duration-200",
-              isDimmed ? "text-muted-foreground" : "text-foreground"
-            )}>
+            <span
+              className={cn(
+                'text-[14px] font-black font-mono tabular-nums leading-none transition-all duration-200',
+                isDimmed ? 'text-muted-foreground' : 'text-foreground',
+              )}
+            >
               {value}
             </span>
             {unit && (
-              <span className={cn(
-                "text-[9px] font-bold uppercase transition-opacity duration-200",
-                isDimmed ? "opacity-40" : "opacity-60"
-              )}>
+              <span
+                className={cn(
+                  'text-[9px] font-bold uppercase transition-opacity duration-200',
+                  isDimmed ? 'opacity-40' : 'opacity-60',
+                )}
+              >
                 {unit}
               </span>
             )}
@@ -162,51 +171,89 @@ export function StatCard({
 
   if (dense) {
     return (
-      <div className={cn(
-        'group flex items-center gap-3 rounded-xl border border-foreground/10 bg-background px-3 py-2 shadow-none transition-colors duration-200 hover:border-primary/18 hover:bg-muted/18',
-        isDimmed ? silentColorStyle : colorStyles[color] || colorStyles.sky,
-        className
-      )}>
-        <div className={cn('flex size-8 items-center justify-center rounded-lg transition-colors duration-200', isDimmed ? silentIconStyle : (iconBgStyles[color] || iconBgStyles.sky))}>
+      <div
+        className={cn(
+          'group flex items-center gap-3 rounded-xl border border-foreground/10 bg-background px-3 py-2 shadow-none transition-colors duration-200 hover:border-primary/18 hover:bg-muted/18',
+          isDimmed ? silentColorStyle : colorStyles[color] || colorStyles.sky,
+          className,
+        )}
+      >
+        <div
+          className={cn(
+            'flex size-8 items-center justify-center rounded-lg transition-colors duration-200',
+            isDimmed ? silentIconStyle : iconBgStyles[color] || iconBgStyles.sky,
+          )}
+        >
           <Icon className="size-4" />
         </div>
         <div className="min-w-0">
           <p className="truncate text-[10px] font-black uppercase text-muted-foreground">{label}</p>
-          <p className={cn("truncate text-[14px] font-mono font-black tabular-nums transition-all duration-200", isDimmed ? "text-muted-foreground" : "text-foreground")}>{value}</p>
+          <p
+            className={cn(
+              'truncate text-[14px] font-mono font-black tabular-nums transition-all duration-200',
+              isDimmed ? 'text-muted-foreground' : 'text-foreground',
+            )}
+          >
+            {value}
+          </p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={cn(
-      'group relative overflow-hidden transition-all duration-200',
-      'flex items-center gap-4 rounded-xl border border-foreground/10 bg-background px-5 py-4 shadow-none hover:border-primary/18',
-      isDimmed ? silentColorStyle : (colorStyles[color] || colorStyles.sky),
-      className
-    )}>
-      <div className={cn('relative flex size-12 items-center justify-center rounded-lg p-3 transition-colors duration-200', isDimmed ? silentIconStyle : (iconBgStyles[color] || iconBgStyles.sky))}>
+    <div
+      className={cn(
+        'group relative overflow-hidden transition-all duration-200',
+        'flex items-center gap-4 rounded-xl border border-foreground/10 bg-background px-5 py-4 shadow-none hover:border-primary/18',
+        isDimmed ? silentColorStyle : colorStyles[color] || colorStyles.sky,
+        className,
+      )}
+    >
+      <div
+        className={cn(
+          'relative flex size-12 items-center justify-center rounded-lg p-3 transition-colors duration-200',
+          isDimmed ? silentIconStyle : iconBgStyles[color] || iconBgStyles.sky,
+        )}
+      >
         <Icon className="size-6" />
       </div>
       <div className="relative min-w-0 flex-1">
         <p className="truncate text-[11px] font-black uppercase mb-1 text-muted-foreground">{label}</p>
         <div className="flex items-baseline gap-2">
-          <p className={cn("truncate text-[24px] font-mono font-black leading-none transition-all duration-200", isDimmed ? "text-muted-foreground" : "text-foreground")}>{value}</p>
-          {unit && <span className="text-xs font-bold uppercase text-muted-foreground transition-all duration-200">{unit}</span>}
+          <p
+            className={cn(
+              'truncate text-[24px] font-mono font-black leading-none transition-all duration-200',
+              isDimmed ? 'text-muted-foreground' : 'text-foreground',
+            )}
+          >
+            {value}
+          </p>
+          {unit && (
+            <span className="text-xs font-bold uppercase text-muted-foreground transition-all duration-200">
+              {unit}
+            </span>
+          )}
         </div>
       </div>
     </div>
   )
 }
 
-export function StatsGrid({ children, className, dense = false }: Readonly<{ children: React.ReactNode; className?: string; dense?: boolean }>) {
+export function StatsGrid({
+  children,
+  className,
+  dense = false,
+}: Readonly<{ children: React.ReactNode; className?: string; dense?: boolean }>) {
   return (
-    <div className={cn(
-      dense
-        ? 'grid grid-cols-1 gap-2 md:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
-        : 'grid grid-cols-1 gap-3 md:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
-      className
-    )}>
+    <div
+      className={cn(
+        dense
+          ? 'grid grid-cols-1 gap-2 md:gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6'
+          : 'grid grid-cols-1 gap-3 md:gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
+        className,
+      )}
+    >
       {children}
     </div>
   )

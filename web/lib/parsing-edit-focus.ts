@@ -1,16 +1,16 @@
 import type { ParsingLayoutEntry } from './parsing-layout'
 
-export interface ParsingEditSelection {
+export type ParsingEditSelection = {
   start: number
   end: number
 }
 
-export interface ParsingEditFocusHint {
+export type ParsingEditFocusHint = {
   xRatio: number
   yRatio: number
 }
 
-export interface ParsingBlockEditTarget {
+export type ParsingBlockEditTarget = {
   blockId: string
   content: string
   range: ParsingEditSelection
@@ -113,7 +113,7 @@ function estimateCaretFromHint(text: string, hint?: ParsingEditFocusHint | null)
 
 function resolveParsingEntryRanges(
   markdown: string,
-  entries: ParsingLayoutEntry[]
+  entries: ParsingLayoutEntry[],
 ): Map<string, ParsingEditSelection | null> {
   let cursor = 0
   const resolvedRanges = new Map<string, ParsingEditSelection | null>()
@@ -133,7 +133,7 @@ export function buildParsingBlockEditTarget(
   markdown: string,
   entries: ParsingLayoutEntry[],
   activeEntryId: string | null,
-  hint?: ParsingEditFocusHint | null
+  hint?: ParsingEditFocusHint | null,
 ): ParsingBlockEditTarget | null {
   if (!markdown || !entries.length || !activeEntryId) return null
 
@@ -154,11 +154,7 @@ export function buildParsingBlockEditTarget(
   }
 }
 
-export function applyBlockEditToMarkdown(
-  markdown: string,
-  range: ParsingEditSelection,
-  editedContent: string
-): string {
+export function applyBlockEditToMarkdown(markdown: string, range: ParsingEditSelection, editedContent: string): string {
   const safeStart = Math.max(0, Math.min(markdown.length, range.start))
   const safeEnd = Math.max(safeStart, Math.min(markdown.length, range.end))
   return markdown.slice(0, safeStart) + editedContent + markdown.slice(safeEnd)
@@ -168,7 +164,7 @@ export function findEditSelectionForActiveParsingEntry(
   markdown: string,
   entries: ParsingLayoutEntry[],
   activeEntryId: string | null,
-  hint?: ParsingEditFocusHint | null
+  hint?: ParsingEditFocusHint | null,
 ): ParsingEditSelection | null {
   if (!markdown || !entries.length || !activeEntryId) return null
 

@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { openPrecheck, precheckFixture, precheckRoute, precheckShot, runOne, runTwo } from './precheck-workspace.helpers'
+import {
+  openPrecheck,
+  precheckFixture,
+  precheckRoute,
+  precheckShot,
+  runOne,
+  runTwo,
+} from './precheck-workspace.helpers'
 
 test('read a report, inspect a finding and file, export and compare without changing the run', async ({ page }) => {
   const state = await precheckFixture(page)
@@ -39,11 +46,13 @@ test('read a report, inspect a finding and file, export and compare without chan
 })
 
 test('read failures remain distinct from empty runs and recover in place', async ({ page }) => {
-  const state = await precheckFixture(page); state.failRead = true
+  const state = await precheckFixture(page)
+  state.failRead = true
   await openPrecheck(page)
   await expect(page.getByRole('alert').filter({ hasText: '预检记录暂不可用' })).toBeVisible({ timeout: 30000 })
   await expect(page.getByRole('heading', { name: '还没有预检记录', exact: true })).toHaveCount(0)
-  state.failRead = false; state.failSummary = true
+  state.failRead = false
+  state.failSummary = true
   await page.getByRole('button', { name: '重新读取页面', exact: true }).click()
   await expect(page.getByRole('button', { name: '重新读取报告', exact: true })).toBeVisible({ timeout: 30000 })
   await expect(page.locator('[data-precheck-total]')).toHaveCount(0)
@@ -61,20 +70,25 @@ test('read failures remain distinct from empty runs and recover in place', async
 test('a delayed previous report cannot replace the selected history run', async ({ page }) => {
   const state = await precheckFixture(page)
   let release!: () => void
-  state.summaryGates[runOne] = new Promise<void>(resolve => { release = resolve })
+  state.summaryGates[runOne] = new Promise<void>((resolve) => {
+    release = resolve
+  })
   await openPrecheck(page)
   await expect.poll(() => state.reads.includes(`${runOne}/summary`)).toBeTruthy()
   await page.getByRole('combobox', { name: '历史运行', exact: true }).click()
   await page.getByRole('option').filter({ hasText: '2026/10/25' }).click()
   await expect(page.locator('[data-precheck-total]')).toContainText('64', { timeout: 30000 })
-  const oldResponse = page.waitForResponse(response => response.url().includes(`${runOne}/summary`))
-  release(); await oldResponse
+  const oldResponse = page.waitForResponse((response) => response.url().includes(`${runOne}/summary`))
+  release()
+  await oldResponse
   await expect(page.locator('[data-precheck-total]')).toContainText('64')
   expect(state.reads).toContain(`${runTwo}/summary`)
 })
 
 test('configuration survives a failed start, submits once and reads the new run after reload', async ({ page }) => {
-  const state = await precheckFixture(page); state.runs = []; state.failStart = '目录当前无法访问'
+  const state = await precheckFixture(page)
+  state.runs = []
+  state.failStart = '目录当前无法访问'
   await openPrecheck(page)
   await page.getByRole('button', { name: '新建预检', exact: true }).click()
   const dialog = page.getByRole('dialog')
@@ -89,14 +103,22 @@ test('configuration survives a failed start, submits once and reads the new run 
   await expect(dialog.getByLabel('抽样数量', { exact: true })).toHaveValue('24')
   state.failStart = ''
   let release!: () => void
-  state.startGate = new Promise<void>(resolve => { release = resolve })
+  state.startGate = new Promise<void>((resolve) => {
+    release = resolve
+  })
   await dialog.getByRole('button', { name: '开始预检', exact: true }).click()
   await expect(dialog.getByRole('button', { name: '正在启动…', exact: true })).toBeDisabled()
   await expect.poll(() => state.starts.length).toBe(2)
   release()
   await expect(page.getByRole('dialog')).toHaveCount(0)
   await expect(page.locator('[data-precheck-total]')).toBeVisible()
-  expect(state.starts[1]).toMatchObject({ root_path: '/uploads/reports', max_files: 50, enable_pii: true, enable_near_dup: true, sample_size: 24 })
+  expect(state.starts[1]).toMatchObject({
+    root_path: '/uploads/reports',
+    max_files: 50,
+    enable_pii: true,
+    enable_near_dup: true,
+    sample_size: 24,
+  })
   await page.reload({ waitUntil: 'domcontentloaded' })
   await expect(page.locator('[data-precheck-total]')).toBeVisible({ timeout: 60000 })
   await expect(page.getByText('/uploads/reports', { exact: true })).toBeVisible()
@@ -104,7 +126,10 @@ test('configuration survives a failed start, submits once and reads the new run 
 })
 
 test('cancel failure retains the running state and allows retry', async ({ page }) => {
-  const state = await precheckFixture(page); state.runs[0].status = 'running'; state.runs[0].progress = 25; state.failCancel = '取消请求暂不可用'
+  const state = await precheckFixture(page)
+  state.runs[0].status = 'running'
+  state.runs[0].progress = 25
+  state.failCancel = '取消请求暂不可用'
   await openPrecheck(page)
   await page.getByRole('button', { name: '取消预检', exact: true }).click()
   await expect(page.getByRole('alert').filter({ hasText: '取消请求暂不可用' })).toBeVisible()
@@ -117,7 +142,9 @@ test('cancel failure retains the running state and allows retry', async ({ page 
   expect(state.cancels).toEqual([runOne, runOne])
 })
 
-test('policy application retains its choice on failure and phone dialogs stay inside the viewport', async ({ page }) => {
+test('policy application retains its choice on failure and phone dialogs stay inside the viewport', async ({
+  page,
+}) => {
   const state = await precheckFixture(page, 'dark')
   await page.setViewportSize({ width: 390, height: 844 })
   await openPrecheck(page)
@@ -137,7 +164,11 @@ test('policy application retains its choice on failure and phone dialogs stay in
   await page.getByRole('button', { name: '新建预检', exact: true }).click()
   await dialog.getByRole('tab', { name: '高级选项', exact: true }).click()
   await precheckShot(page, 'config-phone-dark')
-  const box = await dialog.boundingBox(); expect(box!.x).toBeGreaterThanOrEqual(0); expect(box!.y).toBeGreaterThanOrEqual(0); expect(box!.x + box!.width).toBeLessThanOrEqual(390); expect(box!.y + box!.height).toBeLessThanOrEqual(844)
+  const box = await dialog.boundingBox()
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.y).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390)
+  expect(box!.y + box!.height).toBeLessThanOrEqual(844)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: '新建预检', exact: true })).toBeFocused()

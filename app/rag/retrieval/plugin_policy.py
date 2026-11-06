@@ -1,7 +1,6 @@
-
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.rag.retrieval.planner import (
     _policy_value_fuzzy_overlaps_query,
@@ -18,6 +17,23 @@ PolicyResolver = Callable[[str], dict[str, Any]]
 
 POLICY_QUERY_EXPANSION_MATCH_BONUS = 0.08
 POLICY_QUERY_EXPANSION_MATCH_BONUS_MAX = 0.16
+
+
+class _DisabledAnchorBindingConfig(TypedDict):
+    enabled: Literal[False]
+
+
+class _AnchorBindingConfig(TypedDict):
+    enabled: Literal[True]
+    anchor_fields: tuple[str, ...]
+    slot_fields: tuple[str, ...]
+    anchor_match_bonus: float
+    anchor_mismatch_penalty: float
+    slot_only_penalty: float
+    anchor_slot_match_bonus: float
+
+
+_AnchorBindingRecordInfo = tuple[dict[str, Any], str, _AnchorBindingConfig, set[str], set[str], bool]
 
 
 @dataclass(frozen=True)
@@ -91,10 +107,10 @@ def _policy_float(value: Any, *, default: float, minimum: float = 0.0, maximum: 
         out = float(value if value is not None else default)
     except (TypeError, ValueError):
         out = float(default)
-    return max(float(minimum), min(float(maximum), float(out)))
+    return max(float(minimum), min(float(maximum), out))
 
 
-def _anchor_binding_config(policy: dict[str, Any]) -> dict[str, Any]:
+def _anchor_binding_config(policy: dict[str, Any]) -> _AnchorBindingConfig | _DisabledAnchorBindingConfig:
     raw = _as_dict(policy.get("anchor_binding"))
     if raw.get("enabled") is not True:
         return {"enabled": False}
@@ -173,8 +189,7 @@ def _slot_binding_query_matches(
             values = {
                 normalized
                 for normalized in (
-                    _normalize_policy_match_text(value)
-                    for value in _metadata_terms(_metadata_value(meta, field))
+                    _normalize_policy_match_text(value) for value in _metadata_terms(_metadata_value(meta, field))
                 )
                 if normalized
             }
@@ -195,10 +210,7 @@ def _slot_binding_query_matches(
             continue
         slot_values.update(
             normalized
-            for normalized in (
-                _normalize_policy_match_text(term)
-                for term in _metadata_terms(mapping.get("terms"))
-            )
+            for normalized in (_normalize_policy_match_text(term) for term in _metadata_terms(mapping.get("terms")))
             if normalized
         )
 
@@ -212,7 +224,7 @@ def _anchor_binding_record_info(
     plugin_ref_for_record: PluginRefForRecord,
     metadata_layers_for_record: MetadataLayersForRecord,
     policy_resolver: PolicyResolver,
-) -> tuple[dict[str, Any], str, dict[str, Any], set[str], set[str], bool] | None:
+) -> _AnchorBindingRecordInfo | None:
     plugin_ref = str(plugin_ref_for_record(record) or "").strip()
     if not plugin_ref:
         return None
@@ -220,18 +232,18 @@ def _anchor_binding_record_info(
     if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
         return None
     config = _anchor_binding_config(policy)
-    if not bool(config.get("enabled")):
+    if not config["enabled"]:
         return None
     metadata_layers = metadata_layers_for_record(record)
     anchor_values = _anchor_binding_values(
         metadata_layers,
-        anchor_fields=tuple(config.get("anchor_fields") or ()),
+        anchor_fields=config["anchor_fields"],
     )
     slot_matches = _slot_binding_query_matches(
         policy,
         metadata_layers,
         query=query,
-        slot_fields=tuple(config.get("slot_fields") or ()),
+        slot_fields=config["slot_fields"],
     )
     query_matches = _anchor_binding_query_matches(query, anchor_values)
     return record, plugin_ref, config, anchor_values, query_matches, slot_matches
@@ -239,7 +251,7 @@ def _anchor_binding_record_info(
 
 def _anchor_binding_score(
     *,
-    config: dict[str, Any],
+    config: _AnchorBindingConfig,
     anchor_values: set[str],
     bound_anchors: set[str],
     query_matches: set[str],
@@ -248,13 +260,13 @@ def _anchor_binding_score(
     if not bound_anchors:
         return 0.0
     if query_matches or anchor_values.intersection(bound_anchors):
-        score = float(config.get("anchor_match_bonus") or 0.0)
+        score = config["anchor_match_bonus"] or 0.0
         if slot_matches:
-            score += float(config.get("anchor_slot_match_bonus") or 0.0)
+            score += config["anchor_slot_match_bonus"] or 0.0
         return score
     if slot_matches:
-        return -float(config.get("slot_only_penalty") or 0.0)
-    return -float(config.get("anchor_mismatch_penalty") or 0.0)
+        return -(config["slot_only_penalty"] or 0.0)
+    return -(config["anchor_mismatch_penalty"] or 0.0)
 
 
 def record_retrieval_policy_anchor_binding_scores(
@@ -273,7 +285,7 @@ def record_retrieval_policy_anchor_binding_scores(
     anchor exists.
     """
 
-    record_infos: list[tuple[dict[str, Any], str, dict[str, Any], set[str], set[str], bool]] = []
+    record_infos: list[_AnchorBindingRecordInfo] = []
     bound_anchors_by_ref: dict[str, set[str]] = {}
     for record in records or ():
         record_info = _anchor_binding_record_info(

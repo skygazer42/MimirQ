@@ -48,7 +48,8 @@ export function ItemDetailPanel({
   onOpenWhyMissed,
   onArchiveItem,
 }: Readonly<ItemDetailPanelProps>) {
-  return <Panel variant="seamless" padding="none" className="border-0 bg-transparent">
+  return (
+    <Panel variant="seamless" padding="none" className="border-0 bg-transparent">
       {selectedItem ? (
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-3">
@@ -68,7 +69,12 @@ export function ItemDetailPanel({
 
             <div className="flex flex-wrap items-center gap-2">
               {selectedItem.status === 'draft' ? (
-                <Button size="sm" variant="outline" className="gap-2" onClick={() => onReviewItem(String(selectedItem.id))}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => onReviewItem(String(selectedItem.id))}
+                >
                   <Search className="size-4" aria-hidden="true" />
                   Review
                 </Button>
@@ -85,7 +91,12 @@ export function ItemDetailPanel({
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button size="sm" variant="destructive" className="gap-2" disabled={selectedItem.status === 'archived'}>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="gap-2"
+                    disabled={selectedItem.status === 'archived'}
+                  >
                     <X className="size-4" aria-hidden="true" />
                     归档
                   </Button>
@@ -147,14 +158,19 @@ export function ItemDetailPanel({
               <div className="space-y-2">
                 {(selectedItem.reference_sources || []).length ? (
                   (selectedItem.reference_sources || []).map((reference) => (
-                    <div key={`${String(reference.document_id)}:${String(reference.chunk_id)}`} className="rounded-md border border-border/60 p-2">
+                    <div
+                      key={`${String(reference.document_id)}:${String(reference.chunk_id)}`}
+                      className="rounded-md border border-border/60 p-2"
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate text-xs font-mono text-foreground">
                             {String(reference.document_id).slice(0, 8)}:{String(reference.chunk_id).slice(0, 8)}
                           </div>
                           {reference.label ? (
-                            <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">{reference.label}</div>
+                            <div className="mt-1 line-clamp-1 text-xs text-muted-foreground text-pretty">
+                              {reference.label}
+                            </div>
                           ) : null}
                         </div>
                         <div className="flex-shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
@@ -163,7 +179,9 @@ export function ItemDetailPanel({
                         </div>
                       </div>
                       {reference.quote ? (
-                        <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">{reference.quote}</div>
+                        <div className="mt-2 line-clamp-3 text-xs text-muted-foreground text-pretty">
+                          {reference.quote}
+                        </div>
                       ) : null}
                     </div>
                   ))
@@ -188,5 +206,6 @@ export function ItemDetailPanel({
           选择一个 Item 查看详情。你可以在 draft 状态下修改内容，然后提交 review → approve → sync。
         </div>
       )}
-  </Panel>
+    </Panel>
+  )
 }

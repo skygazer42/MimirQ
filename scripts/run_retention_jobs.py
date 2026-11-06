@@ -125,8 +125,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _job_selected(args: argparse.Namespace) -> bool:
     return any(
-        bool(value)
-        for value in (
+        (
             args.audit_logs,
             args.regression_runs,
             args.knowledge_assets,
@@ -137,7 +136,7 @@ def _job_selected(args: argparse.Namespace) -> bool:
 
 
 def _tenant_ids(args: argparse.Namespace, deps: SimpleNamespace) -> list[UUID]:
-    if bool(args.all_tenants):
+    if args.all_tenants:
         tenant_ids: list[UUID] = []
         db = deps.SessionLocal()
         try:
@@ -161,8 +160,7 @@ def _tenant_ids(args: argparse.Namespace, deps: SimpleNamespace) -> list[UUID]:
 
 def _db_job_selected(args: argparse.Namespace) -> bool:
     return any(
-        bool(value)
-        for value in (
+        (
             args.audit_logs,
             args.regression_runs,
             args.knowledge_assets,
@@ -202,7 +200,7 @@ def _run_dataset_jobs(
     results: list[dict[str, Any]] = []
     for dataset_id, metadata in rows:
         policy = deps.parse_retention_policy_from_metadata(metadata if isinstance(metadata, dict) else {})
-        if policy is None or not bool(getattr(policy, "enabled", False)):
+        if policy is None or not getattr(policy, "enabled", False):
             continue
         result = asyncio.run(
             deps.run_dataset_retention_sweep(
@@ -239,11 +237,11 @@ def _run_db_jobs(
         "actor_id": "system:retention",
         "now": ran_at,
     }
-    if bool(args.audit_logs):
+    if args.audit_logs:
         results.append(deps.run_audit_log_retention(db, **common))
-    if bool(args.regression_runs):
+    if args.regression_runs:
         results.append(deps.run_regression_run_retention(db, **common))
-    if bool(args.knowledge_assets):
+    if args.knowledge_assets:
         results.append(
             asyncio.run(
                 deps.run_knowledge_asset_retention(
@@ -254,7 +252,7 @@ def _run_db_jobs(
                 )
             )
         )
-    if bool(args.dataset_retention):
+    if args.dataset_retention:
         results.extend(
             _run_dataset_jobs(
                 args,
@@ -280,13 +278,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     deps = _load_runtime_dependencies()
-    dry_run = not bool(args.execute)
+    dry_run = not args.execute
     tenant_ids = _tenant_ids(args, deps)
     ran_at = datetime.now(UTC)
     results: list[dict[str, Any]] = []
 
     for tenant_id in tenant_ids:
-        if bool(args.semantic_cache):
+        if args.semantic_cache:
             results.append(
                 _run_semantic_cache_job(
                     args,
@@ -313,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             db.close()
 
-    failed = any(bool(item.get("failed")) for item in results if isinstance(item, dict))
+    failed = any(item.get("failed") for item in results if isinstance(item, dict))
     print(json.dumps({"ok": not failed, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 1 if failed else 0
 

@@ -28,7 +28,13 @@ it('focuses search on open and returns focus to the opener without a Radix trigg
   }
 
   try {
-    await act(async () => root.render(<React.StrictMode><Harness /></React.StrictMode>))
+    await act(async () =>
+      root.render(
+        <React.StrictMode>
+          <Harness />
+        </React.StrictMode>,
+      ),
+    )
     const opener = container.querySelector('button')!
     await act(async () => {
       opener.focus()
@@ -62,15 +68,24 @@ it('keeps focus on a settings panel opened by a command', async () => {
       <NextIntlClientProvider locale="zh-CN" timeZone="Asia/Shanghai" messages={commonMessages}>
         <button onClick={() => setOpen(true)}>打开命令</button>
         <Popover open={settingsOpen} onOpenChange={setSettingsOpen}>
-          <PopoverTrigger asChild><button>选择资料</button></PopoverTrigger>
-          <PopoverContent aria-label="检索设置"><button data-settings-back>返回资料</button></PopoverContent>
+          <PopoverTrigger asChild>
+            <button>选择资料</button>
+          </PopoverTrigger>
+          <PopoverContent aria-label="检索设置">
+            <button data-settings-back>返回资料</button>
+          </PopoverContent>
         </Popover>
         <CommandDialog open={open} onOpenChange={setOpen}>
           <CommandInput aria-label="搜索" />
-          <button data-open-settings onClick={() => {
-            setOpen(false)
-            setSettingsOpen(true)
-          }}>打开检索设置</button>
+          <button
+            data-open-settings
+            onClick={() => {
+              setOpen(false)
+              setSettingsOpen(true)
+            }}
+          >
+            打开检索设置
+          </button>
         </CommandDialog>
       </NextIntlClientProvider>
     )

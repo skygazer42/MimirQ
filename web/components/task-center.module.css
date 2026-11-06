@@ -14,4 +14,6 @@
   padding-inline-end: calc(5rem + env(safe-area-inset-right, 0px));
 }
 
-.panel { width: min(26rem, calc(100vw - 2rem - env(safe-area-inset-right, 0px))); }
+.panel {
+  width: min(26rem, calc(100vw - 2rem - env(safe-area-inset-right, 0px)));
+}

@@ -6,19 +6,22 @@ This module keeps checks best-effort and dependency-light:
 - Return structured status dicts instead of raising, so endpoints can decide 200 vs 503.
 """
 
-
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 HealthMode = Literal["ready", "health"]
 
 
-def redis_usage_flags(settings) -> dict[str, bool]:
-    singleflight_redis_enabled = bool(
-        getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True)
-    ) and len(str(getattr(settings, "SECRET_KEY", "") or "").strip()) >= 32
+def redis_usage_flags(settings: object) -> dict[str, bool]:
+    singleflight_redis_enabled = (
+        bool(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True))
+        and len(str(getattr(settings, "SECRET_KEY", "") or "").strip()) >= 32
+    )
     return {
         "task_queue": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
         "embedding_cache": bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
@@ -42,7 +45,9 @@ def _expected_alembic_heads() -> frozenset[str]:
     return frozenset(str(value) for value in ScriptDirectory.from_config(config).get_heads())
 
 
-def check_database(session_local, *, require_schema_current: bool = False) -> tuple[dict[str, Any], bool]:
+def check_database(
+    session_local: Callable[[], "Session"], *, require_schema_current: bool = False
+) -> tuple[dict[str, Any], bool]:
     """Return (db_status, ok)."""
     from sqlalchemy import text
     from sqlalchemy.exc import SQLAlchemyError
@@ -97,7 +102,7 @@ def check_database(session_local, *, require_schema_current: bool = False) -> tu
 
 
 def check_vector(
-    settings,
+    settings: object,
     *,
     mode: HealthMode,
     milvus_get_collection_count: Callable[[], int] | None = None,
@@ -160,7 +165,7 @@ def check_vector(
 
 
 def check_redis(
-    settings,
+    settings: object,
     *,
     get_client: Callable[[], Any] | None = None,
 ) -> tuple[dict[str, Any], bool, bool]:
@@ -170,7 +175,7 @@ def check_redis(
     ok is False only when Redis is required (task queue enabled) and ping fails.
     """
     usage = redis_usage_flags(settings)
-    redis_required = bool(usage["task_queue"])
+    redis_required = usage["task_queue"]
     redis_enabled = any(usage.values())
 
     ok = True
@@ -215,7 +220,7 @@ def check_redis(
 
 
 def check_minio(
-    settings,
+    settings: object,
     *,
     mode: HealthMode,
     minio_health_check: Callable[[], dict[str, Any]] | None = None,

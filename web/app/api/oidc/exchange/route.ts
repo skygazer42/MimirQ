@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 import { getOidcServerProvidersFromEnv, resolveOidcServerProvider } from '@/lib/oidc-providers'
 import {
@@ -17,10 +17,10 @@ type OidcDiscovery = {
 }
 
 type ExchangeRequestBody = {
-  provider_id?: string
-  code?: string
-  code_verifier?: string
-  redirect_uri?: string
+  provider_id?: unknown
+  code?: unknown
+  code_verifier?: unknown
+  redirect_uri?: unknown
 }
 
 type TokenResponse = {
@@ -33,7 +33,7 @@ type TokenResponse = {
   error_description?: string
 }
 
-function resolveRedirectUri(req: NextRequest, clientProvided?: string): string {
+function resolveRedirectUri(req: NextRequest, clientProvided?: unknown): string {
   const override = readEnv('NEXT_PUBLIC_OIDC_REDIRECT_URI')
   if (override) return override
 
@@ -53,7 +53,7 @@ async function discoverTokenEndpoint(issuer: string): Promise<OidcDiscovery> {
   if (!res.ok) {
     throw new Error(`oidc_discovery_failed_${res.status}`)
   }
-  const data = (await res.json().catch(() => null))
+  const data = await res.json().catch(() => null)
   const tokenEndpoint = typeof data?.token_endpoint === 'string' ? data.token_endpoint.trim() : ''
   if (!tokenEndpoint) {
     throw new Error('oidc_discovery_missing_endpoints')
@@ -76,9 +76,21 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => null)) as ExchangeRequestBody | null
-  const code = body?.code?.trim() ?? ''
-  const codeVerifier = body?.code_verifier?.trim() ?? ''
-  const redirectUri = resolveRedirectUri(req, body?.redirect_uri)
+  const rawCode = body?.code
+  const rawCodeVerifier = body?.code_verifier
+  const rawProviderId = body?.provider_id
+  const rawRedirectUri = body?.redirect_uri
+  if (
+    (rawCode != null && typeof rawCode !== 'string') ||
+    (rawCodeVerifier != null && typeof rawCodeVerifier !== 'string') ||
+    (rawProviderId != null && typeof rawProviderId !== 'string') ||
+    (rawRedirectUri != null && typeof rawRedirectUri !== 'string')
+  ) {
+    return jsonNoStore({ error: 'invalid_request' }, { status: 400 })
+  }
+  const code = rawCode?.trim() ?? ''
+  const codeVerifier = rawCodeVerifier?.trim() ?? ''
+  const redirectUri = resolveRedirectUri(req, rawRedirectUri)
 
   if (!code || !codeVerifier) {
     return jsonNoStore({ error: 'missing_code_or_verifier' }, { status: 400 })
@@ -87,7 +99,7 @@ export async function POST(req: NextRequest) {
     return jsonNoStore({ error: 'invalid_request' }, { status: 400 })
   }
 
-  const providerId = body?.provider_id?.trim() || undefined
+  const providerId = rawProviderId?.trim() || undefined
   const provider = resolveOidcServerProvider(providerId)
   if (!provider) {
     const available = getOidcServerProvidersFromEnv()

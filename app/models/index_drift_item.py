@@ -1,4 +1,3 @@
-
 import uuid
 
 from sqlalchemy import JSON, Column, DateTime, Integer, String, Text

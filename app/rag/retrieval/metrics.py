@@ -43,7 +43,7 @@ def observe_evidence_retrieve(
     citations_count: int,
     top_relevance_score: float,
 ) -> None:
-    if not bool(getattr(settings, "PROMETHEUS_ENABLED", False)):
+    if not bool(settings.PROMETHEUS_ENABLED):
         return
 
     mode = (retrieval_mode or "").strip().lower() or "unknown"

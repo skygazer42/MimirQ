@@ -15,6 +15,7 @@ from app.rag.core.logging import get_logger
 from app.rag.workflows.base import (
     BaseWorkflow,
     WorkflowMode,
+    WorkflowPlanStep,
     WorkflowResult,
 )
 
@@ -29,7 +30,7 @@ class SubTask:
         id: str,
         description: str,
         dependencies: list[str] | None = None,
-    ):
+    ) -> None:
         self.id = id
         self.description = description
         self.dependencies = dependencies or []
@@ -55,8 +56,8 @@ class PlannerWorkerWorkflow(BaseWorkflow):
         llm: Any | None = None,
         max_subtasks: int = 5,
         parallel_execution: bool = True,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the planner-worker workflow.
 
@@ -126,7 +127,7 @@ Plan:"""
         content = response.content if hasattr(response, "content") else str(response)
 
         # Parse subtasks
-        subtasks = []
+        subtasks: list[SubTask] = []
         for line in content.strip().split("\n"):
             line = line.strip()
             if not line or ":" not in line:
@@ -174,7 +175,7 @@ Plan:"""
             Dict mapping task_id to result
         """
         results: dict[str, str] = {}
-        completed: set = set()
+        completed: set[str] = set()
 
         while len(completed) < len(subtasks):
             # Find tasks ready to execute
@@ -190,7 +191,7 @@ Plan:"""
 
             if self.parallel_execution:
                 # Execute ready tasks in parallel
-                async def run_task(task: SubTask) -> tuple:
+                async def run_task(task: SubTask) -> tuple[str, str]:
                     result = await self._execute_worker(task)
                     return task.id, result
 
@@ -273,9 +274,10 @@ Final Answer:"""
         # Plan
         try:
             subtasks = await self._plan(question)
-            current_state["plan"] = [
+            plan: list[WorkflowPlanStep] = [
                 {"id": t.id, "description": t.description, "dependencies": t.dependencies} for t in subtasks
             ]
+            current_state["plan"] = plan
             execution_path.append(f"planned:{len(subtasks)}_tasks")
         except Exception as e:
             logger.exception("Planning failed: %s", e)
