@@ -1,6 +1,6 @@
 # Lexical Retrieval for Keyword Mode
 
-MimirQ exposes a persisted lexical retrieval channel backed by Postgres full-text search and `pg_trgm`.
+Ragvia exposes a persisted lexical retrieval channel backed by Postgres full-text search and `pg_trgm`.
 It is intended to catch the kinds of exact-ish queries that vector retrieval often misses:
 
 - version numbers such as `v1.2.3`

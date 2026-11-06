@@ -94,7 +94,7 @@ export function ChunkingHelpDialog({
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button asChild variant="outline" size="sm" className="h-8 px-3 text-[11px]">
                   <a
-                    href="https://github.com/skygazer42/MimirQ/blob/main/docs/guides/chunk_preview.md"
+                    href="https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/guides/chunk_preview.md"
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -103,7 +103,7 @@ export function ChunkingHelpDialog({
                 </Button>
                 <Button asChild variant="outline" size="sm" className="h-8 px-3 text-[11px]">
                   <a
-                    href="https://github.com/skygazer42/MimirQ/blob/main/docs/guides/chunk_strategies.md"
+                    href="https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/guides/chunk_strategies.md"
                     target="_blank"
                     rel="noopener noreferrer"
                   >

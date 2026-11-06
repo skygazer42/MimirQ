@@ -1,6 +1,6 @@
 # Sparse Retrieval（SPLADE-style 通道脚手架）
 
-MimirQ 的检索栈除了 dense vector 与 BM25，还支持一个可选的 **sparse retrieval channel**（SPLADE-style）。
+Ragvia 的检索栈除了 dense vector 与 BM25，还支持一个可选的 **sparse retrieval channel**（SPLADE-style）。
 
 定位：
 - 这是一个 “额外的候选来源（candidate source）”，参与 `linear` / `RRF` 融合

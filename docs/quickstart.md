@@ -1,10 +1,10 @@
-# MimirQ 快速入门指南
+# Ragvia 快速入门指南
 
 ## 🚀 5 分钟快速启动
 
 ### 1. 克隆项目
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 ```
 
@@ -119,7 +119,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000 make web-api-ping
 
 ### (可选) 启用 Docling Serve（独立 CPU 容器）
 
-Docling 的 Python 依赖、PyTorch 和模型权重不安装进 MimirQ API / worker 镜像。MimirQ
+Docling 的 Python 依赖、PyTorch 和模型权重不安装进 Ragvia API / worker 镜像。Ragvia
 只保留轻量 HTTP 适配器，通过 Docling Serve 的稳定 v1 API 获取结构化 Markdown：
 
 ```bash
@@ -137,8 +137,8 @@ DOCLING_REQUEST_TIMEOUT_SEC=600
 
 全 Docker 部署也可显式写为 `DOCLING_API_URL=http://mimirq-docling:5001`。内置 profile
 仅绑定宿主机 `127.0.0.1`，默认不启用 API Key；连接另行部署且已启用鉴权的服务时，
-配置 `DOCLING_API_KEY`，MimirQ 会使用官方 `X-Api-Key` 请求头。该 profile 固定官方
-CPU 镜像版本，并在启动时预热默认模型；镜像较大，但不会增加 MimirQ 主镜像及本地
+配置 `DOCLING_API_KEY`，Ragvia 会使用官方 `X-Api-Key` 请求头。该 profile 固定官方
+CPU 镜像版本，并在启动时预热默认模型；镜像较大，但不会增加 Ragvia 主镜像及本地
 Python venv 的依赖体积。
 
 NVIDIA GPU 机器可改用 CUDA profile：
@@ -163,7 +163,7 @@ DOCLING_GPU_IMAGE=quay.io/docling-project/docling-serve-cu130:v1.28.0 \
 
 ### (可选) 启用 ETL4LLM（Bisheng Unstructured）版面解析
 
-MimirQ 已内置 `etl4llm` 解析器（并兼容 `bisheng` / `bisheng-unstructured` 别名），你只需要把服务跑起来并配置好 API URL：
+Ragvia 已内置 `etl4llm` 解析器（并兼容 `bisheng` / `bisheng-unstructured` 别名），你只需要把服务跑起来并配置好 API URL：
 
 ```bash
 # 启动 etl4llm 服务（Docker profile）
@@ -178,7 +178,7 @@ ETL4LLM_API_URL=http://mimirq-etl4llm:10001/v1/etl4llm/predict
 
 ### (可选) 启用 Marker（启发式服务 PDF→Markdown）
 
-Marker 建议以独立容器/服务运行（重依赖不进入 MimirQ 主镜像），然后在解析时指定 `parser_backend=marker`。
+Marker 建议以独立容器/服务运行（重依赖不进入 Ragvia 主镜像），然后在解析时指定 `parser_backend=marker`。
 
 ```bash
 make up-marker
@@ -192,7 +192,7 @@ MARKER_API_URL=http://mimirq-marker:2080/convert
 
 ### (可选) 启用 PaddleOCR-VL（外部 OCR/版面解析）
 
-PaddleOCR-VL 建议以独立容器/服务运行（重依赖不进入 MimirQ 主镜像），然后在解析时指定 `parser_backend=paddle_vl`。
+PaddleOCR-VL 建议以独立容器/服务运行（重依赖不进入 Ragvia 主镜像），然后在解析时指定 `parser_backend=paddle_vl`。
 
 ```bash
 make up-paddlevl
@@ -207,7 +207,7 @@ PADDLEOCR_DEVICE=gpu:0
 
 ### (可选) 启用 Qianfan-OCR（外部 OCR）
 
-Qianfan-OCR 建议以独立容器/服务运行，MimirQ 通过包装服务调用上游 OpenAI-compatible 视觉推理接口。
+Qianfan-OCR 建议以独立容器/服务运行，Ragvia 通过包装服务调用上游 OpenAI-compatible 视觉推理接口。
 
 ```bash
 make up-qianfanocr
@@ -226,7 +226,7 @@ QIANFAN_OCR_SERVER_API_KEY=your-qianfan-api-key
 ### (可选) 启用 TextIn xParse（外部 API 文档解析）
 
 TextIn xParse 通过官方 API 直接返回 Markdown/结构化结果，适合把 PDF / Office / 图片等
-文档解析能力接入到 MimirQ，而无需自建重型 OCR/版面服务。
+文档解析能力接入到 Ragvia，而无需自建重型 OCR/版面服务。
 
 然后在 `.env` 里配置：
 
@@ -250,7 +250,7 @@ TEXTIN_MARKDOWN_DETAILS=true
 
 ### (可选) 启用 MinerU（本地 FastAPI ZIP 模式）
 
-MinerU 建议以独立容器运行（依赖/模型较重），MimirQ 通过 HTTP 调用其 `/file_parse` 接口拿到 ZIP（Markdown + images）。
+MinerU 建议以独立容器运行（依赖/模型较重），Ragvia 通过 HTTP 调用其 `/file_parse` 接口拿到 ZIP（Markdown + images）。
 
 ```bash
 make up-mineru
@@ -445,7 +445,7 @@ LLM_MODEL: str = "gpt-4o"
 
 ### 使用 Claude / 其他模型替代 OpenAI
 
-MimirQ 通过 **OpenAI 兼容接口** 统一接入所有 LLM，**无需改代码**。将 `LLM_API_BASE` 指向目标模型的 OpenAI 兼容端点（自建网关或第三方兼容服务），并设置 `LLM_MODEL` / `LLM_API_KEY` 即可：
+Ragvia 通过 **OpenAI 兼容接口** 统一接入所有 LLM，**无需改代码**。将 `LLM_API_BASE` 指向目标模型的 OpenAI 兼容端点（自建网关或第三方兼容服务），并设置 `LLM_MODEL` / `LLM_API_KEY` 即可：
 
 ```bash
 # .env / 环境变量
@@ -455,7 +455,7 @@ LLM_API_KEY=sk-...
 ```
 
 :::note
-MimirQ 不内置 native Anthropic / Gemini SDK，所有模型经 OpenAI 兼容协议接入。若目标服务无兼容端点，需在前置网关（如 LiteLLM、One-API）做协议转换。
+Ragvia 不内置 native Anthropic / Gemini SDK，所有模型经 OpenAI 兼容协议接入。若目标服务无兼容端点，需在前置网关（如 LiteLLM、One-API）做协议转换。
 :::
 
 ---
@@ -576,4 +576,4 @@ mineru:
 
 ---
 
-**Enjoy MimirQ! 🎉**
+**Enjoy Ragvia! 🎉**

@@ -9,7 +9,7 @@ sidebar_position: 1
 
 ## 前置条件
 
-- MimirQ 实例已部署且可访问，Base URL 已知
+- Ragvia 实例已部署且可访问，Base URL 已知
 - 具备管理员权限的账号
 - 准备一份小体积、无敏感信息的测试文件（PDF / Office / 纯文本）
 

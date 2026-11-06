@@ -3,6 +3,7 @@
 ## Brand Tone
 
 - Calm, precise, trustworthy and technical.
+- Current product documentation (2026-11-06): use Ragvia in README variants, current guides, the handbook and API titles, with ongoing development on `feat/ragvia-ui`. Reuse the approved assets in `web/public/brand/ragvia/`. The repository/Pages address remains MimirQ; deployed identifiers and historical release, benchmark and screenshot records retain their original names.
 - Historical chosen name (2026-10-19): 原序 / YUANXU. This name was subsequently reopened by the user; it is no longer the target for the next brand proposal.
 - User-approved brand (2026-10-19): Ragvia (RAG + via), with the lowercase `ragvia` wordmark, non-letter convergence symbol and fog/ink/rust palette. After viewing the complete project-grounded proposal, the user said “可以可以感觉这个好”. Use this set as the accepted brand baseline for subsequent design work. Keep the brand English-only, without a Chinese brand name or pinyin subtitle; the application's interface language is a separate concern. Preview and assets: `web/public/brand/explorations/ragvia/`; source and decisions: `artifacts/rebrand/project-identity-v7/`. Approval settles the visual direction; product-wide application has not been performed. The rejected Lorefold / Siftmark / Tracegrove proposals remain archived in `artifacts/rebrand/english-naming-v6/`.
 - Existing brand-kit baseline: `web/public/brand/yuanxu/`; guide and reproducible source: `docs/brand/yuanxu/`. V2 and the earlier blue/nature proposals remain historical explorations.

@@ -1,6 +1,6 @@
-# Security Baseline（MimirQ / Kubernetes）
+# Security Baseline（Ragvia / Kubernetes）
 
-本页是面向平台/运维团队的 **K8s 安全基线落地指南**，目标是让 MimirQ 的私有化部署：
+本页是面向平台/运维团队的 **K8s 安全基线落地指南**，目标是让 Ragvia 的私有化部署：
 
 - 官方镜像默认启用 **安全上下文**（非 root、drop capabilities、seccomp）
 - 自定义镜像不兼容时可显式关闭 hardening

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # 运维手册总览
 
-本手册面向 **运维工程师、SRE 与平台管理员**，覆盖 MimirQ 的部署方式、健康检查、可观测性与日常运维操作。
+本手册面向 **运维工程师、SRE 与平台管理员**，覆盖 Ragvia 的部署方式、健康检查、可观测性与日常运维操作。
 
 ## 服务概览
 
@@ -56,14 +56,14 @@ graph TD
 
 ### Prometheus 指标
 
-设置 `PROMETHEUS_ENABLED=true` 后，MimirQ 暴露 Prometheus 兼容的 `/metrics` 端点：
+设置 `PROMETHEUS_ENABLED=true` 后，Ragvia 暴露 Prometheus 兼容的 `/metrics` 端点：
 
 | 指标类别 | 示例 | 说明 |
 | --- | --- | --- |
 | HTTP 请求 | `http_requests_total`, `http_request_duration_seconds` | 按路由、方法、状态码分组 |
 | 并发请求 | `http_requests_in_progress` | 当前 API 并发量 |
 
-Arq 队列、PostgreSQL、Milvus、Redis 与 MinIO 的运行状态应结合应用日志、`make worker-check` 和各依赖自身的 exporter 监控；MimirQ 不会直接暴露队列层的专用指标。
+Arq 队列、PostgreSQL、Milvus、Redis 与 MinIO 的运行状态应结合应用日志、`make worker-check` 和各依赖自身的 exporter 监控；Ragvia 不会直接暴露队列层的专用指标。
 
 ### Grafana Dashboard
 

@@ -5,7 +5,7 @@ sidebar_position: 2
 
 # 认证模式
 
-MimirQ 支持多种认证方式，生产环境推荐 JWT Bearer Token，开发环境可使用 Header 调试模式。
+Ragvia 支持多种认证方式，生产环境推荐 JWT Bearer Token，开发环境可使用 Header 调试模式。
 
 ## 认证方式对比
 

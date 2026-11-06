@@ -1,6 +1,6 @@
 # Knowledge Graph (知识图谱)
 
-MimirQ 的 Knowledge Graph（KG）以“事件（Event）—实体（Entity）”为核心结构：
+Ragvia 的 Knowledge Graph（KG）以“事件（Event）—实体（Entity）”为核心结构：
 - 从文档切片（chunk）中抽取事件（title/summary/content + 引用/extra）。
 - 识别并归一化实体（name/type/normalized_name）。
 - 建立事件↔实体关系，用于图谱可视化与 KG recall/搜索。
@@ -204,7 +204,7 @@ API：
 
 ## 存储与数据模型（如何落库）
 
-MimirQ 的 KG 默认不依赖图数据库，核心数据直接落在 PostgreSQL，并为向量召回额外写入 Milvus。
+Ragvia 的 KG 默认不依赖图数据库，核心数据直接落在 PostgreSQL，并为向量召回额外写入 Milvus。
 
 ### PostgreSQL（事实存储 + provenance）
 - `kg_source_events`：从 chunk 抽取的事件（chunk-scoped）。
@@ -270,7 +270,7 @@ KG API 默认按 tenant + 文档权限进行过滤：
 
 ## KG Diagnostics（评测 / 诊断）
 
-MimirQ 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用于提升抽取/搜索质量并可回归：
+Ragvia 提供一个 **Dynamic OneEval 风格**的 KG search 诊断接口，用于提升抽取/搜索质量并可回归：
 
 - API：`POST /api/v1/evaluations/kg/search/diagnostics`
 - Seed：使用 RAGAS regression cases（`reference_sources.chunk_id` 作为 evidence ground truth）

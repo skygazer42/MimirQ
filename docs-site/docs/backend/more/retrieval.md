@@ -5,7 +5,7 @@ sidebar_position: 3
 
 # 检索与 RAG
 
-MimirQ 采用多路混合检索架构，将 Vector、BM25、SPLADE 三路召回并行执行后通过 RRF 融合，再经 ColBERT/Reranker 精排，实现高召回率与高精度的平衡。
+Ragvia 采用多路混合检索架构，将 Vector、BM25、SPLADE 三路召回并行执行后通过 RRF 融合，再经 ColBERT/Reranker 精排，实现高召回率与高精度的平衡。
 
 ## 混合检索架构
 

@@ -87,12 +87,12 @@ processing_templates.json
 
 ## Dify 知识库映射
 
-MimirQ 的 Dify external knowledge adapter 支持平台通用的 `knowledge_id -> dataset_ids`
+Ragvia 的 Dify external knowledge adapter 支持平台通用的 `knowledge_id -> dataset_ids`
 映射。简单场景可以直接配置成数据集 ID 或 ID 列表；需要按查询临时扩展数据集时，
 可以配置 `query_routes`，不需要把政务区县逻辑写死在平台代码里。
 
 常州“小畅”工作流里，`changzhou_city_service` 是本级兜底检索节点。由于 Dify
-固定工作流的区县参数提取可能失败，查询里出现明确区县词时，MimirQ 会先查对应区县
+固定工作流的区县参数提取可能失败，查询里出现明确区县词时，Ragvia 会先查对应区县
 数据集，再查本级兜底数据集：
 
 ```json
@@ -224,15 +224,15 @@ plugins/pipelines/changzhou-gov-service-knowledge/golden_eval_cases.json
 
 每个 case 可以携带 `dify_inputs`，用于给固定 Dify workflow 的 START 变量传值，
 例如 `"dify_inputs": {"areaName": "经开区"}`。这只影响真实 Dify App
-答案采集，不改变 MimirQ 检索评估。
+答案采集，不改变 Ragvia 检索评估。
 
-只评估 MimirQ Dify external knowledge 检索与证据可回答性：
+只评估 Ragvia Dify external knowledge 检索与证据可回答性：
 
 ```bash
 make changzhou-dify-mimirq-direct-gate
 ```
 
-该命令只直打 MimirQ `/api/v1/integrations/dify/retrieval`，不依赖 Dify Console
+该命令只直打 Ragvia `/api/v1/integrations/dify/retrieval`，不依赖 Dify Console
 登录态；token 默认从 `.env` 的 `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` 或
 `DIFY_EXTERNAL_KNOWLEDGE_API_KEYS` 读取，不会出现在命令行。默认输出
 `/tmp/changzhou_gov_dify_mimirq_direct_gate.json`。
@@ -280,7 +280,7 @@ python scripts/changzhou_gov_golden_eval.py \
 `办理地点：...` 与 `📍【办理地点】：...` 误判为不同内容；但事实未出现的关键点
 仍会计入 `missing_key_points`。
 
-MimirQ Dify external knowledge adapter 会在返回给 Dify 的 records 里临时前置
+Ragvia Dify external knowledge adapter 会在返回给 Dify 的 records 里临时前置
 `答案要点`，把结构化 QA 的 `答案` 或事项字段里的 `办理地点/收费情况/咨询方式`
 放到原始证据前面，降低 Dify 生成时遗漏关键字段的概率。该前置内容不写回 chunk，
 也不改变向量库原文。对事项类记录，只有事项名或别名与用户 query 明确匹配时才会
@@ -319,16 +319,16 @@ python scripts/changzhou_gov_dify_trace_report.py \
 `fallback_cases` 表示最终进入兜底答案节点。`node_route_mismatch_cases` 表示 case
 已传 `dify_inputs.areaName`，但 Dify workflow 节点标题仍显示走了本级节点，例如期望
 `经开区政务服务知识检索` 却执行 `常州市政务服务知识检索`。如果该节点返回的证据
-标题已经由 MimirQ `query_routes` 纠偏到目标区县，则计入 `route_compensated_cases`，
+标题已经由 Ragvia `query_routes` 纠偏到目标区县，则计入 `route_compensated_cases`，
 不算最终失败。`route_mismatch_cases` 表示节点和实际证据都没有命中目标区县，
 readiness gate 会在 trace 阶段失败。
 
 如果 answers 报告里出现 `error_kind=missing_start_variable`，例如
-`missing_variable=areaName`，失败边界在 Dify workflow 入参，不在 MimirQ 检索。
+`missing_variable=areaName`，失败边界在 Dify workflow 入参，不在 Ragvia 检索。
 当前固定“小畅” workflow 的 Start 节点虽然把 `areaName` 标为非必填，但后续节点会
 直接引用 `#1711528914102.areaName#`；因此生产调用 `/v1/chat-messages` 时仍需要在
 `inputs` 中传入 `areaName`，或者在 Dify workflow 内给该变量默认值/兜底分支。缺少该
-变量时，Dify 会直接返回 `HTTP 400 invalid_param`，请求不会进入 MimirQ 检索链路。
+变量时，Dify 会直接返回 `HTTP 400 invalid_param`，请求不会进入 Ragvia 检索链路。
 
 可以用 workflow lint 直接检查这类“标为非必填但后续直接引用”的 Start 变量，也会扫描
 LLM prompt 是否包含可能泄漏到用户答案里的模板控制语句：
@@ -356,7 +356,7 @@ system prompt 的问题；这些词一旦被模型照抄，会让 `generated_ans
 提取器失败时仍可能落到市本级知识检索节点。
 
 推荐用 full gate 串起完整远程验证：case 入参 preflight -> Dify 真实回答采集 ->
-MimirQ 直查 golden eval -> Dify workflow trace。
+Ragvia 直查 golden eval -> Dify workflow trace。
 命令需要 `DIFY_EXTERNAL_KNOWLEDGE_API_KEY` 环境变量，或显式传入 `--mimirq-token`。
 
 ```bash
@@ -380,7 +380,7 @@ python scripts/changzhou_gov_dify_full_gate.py \
 等阈值覆盖默认 gate。
 
 如果需要区分“workflow 分支没进正确节点”和“Dify external knowledge runtime
-调用 MimirQ 失败”，用同一套 fixed golden cases 做边界对照：
+调用 Ragvia 失败”，用同一套 fixed golden cases 做边界对照：
 
 ```bash
 python scripts/changzhou_gov_dify_external_knowledge_probe.py \
@@ -393,20 +393,20 @@ python scripts/changzhou_gov_dify_external_knowledge_probe.py \
 ```
 
 该报告会读取 Dify Console 中 external knowledge API 的 endpoint 和 api key，
-再分别调用 Dify dataset `external-hit-testing` 与 MimirQ `/retrieval` 直查。
+再分别调用 Dify dataset `external-hit-testing` 与 Ragvia `/retrieval` 直查。
 报告只保留 endpoint、dataset、命中数量和首条标题，不输出或保存 api key。
 `boundary.verdict=dify_external_boundary_ok` 表示 endpoint 配置非 loopback、
-本机直连 MimirQ 正常、Dify dataset hit-testing 也正常；这时如果 workflow 仍空召回，
+本机直连 Ragvia 正常、Dify dataset hit-testing 也正常；这时如果 workflow 仍空召回，
 问题已经不在 external knowledge endpoint 边界。
 endpoint 可以是 Dify 后端可访问的内网 IP、域名或反向代理地址；`localhost` /
 `127.0.0.1` / `::1` 会被 gate 判定为不可用于远端 Dify 回调。
 `dify_runtime_empty_but_mimirq_direct_ok` 表示同一个 case 在 Dify 数据集召回测试为空，
-但同一 endpoint/key 直打 MimirQ 有结果，失败边界在 Dify external knowledge runtime
-到 MimirQ endpoint 之间，通常优先检查 Dify worker/container 的网络、代理与
+但同一 endpoint/key 直打 Ragvia 有结果，失败边界在 Dify external knowledge runtime
+到 Ragvia endpoint 之间，通常优先检查 Dify worker/container 的网络、代理与
 `NO_PROXY` 配置。
 
 如果 `dify_hit_nonempty > 0` 且 `mimirq_direct_nonempty > 0`，但 workflow trace
-仍然显示 `empty_retrieval_cases > 0`，失败边界已经不在 MimirQ endpoint。
+仍然显示 `empty_retrieval_cases > 0`，失败边界已经不在 Ragvia endpoint。
 Dify 1.11 的 workflow external retrieval 分支会读取 external dataset 的持久化
 `retrieval_model` 参数；如果 external dataset 详情只展示默认
 `external_retrieval_model`，但未实际持久化，workflow 节点可能在毫秒级返回空数组，
@@ -432,10 +432,10 @@ curl --noproxy '*' -sS \
 如果 `--noproxy '*'` 有结果，但 Dify 页面/Console hit-testing 仍为空，
 需要把 Dify api/worker 的 `NO_PROXY/no_proxy` 加上 `mimirq.example`
 并重启 Dify 后端运行进程。若容器内 curl 本身无法连通，则需要给 Dify 所在主机或容器
-提供能访问 MimirQ 的地址（同网段 LAN 地址、反向代理地址或部署后的 MimirQ 服务地址）。
+提供能访问 Ragvia 的地址（同网段 LAN 地址、反向代理地址或部署后的 Ragvia 服务地址）。
 
-当前远程 Dify 固定 workflow 曾经的失败模式是：MimirQ golden 检索 gate 通过，
+当前远程 Dify 固定 workflow 曾经的失败模式是：Ragvia golden 检索 gate 通过，
 Dify dataset `external-hit-testing` 也通过，但 Dify workflow 内部知识检索节点
 毫秒级返回空数组，随后进入 `兜底回复`。根因是 external dataset 的
 `external_retrieval_model` 未持久化到 workflow 实际读取的检索参数；保存 9 个
-MimirQ external dataset 的检索参数后，节点 trace 恢复为非空，兜底率降为 0。
+Ragvia external dataset 的检索参数后，节点 trace 恢复为非空，兜底率降为 0。

@@ -1,6 +1,6 @@
 # Import & Optional-Dependency Policy
 
-This document defines the hard rules for imports and optional dependency degradation in MimirQ.
+This document defines the hard rules for imports and optional dependency degradation in Ragvia.
 
 ## Goals
 

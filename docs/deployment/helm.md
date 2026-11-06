@@ -1,4 +1,4 @@
-# Helm / Kubernetes 部署指南（MimirQ）
+# Helm / Kubernetes 部署指南（Ragvia）
 
 本指南提供一个 **最小可用** 的 Helm Chart，用于在 Kubernetes 中部署：
 

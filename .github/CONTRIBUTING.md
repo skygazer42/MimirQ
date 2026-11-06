@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in contributing to MimirQ!
+Thanks for your interest in contributing to Ragvia!
 
 Please read and follow our [Code of Conduct](./CODE_OF_CONDUCT.md).
 

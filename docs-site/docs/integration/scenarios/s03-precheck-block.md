@@ -9,14 +9,14 @@ sidebar_position: 3
 
 ## 场景描述
 
-MimirQ 支持在文档入库前执行预检（precheck），如格式校验、大小限制、敏感内容扫描等。预检失败时操作被阻断，客户端需正确处理拦截信息。
+Ragvia 支持在文档入库前执行预检（precheck），如格式校验、大小限制、敏感内容扫描等。预检失败时操作被阻断，客户端需正确处理拦截信息。
 
 ## API 调用时序
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant API as MimirQ API
+    participant API as Ragvia API
     participant Precheck as 预检服务
     Client->>API: POST /documents/upload
     API->>Precheck: 执行预检规则

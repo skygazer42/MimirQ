@@ -26,7 +26,7 @@
 
 ## 2) 字段与含义（对应系统内 Document 生命周期元数据）
 
-MimirQ 对文档提供一组小而稳定的治理字段（不包含内容，PII-safe）：
+Ragvia 对文档提供一组小而稳定的治理字段（不包含内容，PII-safe）：
 
 - `lifecycle_owner`：负责人（建议写团队/角色）
 - `review_due_at`：下次 review 截止时间（到期/临近可用于报表）

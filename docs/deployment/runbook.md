@@ -1,4 +1,4 @@
-# Operations Runbook（MimirQ）
+# Operations Runbook（Ragvia）
 
 本 runbook 面向运维/平台团队，目标是用最短路径定位问题层级：ingest → index → retrieval/rerank → LLM。
 

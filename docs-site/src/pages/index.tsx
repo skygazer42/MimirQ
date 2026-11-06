@@ -81,7 +81,7 @@ function getCopy(locale: string) {
   const en = locale === 'en'
 
   return {
-    eyebrow: en ? 'MIMIRQ DOCUMENTATION' : 'MIMIRQ 全栈手册',
+    eyebrow: en ? 'RAGVIA DOCUMENTATION' : 'Ragvia 全栈手册',
     title: en ? ['Make knowledge', 'paths explainable.'] : ['让每一条知识链路，', '都可以被解释。'],
     lead: en
       ? 'Start with a working deployment, then inspect parsing, governance, chunking, retrieval, reranking, citations, and regression gates one layer at a time.'
@@ -115,7 +115,7 @@ function getCopy(locale: string) {
             title: 'From .env to first login',
             description: 'Prepare credentials, choose Docker or host processes, and verify readiness.',
             to: '/docs/ops/getting-started',
-            action: 'Deploy MimirQ',
+            action: 'Deploy Ragvia',
           },
           {
             icon: 'book' as const,
@@ -141,7 +141,7 @@ function getCopy(locale: string) {
             title: '从 .env 到首次登录',
             description: '准备密钥，选择 Docker 或主机进程，完成健康检查。',
             to: '/docs/ops/getting-started',
-            action: '部署 MimirQ',
+            action: '部署 Ragvia',
           },
           {
             icon: 'book' as const,
@@ -340,7 +340,7 @@ function Closing({ copy }: { copy: ReturnType<typeof getCopy> }) {
           {copy.api}
           <Icon name="arrow" size={16} />
         </a>
-        <a href="https://github.com/skygazer42/MimirQ">
+        <a href="https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui">
           <Icon name="github" size={18} />
           {copy.github}
         </a>

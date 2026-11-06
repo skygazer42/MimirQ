@@ -49,7 +49,7 @@ def tmpl_block(
 ## 相关链接
 
 - [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
-- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- 仓库内：[API 契约说明](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md) · [前后端排障](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)
 """.strip()
 
 
@@ -268,8 +268,8 @@ sequenceDiagram
 
 ## 排障入口
 
-- [FE_BE_DEBUG.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
-- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)
+- [FE_BE_DEBUG.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)
+- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)
 """.strip(),
         "数据集 E2E",
         2,
@@ -334,7 +334,7 @@ def ops_pages() -> None:
     md(
         "ops/deployment.md",
         "部署与 Runbook",
-        "参见 [runbook.md](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/runbook.md) 与 Docker/Helm 说明。",
+        "参见 [runbook.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/runbook.md) 与 Docker/Helm 说明。",
         "部署",
         4,
     )
@@ -452,7 +452,7 @@ def integration_patterns_real() -> None:
 ## 阅读顺序
 
 1. 看 **HTTP 状态码** 与响应 JSON 中的业务 `code` / `detail`（以 OpenAPI `ErrorResponse` 或实际返回为准）。
-2. 对照 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md) 中的 Network / 后端日志路径。
+2. 对照 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md) 中的 Network / 后端日志路径。
 
 ## 常见映射（经验）
 
@@ -483,7 +483,7 @@ def integration_patterns_real() -> None:
 
 ## Header 调试模式（仅开发）
 
-- 部分部署允许 `X-User-ID` / `X-Tenant-ID` 等（见后端中间件与 [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)）。
+- 部分部署允许 `X-User-ID` / `X-Tenant-ID` 等（见后端中间件与 [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)）。
 - **禁止**在生产客户端伪造租户头；生产务必走正式认证。
 
 ## 联调检查清单
@@ -510,7 +510,7 @@ def integration_patterns_real() -> None:
 
 ## 文档
 
-- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)
+- [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)
 """.strip(),
     )
     page(
@@ -550,7 +550,7 @@ def integration_patterns_real() -> None:
 
 ## 排障
 
-- 415 / 400：MIME 与字段名；参见 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)。
+- 415 / 400：MIME 与字段名；参见 [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)。
 """.strip(),
     )
     page(
@@ -602,11 +602,11 @@ def integration_patterns_real() -> None:
         """
 ## 后端
 
-- 根目录 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/main/.env.example) 是完整环境变量模板；本地启动可复制为 `.env`，部署说明见 [docker_compose](https://github.com/skygazer42/MimirQ/blob/main/docs/deployment/docker_compose.md)。
+- 根目录 [`.env.example`](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/.env.example) 是完整环境变量模板；本地启动可复制为 `.env`，部署说明见 [docker_compose](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/deployment/docker_compose.md)。
 
 ## 前端
 
-- `NEXT_PUBLIC_*` 在 [web/lib/env](https://github.com/skygazer42/MimirQ/tree/main/web/lib) 及相关构建说明中消费；修改后需重新构建。
+- `NEXT_PUBLIC_*` 在 [web/lib/env](https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui/web/lib) 及相关构建说明中消费；修改后需重新构建。
 
 ## 联调
 
@@ -626,7 +626,7 @@ def integration_patterns_real() -> None:
 ## 日常检查
 
 - 改后端路由后执行 `make openapi-export` 与前端 `gen:api-types`（以 Makefile / package.json 脚本为准）。
-- 自动化对照见 [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md)。
+- 自动化对照见 [API_CONTRACT.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md)。
 
 ## 手册内矩阵
 

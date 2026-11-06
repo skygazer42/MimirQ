@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # 文档权限与安全
 
-MimirQ 支持**文档级 ACL**（Access Control List），在数据集权限之下提供更细粒度的访问控制，支持 Security Trimming 场景。
+Ragvia 支持**文档级 ACL**（Access Control List），在数据集权限之下提供更细粒度的访问控制，支持 Security Trimming 场景。
 
 ## 访问模式
 

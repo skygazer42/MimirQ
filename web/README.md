@@ -1,6 +1,8 @@
-# MimirQ Web (Next.js Frontend)
+# Ragvia Web (Next.js Frontend)
 
 This folder contains the Next.js 16 (App Router) frontend.
+
+Develop on `feat/ragvia-ui` and push to `origin/feat/ragvia-ui`. Product names and approved artwork come from `lib/brand.ts` and `components/brand-logo.tsx`.
 
 ## Prerequisites
 
@@ -109,7 +111,7 @@ Implementation:
 
 ## SAML SSO (Optional)
 
-MimirQ supports IdP-initiated SAML 2.0 behind a guarded Next.js ACS route plus backend assertion exchange.
+Ragvia supports IdP-initiated SAML 2.0 behind a guarded Next.js ACS route plus backend assertion exchange.
 
 - Enable switch: `SAML_ENABLED=true` (default: off)
 - SP metadata: `GET /api/saml/metadata`
@@ -135,7 +137,7 @@ Behavior:
 
 - The Next.js ACS route accepts the IdP POST and forwards the raw assertion to the backend exchange endpoint.
 - The backend validates signature, issuer, audience, destination, recipient, time window, and replay state.
-- On success, the backend maps `NameID`/email to an existing MimirQ user and issues a normal app JWT session.
+- On success, the backend maps `NameID`/email to an existing Ragvia user and issues a normal app JWT session.
 - The frontend callback stores that session through the existing `setAuthSession(...)` path.
 
 Implementation details: `docs/guides/saml_sso.md`.

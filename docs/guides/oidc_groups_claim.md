@@ -1,12 +1,12 @@
 # OIDC / JWT Groups Claim 同步（Enterprise）
 
-本指南说明如何在 **企业 IdP（OIDC / JWT）** 中配置 `groups`（或 roles）声明，并在 MimirQ 中启用 “JWT groups claim → tenant groups/memberships” 的 **可选同步**。
+本指南说明如何在 **企业 IdP（OIDC / JWT）** 中配置 `groups`（或 roles）声明，并在 Ragvia 中启用 “JWT groups claim → tenant groups/memberships” 的 **可选同步**。
 
 适用场景：
-- 你希望用 IdP 的目录（组/角色）来驱动 MimirQ 的 **组权限 allowlist**（dataset/document）
+- 你希望用 IdP 的目录（组/角色）来驱动 Ragvia 的 **组权限 allowlist**（dataset/document）
 - 你希望减少“手工维护成员白名单”的成本，并为后续 SCIM / access review 打地基
 
-> 核心原则：**默认 fail-closed + PII-safe**。MimirQ 只在 `JWT_GROUPS_SYNC_ENABLED=true` 且能确认 tenant 绑定时才会写入本地 groups/memberships。
+> 核心原则：**默认 fail-closed + PII-safe**。Ragvia 只在 `JWT_GROUPS_SYNC_ENABLED=true` 且能确认 tenant 绑定时才会写入本地 groups/memberships。
 
 ---
 
@@ -20,7 +20,7 @@ AUTH_MODE=jwt
 
 ### 1.2 确保 Token 是“可信的”（信任边界）
 
-MimirQ 的 groups 同步只应在 **JWT 已被验证** 的前提下启用。建议至少满足：
+Ragvia 的 groups 同步只应在 **JWT 已被验证** 的前提下启用。建议至少满足：
 
 - 使用 **JWKS** 校验签名（推荐用于外部 IdP 的 RS256/ES256）：
   - `JWT_JWKS_URLS=https://<issuer>/.well-known/jwks.json`
@@ -59,7 +59,7 @@ JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED=true
 
 ---
 
-## 2) 启用 MimirQ groups claim 同步
+## 2) 启用 Ragvia groups claim 同步
 
 ### 2.1 基础配置
 
@@ -78,7 +78,7 @@ JWT_GROUPS_SYNC_TTL_SEC=60
 
 ### 2.2 claim 格式与解析规则
 
-MimirQ 期望 `JWT_GROUPS_CLAIM` 指向的值为：
+Ragvia 期望 `JWT_GROUPS_CLAIM` 指向的值为：
 
 - `["group-a", "group-b", ...]`（推荐）
 - 或单个字符串（会被当作单元素列表）
@@ -93,7 +93,7 @@ MimirQ 期望 `JWT_GROUPS_CLAIM` 指向的值为：
 
 ---
 
-## 3) IdP Groups → MimirQ Groups 的映射方式
+## 3) IdP Groups → Ragvia Groups 的映射方式
 
 同步逻辑（当前 wave 的安全实现）：
 
@@ -136,7 +136,7 @@ Dataset/Document 的 group allowlist 需要 **UUID**（`group_id`），不是 gr
 }
 ```
 
-MimirQ 配置：
+Ragvia 配置：
 
 ```bash
 JWT_GROUPS_CLAIM=groups
@@ -151,7 +151,7 @@ JWT_GROUPS_CLAIM=groups
 - realm roles：
   - `realm_access: { "roles": ["eng-platform", "auditor"] }`
 
-MimirQ 配置示例：
+Ragvia 配置示例：
 
 ```bash
 # 如果你把 roles 放在 realm_access.roles
@@ -166,11 +166,11 @@ Azure 常见把 `groups` 放进 token，但值可能是 **GUID（组对象 ID）
 { "groups": ["a1b2c3d4-....", "e5f6g7h8-...."] }
 ```
 
-这在 MimirQ 中也能工作（会以 GUID 字符串作为 group name），但可读性较差；更推荐使用：
+这在 Ragvia 中也能工作（会以 GUID 字符串作为 group name），但可读性较差；更推荐使用：
 - 应用角色（App Roles）/ roles（如果你的企业策略允许）
 - 或者把“人类可读的组标识”写入一个自定义 claim（并确保 claim name 不含 `.`）
 
-> 重要：当用户属于太多组时，Azure 可能返回 “overage” 指示而不直接下发完整 groups 列表。MimirQ 当前不会跟随 overage 去拉取 Graph；此时建议改用 roles 或缩小 groups 范围。
+> 重要：当用户属于太多组时，Azure 可能返回 “overage” 指示而不直接下发完整 groups 列表。Ragvia 当前不会跟随 overage 去拉取 Graph；此时建议改用 roles 或缩小 groups 范围。
 
 ### 4.4 Auth0 / 其他 IdP（自定义 claim）
 

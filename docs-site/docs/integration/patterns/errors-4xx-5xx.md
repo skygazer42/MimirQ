@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # HTTP 错误码与响应体
 
-MimirQ API 遵循标准 HTTP 状态码语义，错误响应包含结构化的错误信息，便于客户端分类处理。
+Ragvia API 遵循标准 HTTP 状态码语义，错误响应包含结构化的错误信息，便于客户端分类处理。
 
 ## 错误响应格式
 

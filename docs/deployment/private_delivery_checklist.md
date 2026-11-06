@@ -1,4 +1,4 @@
-# Private Delivery Checklist（MimirQ）
+# Private Delivery Checklist（Ragvia）
 
 本清单用于企业私有化交付验收与上线前自检。目标：**可部署、可升级、可回滚、可审计、可合规、可评估**。
 

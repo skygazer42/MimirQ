@@ -9,7 +9,7 @@ sidebar_position: 9
 
 ## 单一事实源（SSOT）
 
-MimirQ 的 API 契约以 OpenAPI spec 为权威来源：
+Ragvia 的 API 契约以 OpenAPI spec 为权威来源：
 
 | 层级 | 来源 | 说明 |
 |------|------|------|

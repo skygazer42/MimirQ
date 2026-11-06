@@ -343,7 +343,7 @@ def _dispose_database_engine() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Operations on app startup and shutdown."""
     # Startup: create database tables.
-    logger.info("Starting MimirQ backend...")
+    logger.info("Starting Ragvia backend...")
     _ensure_startup_directories()
     _ensure_optional_log_directories()
     _setup_langsmith_tracing()
@@ -361,7 +361,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
     # Shutdown cleanup.
-    logger.info("Shutting down MimirQ backend...")
+    logger.info("Shutting down Ragvia backend...")
 
     # Close HTTP client pool.
     await close_http_client_pool()
@@ -381,7 +381,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 # Create FastAPI app
 app = FastAPI(
-    title="MimirQ - Knowledge Base RAG System",
+    title="Ragvia - Knowledge Base RAG System",
     description="Knowledge Base Management and RAG Conversation System",
     version=__version__,
     docs_url=_DOCS_PATH if settings.API_DOCS_ENABLED else None,
@@ -556,7 +556,7 @@ register_exception_handlers(app)
 @app.get("/", response_model=None)
 async def root() -> dict[str, str]:
     """Root path."""
-    return {"message": "Welcome to MimirQ API", "version": __version__, "docs": _DOCS_PATH}
+    return {"message": "Welcome to Ragvia API", "version": __version__, "docs": _DOCS_PATH}
 
 
 @app.get("/health", response_model=None)

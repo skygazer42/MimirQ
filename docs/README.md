@@ -1,6 +1,8 @@
-# 📚 MimirQ 文档目录
+# 📚 Ragvia 文档目录
 
 欢迎来到项目文档中心。本页是 `docs/` 的**完整索引**：按主题分类，覆盖全部指南与运维文档。新增文档请放入合适的子目录，并同步在本页登记一行。
+
+本文档随 `feat/ragvia-ui` 维护，产品名为 Ragvia。仓库及 Pages 地址仍使用 `MimirQ`；历史发布与评测记录保留原始名称和来源。
 
 ## 快速上手
 
@@ -31,7 +33,7 @@
 
 ## 架构与设计
 
-- [architecture.md](./architecture.md)：MimirQ 技术架构总览。
+- [architecture.md](./architecture.md)：Ragvia 技术架构总览。
 - [backend_structure.md](./backend_structure.md)：Backend 目录结构与路由认证约定。
 - [guides/rag_platform_design_principles.md](./guides/rag_platform_design_principles.md)：企业知识流水线设计准则（数据评估、解析选型、治理、检索与发布边界）。
 - [guides/langchain_agent_migration.md](./guides/langchain_agent_migration.md)：LangChain / LangGraph 架构说明与迁移记录。
@@ -105,7 +107,7 @@
 - [guides/hardcase_feedback_automation.md](./guides/hardcase_feedback_automation.md)：Hardcase 反馈自动化。
 - [guides/training_export.md](./guides/training_export.md)：训练数据导出。
 - [guides/public_benchmarks_zh.md](./guides/public_benchmarks_zh.md)：公开中文 benchmark（Milvus / Ollama）。
-- [benchmarks/changzhou_dify.md](./benchmarks/changzhou_dify.md)：常州政务 800 题 Dify / MimirQ 评测记录（方法、指标与历史复测）。
+- [benchmarks/changzhou_dify.md](./benchmarks/changzhou_dify.md)：常州政务 800 题 Dify / Ragvia 评测记录（方法、指标与历史复测）。
 - [templates/retrieval_debt_audit_template.md](./templates/retrieval_debt_audit_template.md)：Retrieval Debt Audit 模板。
 - [contributing/retrieval_pr_checklist.md](./contributing/retrieval_pr_checklist.md)：Retrieval PR Checklist。
 
@@ -148,7 +150,7 @@
 
 ## 提示词（Prompts）
 
-- [prompts/mimirq-prompt-library-2026-q2.md](./prompts/mimirq-prompt-library-2026-q2.md)：MimirQ 提示词全集（业界采集 + 现状基线中文化）。
+- [prompts/mimirq-prompt-library-2026-q2.md](./prompts/mimirq-prompt-library-2026-q2.md)：Ragvia 提示词全集（业界采集 + 现状基线中文化）。
 
 ## Web 工作台入口（页面路径速查）
 

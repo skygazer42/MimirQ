@@ -88,7 +88,7 @@ curl -f http://localhost:8000/api/v1/health/ready
 
 ### Schema 定义
 
-MimirQ 使用的 Collection Schema：
+Ragvia 使用的 Collection Schema：
 
 ```python
 fields = [

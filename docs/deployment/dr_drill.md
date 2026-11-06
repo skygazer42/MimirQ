@@ -37,7 +37,7 @@
 1. 恢复 Postgres
 2. 恢复 MinIO（若启用）
 3. 恢复或重建向量库
-4. 启动 MimirQ（Helm 或 Compose）
+4. 启动 Ragvia（Helm 或 Compose）
 
 ---
 

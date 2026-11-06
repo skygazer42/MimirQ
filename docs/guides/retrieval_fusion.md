@@ -174,7 +174,7 @@ python scripts/apply_fusion_weights_to_dataset.py --dataset-id <DATASET_UUID> --
 
 ## Hierarchy Recall Overlay (Post-Fusion)
 
-MimirQ also supports an optional **hierarchy-aware recall overlay** that runs **after** the base retrieval lists are produced (channel fusion, and query-variant fusion if multi-query is enabled).
+Ragvia also supports an optional **hierarchy-aware recall overlay** that runs **after** the base retrieval lists are produced (channel fusion, and query-variant fusion if multi-query is enabled).
 
 This is intentionally designed as an overlay:
 - It does **not** replace the ingestion parser or storage model.

@@ -1,6 +1,6 @@
 # 数据集权限（Dataset Permissions）
 
-本指南说明 MimirQ 的 **数据集级权限模型**，以及如何在 `partial_members` 模式下同时使用：
+本指南说明 Ragvia 的 **数据集级权限模型**，以及如何在 `partial_members` 模式下同时使用：
 - 成员 allowlist（`partial_member_list`）
 - 组 allowlist（`partial_group_list`）
 

@@ -1,6 +1,6 @@
 # Connectors（连接器）与 Connector Runs
 
-本指南介绍 MimirQ 的连接器（Connectors）能力：把“从外部数据源批量导入文档/目录信息”的过程，抽象成一次可追踪、可取消、可重试的 **Connector Run**。
+本指南介绍 Ragvia 的连接器（Connectors）能力：把“从外部数据源批量导入文档/目录信息”的过程，抽象成一次可追踪、可取消、可重试的 **Connector Run**。
 
 适用场景：
 
