@@ -16,13 +16,7 @@ import { fileURLToPath } from 'node:url'
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const WEB_ROOT = path.resolve(SCRIPT_DIR, '..')
 
-const IGNORE_DIRS = new Set([
-  'node_modules',
-  '.next',
-  '.next_build',
-  'dist',
-  'build',
-])
+const IGNORE_DIRS = new Set(['node_modules', '.next', '.next_build', 'dist', 'build'])
 
 const IGNORE_FILES = new Set([
   path.join('types', 'openapi.ts'),
@@ -30,14 +24,7 @@ const IGNORE_FILES = new Set([
   path.join('scripts', 'check-design-tokens.mjs'),
 ])
 
-const IGNORE_FILE_SUFFIXES = [
-  '.source.test.ts',
-  '.source.test.tsx',
-  '.test.ts',
-  '.test.tsx',
-  '.spec.ts',
-  '.spec.tsx',
-]
+const IGNORE_FILE_SUFFIXES = ['.source.test.ts', '.source.test.tsx', '.test.ts', '.test.tsx', '.spec.ts', '.spec.tsx']
 
 const INCLUDE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.css'])
 

@@ -241,7 +241,7 @@ make docker-reset
 make up-web
 ```
 
-`make docker-reset` 会额外删除 MimirQ 的命名卷，包括数据库、上传文件、向量索引、
+`make docker-reset` 会额外删除 Ragvia 的命名卷，包括数据库、上传文件、向量索引、
 对象存储和解析器模型缓存。此操作不可恢复，但会保留已拉取或构建的镜像，适合首次管理员
 状态异常、测试数据污染或需要从空库重新验证的本地环境。
 
@@ -253,14 +253,14 @@ make up-web
 ```
 
 `make docker-purge` 在重置数据的基础上使用 `--rmi all`，删除这些 Compose 文件引用的
-MimirQ API / Web / 解析器镜像以及 PostgreSQL、Redis、Milvus、MinIO 等依赖镜像。下次
+Ragvia API / Web / 解析器镜像以及 PostgreSQL、Redis、Milvus、MinIO 等依赖镜像。下次
 启动会重新下载或构建。若同一镜像仍被其他容器引用，Docker 会保留它并报告冲突；该命令
 也可能清掉其他项目复用的本地镜像缓存，因此只在确实需要完全重建时使用。
 
-MimirQ 的默认 Compose 项目名固定为 `mimirq`，不会再使用目录名 `docker`。这是资源隔离边界：
+Ragvia 的默认 Compose 项目名固定为 `mimirq`，不会再使用目录名 `docker`。这是资源隔离边界：
 同一台机器上的 Dify 或其他 Compose 应用即使也放在名为 `docker` 的目录中，也不会被
-MimirQ 的停止或清理命令识别为同一项目。Make 目标还会显式传入项目名，并且不会使用
-`--remove-orphans` 扫描未在 MimirQ 配置中声明的服务。
+Ragvia 的停止或清理命令识别为同一项目。Make 目标还会显式传入项目名，并且不会使用
+`--remove-orphans` 扫描未在 Ragvia 配置中声明的服务。
 
 以上三个目标都只处理当前 `COMPOSE_PROJECT_NAME` 对应的 Compose 项目，
 不会删除 `.env`、`web/.env.local`、源码、`.venv` 或宿主机上的模型目录，也不会执行
@@ -294,8 +294,8 @@ docker ps -a --filter "label=com.docker.compose.project=mimirq"
 docker volume ls --filter "label=com.docker.compose.project=mimirq"
 ```
 
-新版本 MimirQ 必须显示为独立项目 `mimirq`。第二条命令只应列出 `mimirq-api`、
-`mimirq-worker`、`web` 和 MimirQ 基础设施；如果其中出现 Dify 服务，不要继续执行
+新版本 Ragvia 必须显示为独立项目 `mimirq`。第二条命令只应列出 `mimirq-api`、
+`mimirq-worker`、`web` 和 Ragvia 基础设施；如果其中出现 Dify 服务，不要继续执行
 `docker-reset` 或 `docker-purge`，先检查是否在 `.env` 或命令行把两个应用配置成了同一个
 `COMPOSE_PROJECT_NAME`。
 
@@ -335,7 +335,7 @@ Invoke-RestMethod http://localhost:8000/api/v1/health/ready
 `-f docker/docker-compose.parsers.yml --profile "*"`；推荐安装 Make 后使用 `make down`，
 避免遗漏可选配置。
 
-### 旧版 MimirQ、Dify 共存与误删恢复
+### 旧版 Ragvia、Dify 共存与误删恢复
 
 早期版本从 `docker/` 目录继承通用项目名 `docker`。如果同机 Dify 也使用该项目名，旧版
 `--remove-orphans` 可能删除 Dify 容器。出现这种情况时按以下顺序恢复：
@@ -355,7 +355,7 @@ docker compose ps
 完全相同的 `--project-name NAME`。不要直接换成新项目名，否则 Compose 会创建另一组卷，
 看起来会像数据丢失。容器启动后先登录 Dify，核对应用、知识库和账户数据。
 
-4. 再更新并启动隔离后的 MimirQ：
+4. 再更新并启动隔离后的 Ragvia：
 
 ```powershell
 cd C:\path\to\MimirQ
@@ -367,7 +367,7 @@ make api-ping
 docker ps -a --filter "label=com.docker.compose.project=mimirq"
 ```
 
-如果需要保留旧版 MimirQ 的 `docker_*` 数据卷，不要直接删除它们。新项目名 `mimirq` 会创建
+如果需要保留旧版 Ragvia 的 `docker_*` 数据卷，不要直接删除它们。新项目名 `mimirq` 会创建
 新的 `mimirq_*` 卷，不会自动挂载旧数据。应在维护窗口使用旧项目名临时启动旧数据，按
 [备份与恢复指南](./backup_restore.md) 导出 Postgres、MinIO 和向量数据，再切回 `mimirq`
 项目恢复。确认新项目数据完整后，才可手工删除遗留资源。

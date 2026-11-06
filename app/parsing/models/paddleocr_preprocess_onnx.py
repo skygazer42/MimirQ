@@ -1,4 +1,3 @@
-
 import math
 import time
 from dataclasses import dataclass
@@ -143,8 +142,8 @@ def _predict_orientation(
         task=task,
         model_id=loaded.model_id,
         label=label,
-        angle=int(angle),
-        confidence=float(probs[best_index]),
+        angle=angle,
+        confidence=probs[best_index],
         scores={labels[index] if index < len(labels) else str(index): score for index, score in enumerate(probs)},
         elapsed_ms=elapsed_ms,
     )

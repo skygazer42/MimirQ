@@ -24,7 +24,7 @@ def _first_present(meta: dict[str, Any], keys: tuple[str, ...]) -> str:
 
 
 def _first_line(text: str) -> str:
-    for line in str(text or "").splitlines():
+    for line in text.splitlines():
         value = line.strip()
         if value:
             return value
@@ -34,7 +34,7 @@ def _first_line(text: str) -> str:
 def _line_value(text: str, label: str) -> str:
     prefix = f"{label}："
     alt = f"{label}:"
-    for raw in str(text or "").splitlines():
+    for raw in text.splitlines():
         line = raw.strip()
         if line.startswith(prefix):
             return line[len(prefix) :].strip()
@@ -89,7 +89,7 @@ def _entity(
     role: str,
     description: Any = "",
     evidence_quote: Any = "",
-) -> dict[str, Any] | None:
+) -> dict[str, str] | None:
     raw_name = _text(name)
     if not raw_name:
         return None
@@ -104,13 +104,13 @@ def _entity(
     }
 
 
-def _dedupe_entities(items: list[dict[str, Any] | None]) -> list[dict[str, Any]]:
+def _dedupe_entities(items: list[dict[str, str] | None]) -> list[dict[str, str]]:
     seen: set[tuple[str, str]] = set()
-    out: list[dict[str, Any]] = []
+    out: list[dict[str, str]] = []
     for item in items:
-        if not item:
+        if item is None:
             continue
-        key = (_text(item.get("type")) or "unknown", _text(item.get("normalized_name")) or _text(item.get("name")))
+        key = (item["type"], item["normalized_name"])
         if key in seen:
             continue
         seen.add(key)
@@ -180,7 +180,7 @@ def _service_item_event(doc: Document, meta: dict[str, Any], index: int) -> dict
     ]
     summary = "；".join(bit for bit in summary_bits if bit) or _clamp(content, 240)
 
-    entities: list[dict[str, Any] | None] = [
+    entities: list[dict[str, str] | None] = [
         _entity(service_name, "ServiceItem", role="subject", description=summary, evidence_quote=service_name),
         _entity(district, "District", role="district"),
         _entity(meta.get("knowledge_section"), "GovKnowledgeSection", role="knowledge_section"),
@@ -231,7 +231,7 @@ def _qa_event(doc: Document, meta: dict[str, Any], index: int) -> dict[str, Any]
     urls = meta.get("urls") if isinstance(meta.get("urls"), list) else []
     if service_url:
         urls = [*urls, service_url]
-    entities: list[dict[str, Any] | None] = [
+    entities: list[dict[str, str] | None] = [
         _entity(question, "Question", role="subject", description=answer, evidence_quote=question),
         _entity(department, "Department", role="source_department"),
         _entity(district, "District", role="district"),
@@ -281,7 +281,7 @@ def _one_thing_event(doc: Document, meta: dict[str, Any], index: int) -> dict[st
     materials = meta.get("materials") if isinstance(meta.get("materials"), list) else []
     operation_steps = meta.get("operation_steps") if isinstance(meta.get("operation_steps"), list) else []
     urls = meta.get("urls") if isinstance(meta.get("urls"), list) else []
-    entities: list[dict[str, Any] | None] = [
+    entities: list[dict[str, str] | None] = [
         _entity(
             case_title, "OneThingCase", role="subject", description=_clamp(content, 240), evidence_quote=case_title
         ),

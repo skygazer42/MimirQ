@@ -8,9 +8,7 @@ export const PIPELINE_ROUTE_PREFIXES = [
 ] as const
 
 function matchesPipelinePrefix(pathname: string): boolean {
-  return PIPELINE_ROUTE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  )
+  return PIPELINE_ROUTE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
 }
 
 export function normalizePipelinePathname(pathname: string): string {

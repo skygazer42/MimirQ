@@ -9,7 +9,6 @@ Targets `git log` / `git show` like text with repeated commit headers:
 The chunker splits by commit blocks and preserves offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -146,7 +145,7 @@ def _split_commit_section_docs(
 
 
 class GitCommitLogChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

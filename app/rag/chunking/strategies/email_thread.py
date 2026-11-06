@@ -140,7 +140,7 @@ def _has_plausible_header_block(text: str, start: int) -> bool:
     # Require at least From + (Subject/To) for stability.
     has_from = any(k in {"from", "发件人"} for k in keys)
     has_subject_or_to = any(k in {"subject", "主题", "to", "收件人"} for k in keys)
-    return bool(has_from and has_subject_or_to)
+    return has_from and has_subject_or_to
 
 
 def _extract_headers(message_text: str) -> dict[str, str]:
@@ -223,7 +223,7 @@ def looks_like_email_thread(text: str) -> bool:
     head = (text or "")[:50000]
     has_sep = any(_looks_like_thread_separator_line(ln) for ln in head.splitlines())
     has_headers = _count_header_lines(head.splitlines()[:120]) >= 3
-    return bool(has_sep and has_headers)
+    return has_sep and has_headers
 
 
 def _split_email_fallback_docs(
@@ -281,7 +281,7 @@ def _build_email_chunk(
     meta["chunk_strategy"] = "email_thread"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["email_message_count"] = int(end_idx - start_idx)
+    meta["email_message_count"] = end_idx - start_idx
     if subjects:
         meta["email_subjects"] = subjects
     if froms:
@@ -307,7 +307,7 @@ def _next_email_start(msgs: list[_Message], start_idx: int, end_idx: int, chunk_
 
 
 class EmailThreadChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

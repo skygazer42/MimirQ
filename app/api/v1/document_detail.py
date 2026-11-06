@@ -1,4 +1,3 @@
-import uuid
 from typing import Annotated
 from uuid import UUID
 
@@ -9,12 +8,13 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail
 from app.core.database import get_db
+from app.core.pipeline_versions import resolve_doc_pipeline_key
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.document_access_service import assert_document_acl_readable
-from app.services.document_runtime_metadata import attach_runtime_document_metadata
+from app.services.document_metadata_service import attach_runtime_document_metadata
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -31,7 +31,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 @router.get("/{document_id}", response_model=DocumentDetail, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def get_document(
-    document_id: uuid.UUID,
+    document_id: UUID,
     include_chunks: bool = False,
     pipeline_hash: Annotated[
         str | None,
@@ -48,11 +48,11 @@ def get_document(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> DBDocument:
     """
     Get document detail.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     query = db.query(DBDocument).filter(
         DBDocument.id == document_id,
         DBDocument.tenant_id == tenant_id,
@@ -64,8 +64,8 @@ def get_document(
 
     dataset: Dataset | None = None
     if document.dataset_id:
-        dataset = DatasetService.get_dataset(db, tenant_id, document.dataset_id)
-        DatasetService.assert_dataset_readable(db, dataset, account_id)
+        dataset = dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
 
     if include_chunks:
@@ -75,11 +75,9 @@ def get_document(
         )
 
         if not all_versions:
-            from app.core.pipeline_versions import resolve_doc_pipeline_key
-
             target_key = resolve_doc_pipeline_key(
                 document_id,
-                getattr(document, "doc_metadata", None),
+                document.doc_metadata,
                 pipeline_hash,
                 all_versions=all_versions,
             )

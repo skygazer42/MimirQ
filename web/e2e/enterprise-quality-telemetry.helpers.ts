@@ -58,7 +58,7 @@ export async function installCommonApiMocks(page: Page, state: EnterpriseTelemet
 
     if (pathname === '/api/v1/meta' && method === 'GET') {
       return fulfillJson(route, {
-        name: 'MimirQ API',
+        name: 'Ragvia API',
         api_version: 'e2e',
         build: { sha: 'e2e1234' },
         features: {

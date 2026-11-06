@@ -1,4 +1,3 @@
-
 import re
 from typing import Any
 
@@ -39,8 +38,8 @@ def apply_retrieval_rail(
     return {
         "docs": kept,
         "meta": {
-            "blocked_docs": int(blocked_docs),
-            "masked_docs": int(masked_docs),
+            "blocked_docs": blocked_docs,
+            "masked_docs": masked_docs,
             "used": bool(blocked_docs or masked_docs),
         },
     }

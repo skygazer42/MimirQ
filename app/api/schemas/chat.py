@@ -27,16 +27,13 @@ FUSION_CHANNELS = {"vector", "bm25", "lexical", "sparse"}
 class _FloatFusionRule:
     field_name: str
     key_error: str
-    value_error: str
     min_value: float
     max_value: float
 
 
-def _clean_int_fusion_map(raw: Any, *, field_name: str) -> dict[str, int] | None:
+def _clean_int_fusion_map(raw: dict[str, int] | None, *, field_name: str) -> dict[str, int] | None:
     if raw is None:
         return None
-    if not isinstance(raw, dict):
-        raise ValueError(f"{field_name} must be an object/dict when provided")
     cleaned: dict[str, int] = {}
     for k, v in raw.items():
         key = str(k or "").strip().lower()
@@ -44,25 +41,19 @@ def _clean_int_fusion_map(raw: Any, *, field_name: str) -> dict[str, int] | None
             continue
         if key not in FUSION_CHANNELS:
             raise ValueError(f"{field_name} keys must be in: vector, bm25, lexical, sparse")
-        try:
-            iv = int(v) if v is not None else 0
-        except Exception as exc:  # noqa: BLE001
-            raise ValueError(f"{field_name}[{key}] must be an int") from exc
-        if iv < 0 or iv > 200:
+        if v < 0 or v > 200:
             raise ValueError(f"{field_name} values must be between 0 and 200")
-        cleaned[key] = iv
+        cleaned[key] = v
     return cleaned or None
 
 
 def _clean_float_fusion_map(
-    raw: Any,
+    raw: dict[str, float] | None,
     *,
     rule: _FloatFusionRule,
 ) -> dict[str, float] | None:
     if raw is None:
         return None
-    if not isinstance(raw, dict):
-        raise ValueError(f"{rule.field_name} must be an object/dict when provided")
     cleaned: dict[str, float] = {}
     for k, v in raw.items():
         key = str(k or "").strip().lower()
@@ -70,10 +61,7 @@ def _clean_float_fusion_map(
             continue
         if key not in FUSION_CHANNELS:
             raise ValueError(rule.key_error)
-        try:
-            fv = float(v) if v is not None else 0.0
-        except Exception as exc:  # noqa: BLE001
-            raise ValueError(rule.value_error) from exc
+        fv = v
         if fv < rule.min_value or fv > rule.max_value:
             raise ValueError(f"{rule.field_name} values must be between {rule.min_value:.1f} and {rule.max_value:.1f}")
         cleaned[key] = fv
@@ -89,16 +77,16 @@ def _profile_from_mode(mode: str) -> str:
 
 
 def _retrieval_knobs_appear_omitted(config: Any) -> bool:
-    default_top_k = int(getattr(settings, "RETRIEVAL_TOP_K", 10) or 10)
-    default_score_threshold = float(getattr(settings, "SIMILARITY_THRESHOLD", 0.0) or 0.0)
-    default_reranker_provider = str(getattr(settings, "RERANKER_PROVIDER", "") or "").strip().lower()
+    default_top_k = int(settings.RETRIEVAL_TOP_K or 10)
+    default_score_threshold = float(settings.SIMILARITY_THRESHOLD or 0.0)
+    default_reranker_provider = str(settings.RERANKER_PROVIDER or "").strip().lower()
     return (
         int(config.top_k or 0) == int(default_top_k)
         and abs(float(config.score_threshold or 0.0) - float(default_score_threshold)) <= 1e-9
         and str(config.retrieval_mode or "").strip().lower() == "hybrid"
-        and bool(config.enable_reranker) is bool(getattr(settings, "ENABLE_RERANKER", False))
+        and bool(config.enable_reranker) is bool(settings.ENABLE_RERANKER)
         and str(config.reranker_provider or "").strip().lower() == default_reranker_provider
-        and int(config.reranker_top_n or 0) == int(getattr(settings, "RERANKER_TOP_N", 20) or 20)
+        and int(config.reranker_top_n or 0) == int(settings.RERANKER_TOP_N or 20)
         and bool(config.enable_weight_rerank) is True
     )
 
@@ -106,7 +94,7 @@ def _retrieval_knobs_appear_omitted(config: Any) -> bool:
 def _default_profile_for_omitted_knobs(config: Any) -> str:
     if not _retrieval_knobs_appear_omitted(config):
         return ""
-    return str(getattr(settings, "CHAT_DEFAULT_RETRIEVAL_PROFILE", "") or "").strip().lower()
+    return str(settings.CHAT_DEFAULT_RETRIEVAL_PROFILE or "").strip().lower()
 
 
 def _apply_profile_value_overrides(config: Any, applied: dict[str, Any]) -> None:
@@ -177,6 +165,7 @@ class Citation(BaseModel):
     rerank_score: float | None = None
     retrieval_score: float | None = None
     reranker_provider: str | None = None
+
     rerank_elapsed_sec: float | None = None
     rerank_model_used: str | None = None
     retrieval_mode: str | None = None
@@ -200,7 +189,7 @@ class MessageSchema(OrmModel):
     id: UUID
     role: str  # user | assistant
     content: str
-    citations: list[Citation] = []
+    citations: list[Citation] = Field(default_factory=list)
     message_metadata: dict[str, Any] | None = None
     created_at: datetime
 
@@ -368,7 +357,7 @@ class ChatRAGConfig(BaseModel):
     retrieval_overfetch_multiplier: int | None = Field(default=None, ge=1, le=20)
     retrieval_overfetch_max_k: int | None = Field(default=None, ge=1, le=500)
     sparse_retrieval_enabled: bool | None = None
-    sparse_retrieval_provider: Literal["deterministic", "splade"] | None = None
+    sparse_retrieval_provider: Literal["deterministic"] | None = None
 
     enable_weight_rerank: bool = True
     vector_weight: float = Field(default=0.6, ge=0.0, le=1.0)
@@ -377,6 +366,15 @@ class ChatRAGConfig(BaseModel):
 
     enable_reranker: bool = Field(default_factory=lambda: settings.ENABLE_RERANKER)  # optional: LLM/API rerank
     reranker_provider: str = Field(default_factory=lambda: settings.RERANKER_PROVIDER)  # llm | pc | none
+
+    @field_validator("reranker_provider")
+    @classmethod
+    def _validate_reranker_execution(cls, value: str) -> str:
+        from app.core.model_execution import reject_retired_model_provider
+
+        reject_retired_model_provider(value, capability="reranker")
+        return value
+
     reranker_top_n: int = Field(default_factory=lambda: settings.RERANKER_TOP_N, ge=1, le=200)
 
     # LangGraph path toggles
@@ -493,7 +491,6 @@ class ChatRAGConfig(BaseModel):
             rule=_FloatFusionRule(
                 field_name="fusion_min_scores",
                 key_error="fusion_min_scores keys must be in: vector, bm25, lexical, sparse",
-                value_error="fusion_min_scores values must be floats",
                 min_value=0.0,
                 max_value=1.0,
             ),
@@ -504,11 +501,9 @@ class ChatRAGConfig(BaseModel):
     def _validate_fusion_weights(self) -> "ChatRAGConfig":
         allowed = {"vector", "bm25", "lexical", "sparse"}
 
-        fw = getattr(self, "fusion_weights", None)
+        fw = self.fusion_weights
         if fw is None:
             return self
-        if not isinstance(fw, dict):
-            raise ValueError("fusion_weights must be an object/dict when provided")
 
         cleaned: dict[str, float] = {}
         for k, v in fw.items():
@@ -517,13 +512,10 @@ class ChatRAGConfig(BaseModel):
                 continue
             if key not in allowed:
                 raise ValueError("fusion_weights keys must be one of: vector, bm25, lexical, sparse")
-            try:
-                w = float(v)
-            except Exception as exc:
-                raise ValueError("fusion_weights values must be numbers") from exc
+            w = v
             if w < 0.0 or w > 1.0:
                 raise ValueError("fusion_weights values must be in [0,1]")
-            cleaned[key] = float(w)
+            cleaned[key] = w
 
         if not cleaned:
             raise ValueError("fusion_weights must have at least one non-empty key")
@@ -541,8 +533,8 @@ class ChatRAGConfig(BaseModel):
         """
         if not bool(self.enable_weight_rerank):
             return self
-        v = float(self.vector_weight or 0.0)
-        k = float(self.keyword_weight or 0.0)
+        v = self.vector_weight
+        k = self.keyword_weight
         total = v + k
         if total <= 0.0:
             raise ValueError("vector_weight + keyword_weight must be > 0 when enable_weight_rerank=true")
@@ -588,9 +580,17 @@ class ChatRAGConfig(BaseModel):
             visible_evidence_only=self.visible_evidence_only,
         )
         _apply_profile_value_overrides(self, applied)
-        if default_profile_applied and bool(getattr(settings, "CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY", False)):
+        if default_profile_applied and bool(settings.CHAT_DEFAULT_VISIBLE_EVIDENCE_ONLY):
             self.visible_evidence_only = True
         return self
+
+    @field_validator("retrieval_profile")
+    @classmethod
+    def _validate_profile_execution(cls, value: str | None) -> str | None:
+        from app.core.model_execution import reject_retired_retrieval_profile
+
+        reject_retired_retrieval_profile(value)
+        return value
 
 
 class ChatRequest(BaseModel):
@@ -635,14 +635,14 @@ class TokenUsage(BaseModel):
         For estimate-only usage, callers may provide only `total_tokens`; in that case treat it
         as completion-only (prompt=0, completion=total).
         """
-        fields_set = getattr(self, "model_fields_set", set())
+        fields_set = self.model_fields_set
         prompt_set = "prompt_tokens" in fields_set
         completion_set = "completion_tokens" in fields_set
         total_set = "total_tokens" in fields_set
 
-        prompt_tokens = int(self.prompt_tokens or 0)
-        completion_tokens = int(self.completion_tokens or 0)
-        total_tokens = int(self.total_tokens or 0)
+        prompt_tokens = self.prompt_tokens
+        completion_tokens = self.completion_tokens
+        total_tokens = self.total_tokens
 
         if total_set and not prompt_set and not completion_set:
             self.prompt_tokens = 0
@@ -661,7 +661,7 @@ class TokenUsage(BaseModel):
                 self.prompt_tokens = inferred_prompt
                 return self
 
-        self.total_tokens = int(self.prompt_tokens or 0) + int(self.completion_tokens or 0)
+        self.total_tokens = self.prompt_tokens + self.completion_tokens
         return self
 
 

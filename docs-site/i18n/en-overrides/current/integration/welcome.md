@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Integration & E2E Overview
 
-This section starts from **"How to integrate MimirQ into your environment"** and complements the Frontend / Backend / Ops documentation: those cover pages and implementation details, while this section focuses on **business outcomes, recommended paths, and contract entry points**.
+This section starts from **"How to integrate Ragvia into your environment"** and complements the Frontend / Backend / Ops documentation: those cover pages and implementation details, while this section focuses on **business outcomes, recommended paths, and contract entry points**.
 
 ## Integration Architecture Overview
 
@@ -69,7 +69,7 @@ sequenceDiagram
 
 ### Contract Layer: Are fields, permissions, and coverage consistent?
 
-- **Human & machine-readable contracts**: [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) | [FE/BE Debugging](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md)
+- **Human & machine-readable contracts**: [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md) | [FE/BE Debugging](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md)
 - **Full Schema / try calls**: [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/)
 - **Frontend route - Backend path matrix**: [FE/BE Matrix (generated)](./generated/fe-be-matrix)
 
@@ -88,7 +88,7 @@ sequenceDiagram
 ## Authentication Flow Overview
 
 :::info Authentication Methods
-MimirQ supports three authentication methods, in order of priority:
+Ragvia supports three authentication methods, in order of priority:
 
 1. **JWT Bearer Token** -- `Authorization: Bearer <token>`, suitable for frontend and OAuth integrations
 2. **API Key** -- `X-API-Key: <key>`, suitable for service-to-service calls and automation scripts
@@ -106,8 +106,8 @@ Articles on this site focus on **navigation and synthesis**; in-depth long-form 
 | Type | Link |
 | --- | --- |
 | Redoc | [skygazer42.github.io/MimirQ](https://skygazer42.github.io/MimirQ/) |
-| Scenario-based API Sequences | [workflows.md](https://github.com/skygazer42/MimirQ/blob/main/docs/api/workflows.md) |
-| Contracts & Debugging | [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/API_CONTRACT.md) | [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/main/docs/integration/FE_BE_DEBUG.md) |
+| Scenario-based API Sequences | [workflows.md](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/api/workflows.md) |
+| Contracts & Debugging | [API_CONTRACT](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/API_CONTRACT.md) | [FE_BE_DEBUG](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/docs/integration/FE_BE_DEBUG.md) |
 | Backend Handbook | [Backend Overview](../backend/welcome) |
 | Frontend Handbook | [Frontend Overview](../frontend/welcome) |
 | Operations Handbook | [Operations Overview](../ops/welcome) |

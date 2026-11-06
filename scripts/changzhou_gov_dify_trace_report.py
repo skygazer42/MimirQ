@@ -24,6 +24,11 @@ _FALLBACK_ANSWER_MARKERS = (
 )
 _REQUEST_ATTEMPTS = 3
 _CITY_AREA_NAMES = {"常州市本级", "常州市", "常州全市", "全市"}
+_CONSOLE_LOGIN_HINT = (
+    "Refresh Dify console login with "
+    "DIFY_CONSOLE_EMAIL=<email> DIFY_CONSOLE_PASSWORD_FILE=/tmp/dify_console_password.txt "
+    "make dify-console-login."
+)
 
 
 def _text(value: Any) -> str:
@@ -32,6 +37,19 @@ def _text(value: Any) -> str:
 
 def _utc_now_text() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _format_cli_error(exc: Exception) -> str:
+    message = str(exc)
+    lowered = message.lower()
+    if "http 401" in lowered or "token has expired" in lowered or "unauthorized" in lowered:
+        return f"{message}\nHINT: {_CONSOLE_LOGIN_HINT}"
+    return message
+
+
+def _emit_progress(progress_fn: ProgressFn | None, payload: dict[str, Any]) -> None:
+    if progress_fn is not None:
+        progress_fn(payload)
 
 
 def _is_fallback_answer(answer: str) -> bool:

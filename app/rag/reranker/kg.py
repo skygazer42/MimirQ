@@ -1,10 +1,9 @@
-
 from collections.abc import Sequence
 from typing import Any
 
 from app.rag.kg.search.config import RerankStrategy, SearchConfig
-from app.rag.kg.search.ranking.pagerank import RerankPageRankSearcher
-from app.rag.kg.search.ranking.rrf import RerankRRFSearcher
+from app.rag.kg.search.ranking.pagerank import rerank as rerank_pagerank
+from app.rag.kg.search.ranking.rrf import rerank as rerank_rrf
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
@@ -12,10 +11,8 @@ from app.rag.reranker.types import RerankCandidate, RerankResult
 class KGReranker(BaseReranker):
     """Knowledge Graph Reranker: reranking based on graph algorithms (PageRank/RRF)"""
 
-    def __init__(self, strategy: RerankStrategy):
+    def __init__(self, strategy: RerankStrategy) -> None:
         self.strategy = strategy
-        self._rrf = RerankRRFSearcher()
-        self._pagerank = RerankPageRankSearcher()
 
     def rerank(
         self,
@@ -28,10 +25,7 @@ class KGReranker(BaseReranker):
 
         Note: KG Reranker is asynchronous, please use the arerank_kg() method.
         """
-        raise NotImplementedError(
-            "KGReranker only supports async operations. "
-            "Please use arerank_kg() method instead."
-        )
+        raise NotImplementedError("KGReranker only supports async operations. Please use arerank_kg() method instead.")
 
     async def arerank_kg(
         self,
@@ -50,7 +44,7 @@ class KGReranker(BaseReranker):
             return RerankResult(ordered_ids=[], score_map={})
 
         if self.strategy == RerankStrategy.PAGERANK:
-            result = await self._pagerank.rerank(
+            result = await rerank_pagerank(
                 config,
                 event_ids,
                 key_final or [],
@@ -60,7 +54,7 @@ class KGReranker(BaseReranker):
             )
             provider = "pagerank"
         else:
-            result = await self._rrf.rerank(
+            result = await rerank_rrf(
                 config,
                 event_ids,
                 event_scores,
@@ -72,9 +66,7 @@ class KGReranker(BaseReranker):
 
         items = list(result.get("events", []))
         score_map = {
-            str(item.get("id")): float(item.get("score", 0.0) or 0.0)
-            for item in items
-            if item.get("id") is not None
+            str(item.get("id")): float(item.get("score", 0.0) or 0.0) for item in items if item.get("id") is not None
         }
         ordered_ids = [str(item.get("id")) for item in items if item.get("id") is not None]
 

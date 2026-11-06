@@ -148,7 +148,7 @@ def _compute_must_recall_pass_rate(run: dict[str, Any]) -> tuple[float | None, i
             passed_flag = status in {"passed", "partial_miss_recovered"}
         if passed_flag:
             passed += 1
-    return float(passed) / float(total), int(passed), int(total)
+    return float(passed) / float(total), passed, total
 
 
 def _capsule_is_valid(
@@ -256,7 +256,7 @@ def _compute_provenance_integrity_rate(
             require_signature=bool(require_signature),
         ):
             passed += 1
-    return float(passed) / float(total), int(passed), int(total)
+    return float(passed) / float(total), passed, total
 
 
 def run_gate(
@@ -295,13 +295,13 @@ def run_gate(
             "require_signature": bool(require_signature),
         },
         "summary": {
-            "total_cases": max(int(total_cases), int(provenance_total)),
-            "must_recall_passed_cases": int(must_recall_passed),
+            "total_cases": max(total_cases, provenance_total),
+            "must_recall_passed_cases": must_recall_passed,
             "must_recall_pass_rate": must_recall_rate,
-            "provenance_passed_cases": int(provenance_passed),
+            "provenance_passed_cases": provenance_passed,
             "provenance_integrity_rate": provenance_rate,
         },
-        "passed": bool(len(failures) == 0),
+        "passed": len(failures) == 0,
         "failures": failures,
     }
 

@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -10,10 +9,10 @@ def evaluate_tenant_token_quota(
     mode: str = "warn",
     warning_ratio: float = 0.9,
 ) -> dict[str, Any]:
-    limit = max(0, int(monthly_token_limit or 0))
-    used = max(0, int(monthly_token_used or 0))
-    warning_ratio = max(0.0, min(1.0, float(warning_ratio or 0.0)))
-    mode_norm = str(mode or "warn").strip().lower() or "warn"
+    limit = max(0, monthly_token_limit)
+    used = max(0, monthly_token_used)
+    warning_ratio = max(0.0, min(1.0, warning_ratio))
+    mode_norm = mode.strip().lower() or "warn"
 
     status = "ok"
     if limit > 0 and used >= limit:
@@ -24,14 +23,14 @@ def evaluate_tenant_token_quota(
     remaining = max(0, limit - used) if limit > 0 else 0
     return {
         "schema": "mimirq.tenant_token_quota.v1",
-        "tenant_id": str(tenant_id or "").strip(),
-        "monthly_token_limit": int(limit),
-        "monthly_token_used": int(used),
-        "remaining_tokens": int(remaining),
+        "tenant_id": tenant_id.strip(),
+        "monthly_token_limit": limit,
+        "monthly_token_used": used,
+        "remaining_tokens": remaining,
         "status": status,
-        "hard_block": bool(status == "block"),
+        "hard_block": status == "block",
         "mode": mode_norm,
-        "warning_ratio": float(round(warning_ratio, 4)),
+        "warning_ratio": round(warning_ratio, 4),
     }
 
 

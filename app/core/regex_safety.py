@@ -88,11 +88,6 @@ def looks_like_nested_quantifier(pattern: str) -> bool:
     return False
 
 
-def _has_suspicious_nested_quantifier(pattern: str) -> bool:
-    # Backwards-compatible private alias used by validate_regex_rules.
-    return looks_like_nested_quantifier(pattern)
-
-
 @dataclass(frozen=True)
 class RegexRuleViolation:
     index: int
@@ -114,7 +109,7 @@ class RegexRulesValidationError(ValueError):
         return {
             "code": "regex_rules_invalid",
             "message": str(self) or "regex rules invalid",
-            "errors": [asdict(e) for e in (self._errors or [])],
+            "errors": [asdict(e) for e in self._errors],
         }
 
 
@@ -131,7 +126,7 @@ def _rules_sequence(rules: Any, *, max_rules: int) -> list[Any]:
             errors=[RegexRuleViolation(index=-1, field="rules", code="type", message="expected list")],
         )
     items = list(rules)
-    limit = max(0, int(max_rules or 0))
+    limit = max(0, max_rules or 0)
     if limit and len(items) > limit:
         raise RegexRulesValidationError(
             f"too many regex rules (max={limit})",
@@ -149,14 +144,14 @@ def _validate_pattern(index: int, raw_pattern: Any, *, max_pattern_len: int) -> 
             code="required",
             message="pattern is required",
         )
-    if max_pattern_len and len(pattern) > int(max_pattern_len):
+    if max_pattern_len and len(pattern) > max_pattern_len:
         return pattern, RegexRuleViolation(
             index=index,
             field="pattern",
             code="too_long",
-            message=f"max_len={int(max_pattern_len)}",
+            message=f"max_len={max_pattern_len}",
         )
-    if _has_suspicious_nested_quantifier(pattern):
+    if looks_like_nested_quantifier(pattern):
         return pattern, RegexRuleViolation(
             index=index,
             field="pattern",
@@ -170,12 +165,12 @@ def _validate_replacement(
     index: int, raw_replacement: Any, *, max_repl_len: int
 ) -> tuple[str, RegexRuleViolation | None]:
     replacement = str(raw_replacement or "")
-    if max_repl_len and len(replacement) > int(max_repl_len):
+    if max_repl_len and len(replacement) > max_repl_len:
         return replacement, RegexRuleViolation(
             index=index,
             field="repl",
             code="too_long",
-            message=f"max_len={int(max_repl_len)}",
+            message=f"max_len={max_repl_len}",
         )
     return replacement, None
 
@@ -197,7 +192,7 @@ def _validate_flags(index: int, raw_flags: Any, *, allowed_flag_bits: int) -> tu
             code="invalid",
             message="flags must be >= 0",
         )
-    if int(allowed_flag_bits) and (flags & ~int(allowed_flag_bits)):
+    if allowed_flag_bits and (flags & ~allowed_flag_bits):
         return flags, RegexRuleViolation(
             index=index,
             field="flags",

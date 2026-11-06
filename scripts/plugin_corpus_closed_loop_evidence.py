@@ -138,7 +138,7 @@ def _case_count(golden: dict[str, Any]) -> int:
     if case_ids:
         return len(case_ids)
     counts = _import_counts(golden)
-    return int(counts["created"] + counts["updated"] + counts["skipped"])
+    return counts["created"] + counts["updated"] + counts["skipped"]
 
 
 def _corpus_failed_checks(summary: dict[str, int], documents: list[Any]) -> list[str]:
@@ -433,12 +433,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         evidence = build_evidence(
             args.input,
-            min_expected_metadata_hit_rate=float(args.min_expected_metadata_hit_rate),
-            min_expected_metadata_recall=float(args.min_expected_metadata_recall),
-            min_retrieval_recall=float(args.min_retrieval_recall),
-            min_retrieval_hit_at_3=float(args.min_retrieval_hit_at_3),
-            min_citation_accuracy=float(args.min_citation_accuracy),
-            min_citation_coverage=float(args.min_citation_coverage),
+            min_expected_metadata_hit_rate=args.min_expected_metadata_hit_rate,
+            min_expected_metadata_recall=args.min_expected_metadata_recall,
+            min_retrieval_recall=args.min_retrieval_recall,
+            min_retrieval_hit_at_3=args.min_retrieval_hit_at_3,
+            min_citation_accuracy=args.min_citation_accuracy,
+            min_citation_coverage=args.min_citation_coverage,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-corpus-closed-loop-evidence] ERROR: {exc}", file=sys.stderr)

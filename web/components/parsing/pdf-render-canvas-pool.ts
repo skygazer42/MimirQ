@@ -1,6 +1,6 @@
 export const MAX_RETAINED_PAGE_CANVASES = 6
 
-interface SelectPdfPagesToReleaseForPoolOptions {
+type SelectPdfPagesToReleaseForPoolOptions = {
   renderedPages: Iterable<number>
   keepPage: number
   maxRetainedPages?: number

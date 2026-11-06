@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Backend Handbook Overview
 
-This handbook is for **backend developers, architects, and integration engineers**, helping you quickly understand MimirQ backend's module boundaries, API contracts, and internal flows. Use [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) as the authoritative Schema reference; this handbook focuses on **navigation indexes, state-machine descriptions, and troubleshooting guides**.
+This handbook is for **backend developers, architects, and integration engineers**, helping you quickly understand Ragvia backend's module boundaries, API contracts, and internal flows. Use [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) as the authoritative Schema reference; this handbook focuses on **navigation indexes, state-machine descriptions, and troubleshooting guides**.
 
 ## Tech Stack
 

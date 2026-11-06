@@ -7,6 +7,13 @@ type OperationResult = {
   payload: unknown
 }
 
+type OperationResultPanelProps = {
+  title: string
+  result: OperationResult | null
+  emptyMessage: string
+  className?: string
+}
+
 function prettyJson(value: unknown) {
   try {
     return JSON.stringify(value, null, 2)
@@ -15,17 +22,7 @@ function prettyJson(value: unknown) {
   }
 }
 
-export function OperationResultPanel({
-  title,
-  result,
-  emptyMessage,
-  className,
-}: Readonly<{
-  title: string
-  result: OperationResult | null
-  emptyMessage: string
-  className?: string
-}>) {
+export function OperationResultPanel({ title, result, emptyMessage, className }: Readonly<OperationResultPanelProps>) {
   return (
     <div className={cn('rounded-lg border border-border/60 bg-muted/20 p-3', className)}>
       <div className="text-xs font-semibold text-foreground">{result?.title || title}</div>

@@ -7,7 +7,6 @@ Provides a reference implementation of `@wrap_tool_call`:
 - Optionally emits JSONL metrics via `log_metrics` (guarded by settings)
 """
 
-
 import asyncio
 import time
 from collections.abc import Callable
@@ -130,7 +129,7 @@ class ToolCallLoggingMiddleware:
 
         if asyncio.iscoroutinefunction(func):
 
-            async def async_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
+            async def async_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
                 tool_name = str(state.get("tool_name") or "")
                 arg_keys = sorted((state.get("arguments") or {}).keys())
                 t0 = time.time()
@@ -166,7 +165,7 @@ class ToolCallLoggingMiddleware:
 
             return async_wrapper
 
-        def sync_wrapper(state: dict[str, Any], *args, **kwargs) -> dict[str, Any]:
+        def sync_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
             tool_name = str(state.get("tool_name") or "")
             arg_keys = sorted((state.get("arguments") or {}).keys())
             t0 = time.time()
@@ -195,9 +194,9 @@ class ToolCallLoggingMiddleware:
 
 @wrap_tool_call(priority=50, name="tool_call_logging")
 def _tool_call_logging_wrapper(func: Callable) -> Callable:
-    enabled = bool(getattr(settings, "TOOL_CALL_LOG_ENABLED", False))
-    include_preview = bool(getattr(settings, "TOOL_CALL_LOG_INCLUDE_PREVIEW", False))
-    max_chars = int(getattr(settings, "TOOL_CALL_LOG_MAX_PREVIEW_CHARS", 500) or 500)
+    enabled = settings.TOOL_CALL_LOG_ENABLED
+    include_preview = settings.TOOL_CALL_LOG_INCLUDE_PREVIEW
+    max_chars = settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS or 500
     if not enabled:
         return func
     return ToolCallLoggingMiddleware(

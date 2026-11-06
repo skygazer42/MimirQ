@@ -2,7 +2,10 @@
 
 import threading
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from redis import Redis
 
 
 class LazyRedisClient:
@@ -26,15 +29,15 @@ class LazyRedisClient:
         self._strip_url = strip_url
         self._suppress_errors = suppress_errors
         self._on_error = on_error
-        self._client: Any | None = None
+        self._client: "Redis | None" = None
         self._lock = threading.Lock()
 
     def _resolve_url(self) -> str:
         value = self._url() if callable(self._url) else self._url
-        resolved = str(value or "")
+        resolved = value or ""
         return resolved.strip() if self._strip_url else resolved
 
-    def get(self) -> Any | None:
+    def get(self) -> "Redis | None":
         if self._client is not None:
             return self._client
         if not self._enabled():

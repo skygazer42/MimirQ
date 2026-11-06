@@ -5,12 +5,12 @@ sidebar_position: 2
 
 # From `.env` to the first login
 
-The repository [`.env.example`](https://github.com/skygazer42/MimirQ/blob/main/.env.example) is the authoritative settings reference.
+The repository [`.env.example`](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/.env.example) is the authoritative settings reference.
 
 ## 1. Initialize configuration
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```

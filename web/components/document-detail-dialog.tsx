@@ -3,11 +3,23 @@
  */
 'use client'
 
-import { startTransition, useActionState, useCallback, useEffect, useId, useMemo, useOptimistic, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react'
+import {
+  startTransition,
+  useActionState,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from 'react'
 import { useFormStatus } from 'react-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { Calendar, Database, Download, Eye, FileType, Hash, Loader2, Shield } from 'lucide-react'
+import { Calendar, Download, Eye, Hash, Loader2, Shield } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 
@@ -21,8 +33,10 @@ import { DocumentDetailTagsPanel } from '@/components/document-detail-dialog/doc
 import { DocumentVersionsDialog } from '@/components/document-detail-dialog/document-versions-dialog'
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { IconButton } from '@/components/ui/icon-button'
+import { FileTypeIcon } from '@/components/ui/file-type-icon'
 import { StatusBadge, type StatusBadgeStatus } from '@/components/ui/status-badge'
-import { documentApi, kgApi } from '@/lib/api'
+import { documentApi } from '@/lib/api/documents'
+import { kgApi } from '@/lib/api/graph'
 import { formatApiError } from '@/lib/api-errors'
 import { reportClientError, reportClientWarning } from '@/lib/client-logging'
 import { getChunkStrategyLabel } from '@/lib/chunk-strategies'
@@ -30,6 +44,7 @@ import { buildTagsPatch, getUserTagsFromDocument, normalizeTags } from '@/lib/do
 import { getParserLabel } from '@/lib/parser-options'
 import { toTrimmedPrimitiveString } from '@/lib/primitive-text'
 import { queryKeys } from '@/lib/query-keys'
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 import { formatDate, formatFileSize, detachPromise } from '@/lib/utils'
 import type {
   Document,
@@ -41,7 +56,7 @@ import type {
   DocumentVersionList,
 } from '@/types'
 
-interface DocumentDetailDialogProps {
+type DocumentDetailDialogProps = {
   document: Document
   trigger?: ReactNode
 }
@@ -51,7 +66,7 @@ const ACTIVE_PIPELINE_VALUE = '__active__'
 const CHUNK_PAGE_SIZE = 200
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 type SaveActionState = 'idle' | 'skipped' | 'saved' | 'failed'
-type DocumentPublicationStatus = 'draft' | 'published' | 'deprecated'
+type DocumentPublicationStatus = Document['publication_status']
 type LifecycleDraftValues = {
   publicationStatus: DocumentPublicationStatus
   owner: string
@@ -60,11 +75,8 @@ type LifecycleDraftValues = {
   supersedesDocumentId: string
 }
 type LifecycleValidationKey =
-  | 'validation.supersedesUuid'
-  | 'validation.authorityInteger'
-  | 'validation.authorityRange'
-  | 'validation.reviewDueAt'
-type AccessModeFormValue = FormDataEntryValue | string | null | undefined
+  'validation.supersedesUuid' | 'validation.authorityInteger' | 'validation.authorityRange' | 'validation.reviewDueAt'
+type FormFieldValue = FormDataEntryValue | null | undefined
 type DocumentMetadataRecord = Record<string, unknown>
 type DocumentPipelineMetadata = DocumentMetadataRecord & {
   parser_backend_requested?: string
@@ -76,7 +88,7 @@ type DocumentPipelineMetadata = DocumentMetadataRecord & {
   pipeline_hash?: string
 }
 
-function formString(value: AccessModeFormValue, fallback = ''): string {
+function formString(value: FormFieldValue, fallback = ''): string {
   return typeof value === 'string' ? value : fallback
 }
 
@@ -119,7 +131,7 @@ function toDatetimeLocalValue(value: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
-function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
+function normalizeAccessMode(value: FormFieldValue): DocumentAccessMode {
   const normalized = formString(value).trim()
   switch (normalized) {
     case 'inherit':
@@ -132,7 +144,7 @@ function normalizeAccessMode(value: AccessModeFormValue): DocumentAccessMode {
   }
 }
 
-function parseStringArrayField(value: FormDataEntryValue | string | null | undefined): string[] {
+function parseStringArrayField(value: FormFieldValue): string[] {
   let parsed: unknown = []
   try {
     parsed = JSON.parse(formString(value, '[]'))
@@ -155,14 +167,14 @@ function parseStringArrayField(value: FormDataEntryValue | string | null | undef
   return out
 }
 
-function normalizePublicationStatus(value: FormDataEntryValue | string | null | undefined): DocumentPublicationStatus {
+function normalizePublicationStatus(value: FormFieldValue): DocumentPublicationStatus {
   const normalized = formString(value).trim()
   return normalized === 'draft' || normalized === 'deprecated' ? normalized : 'published'
 }
 
 function getLifecycleValidationError(
   values: Pick<LifecycleDraftValues, 'authorityLevel' | 'reviewDueAt' | 'supersedesDocumentId'>,
-  translate: (key: LifecycleValidationKey) => string
+  translate: (key: LifecycleValidationKey) => string,
 ) {
   const sup = values.supersedesDocumentId.trim()
   if (sup && !UUID_RE.test(sup)) return translate('validation.supersedesUuid')
@@ -199,15 +211,31 @@ function hasLifecycleChanges(doc: Document, values: LifecycleDraftValues) {
   )
 }
 
-function DocumentSaveButton({ disabled }: Readonly<{ disabled: boolean }>) {
+type DocumentSaveButtonProps = { disabled: boolean }
+
+function parseAccessMembers(raw: string): string[] {
+  const parts = (raw || '')
+    .split(/[\n,;]+/g)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const p of parts) {
+    if (seen.has(p)) continue
+    seen.add(p)
+    out.push(p)
+    if (out.length >= 200) break
+  }
+  return out
+}
+
+function DocumentSaveButton({ disabled }: Readonly<DocumentSaveButtonProps>) {
   const commonT = useTranslations('Common')
   const { pending } = useFormStatus()
 
   return (
     <Button size="sm" type="submit" disabled={disabled || pending}>
-      {pending ? (
-        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
-      ) : null}
+      {pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" /> : null}
       {commonT('save')}
     </Button>
   )
@@ -240,6 +268,23 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [isKgWorking, setIsKgWorking] = useState(false)
   const [isCleanDocxDownloading, setIsCleanDocxDownloading] = useState(false)
   const [chunkQuery, setChunkQuery] = useState('')
+  const chunkScope = useMemo(
+    () => ({ documentId: initialDocument.id, open, activeView, query: chunkQuery, pipelineHash: viewPipelineHash }),
+    [activeView, chunkQuery, initialDocument.id, open, viewPipelineHash],
+  )
+  const chunkScopeRef = useRef<typeof chunkScope | null>(null)
+  const chunkRequestRef = useRef<object | null>(null)
+
+  useEffect(() => {
+    chunkScopeRef.current = chunkScope
+    return () => {
+      if (chunkScopeRef.current === chunkScope) {
+        chunkScopeRef.current = null
+        chunkRequestRef.current = null
+      }
+    }
+  }, [chunkScope])
+
   const [editingChunkId, setEditingChunkId] = useState<string | null>(null)
   const [editingChunkContent, setEditingChunkContent] = useState<string>('')
   const [chunkOpWorkingId, setChunkOpWorkingId] = useState<string | null>(null)
@@ -247,9 +292,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const [accessMode, setAccessMode] = useState<DocumentAccessMode>('inherit')
 
   const [lifecycleEditing, setLifecycleEditing] = useState(false)
-  const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] = useState<
-    'draft' | 'published' | 'deprecated'
-  >('published')
+  const [lifecyclePublicationStatusDraft, setLifecyclePublicationStatusDraft] =
+    useState<DocumentPublicationStatus>('published')
   const [lifecycleOwnerDraft, setLifecycleOwnerDraft] = useState('')
   const [lifecycleReviewDueDraft, setLifecycleReviewDueDraft] = useState('')
   const [lifecycleAuthorityDraft, setLifecycleAuthorityDraft] = useState('')
@@ -328,9 +372,8 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const timelineError = timelineQuery.error ? formatApiError(timelineQuery.error, t('errors.loadTimelineFailed')) : null
 
   const persistedTags = useMemo(() => getUserTagsFromDocument(detail || initialDocument), [detail, initialDocument])
-  const [optimisticTags, applyOptimisticTags] = useOptimistic(
-    persistedTags,
-    (_currentTags, nextTags: string[]) => normalizeTags(nextTags)
+  const [optimisticTags, applyOptimisticTags] = useOptimistic(persistedTags, (_currentTags, nextTags: string[]) =>
+    normalizeTags(nextTags),
   )
   const [tagsEditing, setTagsEditing] = useState(false)
   const [tagsDraft, setTagsDraft] = useState<string[]>([])
@@ -338,37 +381,46 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
 
   const canMutateChunks = viewPipelineHash === ACTIVE_PIPELINE_VALUE
 
-  const focusViewTab = useCallback((nextView: 'chunks' | 'timeline') => {
-    setActiveView(nextView)
-    globalThis.window.requestAnimationFrame(() => {
-      globalThis.document.getElementById(nextView === 'chunks' ? chunksTabId : timelineTabId)?.focus()
-    })
-  }, [chunksTabId, timelineTabId])
+  const focusViewTab = useCallback(
+    (nextView: 'chunks' | 'timeline') => {
+      setActiveView(nextView)
+      globalThis.window.requestAnimationFrame(() => {
+        globalThis.document.getElementById(nextView === 'chunks' ? chunksTabId : timelineTabId)?.focus()
+      })
+    },
+    [chunksTabId, timelineTabId],
+  )
 
-  const handleViewTabKeyDown = useCallback((event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    switch (event.key) {
-      case 'ArrowLeft':
-      case 'ArrowUp':
-      case 'Home':
-        event.preventDefault()
-        focusViewTab('chunks')
-        break
-      case 'ArrowRight':
-      case 'ArrowDown':
-      case 'End':
-        event.preventDefault()
-        focusViewTab('timeline')
-        break
-      default:
-        break
-    }
-  }, [focusViewTab])
+  const handleViewTabKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      switch (event.key) {
+        case 'ArrowLeft':
+        case 'ArrowUp':
+        case 'Home':
+          event.preventDefault()
+          focusViewTab('chunks')
+          break
+        case 'ArrowRight':
+        case 'ArrowDown':
+        case 'End':
+          event.preventDefault()
+          focusViewTab('timeline')
+          break
+        default:
+          break
+      }
+    },
+    [focusViewTab],
+  )
 
-  const beginEditChunk = useCallback((chunk: DocumentChunk) => {
-    if (!canMutateChunks) return
-    setEditingChunkId(chunk.id)
-    setEditingChunkContent(String(chunk.content || ''))
-  }, [canMutateChunks])
+  const beginEditChunk = useCallback(
+    (chunk: DocumentChunk) => {
+      if (!canMutateChunks) return
+      setEditingChunkId(chunk.id)
+      setEditingChunkContent(String(chunk.content || ''))
+    },
+    [canMutateChunks],
+  )
 
   const cancelEditChunk = useCallback(() => {
     setEditingChunkId(null)
@@ -397,43 +449,46 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     return false
   }, [persistedTags, tagsDraft, tagsEditing])
 
-  const [, saveTagsAction, isSavingTags] = useActionState(async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
-    if (!tagsEditing) return 'skipped'
+  const [, saveTagsAction, isSavingTags] = useActionState(
+    async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
+      if (!tagsEditing) return 'skipped'
 
-    let parsedTags: unknown = []
-    try {
-      parsedTags = JSON.parse(formString(formData.get('tags_json'), '[]'))
-    } catch {
-      parsedTags = []
-    }
+      let parsedTags: unknown = []
+      try {
+        parsedTags = JSON.parse(formString(formData.get('tags_json'), '[]'))
+      } catch {
+        parsedTags = []
+      }
 
-    const nextTags = normalizeTags(parsedTags)
-    if (nextTags.length === persistedTags.length && nextTags.every((tag, index) => tag === persistedTags[index])) {
-      return 'skipped'
-    }
+      const nextTags = normalizeTags(parsedTags)
+      if (nextTags.length === persistedTags.length && nextTags.every((tag, index) => tag === persistedTags[index])) {
+        return 'skipped'
+      }
 
-    setTagsError(null)
-    startTransition(() => {
-      applyOptimisticTags(nextTags)
-    })
-    setTagsEditing(false)
-    setTagsDraft([])
+      setTagsError(null)
+      startTransition(() => {
+        applyOptimisticTags(nextTags)
+      })
+      setTagsEditing(false)
+      setTagsDraft([])
 
-    try {
-      const updated = await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(nextTags))
-      queryClient.setQueryData(detailQueryKey, updated)
-      toast.success(t("toasts.tagsUpdated"))
-      return 'saved'
-    } catch (err) {
-      reportClientError('Update document tags failed', err)
-      const msg = formatApiError(err, t('errors.saveTagsFailed'))
-      setTagsError(msg)
-      setTagsDraft(nextTags)
-      setTagsEditing(true)
-      toast.error(msg)
-      return 'failed'
-    }
-  }, 'idle')
+      try {
+        const updated = await documentApi.patchUserMetadata(initialDocument.id, buildTagsPatch(nextTags))
+        queryClient.setQueryData(detailQueryKey, updated)
+        toast.success(t('toasts.tagsUpdated'))
+        return 'saved'
+      } catch (err) {
+        reportClientError('Update document tags failed', err)
+        const msg = formatApiError(err, t('errors.saveTagsFailed'))
+        setTagsError(msg)
+        setTagsDraft(nextTags)
+        setTagsEditing(true)
+        toast.error(msg)
+        return 'failed'
+      }
+    },
+    'idle',
+  )
 
   const canSaveTags = hasPendingTagChanges && !isSavingTags
 
@@ -476,7 +531,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
       }
     },
-    [canMutateChunks, initialDocument.id, t]
+    [canMutateChunks, initialDocument.id, t],
   )
 
   const reembedChunk = useCallback(
@@ -496,7 +551,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setChunkOpWorkingId((prev) => (prev === chunk.id ? null : prev))
       }
     },
-    [canMutateChunks, initialDocument.id, t]
+    [canMutateChunks, initialDocument.id, t],
   )
   const [accessMembersText, setAccessMembersText] = useState('')
   const [accessGroupIds, setAccessGroupIds] = useState<string[]>([])
@@ -523,86 +578,88 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     setLifecycleEditing(false)
   }, [])
 
-  const lifecycleDraftValues = useMemo<LifecycleDraftValues>(() => ({
-    publicationStatus: lifecyclePublicationStatusDraft,
-    owner: lifecycleOwnerDraft.trim(),
-    reviewDueAt: lifecycleReviewDueDraft.trim(),
-    authorityLevel: lifecycleAuthorityDraft.trim(),
-    supersedesDocumentId: lifecycleSupersedesDraft.trim(),
-  }), [
-    lifecycleAuthorityDraft,
-    lifecycleOwnerDraft,
-    lifecyclePublicationStatusDraft,
-    lifecycleReviewDueDraft,
-    lifecycleSupersedesDraft,
-  ])
+  const lifecycleDraftValues = useMemo<LifecycleDraftValues>(
+    () => ({
+      publicationStatus: lifecyclePublicationStatusDraft,
+      owner: lifecycleOwnerDraft.trim(),
+      reviewDueAt: lifecycleReviewDueDraft.trim(),
+      authorityLevel: lifecycleAuthorityDraft.trim(),
+      supersedesDocumentId: lifecycleSupersedesDraft.trim(),
+    }),
+    [
+      lifecycleAuthorityDraft,
+      lifecycleOwnerDraft,
+      lifecyclePublicationStatusDraft,
+      lifecycleReviewDueDraft,
+      lifecycleSupersedesDraft,
+    ],
+  )
 
   const lifecycleValidationError = useMemo(
     () => getLifecycleValidationError(lifecycleDraftValues, t),
-    [lifecycleDraftValues, t]
+    [lifecycleDraftValues, t],
   )
 
   const lifecycleHasChanges = useMemo(
     () => hasLifecycleChanges(detail || initialDocument, lifecycleDraftValues),
-    [detail, initialDocument, lifecycleDraftValues]
+    [detail, initialDocument, lifecycleDraftValues],
   )
 
-  const [, saveLifecycleAction, isSavingLifecycle] = useActionState(async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
-    if (!lifecycleEditing) return 'skipped'
+  const [, saveLifecycleAction, isSavingLifecycle] = useActionState(
+    async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
+      if (!lifecycleEditing) return 'skipped'
 
-    const nextValues: LifecycleDraftValues = {
-      publicationStatus: normalizePublicationStatus(formData.get('publication_status')),
-      owner: formString(formData.get('lifecycle_owner')).trim(),
-      reviewDueAt: formString(formData.get('review_due_at')).trim(),
-      authorityLevel: formString(formData.get('authority_level')).trim(),
-      supersedesDocumentId: formString(formData.get('supersedes_document_id')).trim(),
-    }
+      const nextValues: LifecycleDraftValues = {
+        publicationStatus: normalizePublicationStatus(formData.get('publication_status')),
+        owner: formString(formData.get('lifecycle_owner')).trim(),
+        reviewDueAt: formString(formData.get('review_due_at')).trim(),
+        authorityLevel: formString(formData.get('authority_level')).trim(),
+        supersedesDocumentId: formString(formData.get('supersedes_document_id')).trim(),
+      }
 
-    const validationError = getLifecycleValidationError(nextValues, t)
-    if (validationError) {
-      setLifecycleError(validationError)
-      return 'failed'
-    }
+      const validationError = getLifecycleValidationError(nextValues, t)
+      if (validationError) {
+        setLifecycleError(validationError)
+        return 'failed'
+      }
 
-    const currentDoc = detail || initialDocument
-    if (!hasLifecycleChanges(currentDoc, nextValues)) {
-      return 'skipped'
-    }
+      const currentDoc = detail || initialDocument
+      if (!hasLifecycleChanges(currentDoc, nextValues)) {
+        return 'skipped'
+      }
 
-    setLifecycleError(null)
+      setLifecycleError(null)
 
-    try {
-      await documentApi.patchLifecycleMetadata(initialDocument.id, {
-        publication_status: nextValues.publicationStatus,
-        lifecycle_owner: nextValues.owner || null,
-        supersedes_document_id: nextValues.supersedesDocumentId || null,
-        authority_level: nextValues.authorityLevel ? Number.parseInt(nextValues.authorityLevel, 10) : null,
-        review_due_at: nextValues.reviewDueAt ? new Date(nextValues.reviewDueAt).toISOString() : null,
-      })
-      toast.success(t('toasts.lifecycleUpdated'))
-      cancelEditLifecycle()
-      await Promise.all([
-        detailQuery.refetch(),
-        accessQuery.refetch(),
-        lifecyclePermissionQuery.refetch(),
-      ])
-      return 'saved'
-    } catch (err) {
-      reportClientError('Update document lifecycle metadata failed', err)
-      const msg = formatApiError(err, t('errors.saveLifecycleFailed'))
-      setLifecycleError(msg)
-      toast.error(msg)
-      return 'failed'
-    }
-  }, 'idle')
+      try {
+        await documentApi.patchLifecycleMetadata(initialDocument.id, {
+          publication_status: nextValues.publicationStatus,
+          lifecycle_owner: nextValues.owner || null,
+          supersedes_document_id: nextValues.supersedesDocumentId || null,
+          authority_level: nextValues.authorityLevel ? Number.parseInt(nextValues.authorityLevel, 10) : null,
+          review_due_at: nextValues.reviewDueAt ? new Date(nextValues.reviewDueAt).toISOString() : null,
+        })
+        toast.success(t('toasts.lifecycleUpdated'))
+        cancelEditLifecycle()
+        await Promise.all([detailQuery.refetch(), accessQuery.refetch(), lifecyclePermissionQuery.refetch()])
+        return 'saved'
+      } catch (err) {
+        reportClientError('Update document lifecycle metadata failed', err)
+        const msg = formatApiError(err, t('errors.saveLifecycleFailed'))
+        setLifecycleError(msg)
+        toast.error(msg)
+        return 'failed'
+      }
+    },
+    'idle',
+  )
 
   const canSaveLifecycle = lifecycleEditing && !isSavingLifecycle && !lifecycleValidationError && lifecycleHasChanges
 
   const fetchChunksPage = useCallback(
     async (skip: number) => {
-      const q = chunkQuery.trim()
-      const pipelineHash = viewPipelineHash === ACTIVE_PIPELINE_VALUE ? undefined : viewPipelineHash
-      const res = await documentApi.listChunks(initialDocument.id, {
+      const q = chunkScope.query.trim()
+      const pipelineHash = chunkScope.pipelineHash === ACTIVE_PIPELINE_VALUE ? undefined : chunkScope.pipelineHash
+      const res = await documentApi.listChunks(chunkScope.documentId, {
         skip,
         limit: CHUNK_PAGE_SIZE,
         q: q || undefined,
@@ -610,42 +667,72 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
       })
       return res
     },
-    [chunkQuery, initialDocument.id, viewPipelineHash]
+    [chunkScope],
   )
 
   const reloadChunks = useCallback(async () => {
+    if (chunkScopeRef.current !== chunkScope) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    chunkRequestRef.current = request
+    const isCurrent = () =>
+      chunkScopeRef.current === chunkScope &&
+      chunkRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setIsLoadingChunks(true)
     setChunkError(null)
     setChunks([])
     setChunksTotal(0)
     try {
       const res = await fetchChunksPage(0)
+      if (!isCurrent()) return
       setChunks(res.items || [])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
+      if (!isCurrent()) return
       reportClientError('Load document chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadChunksFailed')))
     } finally {
-      setIsLoadingChunks(false)
+      if (chunkRequestRef.current === request) {
+        chunkRequestRef.current = null
+        setIsLoadingChunks(false)
+      }
     }
-  }, [fetchChunksPage, t])
+  }, [chunkScope, fetchChunksPage, t])
 
   const loadMoreChunks = useCallback(async () => {
     if (isLoadingChunks) return
     if (chunks.length >= chunksTotal) return
+    if (chunkScopeRef.current !== chunkScope) return
+    const request = {}
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    chunkRequestRef.current = request
+    const isCurrent = () =>
+      chunkScopeRef.current === chunkScope &&
+      chunkRequestRef.current === request &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
     setIsLoadingChunks(true)
     setChunkError(null)
     try {
       const res = await fetchChunksPage(chunks.length)
+      if (!isCurrent()) return
       setChunks((prev) => [...prev, ...(res.items || [])])
       setChunksTotal(Number(res.total || 0))
     } catch (err) {
+      if (!isCurrent()) return
       reportClientError('Load more chunks error', err)
       setChunkError(formatApiError(err, t('errors.loadMoreChunksFailed')))
     } finally {
-      setIsLoadingChunks(false)
+      if (chunkRequestRef.current === request) {
+        chunkRequestRef.current = null
+        setIsLoadingChunks(false)
+      }
     }
-  }, [chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks, t])
+  }, [chunkScope, chunks.length, chunksTotal, fetchChunksPage, isLoadingChunks, t])
 
   useEffect(() => {
     if (!open) return
@@ -655,9 +742,12 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   useEffect(() => {
     if (!open) return
     if (activeView !== 'chunks') return
-    const handle = globalThis.window.setTimeout(() => {
-      detachPromise(reloadChunks())
-    }, chunkQuery.trim() ? 250 : 0)
+    const handle = globalThis.window.setTimeout(
+      () => {
+        detachPromise(reloadChunks())
+      },
+      chunkQuery.trim() ? 250 : 0,
+    )
     return () => globalThis.window.clearTimeout(handle)
   }, [open, activeView, chunkQuery, viewPipelineHash, reloadChunks])
   const parserBackend =
@@ -678,7 +768,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const pipeline = ('pipeline' in displayDoc ? displayDoc.pipeline : null) as DocumentPipelineMetadata | null
   const requestedParserBackend = toTrimmedPrimitiveString(
     pipeline?.parser_backend_requested ?? docMeta.parser_backend_requested,
-    '-'
+    '-',
   )
   const pipelineEffective = (pipeline?.pipeline_effective || docMeta.pipeline_effective || {}) as DocumentMetadataRecord
   const analyticsRaw = (pipeline?.analytics_raw || docMeta.document_analytics_raw || {}) as DocumentMetadataRecord
@@ -698,7 +788,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         versions?.active_pipeline_hash ||
         docMeta.active_pipeline_hash ||
         docMeta.pipeline_hash ||
-        ''
+        '',
     ).trim() || ''
   const lastPipelineHash = toTrimmedPrimitiveString(pipeline?.pipeline_hash ?? docMeta.pipeline_hash)
   const viewingPipelineHash = viewPipelineHash === ACTIVE_PIPELINE_VALUE ? activePipelineHash : viewPipelineHash
@@ -706,7 +796,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
   const accessModeLabel = useMemo(() => {
     switch (effectiveAccessMode) {
       case 'inherit':
-        return t("accessModes.inherit")
+        return t('accessModes.inherit')
       case 'only_me':
         return t('accessModes.onlyMe')
       case 'partial_members':
@@ -740,18 +830,21 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     getItemKey: (idx) => timelineItems[idx]?.id ?? idx,
   })
 
-  const copyToClipboard = useCallback(async (content = '') => {
-    try {
-      if (!navigator.clipboard?.writeText) {
-        throw new Error('Clipboard API unavailable')
+  const copyToClipboard = useCallback(
+    async (content = '') => {
+      try {
+        if (!navigator.clipboard?.writeText) {
+          throw new Error('Clipboard API unavailable')
+        }
+        await navigator.clipboard.writeText(content)
+        toast.success(t('toasts.copySuccess'))
+      } catch (err) {
+        reportClientError('Copy failed', err)
+        toast.error(t('errors.copyFailed'))
       }
-      await navigator.clipboard.writeText(content)
-      toast.success(t("toasts.copySuccess"))
-    } catch (err) {
-      reportClientError('Copy failed', err)
-      toast.error(t("errors.copyFailed"))
-    }
-  }, [t])
+    },
+    [t],
+  )
 
   const handleActivateVersion = useCallback(
     async (pipelineHash: string) => {
@@ -777,7 +870,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setIsVersionWorking(false)
       }
     },
-    [accessQuery, detailQuery, initialDocument.id, lifecyclePermissionQuery, reloadChunks, t, versionsQuery]
+    [accessQuery, detailQuery, initialDocument.id, lifecyclePermissionQuery, reloadChunks, t, versionsQuery],
   )
 
   const handleDeleteVersion = useCallback(
@@ -807,7 +900,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         setIsVersionWorking(false)
       }
     },
-    [accessQuery, detailQuery, initialDocument.id, lifecyclePermissionQuery, reloadChunks, t, versionsQuery, viewPipelineHash]
+    [
+      accessQuery,
+      detailQuery,
+      initialDocument.id,
+      lifecyclePermissionQuery,
+      reloadChunks,
+      t,
+      versionsQuery,
+      viewPipelineHash,
+    ],
   )
 
   const handleExtractKG = async () => {
@@ -853,92 +955,93 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
     }
   }
 
-  const parseAccessMembers = useCallback((raw: string): string[] => {
-    const parts = (raw || '')
-      .split(/[\n,;]+/g)
-      .map((s) => s.trim())
-      .filter(Boolean)
-    const out: string[] = []
-    const seen = new Set<string>()
-    for (const p of parts) {
-      if (seen.has(p)) continue
-      seen.add(p)
-      out.push(p)
-      if (out.length >= 200) break
-    }
-    return out
-  }, [])
+  const [, saveAccessAction, isSavingAccess] = useActionState(
+    async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
+      if (!displayDoc?.id) return 'skipped'
 
-  const [, saveAccessAction, isSavingAccess] = useActionState(async (_state: SaveActionState, formData: FormData): Promise<SaveActionState> => {
-    if (!displayDoc?.id) return 'skipped'
+      const nextAccessMode = normalizeAccessMode(formData.get('access_mode'))
+      const nextAccessGroupIds =
+        nextAccessMode === 'partial_members' ? parseStringArrayField(formData.get('access_group_ids_json')) : []
+      const nextAccessMembersText = formString(formData.get('access_members_text'))
 
-    const nextAccessMode = normalizeAccessMode(formData.get('access_mode'))
-    const nextAccessGroupIds =
-      nextAccessMode === 'partial_members' ? parseStringArrayField(formData.get('access_group_ids_json')) : []
-    const nextAccessMembersText = formString(formData.get('access_members_text'))
+      try {
+        const res = await documentApi.updateAccess(displayDoc.id, {
+          mode: nextAccessMode,
+          partial_member_list: nextAccessMode === 'partial_members' ? parseAccessMembers(nextAccessMembersText) : null,
+          partial_group_list: nextAccessMode === 'partial_members' ? nextAccessGroupIds : null,
+        })
+        queryClient.setQueryData(accessQueryKey, res)
+        setAccessMode(res.mode)
+        setAccessMembersText((res.partial_member_list || []).join('\n'))
+        setAccessGroupIds((res.partial_group_list || []).map(String))
+        queryClient.setQueryData<Document | null>(detailQueryKey, (prev) =>
+          prev
+            ? {
+                ...prev,
+                access_mode: res.mode === 'inherit' ? null : res.mode,
+                owner_id: res.owner_id ?? prev.owner_id,
+              }
+            : prev,
+        )
+        toast.success(t('toasts.accessUpdated'))
+        setAccessDialogOpen(false)
+        return 'saved'
+      } catch (err) {
+        reportClientError('Update document access failed', err)
+        toast.error(formatApiError(err, t('errors.updateAccessFailed')))
+        return 'failed'
+      }
+    },
+    'idle',
+  )
 
-    try {
-      const res = await documentApi.updateAccess(displayDoc.id, {
-        mode: nextAccessMode,
-        partial_member_list:
-          nextAccessMode === 'partial_members' ? parseAccessMembers(nextAccessMembersText) : null,
-        partial_group_list: nextAccessMode === 'partial_members' ? nextAccessGroupIds : null,
-      })
-      queryClient.setQueryData(accessQueryKey, res)
-      setAccessMode(res.mode)
-      setAccessMembersText((res.partial_member_list || []).join('\n'))
-      setAccessGroupIds((res.partial_group_list || []).map(String))
-      queryClient.setQueryData<Document | null>(detailQueryKey, (prev) =>
-        prev
-          ? {
-              ...prev,
-              access_mode: res.mode === 'inherit' ? null : res.mode,
-              owner_id: res.owner_id ?? prev.owner_id,
-            }
-          : prev
-      )
-      toast.success(t('toasts.accessUpdated'))
-      setAccessDialogOpen(false)
-      return 'saved'
-    } catch (err) {
-      reportClientError('Update document access failed', err)
-      toast.error(formatApiError(err, t('errors.updateAccessFailed')))
-      return 'failed'
-    }
-  }, 'idle')
+  const handleVersionsDialogOpenChange = useCallback(
+    (next: boolean) => {
+      setVersionsDialogOpen(next)
+      if (next) {
+        versionsQuery.refetch()
+      }
+    },
+    [versionsQuery],
+  )
 
-  const handleVersionsDialogOpenChange = useCallback((next: boolean) => {
-    setVersionsDialogOpen(next)
-    if (next) {
-      versionsQuery.refetch()
-    }
-  }, [versionsQuery])
-
-  const handleAccessDialogOpenChange = useCallback((next: boolean) => {
-    if (!next && isSavingAccess) return
-    if (next) {
-      setAccessMode(effectiveAccessMode)
-      setAccessMembersText((accessInfo?.partial_member_list || []).join('\n'))
-      setAccessGroupIds((accessInfo?.partial_group_list || []).map(String))
-    }
-    setAccessDialogOpen(next)
-  }, [accessInfo?.partial_group_list, accessInfo?.partial_member_list, effectiveAccessMode, isSavingAccess])
+  const handleAccessDialogOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next && isSavingAccess) return
+      if (next) {
+        setAccessMode(effectiveAccessMode)
+        setAccessMembersText((accessInfo?.partial_member_list || []).join('\n'))
+        setAccessGroupIds((accessInfo?.partial_group_list || []).map(String))
+      }
+      setAccessDialogOpen(next)
+    },
+    [accessInfo?.partial_group_list, accessInfo?.partial_member_list, effectiveAccessMode, isSavingAccess],
+  )
 
   const handleVersionsRefresh = useCallback(() => {
     versionsQuery.refetch()
   }, [versionsQuery])
 
-  const handleCopyText = useCallback((text: string) => {
-    detachPromise(copyToClipboard(text))
-  }, [copyToClipboard])
+  const handleCopyText = useCallback(
+    (text: string) => {
+      detachPromise(copyToClipboard(text))
+    },
+    [copyToClipboard],
+  )
 
-  const handleActivateVersionAction = useCallback((pipelineHash: string) => {
-    detachPromise(handleActivateVersion(pipelineHash))
-  }, [handleActivateVersion])
+  const handleActivateVersionAction = useCallback(
+    (pipelineHash: string) => {
+      detachPromise(handleActivateVersion(pipelineHash))
+    },
+    [handleActivateVersion],
+  )
 
-  const handleDeleteVersionAction = useCallback((pipelineHash: string) => {
-    detachPromise(handleDeleteVersion(pipelineHash))
-  }, [handleDeleteVersion])
+  const handleDeleteVersionAction = useCallback(
+    (pipelineHash: string) => {
+      detachPromise(handleDeleteVersion(pipelineHash))
+    },
+    [handleDeleteVersion],
+  )
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -962,13 +1065,13 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
         <header className="flex items-start justify-between gap-6 border-b border-foreground/15 bg-background px-6 py-4">
           <div className="flex items-start gap-4 min-w-0">
             <div className="grid h-12 w-12 place-items-center rounded-xl border border-foreground/10 bg-background/70 text-primary">
-              <Database className="h-6 w-6" />
+              <FileTypeIcon type={displayDoc.file_type} filename={displayDoc.filename} className="size-6" />
             </div>
             <div className="min-w-0">
               <DialogTitle className="truncate">{displayDoc.filename}</DialogTitle>
               <DialogDescription className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                 <span className="inline-flex items-center gap-1">
-                  <FileType className="h-3.5 w-3.5" />
+                  <FileTypeIcon type={displayDoc.file_type} filename={displayDoc.filename} className="size-3.5" />
                   {displayDoc.file_type}
                 </span>
                 <span className="text-muted-foreground/40">|</span>
@@ -1160,11 +1263,16 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 action={saveAccessAction}
               />
 
-              <Button variant="outline" onClick={handleExtractKG} disabled={!canRunKg} className="w-full gap-2 sm:w-auto">
+              <Button
+                variant="outline"
+                onClick={handleExtractKG}
+                disabled={!canRunKg}
+                className="w-full gap-2 sm:w-auto"
+              >
                 {isKgWorking && canRunKg ? (
                   <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
                 ) : null}
-                {t("kg.extract")}
+                {t('kg.extract')}
               </Button>
               <Button
                 variant="outline"
@@ -1180,7 +1288,7 @@ export function DocumentDetailDialog({ document: initialDocument, trigger }: Rea
                 下载清洗 DOCX
               </Button>
               <ConfirmDialog
-                title={t("kg.deleteDialog.title")}
+                title={t('kg.deleteDialog.title')}
                 description={t('kg.deleteDialog.description')}
                 confirmLabel={t('kg.deleteDialog.confirm')}
                 cancelLabel={t('kg.deleteDialog.cancel')}

@@ -20,11 +20,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from app.core.config import settings
 from app.core.constants import NON_CRITICAL_EXCEPTION_LOG_MESSAGE
 from app.rag.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from app.core.pii_redaction import PIIRedactor
 
 DEFAULT_METRICS_LOG_PATH = "./logs/rag_metrics.jsonl"
 logger = get_logger(__name__)
@@ -207,7 +210,7 @@ class _MetricsRecordWindow:
 
 
 def _metrics_log_path_str() -> str:
-    return str(getattr(settings, "METRICS_LOG_PATH", DEFAULT_METRICS_LOG_PATH) or DEFAULT_METRICS_LOG_PATH)
+    return str(settings.METRICS_LOG_PATH or DEFAULT_METRICS_LOG_PATH)
 
 
 def _normalize_window_minutes(window_minutes: int) -> int:
@@ -293,6 +296,21 @@ class RagMetricsSummary:
     timeseries: dict[str, list[Any]]
 
 
+class _RagMetricsBucket(TypedDict):
+    ts_ms: int
+    rag_trace: int
+    reranker_api: int
+    retrieval_elapsed_sum: float
+
+
+class _QueryAnalyticsBucket(TypedDict):
+    ts_ms: int
+    requests: int
+    zero_hit: int
+    slow: int
+    errors: int
+
+
 @dataclass
 class _RagMetricsAccumulator:
     retrieval_elapsed: list[float] = field(default_factory=list)
@@ -309,7 +327,7 @@ class _RagMetricsAccumulator:
     retrieval_candidate_cache_backend_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     retrieval_candidate_cache_skip_reason_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     retrieval_rerank_skip_reason_counts: dict[str, int] = field(default_factory=lambda: defaultdict(int))
-    bucket: dict[int, dict[str, Any]] = field(default_factory=dict)
+    bucket: dict[int, _RagMetricsBucket] = field(default_factory=dict)
     rag_trace_count: int = 0
     reranker_api_count: int = 0
 
@@ -319,7 +337,7 @@ def _metric_minute_ms(record: dict[str, Any]) -> int:
     return (ts_ms // 60_000) * 60_000 if ts_ms else 0
 
 
-def _rag_metrics_bucket(state: _RagMetricsAccumulator, minute_ms: int) -> dict[str, Any] | None:
+def _rag_metrics_bucket(state: _RagMetricsAccumulator, minute_ms: int) -> _RagMetricsBucket | None:
     if not minute_ms:
         return None
     return state.bucket.setdefault(
@@ -329,7 +347,7 @@ def _rag_metrics_bucket(state: _RagMetricsAccumulator, minute_ms: int) -> dict[s
 
 
 def _collect_overfetch_stats(state: _RagMetricsAccumulator, debug: dict[str, Any]) -> None:
-    if not bool(debug.get("overfetch_enabled")):
+    if not debug.get("overfetch_enabled"):
         return
     state.overfetch_count += 1
     req = _safe_int_value(debug.get("requested_k"))
@@ -339,9 +357,9 @@ def _collect_overfetch_stats(state: _RagMetricsAccumulator, debug: dict[str, Any
 
 
 def _collect_cache_channel_stats(state: _RagMetricsAccumulator, cache_meta: dict[str, Any]) -> None:
-    if bool(cache_meta.get("hit")):
+    if cache_meta.get("hit"):
         state.retrieval_candidate_cache_hit_count += 1
-    if bool(cache_meta.get("store_ok")):
+    if cache_meta.get("store_ok"):
         state.retrieval_candidate_cache_store_ok_count += 1
     backend = str(cache_meta.get("backend") or "").strip().lower()
     if backend:
@@ -380,7 +398,7 @@ def _collect_per_query_debug_stats(state: _RagMetricsAccumulator, retrieval: dic
 def _collect_citation_metrics(
     state: _RagMetricsAccumulator,
     citations: Any,
-    bucket_entry: dict[str, Any] | None,
+    bucket_entry: _RagMetricsBucket | None,
 ) -> None:
     if not isinstance(citations, list):
         return
@@ -413,7 +431,7 @@ def _collect_retrieval_error_counts(state: _RagMetricsAccumulator, retrieval: di
 def _accumulate_rag_trace_metrics(
     state: _RagMetricsAccumulator,
     record: dict[str, Any],
-    bucket_entry: dict[str, Any] | None,
+    bucket_entry: _RagMetricsBucket | None,
 ) -> None:
     state.rag_trace_count += 1
     if bucket_entry is not None:
@@ -439,12 +457,12 @@ def _accumulate_rag_metrics_record(state: _RagMetricsAccumulator, record: dict[s
             state.error_counts["reranker_api_error"] += 1
 
 
-def _rag_metrics_timeseries(bucket: dict[int, dict[str, Any]]) -> dict[str, list[Any]]:
+def _rag_metrics_timeseries(bucket: dict[int, _RagMetricsBucket]) -> dict[str, list[Any]]:
     ts_keys = sorted(k for k in bucket.keys() if k)
     return {
         "ts_ms": list(ts_keys),
-        "rag_trace": [int(bucket[k]["rag_trace"]) for k in ts_keys],
-        "reranker_api": [int(bucket[k]["reranker_api"]) for k in ts_keys],
+        "rag_trace": [bucket[k]["rag_trace"] for k in ts_keys],
+        "reranker_api": [bucket[k]["reranker_api"] for k in ts_keys],
         "retrieval_avg_elapsed_sec": [
             (bucket[k]["retrieval_elapsed_sum"] / bucket[k]["rag_trace"]) if bucket[k]["rag_trace"] else None
             for k in ts_keys
@@ -462,20 +480,20 @@ def _build_rag_metrics_summary(
     return RagMetricsSummary(
         enabled=enabled,
         path=record_window.path,
-        window_minutes=int(window_minutes),
-        truncated=bool(record_window.truncated),
+        window_minutes=window_minutes,
+        truncated=record_window.truncated,
         record_count=len(record_window.records),
-        rag_trace_count=int(state.rag_trace_count),
-        reranker_api_count=int(state.reranker_api_count),
+        rag_trace_count=state.rag_trace_count,
+        reranker_api_count=state.reranker_api_count,
         retrieval_avg_elapsed_sec=_mean(state.retrieval_elapsed),
         retrieval_p95_elapsed_sec=_percentile(state.retrieval_elapsed, 95.0),
         rerank_avg_elapsed_sec=_mean(state.rerank_elapsed),
         citations_avg_count=_mean(state.citations_counts),
-        retriever_overfetch_count=int(state.overfetch_count),
+        retriever_overfetch_count=state.overfetch_count,
         retriever_overfetch_avg_ratio=_mean(state.overfetch_ratios),
-        retriever_filtered_acl_total=int(state.filtered_acl_total),
-        retrieval_candidate_cache_hit_count=int(state.retrieval_candidate_cache_hit_count),
-        retrieval_candidate_cache_store_ok_count=int(state.retrieval_candidate_cache_store_ok_count),
+        retriever_filtered_acl_total=state.filtered_acl_total,
+        retrieval_candidate_cache_hit_count=state.retrieval_candidate_cache_hit_count,
+        retrieval_candidate_cache_store_ok_count=state.retrieval_candidate_cache_store_ok_count,
         retrieval_candidate_cache_backend_counts=dict(state.retrieval_candidate_cache_backend_counts),
         retrieval_candidate_cache_skip_reason_counts=dict(state.retrieval_candidate_cache_skip_reason_counts),
         retrieval_rerank_skip_reason_counts=dict(state.retrieval_rerank_skip_reason_counts),
@@ -495,7 +513,7 @@ def summarize_rag_metrics(
     """
     Build a small dashboard summary from the metrics JSONL file.
     """
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     window_minutes = _normalize_window_minutes(window_minutes)
     record_window = _load_metrics_record_window(
         tenant_id=tenant_id,
@@ -617,18 +635,18 @@ def _build_cost_attribution_summary(
     return RagCostAttributionSummary(
         enabled=enabled,
         path=record_window.path,
-        window_minutes=int(window_minutes),
-        truncated=bool(record_window.truncated),
+        window_minutes=window_minutes,
+        truncated=record_window.truncated,
         record_count=len(record_window.records),
-        rag_trace_count=int(state.rag_trace_count),
-        llm_prompt_tokens=int(state.llm_prompt_tokens),
-        llm_completion_tokens=int(state.llm_completion_tokens),
-        llm_total_tokens=int(state.llm_total_tokens),
+        rag_trace_count=state.rag_trace_count,
+        llm_prompt_tokens=state.llm_prompt_tokens,
+        llm_completion_tokens=state.llm_completion_tokens,
+        llm_total_tokens=state.llm_total_tokens,
         llm_model_counts=dict(state.llm_model_counts),
         llm_source_counts=dict(state.llm_source_counts),
-        embed_query_tokens=int(state.embed_query_tokens),
-        embed_query_chars=int(state.embed_query_chars),
-        embed_query_count=int(state.embed_query_count),
+        embed_query_tokens=state.embed_query_tokens,
+        embed_query_chars=state.embed_query_chars,
+        embed_query_count=state.embed_query_count,
         embed_provider_counts=dict(state.embed_provider_counts),
         embed_model_counts=dict(state.embed_model_counts),
         retrieval_elapsed_avg_sec=_mean(state.retrieval_elapsed),
@@ -636,7 +654,7 @@ def _build_cost_attribution_summary(
         rerank_elapsed_avg_sec=_mean(state.rerank_elapsed),
         rerank_elapsed_p95_sec=_percentile(state.rerank_elapsed, 95.0),
         retrieval_vector_backend_counts=dict(state.retrieval_vector_backend_counts),
-        retrieval_query_count=int(state.retrieval_query_count),
+        retrieval_query_count=state.retrieval_query_count,
     )
 
 
@@ -652,7 +670,7 @@ def summarize_rag_cost_attribution(
     Output is PII-safe by construction (numeric/categorical fields only).
     """
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     window_minutes = _normalize_window_minutes(window_minutes)
     record_window = _load_metrics_record_window(
         tenant_id=tenant_id,
@@ -876,13 +894,13 @@ class _QueryAnomalyBucketStats:
 
 
 def _query_anomaly_config(window_minutes: int) -> _QueryAnomalyConfig | None:
-    if not bool(getattr(settings, "OBS_ANOMALY_ENABLED", True)):
+    if not bool(settings.OBS_ANOMALY_ENABLED):
         return None
     window_minutes = max(1, int(window_minutes or 0))
-    baseline_win = max(1, int(getattr(settings, "OBS_ANOMALY_BASELINE_WINDOW_MINUTES", 60) or 60))
-    current_win = max(1, int(getattr(settings, "OBS_ANOMALY_CURRENT_WINDOW_MINUTES", 5) or 5))
-    min_reqs = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET", 5) or 5))
-    min_baseline_buckets = max(1, int(getattr(settings, "OBS_ANOMALY_MIN_BASELINE_BUCKETS", 10) or 10))
+    baseline_win = max(1, int(settings.OBS_ANOMALY_BASELINE_WINDOW_MINUTES or 60))
+    current_win = max(1, int(settings.OBS_ANOMALY_CURRENT_WINDOW_MINUTES or 5))
+    min_reqs = max(1, int(settings.OBS_ANOMALY_MIN_REQUESTS_PER_BUCKET or 5))
+    min_baseline_buckets = max(1, int(settings.OBS_ANOMALY_MIN_BASELINE_BUCKETS or 10))
 
     current_win = min(current_win, window_minutes)
     baseline_win = min(baseline_win, max(0, window_minutes - current_win))
@@ -894,12 +912,12 @@ def _query_anomaly_config(window_minutes: int) -> _QueryAnomalyConfig | None:
         current_window_minutes=current_win,
         min_requests_per_bucket=min_reqs,
         min_baseline_buckets=min_baseline_buckets,
-        zero_hit_abs_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD", 0.6) or 0.6),
-        zero_hit_ratio_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD", 2.0) or 2.0),
-        zero_hit_zscore_threshold=float(getattr(settings, "OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0),
-        error_abs_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD", 0.05) or 0.05),
-        error_ratio_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD", 3.0) or 3.0),
-        error_zscore_threshold=float(getattr(settings, "OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD", 3.0) or 3.0),
+        zero_hit_abs_threshold=float(settings.OBS_ANOMALY_ZERO_HIT_RATE_ABS_THRESHOLD or 0.6),
+        zero_hit_ratio_threshold=float(settings.OBS_ANOMALY_ZERO_HIT_RATE_RATIO_THRESHOLD or 2.0),
+        zero_hit_zscore_threshold=float(settings.OBS_ANOMALY_ZERO_HIT_RATE_ZSCORE_THRESHOLD or 3.0),
+        error_abs_threshold=float(settings.OBS_ANOMALY_ERROR_RATE_ABS_THRESHOLD or 0.05),
+        error_ratio_threshold=float(settings.OBS_ANOMALY_ERROR_RATE_RATIO_THRESHOLD or 3.0),
+        error_zscore_threshold=float(settings.OBS_ANOMALY_ERROR_RATE_ZSCORE_THRESHOLD or 3.0),
     )
 
 
@@ -915,7 +933,7 @@ def _query_anomaly_window(ts_keys: list[int], config: _QueryAnomalyConfig) -> _Q
 
 
 def _collect_baseline_anomaly_stats(
-    bucket: dict[int, dict[str, Any]],
+    bucket: dict[int, _QueryAnalyticsBucket],
     keys: list[int],
     *,
     min_requests: int,
@@ -940,7 +958,7 @@ def _collect_baseline_anomaly_stats(
 
 
 def _collect_current_anomaly_stats(
-    bucket: dict[int, dict[str, Any]],
+    bucket: dict[int, _QueryAnalyticsBucket],
     keys: list[int],
     *,
     min_requests: int,
@@ -965,7 +983,7 @@ def _collect_current_anomaly_stats(
 
 
 def _collect_query_anomaly_bucket_stats(
-    bucket: dict[int, dict[str, Any]],
+    bucket: dict[int, _QueryAnalyticsBucket],
     window: _QueryAnomalyWindow,
     config: _QueryAnomalyConfig,
 ) -> _QueryAnomalyBucketStats:
@@ -1095,7 +1113,7 @@ def _error_rate_anomaly(
 
 def _detect_query_analytics_anomalies(
     *,
-    bucket: dict[int, dict[str, Any]],
+    bucket: dict[int, _QueryAnalyticsBucket],
     records: list[dict[str, Any]],
     ts_keys: list[int],
     window_minutes: int,
@@ -1137,10 +1155,10 @@ class _RagQueryAnalyticsAccumulator:
     zero_hit_by_hash: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     slow_by_hash_count: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     slow_by_hash_max_elapsed: dict[str, float] = field(default_factory=lambda: defaultdict(float))
-    bucket: dict[int, dict[str, Any]] = field(default_factory=dict)
+    bucket: dict[int, _QueryAnalyticsBucket] = field(default_factory=dict)
 
 
-def _query_analytics_bucket(state: _RagQueryAnalyticsAccumulator, minute_ms: int) -> dict[str, Any] | None:
+def _query_analytics_bucket(state: _RagQueryAnalyticsAccumulator, minute_ms: int) -> _QueryAnalyticsBucket | None:
     if not minute_ms:
         return None
     return state.bucket.setdefault(
@@ -1188,7 +1206,7 @@ def _query_error_kinds(retrieval: dict[str, Any]) -> tuple[list[str], bool]:
 def _collect_query_error_metrics(
     state: _RagQueryAnalyticsAccumulator,
     retrieval: dict[str, Any],
-    bucket_entry: dict[str, Any] | None,
+    bucket_entry: _QueryAnalyticsBucket | None,
 ) -> None:
     kinds, has_error = _query_error_kinds(retrieval)
     for kind in kinds:
@@ -1201,7 +1219,7 @@ def _collect_zero_hit_query(
     state: _RagQueryAnalyticsAccumulator,
     *,
     qhash: str | None,
-    bucket_entry: dict[str, Any] | None,
+    bucket_entry: _QueryAnalyticsBucket | None,
 ) -> None:
     state.zero_hit_count += 1
     if bucket_entry is not None:
@@ -1215,7 +1233,7 @@ def _collect_slow_query(
     *,
     qhash: str | None,
     elapsed_sec: float,
-    bucket_entry: dict[str, Any] | None,
+    bucket_entry: _QueryAnalyticsBucket | None,
 ) -> None:
     state.slow_count += 1
     if bucket_entry is not None:
@@ -1261,7 +1279,7 @@ def _accumulate_query_analytics_record(
 
 def _top_zero_hit_queries(state: _RagQueryAnalyticsAccumulator, *, top_n: int) -> list[dict[str, Any]]:
     top_zero = sorted(state.zero_hit_by_hash.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]
-    return [{"query_hash": h, "count": int(c)} for h, c in top_zero]
+    return [{"query_hash": h, "count": c} for h, c in top_zero]
 
 
 def _top_slow_queries(state: _RagQueryAnalyticsAccumulator, *, top_n: int) -> list[dict[str, Any]]:
@@ -1272,21 +1290,21 @@ def _top_slow_queries(state: _RagQueryAnalyticsAccumulator, *, top_n: int) -> li
     return [
         {
             "query_hash": h,
-            "count": int(c),
+            "count": c,
             "max_elapsed_sec": round(float(state.slow_by_hash_max_elapsed.get(h) or 0.0), 3),
         }
         for h, c in top_slow_items
     ]
 
 
-def _query_analytics_timeseries(bucket: dict[int, dict[str, Any]]) -> dict[str, list[Any]]:
+def _query_analytics_timeseries(bucket: dict[int, _QueryAnalyticsBucket]) -> dict[str, list[Any]]:
     ts_keys = sorted(k for k in bucket.keys() if k)
     return {
         "ts_ms": list(ts_keys),
-        "requests": [int(bucket[k]["requests"]) for k in ts_keys],
-        "zero_hit": [int(bucket[k]["zero_hit"]) for k in ts_keys],
-        "slow": [int(bucket[k]["slow"]) for k in ts_keys],
-        "errors": [int(bucket[k]["errors"]) for k in ts_keys],
+        "requests": [bucket[k]["requests"] for k in ts_keys],
+        "zero_hit": [bucket[k]["zero_hit"] for k in ts_keys],
+        "slow": [bucket[k]["slow"] for k in ts_keys],
+        "errors": [bucket[k]["errors"] for k in ts_keys],
     }
 
 
@@ -1303,15 +1321,15 @@ def _build_query_analytics_summary(
     return RagQueryAnalyticsSummary(
         enabled=enabled,
         path=record_window.path,
-        window_minutes=int(window_minutes),
-        truncated=bool(record_window.truncated),
+        window_minutes=window_minutes,
+        truncated=record_window.truncated,
         record_count=len(record_window.records),
-        rag_trace_count=int(state.rag_trace_count),
+        rag_trace_count=state.rag_trace_count,
         unique_query_hashes=len(state.query_hashes),
-        zero_hit_count=int(state.zero_hit_count),
+        zero_hit_count=state.zero_hit_count,
         zero_hit_rate=(state.zero_hit_count / state.rag_trace_count) if state.rag_trace_count else None,
         slow_threshold_sec=slow_threshold_sec,
-        slow_count=int(state.slow_count),
+        slow_count=state.slow_count,
         slow_rate=(state.slow_count / state.rag_trace_count) if state.rag_trace_count else None,
         retrieval_p50_elapsed_sec=_percentile(state.retrieval_elapsed, 50.0),
         retrieval_p95_elapsed_sec=_percentile(state.retrieval_elapsed, 95.0),
@@ -1345,7 +1363,7 @@ def summarize_rag_query_analytics(
     - Aggregates are numeric/categorical
     """
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     window_minutes = _normalize_window_minutes(window_minutes)
     top_n = max(1, min(200, int(top_n or 0)))
     slow_threshold_sec = max(0.0, float(slow_threshold_sec or 0.0))
@@ -1475,7 +1493,7 @@ def _sanitize_rag_done_for_bundle(record: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _metrics_tail_redactor() -> Any | None:
+def _metrics_tail_redactor() -> "PIIRedactor | None":
     try:
         from app.core.pii_redaction import PIIRedactor
 
@@ -1509,7 +1527,7 @@ def _strip_generic_sensitive_fields(record: dict[str, Any]) -> dict[str, Any]:
     return safe
 
 
-def _redacted_metrics_tail_record(record: dict[str, Any], redactor: Any | None) -> dict[str, Any]:
+def _redacted_metrics_tail_record(record: dict[str, Any], redactor: "PIIRedactor | None") -> dict[str, Any]:
     event = _record_event(record)
     if event == "rag_trace":
         safe = _sanitize_rag_trace_for_bundle(record)
@@ -1684,8 +1702,8 @@ def _extract_trace_bundle_summary(bundle: RagTraceBundle) -> dict[str, Any]:
 
     out: dict[str, Any] = {
         "request_id": bundle.request_id,
-        "window_minutes": int(bundle.window_minutes),
-        "truncated": bool(bundle.truncated),
+        "window_minutes": bundle.window_minutes,
+        "truncated": bundle.truncated,
         "citations_count": _trace_bundle_citations_count(trace),
     }
     out.update(_trace_bundle_retrieval_summary(retrieval, done))
@@ -1757,7 +1775,7 @@ def build_rag_trace_bundle_diff(*, bundle_a: RagTraceBundle, bundle_b: RagTraceB
         generated_at=_now_utc(),
         request_id_a=bundle_a.request_id,
         request_id_b=bundle_b.request_id,
-        truncated=bool(bundle_a.truncated or bundle_b.truncated),
+        truncated=bundle_a.truncated or bundle_b.truncated,
         summary_a=summary_a,
         summary_b=summary_b,
         diff=diff,
@@ -1794,7 +1812,7 @@ def build_rag_trace_bundle(
     returns a small, sanitized set of records matching the request_id.
     """
 
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
+    enabled = bool(settings.ENABLE_METRICS_LOG)
     request_id = str(request_id or "").strip()
     if not request_id:
         return None

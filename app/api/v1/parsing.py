@@ -58,7 +58,7 @@ from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerE
 from app.parsing.utils.cli import resolve_cli_command
 from app.parsing.utils.document_elements import normalize_document_elements
 from app.rag.core.logging import get_logger
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.parsing_extract_service import extract_parsing_fields
 from app.storage.object.runtime import (
     document_object_storage_enabled,
@@ -279,7 +279,7 @@ def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None
 
 
 def _should_inline_preview_parse(file_ext: str) -> bool:
-    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+    if not bool(settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED):
         return False
     ext = str(file_ext or "").strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
@@ -365,16 +365,16 @@ def _compute_parsing_quality_gate(
         grade = "fail"
         reasons.append("empty_markdown")
 
-    if is_pdf and int(getattr(text_quality, "content_chars", 0) or 0) < int(min_content_chars or 0):
+    if is_pdf and text_quality.content_chars < int(min_content_chars or 0):
         grade = "fail"
         reasons.append("low_content_chars")
 
     # Heuristic warnings (best-effort).
-    if float(getattr(text_quality, "replacement_ratio", 0.0) or 0.0) >= 0.08:
+    if text_quality.replacement_ratio >= 0.08:
         grade = _grade_max(grade, "warn")
         reasons.append("high_replacement_ratio")
 
-    if float(getattr(text_quality, "density", 0.0) or 0.0) <= 0.12:
+    if text_quality.density <= 0.12:
         grade = _grade_max(grade, "warn")
         reasons.append("low_density")
 
@@ -425,7 +425,7 @@ def extract_parsing_document(
     )
     markdown = ""
     if row is not None:
-        markdown = str(getattr(row, "markdown_content", "") or getattr(row, "original_markdown_content", "") or "")
+        markdown = str(row.markdown_content or row.original_markdown_content or "")
     elements = meta.get("elements") if isinstance(meta.get("elements"), list) else []
     result = extract_parsing_fields(
         markdown=markdown,
@@ -452,7 +452,7 @@ def _coerce_float(value: Any) -> float | None:
         f = float(value)
         if f != f:  # NaN
             return None
-        return float(f)
+        return f
     except Exception:
         return None
 
@@ -485,10 +485,10 @@ def _load_competition_weights() -> dict[str, float] | None:
     """
     Parse weights JSON (Opt 8) from settings, with a safe default.
     """
-    if not bool(getattr(settings, "PARSE_COMPETITION_MATRIX_ENABLED", False)):
+    if not bool(settings.PARSE_COMPETITION_MATRIX_ENABLED):
         return None
 
-    raw = str(getattr(settings, "PARSE_COMPETITION_MATRIX_WEIGHTS_JSON", "") or "").strip()
+    raw = str(settings.PARSE_COMPETITION_MATRIX_WEIGHTS_JSON or "").strip()
     if raw:
         try:
             obj = json.loads(raw)
@@ -507,12 +507,12 @@ def _append_pdf_fallback_candidate(candidates: list[str], *, name: str, enabled:
 
 
 def _magicpdf_fallback_available() -> bool:
-    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+    if not bool(settings.MAGIC_PDF_ENABLED):
         return False
-    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+    if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+    models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     return bool(resolve_cli_command(cli) and models_dir)
 
 
@@ -527,37 +527,32 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="mineru",
-        enabled=bool(getattr(settings, "MINERU_ENABLED", False))
-        and bool(getattr(settings, "MINERU_API_TOKEN", None) or getattr(settings, "MINERU_LOCAL_SERVER_URL", None)),
+        enabled=bool(settings.MINERU_ENABLED) and bool(settings.MINERU_API_TOKEN or settings.MINERU_LOCAL_SERVER_URL),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="deepseek_ocr",
-        enabled=bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-        and bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()),
+        enabled=bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY or "").strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="qianfan_ocr",
-        enabled=bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-        and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()),
+        enabled=bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL or "").strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="etl4llm",
-        enabled=bool(getattr(settings, "ETL4LLM_ENABLED", False))
-        and bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip()),
+        enabled=bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL or "").strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="deepdoc",
-        enabled=bool(getattr(settings, "DEEPDOC_ENABLED", False)),
+        enabled=bool(settings.DEEPDOC_ENABLED),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="docling",
-        enabled=bool(getattr(settings, "DOCLING_ENABLED", False))
-        and bool((getattr(settings, "DOCLING_API_URL", "") or "").strip()),
+        enabled=bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL or "").strip()),
     )
 
     # MagicPDF prefers service mode; local CLI remains a fallback.
@@ -573,7 +568,7 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="markitdown",
-        enabled=bool(getattr(settings, "MARKITDOWN_ENABLED", False)),
+        enabled=bool(settings.MARKITDOWN_ENABLED),
     )
 
     # Always keep a basic fallback.
@@ -600,7 +595,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
     # Try to find an existing dataset marked as parsing workspace for this owner.
     existing = db.query(Dataset).filter(Dataset.tenant_id == tenant_id, Dataset.owner_id == account_id).all()
     for ds in existing:
-        meta = getattr(ds, "dataset_metadata", None) or {}
+        meta = ds.dataset_metadata or {}
         if isinstance(meta, dict) and meta.get("parsing_workspace") is True:
             return ds
 
@@ -615,7 +610,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
     dataset_name = f"Parsing Workspace [{owner_tag}]"
 
     try:
-        ds = DatasetService.create_dataset(
+        ds = dataset_service.create_dataset(
             db=db,
             tenant_id=tenant_id,
             name=dataset_name,
@@ -638,7 +633,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
                 .first()
             )
             if ds:
-                meta = dict(getattr(ds, "dataset_metadata", None) or {})
+                meta = dict(ds.dataset_metadata or {})
                 meta["parsing_workspace"] = True
                 meta["parsing_workspace_owner_tag"] = owner_tag
                 ds.dataset_metadata = meta
@@ -646,7 +641,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
                 db.refresh(ds)
                 return ds
         raise
-    meta = dict(getattr(ds, "dataset_metadata", None) or {})
+    meta = dict(ds.dataset_metadata or {})
     meta["parsing_workspace"] = True
     meta["parsing_workspace_owner_tag"] = owner_tag
     ds.dataset_metadata = meta
@@ -669,7 +664,7 @@ def _assert_path_under_tenant_root(*, tenant_id: UUID, path: Path) -> None:
 
 
 def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, document_id: UUID) -> DBDocument:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     doc = db.query(DBDocument).filter(DBDocument.id == document_id, DBDocument.tenant_id == tenant_id).first()
     if not doc:
@@ -680,13 +675,13 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
         raise HTTPException(status_code=404, detail="Document not found")
 
     if doc.dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
     else:
         # Should not happen for workspace docs, but keep safe default.
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
-    owner_id = str(getattr(doc, "owner_id", "") or "").strip()
+    owner_id = str(doc.owner_id or "").strip()
     if owner_id and owner_id != str(account_id or "").strip():
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -727,7 +722,7 @@ def list_parsing_documents(
     List parsing workspace documents (persistent across restarts).
     """
     workspace_dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
-    DatasetService.assert_dataset_readable(db, workspace_dataset, account_id)
+    dataset_service.assert_dataset_readable(db, workspace_dataset, account_id)
 
     query = db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id)
     query = query.filter(
@@ -738,8 +733,8 @@ def list_parsing_documents(
     )
 
     if dataset_id is not None:
-        target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, target_dataset, account_id)
+        target_dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, target_dataset, account_id)
         query = query.filter(_parsing_workspace_target_dataset_clause(dataset_id=dataset_id))
     query = _filter_parsing_workspace_documents(query)
 
@@ -764,7 +759,7 @@ async def upload_parsing_document(
     """
     Upload a source file into the parsing workspace (no parsing yet).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
 
     file_ext = Path(file.filename).suffix.lower()
@@ -776,12 +771,12 @@ async def upload_parsing_document(
 
     target_dataset: Dataset | None = None
     if dataset_id is not None:
-        target_dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_writable(db, target_dataset, account_id)
+        target_dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_writable(db, target_dataset, account_id)
         dataset = target_dataset
     else:
         dataset = _get_or_create_workspace_dataset(db, tenant_id, account_id)
-        DatasetService.assert_dataset_writable(db, dataset, account_id)
+        dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     document_id = uuid.uuid4()
 
@@ -869,7 +864,7 @@ async def _resolve_workspace_source_path(
             dataset_id=doc.dataset_id,
             document_id=doc.id,
             file_type=doc.file_type,
-            document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+            document_metadata=dict(doc.doc_metadata or {}),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Object storage is disabled") from exc
@@ -890,7 +885,7 @@ async def _resolve_workspace_source_path(
         store.download_object_to_path,
         object_name=ref.object_name,
         destination=temp_path,
-        max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
+        max_bytes=int(settings.MAX_FILE_SIZE or 0),
     )
     return temp_path
 
@@ -984,12 +979,12 @@ async def _parse_workspace_source(
             "mode": "preview",
         },
         disconnect_check=request.is_disconnected,
-        timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
     )
 
 
 def _workspace_cross_page_merge_stats(artifact_docs: Any) -> dict[str, int] | None:
-    if not artifact_docs or not bool(getattr(settings, "CROSS_PAGE_MERGE_ENABLED", False)):
+    if not artifact_docs or not bool(settings.CROSS_PAGE_MERGE_ENABLED):
         return None
     try:
         _docs, cross_page_merge_stats = merge_cross_page_items(artifact_docs)
@@ -1084,7 +1079,7 @@ async def _run_workspace_fallback_candidate(
                 "pdf_quality": dict(pdf_quality) if isinstance(pdf_quality, dict) else None,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
         )
     except Exception as exc:  # noqa: BLE001
         return None, {"from": resolved_backend, "to": cand_backend, "accepted": False, "error": str(exc)[:200]}
@@ -1138,9 +1133,9 @@ async def _run_workspace_pdf_fallbacks(
     markdown: str,
     pdf_quality: dict[str, Any] | None,
 ) -> tuple[str, ParsingQualityGate, Any, str, str, dict[str, int] | None, list[dict[str, Any]]]:
-    min_chars = max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120))
-    min_parse_score = max(0.0, float(getattr(settings, "PARSE_FALLBACK_MIN_PARSE_SCORE", 0.55) or 0.55))
-    max_retries = max(0, int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1))
+    min_chars = max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120))
+    min_parse_score = max(0.0, float(settings.PARSE_FALLBACK_MIN_PARSE_SCORE or 0.55))
+    max_retries = max(0, int(settings.PARSE_FALLBACK_MAX_RETRIES or 1))
     matrix_weights = _load_competition_weights()
     fallback_attempts: list[dict[str, Any]] = []
     cross_page_merge_stats = _workspace_cross_page_merge_stats(artifact_docs)
@@ -1278,9 +1273,7 @@ def _apply_workspace_vlm_correction(
     vlm_correction_enabled: bool | None,
 ) -> tuple[str, ParsingQualityGate, dict[str, Any] | None, bool]:
     vlm_correction_requested = (
-        bool(getattr(settings, "VLM_CORRECTION_ENABLED", False))
-        if vlm_correction_enabled is None
-        else bool(vlm_correction_enabled)
+        bool(settings.VLM_CORRECTION_ENABLED) if vlm_correction_enabled is None else bool(vlm_correction_enabled)
     )
     if file_ext != ".pdf" or not vlm_correction_requested:
         return markdown, gate, None, vlm_correction_requested
@@ -1293,12 +1286,12 @@ def _apply_workspace_vlm_correction(
         corrected_pages, audit = maybe_correct_markdown_pages(
             pages,
             enabled=True,
-            api_url=str(getattr(settings, "VLM_CORRECTION_API_URL", "") or ""),
-            timeout_sec=float(getattr(settings, "VLM_CORRECTION_TIMEOUT_SEC", 60) or 60),
-            max_pages=int(getattr(settings, "VLM_CORRECTION_MAX_PAGES", 3) or 3),
-            max_chars=int(getattr(settings, "VLM_CORRECTION_MAX_CHARS", 40_000) or 40_000),
+            api_url=str(settings.VLM_CORRECTION_API_URL or ""),
+            timeout_sec=float(settings.VLM_CORRECTION_TIMEOUT_SEC or 60),
+            max_pages=int(settings.VLM_CORRECTION_MAX_PAGES or 3),
+            max_chars=int(settings.VLM_CORRECTION_MAX_CHARS or 40_000),
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-            min_table_quality=float(getattr(settings, "VLM_CORRECTION_MIN_TABLE_QUALITY", 0.6) or 0.6),
+            min_table_quality=float(settings.VLM_CORRECTION_MIN_TABLE_QUALITY or 0.6),
             meta={"tenant_id": str(tenant_id), "document_id": str(document_id)},
         )
         vlm_audit = audit.to_dict()
@@ -1319,7 +1312,7 @@ def _apply_workspace_vlm_correction(
         gate_after = _compute_parsing_quality_gate(
             markdown,
             pdf_quality=pdf_quality,
-            min_content_chars=max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120)),
+            min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120)),
             is_pdf=True,
         )
         next_evidence = dict(gate_after.evidence or {})
@@ -1368,8 +1361,8 @@ def _apply_workspace_image_enrichments(
             markdown, image_ocr_added, audit = add_image_ocr_blocks(
                 markdown,
                 origin_path=source_path,
-                max_images=max(0, int(getattr(settings, "IMAGE_OCR_MAX_IMAGES", 20) or 20)),
-                max_ocr_chars=max(0, int(getattr(settings, "IMAGE_OCR_MAX_CHARS", 2000) or 2000)),
+                max_images=max(0, int(settings.IMAGE_OCR_MAX_IMAGES or 20)),
+                max_ocr_chars=max(0, int(settings.IMAGE_OCR_MAX_CHARS or 2000)),
             )
             image_ocr_audit = audit.to_dict()
             markdown = _strip_storage_nul_chars(markdown)
@@ -1499,11 +1492,11 @@ def _apply_workspace_quality_metadata(
             "attempts": fallback_attempts,
             "min_content_chars": max(
                 0,
-                int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120),
+                int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120),
             ),
             "max_retries": max(
                 0,
-                int(getattr(settings, "PARSE_FALLBACK_MAX_RETRIES", 1) or 1),
+                int(settings.PARSE_FALLBACK_MAX_RETRIES or 1),
             ),
         }
     next_meta.update(artifact_stats)
@@ -1801,7 +1794,7 @@ async def _run_workspace_parse_pipeline(
     gate = _compute_parsing_quality_gate(
         markdown,
         pdf_quality=pdf_quality,
-        min_content_chars=max(0, int(getattr(settings, "PARSE_FALLBACK_MIN_CONTENT_CHARS", 120) or 120)),
+        min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120)),
         is_pdf=(file_ext == ".pdf"),
     )
     (
@@ -1892,8 +1885,8 @@ async def parse_workspace_document(
     Parse a previously uploaded workspace document and persist markdown.
     """
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
-    ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
     source_path = await _resolve_workspace_source_path(doc=doc, tenant_id=tenant_id)
     cleanup_path = source_path if is_object_storage_uri(str(doc.file_path or "").strip()) else None
     _set_workspace_parse_processing(doc, db)
@@ -1997,8 +1990,8 @@ def update_parsing_content(
     db: Annotated[Session, Depends(get_db)],
 ):
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
-    ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     markdown = _strip_storage_nul_chars(str(payload.markdown_content or ""))
     original = payload.original_markdown_content
@@ -2077,8 +2070,8 @@ def delete_parsing_document(
     db: Annotated[Session, Depends(get_db)],
 ):
     doc = _get_workspace_document(db, tenant_id=tenant_id, account_id=account_id, document_id=document_id)
-    ds = DatasetService.get_dataset(db, tenant_id, doc.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     # Best-effort delete source file.
     with contextlib.suppress(Exception):
@@ -2091,7 +2084,7 @@ def delete_parsing_document(
                     dataset_id=doc.dataset_id,
                     document_id=doc.id,
                     file_type=doc.file_type,
-                    document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+                    document_metadata=dict(doc.doc_metadata or {}),
                 )
                 store.delete_object(object_name=ref.object_name)
             else:

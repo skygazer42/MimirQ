@@ -1,4 +1,3 @@
-
 import contextlib
 from dataclasses import dataclass
 from typing import Any
@@ -7,9 +6,12 @@ from uuid import UUID
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
+from app.api.schemas.chat import ChatRAGConfig, ChatRequest
 from app.core.config import settings
+from app.core.model_execution import RetiredModelProviderError
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
+from app.models.rag_config_template import RagConfigTemplate
 from app.services.chat_cache_runtime import (
     annotate_chat_cache_metrics,
     prepare_chat_cache_lookup,
@@ -42,7 +44,7 @@ from app.services.structured_memory_service import build_structured_memory_conte
 
 @dataclass(frozen=True)
 class PreparedChatRequestRuntime:
-    effective_rag_config: Any
+    effective_rag_config: ChatRAGConfig
     dataset_id_used: UUID | None
     dataset_rag_defaults_applied_fields: list[str]
     effective_prompt_template_id: UUID | None
@@ -65,7 +67,7 @@ class PreparedChatTurnSession:
 
 @dataclass(frozen=True)
 class PreparedStreamChatRuntime:
-    effective_rag_config: Any
+    effective_rag_config: ChatRAGConfig
     dataset_id_used: UUID | None
     dataset_rag_defaults_applied_fields: list[str]
     effective_prompt_template_id: UUID | None
@@ -86,25 +88,24 @@ class PreparedStreamChatRuntime:
     structured_data: object | None
 
 
-def _request_fields_set(request: Any) -> set[str]:
-    return set(getattr(request, "model_fields_set", set()) or set())
+def _request_fields_set(request: ChatRequest) -> set[str]:
+    return set(request.model_fields_set)
 
 
-def _rag_fields_set(request: Any) -> set[str]:
-    rag_fields = set(getattr(request.rag_config, "model_fields_set", set()) or set())
+def _rag_fields_set(request: ChatRequest) -> set[str]:
     if "rag_config" not in _request_fields_set(request):
         return set()
-    return rag_fields
+    return set(request.rag_config.model_fields_set)
 
 
 def _resolve_dataset_rag_defaults(
     *,
     db: Session,
     tenant_id: UUID,
-    request: Any,
+    request: ChatRequest,
     scope_dataset_id: UUID | None,
     document_ids: list[UUID],
-) -> tuple[Any, list[str], dict[str, Any] | None, UUID | None]:
+) -> tuple[ChatRAGConfig, list[str], dict[str, Any] | None, UUID | None]:
     effective_rag_config = request.rag_config
     dataset_rag_defaults_applied_fields: list[str] = []
     dataset_defaults_meta: dict[str, Any] | None = None
@@ -119,13 +120,15 @@ def _resolve_dataset_rag_defaults(
         if dataset_id_used is None:
             return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
         ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
-        dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
-        raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
+        dataset_defaults_meta = ds_meta
+        raw_defaults = ds_meta.get("rag_defaults")
         effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
             rag_config=effective_rag_config,
             request_fields_set=_rag_fields_set(request),
             raw_dataset_defaults=raw_defaults,
         )
+    except RetiredModelProviderError:
+        raise
     except Exception:
         return request.rag_config, [], None, scope_dataset_id
     return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
@@ -133,7 +136,7 @@ def _resolve_dataset_rag_defaults(
 
 def _resolve_prompt_defaults(
     *,
-    request: Any,
+    request: ChatRequest,
     dataset_defaults_meta: dict[str, Any] | None,
 ) -> tuple[UUID | None, str | None, str | None, list[str]]:
     return merge_prompt_defaults_with_dataset(
@@ -147,7 +150,7 @@ def _resolve_prompt_defaults(
 
 def _resolve_rag_template_defaults(
     *,
-    request: Any,
+    request: ChatRequest,
     dataset_defaults_meta: dict[str, Any] | None,
 ) -> tuple[UUID | None, str | None, str | None, list[str]]:
     return merge_rag_config_template_defaults_with_dataset(
@@ -161,7 +164,7 @@ def _resolve_rag_template_defaults(
 
 def _build_rag_template_meta(
     *,
-    chosen: Any,
+    chosen: RagConfigTemplate,
     rag_config_template_resolver_debug: dict[str, Any] | None,
     rag_config_template_patch_applied_fields: list[str],
     effective_rag_config_ab_experiment_key: str | None,
@@ -169,11 +172,11 @@ def _build_rag_template_meta(
 ) -> dict[str, Any]:
     rag_config_template_meta = {
         "template_id": str(chosen.id),
-        "template_key": getattr(chosen, "template_key", None),
-        "version": int(getattr(chosen, "version", 0) or 0),
-        "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
-        "ab_variant": getattr(chosen, "ab_variant", None),
-        "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
+        "template_key": chosen.template_key,
+        "version": int(chosen.version or 0),
+        "ab_experiment_key": chosen.ab_experiment_key,
+        "ab_variant": chosen.ab_variant,
+        "patch_hash": build_rag_config_patch_hash(chosen.config_patch),
         "patch_applied_fields": rag_config_template_patch_applied_fields,
     }
     if not rag_config_template_resolver_debug:
@@ -182,20 +185,20 @@ def _build_rag_template_meta(
     strategy = str(rag_config_template_resolver_debug.get("strategy") or "").strip().lower()
     if strategy == "adaptive_epsilon_greedy":
         rag_config_template_meta["reward_writeback"] = build_adaptive_routing_reward_writeback(
-            experiment_key=getattr(chosen, "ab_experiment_key", None) or effective_rag_config_ab_experiment_key,
-            variant=getattr(chosen, "ab_variant", None),
+            experiment_key=chosen.ab_experiment_key or effective_rag_config_ab_experiment_key,
+            variant=chosen.ab_variant,
             strategy=rag_config_template_resolver_debug.get("strategy"),
             decision=rag_config_template_resolver_debug.get("decision"),
-            request_id=str(request_id),
+            request_id=request_id,
             template_id=str(chosen.id),
-            template_key=getattr(chosen, "template_key", None),
+            template_key=chosen.template_key,
         )
     return rag_config_template_meta
 
 
-def _update_template_usage(db: Session, chosen: Any) -> None:
+def _update_template_usage(db: Session, chosen: RagConfigTemplate) -> None:
     try:
-        chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
+        chosen.usage_count = int(chosen.usage_count or 0) + 1
         db.commit()
     except Exception:
         with contextlib.suppress(Exception):
@@ -208,12 +211,12 @@ def _resolve_rag_template_runtime(
     tenant_id: UUID,
     account_id: str,
     request_id: str,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     rag_fields_set: set[str],
     effective_rag_config_template_id: UUID | None,
     effective_rag_config_template_key: str | None,
     effective_rag_config_ab_experiment_key: str | None,
-) -> tuple[Any, dict[str, Any] | None]:
+) -> tuple[ChatRAGConfig, dict[str, Any] | None]:
     try:
         if not (
             effective_rag_config_template_id
@@ -234,7 +237,7 @@ def _resolve_rag_template_runtime(
             return effective_rag_config, None
         effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
             rag_config=effective_rag_config,
-            patch=getattr(chosen, "config_patch", None),
+            patch=chosen.config_patch,
             request_fields_set=rag_fields_set,
         )
         rag_config_template_meta = _build_rag_template_meta(
@@ -246,6 +249,8 @@ def _resolve_rag_template_runtime(
         )
         _update_template_usage(db, chosen)
         return effective_rag_config, rag_config_template_meta
+    except RetiredModelProviderError:
+        raise
     except Exception:
         return effective_rag_config, None
 
@@ -254,12 +259,12 @@ def _build_history_for_llm(
     *,
     db: Session,
     tenant_id: UUID,
-    request: Any,
+    request: ChatRequest,
     conversation_id: UUID | None,
     long_term_messages: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     history_for_llm = [m.model_dump() for m in request.history] + long_term_messages
-    if bool(getattr(request, "enable_summary_memory", False)) and conversation_id:
+    if request.enable_summary_memory and conversation_id:
         try:
             summary_text = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
         except Exception:
@@ -267,23 +272,19 @@ def _build_history_for_llm(
         if summary_text:
             history_for_llm = [{"role": "system", "content": summary_text}] + history_for_llm
 
-    if (
-        bool(getattr(request, "enable_structured_memory", False))
-        and bool(getattr(settings, "STRUCTURED_MEMORY_ENABLED", False))
-        and conversation_id
-    ):
+    if request.enable_structured_memory and bool(settings.STRUCTURED_MEMORY_ENABLED) and conversation_id:
         try:
             records = _retrieve_structured_memory_records(
                 db=db,
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
-                max_messages=int(getattr(settings, "STRUCTURED_MEMORY_LOOKBACK_MESSAGES", 80) or 80),
+                max_messages=int(settings.STRUCTURED_MEMORY_LOOKBACK_MESSAGES or 80),
             )
             ctx = build_structured_memory_context(
                 records=records,
-                max_entities=int(getattr(settings, "STRUCTURED_MEMORY_MAX_ENTITIES", 20) or 20),
-                max_facts=int(getattr(settings, "STRUCTURED_MEMORY_MAX_FACTS", 8) or 8),
-                max_chars=int(getattr(settings, "STRUCTURED_MEMORY_MAX_CONTEXT_CHARS", 1200) or 1200),
+                max_entities=int(settings.STRUCTURED_MEMORY_MAX_ENTITIES or 20),
+                max_facts=int(settings.STRUCTURED_MEMORY_MAX_FACTS or 8),
+                max_chars=int(settings.STRUCTURED_MEMORY_MAX_CONTEXT_CHARS or 1200),
             )
         except Exception:
             ctx = ""
@@ -297,7 +298,7 @@ def prepare_chat_turn_session(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     allow_empty_docs: bool,
     allow_open_scope: bool,
     conversation_not_found_detail: str,
@@ -330,17 +331,13 @@ def prepare_chat_turn_session(
         conversation_id=conversation_id,
         role="user",
         content=request.message,
-        token_count=num_tokens_from_string(request.message or ""),
+        token_count=num_tokens_from_string(request.message),
     )
     db.add(user_message)
     apply_auto_conversation_title(conversation, request.message)
 
     long_term_messages: list[dict[str, Any]] = []
-    if (
-        bool(getattr(request, "enable_long_term_memory", False))
-        and bool(getattr(settings, "LONG_TERM_MEMORY_ENABLED", False))
-        and conversation_id
-    ):
+    if request.enable_long_term_memory and bool(settings.LONG_TERM_MEMORY_ENABLED) and conversation_id:
         long_term_messages = _retrieve_long_term_messages(
             db=db,
             conversation_id=conversation_id,
@@ -366,7 +363,7 @@ def prepare_chat_request_runtime(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     conversation_id: UUID | None,
     scope_dataset_id: UUID | None,
     document_ids: list[UUID],
@@ -439,7 +436,7 @@ async def prepare_stream_chat_runtime(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     conversation_id: UUID | None,
     scope_dataset_id: UUID | None,
     document_ids: list[UUID],
@@ -462,37 +459,33 @@ async def prepare_stream_chat_runtime(
     dataset_id_used = request_runtime.dataset_id_used
     effective_prompt_template_id = request_runtime.effective_prompt_template_id
     effective_prompt_template_key = request_runtime.effective_prompt_template_key
-    effective_prompt_ab_experiment_key = (
-        request_runtime.effective_prompt_ab_experiment_key
-    )
+    effective_prompt_ab_experiment_key = request_runtime.effective_prompt_ab_experiment_key
     rag_config_template_meta = request_runtime.rag_config_template_meta
     history_for_llm = request_runtime.history_for_llm
 
     cache_scope_dataset_id = dataset_id_used or scope_dataset_id
     rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
     prompt_cfg = {
-        "prompt_template_id": str(effective_prompt_template_id)
-        if effective_prompt_template_id
-        else None,
+        "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
         "prompt_template_key": (effective_prompt_template_key or None),
         "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
     }
     cache_feature_enabled, cache_key, cache_skip_reason = prepare_chat_cache_lookup(
         db=db,
         tenant_id=tenant_id,
-        account_id=str(account_id or ""),
+        account_id=account_id,
         dataset_id=cache_scope_dataset_id,
         document_ids=document_ids,
         history=request.history,
-        enable_long_term_memory=bool(request.enable_long_term_memory),
+        enable_long_term_memory=request.enable_long_term_memory,
         long_term_messages=long_term_messages,
-        enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
+        enable_structured_memory=request.enable_structured_memory,
         question=request.message,
         rag_config=rag_cfg,
         prompt_config=prompt_cfg,
-        structured_output=bool(request.structured_output),
+        structured_output=request.structured_output,
         structured_preset=request.structured_preset,
-        use_graph=bool(effective_rag_config.use_graph),
+        use_graph=effective_rag_config.use_graph,
     )
     cache_eligible = bool(cache_key)
     cached = await get_cached_chat_response_async(cache_key) if cache_key else None
@@ -505,11 +498,7 @@ async def prepare_stream_chat_runtime(
 
     if isinstance(cached, dict):
         full_response = str(cached.get("content") or "")
-        citations_data = (
-            cached.get("citations")
-            if isinstance(cached.get("citations"), list)
-            else []
-        )
+        citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
         metrics_data = annotate_chat_cache_metrics(
             dict(cached.get("metrics") or {}),
             enabled=cache_feature_enabled,

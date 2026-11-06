@@ -1,27 +1,13 @@
-import { File, FileSignature, FileText } from "lucide-react"
-
-import { cn } from "@/lib/utils"
+import { getFileTypeMeta } from '@/components/knowledge/file-type'
+import { cn } from '@/lib/utils'
 
 type FileTypeIconProps = {
   type?: string | null
+  filename?: string | null
   className?: string
 }
 
-export function FileTypeIcon({ type, className }: Readonly<FileTypeIconProps>) {
-  const t = String(type || "").trim().toLowerCase()
-  const Icon =
-    (() => {
-    if (t === "pdf") {
-        return FileSignature;
-    }
-    else if (t === "md" || t === "txt") {
-            return FileText;
-        }
-        else {
-            return File;
-        }
-})()
-
-  return <Icon className={cn("h-4 w-4", className)} aria-hidden="true" />
+export function FileTypeIcon({ type, filename, className }: Readonly<FileTypeIconProps>) {
+  const { icon: Icon } = getFileTypeMeta({ filename: filename || '', file_type: type || '' })
+  return <Icon appearance="color" className={cn('h-4 w-4', className)} aria-hidden="true" />
 }
-

@@ -73,7 +73,7 @@ class _SuggestionSignals:
 
 
 def _summary_or_404(scan_run: DBDatasetPrecheckScanRun) -> dict[str, Any]:
-    summary = getattr(scan_run, "summary", None)
+    summary = scan_run.summary
     summary = summary if isinstance(summary, dict) else {}
     if not summary:
         raise HTTPException(status_code=404, detail="Summary not available")
@@ -81,7 +81,7 @@ def _summary_or_404(scan_run: DBDatasetPrecheckScanRun) -> dict[str, Any]:
 
 
 def _load_jsonl_path(scan_run: DBDatasetPrecheckScanRun, *, tenant_id: UUID) -> Path:
-    artifacts = getattr(scan_run, "artifacts", None)
+    artifacts = scan_run.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
     raw = str(artifacts.get("files_jsonl") or "").strip()
     if not raw:
@@ -200,13 +200,13 @@ def _collect_sensitive_file_types(jsonl_path: Path) -> tuple[set[str], set[str]]
 
 
 def _chunk_size_note(signals: _SuggestionSignals) -> str | None:
-    if not bool(getattr(settings, "PRECHECK_SUGGEST_CHUNK_SIZE", True)):
+    if not bool(settings.PRECHECK_SUGGEST_CHUNK_SIZE):
         return None
     if signals.token_p90 <= 0:
         return None
 
-    base_chunk_size = int(getattr(settings, "CHUNK_SIZE", 1000) or 1000)
-    base_chunk_overlap = int(getattr(settings, "CHUNK_OVERLAP", 200) or 200)
+    base_chunk_size = int(settings.CHUNK_SIZE or 1000)
+    base_chunk_overlap = int(settings.CHUNK_OVERLAP or 200)
     overlap_ratio = (base_chunk_overlap / base_chunk_size) if base_chunk_size > 0 else 0.2
 
     suggested_size = int(base_chunk_size)
@@ -274,12 +274,10 @@ def _table_pipeline_patch(*, pii_types: set[str]) -> dict[str, Any]:
     table_patch: dict[str, Any] = {
         "table_store_enabled": True,
         "table_store_auto_route": True,
-        "table_store_auto_row_threshold": int(getattr(settings, "TABLE_STORE_AUTO_ROW_THRESHOLD", 5000) or 5000),
-        "table_store_auto_col_threshold": int(getattr(settings, "TABLE_STORE_AUTO_COL_THRESHOLD", 80) or 80),
-        "table_store_auto_sheet_threshold": int(getattr(settings, "TABLE_STORE_AUTO_SHEET_THRESHOLD", 5) or 5),
-        "table_store_auto_file_bytes_threshold": int(
-            getattr(settings, "TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD", 5_000_000) or 5_000_000
-        ),
+        "table_store_auto_row_threshold": int(settings.TABLE_STORE_AUTO_ROW_THRESHOLD or 5000),
+        "table_store_auto_col_threshold": int(settings.TABLE_STORE_AUTO_COL_THRESHOLD or 80),
+        "table_store_auto_sheet_threshold": int(settings.TABLE_STORE_AUTO_SHEET_THRESHOLD or 5),
+        "table_store_auto_file_bytes_threshold": int(settings.TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD or 5_000_000),
     }
     if bool({"csv", "xls", "xlsx"} & pii_types):
         table_patch["table_store_sample_rows"] = 0
@@ -495,7 +493,7 @@ def _near_dup_manual_review_bucket(
     tenant_id: UUID,
     max_names: int,
 ) -> dict[str, Any]:
-    artifacts = getattr(scan_run, "artifacts", None)
+    artifacts = scan_run.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
     near_raw = str(artifacts.get("near_dups_json") or "").strip()
     names: list[str] = []
@@ -612,7 +610,7 @@ def apply_ingestion_policy_suggestion(
     """
     Apply a suggested ingestion policy to a dataset (server-side convenience wrapper).
     """
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     if not bool(replace) and "ingestion_policy" in meta:
         raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
 

@@ -207,7 +207,7 @@ export function useGraphDisplayFilters({
       durationMs: Math.max(0, getNowMs() - startedAt),
     }
   }, [confidenceBucketFilters, entityTypeFilters, graphData, predicateFilters])
-  const displayGraphData = useMemo<GraphData>(() => displayGraphProjection.graphData, [displayGraphProjection.graphData])
+  const displayGraphData = displayGraphProjection.graphData
 
   const linksWithIds = useMemo<GraphLinkLike[]>(() => {
     return displayGraphData.links.map((link, index) => ({
@@ -240,8 +240,7 @@ export function useGraphDisplayFilters({
     if (lastProjectionTraceKeyRef.current === traceKey) return
     lastProjectionTraceKeyRef.current = traceKey
 
-    const page =
-      globalThis.window === undefined ? '/graph' : globalThis.window.location?.pathname || '/graph'
+    const page = globalThis.window === undefined ? '/graph' : globalThis.window.location?.pathname || '/graph'
 
     void import('@/lib/frontend-trace')
       .then(({ reportFrontendTrace }) =>
@@ -257,8 +256,8 @@ export function useGraphDisplayFilters({
             output_link_count: displayGraphData.links.length,
             active_filter_count: activeGraphFilterCount,
           },
-          { keepalive: true }
-        )
+          { keepalive: true },
+        ),
       )
       .catch((error) => {
         reportClientWarning('Failed to report graph projection trace', error)
@@ -338,13 +337,7 @@ export function useGraphDisplayFilters({
     setConfidenceBucketFilters([])
     setEntityTypeQuery('')
     setPredicateQuery('')
-  }, [
-    setConfidenceBucketFilters,
-    setEntityTypeFilters,
-    setEntityTypeQuery,
-    setPredicateFilters,
-    setPredicateQuery,
-  ])
+  }, [setConfidenceBucketFilters, setEntityTypeFilters, setEntityTypeQuery, setPredicateFilters, setPredicateQuery])
 
   const handleEntityTypeCheckedChange = useCallback(
     (value: string, checked: boolean) => {
@@ -355,7 +348,7 @@ export function useGraphDisplayFilters({
         return Array.from(next)
       })
     },
-    [setEntityTypeFilters]
+    [setEntityTypeFilters],
   )
 
   const handlePredicateCheckedChange = useCallback(
@@ -367,7 +360,7 @@ export function useGraphDisplayFilters({
         return Array.from(next)
       })
     },
-    [setPredicateFilters]
+    [setPredicateFilters],
   )
 
   const toggleConfidenceBucket = useCallback(
@@ -380,7 +373,7 @@ export function useGraphDisplayFilters({
         return unique
       })
     },
-    [setConfidenceBucketFilters]
+    [setConfidenceBucketFilters],
   )
 
   const toggleEntityTypeFilter = useCallback(
@@ -392,7 +385,7 @@ export function useGraphDisplayFilters({
         return Array.from(next)
       })
     },
-    [setEntityTypeFilters]
+    [setEntityTypeFilters],
   )
 
   return {

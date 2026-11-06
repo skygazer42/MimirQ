@@ -1,4 +1,3 @@
-
 import re
 
 _UUID_HEX_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -27,4 +26,3 @@ def test_normalize_request_id_rejects_injection_and_invalid() -> None:
 
     # Too long (max 128)
     assert _UUID_HEX_RE.match(_normalize_request_id("a" * 129) or "")
-

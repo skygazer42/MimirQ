@@ -165,7 +165,7 @@ def _extract_parse_quality_score(meta: Any) -> float | None:
             if score > 1.0:
                 score = 1.0
             return float(score)
-        except (TypeError, ValueError, AttributeError):
+        except (OverflowError, TypeError, ValueError):
             continue
     return None
 
@@ -183,24 +183,26 @@ def _parse_quality_recommendation(*, low_ratio: float, considered: int) -> str |
 
 
 def _parse_quality_low_sample(doc: Document, *, rank: int, score: float) -> dict[str, Any]:
-    meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+    meta = doc.metadata or {}
     return {
         "rank": int(rank),
-        "chunk_id": str(getattr(doc, "id", None) or meta.get("chunk_id") or ""),
+        "chunk_id": str(doc.id or meta.get("chunk_id") or ""),
         "document_id": str(meta.get("document_id") or ""),
         "score": round(float(score), 3),
     }
 
 
 def _parse_quality_risk_counters(
-    docs: list[Document] | None, *, low_threshold: float
+    docs: list[Document | None] | None, *, low_threshold: float
 ) -> tuple[int, int, list[float], list[dict[str, Any]]]:
     considered = 0
     low_count = 0
     scores: list[float] = []
     low_samples: list[dict[str, Any]] = []
-    for index, doc in enumerate(list(docs or [])[:50]):
-        meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
+    for index, doc in enumerate((docs or [])[:50]):
+        if doc is None:
+            continue
+        meta = doc.metadata or {}
         score = _extract_parse_quality_score(meta)
         if score is None:
             continue
@@ -245,7 +247,7 @@ def _classify_parse_risk(
     hardcase_min_low_ratio: float,
     hardcase_min_considered: int,
 ) -> dict[str, Any]:
-    payload = summary if isinstance(summary, dict) else {}
+    payload = summary or {}
     considered = int(payload.get("considered") or 0)
     low_ratio = float(payload.get("low_ratio") or 0.0)
     recommendation = str(payload.get("recommendation") or "").strip()

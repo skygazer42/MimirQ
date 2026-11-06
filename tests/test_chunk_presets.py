@@ -160,20 +160,20 @@ def _build_chunk_presets_client(  # noqa: ANN202
             raise chunk_presets_module.HTTPException(status_code=403, detail="No dataset write permission")
 
     monkeypatch.setattr(
-        chunk_presets_module.DatasetService,
+        chunk_presets_module.dataset_service,
         "ensure_member",
         lambda *_a, **_k: _DummyMember(str(current_role.get("role") or "")),
         raising=True,
     )
-    monkeypatch.setattr(chunk_presets_module.DatasetService, "get_dataset", _get_dataset, raising=True)
+    monkeypatch.setattr(chunk_presets_module.dataset_service, "get_dataset", _get_dataset, raising=True)
     monkeypatch.setattr(
-        chunk_presets_module.DatasetService,
+        chunk_presets_module.dataset_service,
         "assert_dataset_readable",
         _assert_dataset_readable,
         raising=True,
     )
     monkeypatch.setattr(
-        chunk_presets_module.DatasetService,
+        chunk_presets_module.dataset_service,
         "assert_dataset_writable",
         _assert_dataset_writable,
         raising=True,

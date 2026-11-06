@@ -1,4 +1,3 @@
-
 import math
 import re
 from collections.abc import Mapping, Sequence
@@ -26,7 +25,7 @@ def _region_from_element(element: Mapping[str, Any], *, region_type: str) -> dic
 
 def detect_formula_regions(elements: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     regions: list[dict[str, Any]] = []
-    for element in elements or []:
+    for element in elements:
         kind = str(element.get("kind") or "").lower()
         text = str(element.get("text") or "")
         if kind in {"equation", "formula"} or _FORMULA_TEXT_RE.search(text):
@@ -36,7 +35,7 @@ def detect_formula_regions(elements: Sequence[Mapping[str, Any]]) -> dict[str, A
 
 def detect_chart_regions(elements: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     regions: list[dict[str, Any]] = []
-    for element in elements or []:
+    for element in elements:
         kind = str(element.get("kind") or "").lower()
         text = str(element.get("text") or "")
         attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}

@@ -22,11 +22,5 @@ export default function ReportsCenterPage() {
 function ReportsLoading() {
   const t = useTranslations('Reports')
 
-  return (
-    <PageLoading
-      className="min-h-dvh bg-background"
-      message={t('loadingPage')}
-      srMessage={t('loadingPageSr')}
-    />
-  )
+  return <PageLoading className="min-h-dvh bg-background" message={t('loadingPage')} srMessage={t('loadingPageSr')} />
 }

@@ -7,11 +7,7 @@ import { cn } from '@/lib/utils'
 
 export type EChartEventHandler = (params: unknown) => void
 
-export function EChart({
-  option,
-  className,
-  onEvents,
-}: Readonly<{
+type EChartProps = {
   option: EChartsOption
   className?: string
   /**
@@ -19,7 +15,9 @@ export function EChart({
    * Pass a stable (memoized) object: the chart re-initializes when it changes.
    */
   onEvents?: Readonly<Record<string, EChartEventHandler>>
-}>) {
+}
+
+export function EChart({ option, className, onEvents }: Readonly<EChartProps>) {
   const hostRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -29,7 +27,8 @@ export function EChart({
     void import('echarts').then((echarts) => {
       if (disposed || !hostRef.current) return
 
-      const chart = echarts.getInstanceByDom(hostRef.current) ?? echarts.init(hostRef.current, undefined, { renderer: 'svg' })
+      const chart =
+        echarts.getInstanceByDom(hostRef.current) ?? echarts.init(hostRef.current, undefined, { renderer: 'svg' })
       chart.setOption(option, true)
 
       for (const [eventName, handler] of Object.entries(onEvents ?? {})) {
@@ -37,11 +36,12 @@ export function EChart({
         chart.on(eventName, handler)
       }
 
-      const observer = typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(() => {
-            chart.resize()
-          })
+      const observer =
+        typeof ResizeObserver === 'undefined'
+          ? null
+          : new ResizeObserver(() => {
+              chart.resize()
+            })
 
       observer?.observe(hostRef.current)
 

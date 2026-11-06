@@ -144,9 +144,7 @@ def test_get_document_content_sync_preserves_scope_page_and_content_contract(mon
 def test_get_document_content_sync_preserves_validation_errors(monkeypatch) -> None:
     document_id = str(uuid4())
     assert mcp_tools._get_document_content_sync(document_id)["error"] == "dataset_id is required"
-    assert mcp_tools._get_document_content_sync(document_id, dataset_id="bad")["error"] == (
-        "dataset_id must be a UUID"
-    )
+    assert mcp_tools._get_document_content_sync(document_id, dataset_id="bad")["error"] == ("dataset_id must be a UUID")
     assert mcp_tools._get_document_content_sync("bad", dataset_id=str(uuid4()))["error"] == (
         "document_id must be a UUID"
     )

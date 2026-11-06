@@ -352,14 +352,7 @@ def test_section_chunkers_characterize_heading_metadata_and_paths() -> None:
 
 
 def test_markdown_frontmatter_chunker_characterizes_frontmatter_and_body_metadata() -> None:
-    text = (
-        "---\n"
-        "title: Retrieval Review\n"
-        "owner: mimirq\n"
-        "---\n"
-        "# Retrieval Review\n\n"
-        "Body paragraph.\n"
-    )
+    text = "---\ntitle: Retrieval Review\nowner: mimirq\n---\n# Retrieval Review\n\nBody paragraph.\n"
 
     assert _summarize_chunks(MarkdownFrontmatterChunker(10_000, 0), text) == [
         (

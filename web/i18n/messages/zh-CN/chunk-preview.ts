@@ -1,5 +1,5 @@
 const chunkPreviewMessages = {
-ChunkPreview: {
+  ChunkPreview: {
     emptyState: {
       badge: '切块预览',
       title: '上传文档，预览切片质量',
@@ -29,7 +29,7 @@ ChunkPreview: {
       },
     },
     workbench: {
-      title: '切片预览',
+      title: '切块预览',
       description: '调整分块策略并预览结果',
       settingsPanelTitle: '参数面板',
       header: {
@@ -446,10 +446,10 @@ ChunkPreview: {
         importConfigFromFile: '从文件导入配置',
         importConfigFromClipboard: '从剪贴板导入配置',
         includeSkippedInExports: '导出时包含 SKIP chunks ({count})',
-        exportJson: '导出 chunks.json',
-        exportMarkdown: '导出 chunks.md',
-        exportCsv: '导出 chunks.csv',
-        exportJsonl: '导出 chunks.jsonl',
+        exportJson: '导出 JSON',
+        exportMarkdown: '导出 Markdown',
+        exportCsv: '导出 CSV',
+        exportJsonl: '导出 JSONL',
         exportReviewJson: '导出 review-report.json',
         exportReviewMarkdown: '导出 review-report.md',
         copyIngestPayload: '复制手动入库 payload',
@@ -503,8 +503,7 @@ ChunkPreview: {
         originalTextMissing: '后端未返回 original_text（可能被 original_text_max_chars 限制）。',
         includeOriginalTextDisabled: '当前关闭了 include_original_text（预览性能设置）。',
         noPositionTagsTitle: '未检测到 PDF 位置标签',
-        noPositionTagsDescription:
-          String.raw`该解析结果不包含 @@page\tl\tr\tt\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。`,
+        noPositionTagsDescription: String.raw`该解析结果不包含 @@page\tl\tr\tt\tb## 标签，无法做 PDF 框选高亮。你仍可使用“源码”面板做 offset 高亮。`,
       },
       actions: {
         highlightOnly: '仅高亮',
@@ -549,8 +548,7 @@ ChunkPreview: {
       empty: {
         truncated: '原文已省略',
         missing: '原文未返回',
-        truncatedDetail:
-          '原文超过 {limit} 字符（当前 {total} 字符），后端已省略返回以避免传输过大。',
+        truncatedDetail: '原文超过 {limit} 字符（当前 {total} 字符），后端已省略返回以避免传输过大。',
         missingDetail: '原文内容较大（{total} 字符）时，后端可能会省略原文以避免传输过大。',
         fallbackHint: '你仍可使用右侧切片列表进行检查与入库。',
         readLocalLoading: '正在读取本地原文...',
@@ -653,7 +651,7 @@ ChunkPreview: {
       },
     },
     chunkList: {
-      title: '切片列表',
+      title: '切块结果',
       searchPlaceholder: '搜索切片内容...',
       clearSearch: '清除搜索',
       view: {
@@ -751,7 +749,7 @@ ChunkPreview: {
       },
       retrieve: {
         triggerTitle: 'Retrieve (ranked local search)',
-        trigger: 'Retrieve',
+        trigger: '检索',
         queryPlaceholder: 'Retrieval query (ranked)…',
         clear: 'Clear',
         rerankTitle: 'Rerank (local sim; best-effort)',
@@ -838,7 +836,7 @@ ChunkPreview: {
     },
     chunkCard: {
       documentFallback: 'document',
-      ariaLabel: '切片 #{index}',
+      ariaLabel: '切块 #{index}',
       badges: {
         skipped: '已跳过',
         edited: '已编辑',
@@ -849,15 +847,15 @@ ChunkPreview: {
         parent: '父块',
         child: '子块',
       },
-      needsReview: '待审核',
+      needsReview: '待复核',
       needsReviewTitle: '待审核',
       reviewed: '已审',
       reviewedTitle: '该切块已人工确认',
       approveReview: '标记已审核',
       restoreReview: '恢复待审核',
-      edit: '编辑切片',
-      enable: '恢复切片',
-      skip: '跳过切片',
+      edit: '编辑切块',
+      enable: '恢复切块',
+      skip: '跳过切块',
       copyCitation: '复制引用',
       copyCitationSuccess: '已复制引用',
       copyLink: '复制链接',
@@ -1048,14 +1046,15 @@ ChunkPreview: {
         missingData: '后端未返回 explain 字段',
         exportJson: '导出 JSON',
         exportSuccess: '已导出 explain 快照',
-        description: '包含：命中规则、最终生效配置、pipeline_patch 与（可选）fallback 线索。建议作为入库前审计快照留存。',
+        description:
+          '包含：命中规则、最终生效配置、pipeline_patch 与（可选）fallback 线索。建议作为入库前审计快照留存。',
         payloadLabel: 'payload.explain',
       },
       states: {
         noPreviewData: '暂无预览数据',
       },
     },
-  }
+  },
 } as const
 
 export default chunkPreviewMessages

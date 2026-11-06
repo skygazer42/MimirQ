@@ -15,7 +15,6 @@ RecursiveCharacterTextSplitter inside each section to respect chunk_size and
 chunk_overlap while preserving character offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -89,6 +88,7 @@ _CN_SECTIONS: dict[str, str] = {
     "附录": "appendix",
     "补充材料": "supplementary",
 }
+
 
 def _normalize_section(title: str) -> str | None:
     raw = (title or "").strip()
@@ -213,7 +213,7 @@ def looks_like_paper(text: str) -> bool:
 
 
 class PaperChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

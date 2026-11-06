@@ -58,15 +58,14 @@ def test_production_multi_worker_tenant_quota_requires_redis(monkeypatch: pytest
         Settings()
 
 
-def test_production_multi_worker_bm25_requires_lazy_build(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_production_multi_worker_native_bm25_needs_no_local_build(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_valid_production_env(monkeypatch)
     monkeypatch.setenv("UVICORN_WORKERS", "2")
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
     monkeypatch.setenv("BM25_INDEX_ENABLED", "true")
     monkeypatch.setenv("BM25_LAZY_BUILD_ENABLED", "false")
 
-    with pytest.raises(ValueError, match="BM25_LAZY_BUILD_ENABLED"):
-        Settings()
+    assert Settings().BM25_INDEX_ENABLED is True
 
 
 def test_production_multi_worker_accepts_distributed_runtime(monkeypatch: pytest.MonkeyPatch) -> None:

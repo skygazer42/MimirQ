@@ -6,6 +6,7 @@ import importlib.util
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
@@ -26,7 +27,7 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _load_base_miner():
+def _load_base_miner() -> ModuleType:
     path = Path(__file__).resolve().with_name("mine_hard_negatives_from_traces.py")
     spec = importlib.util.spec_from_file_location("mine_hard_negatives_from_traces", str(path))
     if spec is None or spec.loader is None:
@@ -42,9 +43,9 @@ def _count_jsonl_rows(path: Path) -> int:
     n = 0
     with path.open("r", encoding="utf-8", errors="replace") as f:
         for line in f:
-            if str(line or "").strip():
+            if line.strip():
                 n += 1
-    return int(n)
+    return n
 
 
 def build_nightly_manifest(
@@ -71,7 +72,7 @@ def build_nightly_manifest(
             "max_negatives_per_document": int(args.max_negatives_per_document or 0),
         },
         "output_path": str(output_path),
-        "records_written": int(_count_jsonl_rows(output_path)),
+        "records_written": _count_jsonl_rows(output_path),
         "output_sha256": (_sha256_file(output_path) if output_path.exists() else None),
         "run_id": stable_hash(
             json.dumps(
@@ -136,14 +137,14 @@ def main(argv: list[str] | None = None) -> int:
 
     rc = int(base.main(cmd))  # type: ignore[attr-defined]
     if rc != 0:
-        return int(rc)
+        return rc
 
     manifest = build_nightly_manifest(args=args, output_path=out_jsonl)
     out_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(f"[hard-negatives-nightly] wrote {out_jsonl}")
     print(f"[hard-negatives-nightly] wrote {out_manifest}")
-    print(f"[hard-negatives-nightly] records={int(manifest.get('records_written') or 0)}")
+    print(f"[hard-negatives-nightly] records={manifest['records_written']}")
     return 0
 
 

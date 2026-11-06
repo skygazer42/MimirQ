@@ -11,7 +11,6 @@ Security hardening:
 - Best-effort regex ReDoS guard (nested quantifiers)
 """
 
-
 import json
 import re
 from dataclasses import dataclass
@@ -204,13 +203,13 @@ def _normalize_rule(rule: IngestionRule | dict[str, Any] | object, *, idx: int, 
     if not name:
         raise ValueError(f"rule.name is required at index={idx}")
 
-    match = rule.match or {}
-    ext_list = _normalize_extensions(getattr(match, "extensions", None))
-    filename_regex = _normalize_filename_regex(getattr(match, "filename_regex", None))
+    match = rule.match
+    ext_list = _normalize_extensions(match.extensions)
+    filename_regex = _normalize_filename_regex(match.filename_regex)
 
     preprocess = rule.preprocess
-    preprocess_enabled = bool(getattr(preprocess, "enabled", True))
-    preprocess_steps = getattr(preprocess, "steps", None) if preprocess_enabled else []
+    preprocess_enabled = bool(preprocess.enabled)
+    preprocess_steps = preprocess.steps if preprocess_enabled else []
     steps_norm = _normalize_preprocess_steps(preprocess_steps)
 
     return IngestionRule(
@@ -275,14 +274,11 @@ def match_ingestion_rule(policy: IngestionPolicy | None, *, filename: str, file_
         ext = "." + ext
     fn = str(filename or "")
     for rule in policy.rules or []:
-        if not bool(getattr(rule, "enabled", True)):
+        if not bool(rule.enabled):
             continue
-        match = getattr(rule, "match", None)
-        exts = []
-        rx = None
-        if match is not None:
-            exts = list(getattr(match, "extensions", None) or [])
-            rx = getattr(match, "filename_regex", None)
+        match = rule.match
+        exts = list(match.extensions or [])
+        rx = match.filename_regex
         if exts and ext not in set(exts):
             continue
         if isinstance(rx, str) and rx.strip():

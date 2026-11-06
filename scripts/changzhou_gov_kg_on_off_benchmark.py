@@ -21,16 +21,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts import dify_3way_benchmark as bench  # noqa: E402
+from scripts.evaluate_mixed_rag_quality import _text  # noqa: E402
 
 DEFAULT_CASES = "artifacts/changzhou_eval_pack_full/cases_1000.json"
 DEFAULT_OUT_DIR = "artifacts/changzhou_kg_on_off_benchmark"
 DEFAULT_BASE_URL = "http://127.0.0.1:8000/api/v1"
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 DEFAULT_USER_ID = "demo"
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
 
 
 def _headers(*, tenant_id: str, user_id: str) -> dict[str, str]:

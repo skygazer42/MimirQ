@@ -9,7 +9,7 @@ function clampInt(value: number, min: number, max: number) {
 export function computeCoverageHeatmapBins(
   chunks: ChunkPreviewItem[],
   totalChars: number,
-  options?: { bins?: number; strategy?: string }
+  options?: { bins?: number; strategy?: string },
 ): { bins: number; totalChars: number; counts: number[]; max: number } {
   const bins = clampInt(options?.bins ?? 80, 10, 400)
   const total = Math.max(0, Math.trunc(Number(totalChars) || 0))
@@ -19,7 +19,11 @@ export function computeCoverageHeatmapBins(
   // Parent-child chunking: the heatmap should reflect the most granular chunks (children),
   // otherwise the parent range can dominate the entire document.
   let analysis = chunks
-  if (String(options?.strategy || '').trim().toLowerCase() === 'parent_child') {
+  if (
+    String(options?.strategy || '')
+      .trim()
+      .toLowerCase() === 'parent_child'
+  ) {
     const filtered = (chunks || []).filter((c) => c.metadata?.chunk_role !== 'parent')
     if (filtered.length > 0) analysis = filtered
   }

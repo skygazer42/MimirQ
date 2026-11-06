@@ -37,7 +37,7 @@ def _f1_from_counters(pred: Counter[Any], gold: Counter[Any]) -> float | None:
 def _round_metric(value: float | None) -> float | None:
     if value is None:
         return None
-    return round(float(value), 4)
+    return round(value, 4)
 
 
 def compute_table_grits(
@@ -107,7 +107,7 @@ def compute_table_collection_grits(
         values = [score[key] for score in per_table_scores if score[key] is not None]
         if not values:
             return None
-        return _round_metric(sum(float(value) for value in values) / float(len(values)))
+        return _round_metric(sum(values) / float(len(values)))
 
     return {
         "topology": _average("topology"),

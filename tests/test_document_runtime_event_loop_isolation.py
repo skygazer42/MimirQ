@@ -60,9 +60,7 @@ async def test_document_processing_helper_waits_for_worker_completion_before_rai
 
     monkeypatch.setattr(jobs_module.document_processor, "process_document", _process, raising=True)
 
-    task = asyncio.create_task(
-        jobs_module._run_document_processing_without_blocking_event_loop("doc-1")
-    )
+    task = asyncio.create_task(jobs_module._run_document_processing_without_blocking_event_loop("doc-1"))
     assert await asyncio.to_thread(worker_started.wait, 1.0)
 
     task.cancel()
@@ -126,9 +124,7 @@ async def test_delete_step_helper_waits_for_worker_completion_before_raising_can
         worker_finished.set()
         return "deleted"
 
-    task = asyncio.create_task(
-        document_lifecycle_service._run_delete_step_without_blocking_event_loop(_delete_step)
-    )
+    task = asyncio.create_task(document_lifecycle_service._run_delete_step_without_blocking_event_loop(_delete_step))
     assert await asyncio.to_thread(worker_started.wait, 1.0)
 
     task.cancel()

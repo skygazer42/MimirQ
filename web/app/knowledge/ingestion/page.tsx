@@ -23,7 +23,7 @@ export default function KnowledgeIngestionPage() {
 
   return (
     <AppFrame>
-      <div className="h-full min-h-0 bg-transparent">
+      <div className="flex h-full min-h-0 flex-col bg-transparent">
         {activeView === 'execution-monitor' ? <ExecutionMonitorPageClient /> : <OperationPageClient />}
       </div>
     </AppFrame>
@@ -34,11 +34,7 @@ function KnowledgeIngestionLoading() {
   const t = useTranslations('KnowledgeIngestionPage')
 
   return (
-    <PageLoading
-      className="min-h-dvh bg-background"
-      message={t('loadingMessage')}
-      srMessage={t('loadingSrMessage')}
-    />
+    <PageLoading className="min-h-dvh bg-background" message={t('loadingMessage')} srMessage={t('loadingSrMessage')} />
   )
 }
 

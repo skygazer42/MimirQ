@@ -1,4 +1,3 @@
-
 import contextlib
 from dataclasses import dataclass, replace
 from typing import Any, AsyncIterator, Awaitable, Callable, cast
@@ -8,10 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.core.token_utils import num_tokens_from_string
 from app.services.chat_runtime import (
-    ChatStreamPersistInput,
     apply_chat_runtime_metrics_context,
 )
-from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
+from app.services.chat_stream_persistence import ChatStreamPersistInput, dispatch_chat_stream_persistence
 from app.services.metrics_logger import log_metrics
 
 

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Fail if exported OpenAPI has no paths (prevents empty spec on Pages)."""
 
-
 import json
 from pathlib import Path
 

@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
+from app.api.schemas.chat import ChatRequest
 from app.core.config import settings
 from app.core.env import is_production_env
 from app.rag.core.logging import get_logger
@@ -17,7 +18,6 @@ from app.services.chat_execution_runtime import (
     preflight_model_provider_fast,
 )
 from app.services.chat_runtime import (
-    ChatStreamPersistInput,
     format_stream_error_message,
     prepare_stream_chat_runtime,
 )
@@ -30,6 +30,7 @@ from app.services.chat_stream_common import (
 )
 from app.services.chat_stream_graph import GraphChatStreamSessionInput, stream_graph_chat_session_events
 from app.services.chat_stream_langchain import LangChainChatStreamSessionInput, stream_langchain_chat_session_events
+from app.services.chat_stream_persistence import ChatStreamPersistInput
 from app.services.metrics_logger import set_metrics_context
 from app.services.rag_runtime_limiter import (
     RetrievalAdmissionTimeoutError,
@@ -115,7 +116,7 @@ def _build_materialized_runtime(
     structured_data: object | None,
     request: Any,
 ) -> ChatStreamRuntimeContext:
-    cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
+    cancel_on_disconnect = bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT)
     disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
     return ChatStreamRuntimeContext(
         request_id=request_id,
@@ -325,11 +326,8 @@ def _build_langchain_stream_options(
     persist_options: ChatStreamPersistInput,
     http_request: Any,
 ) -> LangChainChatStreamSessionInput:
-    heartbeat_sec = max(
-        0.0,
-        float(getattr(settings, "CHAT_STREAM_HEARTBEAT_SEC", 10.0) or 10.0),
-    )
-    cancel_on_disconnect = bool(getattr(settings, "CHAT_STREAM_CANCEL_ON_DISCONNECT", True))
+    heartbeat_sec = max(0.0, settings.CHAT_STREAM_HEARTBEAT_SEC)
+    cancel_on_disconnect = bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT)
     disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
     return LangChainChatStreamSessionInput(
         execution=execution_context,
@@ -562,7 +560,7 @@ async def stream_chat_sse_events(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     conversation_id: UUID | None,
     scope_dataset_id: UUID | None,
     allowed_doc_ids: list[UUID],
@@ -584,7 +582,7 @@ async def stream_chat_sse_events(
         account_id=account_id,
     )
 
-    persist_in_background = bool(getattr(settings, "CHAT_STREAM_PERSIST_IN_BACKGROUND", False))
+    persist_in_background = bool(settings.CHAT_STREAM_PERSIST_IN_BACKGROUND)
     client_ip = getattr(getattr(http_request, "client", None), "host", None)
     user_agent = http_request.headers.get("user-agent")
     enable_summary_memory = bool(getattr(request, "enable_summary_memory", False))

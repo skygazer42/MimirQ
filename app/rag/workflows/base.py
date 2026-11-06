@@ -5,7 +5,6 @@ Defines the abstract base class for all workflow patterns
 and the WorkflowMode enumeration.
 """
 
-
 import asyncio
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
@@ -19,6 +18,7 @@ from app.core.config import settings
 
 class WorkflowMode(str, Enum):
     """Available workflow modes."""
+
     CHAIN = "chain"
     ROUTING = "routing"
     PARALLEL = "parallel"
@@ -27,8 +27,15 @@ class WorkflowMode(str, Enum):
     EVALUATOR = "evaluator"
 
 
+class WorkflowPlanStep(TypedDict):
+    id: str
+    description: str
+    dependencies: list[str]
+
+
 class WorkflowState(TypedDict, total=False):
     """Standard workflow state structure."""
+
     question: str
     query: str
     history: list[dict[str, str]]
@@ -40,7 +47,7 @@ class WorkflowState(TypedDict, total=False):
     error: str | None
     # Workflow-specific fields
     route: str | None
-    plan: list[str] | None
+    plan: list[str] | list[WorkflowPlanStep] | None
     current_step: int
     iterations: int
     score: float
@@ -50,6 +57,7 @@ class WorkflowState(TypedDict, total=False):
 @dataclass
 class WorkflowResult:
     """Result of a workflow execution."""
+
     success: bool
     state: dict[str, Any]
     answer: str = ""
@@ -78,8 +86,8 @@ class BaseWorkflow(ABC):
         name: str | None = None,
         max_iterations: int = 10,
         timeout_sec: int = 120,
-        **kwargs,
-    ):
+        **kwargs: Any,
+    ) -> None:
         """
         Initialize the workflow.
 
@@ -96,7 +104,7 @@ class BaseWorkflow(ABC):
         self._wrap_agent_middlewares()
 
     def _wrap_agent_middlewares(self) -> None:
-        enabled = bool(getattr(settings, "MIDDLEWARE_ENABLED", True))
+        enabled = settings.MIDDLEWARE_ENABLED
         if not enabled:
             return
 
@@ -182,7 +190,7 @@ class BaseWorkflow(ABC):
         state: dict[str, Any],
         success: bool = True,
         error: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> WorkflowResult:
         """
         Create a WorkflowResult from state.
@@ -219,7 +227,7 @@ class WorkflowStep:
         name: str,
         func: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]],
         condition: Callable[[dict[str, Any]], bool] | None = None,
-    ):
+    ) -> None:
         """
         Initialize a workflow step.
 

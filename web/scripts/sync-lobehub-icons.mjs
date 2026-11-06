@@ -77,7 +77,7 @@ async function main() {
         '  node web/scripts/sync-lobehub-icons.mjs',
         '  node web/scripts/sync-lobehub-icons.mjs --version 1.77.0',
         '',
-      ].join('\n')
+      ].join('\n'),
     )
     return
   }
@@ -97,7 +97,7 @@ async function main() {
     'together',
     'cohere',
     'jina',
-    // Product/provider aliases used by MimirQ:
+    // Product/provider aliases used by Ragvia:
     'doubao', // ByteDance Ark
     'wenxin', // Baidu Qianfan / ERNIE
     'siliconcloud', // SiliconFlow
@@ -124,4 +124,3 @@ main().catch((err) => {
   process.stderr.write(`sync-lobehub-icons: ERROR ${String(err?.message || err)}\n`)
   process.exit(1)
 })
-

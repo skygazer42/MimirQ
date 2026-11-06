@@ -42,7 +42,7 @@ def _is_under(path: Path, root: Path) -> bool:
 
 
 def _prepare_target(target_dir: Path, *, clean_target: bool, dry_run: bool) -> None:
-    if clean_target and target_dir.exists() and target_dir.is_dir():
+    if clean_target and target_dir.is_dir():
         if dry_run:
             print(f"[dry-run] rm -rf {target_dir}")
         else:
@@ -104,13 +104,13 @@ def convert_encoding(
 
 def main() -> int:
     args = _parse_args()
-    exts = {e.lower() if e.startswith(".") else f".{e.lower()}" for e in (args.ext or [])}
+    exts = {e.lower() if e.startswith(".") else f".{e.lower()}" for e in args.ext}
     return convert_encoding(
         source_dir=Path(args.source),
         target_dir=Path(args.target),
         extensions=exts,
-        clean_target=bool(args.clean_target),
-        dry_run=bool(args.dry_run),
+        clean_target=args.clean_target,
+        dry_run=args.dry_run,
     )
 
 

@@ -14,6 +14,7 @@ import { extractMarkdownHeadings, flashElementId, scrollToElementId } from '@/li
 import { reportClientError } from '@/lib/client-logging'
 import type { MarkdownHeading } from '@/lib/markdown'
 import { resolveMarkdownImageSrc, sanitizeMarkdownHref } from './markdown-safety'
+import { rehypeSourceRange, type MarkdownSourceRange } from './markdown-source-range'
 
 const FLASH_CLASS = 'bg-primary/10 ring-1 ring-primary/25 rounded-md transition-colors'
 
@@ -58,6 +59,7 @@ type MarkdownRendererProps = Readonly<{
   enableTocAnchors?: boolean
   autoScrollToHash?: boolean
   scrollContainerSelector?: string
+  sourceRange?: MarkdownSourceRange | null
 }>
 
 type MarkdownRenderBoundaryProps = Readonly<{
@@ -104,7 +106,7 @@ function useMarkdownRendererRuntime() {
 
 function renderHeadingByLevel(
   level: MarkdownHeadingLevel,
-  { children, ...props }: React.HTMLAttributes<HTMLHeadingElement>
+  { children, ...props }: React.HTMLAttributes<HTMLHeadingElement>,
 ) {
   switch (level) {
     case 1:
@@ -122,18 +124,10 @@ function renderHeadingByLevel(
   }
 }
 
-function MarkdownHeadingComponent({
-  children,
-  className,
-  level,
-  node,
-  ...props
-}: MarkdownHeadingProps) {
+function MarkdownHeadingComponent({ children, className, level, node, ...props }: MarkdownHeadingProps) {
   const { enableTocAnchors, headings, scrollContainerSelector } = useMarkdownRendererRuntime()
   const line = Number(node?.position?.start?.line || 0)
-  const heading = line
-    ? headings.find((item) => item.line === line && item.level === level)
-    : undefined
+  const heading = line ? headings.find((item) => item.line === line && item.level === level) : undefined
   const id = heading?.id
   const headingChildren = (
     <>
@@ -273,10 +267,7 @@ const MARKDOWN_RENDERER_COMPONENTS = {
 function MarkdownRenderFallback({ className }: Readonly<{ className?: string }>) {
   return (
     <output
-      className={cn(
-        'rounded-lg border border-warning/30 bg-warning/8 px-4 py-3 text-sm text-warning',
-        className
-      )}
+      className={cn('rounded-lg border border-warning/30 bg-warning/8 px-4 py-3 text-sm text-warning', className)}
     >
       Markdown 内容渲染失败，请尝试刷新或查看原始文本。
     </output>
@@ -315,13 +306,15 @@ function MarkdownRendererContent({
   enableTocAnchors = true,
   autoScrollToHash = false,
   scrollContainerSelector,
+  sourceRange,
 }: MarkdownRendererProps) {
   const text = markdown || ''
-
-  const headings = useMemo(
-    () => (enableTocAnchors ? extractMarkdownHeadings(text) : []),
-    [text, enableTocAnchors]
+  const rehypePlugins = useMemo<React.ComponentProps<typeof ReactMarkdown>['rehypePlugins']>(
+    () => [rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA], [rehypeSourceRange, { range: sourceRange }]],
+    [sourceRange],
   )
+
+  const headings = useMemo(() => (enableTocAnchors ? extractMarkdownHeadings(text) : []), [text, enableTocAnchors])
 
   useEffect(() => {
     if (!autoScrollToHash) return
@@ -351,7 +344,7 @@ function MarkdownRendererContent({
       headings,
       scrollContainerSelector,
     }),
-    [enableTocAnchors, headings, scrollContainerSelector]
+    [enableTocAnchors, headings, scrollContainerSelector],
   )
 
   return (
@@ -359,7 +352,7 @@ function MarkdownRendererContent({
       <MarkdownRendererRuntimeContext.Provider value={runtime}>
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw, [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+          rehypePlugins={rehypePlugins}
           components={MARKDOWN_RENDERER_COMPONENTS}
         >
           {text}

@@ -66,7 +66,7 @@ def test_dataset_report_endpoint_exists(monkeypatch):  # noqa: ANN001
         ),
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,
@@ -417,7 +417,7 @@ def test_dataset_report_export_html(monkeypatch):  # noqa: ANN001
         dataset_metadata={},
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,
@@ -467,7 +467,7 @@ def test_dataset_rag_audit_export_html(monkeypatch):  # noqa: ANN001
         dataset_metadata={},
     )
     monkeypatch.setattr(
-        reports_module.ReportService,
+        reports_module.report_service,
         "build_dataset_report",
         lambda *_a, **_k: dummy_report,
         raising=True,

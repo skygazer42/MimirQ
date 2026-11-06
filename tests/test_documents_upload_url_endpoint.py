@@ -9,6 +9,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail
 from app.core.database import get_db
+from app.services import document_processing_dispatch as document_dispatch
 from tests.helpers.async_utils import yield_control
 
 
@@ -46,7 +47,8 @@ def _override_get_current_account_id() -> str:
 
 
 def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
+    import app.services.document_ingestion as document_ingestion
+    import app.services.document_ingestion_sources as ingestion_sources
     from app.api.utils.url_ingest import DownloadedURL
     from app.api.v1.documents import upload_document_from_url
     from app.core.config import settings
@@ -82,11 +84,14 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
 
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(documents_module, "validate_url_for_ingest", _ok_validate, raising=True)
-    monkeypatch.setattr(documents_module, "download_url_to_path", _fake_download, raising=True)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)
+    monkeypatch.setattr(document_ingestion, "validate_url_for_ingest", _ok_validate, raising=True)
+    monkeypatch.setattr(ingestion_sources, "download_url_to_path", _fake_download, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fake_enqueue, raising=True)
     monkeypatch.setattr(
-        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True
+        document_ingestion.dataset_service,
+        "resolve_writable_dataset",
+        lambda *_args, **_kwargs: _Dataset(dataset_id),
+        raising=True,
     )
 
     app = FastAPI()
@@ -128,7 +133,8 @@ def test_documents_upload_url_happy_path(monkeypatch, tmp_path):  # noqa: ANN001
 
 
 def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch, tmp_path):  # noqa: ANN001
-    import app.api.v1.documents as documents_module
+    import app.services.document_ingestion as document_ingestion
+    import app.services.document_ingestion_sources as ingestion_sources
     from app.api.utils.url_ingest import DownloadedURL
     from app.api.v1.documents import upload_document_from_url
     from app.core.config import settings
@@ -157,11 +163,14 @@ def test_documents_upload_url_falls_back_when_last_modified_missing(monkeypatch,
 
     dataset_id = uuid.uuid4()
 
-    monkeypatch.setattr(documents_module, "validate_url_for_ingest", _ok_validate, raising=True)
-    monkeypatch.setattr(documents_module, "download_url_to_path", _fake_download, raising=True)
-    monkeypatch.setattr(documents_module, "enqueue_document_processing", _fake_enqueue, raising=True)
+    monkeypatch.setattr(document_ingestion, "validate_url_for_ingest", _ok_validate, raising=True)
+    monkeypatch.setattr(ingestion_sources, "download_url_to_path", _fake_download, raising=True)
+    monkeypatch.setattr(document_dispatch, "enqueue_document_processing", _fake_enqueue, raising=True)
     monkeypatch.setattr(
-        documents_module, "_resolve_writable_dataset", lambda *_args, **_kwargs: _Dataset(dataset_id), raising=True
+        document_ingestion.dataset_service,
+        "resolve_writable_dataset",
+        lambda *_args, **_kwargs: _Dataset(dataset_id),
+        raising=True,
     )
 
     app = FastAPI()

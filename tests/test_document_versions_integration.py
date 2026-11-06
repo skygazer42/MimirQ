@@ -241,7 +241,7 @@ def test_unassigned_document_versions_require_write_role_for_activate_delete(pg_
     pg_session.commit()
 
     monkeypatch.setattr(
-        "app.api.v1.document_versions.DatasetService.ensure_member",
+        "app.services.dataset_service.ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
     )
 

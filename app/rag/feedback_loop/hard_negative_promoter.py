@@ -77,9 +77,9 @@ def promote_hard_negatives_to_jsonl(
         "output_path": str(path),
         "append": bool(append),
         "dry_run": bool(dry_run),
-        "candidate_records": int(len(records)),
-        "written_records": 0 if dry_run else int(len(records)),
-        "hard_negatives": int(hard_negative_total),
+        "candidate_records": len(records),
+        "written_records": 0 if dry_run else len(records),
+        "hard_negatives": hard_negative_total,
         "source_feedback_ids": sorted(
             {fid for record in records for fid in _clean_str_list(record.get("source_feedback_ids"))}
         ),

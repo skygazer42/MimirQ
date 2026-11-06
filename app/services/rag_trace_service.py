@@ -8,7 +8,7 @@ and should stay PII-safe by construction.
 
 import json
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +106,7 @@ def _safe_sorted_int_map(raw: Any, *, key_prefix: str | None = None, max_items: 
         safe_value = _to_int(value)
         if safe_value is None:
             continue
-        out[key_str] = int(safe_value)
+        out[key_str] = safe_value
         if len(out) >= max_items:
             break
     return dict(sorted(out.items(), key=lambda item: item[0]))
@@ -714,7 +714,9 @@ def _safe_kg_provenance_edge(raw: Any) -> dict[str, Any]:
     return edge
 
 
-def _safe_kg_provenance_entries(raw: Any, *, item_builder: Any, max_items: int = 10) -> list[dict[str, Any]]:
+def _safe_kg_provenance_entries(
+    raw: Any, *, item_builder: Callable[[Any], dict[str, Any]], max_items: int = 10
+) -> list[dict[str, Any]]:
     if not isinstance(raw, list) or not raw:
         return []
     out: list[dict[str, Any]] = []
@@ -1066,8 +1068,8 @@ def list_rag_traces(
     window_minutes: int = 60,
     max_bytes: int = 5_000_000,
 ) -> RagTraceListResponse:
-    enabled = bool(getattr(settings, "ENABLE_METRICS_LOG", False))
-    path_str = str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
+    enabled = bool(settings.ENABLE_METRICS_LOG)
+    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
     path = Path(path_str)
 
     window_minutes = max(1, int(window_minutes or 0))
@@ -1092,7 +1094,7 @@ def list_rag_traces(
         enabled=True,
         path=path_str,
         window_minutes=window_minutes,
-        truncated=bool(truncated_by_tail),
+        truncated=truncated_by_tail,
         returned=len(items),
         items=items,
     )

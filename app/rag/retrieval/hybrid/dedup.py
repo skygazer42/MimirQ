@@ -13,13 +13,13 @@ import jieba
 
 from app.core.config import settings
 from app.rag.core.filters import match_metadata_filter
-from app.rag.core.hashing import stable_hash
 from app.rag.preprocessing.stopwords import STOPWORDS
 from app.rag.retrieval.hybrid.common import (
     _RECORD_IDENTITY_METADATA_KEY,
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     logger,
 )
+from app.rag.retrieval.hybrid.result_values import result_key
 
 
 @dataclass
@@ -50,17 +50,7 @@ class _DedupState:
 class DedupDiversityMixin:
     """Result identity keys, hierarchy family collapse, dedup, and doc/page diversity caps."""
 
-    def _result_key(self, result: dict[str, Any]) -> str:
-        meta = result.get("metadata") or {}
-        doc_id = meta.get("document_id")
-        chunk_index = meta.get("chunk_index")
-        if doc_id is not None and chunk_index is not None:
-            return f"{doc_id}:{chunk_index}"
-        cid = result.get("chunk_id") or meta.get("chunk_id")
-        if cid:
-            return str(cid)
-        content = str(result.get("content") or "")
-        return f"content:{stable_hash(content)}"
+    _result_key = staticmethod(result_key)
 
     @staticmethod
     def _first_metadata_value(meta: dict[str, Any], keys: tuple[str, ...]) -> str:
@@ -787,6 +777,7 @@ class DedupDiversityMixin:
             rest = [r for r in results if self._result_key(r) not in used_keys]
             out_all = selected + rest
         if any(isinstance(item, dict) and item.get("fusion_budgeted_prefix_rank") is not None for item in out_all):
+
             def _budgeted_prefix_sort_key(item: dict[str, Any]) -> tuple[int, float, str]:
                 return (
                     0 if item.get("fusion_budgeted_prefix_rank") is not None else 1,

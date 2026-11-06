@@ -5,7 +5,7 @@ sidebar_position: 2
 
 # 解析与切块
 
-MimirQ 内置多引擎解析框架，支持 10+ 种解析后端，覆盖 PDF、Office、图片、邮件等文档类型。解析后的文本交由 chunking 模块进行智能切块。
+Ragvia 内置多引擎解析框架，支持 10+ 种解析后端，覆盖 PDF、Office、图片、邮件等文档类型。解析后的文本交由 chunking 模块进行智能切块。
 
 ## 解析流程
 

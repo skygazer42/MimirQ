@@ -1,4 +1,3 @@
-
 import math
 import re
 from collections.abc import Iterable, Mapping
@@ -60,7 +59,7 @@ def count_position_tag_blocks(markdown: str) -> int:
 
         last_index = match.end()
 
-    return int(block_count)
+    return block_count
 
 
 def count_markdown_images(markdown: str | None) -> int:
@@ -112,8 +111,8 @@ def compute_parsing_artifact_stats(
     block_count = count_position_tag_blocks(original_markdown or "")
 
     return {
-        "page_count": int(page_count),
-        "table_count": int(table_count),
-        "image_count": int(image_count),
-        "block_count": int(block_count),
+        "page_count": page_count,
+        "table_count": table_count,
+        "image_count": image_count,
+        "block_count": block_count,
     }

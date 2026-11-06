@@ -5,7 +5,7 @@ sidebar_position: 5
 
 # Runtime configuration
 
-MimirQ reads process environment variables and the repository-root `.env` through Pydantic Settings. The authoritative definitions are [`.env.example`](https://github.com/skygazer42/MimirQ/blob/main/.env.example) and `app/core/config.py`.
+Ragvia reads process environment variables and the repository-root `.env` through Pydantic Settings. The authoritative definitions are [`.env.example`](https://github.com/skygazer42/MimirQ/blob/feat/ragvia-ui/.env.example) and `app/core/config.py`.
 
 `make init` creates only missing `.env` / `web/.env.local` files and generates `SECRET_KEY` plus `MARKDOWN_IMAGE_PROXY_SECRET`. It does not overwrite existing values.
 

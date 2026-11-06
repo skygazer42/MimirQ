@@ -3,6 +3,7 @@ Multi-tenant data models.
 
 Defines tenant and member tables for tenant isolation.
 """
+
 import uuid
 from datetime import UTC, datetime
 
@@ -14,6 +15,7 @@ from app.core.database import Base
 
 class Tenant(Base):
     """Tenant table."""
+
     __tablename__ = "tenants"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -29,13 +31,14 @@ class Tenant(Base):
 
 
 class TenantMember(Base):
-    """Tenant member (placeholder; extend when user system exists)."""
+    """Tenant membership for a local account or external identity."""
+
     __tablename__ = "tenant_members"
     __table_args__ = (UniqueConstraint("tenant_id", "user_id", name="uq_tenant_members_tenant_user"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    # No user system yet; reserve user_id/external_id as placeholders.
+    # Store local account IDs and external subjects in the same string column.
     user_id = Column(String(255), nullable=True)
     role = Column(String(32), default="owner")
     # Enterprise lifecycle: allow deprovisioning without hard-deleting membership rows.

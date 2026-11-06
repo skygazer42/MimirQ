@@ -1,4 +1,3 @@
-
 import json
 import os
 import time
@@ -73,13 +72,13 @@ def _run_case(
                 timeout=timeout_sec,
             )
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
-            latencies_ms.append(float(elapsed_ms))
+            latencies_ms.append(elapsed_ms)
             status_codes[str(resp.status_code)] += 1
             if int(resp.status_code) in set(case.expected_statuses):
                 ok_count += 1
         except Exception as exc:  # noqa: BLE001
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
-            latencies_ms.append(float(elapsed_ms))
+            latencies_ms.append(elapsed_ms)
             errors[type(exc).__name__] += 1
 
     total_sec = time.perf_counter() - started
@@ -90,9 +89,9 @@ def _run_case(
         "method": case.method,
         "path": case.path,
         "iterations": int(iterations),
-        "ok_count": int(ok_count),
-        "ok_ratio": float(ok_count / float(iterations)) if iterations > 0 else 0.0,
-        "qps": float(qps) if qps is not None else None,
+        "ok_count": ok_count,
+        "ok_ratio": ok_count / float(iterations) if iterations > 0 else 0.0,
+        "qps": qps,
         "latency_ms": summarize_latencies_ms(latencies_ms),
         "status_codes": dict(status_codes),
         "errors_top": bounded_top_counts(dict(errors), max_items=10),
@@ -146,8 +145,8 @@ def run_minimal_perf_suite_report(
         "ts": utc_now_iso(),
         "suite": PERF_SUITE_NAME,
         "base_url": base,
-        "iterations": int(iters),
-        "timeout_sec": float(timeout),
+        "iterations": iters,
+        "timeout_sec": timeout,
         "cases": case_results,
     }
 

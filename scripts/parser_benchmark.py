@@ -379,7 +379,7 @@ def _count_image_visual_kinds(documents: Iterable[Any]) -> dict[str, int]:
         visual_kind = str((item or {}).get("visual_kind") or "").strip().lower()
         if not visual_kind:
             continue
-        counts[visual_kind] = int(counts.get(visual_kind, 0) or 0) + 1
+        counts[visual_kind] = counts.get(visual_kind, 0) + 1
     return counts
 
 
@@ -529,7 +529,7 @@ def _score_table_continuity(markdown: str, expectation: dict[str, Any] | None) -
         actual_occurrences = str(markdown or "").count(header)
         target_occurrences = max(1, int(expected_header_occurrences or 1))
         header_score = 1.0 if actual_occurrences == target_occurrences else 0.0
-        scores.append(float(header_score))
+        scores.append(header_score)
 
     try:
         expected_rows_i = max(0, int(expected_rows))
@@ -538,7 +538,7 @@ def _score_table_continuity(markdown: str, expectation: dict[str, Any] | None) -
     if expected_rows_i > 0:
         actual_rows = max(0, len(target) - 2) if len(target) >= 2 else 0
         row_score = min(float(actual_rows) / float(expected_rows_i), 1.0)
-        scores.append(float(row_score))
+        scores.append(row_score)
 
     scores.append(1.0 if target else 0.0)
     return round(sum(scores) / float(len(scores)), 4) if scores else None
@@ -622,19 +622,19 @@ def _markdown_to_plain_text(markdown: str) -> str:
 
 
 def _plain_chars(markdown: str) -> int:
-    return int(len(_markdown_to_plain_text(markdown)))
+    return len(_markdown_to_plain_text(markdown))
 
 
 def _structure_metrics(markdown: str) -> dict[str, Any]:
     md = str(markdown or "")
     return {
-        "chars": int(len(md)),
+        "chars": len(md),
         "plain_chars": _plain_chars(md),
-        "headings": int(len(_HEADING_RE.findall(md))),
-        "list_items": int(len(_LIST_ITEM_RE.findall(md))),
-        "fences": int(len(_FENCE_RE.findall(md))),
-        "table_separators": int(len(_TABLE_SEP_RE.findall(md))),
-        "image_refs": int(len(_MD_IMAGE_RE.findall(md)) + len(_HTML_IMG_RE.findall(md))),
+        "headings": len(_HEADING_RE.findall(md)),
+        "list_items": len(_LIST_ITEM_RE.findall(md)),
+        "fences": len(_FENCE_RE.findall(md)),
+        "table_separators": len(_TABLE_SEP_RE.findall(md)),
+        "image_refs": len(_MD_IMAGE_RE.findall(md)) + len(_HTML_IMG_RE.findall(md)),
     }
 
 
@@ -791,7 +791,7 @@ def _evaluate_regression_metric(
             reason="invalid_current_metric",
         )
 
-    delta = float(current_number - baseline_number)
+    delta = current_number - baseline_number
     if delta >= (0.0 - allowed_drop):
         return None
     failures.append(
@@ -884,7 +884,7 @@ def _build_regression_severity_item(
         current_number = float(after.get(metric))
     except Exception:
         return None
-    delta = float(current_number - baseline_number)
+    delta = current_number - baseline_number
     if delta >= 0.0:
         return None
     ratio = abs(delta) / allowed
@@ -897,8 +897,8 @@ def _build_regression_severity_item(
         "before": baseline_number,
         "after": current_number,
         "delta": round(delta, 6),
-        "max_drop": round(float(allowed), 6),
-        "ratio": round(float(ratio), 6),
+        "max_drop": round(allowed, 6),
+        "ratio": round(ratio, 6),
         "level": level,
     }
 
@@ -946,7 +946,7 @@ def evaluate_strict_regressions(
             by_backend[str(backend)] = backend_failures
 
     return {
-        "passed": bool(len(failures) == 0),
+        "passed": len(failures) == 0,
         "failures": failures,
         "by_backend": by_backend,
     }
@@ -969,7 +969,7 @@ def evaluate_baseline_compatibility(
             continue
         if current != baseline:
             mismatches.append(f"{key} mismatch (current={current}, baseline={baseline})")
-    return {"compatible": bool(len(mismatches) == 0), "mismatches": mismatches}
+    return {"compatible": len(mismatches) == 0, "mismatches": mismatches}
 
 
 def load_strict_profile(path: Path | None) -> dict[str, Any]:
@@ -1039,7 +1039,7 @@ def build_regression_severity_summary(
             if item is None:
                 continue
             level = str(item.get("level") or "")
-            levels[level] = int(levels.get(level, 0) or 0) + 1
+            levels[level] = levels.get(level, 0) + 1
             items.append(item)
 
     items.sort(
@@ -1051,7 +1051,7 @@ def build_regression_severity_summary(
     )
     return {
         "schema": "mimirq.parser_benchmark_regression_severity.v1",
-        "levels": {k: int(levels.get(k, 0) or 0) for k in ("critical", "high", "medium", "low")},
+        "levels": {k: levels.get(k, 0) for k in ("critical", "high", "medium", "low")},
         "items": items[:200],
     }
 
@@ -1215,7 +1215,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
     cases = _load_cases(
         input_dir,
         manifest_path=manifest_path,
-        max_files=int(args.max_files or 0),
+        max_files=args.max_files,
     )
     if not cases:
         raise SystemExit("no_cases_found")
@@ -1263,7 +1263,7 @@ def _build_report(config: RunConfig, *, started_at: datetime) -> dict[str, Any]:
             strict_profile=(config.strict_profile if isinstance(config.strict_profile, dict) else {}),
             strict_thresholds=config.strict_thresholds,
             backends=config.backends,
-            max_files=int(config.args.max_files or 0),
+            max_files=config.args.max_files,
         ),
         "backends": config.backends,
         "fixture_issues": [],
@@ -1473,7 +1473,7 @@ def _record_golden_metrics(
         return
 
     similarity = _similarity(markdown, golden.markdown)
-    attempt["golden_similarity"] = round(float(similarity), 4)
+    attempt["golden_similarity"] = round(similarity, 4)
     _record_table_grits(
         attempt=attempt,
         stats=stats,
@@ -1482,13 +1482,13 @@ def _record_golden_metrics(
     )
     if golden.plain_chars > 0:
         coverage = float(attempt["structure"].get("plain_chars") or 0) / float(golden.plain_chars)
-        attempt["golden_coverage_ratio"] = round(float(coverage), 4)
-        stats["coverage_ratio"].append(float(coverage))
-    stats["similarity"].append(float(similarity))
+        attempt["golden_coverage_ratio"] = round(coverage, 4)
+        stats["coverage_ratio"].append(coverage)
+    stats["similarity"].append(similarity)
     if golden.image_refs > 0:
         image_recall = float(attempt["structure"].get("image_refs") or 0) / float(golden.image_refs)
-        attempt["golden_image_ref_recall"] = round(float(image_recall), 4)
-        stats["image_ref_recall"].append(float(image_recall))
+        attempt["golden_image_ref_recall"] = round(image_recall, 4)
+        stats["image_ref_recall"].append(image_recall)
 
     table_continuity = _score_table_continuity(markdown, golden.table_continuity)
     if table_continuity is None:
@@ -1497,8 +1497,8 @@ def _record_golden_metrics(
             parsed_markdown=markdown,
         )
     if table_continuity is not None:
-        attempt["table_continuity_recall"] = round(float(table_continuity), 4)
-        stats["table_continuity_recall"].append(float(table_continuity))
+        attempt["table_continuity_recall"] = round(table_continuity, 4)
+        stats["table_continuity_recall"].append(table_continuity)
 
 
 def _record_specialty_recall(
@@ -1516,8 +1516,8 @@ def _record_specialty_recall(
         if golden_count <= 0:
             continue
         recall = min(float(specialty_counts.get(kind) or 0) / float(golden_count), 1.0)
-        specialty_recall[kind] = round(float(recall), 4)
-        stats["specialty_recall"][kind].append(float(recall))
+        specialty_recall[kind] = round(recall, 4)
+        stats["specialty_recall"][kind].append(recall)
     if specialty_recall:
         attempt["specialty_recall"] = specialty_recall
 
@@ -1538,8 +1538,8 @@ def _record_image_visual_kind_recall(
         if count <= 0:
             continue
         recall = min(float(counts.get(visual_kind) or 0) / float(count), 1.0)
-        subtype_recall[visual_kind] = round(float(recall), 4)
-        subtype_stats.setdefault(visual_kind, []).append(float(recall))
+        subtype_recall[visual_kind] = round(recall, 4)
+        subtype_stats.setdefault(visual_kind, []).append(recall)
     stats["specialty_image_visual_kind_recall"] = subtype_stats
     if subtype_recall:
         attempt["specialty_image_visual_kind_recall"] = subtype_recall
@@ -1565,7 +1565,7 @@ def _record_image_code_value_recall(
         matched = sum(1 for item in expected if item in actual)
         recall = float(matched) / float(len(expected))
         code_recall[visual_kind] = round(recall, 4)
-        code_stats.setdefault(visual_kind, []).append(float(recall))
+        code_stats.setdefault(visual_kind, []).append(recall)
     stats["specialty_image_code_value_recall"] = code_stats
     if code_recall:
         attempt["specialty_image_code_value_recall"] = code_recall
@@ -1627,7 +1627,7 @@ def _run_backend_attempt(
         )
     elapsed_ms = int(round((time.perf_counter() - started) * 1000))
     attempt["elapsed_ms"] = elapsed_ms
-    stats["elapsed_ms"].append(int(elapsed_ms))
+    stats["elapsed_ms"].append(elapsed_ms)
     return attempt
 
 
@@ -1661,7 +1661,7 @@ def _percentile_value(values: list[int], percentile: float) -> int | None:
         return None
     index = int(round((percentile / 100.0) * (len(values) - 1)))
     index = max(0, min(index, len(values) - 1))
-    return int(values[index])
+    return values[index]
 
 
 def _numeric_list(values: Any) -> list[float]:
@@ -1798,7 +1798,7 @@ def _attach_baseline_regressions(
 
 
 def _strict_requires_baseline(config: RunConfig) -> bool:
-    return bool(config.args.strict) and not (config.baseline_path and config.baseline_path.exists())
+    return config.args.strict and not (config.baseline_path and config.baseline_path.exists())
 
 
 def _build_fixture_issue_failure(item: dict[str, Any]) -> str:
@@ -1822,7 +1822,7 @@ def _apply_strict_gate(
     config: RunConfig,
     baseline_obj: dict[str, Any],
 ) -> int:
-    if not bool(config.args.strict):
+    if not config.args.strict:
         return 0
 
     baseline_summary = _baseline_summary(baseline_obj)

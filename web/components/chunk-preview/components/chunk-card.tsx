@@ -5,16 +5,45 @@
 
 import { useCallback, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { Copy, Braces, Pin, PinOff, Quote, Pencil, Eye, EyeOff, Link2, CheckCircle2, RotateCcw } from 'lucide-react'
+import {
+  Copy,
+  Braces,
+  Pin,
+  PinOff,
+  Quote,
+  Pencil,
+  Eye,
+  EyeOff,
+  Link2,
+  CheckCircle2,
+  RotateCcw,
+  MoreHorizontal,
+  AlertCircle,
+} from '@/components/icons'
 import { toast } from 'sonner'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
-import { chunkIsReviewed, chunkNeedsReview, getChunkMetadata, getSemanticQualityMetadata, getStringValue } from '@/components/chunk-preview/utils/metadata'
-import { cn, detachPromise } from '@/lib/utils'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { MarkdownRenderer } from '@/components/markdown/markdown-renderer'
+import styles from './workbench/compare.module.css'
+import {
+  chunkIsReviewed,
+  chunkNeedsReview,
+  getChunkMetadata,
+  getSemanticQualityMetadata,
+  getStringValue,
+} from '@/components/chunk-preview/utils/metadata'
+import { cn } from '@/lib/utils'
 import type { ChunkPreviewItem } from '@/types'
 import { getChunkSectionLabel } from '@/components/chunk-preview/utils/sections'
 
-interface ChunkCardProps {
+type ChunkCardProps = {
   chunk: ChunkPreviewItem
   index: number
   unit?: 'chars' | 'tokens'
@@ -60,12 +89,9 @@ function highlightText(text: string, rawQuery?: string) {
     if (idx > cursor) out.push(text.slice(cursor, idx))
     const end = Math.min(text.length, idx + query.length)
     out.push(
-      <mark
-        key={`${idx}-${end}-${matches}`}
-        className="rounded bg-primary/15 text-foreground px-0.5 py-[1px]"
-      >
+      <mark key={`${idx}-${end}-${matches}`} className={styles.chunkMark}>
         {text.slice(idx, end)}
-      </mark>
+      </mark>,
     )
     cursor = end
     matches += 1
@@ -103,8 +129,8 @@ export function ChunkCard({
   onToggleReviewed,
 }: Readonly<ChunkCardProps>) {
   const t = useTranslations('ChunkPreview')
-  const rangeLabel = useMemo(() => `${chunk.start_index}-${chunk.end_index}`, [chunk.start_index, chunk.end_index])
-  const tokens = useMemo(() => (typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null), [chunk.tokens_est])
+  const rangeLabel = `${chunk.start_index}-${chunk.end_index}`
+  const tokens = typeof chunk.tokens_est === 'number' ? chunk.tokens_est : null
   const chunkMetadata = getChunkMetadata(chunk)
   const chunkRole = getStringValue(chunkMetadata, 'chunk_role')
   const sectionLabel = useMemo(() => getChunkSectionLabel(chunk), [chunk])
@@ -119,11 +145,9 @@ export function ChunkCard({
       : t('chunkCard.needsReviewTitle')
   }, [needsReview, semanticQuality?.reasons, t])
   const chunkMetricLabel = unit === 'tokens' ? `${tokens ?? '-'} token` : `${chunk.length} 字`
-  const chunkMetricTitle = [
-    `${chunk.length} chars`,
-    tokens == null ? null : `${tokens} tokens`,
-    rangeLabel,
-  ].filter(Boolean).join(' · ')
+  const chunkMetricTitle = [`${chunk.length} chars`, tokens == null ? null : `${tokens} tokens`, rangeLabel]
+    .filter(Boolean)
+    .join(' · ')
   const citationText = useMemo(() => {
     const name = (sourceFilename || '').trim() || t('chunkCard.documentFallback')
     const pageLabel = chunk.page_number == null ? '' : ` · P.${chunk.page_number}`
@@ -139,290 +163,172 @@ export function ChunkCard({
     ].join('\n')
   }, [chunk.content, chunk.page_number, index, rangeLabel, sourceFilename, t, tokens])
 
-  const copyText = useCallback(async (text: string, okMsg: string) => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text)
-        toast.success(okMsg)
-        return
+  const copyText = useCallback(
+    async (text: string, okMsg: string) => {
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(text)
+          toast.success(okMsg)
+          return
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-    toast.error(t('chunkCard.copyClipboardUnsupported'))
-  }, [t])
+      toast.error(t('chunkCard.copyClipboardUnsupported'))
+    },
+    [t],
+  )
 
+  const firstTableRow = chunk.content?.split('\n').find((line) => line.trim().startsWith('|'))
+  const tableCells =
+    firstTableRow
+      ?.split(/(?<!\\)\|/)
+      .map((value) => value.trim())
+      .filter(Boolean) || []
+  const tableTitle = tableCells.find((value) => !/^[-:\s]+$/.test(value) && !/^D\d+$/.test(value))
+  const heading = sectionLabel?.short || chunk.content?.match(/^#{1,6}\s+(.+)$/m)?.[1] || tableTitle || '正文片段'
+  const reasonLabels: Record<string, string> = {
+    incomplete: '内容不完整',
+    low_density: '信息密度偏低',
+    too_small: '内容偏短',
+    too_large: '内容偏长',
+  }
+  const visibleReasons = (semanticQuality?.reasons || []).map((reason) => reasonLabels[reason] || reason).join('、')
   return (
     <article
-      className={cn(
-        'group relative bg-card p-4 rounded-xl border transition-colors transition-shadow duration-200 motion-reduce:transition-none cursor-pointer focus-within:ring-1 focus-within:ring-ring/20',
-        (() => {
-    if (isSelected) {
-        return 'border-primary/45 shadow-lg shadow-primary/10 ring-1 ring-primary/20';
-    }
-    else if (isHovered) {
-            return 'border-primary/30 shadow-sm shadow-primary/10 ring-1 ring-ring/10 z-10';
-        }
-        else {
-            return 'border-border hover:border-primary/25 hover:shadow-sm hover:shadow-primary/10';
-        }
-})(),
-        isDisabled && !isSelected && !isHovered ? 'opacity-60' : ''
-      )}
+      className={styles.chunk}
+      data-chunk-card
+      data-chunk-index={index}
+      data-selected={isSelected}
+      data-hovered={isHovered}
+      data-disabled={isDisabled}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       aria-label={t('chunkCard.ariaLabel', { index: index + 1 })}
     >
       <button
         type="button"
-        className="absolute inset-0 z-0 rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        className={styles.chunkSelect}
         onClick={onToggleSelect}
         aria-label={t('chunkCard.ariaLabel', { index: index + 1 })}
         aria-pressed={isSelected}
       />
-      <div className="relative z-10 mb-2 flex items-center justify-between pointer-events-none">
-        <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              'text-[11px] font-mono font-bold px-1.5 py-0.5 rounded',
-              isSelected || isHovered ? 'bg-primary/15 text-primary' : 'bg-primary/10 text-primary'
-            )}
-          >
-            #{index + 1}
+      <div className={styles.chunkHeading}>
+        <span className={styles.chunkNumber}>{String(index + 1).padStart(2, '0')}</span>
+        <h3 className={styles.chunkTitle} title={sectionLabel?.full}>
+          {heading}
+        </h3>
+        {reviewed ? (
+          <span className={cn(styles.chunkReview, styles.chunkReviewed)}>
+            <CheckCircle2 />
+            已复核
           </span>
-          {isDisabled ? (
-            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
-              {t('chunkCard.badges.skipped')}
-            </span>
-          ) : null}
-
-          {isEdited ? (
-            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-info/10 text-info border border-info/25">
-              {t('chunkCard.badges.edited')}
-            </span>
-          ) : null}
-          {isDuplicate ? (
-            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
-              {t('chunkCard.badges.duplicate')}
-            </span>
-          ) : null}
-          {isShort ? (
-            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25">
-              {t('chunkCard.badges.short')}
-            </span>
-          ) : null}
-          {isGap ? (
-            <span
-              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-destructive/10 text-destructive border border-destructive/25"
-              title={typeof gapBefore === 'number' ? `gap_before: ${gapBefore}` : undefined}
-            >
-              {t('chunkCard.badges.gap')}
-            </span>
-          ) : null}
-          {isOverlap ? (
-            <span
-              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-warning/10 text-warning border border-warning/25"
-              title={typeof overlapPrev === 'number' ? `overlap_prev: ${overlapPrev}` : undefined}
-            >
-              {t('chunkCard.badges.overlap')}
-            </span>
-          ) : null}
-          {needsReview ? (
-            <span
-              className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-destructive/20 bg-destructive/10 text-destructive"
-              title={needsReviewTitle}
-              aria-label={needsReviewTitle}
-            >
-              <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
-              <span className="sr-only">{t('chunkCard.needsReview')}</span>
-            </span>
-          ) : null}
-          {reviewed ? (
-            <span
-              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-success/10 text-success border border-success/25"
-              title={t('chunkCard.reviewedTitle')}
-            >
-              {t('chunkCard.reviewed')}
-            </span>
-          ) : null}
-          {(() => {
-    if (chunkRole === 'parent') {
-        return (<span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/25">
-              {t('chunkCard.badges.parent')}
-            </span>);
-    }
-    else if (chunkRole === 'child') {
-            return (<span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60">
-              {t('chunkCard.badges.child')}
-            </span>);
-        }
-        else {
-            return null;
-        }
-})()}
-          {sectionLabel ? (
-            <span
-              className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground border border-border/60 max-w-[180px] truncate"
-              title={sectionLabel.full}
-            >
-              {sectionLabel.short}
-            </span>
-          ) : null}
-          <span
-            className="inline-flex h-5 items-center whitespace-nowrap rounded-full border border-border/55 bg-muted/35 px-1.5 text-[11px] font-medium text-muted-foreground"
-            title={chunkMetricTitle}
-          >
-            {chunkMetricLabel}
+        ) : needsReview ? (
+          <span className={styles.chunkReview} title={visibleReasons || needsReviewTitle}>
+            <AlertCircle />
+            待复核
           </span>
-        </div>
-        <div className="flex items-center gap-1.5 pointer-events-auto">
-          {chunk.page_number != null && (
-            <span className="text-[11px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">P.{chunk.page_number}</span>
-          )}
-          <div
-            className={cn(
-              'flex items-center gap-1 transition-opacity',
-              isSelected ? 'opacity-100' : 'opacity-100 lg:opacity-0 lg:group-hover:opacity-100'
-            )}
-          >
-            {onToggleReviewed && (needsReview || reviewed) ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onToggleReviewed()
-                }}
-                aria-label={reviewed ? t('chunkCard.restoreReview') : t('chunkCard.approveReview')}
-                title={reviewed ? t('chunkCard.restoreReview') : t('chunkCard.approveReview')}
-              >
-                {reviewed ? <RotateCcw className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-              </Button>
-            ) : null}
-            {onEdit ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation()
-                onEdit()
-              }}
-                aria-label={t('chunkCard.edit')}
-                title={t('chunkCard.edit')}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            ) : null}
-            {onToggleDisabled ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onToggleDisabled()
-                }}
-                aria-label={isDisabled ? t('chunkCard.enable') : t('chunkCard.skip')}
-                title={isDisabled ? t('chunkCard.enable') : t('chunkCard.skip')}
-              >
-                {isDisabled ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation()
-                detachPromise(copyText(citationText, t('chunkCard.copyCitationSuccess')))
-              }}
-              aria-label={t('chunkCard.copyCitation')}
-              title={t('chunkCard.copyCitation')}
-            >
-              <Quote className="h-4 w-4" />
+        ) : null}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className={styles.chunkMenu} aria-label={`切块 ${index + 1} 更多操作`}>
+              <MoreHorizontal />
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation()
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="text-[13px]">
+            {onEdit && (
+              <DropdownMenuItem onSelect={onEdit}>
+                <Pencil />
+                {t('chunkCard.edit')}
+              </DropdownMenuItem>
+            )}
+            {onToggleReviewed && (
+              <DropdownMenuItem onSelect={onToggleReviewed}>
+                {reviewed ? <RotateCcw /> : <CheckCircle2 />}
+                {reviewed ? t('chunkCard.restoreReview') : '标记已复核'}
+              </DropdownMenuItem>
+            )}
+            {onToggleDisabled && (
+              <DropdownMenuItem onSelect={onToggleDisabled}>
+                {isDisabled ? <Eye /> : <EyeOff />}
+                {isDisabled ? t('chunkCard.enable') : t('chunkCard.skip')}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void copyText(citationText, t('chunkCard.copyCitationSuccess'))}>
+              <Quote />
+              {t('chunkCard.copyCitation')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
                 try {
-                  const url = new URL(globalThis.window.location.href)
+                  const url = new URL(window.location.href)
                   url.searchParams.set('chunk', String(index + 1))
-                  detachPromise(copyText(url.toString(), t('chunkCard.copyLinkSuccess')))
+                  void copyText(url.toString(), t('chunkCard.copyLinkSuccess'))
                 } catch {
                   toast.error(t('chunkCard.cannotGenerateLink'))
                 }
               }}
-              aria-label={t('chunkCard.copyLink')}
-              title={t('chunkCard.copyLink')}
             >
-              <Link2 className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation()
-                detachPromise(copyText(chunk.content || '', t('chunkCard.copyContentSuccess')))
-              }}
-              aria-label={t('chunkCard.copyContent')}
-              title={t('chunkCard.copyContent')}
+              <Link2 />
+              {t('chunkCard.copyLink')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => void copyText(chunk.content || '', t('chunkCard.copyContentSuccess'))}>
+              <Copy />
+              {t('chunkCard.copyContent')}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => void copyText(JSON.stringify(chunk, null, 2), t('chunkCard.copyJsonSuccess'))}
             >
-              <Copy className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation()
-                detachPromise(copyText(JSON.stringify(chunk, null, 2), t('chunkCard.copyJsonSuccess')))
-              }}
-              aria-label={t('chunkCard.copyJson')}
-              title={t('chunkCard.copyJson')}
-            >
-              <Braces className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleSelect()
-              }}
-              aria-label={isSelected ? t('chunkCard.unpin') : t('chunkCard.pin')}
-              title={isSelected ? t('chunkCard.unpin') : t('chunkCard.pin')}
-            >
-              {isSelected ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
+              <Braces />
+              {t('chunkCard.copyJson')}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onToggleSelect}>
+              {isSelected ? <PinOff /> : <Pin />}
+              {isSelected ? t('chunkCard.unpin') : t('chunkCard.pin')}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-
-      <div
-        className={cn(
-          'relative z-10 pointer-events-none text-sm font-sans leading-relaxed whitespace-pre-wrap break-words transition-colors',
-          isSelected
-            ? 'max-h-72 overflow-y-auto rounded-lg border border-border/55 bg-background/80 p-3 text-foreground shadow-inner shadow-border/20'
-            : 'line-clamp-5',
-          isSelected || isHovered ? 'text-foreground' : 'text-muted-foreground'
+      <div className={styles.chunkMeta} title={chunkMetricTitle}>
+        <span>{chunkMetricLabel}</span>
+        {chunk.page_number != null && <span>第 {chunk.page_number} 页</span>}
+        {chunkRole && <span>{chunkRole === 'parent' ? '父块' : chunkRole === 'child' ? '子块' : chunkRole}</span>}
+        {isGap && (
+          <span title={typeof gapBefore === 'number' ? `前方缺口 ${gapBefore} 字符` : undefined}>存在缺口</span>
         )}
-      >
-        {highlightText(chunk.content || '', query)}
+        {isOverlap && (
+          <span title={typeof overlapPrev === 'number' ? `与前块重叠 ${overlapPrev} 字符` : undefined}>内容重叠</span>
+        )}
+        {isShort && <span>内容偏短</span>}
+        {isDuplicate && <span>疑似重复</span>}
+        {isEdited && <span>已编辑</span>}
+        {isDisabled && <span>已跳过</span>}
+        {isSelected && <span>位置 {rangeLabel}</span>}
+      </div>
+      {isSelected && (
+        <div className={styles.chunkFooter}>
+          {onEdit && (
+            <Button variant="outline" onClick={onEdit}>
+              <Pencil />
+              编辑内容
+            </Button>
+          )}
+          {onToggleReviewed && (
+            <Button variant="outline" onClick={onToggleReviewed}>
+              {reviewed ? <RotateCcw /> : <CheckCircle2 />}
+              {reviewed ? '撤销复核' : '标记已复核'}
+            </Button>
+          )}
+          <span className={styles.metadata}>第 {index + 1} 块</span>
+        </div>
+      )}
+      <div className={styles.chunkContent}>
+        {isSelected && !query?.trim() ? (
+          <MarkdownRenderer markdown={chunk.content || ''} enableTocAnchors={false} autoScrollToHash={false} />
+        ) : (
+          highlightText(chunk.content || '', query)
+        )}
       </div>
     </article>
   )

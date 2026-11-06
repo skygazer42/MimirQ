@@ -25,33 +25,12 @@ HIERARCHY_FAMILY_AGGREGATION_VALUES = ("frequency", "score", "combined")
 FUSION_CHANNELS = {"vector", "bm25", "lexical", "sparse"}
 
 
-def _validate_fusion_map_keys(raw: Any, *, field_name: str) -> dict | None:
-    if raw is None:
-        return None
-    if not isinstance(raw, dict):
-        raise ValueError(f"{field_name} must be an object/dict when provided")
-    for key in (str(k or "").strip().lower() for k in raw):
-        if key and key not in FUSION_CHANNELS:
-            raise ValueError(f"{field_name} keys must be one of: vector, bm25, lexical, sparse")
-    return raw
-
-
-def _validate_fusion_map_values(raw: dict | None, *, field_name: str, value_type: type) -> None:
+def _validate_fusion_map_keys(raw: dict[str, Any] | None, *, field_name: str) -> None:
     if raw is None:
         return
-    for value in raw.values():
-        if value is None:
-            continue
-        try:
-            value_type(value)
-        except Exception as exc:
-            label = "integers" if value_type is int else "numbers"
-            raise ValueError(f"{field_name} values must be {label}") from exc
-
-
-def _validate_fusion_map(raw: Any, *, field_name: str, value_type: type) -> None:
-    checked = _validate_fusion_map_keys(raw, field_name=field_name)
-    _validate_fusion_map_values(checked, field_name=field_name, value_type=value_type)
+    for key in (k.strip().lower() for k in raw):
+        if key and key not in FUSION_CHANNELS:
+            raise ValueError(f"{field_name} keys must be one of: vector, bm25, lexical, sparse")
 
 
 class DatasetChunkTargetsV2(BaseModel):
@@ -156,6 +135,7 @@ class DatasetRAGDefaults(BaseModel):
 
     enable_reranker: bool | None = None
     reranker_provider: str | None = None
+
     reranker_top_n: int | None = Field(default=None, ge=1, le=200)
 
     # Optional strict grounding mode: treat missing evidence as non-existent and abstain early.
@@ -210,9 +190,9 @@ class DatasetRAGDefaults(BaseModel):
         Note: ChatRAGConfig re-validates these after merge; this is defense-in-depth
         for obviously invalid dataset metadata.
         """
-        _validate_fusion_map(self.fusion_budgets, field_name="fusion_budgets", value_type=int)
-        _validate_fusion_map(self.fusion_min_scores, field_name="fusion_min_scores", value_type=float)
-        _validate_fusion_map(self.fusion_weights, field_name="fusion_weights", value_type=float)
+        _validate_fusion_map_keys(self.fusion_budgets, field_name="fusion_budgets")
+        _validate_fusion_map_keys(self.fusion_min_scores, field_name="fusion_min_scores")
+        _validate_fusion_map_keys(self.fusion_weights, field_name="fusion_weights")
         return self
 
 
@@ -288,8 +268,26 @@ class DatasetBase(BaseModel):
     retention_policy: DatasetRetentionPolicy | None = None
 
 
+def _validate_dataset_execution(
+    embedding: DatasetEmbeddingDefaults | None, rag: DatasetRAGDefaults | None, pipeline: DocumentPipelineOptions | None
+) -> None:
+    from app.core.model_execution import reject_retired_model_provider, validate_rag_execution_selection
+
+    if embedding is not None:
+        reject_retired_model_provider(embedding.provider, capability="embedding")
+    if rag is not None:
+        validate_rag_execution_selection(
+            reranker_provider=rag.reranker_provider, retrieval_profile=rag.retrieval_profile
+        )
+    if pipeline is not None:
+        reject_retired_model_provider(pipeline.governance_keywords_provider, capability="keyword")
+
+
 class DatasetCreate(DatasetBase):
-    pass
+    @model_validator(mode="after")
+    def _validate_execution(self) -> "DatasetCreate":
+        _validate_dataset_execution(self.embedding_defaults, self.rag_defaults, self.pipeline)
+        return self
 
 
 class DatasetUpdate(BaseModel):
@@ -311,6 +309,11 @@ class DatasetUpdate(BaseModel):
     chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     pipeline: DocumentPipelineOptions | None = None
     retention_policy: DatasetRetentionPolicy | None = None
+
+    @model_validator(mode="after")
+    def _validate_execution(self) -> "DatasetUpdate":
+        _validate_dataset_execution(self.embedding_defaults, self.rag_defaults, self.pipeline)
+        return self
 
 
 DatasetOperationalStatus = Literal["active", "anomaly", "pending", "testing"]

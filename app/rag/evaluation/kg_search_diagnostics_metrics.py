@@ -5,7 +5,6 @@ These helpers are intentionally dependency-light so they can be unit-tested with
 requiring a full backend runtime (DB, Milvus, LLM config, etc.).
 """
 
-
 import math
 from typing import Any
 
@@ -26,7 +25,7 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
     kk = max(1, int(k or 0))
 
     ev_set = {str(x).strip() for x in (evidence_chunk_ids or set()) if str(x).strip()}
-    total = int(len(ev_set))
+    total = len(ev_set)
     if total <= 0:
         return {
             "hit_at_k": False,
@@ -55,7 +54,7 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
 
         matched.add(cid)
         if first_rank is None:
-            first_rank = int(idx)
+            first_rank = idx
         dcg += 1.0 / math.log2(float(idx) + 1.0)
         average_precision_acc += float(len(matched)) / float(idx)
 
@@ -64,18 +63,18 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
     recall = float(len(matched)) / float(total) if total > 0 else 0.0
     ideal_hits = min(total, kk)
     ideal_dcg = sum(1.0 / math.log2(float(rank) + 1.0) for rank in range(1, ideal_hits + 1))
-    ndcg = float(dcg / ideal_dcg) if ideal_dcg > 0 else 0.0
-    mean_average_precision = float(average_precision_acc / float(total)) if total > 0 else 0.0
+    ndcg = dcg / ideal_dcg if ideal_dcg > 0 else 0.0
+    mean_average_precision = average_precision_acc / float(total) if total > 0 else 0.0
 
     # Keep stable precision in JSON responses.
     return {
         "hit_at_k": hit,
-        "mrr": round(float(mrr), 4),
-        "recall": round(float(recall), 4),
-        "ndcg": round(float(ndcg), 4),
-        "map": round(float(mean_average_precision), 4),
-        "matched_evidence_chunks": int(len(matched)),
-        "total_evidence_chunks": int(total),
+        "mrr": round(mrr, 4),
+        "recall": round(recall, 4),
+        "ndcg": round(ndcg, 4),
+        "map": round(mean_average_precision, 4),
+        "matched_evidence_chunks": len(matched),
+        "total_evidence_chunks": total,
         "k": kk,
     }
 

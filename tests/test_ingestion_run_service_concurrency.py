@@ -7,7 +7,7 @@ from sqlalchemy import UniqueConstraint
 from sqlalchemy.exc import IntegrityError
 
 from app.models.ingestion_run import IngestionRunDocument
-from app.services.ingestion_run_service import IngestionRunService
+from app.services import ingestion_run_service
 
 
 class _QueryStub:
@@ -111,6 +111,9 @@ class _ServiceDB:
         self.document_queries.append(query)
         return query
 
+    def flush(self) -> None:
+        return None
+
     def commit(self) -> None:
         self.commit_calls += 1
         if self.commit_exc is not None:
@@ -146,13 +149,14 @@ def test_add_document_locks_run_row_before_mutating_stats() -> None:
         tenant_id=tenant_id,
         kind="upload",
         status="running",
+        config={},
         stats={},
         started_at=datetime.now(timezone.utc),
         finished_at=None,
     )
     db = _ServiceDB(run=run, document_query_results=[None])
 
-    IngestionRunService.add_document(
+    ingestion_run_service.add_document(
         db,
         tenant_id=tenant_id,
         run_id=run_id,
@@ -175,6 +179,7 @@ def test_add_document_commits_early_when_attachment_already_exists() -> None:
         tenant_id=tenant_id,
         kind="upload",
         status="running",
+        config={},
         stats={"total_documents": 2, "status_counts": {"created": 2}},
         started_at=datetime.now(timezone.utc),
         finished_at=None,
@@ -182,7 +187,7 @@ def test_add_document_commits_early_when_attachment_already_exists() -> None:
     existing = SimpleNamespace(run_id=run.id, document_id=uuid4(), status="created")
     db = _ServiceDB(run=run, document_query_results=[existing])
 
-    IngestionRunService.add_document(
+    ingestion_run_service.add_document(
         db,
         tenant_id=tenant_id,
         run_id=run.id,
@@ -200,7 +205,7 @@ def test_add_document_commits_early_when_attachment_already_exists() -> None:
 def test_add_document_rolls_back_when_initial_run_lock_fails() -> None:
     db = _ServiceDB(run=None, run_first_exc=RuntimeError("lock failed"))
 
-    IngestionRunService.add_document(
+    ingestion_run_service.add_document(
         db,
         tenant_id=uuid4(),
         run_id=uuid4(),
@@ -221,6 +226,7 @@ def test_add_document_rolls_back_duplicate_attachment_conflicts() -> None:
         tenant_id=tenant_id,
         kind="upload",
         status="running",
+        config={},
         stats={},
         started_at=datetime.now(timezone.utc),
         finished_at=None,
@@ -231,7 +237,7 @@ def test_add_document_rolls_back_duplicate_attachment_conflicts() -> None:
         commit_exc=IntegrityError("insert", {}, _CommitOrigError()),
     )
 
-    IngestionRunService.add_document(
+    ingestion_run_service.add_document(
         db,
         tenant_id=tenant_id,
         run_id=run.id,
@@ -257,7 +263,7 @@ def test_add_document_waits_for_expected_documents_before_finalizing() -> None:
     )
     db = _ServiceDB(run=run, document_query_results=[None, None])
 
-    IngestionRunService.add_document(
+    ingestion_run_service.add_document(
         db,
         tenant_id=tenant_id,
         run_id=run.id,
@@ -271,7 +277,7 @@ def test_add_document_waits_for_expected_documents_before_finalizing() -> None:
     assert run.stats["progress"] == 50
     assert run.stats["status_counts"]["completed"] == 1
 
-    IngestionRunService.add_document(
+    ingestion_run_service.add_document(
         db,
         tenant_id=tenant_id,
         run_id=run.id,
@@ -305,7 +311,7 @@ def test_status_update_waits_for_expected_documents_and_keeps_failure_reasons() 
     completed_row = SimpleNamespace(run_id=run.id, id=2, status="created")
 
     db_failed = _ServiceDB(run=run, document_query_results=[[failed_row], [failed_row]])
-    IngestionRunService.on_document_status_update(
+    ingestion_run_service.on_document_status_update(
         db_failed,
         tenant_id=tenant_id,
         document_id=first_doc_id,
@@ -321,7 +327,7 @@ def test_status_update_waits_for_expected_documents_and_keeps_failure_reasons() 
     assert failed_row.status == "failed"
 
     db_completed = _ServiceDB(run=run, document_query_results=[[completed_row], [completed_row]])
-    IngestionRunService.on_document_status_update(
+    ingestion_run_service.on_document_status_update(
         db_completed,
         tenant_id=tenant_id,
         document_id=second_doc_id,
@@ -353,7 +359,7 @@ def test_status_update_keeps_legacy_finalize_when_expected_documents_is_missing(
     row = SimpleNamespace(run_id=run.id, id=1, status="created")
     db = _ServiceDB(run=run, document_query_results=[[row], [row]])
 
-    IngestionRunService.on_document_status_update(
+    ingestion_run_service.on_document_status_update(
         db,
         tenant_id=tenant_id,
         document_id=uuid4(),
@@ -384,7 +390,7 @@ def test_close_intake_reconciles_expected_documents_to_unique_attachments_and_fi
     attached = [SimpleNamespace(id=1, run_id=run.id, document_id=shared_doc_id, status="completed")]
     db = _ServiceDB(run=run, document_query_results=[attached])
 
-    IngestionRunService.close_intake(
+    ingestion_run_service.close_intake(
         db,
         tenant_id=tenant_id,
         run_id=run.id,
@@ -420,7 +426,7 @@ def test_close_intake_fails_all_rejected_batch_with_zero_attached_documents() ->
     )
     db = _ServiceDB(run=run, document_query_results=[[]])
 
-    IngestionRunService.close_intake(
+    ingestion_run_service.close_intake(
         db,
         tenant_id=tenant_id,
         run_id=run.id,
@@ -454,6 +460,7 @@ def test_status_update_locks_runs_before_attachment_rows() -> None:
             dataset_id=None,
             kind="upload",
             status="running",
+            config={},
             stats={"total_documents": 1, "status_counts": {"created": 1}},
             started_at=datetime.now(timezone.utc),
             finished_at=None,
@@ -464,6 +471,7 @@ def test_status_update_locks_runs_before_attachment_rows() -> None:
             dataset_id=None,
             kind="upload",
             status="running",
+            config={},
             stats={"total_documents": 1, "status_counts": {"created": 1}},
             started_at=datetime.now(timezone.utc),
             finished_at=None,
@@ -496,7 +504,7 @@ def test_status_update_locks_runs_before_attachment_rows() -> None:
 
     db = _MultiRunDB(run=None, document_query_results=[candidate_rows, locked_rows])
 
-    IngestionRunService.on_document_status_update(
+    ingestion_run_service.on_document_status_update(
         db,
         tenant_id=tenant_id,
         document_id=uuid4(),
@@ -536,6 +544,7 @@ def test_status_update_raises_when_required_commit_fails() -> None:
         dataset_id=None,
         kind="upload",
         status="running",
+        config={},
         stats={"total_documents": 1, "status_counts": {"created": 1}},
         started_at=datetime.now(timezone.utc),
         finished_at=None,
@@ -544,7 +553,7 @@ def test_status_update_raises_when_required_commit_fails() -> None:
     db = _ServiceDB(run=run, document_query_results=[[row], [row]], commit_exc=RuntimeError("commit failed"))
 
     with pytest.raises(RuntimeError, match="commit failed"):
-        IngestionRunService.on_document_status_update(
+        ingestion_run_service.on_document_status_update(
             db,
             tenant_id=tenant_id,
             document_id=uuid4(),

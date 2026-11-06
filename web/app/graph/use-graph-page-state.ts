@@ -9,12 +9,7 @@ import { GraphViewerRef, LayoutMode } from '@/components/graph/graph-viewer'
 import { documentApi } from '@/lib/api/documents'
 import { type GraphData } from '@/lib/graph-parser'
 import { useResizeObserver } from '@/hooks/use-resize-observer'
-import type {
-  KGEntityDetailResponse,
-  KGEventDetailResponse,
-  KGStatsResponse,
-  RagTrace,
-} from '@/types'
+import type { KGEntityDetailResponse, KGEventDetailResponse, KGStatsResponse, RagTrace } from '@/types'
 
 import {
   GraphConfBucket,
@@ -67,10 +62,7 @@ export function useGraphPageState() {
   const scopeParamKey = searchParams.toString()
   const scope = useMemo<GraphScope>(() => {
     const sp = new URLSearchParams(scopeParamKey)
-    const directDocIds = [
-      ...parseCsvList(sp.get('document_ids')),
-      ...sp.getAll('document_id'),
-    ]
+    const directDocIds = [...parseCsvList(sp.get('document_ids')), ...sp.getAll('document_id')]
       .map((value) => String(value || '').trim())
       .filter(Boolean)
 
@@ -185,7 +177,7 @@ export function useGraphPageState() {
   const [kgStats, setKgStats] = useState<KGStatsResponse | null>(null)
   const [kgNodeDetail, setKgNodeDetail] = useState<KGEntityDetailResponse | KGEventDetailResponse | null>(null)
   const [kgNodeDetailLoading, setKgNodeDetailLoading] = useState(false)
-  const [viewMode, setViewMode] = useState<'2d' | '3d'>('3d')
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [entityTypeFilters, setEntityTypeFilters] = useState<string[]>([])
   const [predicateFilters, setPredicateFilters] = useState<string[]>([])

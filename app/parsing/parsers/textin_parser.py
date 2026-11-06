@@ -8,7 +8,6 @@ Config via env/.env:
 - TEXTIN_SECRET_CODE=<secret-code>
 """
 
-
 import json
 import re
 from pathlib import Path
@@ -47,6 +46,36 @@ def _collect_markdown_like_strings(node: Any) -> list[str]:
         for item in node.values():
             results.extend(_collect_markdown_like_strings(item))
     return results
+
+
+def _extract_markdown_from_payload(data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+    result = data.get("result")
+    if isinstance(result, dict):
+        for key in ("markdown", "text", "content"):
+            value = result.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+    strings = _collect_markdown_like_strings(result)
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in strings:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return "\n\n".join(s.strip() for s in deduped if s.strip()).strip()
+
+
+def _extract_error_message(data: Any) -> str:
+    if not isinstance(data, dict):
+        return ""
+    for key in ("message", "msg", "detail", "error"):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
 
 
 class TextInParser:
@@ -117,36 +146,6 @@ class TextInParser:
             timeout=self._timeout_sec,
         )
 
-    @staticmethod
-    def _extract_markdown_from_payload(data: Any) -> str:
-        if not isinstance(data, dict):
-            return ""
-        result = data.get("result")
-        if isinstance(result, dict):
-            for key in ("markdown", "text", "content"):
-                value = result.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value
-        strings = _collect_markdown_like_strings(result)
-        deduped: list[str] = []
-        seen: set[str] = set()
-        for item in strings:
-            if item in seen:
-                continue
-            seen.add(item)
-            deduped.append(item)
-        return "\n\n".join(s.strip() for s in deduped if s.strip()).strip()
-
-    @staticmethod
-    def _extract_error_message(data: Any) -> str:
-        if not isinstance(data, dict):
-            return ""
-        for key in ("message", "msg", "detail", "error"):
-            value = data.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        return ""
-
     def parse(
         self,
         file_path: Path,
@@ -176,10 +175,10 @@ class TextInParser:
 
         code = data.get("code") if isinstance(data, dict) else None
         if code not in {None, 0, 200, "0", "200"}:
-            message = self._extract_error_message(data)
+            message = _extract_error_message(data)
             raise RuntimeError(f"TextIn parse failed (code={code}): {message[:500]}")
 
-        markdown_text = self._extract_markdown_from_payload(data)
+        markdown_text = _extract_markdown_from_payload(data)
         if not markdown_text and resp.text.strip():
             markdown_text = resp.text
 

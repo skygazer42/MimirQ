@@ -3,7 +3,7 @@ import { createSseDataParser } from '@/lib/sse'
 export async function readSseDataStrings(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   onData: (data: string) => void,
-  onError?: (error: unknown) => void
+  onError?: (error: unknown) => void,
 ): Promise<void> {
   const decoder = new TextDecoder()
   const sse = createSseDataParser()

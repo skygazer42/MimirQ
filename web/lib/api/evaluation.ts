@@ -1,5 +1,21 @@
+import type { JsonObject } from '@/types/common'
 import type {
-  JsonObject,
+  KGHardcaseMode,
+  KGSearchDiagnosticsItem,
+  KGSearchDiagnosticsRequest,
+  KGSearchDiagnosticsResponse,
+  KGSearchDiagnosticsRunDetail,
+  KGSearchDiagnosticsRunList,
+  KGSearchDiagnosticsRunListParams,
+  KGSearchDiagnosticsRunOut,
+  RagasConversationReadinessItem,
+  RagasConversationReadinessRequest,
+  RagasConversationReadinessResponse,
+  RagasItem,
+  RagasRun,
+  RagasRunCreateRequest,
+  RagasRunDetail,
+  RagasRunList,
   RagasRegressionRunDiffResponse,
   RegressionAblationBatchRequest,
   RegressionAblationBatchResponse,
@@ -16,139 +32,54 @@ import type {
   TestGenFromConversationsRequest,
   TestGenFromDocsRequest,
   TestGenResponse,
-} from '@/types'
+} from '@/types/evaluation'
 import type { OpenApiSchema } from '@/types/backend'
 
 import { apiClient } from '@/lib/api/core'
 
+export type {
+  KGHardcaseMode,
+  KGSearchDiagnosticsItem,
+  KGSearchDiagnosticsRequest,
+  KGSearchDiagnosticsResponse,
+  KGSearchDiagnosticsRunDetail,
+  KGSearchDiagnosticsRunList,
+  KGSearchDiagnosticsRunListParams,
+  KGSearchDiagnosticsRunOut,
+  RagasConversationReadinessItem,
+  RagasConversationReadinessRequest,
+  RagasConversationReadinessResponse,
+  RagasItem,
+  RagasRun,
+  RagasRunCreateRequest,
+  RagasRunDetail,
+  RagasRunList,
+} from '@/types/evaluation'
+
 type SyntheticHardcaseGenerateResponse = OpenApiSchema<'SyntheticHardcaseGenerateResponse'>
 type RegressionRunLeaderboardResponse = OpenApiSchema<'RagasRegressionRunLeaderboardResponse'>
-type KGSearchDiagnosticsItem = OpenApiSchema<'KGSearchDiagnosticsItem'>
-type KGSearchDiagnosticsSummary = OpenApiSchema<'KGSearchDiagnosticsSummary'>
-
-export interface RagasRun {
-  id: string
-  conversation_id?: string
-  status: string
-  metrics: string[]
-  params: JsonObject
-  summary: JsonObject
-  error_message?: string
-  created_at: string
-  started_at?: string
-  finished_at?: string
-}
-
-export interface RagasItem {
-  id: string
-  run_id: string
-  turn_index: number
-  user_message_id?: string
-  assistant_message_id?: string
-  user_input: string
-  response: string
-  retrieved_contexts?: string[] | null
-  citations: unknown[]
-  scores: JsonObject
-  created_at: string
-}
-
-export interface RagasRunDetail {
-  run: RagasRun
-  items: RagasItem[]
-}
-
-export interface RagasConversationReadinessItem {
-  conversation_id: string
-  assistant_turns: number
-  evaluable_turns: number
-  citations_count: number
-  is_evaluable: boolean
-}
-
-export interface RagasConversationReadinessResponse {
-  total: number
-  items: RagasConversationReadinessItem[]
-}
-
-export type KGHardcaseMode = 'off' | 'deterministic' | 'llm'
-
-export interface KGSearchDiagnosticsRequest {
-  dataset_id: string
-  case_ids?: string[]
-  max_cases?: number
-  k?: number
-  auto_extract_kg?: boolean
-  extract_skills?: boolean | null
-  extract_relations?: boolean | null
-  hardcase_mode?: KGHardcaseMode
-  hardcases_per_failed_case?: number
-  max_failed_cases_for_hardcase?: number
-  llm_temperature?: number
-  persist_run?: boolean
-}
-
-export interface KGSearchDiagnosticsResponse {
-  run_id?: string | null
-  summary: KGSearchDiagnosticsSummary
-  items?: KGSearchDiagnosticsItem[]
-}
-
-export interface KGSearchDiagnosticsRunOut {
-  id: string
-  tenant_id: string
-  account_id?: string | null
-  dataset_id: string
-  status: string
-  params?: JsonObject
-  summary?: JsonObject
-  created_at: string
-}
-
-export interface KGSearchDiagnosticsRunList {
-  total: number
-  items: KGSearchDiagnosticsRunOut[]
-}
-
-export interface KGSearchDiagnosticsRunDetail {
-  run: KGSearchDiagnosticsRunOut
-  items?: JsonObject[]
-}
 
 export const evaluationApi = {
-  async getRagasConversationReadiness(params: {
-    conversation_ids: string[]
-  }): Promise<RagasConversationReadinessResponse> {
-    const { data } = await apiClient.post(
-      '/evaluations/ragas/conversation-readiness',
-      params
-    )
+  async getRagasConversationReadiness(
+    params: RagasConversationReadinessRequest,
+  ): Promise<RagasConversationReadinessResponse> {
+    const { data } = await apiClient.post('/evaluations/ragas/conversation-readiness', params)
     return data
   },
 
-  async createRagasRun(params: {
-    conversation_id: string
-    metrics?: string[]
-    max_turns?: number
-    skip_empty_contexts?: boolean
-    include_contexts_in_response?: boolean
-  }): Promise<RagasRun> {
+  async createRagasRun(params: RagasRunCreateRequest): Promise<RagasRun> {
     const { data } = await apiClient.post('/evaluations/ragas/runs', params)
     return data
   },
 
-  async listRagasRuns(params?: {
-    skip?: number
-    limit?: number
-    conversation_id?: string
-  }): Promise<{ total: number; items: RagasRun[] }> {
+  async listRagasRuns(params?: { skip?: number; limit?: number; conversation_id?: string }): Promise<RagasRunList> {
     const { data } = await apiClient.get('/evaluations/ragas/runs', { params })
     return data
   },
 
   async getRagasRun(
     runId: string,
-    params?: { include_items?: boolean; include_contexts?: boolean }
+    params?: { include_items?: boolean; include_contexts?: boolean },
   ): Promise<RagasRunDetail> {
     const { data } = await apiClient.get(`/evaluations/ragas/runs/${runId}`, { params })
     return data
@@ -220,7 +151,9 @@ export const evaluationApi = {
     return data
   },
 
-  async createRegressionAblationBatch(params: RegressionAblationBatchRequest): Promise<RegressionAblationBatchResponse> {
+  async createRegressionAblationBatch(
+    params: RegressionAblationBatchRequest,
+  ): Promise<RegressionAblationBatchResponse> {
     const { data } = await apiClient.post('/evaluations/ragas/regression/ablation/batch', params)
     return data
   },
@@ -247,7 +180,7 @@ export const evaluationApi = {
 
   async getRegressionRun(
     runId: string,
-    params?: { include_items?: boolean; include_contexts?: boolean }
+    params?: { include_items?: boolean; include_contexts?: boolean },
   ): Promise<RegressionRunDetail> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}`, { params })
     return data
@@ -255,16 +188,18 @@ export const evaluationApi = {
 
   async diffRegressionRuns(
     runId: string,
-    params: { base_run_id: string; include_significance?: boolean; include_per_case?: boolean; max_case_diffs?: number }
+    params: {
+      base_run_id: string
+      include_significance?: boolean
+      include_per_case?: boolean
+      max_case_diffs?: number
+    },
   ): Promise<RagasRegressionRunDiffResponse> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff`, { params })
     return data
   },
 
-  async exportRegressionRunDiffHtml(
-    runId: string,
-    params: { base_run_id: string; redact?: boolean }
-  ): Promise<Blob> {
+  async exportRegressionRunDiffHtml(runId: string, params: { base_run_id: string; redact?: boolean }): Promise<Blob> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/diff/export-html`, {
       params,
       responseType: 'blob',
@@ -281,7 +216,7 @@ export const evaluationApi = {
       max_items?: number
       max_citations?: number
       download?: boolean
-    }
+    },
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/evaluations/ragas/regression/runs/${runId}/export-bundle`, {
       params,
@@ -305,7 +240,7 @@ export const evaluationApi = {
     return data
   },
 
-  async listKgSearchDiagnosticsRuns(params: { dataset_id: string; limit?: number }): Promise<KGSearchDiagnosticsRunList> {
+  async listKgSearchDiagnosticsRuns(params: KGSearchDiagnosticsRunListParams): Promise<KGSearchDiagnosticsRunList> {
     const { data } = await apiClient.get('/evaluations/kg/search/diagnostics/runs', { params })
     return data
   },

@@ -5,7 +5,6 @@ Targets JUnit-style XML reports with repeated <testcase> elements and splits by
 testcase blocks while preserving offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -47,7 +46,7 @@ def _build_testcase_blocks(text: str) -> list[_CaseBlock]:
     blocks: list[_CaseBlock] = []
     for m in _TESTCASE_ANY_RE.finditer(text):
         start = m.start()
-        tag = (m.group(0) or "")
+        tag = m.group(0) or ""
         if tag.rstrip().endswith("/>"):
             end = m.end()
         else:
@@ -88,8 +87,8 @@ def _append_split_documents(
 
 def _case_block_meta(block: _CaseBlock, block_count: int) -> dict[str, Any]:
     meta: dict[str, Any] = {
-        "junit_case_index": int(block.index),
-        "junit_case_count": int(block_count),
+        "junit_case_index": block.index,
+        "junit_case_count": block_count,
     }
     if block.name:
         meta["junit_case"] = block.name
@@ -118,7 +117,7 @@ def looks_like_junit_xml(text: str) -> bool:
 
 
 class JUnitXMLChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

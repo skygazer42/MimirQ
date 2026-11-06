@@ -403,7 +403,7 @@ async def _search_multi_dataset_scope(
     account_id: str | None,
     query_mode: str | None,
 ) -> dict[str, Any]:
-    max_concurrency = max(1, int(getattr(settings, "KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY", 4) or 4))
+    max_concurrency = max(1, int(settings.KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY or 4))
     semaphore = asyncio.Semaphore(max_concurrency)
     shards = await asyncio.gather(
         *[
@@ -428,9 +428,9 @@ def _resolve_query_mode_diag(
     dataset_id: UUID | None,
     query_mode: str | None,
 ) -> tuple[str, str, dict[str, Any]]:
-    default_mode = str(getattr(settings, "KG_SEARCH_QUERY_MODE_DEFAULT", "auto") or "auto")
+    default_mode = str(settings.KG_SEARCH_QUERY_MODE_DEFAULT or "auto")
     requested_mode = normalize_kg_query_mode(query_mode, default=default_mode)
-    classifier_enabled = bool(getattr(settings, "KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED", True))
+    classifier_enabled = bool(settings.KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED)
     if requested_mode == "auto" and classifier_enabled:
         mode_diag = classify_kg_query_mode(
             query=str(query or ""),
@@ -454,9 +454,9 @@ def _resolve_query_mode_diag(
 
 def _kg_search_cache_settings() -> tuple[bool, int, int]:
     return (
-        bool(getattr(settings, "KG_SEARCH_CACHE_ENABLED", False)),
-        int(getattr(settings, "KG_SEARCH_CACHE_TTL_SEC", 0) or 0),
-        int(getattr(settings, "KG_SEARCH_CACHE_MAX_ENTRIES", 0) or 0),
+        bool(settings.KG_SEARCH_CACHE_ENABLED),
+        int(settings.KG_SEARCH_CACHE_TTL_SEC or 0),
+        int(settings.KG_SEARCH_CACHE_MAX_ENTRIES or 0),
     )
 
 
@@ -464,35 +464,29 @@ def _kg_search_cache_config(*, resolved_mode: str) -> dict[str, Any]:
     return {
         # Include settings that can change KG search behavior so runtime toggles do not
         # serve stale cached results.
-        "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(getattr(settings, "KG_SEARCH_RELATION_EXPANSION_ENABLED", False)),
-        "KG_RELATION_ENABLED": bool(getattr(settings, "KG_RELATION_ENABLED", False)),
+        "KG_SEARCH_RELATION_EXPANSION_ENABLED": bool(settings.KG_SEARCH_RELATION_EXPANSION_ENABLED),
+        "KG_RELATION_ENABLED": bool(settings.KG_RELATION_ENABLED),
         # GraphRAG-like global search (community summaries) is optional and must be part
         # of the cache key to avoid mixing results across feature toggles.
-        "KG_COMMUNITY_ENABLED": bool(getattr(settings, "KG_COMMUNITY_ENABLED", False)),
-        "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN": bool(getattr(settings, "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN", True)),
-        "KG_COMMUNITY_MAX_EVENTS": int(getattr(settings, "KG_COMMUNITY_MAX_EVENTS", 0) or 0),
-        "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT": int(getattr(settings, "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT", 0) or 0),
-        "KG_COMMUNITY_MIN_EDGE_WEIGHT": float(getattr(settings, "KG_COMMUNITY_MIN_EDGE_WEIGHT", 0.0) or 0.0),
-        "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(getattr(settings, "KG_SEARCH_RELATION_MIN_CONFIDENCE", 0.0) or 0.0),
-        "KG_SEARCH_RELATION_MAX_EDGES": int(getattr(settings, "KG_SEARCH_RELATION_MAX_EDGES", 0) or 0),
-        "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(getattr(settings, "KG_SEARCH_RELATION_MAX_NEIGHBORS", 0) or 0),
-        "KG_SEARCH_MAX_RERANK_CANDIDATES": int(getattr(settings, "KG_SEARCH_MAX_RERANK_CANDIDATES", 0) or 0),
-        "KG_SEARCH_EXPAND_BUDGET_SEC": float(getattr(settings, "KG_SEARCH_EXPAND_BUDGET_SEC", 0.0) or 0.0),
+        "KG_COMMUNITY_ENABLED": bool(settings.KG_COMMUNITY_ENABLED),
+        "KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN": bool(settings.KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN),
+        "KG_COMMUNITY_MAX_EVENTS": int(settings.KG_COMMUNITY_MAX_EVENTS or 0),
+        "KG_COMMUNITY_MAX_ENTITIES_PER_EVENT": int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_EVENT or 0),
+        "KG_COMMUNITY_MIN_EDGE_WEIGHT": float(settings.KG_COMMUNITY_MIN_EDGE_WEIGHT or 0.0),
+        "KG_SEARCH_RELATION_MIN_CONFIDENCE": float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE or 0.0),
+        "KG_SEARCH_RELATION_MAX_EDGES": int(settings.KG_SEARCH_RELATION_MAX_EDGES or 0),
+        "KG_SEARCH_RELATION_MAX_NEIGHBORS": int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS or 0),
+        "KG_SEARCH_MAX_RERANK_CANDIDATES": int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES or 0),
+        "KG_SEARCH_EXPAND_BUDGET_SEC": float(settings.KG_SEARCH_EXPAND_BUDGET_SEC or 0.0),
         "KG_SEARCH_QUERY_MODE": str(resolved_mode),
         "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS": int(
-            getattr(settings, "KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS", 0) or 0
+            settings.KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS or 0
         ),
-        "KG_SEARCH_SERVING_LAYER_ENABLED": bool(getattr(settings, "KG_SEARCH_SERVING_LAYER_ENABLED", True)),
-        "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK": int(
-            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK", 0) or 0
-        ),
-        "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT": int(
-            getattr(settings, "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT", 0) or 0
-        ),
-        "KG_SEARCH_SERVING_MIN_SCORE": float(getattr(settings, "KG_SEARCH_SERVING_MIN_SCORE", 0.0) or 0.0),
-        "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER": int(
-            getattr(settings, "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER", 0) or 0
-        ),
+        "KG_SEARCH_SERVING_LAYER_ENABLED": bool(settings.KG_SEARCH_SERVING_LAYER_ENABLED),
+        "KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK": int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK or 0),
+        "KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT": int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT or 0),
+        "KG_SEARCH_SERVING_MIN_SCORE": float(settings.KG_SEARCH_SERVING_MIN_SCORE or 0.0),
+        "KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER": int(settings.KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER or 0),
     }
 
 

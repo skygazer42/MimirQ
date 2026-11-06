@@ -11,7 +11,6 @@ Design:
 - Keep helpers small and dependency-free so they can be used across API/services.
 """
 
-
 from pathlib import Path
 
 
@@ -33,4 +32,3 @@ def resolve_under_base(path: Path, *, base: Path) -> Path | None:
 
 
 __all__ = ["resolve_under_base"]
-

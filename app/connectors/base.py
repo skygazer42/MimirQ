@@ -1,6 +1,5 @@
 """Connector base interface."""
 
-
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import Any

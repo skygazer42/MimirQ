@@ -1,29 +1,32 @@
 'use client'
 
 import { Fragment, useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
 
 import { usePathname, useRouter } from '@/i18n/navigation'
 import { AUTH_SCOPE_CHANGED_EVENT, getAccessToken } from '@/lib/auth-storage'
 import { useBackendMeta } from '@/hooks/use-backend-meta'
 
-export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>) {
+type AuthGuardProps = {
+  children: ReactNode
+}
+
+export function AuthGuard({ children }: Readonly<AuthGuardProps>) {
   const router = useRouter()
   const pathname = usePathname()
   const { data: meta, isPending, isError } = useBackendMeta()
   const [authRevision, setAuthRevision] = useState(0)
-  const authMode = String(meta?.features?.auth_mode || '').trim().toLowerCase()
+  const authMode = String(meta?.features?.auth_mode || '')
+    .trim()
+    .toLowerCase()
   const isAuthRoute = pathname.startsWith('/auth')
   const authModeResolved = authMode === 'jwt' || authMode === 'header'
   const authRequired = authModeResolved && authMode === 'jwt'
   const hasAccessToken = Boolean(getAccessToken())
-  const shouldBlockProtectedRoute =
-    !isAuthRoute && (!authModeResolved || isError || (authRequired && !hasAccessToken))
+  const shouldBlockProtectedRoute = !isAuthRoute && (!authModeResolved || isError || (authRequired && !hasAccessToken))
   const shouldRedirectToAuth =
-    !isAuthRoute && (
-      isError ||
-      (authModeResolved && authRequired && !hasAccessToken) ||
-      (!authModeResolved && !isPending)
-    )
+    !isAuthRoute &&
+    (isError || (authModeResolved && authRequired && !hasAccessToken) || (!authModeResolved && !isPending))
 
   useEffect(() => {
     const recheckAuth = () => setAuthRevision((revision) => revision + 1)
@@ -40,5 +43,7 @@ export function AuthGuard({ children }: Readonly<{ children: React.ReactNode }>)
 
   if (shouldBlockProtectedRoute) return null
 
-  return <Fragment key={authRevision}>{children}</Fragment>
+  // Saving a successful login updates the auth scope before navigation finishes.
+  // Keep that form mounted; only private pages need their state reset on account changes.
+  return <Fragment key={isAuthRoute ? 'auth' : authRevision}>{children}</Fragment>
 }

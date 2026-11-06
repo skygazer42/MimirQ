@@ -1,0 +1,158 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=1600,initial-scale=1"><title>E 场景分组 · Ragvia</title><link rel="stylesheet" href="common.css"><style>
+.e-directory{min-height:0;flex:1;overflow:hidden;background:var(--surface)}
+.e-columns,.e-row{display:grid;grid-template-columns:330px minmax(190px,1fr) 52px 74px 62px 70px 120px;align-items:center;column-gap:12px;padding-left:72px;padding-right:28px}
+.e-columns{height:28px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--line);background:var(--fog)}
+.e-columns>span:nth-child(5){text-align:right;padding-right:10px}
+.e-group-head{height:46px;display:flex;align-items:center;gap:10px;padding:0 28px;border-bottom:1px solid var(--line);background:var(--surface)}
+.e-group-head.open{height:40px;background:#F5F6F7}
+.e-group-head h2{font-size:18px;line-height:26px;font-weight:600;white-space:nowrap}
+.e-group-head>.icon{width:13px;height:13px;color:var(--muted);margin-left:12px}
+.e-group-icon{width:25px;height:25px;flex:none;display:inline-flex;align-items:center;justify-content:center;border-radius:5px}
+.e-group-icon>.icon{width:16px;height:16px}
+.e-group-icon.blue{color:var(--blue);background:var(--blue-soft)}
+.e-group-icon.teal{color:var(--teal);background:var(--teal-soft)}
+.e-group-icon.violet{color:var(--violet);background:var(--violet-soft)}
+.e-group-icon.green{color:var(--green);background:var(--green-soft)}
+.e-group-icon.amber{color:var(--amber);background:var(--amber-soft)}
+.e-count{font-size:12px;color:var(--muted);padding-left:1px;font-variant-numeric:tabular-nums}
+.e-group-note{font-size:12px;color:var(--muted);margin-left:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:790px}
+.e-group-state{font-size:12px;color:var(--muted);white-space:nowrap;margin-left:20px}
+.e-row{height:44px;border-bottom:1px solid #E6E9EC;position:relative}
+.e-row.selected{background:#EFF1F4}
+.e-row.selected:before{content:'';position:absolute;top:0;bottom:0;left:0;width:3px;background:var(--ink)}
+.e-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:24px;font-weight:500}
+.e-row.selected .e-name{font-weight:600}
+.e-description{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px;line-height:24px;color:var(--muted)}
+.e-variable-count,.e-usage{font-size:12px;color:var(--muted);white-space:nowrap}
+.e-usage{text-align:right;padding-right:10px}
+.e-actions{display:flex;align-items:center;gap:18px;font-size:13px;white-space:nowrap}
+.e-row.inactive .e-name{color:#626D78}
+.e-row.inactive .e-description{color:var(--muted)}
+.e-bottom{height:44px;flex:none;border-top:1px solid var(--line);background:var(--fog);display:flex;align-items:center;gap:18px;padding:0 28px;color:var(--muted);font-size:12px}
+</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><img src="../../ragvia/logo.svg" alt="Ragvia"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="panel-left-close"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M9 4v16m8-12-4 4 4 4" /></svg>
+</div><div class="sidebar-new"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+新对话</div><div class="sidebar-search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+搜索与命令<small>⌘K</small></div><nav class="nav-scroll"><div class="nav-group">工作区<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="M8 9h8m-8 3.5h5" /></svg>
+对话</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7" /><path d="M12 6v6l4 2" /></svg>
+问答历史</div><div class="nav-group">知识库管理<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+数据集</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15" /><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2" /></svg>
+知识库</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="quarantine"><rect x="3" y="3.5" width="18" height="4" rx="0.5" /><path d="M5 7.5v13h14v-13M12 11v4" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+隔离队列</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="feedback"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="m8 10 2.5 2.5L16 7" /></svg>
+反馈质检</div><div class="nav-group">入库流程<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4" /><path d="M4 5H2.5v6H4m16-6h1.5v6H20" /></svg>
+入库管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="parsing"><path d="M12.5 3.5H4v17h8.5M8 8h3M8 12h3M8 16h3M15 7h5m-5 5h5m-5 5h5" /><path d="m17 5 3 2-3 2" /></svg>
+文档解析</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="data-governance"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="M8 9h8M8 12h5M8 15h5" /></svg>
+数据治理</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="rule-set"><path d="M8 3.5H5v7l-2 1.5 2 1.5v7h3m8-17h3v7l2 1.5-2 1.5v7h-3M10 8h4m-4 4h4m-4 4h4" /></svg>
+治理配置</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1" /><rect x="3.5" y="14" width="17" height="6" rx="1" /><path d="M8 7h8M8 17h8" /><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true" /></svg>
+切块预览</div><div class="nav-group">分析工具<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-graph"><path d="m7.3 6.3 8 4.4m-8 7 8-4.4M5 7.5v9" /><circle cx="5" cy="5" r="2.5" /><circle cx="18" cy="12" r="3" /><circle cx="5" cy="19" r="2.5" /></svg>
+知识图谱</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="evaluation"><path d="M4 3.5h10l6 6v11H4Zm10 0v6h6M8 16l2 2 4-5" /><path d="M8 8h2" /></svg>
+RAG 评测</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="reports"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 16v-3m4 3V10m4 6v-4M8 7h2" /></svg>
+数据报告</div><div class="nav-item active"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+提示词</div><div class="nav-group">系统<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="diagnostics"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="M3.5 12H8l2-4 4 8 2-4h4.5" /></svg>
+诊断</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="usage"><path d="M4 20V4h16v16ZM8 16v-3m4 3V9m4 7V6" /></svg>
+用量 / 配额</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="audit-log"><path d="M6 3.5h13v17H6M3 7h5M3 12h5M3 17h5m4-10h3m-3 5h3m-3 5h3" /></svg>
+审计日志</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="members"><circle cx="9" cy="7" r="3" /><path d="M3 20v-3c0-5 12-5 12 0v3M17 7l2 2 3-4M18 14v6m-2-3h4" /></svg>
+成员权限</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="groups"><circle cx="8" cy="7" r="2.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2.5 20v-2.5c0-5 11-5 11 0V20m3-5c3 0 5 1 5 3.5V20" /></svg>
+组管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="settings"><path d="m9 3-.5 3-2 1L4 6l-2 4 2.5 2v2L2 16l2 4 2.5-1 2 1 .5 2h6l.5-2 2-1 2.5 1 2-4-2.5-2v-2L22 10l-2-4-2.5 1-2-1L15 3Z" /><circle cx="12" cy="12.5" r="3" /></svg>
+设置</div></nav><div class="sidebar-bottom"><div class="profile"><span class="avatar"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="user"><circle cx="12" cy="7.5" r="3" /><path d="M5 20v-2.5a7 5.5 0 0 1 14 0V20" /></svg>
+</span><div><strong>开发模式</strong><small>本地开发环境</small></div><span class="profile-icons"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="log-out"><path d="M12 3H3v18h9m-2-9h12m-4-4 4 4-4 4" /></svg>
+<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="sun"><circle cx="12" cy="12" r="4.5" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
+</span></div><div class="appearance"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="palette"><path d="M12 3a9 9 0 0 0 0 18h2c3 0 3-4 0-4h-1c-3 0-3-4 0-4h5c6 0 4-10-6-10Z" /><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="14" r="1" fill="currentColor" stroke="none" /></svg>
+界面外观<span>5 种风格</span></div><div class="service"><i></i>服务已就绪</div></div></aside><main class="main"><header class="page-header"><div class="p-page-heading"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+<h1>提示词</h1></div><div class="header-end"><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="link"><path d="m8 14-3 3a4 4 0 0 1-2-7l5-5a4 4 0 0 1 6 1m-4 4 4-4m0 4 3-3a4 4 0 0 1 2 7l-5 5a4 4 0 0 1-6-1" /></svg>
+<span>场景绑定</span></button><button type="button" class="btn quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="refresh-cw"><path d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6m-5 6a8 8 0 0 0 14 3l3-3m-6 0h6v6" /></svg>
+<span>同步内置模板</span></button><button type="button" class="btn solid"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+<span>创建模板</span></button></div></header><div class="p-toolbar"><div class="p-search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+<span>搜索名称、内容或标签</span></div><button class="p-select">全部状态<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</button><button class="p-select">全部来源<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</button><span class="spacer"></span><span class=p-count>共 34 个模板</span></div><div class="e-directory"><div class="e-columns"><span>模板名称</span><span>用途</span><span>来源</span><span>变量</span><span>使用次数</span><span>状态</span><span>操作</span></div><section class="e-group"><div class="e-group-head open">
+      <span class="e-group-icon blue"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+</span><h2>问答</h2><span class="e-count">6</span>
+      <span class="e-group-note">主答案、引用与安全边界</span><span class="spacer"></span><span class="e-group-state">6 个启用</span>
+      <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+
+    </div><div class="e-row selected ">
+      <strong class="e-name">RAG 主答案（Claude XML 中文）</strong><span class="e-description">用于企业知识库主回答链路，强调上下文边界、拒答、引用和提示词注入防护</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">4 个变量</span><span class="e-usage p-number">248</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">技术文档问答</strong><span class="e-description">回答技术文档中的问题，保留参数、步骤和来源。</span>
+      <span><span class="p-ownership personal">个人</span></span><span class="e-variable-count">4 个变量</span><span class="e-usage p-number">32</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">抽取式答案（先证据后结论）</strong><span class="e-description">先列证据再给结论的可审计答案格式</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">2 个变量</span><span class="e-usage p-number">52</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">文档摘要（map-reduce）</strong><span class="e-description">对多份文档先 per-doc 摘要再 reduce 综合</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">1 个变量</span><span class="e-usage p-number">16</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">跨实体对比答案</strong><span class="e-description">对多个实体在指定维度结构化对比，输出表格式答案</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">3 个变量</span><span class="e-usage p-number">109</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">拒答策略自检</strong><span class="e-description">对草稿答案做 grounding + scope + safety 三检查，必要时输出拒答</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">3 个变量</span><span class="e-usage p-number">0</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div></section><section class="e-group"><div class="e-group-head open">
+      <span class="e-group-icon teal"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+</span><h2>查询改写</h2><span class="e-count">5</span>
+      <span class="e-group-note">澄清问题与扩展检索查询</span><span class="spacer"></span><span class="e-group-state">4 个启用</span>
+      <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+
+    </div><div class="e-row  ">
+      <strong class="e-name">查询改写（澄清+规范）</strong><span class="e-description">规范化用户问题并生成多版本检索查询</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">2 个变量</span><span class="e-usage p-number">109</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  inactive">
+      <strong class="e-name">HyDE 假设性答案展开</strong><span class="e-description">生成假设性答案文档用于向量检索召回</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">1 个变量</span><span class="e-usage p-number">0</span><span><span class="p-status off"><i></i>停用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">Step-back 上位概念展开</strong><span class="e-description">把具体问题抽象为上位问题先召回背景</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">1 个变量</span><span class="e-usage p-number">13</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">多视角查询展开（N=5）</strong><span class="e-description">为一个问题生成 N 个语义等价但角度不同的查询变体</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">2 个变量</span><span class="e-usage p-number">35</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div><div class="e-row  ">
+      <strong class="e-name">复杂问题分解</strong><span class="e-description">把多跳问题拆解为可独立检索的原子子问题</span>
+      <span><span class="p-ownership">内置</span></span><span class="e-variable-count">1 个变量</span><span class="e-usage p-number">28</span><span><span class="p-status on"><i></i>启用</span></span>
+      <span class="e-actions"><span>阅读正文</span><span class="muted">复制</span></span>
+    </div></section><section class="e-group"><div class="e-group-head ">
+      <span class="e-group-icon violet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="filter"><path d="M3.5 4h17l-6.5 8v7l-4 2v-9Z" /></svg>
+</span><h2>后处理</h2><span class="e-count">4</span>
+      <span class="e-group-note">上下文压缩抽取 · 查询意图分类路由</span><span class="spacer"></span><span class="e-group-state">3 个启用</span>
+      <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+
+    </div></section><section class="e-group"><div class="e-group-head ">
+      <span class="e-group-icon violet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-graph"><path d="m7.3 6.3 8 4.4m-8 7 8-4.4M5 7.5v9" /><circle cx="5" cy="5" r="2.5" /><circle cx="18" cy="12" r="3" /><circle cx="5" cy="19" r="2.5" /></svg>
+</span><h2>知识图谱</h2><span class="e-count">5</span>
+      <span class="e-group-note">知识图谱抽取（GraphRAG 中文） · 知识图谱抽取（Event Schema 中文）</span><span class="spacer"></span><span class="e-group-state">5 个启用</span>
+      <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+
+    </div></section><section class="e-group"><div class="e-group-head ">
+      <span class="e-group-icon blue"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1" /><rect x="3.5" y="14" width="17" height="6" rx="1" /><path d="M8 7h8M8 17h8" /><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true" /></svg>
+</span><h2>切块元数据</h2><span class="e-count">3</span>
+      <span class="e-group-note">Contextual chunk 头 · Chunk 三字段元数据</span><span class="spacer"></span><span class="e-group-state">3 个启用</span>
+      <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+
+    </div></section><section class="e-group"><div class="e-group-head ">
+      <span class="e-group-icon green"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="evaluation"><path d="M4 3.5h10l6 6v11H4Zm10 0v6h6M8 16l2 2 4-5" /><path d="M8 8h2" /></svg>
+</span><h2>评测</h2><span class="e-count">7</span>
+      <span class="e-group-note">事实一致性评测（RAGAS 中文） · 评测集生成（RAGAS 中文）</span><span class="spacer"></span><span class="e-group-state">7 个启用</span>
+      <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+
+    </div></section><section class="e-group"><div class="e-group-head ">
+      <span class="e-group-icon amber"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+</span><h2>行业</h2><span class="e-count">4</span>
+      <span class="e-group-note">A 股年报问答（口径警示） · 法规条款比对</span><span class="spacer"></span><span class="e-group-state">3 个启用</span>
+      <svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+
+    </div></section></div><footer class="e-bottom"><span>共 34 个模板</span><span><i class="p-dot"></i> 31 个启用</span><span class="spacer"></span><span>按应用场景分组</span><span>7 个场景</span></footer></main></div></body></html>

@@ -7,7 +7,7 @@ Public endpoints stay probe-friendly and minimal; detailed dependency state is a
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response
@@ -30,9 +30,17 @@ from app.services.rag_runtime_warmup import (
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 from app.tasks.queue import is_queue_initialized
 
+
+class _ReadyCache(TypedDict):
+    ts: float
+    payload: dict[str, Any] | None
+    status: int
+    key: tuple[object, ...] | None
+
+
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-_READY_CACHE_TTL_SEC = max(0.0, float(getattr(settings, "READY_CACHE_TTL_SEC", 2.0) or 2.0))
-_ready_cache: dict[str, object] = {"ts": 0.0, "payload": None, "status": 200, "key": None}
+_READY_CACHE_TTL_SEC = max(0.0, settings.READY_CACHE_TTL_SEC or 2.0)
+_ready_cache: _ReadyCache = {"ts": 0.0, "payload": None, "status": 200, "key": None}
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
     kwargs={
@@ -62,7 +70,7 @@ class _MinioServiceProxy:
     def is_enabled(self) -> bool:
         from app.storage.object.runtime import document_object_storage_enabled
 
-        return bool(getattr(settings, "MINIO_ENABLED", False)) or document_object_storage_enabled()
+        return settings.MINIO_ENABLED or document_object_storage_enabled()
 
     def health_check(self) -> dict[str, Any]:
         from app.storage.object.runtime import get_document_object_store
@@ -92,61 +100,52 @@ def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
 
 def _ready_cache_key() -> tuple[object, ...]:
     return (
-        (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower(),
-        bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),
-        bool(getattr(settings, "DB_CREATE_ALL_ON_STARTUP", True)),
-        bool(getattr(settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True)),
-        bool(getattr(settings, "EMBEDDING_CACHE_ENABLED", False)),
-        bool(getattr(settings, "MINIO_ENABLED", False)),
-        bool(getattr(settings, "OBJECT_STORAGE_ENABLED", False)),
-        bool(getattr(settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", False)),
-        bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)),
-        bool(getattr(settings, "RAG_RUNTIME_WARMUP_ENABLED", False)),
-        bool(getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False)),
+        (settings.VECTOR_BACKEND or "milvus").lower(),
+        settings.TASK_QUEUE_ENABLED,
+        settings.DB_CREATE_ALL_ON_STARTUP,
+        settings.DB_RUNTIME_MIGRATIONS_ENABLED,
+        settings.EMBEDDING_CACHE_ENABLED,
+        settings.MINIO_ENABLED,
+        settings.OBJECT_STORAGE_ENABLED,
+        settings.OBJECT_STORAGE_DOCUMENTS_ENABLED,
+        settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY,
+        settings.RAG_RUNTIME_WARMUP_ENABLED,
+        settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY,
         # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
-        str(getattr(settings, "REDIS_URL", "") or ""),
-        str(getattr(settings, "MILVUS_HOST", "") or ""),
-        int(getattr(settings, "MILVUS_PORT", 0) or 0),
-        str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
-        str(getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or ""),
-        str(getattr(settings, "OBJECT_STORAGE_ENDPOINT", "") or ""),
-        str(getattr(settings, "OBJECT_STORAGE_BUCKET_NAME", "") or ""),
-        str(getattr(settings, "DATA_REGION", "") or ""),
-        str(getattr(settings, "OBJECT_STORAGE_REGION_PROFILES", "") or ""),
+        settings.REDIS_URL or "",
+        settings.MILVUS_HOST or "",
+        settings.MILVUS_PORT or 0,
+        settings.MINIO_ENDPOINT or "",
+        settings.OBJECT_STORAGE_PROVIDER or "",
+        settings.OBJECT_STORAGE_ENDPOINT or "",
+        settings.OBJECT_STORAGE_BUCKET_NAME or "",
+        settings.DATA_REGION or "",
+        settings.OBJECT_STORAGE_REGION_PROFILES or "",
     )
 
 
-def _get_ready_cache(cache_key: tuple[object, ...]):
+def _get_ready_cache(cache_key: tuple[object, ...]) -> tuple[dict[str, Any], int] | None:
     now = time.monotonic()
-    payload = _ready_cache.get("payload")
-    if (
-        payload is not None
-        and _ready_cache.get("key") == cache_key
-        and (now - float(_ready_cache.get("ts") or 0.0)) < _READY_CACHE_TTL_SEC
-    ):
-        return payload, int(_ready_cache.get("status") or 200)
-    return None, None
+    payload = _ready_cache["payload"]
+    if payload is not None and _ready_cache["key"] == cache_key and (now - _ready_cache["ts"]) < _READY_CACHE_TTL_SEC:
+        return payload, _ready_cache["status"]
+    return None
 
 
 def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None]:
     cache_key = _ready_cache_key()
-    cached_payload, cached_status = _get_ready_cache(cache_key)
-    if cached_payload is not None:
-        return (
-            cached_payload,
-            int(cached_status or 200),
-            cached_payload.get("milvus") if isinstance(cached_payload, dict) else None,
-        )
+    cached = _get_ready_cache(cache_key)
+    if cached is not None:
+        cached_payload, cached_status = cached
+        return cached_payload, cached_status, cached_payload.get("milvus")
 
     ok = True
 
-    application_manages_schema = bool(getattr(settings, "DB_CREATE_ALL_ON_STARTUP", True)) or bool(
-        getattr(settings, "DB_RUNTIME_MIGRATIONS_ENABLED", True)
-    )
+    application_manages_schema = settings.DB_CREATE_ALL_ON_STARTUP or settings.DB_RUNTIME_MIGRATIONS_ENABLED
     db_status, db_ok = check_database(SessionLocal, require_schema_current=not application_manages_schema)
     ok &= db_ok
 
-    vector_backend = (getattr(settings, "VECTOR_BACKEND", "milvus") or "milvus").lower()
+    vector_backend = (settings.VECTOR_BACKEND or "milvus").lower()
     milvus_get_count = milvus_store.get_collection_count if vector_backend == "milvus" else None
     vector_status, milvus_status, vector_ok = check_vector(
         settings,
@@ -171,14 +170,12 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
     ok &= minio_ok
 
     rag_runtime_warmup_status = get_rag_runtime_warmup_status()
-    rag_runtime_warmup_status["required_for_ready"] = bool(
-        getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False)
-    )
-    if bool(getattr(settings, "RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY", False)):
+    rag_runtime_warmup_status["required_for_ready"] = settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY
+    if settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY:
         ok &= rag_runtime_warmup_ready()
 
     dify_external_status = None
-    if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED:
         try:
             from app.api.v1.integrations_dify import (
                 dify_external_knowledge_warmup_ready,
@@ -186,7 +183,7 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
             )
 
             dify_external_status = get_dify_external_knowledge_warmup_status()
-            warmup_required = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False))
+            warmup_required = settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY
             warmup_ready = dify_external_knowledge_warmup_ready()
             dify_external_status["ready"] = warmup_ready
             dify_external_status["required_for_ready"] = warmup_required
@@ -197,12 +194,10 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
                 "enabled": True,
                 "status": "unknown",
                 "ready": False,
-                "required_for_ready": bool(
-                    getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)
-                ),
+                "required_for_ready": settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY,
                 "error": str(exc)[:200],
             }
-            if bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY", False)):
+            if settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_REQUIRED_FOR_READY:
                 ok = False
 
     payload = {
@@ -237,10 +232,10 @@ def _uploads_status() -> dict[str, Any]:
 
 
 def _task_queue_status() -> dict[str, Any]:
-    enabled = bool(getattr(settings, "TASK_QUEUE_ENABLED", False))
+    enabled = settings.TASK_QUEUE_ENABLED
     status = {
         "enabled": enabled,
-        "queue": getattr(settings, "TASK_QUEUE_NAME", "mimirq"),
+        "queue": settings.TASK_QUEUE_NAME,
         "status": "disabled",
     }
     if enabled:
@@ -290,7 +285,7 @@ def health_details(
         **payload,
         "time": datetime.now(UTC).isoformat(),
         "vector_backend": settings.VECTOR_BACKEND,
-        "use_langgraph_pipeline": bool(getattr(settings, "USE_LANGGRAPH_PIPELINE", False)),
+        "use_langgraph_pipeline": settings.USE_LANGGRAPH_PIPELINE,
         "milvus": milvus_status,
         "task_queue": _task_queue_status(),
         "uploads": _uploads_status(),

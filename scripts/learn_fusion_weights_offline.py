@@ -38,64 +38,16 @@ from typing import Any
 
 import httpx
 
-from app.rag.core.hashing import stable_hash
-from app.rag.evaluation.evidence_retrieve_gate import build_retrieval_gate_summary, compute_retrieval_item_meta
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-
-def _load_json(path: Path) -> Any:
-    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
-    return json.loads(path.read_text(encoding="utf-8-sig"))
-
-
-def _write_json(path: Path, obj: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def _headers(args: argparse.Namespace) -> dict[str, str]:
-    h: dict[str, str] = {"Content-Type": "application/json"}
-    if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
-    if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
-    if args.bearer:
-        h["Authorization"] = f"Bearer {args.bearer}"
-    return h
-
-
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Normalize case bundle payloads into: (dataset_id, items[]).
-
-    Supported shapes:
-    - Export bundle v1: {"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}
-    - Minimal bundle: {"dataset_id":"...","items":[...]}
-    - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
-    """
-    if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        ds = str(obj.get("dataset_id") or "").strip()
-        if ds:
-            items = [x for x in obj.get("items") if isinstance(x, dict)]
-            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-            return ds, cleaned
-        return coerce_case_bundle(list(obj.get("items") or []))
-
-    if isinstance(obj, list):
-        items = [x for x in obj if isinstance(x, dict)]
-        dsids: list[str] = []
-        for it in items:
-            ds = str(it.get("dataset_id") or "").strip()
-            if ds and ds not in dsids:
-                dsids.append(ds)
-        if not dsids:
-            raise ValueError("dataset_id is required in cases bundle")
-        if len(dsids) > 1:
-            raise ValueError("mixed dataset_id in cases bundle")
-        dsid = dsids[0]
-        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-        return dsid, cleaned
-
-    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
+from app.rag.core.hashing import stable_hash  # noqa: E402
+from app.rag.evaluation.evidence_retrieve_gate import (  # noqa: E402
+    build_retrieval_gate_summary,
+    compute_retrieval_item_meta,
+)
+from scripts.retrieval_ablation import _headers, _load_json, _write_json, coerce_case_bundle  # noqa: E402
 
 
 def _int_simplex_partitions(total: int, parts: int) -> Iterator[tuple[int, ...]]:
@@ -108,7 +60,7 @@ def _int_simplex_partitions(total: int, parts: int) -> Iterator[tuple[int, ...]]
         return
     for i in range(int(total) + 1):
         for rest in _int_simplex_partitions(total - i, parts - 1):
-            yield (int(i),) + tuple(rest)
+            yield (i,) + rest
 
 
 def _normalize_channels(channels: list[str]) -> list[str]:
@@ -124,7 +76,7 @@ def _grid_partition_total(step: float) -> int:
     step_f = float(step)
     if step_f <= 0.0 or step_f > 1.0:
         raise ValueError("step must be in (0,1]")
-    total = int(round(1.0 / step_f))
+    total = round(1.0 / step_f)
     if total <= 0:
         raise ValueError("invalid step")
     if abs(step_f * total - 1.0) > 1e-6:
@@ -136,10 +88,10 @@ def _normalized_partition_weights(*, channels: list[str], row: tuple[int, ...], 
     weights = {key: float(value) / float(total) for key, value in zip(channels, row, strict=True) if int(value) > 0}
     if not weights:
         return {}
-    scale = sum(float(value) for value in weights.values())
+    scale = sum(weights.values())
     if scale <= 0.0:
         return {}
-    return {key: round(float(value) / scale, 6) for key, value in sorted(weights.items())}
+    return {key: round(value / scale, 6) for key, value in sorted(weights.items())}
 
 
 def _weight_variants(*, channels: list[str], step: float) -> list[dict[str, float]]:
@@ -268,8 +220,6 @@ def _evaluate_variant(
     rag_cfg["fusion_weights"] = dict(weights)
 
     for item in items:
-        if not isinstance(item, dict):
-            continue
         question = str(item.get("question") or item.get("query") or "").strip()
         refs = item.get("reference_sources") or []
         if (not question) or (not isinstance(refs, list)) or (not refs):
@@ -278,7 +228,7 @@ def _evaluate_variant(
         body = {
             "query": question,
             "history": [],
-            "dataset_id": str(dataset_id),
+            "dataset_id": dataset_id,
             "document_ids": [],
             "rag_config": dict(rag_cfg),
         }
@@ -310,7 +260,7 @@ def _evaluate_variant(
         "cases_used": used,
         "errors": errors[:25],
         "summary": summary,
-        "objective": float(objective),
+        "objective": objective,
     }
 
 
@@ -318,9 +268,9 @@ def _sort_key(row: dict[str, Any]) -> tuple[float, float, float, float]:
     summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
     return (
         float(row.get("objective") or 0.0),
-        float((summary or {}).get("retrieval_recall") or 0.0),
-        float((summary or {}).get("retrieval_ndcg_at_10") or 0.0),
-        float((summary or {}).get("retrieval_hit_at_10") or 0.0),
+        float(summary.get("retrieval_recall") or 0.0),
+        float(summary.get("retrieval_ndcg_at_10") or 0.0),
+        float(summary.get("retrieval_hit_at_10") or 0.0),
     )
 
 
@@ -385,9 +335,9 @@ def _print_leaderboard(*, results: list[dict[str, Any]], top_n: int) -> None:
                 [
                     str(i),
                     f"{float(row.get('objective') or 0.0):.4f}",
-                    f"{float((summary or {}).get('retrieval_recall') or 0.0):.4f}",
-                    f"{float((summary or {}).get('retrieval_ndcg_at_10') or 0.0):.4f}",
-                    f"{float((summary or {}).get('retrieval_hit_at_10') or 0.0):.4f}",
+                    f"{float(summary.get('retrieval_recall') or 0.0):.4f}",
+                    f"{float(summary.get('retrieval_ndcg_at_10') or 0.0):.4f}",
+                    f"{float(summary.get('retrieval_hit_at_10') or 0.0):.4f}",
                     json.dumps(weights, ensure_ascii=False, sort_keys=True),
                 ]
             )
@@ -429,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "elapsed_sec": elapsed,
         "base_url": str(args.base_url),
-        "dataset_id": str(dataset_id),
+        "dataset_id": dataset_id,
         "cases_total": len(items),
         "grid": {"channels": channels, "step": float(args.step)},
         "objective": str(args.objective),

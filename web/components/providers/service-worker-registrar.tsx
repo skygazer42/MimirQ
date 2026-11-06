@@ -30,7 +30,9 @@ export function shouldRegisterServiceWorker(env: RegistrationEnv): boolean {
   const hostname = normalizeHostname(env.hostname)
   if (!hostname) return false
   if (isLocalhostHostname(hostname)) return false
-  const protocol = String(env.protocol || '').trim().toLowerCase()
+  const protocol = String(env.protocol || '')
+    .trim()
+    .toLowerCase()
   if (protocol && protocol !== 'https:') return false
   if (env.isSecureContext === false) return false
   return true

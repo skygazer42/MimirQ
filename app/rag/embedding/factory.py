@@ -6,7 +6,9 @@ This module provides functions to:
 - Test embedding model connectivity
 - List available models
 """
+
 import asyncio
+from typing import Literal, TypedDict
 
 from app.core.config import settings
 from app.rag.embedding.base import BaseEmbeddingModel
@@ -20,10 +22,22 @@ from app.rag.embedding.providers import (
     DeterministicTestEmbedding,
     OllamaEmbedding,
     OpenAICompatibleEmbedding,
-    SentenceTransformerEmbedding,
 )
 from app.rag.embedding.utils import logger
 from app.rag.preprocessing.language import detect_language
+
+
+class EmbeddingModelStatus(TypedDict):
+    model_id: str
+    status: Literal["available", "unavailable", "unsupported", "error"]
+    message: str
+    dimension: int | None
+
+
+class EmbeddingModelStatusSummary(TypedDict):
+    models: dict[str, EmbeddingModelStatus]
+    total: int
+    available: int
 
 
 def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
@@ -46,13 +60,13 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
         >>> async_model = select_embedding_model("siliconflow/BAAI/bge-m3")
         >>> embeddings = await async_model.aencode(["Hello world"])
     """
+    from app.core.model_execution import reject_retired_model_provider
+
+    reject_retired_model_provider(model_id.split("/", 1)[0], capability="embedding")
     supported_models = get_supported_model_ids()
 
     if model_id not in supported_models:
-        raise ValueError(
-            f"Unsupported embed model: {model_id}. "
-            f"Supported models: {supported_models}"
-        )
+        raise ValueError(f"Unsupported embed model: {model_id}. Supported models: {supported_models}")
 
     model_info = get_model_info(model_id)
     if model_info is None:
@@ -70,8 +84,6 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
         return OllamaEmbedding(**config_dict)
     elif provider == "deterministic_test":
         return DeterministicTestEmbedding(**config_dict)
-    elif provider == "local":
-        return SentenceTransformerEmbedding(**config_dict)
     elif provider == "dashscope":
         return DashScopeEmbedding(**config_dict)
     else:
@@ -88,7 +100,7 @@ def resolve_language_aware_model_id(
     base_model_id = str(current_model_id or settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
     if "/" not in base_model_id:
         base_model_id = f"openai/{base_model_id}"
-    if not bool(getattr(settings, "EMBEDDING_LANGUAGE_ROUTING_ENABLED", False)):
+    if not settings.EMBEDDING_LANGUAGE_ROUTING_ENABLED:
         return base_model_id
 
     lang = str(language or "").strip().lower()
@@ -99,9 +111,9 @@ def resolve_language_aware_model_id(
             lang = ""
 
     mapping = {
-        "zh": str(getattr(settings, "EMBEDDING_MODEL_ZH", "") or "").strip(),
-        "en": str(getattr(settings, "EMBEDDING_MODEL_EN", "") or "").strip(),
-        "mixed": str(getattr(settings, "EMBEDDING_MODEL_MIXED", "") or "").strip(),
+        "zh": settings.EMBEDDING_MODEL_ZH.strip(),
+        "en": settings.EMBEDDING_MODEL_EN.strip(),
+        "mixed": settings.EMBEDDING_MODEL_MIXED.strip(),
     }
     candidate = mapping.get(lang, "")
     if candidate and candidate in get_supported_model_ids():
@@ -109,7 +121,7 @@ def resolve_language_aware_model_id(
     return base_model_id
 
 
-async def test_embedding_model_status(model_id: str) -> dict:
+async def test_embedding_model_status(model_id: str) -> EmbeddingModelStatus:
     """Test the status of a specific embedding model.
 
     Args:
@@ -156,7 +168,7 @@ async def test_embedding_model_status(model_id: str) -> dict:
         }
 
 
-async def test_all_embedding_models_status() -> dict:
+async def test_all_embedding_models_status() -> EmbeddingModelStatusSummary:
     """Test all supported embedding models concurrently.
 
     Returns:
@@ -168,7 +180,7 @@ async def test_all_embedding_models_status() -> dict:
         }
     """
     supported_models = get_supported_model_ids()
-    results = {}
+    results: dict[str, EmbeddingModelStatus] = {}
 
     # Test all models concurrently
     tasks = [test_embedding_model_status(model_id) for model_id in supported_models]
@@ -186,9 +198,7 @@ async def test_all_embedding_models_status() -> dict:
         else:
             results[status["model_id"]] = status
 
-    available_count = len(
-        [m for m in results.values() if m.get("status") == "available"]
-    )
+    available_count = sum(status["status"] == "available" for status in results.values())
 
     return {
         "models": results,
@@ -214,8 +224,4 @@ def list_embedding_providers() -> list[str]:
 
 def list_models_by_provider(provider: str) -> list[str]:
     """List all model IDs for a specific provider."""
-    return [
-        model_id
-        for model_id in DEFAULT_EMBED_MODELS
-        if model_id.startswith(f"{provider}/")
-    ]
+    return [model_id for model_id in DEFAULT_EMBED_MODELS if model_id.startswith(f"{provider}/")]

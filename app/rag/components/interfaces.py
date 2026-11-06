@@ -5,7 +5,6 @@ These are intentionally dependency-light so different pipeline implementations
 can share a common schema without importing heavy runtime modules.
 """
 
-
 from typing import Any, Literal, Protocol, TypedDict
 
 
@@ -41,6 +40,7 @@ class Citation(TypedDict, total=False):
 
 class PipelineResult(TypedDict, total=False):
     """Represents the output of a RAG pipeline execution."""
+
     answer: str  # The generated answer to the user's question.
     citations: list[Citation]  # List of source citations used to generate the answer.
     model_used: str | None  # The LLM model identifier used for generation.

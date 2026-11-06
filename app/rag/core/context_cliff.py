@@ -1,5 +1,3 @@
-
-
 def compute_context_cliff_metrics(*, context_tokens: int, threshold_tokens: int) -> dict[str, int | bool]:
     ctx = max(0, int(context_tokens or 0))
     threshold = max(0, int(threshold_tokens or 0))
@@ -8,7 +6,7 @@ def compute_context_cliff_metrics(*, context_tokens: int, threshold_tokens: int)
     return {
         "context_cliff_threshold_tokens": threshold,
         "context_cliff_triggered": triggered,
-        "context_cliff_overflow_tokens": int(overflow),
+        "context_cliff_overflow_tokens": overflow,
     }
 
 

@@ -24,6 +24,16 @@ class DatasetScopePlan:
     included_hint_dataset_count: int
 
 
+@dataclass(frozen=True)
+class _DatasetRouteState:
+    current: tuple[UUID, ...]
+    strict_scope: bool
+    matched_dataset_ids: tuple[UUID, ...]
+    matched_replace_dataset_ids: tuple[UUID, ...]
+    matched_terms: tuple[str, ...]
+    matched_route_count: int
+
+
 def safe_positive_int(value: Any, *, default: int, minimum: int = 1, maximum: int = 200) -> int:
     try:
         out = int(value)
@@ -861,7 +871,7 @@ def _apply_dataset_route_hints(
     query: str,
     strict_routes: bool,
     current: tuple[UUID, ...],
-) -> dict[str, Any]:
+) -> _DatasetRouteState:
     matched_dataset_ids: list[UUID] = []
     matched_replace_dataset_ids: list[UUID] = []
     matched_terms: list[str] = []
@@ -888,14 +898,14 @@ def _apply_dataset_route_hints(
         )
         if mode == "replace":
             matched_replace_dataset_ids.extend(route_dataset_ids)
-    return {
-        "current": current,
-        "strict_scope": strict_scope,
-        "matched_dataset_ids": matched_dataset_ids,
-        "matched_replace_dataset_ids": matched_replace_dataset_ids,
-        "matched_terms": matched_terms,
-        "matched_route_count": matched_route_count,
-    }
+    return _DatasetRouteState(
+        current=current,
+        strict_scope=strict_scope,
+        matched_dataset_ids=tuple(matched_dataset_ids),
+        matched_replace_dataset_ids=tuple(matched_replace_dataset_ids),
+        matched_terms=tuple(matched_terms),
+        matched_route_count=matched_route_count,
+    )
 
 
 def _plan_primary_and_expansion_scope(
@@ -942,10 +952,10 @@ def plan_dataset_scope(
         include_unmatched_hint_datasets=include_unmatched_hint_datasets,
     )
     route_state = _apply_dataset_route_hints(hints, query=query, strict_routes=strict_routes, current=current)
-    current = route_state["current"]
-    strict_scope = bool(route_state["strict_scope"])
-    matched_ids = _dedupe_dataset_ids(route_state["matched_dataset_ids"])
-    matched_replace_ids = _dedupe_dataset_ids(route_state["matched_replace_dataset_ids"])
+    current = route_state.current
+    strict_scope = route_state.strict_scope
+    matched_ids = _dedupe_dataset_ids(route_state.matched_dataset_ids)
+    matched_replace_ids = _dedupe_dataset_ids(route_state.matched_replace_dataset_ids)
     primary_ids, expansion_ids = _plan_primary_and_expansion_scope(
         base_ids=base_ids,
         current=current,
@@ -964,10 +974,10 @@ def plan_dataset_scope(
         expansion_dataset_ids=expansion_ids,
         base_dataset_ids=base_ids,
         matched_dataset_ids=matched_ids,
-        matched_terms=tuple(dict.fromkeys(route_state["matched_terms"])),
+        matched_terms=tuple(dict.fromkeys(route_state.matched_terms)),
         strict_scope=strict_scope,
         route_count=len(hints),
-        matched_route_count=int(route_state["matched_route_count"]),
+        matched_route_count=route_state.matched_route_count,
         included_hint_dataset_count=len(hint_ids),
     )
 

@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # 后端手册总览
 
-本手册面向 **后端开发者、架构师与联调工程师**，帮助你快速理解 MimirQ 后端的模块边界、API 契约与内部流转。阅读时请以 [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) 为权威 Schema 参考，本手册侧重 **导航索引、状态机说明与排障指引**。
+本手册面向 **后端开发者、架构师与联调工程师**，帮助你快速理解 Ragvia 后端的模块边界、API 契约与内部流转。阅读时请以 [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) 为权威 Schema 参考，本手册侧重 **导航索引、状态机说明与排障指引**。
 
 ## 技术栈
 

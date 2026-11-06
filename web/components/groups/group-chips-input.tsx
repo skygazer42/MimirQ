@@ -2,18 +2,27 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { Check, ChevronsUpDown, Loader2, X } from 'lucide-react'
+import { Check, ChevronsUpDown, Loader2, X } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { groupApi } from '@/lib/api'
+import { groupApi } from '@/lib/api/access'
 import { formatApiError } from '@/lib/api-errors'
 import { queryKeys } from '@/lib/query-keys'
 import { cn } from '@/lib/utils'
 import type { TenantGroupOut } from '@/types/backend'
+
+type GroupChipsInputProps = {
+  value: string[]
+  onChange: (next: string[]) => void
+  disabled?: boolean
+  placeholder?: string
+  maxItems?: number
+  className?: string
+}
 
 const GROUP_LIST_PARAMS = { limit: 1000 } as const
 
@@ -24,14 +33,7 @@ export function GroupChipsInput({
   placeholder = '选择组…',
   maxItems = 200,
   className,
-}: Readonly<{
-  value: string[]
-  onChange: (next: string[]) => void
-  disabled?: boolean
-  placeholder?: string
-  maxItems?: number
-  className?: string
-}>) {
+}: Readonly<GroupChipsInputProps>) {
   const [open, setOpen] = useState(false)
   const groupsQuery = useQuery<TenantGroupOut[]>({
     queryKey: queryKeys.groups.list(GROUP_LIST_PARAMS),

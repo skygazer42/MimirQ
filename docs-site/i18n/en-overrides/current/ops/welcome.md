@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # Operations Handbook Overview
 
-This handbook is for **operations engineers, SREs, and platform administrators**, covering MimirQ's deployment methods, health checks, observability, and routine operations.
+This handbook is for **operations engineers, SREs, and platform administrators**, covering Ragvia's deployment methods, health checks, observability, and routine operations.
 
 ## Service Overview
 
@@ -56,14 +56,14 @@ For production, Helm / K8s deployment is recommended, paired with a PostgreSQL H
 
 ### Prometheus Metrics
 
-With `PROMETHEUS_ENABLED=true`, MimirQ exposes a Prometheus-compatible `/metrics` endpoint:
+With `PROMETHEUS_ENABLED=true`, Ragvia exposes a Prometheus-compatible `/metrics` endpoint:
 
 | Metric Category | Examples | Description |
 | --- | --- | --- |
 | HTTP Requests | `http_requests_total`, `http_request_duration_seconds` | Grouped by route, method, status code |
 | In-flight Requests | `http_requests_in_progress` | Current API concurrency |
 
-Monitor Arq, PostgreSQL, Milvus, Redis, and MinIO through application logs, `make worker-check`, and dependency-specific exporters; MimirQ does not expose queue-specific metrics directly.
+Monitor Arq, PostgreSQL, Milvus, Redis, and MinIO through application logs, `make worker-check`, and dependency-specific exporters; Ragvia does not expose queue-specific metrics directly.
 
 ### Grafana Dashboard
 

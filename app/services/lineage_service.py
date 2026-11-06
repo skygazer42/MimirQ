@@ -2,7 +2,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -12,12 +12,15 @@ from app.models.chat import Conversation
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentPermission
 from app.rag.core.hashing import stable_hash
+from app.services import dataset_service
 from app.services.chat_conversation_access import resolve_conversation_owner_account_id
 from app.services.connector_reconcile_service import extract_connector_source_identity
-from app.services.dataset_service import DatasetService
 from app.services.document_access import get_allowed_document_id_sets
 from app.services.jsonl_tail import read_jsonl_tail
 from app.services.rbac_service import TenantPermissions, role_allows
+
+if TYPE_CHECKING:
+    from app.models.tenant import TenantMember
 
 CHUNK_RETRIEVAL_LINEAGE_SCHEMA = "mimirq.chunk_retrieval_lineage.v1"
 CHUNK_LINEAGE_SCHEMA = "mimirq.lineage.chunk.v1"
@@ -57,10 +60,10 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> list[dict[str, Any]]:
     return records
 
 
-def _can_read_observability(member: Any) -> bool:
+def _can_read_observability(member: "TenantMember") -> bool:
     return role_allows(
         TenantPermissions.OBSERVABILITY_READ,
-        role=str(getattr(member, "role", "") or ""),
+        role=str(member.role or ""),
     )
 
 
@@ -71,9 +74,9 @@ def load_answer_lineage_trace(
 ) -> dict[str, Any] | None:
     tenant_key = str(tenant_id)
     request_key = str(request_id or "").strip()
-    if not request_key or not bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
+    if not request_key or not settings.ENABLE_METRICS_LOG:
         return None
-    path = Path(str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl"))
+    path = Path(str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl"))
     if not path.exists():
         return None
 
@@ -95,7 +98,7 @@ def authorize_chunk_lineage_access(
     account_id: str,
     document_id: UUID,
 ) -> bool:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     if _can_read_observability(member):
         return True
     allowed_ids, _missing_ids = get_allowed_document_id_sets(
@@ -135,7 +138,7 @@ def authorize_answer_lineage_access(
     account_id: str,
     trace_record: Mapping[str, Any],
 ) -> bool:
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
     if _can_read_observability(member):
         return True
 
@@ -183,12 +186,12 @@ def authorize_answer_lineage_access(
     return len(allowed_ids) == len(citation_doc_ids)
 
 
-def _hash_permission_ids(permissions: Iterable[Any] | None, *, max_items: int = 200) -> list[str]:
+def _hash_permission_ids(permissions: Iterable[DocumentPermission] | None, *, max_items: int = 200) -> list[str]:
     rows: list[tuple[str, str]] = []
     seen: set[str] = set()
     limit = max(0, int(max_items or 0))
     for raw in permissions or []:
-        account_id = _safe_str(getattr(raw, "account_id", None), max_len=255)
+        account_id = _safe_str(raw.account_id, max_len=255)
         if not account_id:
             continue
         digest = stable_hash(account_id, length=32)
@@ -241,8 +244,8 @@ def _chunk_hit_payload(
     return {
         "request_id": request_id,
         "conversation_id": _safe_str(record.get("conversation_id"), max_len=120),
-        "ts_ms": int(ts_ms),
-        "citation_index": int(citation_index),
+        "ts_ms": ts_ms,
+        "citation_index": citation_index,
         "document_id": _safe_str(citation.get("document_id"), max_len=120),
         "chunk_id": chunk_id,
         "page_number": _to_int(citation.get("page_number")),
@@ -353,7 +356,7 @@ def summarize_chunk_retrieval_usage_from_records(
             request_seen.add(usage.request_id)
             request_ids.append(usage.request_id)
         if usage.retrieval_mode:
-            retrieval_modes[usage.retrieval_mode] = int(retrieval_modes.get(usage.retrieval_mode, 0) or 0) + 1
+            retrieval_modes[usage.retrieval_mode] = retrieval_modes.get(usage.retrieval_mode, 0) + 1
         hits.extend(usage.hits)
 
     hits.sort(
@@ -371,10 +374,10 @@ def summarize_chunk_retrieval_usage_from_records(
     return {
         "schema": CHUNK_RETRIEVAL_LINEAGE_SCHEMA,
         "chunk_id": chunk_key,
-        "window_minutes": int(max(1, int(window_minutes or 0))),
-        "traces_scanned": int(traces_scanned),
-        "traces_with_hits": int(traces_with_hits),
-        "citations_matched": int(citations_matched),
+        "window_minutes": max(1, int(window_minutes or 0)),
+        "traces_scanned": traces_scanned,
+        "traces_with_hits": traces_with_hits,
+        "citations_matched": citations_matched,
         "last_seen_ts_ms": last_seen_ts_ms,
         "request_ids": request_ids[: max(0, int(max_hits or 0))],
         "retrieval_modes": dict(sorted(retrieval_modes.items(), key=lambda kv: kv[0])),
@@ -403,13 +406,13 @@ def _extract_pipeline_version(
 
 def build_chunk_lineage_payload(
     *,
-    chunk: Any,
-    document: Any,
-    permissions: Iterable[Any] | None = None,
+    chunk: DocumentChunk,
+    document: DBDocument,
+    permissions: Iterable[DocumentPermission] | None = None,
     retrieval_usage: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    doc_meta = _safe_dict(getattr(document, "doc_metadata", None))
-    chunk_meta = _safe_dict(getattr(chunk, "doc_metadata", None))
+    doc_meta = _safe_dict(document.doc_metadata)
+    chunk_meta = _safe_dict(chunk.doc_metadata)
     connector = extract_connector_source_identity(document)
 
     active_pipeline_hash = _safe_str(
@@ -424,27 +427,25 @@ def build_chunk_lineage_payload(
     payload = {
         "schema": CHUNK_LINEAGE_SCHEMA,
         "chunk": {
-            "chunk_id": str(getattr(chunk, "id", "")),
-            "document_id": str(getattr(chunk, "document_id", "")),
-            "chunk_index": _to_int(getattr(chunk, "chunk_index", None)),
-            "page_number": _to_int(getattr(chunk, "page_number", None)),
-            "start_char": _to_int(getattr(chunk, "start_char", None)),
-            "end_char": _to_int(getattr(chunk, "end_char", None)),
-            "vector_id": _safe_str(getattr(chunk, "vector_id", None), max_len=255),
+            "chunk_id": str(chunk.id),
+            "document_id": str(chunk.document_id),
+            "chunk_index": _to_int(chunk.chunk_index),
+            "page_number": _to_int(chunk.page_number),
+            "start_char": _to_int(chunk.start_char),
+            "end_char": _to_int(chunk.end_char),
+            "vector_id": _safe_str(chunk.vector_id, max_len=255),
             "chunk_role": _safe_str(chunk_meta.get("chunk_role"), max_len=80),
             "chunk_quality": _safe_dict(chunk_meta.get("chunk_quality")) or None,
         },
         "document": {
-            "document_id": str(getattr(document, "id", "")),
-            "tenant_id": str(getattr(document, "tenant_id", "")),
-            "dataset_id": (
-                str(getattr(document, "dataset_id", "")) if getattr(document, "dataset_id", None) is not None else None
-            ),
-            "filename": _safe_str(getattr(document, "filename", None), max_len=500),
-            "file_type": _safe_str(getattr(document, "file_type", None), max_len=32),
-            "status": _safe_str(getattr(document, "status", None), max_len=80),
-            "chunk_count": _to_int(getattr(document, "chunk_count", None)),
-            "total_characters": _to_int(getattr(document, "total_characters", None)),
+            "document_id": str(document.id),
+            "tenant_id": str(document.tenant_id),
+            "dataset_id": str(document.dataset_id) if document.dataset_id is not None else None,
+            "filename": _safe_str(document.filename, max_len=500),
+            "file_type": _safe_str(document.file_type, max_len=32),
+            "status": _safe_str(document.status, max_len=80),
+            "chunk_count": _to_int(document.chunk_count),
+            "total_characters": _to_int(document.total_characters),
         },
         "connector": {
             "connector_id": connector.get("connector_id"),
@@ -453,14 +454,11 @@ def build_chunk_lineage_payload(
             "source_id": connector.get("source_id"),
         },
         "acl": {
-            "mode": _safe_str(getattr(document, "access_mode", None), max_len=80)
-            or _safe_str(effective_access.get("mode"), max_len=80),
+            "mode": _safe_str(document.access_mode, max_len=80) or _safe_str(effective_access.get("mode"), max_len=80),
             "owner_id_hash": (
-                stable_hash(str(getattr(document, "owner_id", "")), length=32)
-                if _safe_str(getattr(document, "owner_id", None), max_len=255)
-                else None
+                stable_hash(str(document.owner_id), length=32) if _safe_str(document.owner_id, max_len=255) else None
             ),
-            "permission_count": int(len(permission_hashes)),
+            "permission_count": len(permission_hashes),
             "permission_hashes": permission_hashes,
             "effective_access": effective_access or None,
             "source_acl": source_acl or None,
@@ -507,7 +505,7 @@ def build_answer_lineage_payload(
             )
         chunks_out.append(
             {
-                "rank": int(idx + 1),
+                "rank": idx + 1,
                 "chunk_id": chunk_id,
                 "document_id": document_id,
                 "page_number": _to_int(citation.get("page_number")),
@@ -537,7 +535,7 @@ def build_answer_lineage_payload(
             "reranker_provider": _safe_str(retrieval.get("reranker_provider"), max_len=80),
             "reranker_top_n": _to_int(retrieval.get("reranker_top_n")),
         },
-        "citations_count": int(len(chunks_out)),
+        "citations_count": len(chunks_out),
         "documents": list(docs_seen.values()),
         "chunks": chunks_out,
     }
@@ -578,7 +576,7 @@ def get_chunk_lineage(
     usage: dict[str, Any] = {
         "schema": CHUNK_RETRIEVAL_LINEAGE_SCHEMA,
         "chunk_id": str(chunk_id),
-        "window_minutes": int(max(1, int(window_minutes or 0))),
+        "window_minutes": max(1, int(window_minutes or 0)),
         "traces_scanned": 0,
         "traces_with_hits": 0,
         "citations_matched": 0,
@@ -588,10 +586,8 @@ def get_chunk_lineage(
         "hits": [],
     }
 
-    if bool(getattr(settings, "ENABLE_METRICS_LOG", False)):
-        path = Path(
-            str(getattr(settings, "METRICS_LOG_PATH", "./logs/rag_metrics.jsonl") or "./logs/rag_metrics.jsonl")
-        )
+    if settings.ENABLE_METRICS_LOG:
+        path = Path(str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl"))
         if path.exists():
             records = _read_jsonl_tail(path, max_bytes=max_bytes)
             usage = summarize_chunk_retrieval_usage_from_records(

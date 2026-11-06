@@ -93,7 +93,7 @@ def _build_service_blocks(text: str) -> list[_ServiceBlock]:
         start = lines[i].start
         end = lines[service_keys[idx + 1][0]].start if idx + 1 < len(service_keys) else services_end
         end = max(start, min(end, len(text)))
-        blocks.append(_ServiceBlock(start=start, end=end, name=key, index=int(idx)))
+        blocks.append(_ServiceBlock(start=start, end=end, name=key, index=idx))
 
     return blocks
 
@@ -215,14 +215,14 @@ def _split_service_chunk_docs(
         )
         meta.update(split_meta)
         meta["compose_service"] = block.name
-        meta["compose_service_index"] = int(block.index)
-        meta["compose_service_count"] = int(service_count)
+        meta["compose_service_index"] = block.index
+        meta["compose_service_count"] = service_count
         chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
     return chunks
 
 
 class DockerComposeChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

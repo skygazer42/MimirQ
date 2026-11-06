@@ -3,10 +3,10 @@
 import { cn } from '@/lib/utils'
 import { getChunkStrategyOption, getStrategiesByGroup } from '@/lib/chunk-strategies'
 import { useChunkStrategyPreference } from '@/contexts/chunk-strategy-context'
-import { Layers } from 'lucide-react'
+import { Layers } from '@/components/icons'
 import { usePipelineCapabilities } from '@/contexts/pipeline-capabilities-context'
 
-interface ChunkStrategySelectProps {
+type ChunkStrategySelectProps = {
   label?: string
   className?: string
   compact?: boolean
@@ -23,7 +23,7 @@ export function ChunkStrategySelect({
 }: Readonly<ChunkStrategySelectProps>) {
   const { chunkStrategy, setChunkStrategy } = useChunkStrategyPreference()
   const { chunkStrategyAvailable } = usePipelineCapabilities()
-  
+
   // 支持受控和非受控模式
   const currentValue = value ?? chunkStrategy
   const handleChange = onChange ?? setChunkStrategy
@@ -39,7 +39,7 @@ export function ChunkStrategySelect({
       className={cn(
         'flex flex-col gap-1 rounded-lg border border-border bg-card p-3',
         !compact && 'shadow-sm',
-        className
+        className,
       )}
     >
       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -58,7 +58,7 @@ export function ChunkStrategySelect({
         onChange={(e) => handleChange(e.target.value)}
         className={cn(
           'mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:transition-none',
-          compact && 'py-1.5 text-xs'
+          compact && 'py-1.5 text-xs',
         )}
       >
         <optgroup label="预设">
@@ -66,9 +66,7 @@ export function ChunkStrategySelect({
             <option
               key={option.value}
               value={option.value}
-              disabled={
-                !!option.disabled || chunkStrategyAvailable(option.value) === false
-              }
+              disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}
             >
               {option.label}
             </option>
@@ -76,29 +74,39 @@ export function ChunkStrategySelect({
         </optgroup>
         <optgroup label="LangChain">
           {langchainStrategies.map((option) => (
-            <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
+            <option
+              key={option.value}
+              value={option.value}
+              disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}
+            >
               {option.label}
             </option>
           ))}
         </optgroup>
         <optgroup label="LlamaIndex">
           {llamaIndexStrategies.map((option) => (
-            <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
+            <option
+              key={option.value}
+              value={option.value}
+              disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}
+            >
               {option.label}
             </option>
           ))}
         </optgroup>
         <optgroup label="Integrated pipeline">
           {integratedStrategies.map((option) => (
-            <option key={option.value} value={option.value} disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}>
+            <option
+              key={option.value}
+              value={option.value}
+              disabled={!!option.disabled || chunkStrategyAvailable(option.value) === false}
+            >
               {option.label}
             </option>
           ))}
         </optgroup>
       </select>
-      {!compact && (
-        <p className="text-xs text-muted-foreground leading-tight">{currentOption.description}</p>
-      )}
+      {!compact && <p className="text-xs text-muted-foreground leading-tight">{currentOption.description}</p>}
     </div>
   )
 }

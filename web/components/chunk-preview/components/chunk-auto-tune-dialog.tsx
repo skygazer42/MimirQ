@@ -8,8 +8,8 @@
  */
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
-import { Wand2, Loader2, X, Download } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Wand2, Loader2, X, Download } from '@/components/icons'
 import { useTranslations } from 'next-intl'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,7 @@ import { useChunkPreview } from '@/components/chunk-preview/context'
 import { usePipelineOptions } from '@/contexts/pipeline-options-context'
 import { downloadTextFile, sanitizeFilename } from '@/components/chunk-preview/utils/export'
 import { detachPromise } from '@/lib/utils'
-
+import { getAuthCacheScope, getAuthSessionRevision } from '@/lib/auth-storage'
 
 type TuneCandidate = {
   chunkSize: number
@@ -84,6 +84,24 @@ export function ChunkAutoTuneDialog() {
 
   const [results, setResults] = useState<TuneCandidate[]>([])
 
+  useEffect(() => {
+    setResults([])
+    setRunning(false)
+    return () => {
+      abortRef.current?.abort()
+      abortRef.current = null
+    }
+  }, [
+    currentFile,
+    datasetId,
+    parserBackend,
+    chunkStrategy,
+    parentChildRatio,
+    parentChildMinChildSize,
+    pipelineCtx.enabled,
+    pipelineCtx.options,
+  ])
+
   const sha = previewData?.file_sha256
   const fileType = previewData?.file_type
   const fileSize = previewData?.file_size
@@ -100,9 +118,7 @@ export function ChunkAutoTuneDialog() {
   const candidates = useMemo(() => {
     const base = clampInt(chunkSize || 1000, sizeMin, sizeMax)
     const multipliers = [0.6, 0.8, 1, 1.2, 1.5, 1.8]
-    const sizes = uniqSorted(
-      multipliers.map((m) => clampInt(roundToStep(base * m, effectiveStep), sizeMin, sizeMax))
-    )
+    const sizes = uniqSorted(multipliers.map((m) => clampInt(roundToStep(base * m, effectiveStep), sizeMin, sizeMax)))
 
     const ratios = [0.1, 0.15, 0.2, 0.25]
     const out: Array<{ chunkSize: number; chunkOverlap: number }> = []
@@ -165,9 +181,7 @@ export function ChunkAutoTuneDialog() {
   const runTune = async () => {
     if (!isAutoTuneAvailable) {
       toast.error(
-        isSeparatorStrategy
-          ? t('autoTune.unavailable.separatorStrategy')
-          : t('autoTune.unavailable.previewRequired')
+        isSeparatorStrategy ? t('autoTune.unavailable.separatorStrategy') : t('autoTune.unavailable.previewRequired'),
       )
       return
     }
@@ -175,35 +189,42 @@ export function ChunkAutoTuneDialog() {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    const authScope = getAuthCacheScope()
+    const sessionRevision = getAuthSessionRevision()
+    const isCurrent = () =>
+      abortRef.current === controller &&
+      !controller.signal.aborted &&
+      getAuthCacheScope() === authScope &&
+      getAuthSessionRevision() === sessionRevision
 
     setRunning(true)
     setResults([])
 
     const baseParams = {
-    file_sha256: String(sha),
-    file_type: fileType || undefined,
-    filename: String(filename),
-    file_size: typeof fileSize === 'number' ? fileSize : currentFile?.size,
-    parser_backend: parserBackend || 'auto',
-    chunk_strategy: chunkStrategy || 'langchain_recursive',
-    dataset_id: datasetId || undefined,
-    pipeline: pipelineCtx.enabled ? pipelineCtx.options : undefined,
-    // Performance: stats-only, no original text.
-    include_original_text: false,
-    include_chunks: false,
-    max_chunks: 0,
-    use_parse_cache: true,
-    // Strategy-specific.
-    child_ratio: chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
-    min_child_size: chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
-}
+      file_sha256: String(sha),
+      file_type: fileType || undefined,
+      filename: String(filename),
+      file_size: typeof fileSize === 'number' ? fileSize : currentFile?.size,
+      parser_backend: parserBackend || 'auto',
+      chunk_strategy: chunkStrategy || 'langchain_recursive',
+      dataset_id: datasetId || undefined,
+      pipeline: pipelineCtx.enabled ? pipelineCtx.options : undefined,
+      // Performance: stats-only, no original text.
+      include_original_text: false,
+      include_chunks: false,
+      max_chunks: 0,
+      use_parse_cache: true,
+      // Strategy-specific.
+      child_ratio: chunkStrategy === 'parent_child' ? parentChildRatio : undefined,
+      min_child_size: chunkStrategy === 'parent_child' ? parentChildMinChildSize : undefined,
+    }
 
     const started = performance.now()
     const out: TuneCandidate[] = []
 
     try {
       for (let i = 0; i < candidates.length; i += 1) {
-        if (controller.signal.aborted) break
+        if (!isCurrent()) break
         const c = candidates[i]
         const t0 = performance.now()
         try {
@@ -213,8 +234,9 @@ export function ChunkAutoTuneDialog() {
               chunk_size: c.chunkSize,
               chunk_overlap: c.chunkOverlap,
             },
-            { signal: controller.signal }
+            { signal: controller.signal },
           )
+          if (!isCurrent()) break
           const dur = Math.max(0, Math.round(performance.now() - t0))
           const s = res.stats
           out.push({
@@ -235,6 +257,7 @@ export function ChunkAutoTuneDialog() {
             quality: res.quality_gate ?? null,
           })
         } catch (err: unknown) {
+          if (!isCurrent()) break
           out.push({
             chunkSize: c.chunkSize,
             chunkOverlap: c.chunkOverlap,
@@ -246,16 +269,23 @@ export function ChunkAutoTuneDialog() {
         if (i % 2 === 1) setResults([...out])
       }
     } finally {
-      setResults([...out])
-      setRunning(false)
+      if (isCurrent()) setResults([...out])
+      if (abortRef.current === controller) {
+        abortRef.current = null
+        setRunning(false)
+      }
       const total = Math.max(0, Math.round(performance.now() - started))
-      if (!controller.signal.aborted) {
+      if (
+        !controller.signal.aborted &&
+        getAuthCacheScope() === authScope &&
+        getAuthSessionRevision() === sessionRevision
+      ) {
         toast.success(
           t('autoTune.toasts.completed', {
             okCount: out.filter((x) => x.ok).length,
             totalCount: out.length,
             durationMs: total,
-          })
+          }),
         )
       }
     }
@@ -284,7 +314,7 @@ export function ChunkAutoTuneDialog() {
     updateSettings({ chunkSize: c.chunkSize, chunkOverlap: c.chunkOverlap })
     setOpen(false)
     // Force a fresh preview so the user sees the actual chunk output.
-    await runPreview({ force: true })
+    await runPreview({ force: true, settings: { chunkSize: c.chunkSize, chunkOverlap: c.chunkOverlap } })
   }
 
   return (
@@ -312,9 +342,7 @@ export function ChunkAutoTuneDialog() {
         <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{t('autoTune.dialog.title')}</DialogTitle>
-            <DialogDescription>
-              {t('autoTune.dialog.description')}
-            </DialogDescription>
+            <DialogDescription>{t('autoTune.dialog.description')}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -455,47 +483,54 @@ export function ChunkAutoTuneDialog() {
                 </thead>
                 <tbody>
                   {(() => {
-    if (scoredTop.length) {
-        return (scoredTop.map((r) => (<tr key={`${r.chunkSize}:${r.chunkOverlap}`} className="border-t border-border/60">
-                        <td className="px-3 py-2 font-mono">
-                          {t('autoTune.table.paramsValue', {
-                            chunkSize: r.chunkSize,
-                            chunkOverlap: r.chunkOverlap,
-                          })}
-                        </td>
-                        <td className="px-3 py-2 font-mono">
-                          {r.stats ? `${Math.round((r.stats.coverage_ratio || 0) * 100)}%` : '-'}
-                        </td>
-                        <td className="px-3 py-2 font-mono">
-                          {r.stats ? `${Math.round((r.stats.overlap_waste_ratio || 0) * 100)}%` : '-'}
-                        </td>
-                        <td className="px-3 py-2 font-mono">{r.stats ? r.stats.count : '-'}</td>
-                        <td className="px-3 py-2 font-mono">
-                          {r.stats ? `${r.stats.avg}/${r.stats.p90}` : '-'}
-                        </td>
-                        <td className="px-3 py-2 font-mono">{r.quality?.grade || '-'}</td>
-                        <td className="px-3 py-2 text-right">
-                          <Button type="button" size="sm" className="h-7 px-2 text-[11px]" onClick={() => detachPromise(applyCandidate(r))}>
-                            {t('autoTune.actions.applyAndPreview')}
-                          </Button>
-                        </td>
-                      </tr>)));
-    }
-    else if (results.length) {
-            return (<tr className="border-t border-border/60">
-                      <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
-                        {t('autoTune.empty.noMatches')}
-                      </td>
-                    </tr>);
-        }
-        else {
-            return (<tr className="border-t border-border/60">
-                      <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
-                        {t('autoTune.empty.noResults')}
-                      </td>
-                    </tr>);
-        }
-})()}
+                    if (scoredTop.length) {
+                      return scoredTop.map((r) => (
+                        <tr key={`${r.chunkSize}:${r.chunkOverlap}`} className="border-t border-border/60">
+                          <td className="px-3 py-2 font-mono">
+                            {t('autoTune.table.paramsValue', {
+                              chunkSize: r.chunkSize,
+                              chunkOverlap: r.chunkOverlap,
+                            })}
+                          </td>
+                          <td className="px-3 py-2 font-mono">
+                            {r.stats ? `${Math.round((r.stats.coverage_ratio || 0) * 100)}%` : '-'}
+                          </td>
+                          <td className="px-3 py-2 font-mono">
+                            {r.stats ? `${Math.round((r.stats.overlap_waste_ratio || 0) * 100)}%` : '-'}
+                          </td>
+                          <td className="px-3 py-2 font-mono">{r.stats ? r.stats.count : '-'}</td>
+                          <td className="px-3 py-2 font-mono">{r.stats ? `${r.stats.avg}/${r.stats.p90}` : '-'}</td>
+                          <td className="px-3 py-2 font-mono">{r.quality?.grade || '-'}</td>
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-7 px-2 text-[11px]"
+                              onClick={() => detachPromise(applyCandidate(r))}
+                            >
+                              {t('autoTune.actions.applyAndPreview')}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    } else if (results.length) {
+                      return (
+                        <tr className="border-t border-border/60">
+                          <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
+                            {t('autoTune.empty.noMatches')}
+                          </td>
+                        </tr>
+                      )
+                    } else {
+                      return (
+                        <tr className="border-t border-border/60">
+                          <td className="px-3 py-3 text-muted-foreground" colSpan={7}>
+                            {t('autoTune.empty.noResults')}
+                          </td>
+                        </tr>
+                      )
+                    }
+                  })()}
                 </tbody>
               </table>
             </div>

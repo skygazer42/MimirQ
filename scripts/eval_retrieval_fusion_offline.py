@@ -13,7 +13,6 @@ Metrics:
 """
 
 import argparse
-import json
 import sys
 import time
 from pathlib import Path
@@ -21,63 +20,15 @@ from typing import Any
 
 import httpx
 
-from app.rag.evaluation.evidence_retrieve_gate import build_retrieval_gate_summary, compute_retrieval_item_meta
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-
-def _load_json(path: Path) -> Any:
-    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
-    return json.loads(path.read_text(encoding="utf-8-sig"))
-
-
-def _write_json(path: Path, obj: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-
-def _headers(args: argparse.Namespace) -> dict[str, str]:
-    h: dict[str, str] = {"Content-Type": "application/json"}
-    if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
-    if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
-    if args.bearer:
-        h["Authorization"] = f"Bearer {args.bearer}"
-    return h
-
-
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Normalize case bundle payloads into: (dataset_id, items[]).
-
-    Supported shapes:
-    - Export bundle v1: {"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}
-    - Minimal bundle: {"dataset_id":"...","items":[...]}
-    - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
-    """
-    if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        ds = str(obj.get("dataset_id") or "").strip()
-        if ds:
-            items = [x for x in obj.get("items") if isinstance(x, dict)]
-            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-            return ds, cleaned
-        return coerce_case_bundle(list(obj.get("items") or []))
-
-    if isinstance(obj, list):
-        items = [x for x in obj if isinstance(x, dict)]
-        dsids: list[str] = []
-        for it in items:
-            ds = str(it.get("dataset_id") or "").strip()
-            if ds and ds not in dsids:
-                dsids.append(ds)
-        if not dsids:
-            raise ValueError("dataset_id is required in cases bundle")
-        if len(dsids) > 1:
-            raise ValueError("mixed dataset_id in cases bundle")
-        dsid = dsids[0]
-        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-        return dsid, cleaned
-
-    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
+from app.rag.evaluation.evidence_retrieve_gate import (  # noqa: E402
+    build_retrieval_gate_summary,
+    compute_retrieval_item_meta,
+)
+from scripts.retrieval_ablation import _headers, _load_json, _write_json, coerce_case_bundle  # noqa: E402
 
 
 def _load_matrix(path: Path | None) -> dict[str, Any]:
@@ -270,8 +221,8 @@ def _evaluate_variant(
     url: str,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    label = str(variant.get("label") or "").strip() or "variant"
-    rag_config = variant.get("rag_config") if isinstance(variant.get("rag_config"), dict) else {}
+    label = variant["label"]
+    rag_config = variant["rag_config"]
     items_meta: list[dict[str, Any]] = []
     errors: list[str] = []
     for item in items:
@@ -349,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
                     client,
                     variant=variant,
                     items=items,
-                    dataset_id=str(dataset_id),
+                    dataset_id=dataset_id,
                     url=url,
                     args=args,
                 )
@@ -360,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "elapsed_sec": round(time.time() - started, 3),
         "base_url": str(args.base_url),
-        "dataset_id": str(dataset_id),
+        "dataset_id": dataset_id,
         "cases_total": len(items),
         "variants": out_rows,
     }

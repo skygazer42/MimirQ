@@ -132,7 +132,7 @@ function withStore<T>(
   mode: IDBTransactionMode,
   fn: (store: IDBObjectStore) => IDBRequest<T>,
   shouldStart?: () => boolean,
-  shouldCommit?: () => boolean
+  shouldCommit?: () => boolean,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     void openDb()
@@ -214,8 +214,7 @@ function withStore<T>(
   })
 }
 
-const textEncoder =
-  typeof TextEncoder === 'undefined' ? null : new TextEncoder()
+const textEncoder = typeof TextEncoder === 'undefined' ? null : new TextEncoder()
 
 function measureStringBytes(value: string | undefined | null): number {
   if (!value) return 0
@@ -294,7 +293,9 @@ export function classifyStoragePressure(input: {
   }
 
   let level: CachePressureLevel = 'low'
-  if (reasons.some((reason) => reason.includes('near quota') || reason.includes('dominates') || reason.includes('large'))) {
+  if (
+    reasons.some((reason) => reason.includes('near quota') || reason.includes('dominates') || reason.includes('large'))
+  ) {
     level = 'high'
   } else if (reasons.length > 0) {
     level = 'moderate'
@@ -310,10 +311,7 @@ export function classifyStoragePressure(input: {
   }
 }
 
-async function collectStoreRecords<T>(
-  storeName: string,
-  handler: (entry: T) => void
-): Promise<void> {
+async function collectStoreRecords<T>(storeName: string, handler: (entry: T) => void): Promise<void> {
   if (globalThis.window === undefined) return
   const db = await openDb()
   return new Promise((resolve, reject) => {
@@ -356,27 +354,30 @@ async function collectStoreRecords<T>(
 
 export async function saveDocContentToCache(
   record: Omit<DocContentCacheRecord, 'updatedAt'> & { updatedAt?: number },
-  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope()
+  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope(),
 ) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
   const scopeGuard = typeof scopeOrGuard === 'string' ? getDocCacheScopeGuard(scopeOrGuard) : scopeOrGuard
   const scopedId = scopedRecordId(record.id, scopeGuard.scope)
-  await withStore(CONTENT_STORE, 'readwrite', (store) =>
-    store.put({
-      id: scopedId,
-      markdownContent: record.markdownContent || '',
-      originalMarkdownContent: record.originalMarkdownContent || '',
-      updatedAt: record.updatedAt ?? Date.now(),
-    }),
+  await withStore(
+    CONTENT_STORE,
+    'readwrite',
+    (store) =>
+      store.put({
+        id: scopedId,
+        markdownContent: record.markdownContent || '',
+        originalMarkdownContent: record.originalMarkdownContent || '',
+        updatedAt: record.updatedAt ?? Date.now(),
+      }),
     () => isDocCacheScopeGuardCurrent(scopeGuard),
-    () => isDocCacheScopeGuardCurrent(scopeGuard)
+    () => isDocCacheScopeGuardCurrent(scopeGuard),
   )
 }
 
 export async function getDocContentFromCache(
   id: string,
-  scope: string = getAuthCacheScope()
+  scope: string = getAuthCacheScope(),
 ): Promise<DocContentCacheRecord | null> {
   if (globalThis.window === undefined) return null
   if (!id) return null
@@ -394,7 +395,7 @@ export async function deleteDocContentFromCache(id: string, scope: string = getA
 
 export async function saveDocSourceToCache(
   record: { id: string; file: File; updatedAt?: number },
-  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope()
+  scopeOrGuard: string | DocCacheScopeGuard = getAuthCacheScope(),
 ) {
   if (globalThis.window === undefined) return
   if (!record?.id) return
@@ -402,24 +403,27 @@ export async function saveDocSourceToCache(
 
   const scopeGuard = typeof scopeOrGuard === 'string' ? getDocCacheScopeGuard(scopeOrGuard) : scopeOrGuard
   const scopedId = scopedRecordId(record.id, scopeGuard.scope)
-  await withStore(SOURCE_STORE, 'readwrite', (store) =>
-    store.put({
-      id: scopedId,
-      filename: record.file.name || 'document',
-      mimeType: record.file.type || 'application/octet-stream',
-      size: record.file.size || 0,
-      lastModified: record.file.lastModified || Date.now(),
-      blob: record.file,
-      updatedAt: record.updatedAt ?? Date.now(),
-    } satisfies DocSourceCacheRecord),
+  await withStore(
+    SOURCE_STORE,
+    'readwrite',
+    (store) =>
+      store.put({
+        id: scopedId,
+        filename: record.file.name || 'document',
+        mimeType: record.file.type || 'application/octet-stream',
+        size: record.file.size || 0,
+        lastModified: record.file.lastModified || Date.now(),
+        blob: record.file,
+        updatedAt: record.updatedAt ?? Date.now(),
+      } satisfies DocSourceCacheRecord),
     () => isDocCacheScopeGuardCurrent(scopeGuard),
-    () => isDocCacheScopeGuardCurrent(scopeGuard)
+    () => isDocCacheScopeGuardCurrent(scopeGuard),
   )
 }
 
 export async function getDocSourceFromCache(
   id: string,
-  scope: string = getAuthCacheScope()
+  scope: string = getAuthCacheScope(),
 ): Promise<DocSourceCacheRecord | null> {
   if (globalThis.window === undefined) return null
   if (!id) return null
@@ -556,11 +560,7 @@ if (globalThis.window !== undefined) {
   }
 }
 
-async function pruneStoreByUpdatedAt(
-  storeName: string,
-  maxAgeMs: number,
-  nowMs: number
-): Promise<number> {
+async function pruneStoreByUpdatedAt(storeName: string, maxAgeMs: number, nowMs: number): Promise<number> {
   if (globalThis.window === undefined) return 0
   const normalizedMaxAgeMs =
     Number.isFinite(maxAgeMs) && maxAgeMs >= 0 ? Math.trunc(maxAgeMs) : DEFAULT_STALE_MAX_AGE_MS

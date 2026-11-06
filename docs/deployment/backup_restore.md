@@ -1,6 +1,6 @@
 # 备份 / 恢复指南（Postgres + MinIO + Vector Backend）
 
-本指南用于把 MimirQ 的核心数据做成可演练的备份/恢复闭环，覆盖：
+本指南用于把 Ragvia 的核心数据做成可演练的备份/恢复闭环，覆盖：
 
 - Postgres（元数据/审计日志/评估结果等）
 - MinIO（对象存储：文档/图片等，取决于部署开关）
@@ -110,7 +110,7 @@ mc mirror --overwrite backups/minio/<bucket-name> mimirq-minio/<bucket-name>
 
 ### 3.1) 原则：先确认你们的 `VECTOR_BACKEND`
 
-MimirQ 运行依赖向量库实现检索。向量库数据是否“必须备份”，取决于：
+Ragvia 运行依赖向量库实现检索。向量库数据是否“必须备份”，取决于：
 
 - 是否可接受恢复后重建索引（策略 A）
 - 索引构建成本与时间窗口
@@ -147,7 +147,7 @@ Milvus 的备份/恢复通常要依赖你们的部署方式（standalone / clust
 1. 恢复 Postgres（§1）
 2. 恢复 MinIO bucket（§2，若启用）
 3. 恢复/重建向量库（§3）
-4. 启动 MimirQ（Helm / Compose）
+4. 启动 Ragvia（Helm / Compose）
 5. 验证：
    - Readiness：`GET /api/v1/health/ready`
    - smoke test：`python scripts/smoke_test.py ...`

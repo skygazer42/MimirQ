@@ -110,7 +110,7 @@ def _iter_entries(text: str) -> list[_Entry]:
         term = _parse_inline_entry(raw_line)
         if not term:
             continue
-        starts.append(int(line_start))
+        starts.append(line_start)
         terms.append(term)
 
     if len(starts) < 2:
@@ -119,7 +119,7 @@ def _iter_entries(text: str) -> list[_Entry]:
     entries: list[_Entry] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
-        entries.append(_Entry(start=int(start), end=int(end), term=terms[idx]))
+        entries.append(_Entry(start=start, end=end, term=terms[idx]))
 
     return entries if len(entries) >= 2 else []
 
@@ -177,7 +177,7 @@ def _build_glossary_chunk(
     meta["chunk_strategy"] = "glossary"
     meta["start_char"] = chunk_start
     meta["end_char"] = chunk_end
-    meta["glossary_entry_count"] = int(end_idx - start_idx)
+    meta["glossary_entry_count"] = end_idx - start_idx
     terms = _window_glossary_terms(entries, start_idx, end_idx)
     if terms:
         meta["glossary_terms"] = terms
@@ -201,7 +201,7 @@ def _next_glossary_start(entries: list[_Entry], start_idx: int, end_idx: int, ch
 
 
 class GlossaryChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

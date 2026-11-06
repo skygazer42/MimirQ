@@ -81,8 +81,8 @@ from app.parsing.factory import ParserFactory
 from app.rag.chunking import chunker_factory
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
+from app.services import dataset_category_service, dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_category_service import DatasetCategoryService, collect_descendant_ids
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 from app.services.dataset_profile_scan_runner import run_dataset_profile_deep_scan
 from app.services.dataset_profile_service import (
@@ -90,7 +90,6 @@ from app.services.dataset_profile_service import (
     list_bucket_documents,
     list_finding_documents,
 )
-from app.services.dataset_service import DatasetGroupPermissionService, DatasetPermissionService, DatasetService
 from app.services.document_access import build_dataset_read_filter, build_document_read_filter
 from app.services.fls_policy import parse_fls_policy_from_metadata, validate_and_normalize_fls_policy
 from app.services.ingestion_policy import (
@@ -130,17 +129,17 @@ def _dataset_scan_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _scan_run_reference_time(row: object) -> datetime | None:
-    ts = getattr(row, "updated_at", None) or getattr(row, "created_at", None)
+def _scan_run_reference_time(row: DBDatasetProfileScanRun) -> datetime | None:
+    ts = row.updated_at or row.created_at
     if ts is None:
         return None
-    if getattr(ts, "tzinfo", None) is None:
+    if ts.tzinfo is None:
         return ts.replace(tzinfo=timezone.utc)
     return ts
 
 
-def _is_stale_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
+def _is_stale_scan_run(row: DBDatasetProfileScanRun, *, now: datetime) -> bool:
+    status = str(row.status or "").strip().lower()
     if status not in {"pending", "running"}:
         return False
     ts = _scan_run_reference_time(row)
@@ -151,8 +150,8 @@ def _is_stale_scan_run(row: object, *, now: datetime) -> bool:
     return ts + _DATASET_SCAN_RUNNING_STALE_AFTER <= now
 
 
-def _is_hard_stale_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
+def _is_hard_stale_scan_run(row: DBDatasetProfileScanRun, *, now: datetime) -> bool:
+    status = str(row.status or "").strip().lower()
     ts = _scan_run_reference_time(row)
     if ts is None:
         return False
@@ -176,10 +175,10 @@ async def _expire_stale_dataset_profile_scan_runs(db: Session, *, tenant_id: UUI
     )
     expired = 0
     for row in rows:
-        status = str(getattr(row, "status", "") or "").strip().lower()
+        status = str(row.status or "").strip().lower()
         if not _is_stale_scan_run(row, now=now):
             continue
-        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        if bool(settings.TASK_QUEUE_ENABLED):
             job_id = f"dataset_profile_scan:{tenant_id}:{dataset_id}:{row.id}"
             job_status: str | None = None
             try:
@@ -229,7 +228,7 @@ def _mark_dataset_profile_scan_run_failed(
 
 
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     opts = parse_pipeline_from_metadata(meta)
@@ -242,7 +241,7 @@ def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
 
 
 def _dataset_retention_policy_out(ds: Dataset) -> DatasetRetentionPolicy | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     pol = parse_retention_policy_from_metadata(meta)
@@ -250,7 +249,7 @@ def _dataset_retention_policy_out(ds: Dataset) -> DatasetRetentionPolicy | None:
 
 
 def _dataset_ingestion_defaults(ds: Dataset) -> tuple[str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None
     pb = meta.get("default_parser_backend")
@@ -309,11 +308,9 @@ def _dataset_table_routing_defaults(
 
 def _global_table_routing_defaults() -> dict[str, bool]:
     return {
-        "table_store_enabled": bool(getattr(settings, "TABLE_STORE_ENABLED", False)),
-        "table_store_auto_route": bool(getattr(settings, "TABLE_STORE_AUTO_ROUTE", False)),
-        "table_store_sidecar_exclusive_routing": bool(
-            getattr(settings, "TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING", False)
-        ),
+        "table_store_enabled": bool(settings.TABLE_STORE_ENABLED),
+        "table_store_auto_route": bool(settings.TABLE_STORE_AUTO_ROUTE),
+        "table_store_sidecar_exclusive_routing": bool(settings.TABLE_STORE_SIDECAR_EXCLUSIVE_ROUTING),
     }
 
 
@@ -411,7 +408,7 @@ def _build_table_routing_policy_audit(
 
 
 def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("rag_defaults")
@@ -429,7 +426,7 @@ def _dataset_rag_defaults_out(ds: Dataset) -> DatasetRAGDefaults | None:
 
 
 def _dataset_embedding_defaults_out(ds: Dataset) -> DatasetEmbeddingDefaults | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("embedding_defaults")
@@ -477,7 +474,7 @@ def _upsert_dataset_embedding_defaults_metadata(
 
 
 def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None, None
 
@@ -499,7 +496,7 @@ def _dataset_rag_config_template_defaults_out(ds: Dataset) -> tuple[UUID | None,
 
 
 def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, str | None]:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None, None, None
 
@@ -521,7 +518,7 @@ def _dataset_prompt_defaults_out(ds: Dataset) -> tuple[UUID | None, str | None, 
 
 
 def _dataset_chunk_targets_v2_out(ds: Dataset) -> DatasetChunkTargetsV2 | None:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     if not isinstance(meta, dict):
         return None
     raw = meta.get("chunk_targets_v2")
@@ -545,8 +542,8 @@ def _dataset_partial_permissions(
     if ds.permission != DatasetPermissionEnum.PARTIAL_MEMBERS:
         return None, None
     return (
-        DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, ds.id),
-        DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, ds.id),
+        dataset_service.get_dataset_partial_member_list(db, tenant_id, ds.id),
+        dataset_service.get_dataset_partial_group_list(db, tenant_id, ds.id),
     )
 
 
@@ -601,9 +598,9 @@ def get_dataset_ingestion_stats(
     - Enforces dataset read permission.
     - Applies document-level ACL filtering for non-owners ("security trimming").
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     query = db.query(DBDocument).filter(
         DBDocument.tenant_id == tenant_id,
@@ -654,7 +651,7 @@ def _apply_dataset_category_filter(
         )
         parent_by_id = {cid: pid for cid, pid in rows if cid is not None}
         category_ids = (
-            collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
+            dataset_category_service.collect_descendant_ids(root_id=category_id, parent_by_id=parent_by_id)
             if bool(include_descendants)
             else {category_id}
         )
@@ -1128,11 +1125,11 @@ def create_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    DatasetService._assert_edit_role(member)
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset_service._assert_edit_role(member)
     meta: dict[str, Any] = {}
     metadata_changed = _apply_create_dataset_metadata_defaults(meta, payload)
-    dataset = DatasetService.create_dataset(
+    dataset = dataset_service.create_dataset(
         db=db,
         tenant_id=tenant_id,
         name=payload.name,
@@ -1180,7 +1177,7 @@ def list_datasets(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     scope_query = db.query(Dataset).filter(Dataset.tenant_id == tenant_id)
     scope_query = scope_query.filter(build_dataset_read_filter(tenant_id=tenant_id, account_id=account_id))
@@ -1431,13 +1428,13 @@ def get_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     partial_list = None
     partial_groups = None
     if dataset.permission == DatasetPermissionEnum.PARTIAL_MEMBERS:
-        partial_list = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, dataset_id)
-        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, dataset_id)
+        partial_list = dataset_service.get_dataset_partial_member_list(db, tenant_id, dataset_id)
+        partial_groups = dataset_service.get_dataset_partial_group_list(db, tenant_id, dataset_id)
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(dataset)
     (
         rag_config_template_id,
@@ -1484,7 +1481,7 @@ def get_dataset_categories(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    category_ids = DatasetCategoryService.list_dataset_category_ids(
+    category_ids = dataset_category_service.list_dataset_category_ids(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -1506,12 +1503,12 @@ def set_dataset_categories(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    category_ids = DatasetCategoryService.set_dataset_categories(
+    category_ids = dataset_category_service.set_dataset_categories(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=dataset_id,
-        category_ids=payload.category_ids or [],
+        category_ids=payload.category_ids,
     )
     return DatasetCategoryAssignmentResponse(dataset_id=dataset_id, category_ids=category_ids)
 
@@ -1525,13 +1522,13 @@ def update_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     metadata_changed = _apply_update_dataset_metadata_defaults(meta, payload)
 
-    updated = DatasetService.update_dataset(
+    updated = dataset_service.update_dataset(
         db=db,
         dataset=dataset,
         updater_id=account_id,
@@ -1565,7 +1562,7 @@ def update_dataset(
 
 
 def _build_dataset_config_bundle(ds: Dataset) -> DatasetConfigBundle:
-    meta = getattr(ds, "dataset_metadata", None)
+    meta = ds.dataset_metadata
     meta_dict = meta if isinstance(meta, dict) else {}
 
     default_parser_backend, default_chunk_strategy = _dataset_ingestion_defaults(ds)
@@ -1619,9 +1616,9 @@ def export_dataset_config(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Export a portable dataset config bundle (JSON)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     return DatasetConfigExport(
         version="1",
@@ -1648,13 +1645,13 @@ def import_dataset_config(
     - replace=false (default): apply only non-null fields in the bundle (no clearing).
     - replace=true: overwrite/clear supported config keys based on bundle content.
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     replace = bool(payload.replace)
     cfg = payload.config
-    meta = dict(getattr(ds, "dataset_metadata", None) or {})
+    meta = dict(ds.dataset_metadata or {})
     changed = _apply_config_import_metadata(meta, cfg, replace=replace)
 
     if changed:
@@ -1692,15 +1689,15 @@ def put_dataset_retrieval_audit(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Persist a sanitized retrieval audit snapshot for dataset reports."""
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     try:
         audit = sanitize_retrieval_audit_snapshot(payload.model_dump(mode="json"))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     meta["retrieval_audit"] = audit.model_dump(mode="json")
     dataset.dataset_metadata = meta
     db.commit()
@@ -1741,16 +1738,16 @@ def clone_dataset(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Clone an existing dataset (config + optional permission/members)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    src = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, src, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    src = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, src, account_id)
 
     permission = src.permission if payload.copy_permission else DatasetPermissionEnum.ALL_TEAM_MEMBERS
     partial_members: list[str] = []
     partial_groups: list[UUID] = []
     if permission == DatasetPermissionEnum.PARTIAL_MEMBERS and payload.copy_partial_members:
-        partial_members = DatasetPermissionService.get_dataset_partial_member_list(db, tenant_id, src.id) or []
-        partial_groups = DatasetGroupPermissionService.get_dataset_partial_group_list(db, tenant_id, src.id) or []
+        partial_members = dataset_service.get_dataset_partial_member_list(db, tenant_id, src.id) or []
+        partial_groups = dataset_service.get_dataset_partial_group_list(db, tenant_id, src.id) or []
 
     clone_cfg = _build_dataset_config_bundle(src)
     if clone_cfg.embedding_defaults is not None:
@@ -1763,7 +1760,7 @@ def clone_dataset(
     copied_metadata: dict[str, Any] = {}
     _apply_config_import_metadata(copied_metadata, clone_cfg, replace=True)
 
-    created = DatasetService.create_dataset(
+    created = dataset_service.create_dataset(
         db=db,
         tenant_id=tenant_id,
         name=str(payload.name or "").strip(),
@@ -1852,7 +1849,7 @@ def _cleanup_dataset_table_store(tenant_id: UUID, dataset_id: UUID) -> None:
     try:
         from app.services.path_safety import resolve_under_base
 
-        root = Path(str(getattr(settings, "TABLE_STORE_DIR", "./uploads/table_store") or "./uploads/table_store"))
+        root = Path(str(settings.TABLE_STORE_DIR or "./uploads/table_store"))
         ds_dir = (root / str(tenant_id) / str(dataset_id)).resolve(strict=False)
         safe_dir = resolve_under_base(ds_dir, base=root)
         if safe_dir is not None and safe_dir.exists():
@@ -1865,7 +1862,7 @@ def _cleanup_dataset_precheck_artifacts(tenant_id: UUID, precheck_run_ids: list[
     try:
         from app.services.path_safety import resolve_under_base
 
-        upload_root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+        upload_root = Path(settings.UPLOAD_DIR or "./uploads")
         tenant_root = upload_root / str(tenant_id)
         for run_id in precheck_run_ids:
             with contextlib.suppress(Exception):
@@ -1980,8 +1977,8 @@ def delete_dataset(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     # Prevent deleting non-empty datasets. The DB also enforces tenant-safe
     # dataset references; keep the API check for a friendly 409.
@@ -2042,7 +2039,7 @@ async def purge_dataset_documents(
         detail="No permission to purge dataset documents",
     )
 
-    DatasetService.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.get_dataset(db, tenant_id, dataset_id)
 
     # Reconcile stale profile/precheck runs before the active-run guard so
     # worker crashes do not strand purge requests behind 409s.
@@ -2132,9 +2129,9 @@ def get_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-    meta = getattr(dataset, "dataset_metadata", None)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    meta = dataset.dataset_metadata
     meta_obj = meta if isinstance(meta, dict) else {}
     policy = parse_ingestion_policy_from_metadata(meta_obj) or IngestionPolicy(version="1", rules=[])
     audit = _build_table_routing_policy_audit(meta=meta_obj, policy=policy)
@@ -2157,10 +2154,10 @@ def list_dataset_ingestion_policy_versions(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     current_id = meta.get(_INGESTION_POLICY_CURRENT_VERSION_ID_KEY)
     current_id = str(current_id) if isinstance(current_id, str) and current_id.strip() else None
 
@@ -2220,10 +2217,10 @@ def rollback_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     target_id, target = _require_ingestion_policy_version(meta, body.version_id)
     normalized = _normalized_stored_ingestion_policy(target)
 
@@ -2260,11 +2257,11 @@ def put_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     normalized = validate_and_normalize_ingestion_policy(payload)
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     if normalized.rules:
         meta["ingestion_policy"] = normalized.model_dump()
     else:
@@ -2290,8 +2287,8 @@ async def import_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     max_bytes = 256 * 1024
     raw = await file.read(max_bytes + 1)
@@ -2308,7 +2305,7 @@ async def import_dataset_ingestion_policy(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"invalid ingestion policy: {str(exc)[:200]}") from exc
 
-    meta = dict(getattr(dataset, "dataset_metadata", None) or {})
+    meta = dict(dataset.dataset_metadata or {})
     if not replace and "ingestion_policy" in meta:
         # Best-effort: do not merge in v1 (explicit by design).
         raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
@@ -2331,15 +2328,15 @@ def export_dataset_ingestion_policy(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
-    meta = getattr(dataset, "dataset_metadata", None)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
+    meta = dataset.dataset_metadata
     policy = parse_ingestion_policy_from_metadata(meta if isinstance(meta, dict) else {}) or IngestionPolicy(
         version="1", rules=[]
     )
 
     content = export_policy_json(policy)
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.ingestion-policy.json"
     return Response(
         content=content,
@@ -2349,27 +2346,27 @@ def export_dataset_ingestion_policy(
 
 
 def _scan_run_out_from_row(row: DBDatasetProfileScanRun) -> DatasetProfileScanRunOut:
-    cfg = getattr(row, "config", None)
+    cfg = row.config
     if not isinstance(cfg, dict):
         cfg = {}
-    summary = getattr(row, "summary", None)
+    summary = row.summary
     if not isinstance(summary, dict):
         summary = {}
     return DatasetProfileScanRunOut(
         id=row.id,
         tenant_id=row.tenant_id,
         dataset_id=row.dataset_id,
-        requested_by=getattr(row, "requested_by", None),
-        kind=str(getattr(row, "kind", "") or "deep"),
-        status=str(getattr(row, "status", "") or "pending"),
-        progress=int(getattr(row, "progress", 0) or 0),
+        requested_by=row.requested_by,
+        kind=str(row.kind or "deep"),
+        status=str(row.status or "pending"),
+        progress=int(row.progress or 0),
         config=cfg,
         summary=summary,
-        error_message=getattr(row, "error_message", None),
-        started_at=getattr(row, "started_at", None),
-        finished_at=getattr(row, "finished_at", None),
-        created_at=getattr(row, "created_at", None),
-        updated_at=getattr(row, "updated_at", None),
+        error_message=row.error_message,
+        started_at=row.started_at,
+        finished_at=row.finished_at,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
     )
 
 
@@ -2570,8 +2567,8 @@ async def create_dataset_profile_scan_run(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     # Clear stale pending rows before the active-run check so queue failures or
     # crashed requests do not leave the dataset permanently blocked.
@@ -2666,8 +2663,8 @@ def list_dataset_profile_scan_runs(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     q = db.query(DBDatasetProfileScanRun).filter(
         DBDatasetProfileScanRun.tenant_id == tenant_id, DBDatasetProfileScanRun.dataset_id == dataset_id
@@ -2690,8 +2687,8 @@ def get_dataset_profile_scan_run(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     row = (
         db.query(DBDatasetProfileScanRun)
@@ -2715,8 +2712,8 @@ def export_dataset_profile_summary(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     summary = compute_dataset_profile_summary(
         db,
@@ -2726,7 +2723,7 @@ def export_dataset_profile_summary(
     )
     # Use JSON mode so UUID/datetime serialize correctly.
     content = json.dumps(summary.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.profile.json"
     return Response(
         content=content,
@@ -2744,8 +2741,8 @@ def export_dataset_profile_html_report(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    dataset = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     summary = compute_dataset_profile_summary(
         db,
@@ -2756,14 +2753,14 @@ def export_dataset_profile_html_report(
 
     html = render_dataset_profile_html(
         title="MimirQ · 数据画像报告",
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         dataset_id=str(dataset_id),
         generated_at=summary.generated_at,
         summary=summary.model_dump(),
         redact=bool(redact),
     )
 
-    safe = _DATASET_SAFE_NAME_RE.sub("_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = _DATASET_SAFE_NAME_RE.sub("_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.profile.html"
     return Response(
         content=html,
@@ -2818,7 +2815,7 @@ def _summarize_document_metadata(meta: Any, *, max_keys_sample: int = 20) -> dic
     keys_sorted = sorted(set(keys))
     max_keys_sample = max(0, int(max_keys_sample or 0))
     return {
-        "keys_count": int(len(keys_sorted)),
+        "keys_count": len(keys_sorted),
         "keys_sample": keys_sorted[:max_keys_sample],
     }
 
@@ -2887,24 +2884,22 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
         "schema": "mimirq.dataset_document_export.v1",
         "id": str(doc.id),
         "tenant_id": str(doc.tenant_id),
-        "dataset_id": (str(doc.dataset_id) if getattr(doc, "dataset_id", None) is not None else None),
-        "status": str(getattr(doc, "status", "") or ""),
-        "file_type": str(getattr(doc, "file_type", "") or ""),
-        "file_size": int(getattr(doc, "file_size", 0) or 0),
-        "chunk_count": int(getattr(doc, "chunk_count", 0) or 0),
-        "total_characters": int(getattr(doc, "total_characters", 0) or 0),
-        "created_at": _dt_to_json(getattr(doc, "created_at", None)),
-        "updated_at": _dt_to_json(getattr(doc, "updated_at", None)),
-        "processed_at": _dt_to_json(getattr(doc, "processed_at", None)),
-        "archived_at": _dt_to_json(getattr(doc, "archived_at", None)),
-        "disabled_at": _dt_to_json(getattr(doc, "disabled_at", None)),
+        "dataset_id": (str(doc.dataset_id) if doc.dataset_id is not None else None),
+        "status": str(doc.status or ""),
+        "file_type": str(doc.file_type or ""),
+        "file_size": int(doc.file_size or 0),
+        "chunk_count": int(doc.chunk_count or 0),
+        "total_characters": int(doc.total_characters or 0),
+        "created_at": _dt_to_json(doc.created_at),
+        "updated_at": _dt_to_json(doc.updated_at),
+        "processed_at": _dt_to_json(doc.processed_at),
+        "archived_at": _dt_to_json(doc.archived_at),
+        "disabled_at": _dt_to_json(doc.disabled_at),
         # Lifecycle / governance workflow signals (PII-safe by default).
         "lifecycle_owner_hash": None,
-        "review_due_at": _dt_to_json(getattr(doc, "review_due_at", None)),
-        "authority_level": (
-            int(getattr(doc, "authority_level", 0) or 0) if getattr(doc, "authority_level", None) is not None else None
-        ),
-        "supersedes_document_id": (str(getattr(doc, "supersedes_document_id", "") or "") or None),
+        "review_due_at": _dt_to_json(doc.review_due_at),
+        "authority_level": (int(doc.authority_level or 0) if doc.authority_level is not None else None),
+        "supersedes_document_id": (str(doc.supersedes_document_id or "") or None),
         **_document_pipeline_export_fields(doc, meta),
         **_document_source_export_fields(meta, include_sensitive=include_sensitive),
     }
@@ -2912,22 +2907,22 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
 
 def _document_sensitive_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
     return {
-        "filename": str(getattr(doc, "filename", "") or ""),
-        "file_path": str(getattr(doc, "file_path", "") or ""),
-        "owner_id": (str(getattr(doc, "owner_id", "") or "") or None),
-        "access_mode": (str(getattr(doc, "access_mode", "") or "") or None),
-        "lifecycle_owner": (str(getattr(doc, "lifecycle_owner", "") or "") or None),
-        "error_message": (str(getattr(doc, "error_message", "") or "") or None),
+        "filename": str(doc.filename or ""),
+        "file_path": str(doc.file_path or ""),
+        "owner_id": (str(doc.owner_id or "") or None),
+        "access_mode": (str(doc.access_mode or "") or None),
+        "lifecycle_owner": (str(doc.lifecycle_owner or "") or None),
+        "error_message": (str(doc.error_message or "") or None),
         "doc_metadata": meta,
     }
 
 
 def _document_redacted_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
-    filename = str(getattr(doc, "filename", "") or "").strip()
-    file_path = str(getattr(doc, "file_path", "") or "").strip()
-    owner_id = str(getattr(doc, "owner_id", "") or "").strip()
-    lifecycle_owner = str(getattr(doc, "lifecycle_owner", "") or "").strip()
-    error_message = str(getattr(doc, "error_message", "") or "").strip()
+    filename = str(doc.filename or "").strip()
+    file_path = str(doc.file_path or "").strip()
+    owner_id = str(doc.owner_id or "").strip()
+    lifecycle_owner = str(doc.lifecycle_owner or "").strip()
+    error_message = str(doc.error_message or "").strip()
     return {
         "filename_hash": (stable_hash(filename, length=16) if filename else None),
         "file_path_hash": (stable_hash(file_path, length=16) if file_path else None),
@@ -2939,7 +2934,7 @@ def _document_redacted_export_fields(doc: DBDocument, meta: dict[str, Any]) -> d
 
 
 def _export_document_row(doc: DBDocument, *, include_sensitive: bool) -> dict[str, Any]:
-    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
     out = _document_base_export_row(doc, meta, include_sensitive=include_sensitive)
     if include_sensitive:
         out.update(_document_sensitive_export_fields(doc, meta))
@@ -3023,10 +3018,10 @@ def _record_dataset_documents_export_audit(
 
 
 def _safe_dataset_export_name(ds: Dataset) -> str:
-    return _DATASET_SAFE_NAME_RE.sub("_", str(getattr(ds, "name", "") or "dataset"))[:64]
+    return _DATASET_SAFE_NAME_RE.sub("_", str(ds.name or "dataset"))[:64]
 
 
-def _next_documents_cursor(rows: list[DBDocument]) -> dict[str, str] | None:
+def _next_documents_cursor(rows: list[DBDocument]) -> dict[str, str | None] | None:
     if not rows:
         return None
     last = rows[-1]
@@ -3051,7 +3046,7 @@ def _documents_json_export_response(
         "schema": "mimirq.dataset_document_export_page.v1",
         "dataset_id": str(dataset_id),
         "limit": int(limit or 0),
-        "returned": int(len(items)),
+        "returned": len(items),
         "next_cursor": _next_documents_cursor(rows),
         "items": items,
     }
@@ -3129,13 +3124,13 @@ def _dataset_bundle_summary_payload(ds: Dataset, tenant_id: UUID, exported_at: d
         "exported_at": _dt_to_json(exported_at),
         "tenant_id": str(tenant_id),
         "dataset": {
-            "id": str(getattr(ds, "id", "")),
-            "name": str(getattr(ds, "name", "") or ""),
-            "description": str(getattr(ds, "description", "") or ""),
-            "permission": str(getattr(ds, "permission", "") or ""),
-            "owner_id": (str(getattr(ds, "owner_id", "") or "") or None),
-            "created_at": _dt_to_json(getattr(ds, "created_at", None)),
-            "updated_at": _dt_to_json(getattr(ds, "updated_at", None)),
+            "id": str(ds.id),
+            "name": str(ds.name or ""),
+            "description": str(ds.description or ""),
+            "permission": str(ds.permission or ""),
+            "owner_id": (str(ds.owner_id or "") or None),
+            "created_at": _dt_to_json(ds.created_at),
+            "updated_at": _dt_to_json(ds.updated_at),
         },
     }
 
@@ -3144,8 +3139,8 @@ def _dataset_bundle_config_payload(ds: Dataset, exported_at: datetime) -> dict[s
     return {
         "schema": "mimirq.dataset_config_export.v1",
         "version": "1",
-        "dataset_id": getattr(ds, "id", None),
-        "name": str(getattr(ds, "name", "") or ""),
+        "dataset_id": ds.id,
+        "name": str(ds.name or ""),
         "exported_at": exported_at,
         "config": _build_dataset_config_bundle(ds),
     }
@@ -3172,9 +3167,9 @@ def _document_storage_manifest(raw_path: str, *, include_sensitive: bool) -> dic
 
 
 def _document_artifact_manifest(doc: DBDocument, row: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
-    raw_path = str(getattr(doc, "file_path", "") or "").strip()
+    raw_path = str(doc.file_path or "").strip()
     return {
-        "document_id": str(getattr(doc, "id", "")),
+        "document_id": str(doc.id),
         "doc_pipeline_key": row.get("doc_pipeline_key"),
         "pipeline_hash": row.get("pipeline_hash"),
         "active_pipeline_hash": row.get("active_pipeline_hash"),
@@ -3200,12 +3195,12 @@ def _dataset_bundle_document_payloads(
 
 
 def _dataset_bundle_kg_stats(db: Session, tenant_id: UUID, docs: list[DBDocument]) -> dict[str, Any]:
-    if not bool(getattr(settings, "KG_ENABLED", False)):
+    if not bool(settings.KG_ENABLED):
         return {}
     try:
         from app.rag.kg.models import KgSourceEvent  # noqa: WPS433
 
-        doc_ids = [getattr(doc, "id", None) for doc in docs]
+        doc_ids = [doc.id for doc in docs]
         doc_ids = [doc_id for doc_id in doc_ids if doc_id is not None]
         events = (
             db.query(KgSourceEvent)
@@ -3233,8 +3228,8 @@ def _dataset_bundle_artifacts_payload(
         "exported_at": _dt_to_json(exported_at),
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id),
-        "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-        "kg_enabled": bool(getattr(settings, "KG_ENABLED", False)),
+        "vector_backend": str(settings.VECTOR_BACKEND or ""),
+        "kg_enabled": bool(settings.KG_ENABLED),
         "documents": artifacts_docs,
     }
     payload.update(_dataset_bundle_kg_stats(db, tenant_id, docs))
@@ -3327,7 +3322,7 @@ def export_dataset_documents_ndjson(
         detail="No permission to export dataset documents",
     )
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
     fmt = str(export_format or "ndjson").strip().lower() or "ndjson"
     if fmt not in {"ndjson", "json"}:
         raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
@@ -3404,7 +3399,7 @@ def export_dataset_bundle_zip(
         detail="No permission to export dataset bundle",
     )
 
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
     docs = _dataset_documents_page(db, tenant_id, dataset_id, limit=int(limit or 0))
     exported_at = datetime.now(timezone.utc)
 

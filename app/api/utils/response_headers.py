@@ -1,6 +1,5 @@
 """Shared HTTP response header helpers."""
 
-
 import re
 from urllib.parse import quote
 
@@ -18,7 +17,7 @@ def _clean_download_filename(filename: str, *, fallback: str = "download") -> st
 
 def _ascii_download_filename(filename: str, *, fallback: str = "download") -> str:
     cleaned = _ASCII_FILENAME_RE.sub("_", filename).strip("._ ")
-    return (cleaned[:180] or fallback)
+    return cleaned[:180] or fallback
 
 
 def content_disposition_header(filename: str, *, disposition: str = "attachment") -> str:

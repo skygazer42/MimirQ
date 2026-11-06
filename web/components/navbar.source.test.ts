@@ -7,7 +7,7 @@ describe('navbar source', () => {
   it('skips dev route prefetch in automated browsers', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
 
-    expect(src).toContain("if (globalThis.navigator?.webdriver) return")
+    expect(src).toContain('if (globalThis.navigator?.webdriver) return')
     expect(src).toContain('router.prefetch(href)')
   })
 
@@ -82,24 +82,15 @@ describe('navbar source', () => {
 
   it('keeps daily navigation focused while advanced vector diagnostics stay out of the sidebar', () => {
     const src = fs.readFileSync(path.resolve(__dirname, 'navbar.tsx'), 'utf8')
-    const chatMessages = fs.readFileSync(
-      path.resolve(__dirname, '../i18n/messages/zh-CN/chat.ts'),
-      'utf8'
-    )
+    const chatMessages = fs.readFileSync(path.resolve(__dirname, '../i18n/messages/zh-CN/chat.ts'), 'utf8')
 
-    expect(src).toContain("{ icon: Database, labelKey: 'items.knowledgeBase', href: '/knowledge' }")
-    expect(src).toContain("{ icon: Layers, labelKey: 'items.datasets', href: '/datasets' }")
-    expect(src.indexOf("labelKey: 'items.datasets'")).toBeLessThan(
-      src.indexOf("labelKey: 'items.knowledgeBase'")
-    )
+    expect(src).toContain("{ icon: KnowledgeBase, labelKey: 'items.knowledgeBase', href: '/knowledge' }")
+    expect(src).toContain("{ icon: Dataset, labelKey: 'items.datasets', href: '/datasets' }")
+    expect(src.indexOf("labelKey: 'items.datasets'")).toBeLessThan(src.indexOf("labelKey: 'items.knowledgeBase'"))
 
-    expect(src).not.toContain(
-      "{ icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' }"
-    )
+    expect(src).not.toContain("{ icon: Grid3X3, labelKey: 'items.ragVisualization', href: '/knowledge/similarity' }")
     expect(src).toContain("'/knowledge/similarity': '/evaluations'")
-    expect(src.indexOf("labelKey: 'items.knowledgeGraph'")).toBeLessThan(
-      src.indexOf("labelKey: 'items.ragas'")
-    )
+    expect(src.indexOf("labelKey: 'items.knowledgeGraph'")).toBeLessThan(src.indexOf("labelKey: 'items.ragas'"))
 
     expect(chatMessages).toContain("datasets: '数据集'")
     expect(chatMessages).toContain("knowledgeBase: '知识库'")

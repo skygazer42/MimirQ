@@ -14,8 +14,8 @@ import {
   Sparkles,
   Trash2,
   Upload,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+} from '@/components/icons'
+import type { PlatformIcon } from '@/components/icons'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -60,27 +60,15 @@ function describePayload(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return '1 条响应'
 
   const record = payload as Record<string, unknown>
-  const keys = [
-    'total',
-    'count',
-    'created',
-    'deleted',
-    'updated',
-    'items',
-    'runs',
-    'cases',
-  ]
+  const keys = ['total', 'count', 'created', 'deleted', 'updated', 'items', 'runs', 'cases']
   const parts = keys.flatMap((key) => {
     const value = record[key]
     if (Array.isArray(value)) return `${key}: ${value.length}`
-    if (typeof value === 'number' || typeof value === 'string')
-      return `${key}: ${value}`
+    if (typeof value === 'number' || typeof value === 'string') return `${key}: ${value}`
     return []
   })
 
-  return parts.length
-    ? parts.slice(0, 3).join(' / ')
-    : `${Object.keys(record).length} 个字段`
+  return parts.length ? parts.slice(0, 3).join(' / ') : `${Object.keys(record).length} 个字段`
 }
 
 export function EvaluationDataOpsPanel() {
@@ -100,11 +88,7 @@ export function EvaluationDataOpsPanel() {
 
   const dataset = datasetId.trim()
 
-  async function runAction(
-    key: string,
-    title: string,
-    action: () => Promise<unknown>
-  ) {
+  async function runAction(key: string, title: string, action: () => Promise<unknown>) {
     setBusy(key)
     setShowRaw(false)
     try {
@@ -127,7 +111,7 @@ export function EvaluationDataOpsPanel() {
         auto_extract_kg: true,
         persist_run: true,
         hardcase_mode: dryRun ? 'deterministic' : 'off',
-      })
+      }),
     )
 
   return (
@@ -139,12 +123,9 @@ export function EvaluationDataOpsPanel() {
               <ClipboardList className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <h3 className="text-[15px] font-semibold text-foreground">
-                评测数据运维
-              </h3>
+              <h3 className="text-[15px] font-semibold text-foreground">评测数据运维</h3>
               <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
-                围绕选中的数据集维护固定测试集、生成困难样例并清理旧运行；导入
-                JSON 和 run 明细排查默认收起。
+                围绕选中的数据集维护固定测试集、生成困难样例并清理旧运行；导入 JSON 和 run 明细排查默认收起。
               </p>
             </div>
           </div>
@@ -162,11 +143,7 @@ export function EvaluationDataOpsPanel() {
           <Field label="样例上限">
             <Input
               value={String(maxItems)}
-              onChange={(event) =>
-                setMaxItems(
-                  Number.parseInt(event.target.value || '0', 10) || 100
-                )
-              }
+              onChange={(event) => setMaxItems(Number.parseInt(event.target.value || '0', 10) || 100)}
               className="h-9 rounded-lg border-border bg-card text-[13px]"
               inputMode="numeric"
             />
@@ -174,20 +151,12 @@ export function EvaluationDataOpsPanel() {
           <Field label="保留天数">
             <Input
               value={String(retentionDays)}
-              onChange={(event) =>
-                setRetentionDays(
-                  Number.parseInt(event.target.value || '0', 10) || 30
-                )
-              }
+              onChange={(event) => setRetentionDays(Number.parseInt(event.target.value || '0', 10) || 30)}
               className="h-9 rounded-lg border-border bg-card text-[13px]"
               inputMode="numeric"
             />
           </Field>
-          <Toggle
-            label="覆盖导入"
-            checked={overwrite}
-            onCheckedChange={setOverwrite}
-          />
+          <Toggle label="覆盖导入" checked={overwrite} onCheckedChange={setOverwrite} />
           <Toggle label="仅预演" checked={dryRun} onCheckedChange={setDryRun} />
         </div>
 
@@ -203,12 +172,9 @@ export function EvaluationDataOpsPanel() {
                     const payload = await evaluationApi.exportRegressionCases({
                       dataset_id: dataset,
                     })
-                    downloadJson(
-                      payload,
-                      `regression-cases.${dataset.slice(0, 8)}.json`
-                    )
+                    downloadJson(payload, `regression-cases.${dataset.slice(0, 8)}.json`)
                     return payload
-                  })
+                  }),
                 )
               }
             >
@@ -227,7 +193,7 @@ export function EvaluationDataOpsPanel() {
                     max_cases: maxItems,
                     max_created: maxItems,
                     dry_run: dryRun,
-                  })
+                  }),
                 )
               }
             />
@@ -247,7 +213,7 @@ export function EvaluationDataOpsPanel() {
                     max_delete: maxItems,
                     dry_run: dryRun,
                     dataset_id: dataset || undefined,
-                  })
+                  }),
                 )
               }
             >
@@ -281,7 +247,7 @@ export function EvaluationDataOpsPanel() {
                   evaluationApi.listKgSearchDiagnosticsRuns({
                     dataset_id: dataset,
                     limit: maxItems,
-                  })
+                  }),
                 )
               }
             />
@@ -295,7 +261,7 @@ export function EvaluationDataOpsPanel() {
                   evaluationApi.getKgQualityReport({
                     dataset_id: dataset,
                     document_limit: maxItems,
-                  })
+                  }),
                 )
               }
             />
@@ -322,9 +288,7 @@ export function EvaluationDataOpsPanel() {
         <summary className="flex cursor-pointer list-none items-start gap-2.5 [&::-webkit-details-marker]:hidden">
           <ChevronDown className="mt-0.5 h-4 w-4 shrink-0 -rotate-90 text-primary transition-transform group-open:rotate-0" />
           <div>
-            <h3 className="text-[14px] font-semibold text-foreground">
-              高级参数（可选）
-            </h3>
+            <h3 className="text-[14px] font-semibold text-foreground">高级参数（可选）</h3>
             <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
               仅在导入外部 cases 或定位历史 KG 诊断 run 时使用。
             </p>
@@ -346,9 +310,7 @@ export function EvaluationDataOpsPanel() {
               disabled={Boolean(busy) || !kgRunId.trim()}
               label="KG Run 详情"
               onClick={() =>
-                runAction('kg-run-detail', 'KG Run 详情', () =>
-                  evaluationApi.getKgSearchDiagnosticsRun(kgRunId.trim())
-                )
+                runAction('kg-run-detail', 'KG Run 详情', () => evaluationApi.getKgSearchDiagnosticsRun(kgRunId.trim()))
               }
             />
           </div>
@@ -379,7 +341,7 @@ export function EvaluationDataOpsPanel() {
                   overwrite,
                   max_items: maxItems,
                   items: parseJson(itemsJson) as RegressionCaseBundleV1['items'],
-                })
+                }),
               )
             }
           />
@@ -399,10 +361,7 @@ export function EvaluationDataOpsPanel() {
   )
 }
 
-function Field({
-  label,
-  children,
-}: Readonly<{ label: string; children: ReactNode }>) {
+function Field({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
     <div className="space-y-1">
       <Label className="text-[11px] font-medium text-muted-foreground">{label}</Label>
@@ -443,7 +402,7 @@ function ActionButton({
   busy: boolean
   className?: string
   disabled: boolean
-  icon: LucideIcon
+  icon: PlatformIcon
   label: string
   onClick: () => Promise<void>
 }>) {
@@ -452,7 +411,7 @@ function ActionButton({
       variant="outline"
       className={cn(
         'h-9 gap-1.5 rounded-lg border-border bg-card px-3 text-[12px] font-medium text-foreground/85 shadow-sm hover:bg-muted/50',
-        className
+        className,
       )}
       disabled={disabled}
       onClick={() => detachPromise(onClick())}
@@ -484,9 +443,7 @@ function ResultCard({
         <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/20">
           <FileJson className="h-3.5 w-3.5" />
         </span>
-        <h3 className="text-[14px] font-semibold text-foreground">
-          评测数据操作结果
-        </h3>
+        <h3 className="text-[14px] font-semibold text-foreground">评测数据操作结果</h3>
       </div>
 
       <div className="mt-3 rounded-lg border border-border/60 bg-muted/40 p-3">
@@ -496,9 +453,7 @@ function ResultCard({
               <FileJson className="h-4 w-4" />
             </span>
             <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-foreground">
-                {result.title}
-              </div>
+              <div className="text-[13px] font-semibold text-foreground">{result.title}</div>
               <p className="mt-1 text-[12px] text-muted-foreground">
                 接口已返回真实数据，摘要：{describePayload(result.payload)}。
               </p>

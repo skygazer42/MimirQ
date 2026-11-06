@@ -1,8 +1,35 @@
-
 from collections import defaultdict
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.preprocessing.simhash import hamming_distance64, simhash64
+
+
+class _SimhashItem(TypedDict):
+    path: str
+    text: str
+    size_bytes: int
+    mtime: int
+    simhash64: int
+
+
+class _SimhashPair(TypedDict):
+    a: str
+    b: str
+    distance: int
+
+
+class _SimhashMemberStats(TypedDict):
+    path: str
+    text_characters: int
+    size_bytes: int
+    mtime: int
+
+
+class _SimhashCluster(TypedDict):
+    members: list[str]
+    keep_candidate: str
+    review_candidates: list[str]
+    member_stats: list[_SimhashMemberStats]
 
 
 def build_simhash_review_candidates(
@@ -14,13 +41,13 @@ def build_simhash_review_candidates(
     pairs, groups = _group_simhash_items(items, hamming_threshold=int(hamming_threshold))
     clusters = _build_simhash_clusters(items, groups)
     affected_files = sum(len(cluster["members"]) for cluster in clusters)
-    clusters.sort(key=lambda row: (-len(row.get("members") or []), str(row.get("keep_candidate") or "")))
+    clusters.sort(key=lambda row: (-len(row["members"]), row["keep_candidate"]))
     return {
         "schema": "mimirq.pre_poc.simhash_review.v1",
         "summary": {
-            "clusters": int(len(clusters)),
-            "affected_files": int(affected_files),
-            "pairs": int(len(pairs)),
+            "clusters": len(clusters),
+            "affected_files": affected_files,
+            "pairs": len(pairs),
             "threshold": int(hamming_threshold),
         },
         "clusters": clusters,
@@ -28,8 +55,8 @@ def build_simhash_review_candidates(
     }
 
 
-def _normalize_simhash_items(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
+def _normalize_simhash_items(rows: list[dict[str, Any]]) -> list[_SimhashItem]:
+    items: list[_SimhashItem] = []
     for row in rows or []:
         if not isinstance(row, dict):
             continue
@@ -64,17 +91,17 @@ def _union_parents(parent: list[int], left: int, right: int) -> None:
 
 
 def _group_simhash_items(
-    items: list[dict[str, Any]],
+    items: list[_SimhashItem],
     *,
     hamming_threshold: int,
-) -> tuple[list[dict[str, Any]], dict[int, list[int]]]:
+) -> tuple[list[_SimhashPair], dict[int, list[int]]]:
     parent = list(range(len(items)))
-    pairs: list[dict[str, Any]] = []
+    pairs: list[_SimhashPair] = []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
             distance = hamming_distance64(items[i]["simhash64"], items[j]["simhash64"])
             if distance <= hamming_threshold:
-                pairs.append({"a": items[i]["path"], "b": items[j]["path"], "distance": int(distance)})
+                pairs.append({"a": items[i]["path"], "b": items[j]["path"], "distance": distance})
                 _union_parents(parent, i, j)
 
     groups: dict[int, list[int]] = defaultdict(list)
@@ -84,35 +111,35 @@ def _group_simhash_items(
 
 
 def _build_simhash_clusters(
-    items: list[dict[str, Any]],
+    items: list[_SimhashItem],
     groups: dict[int, list[int]],
-) -> list[dict[str, Any]]:
-    clusters: list[dict[str, Any]] = []
+) -> list[_SimhashCluster]:
+    clusters: list[_SimhashCluster] = []
     for member_indexes in groups.values():
         if len(member_indexes) < 2:
             continue
         members_sorted = sorted(
             member_indexes,
             key=lambda idx: (
-                -len(str(items[idx]["text"] or "")),
-                -int(items[idx]["size_bytes"] or 0),
-                -int(items[idx]["mtime"] or 0),
-                str(items[idx]["path"] or ""),
+                -len(items[idx]["text"]),
+                -items[idx]["size_bytes"],
+                -items[idx]["mtime"],
+                items[idx]["path"],
             ),
         )
         keep = items[members_sorted[0]]
-        members = [str(items[idx]["path"] or "") for idx in members_sorted]
+        members = [items[idx]["path"] for idx in members_sorted]
         clusters.append(
             {
                 "members": members,
-                "keep_candidate": str(keep["path"]),
+                "keep_candidate": keep["path"],
                 "review_candidates": members[1:],
                 "member_stats": [
                     {
-                        "path": str(items[idx]["path"]),
-                        "text_characters": len(str(items[idx]["text"] or "")),
-                        "size_bytes": int(items[idx]["size_bytes"] or 0),
-                        "mtime": int(items[idx]["mtime"] or 0),
+                        "path": items[idx]["path"],
+                        "text_characters": len(items[idx]["text"]),
+                        "size_bytes": items[idx]["size_bytes"],
+                        "mtime": items[idx]["mtime"],
                     }
                     for idx in members_sorted
                 ],

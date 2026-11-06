@@ -5,6 +5,7 @@ Provides:
 - hierarchical_chunk_markdown: Two-level paragraph/sentence chunking for Markdown
 - splitters: Text splitters (RecursiveCharacterTextSplitter, etc.)
 """
+
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
 from app.rag.chunking.utils.splitters import (
     EnhanceRecursiveCharacterTextSplitter,

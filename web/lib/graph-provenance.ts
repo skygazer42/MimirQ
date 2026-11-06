@@ -2,21 +2,17 @@ import { toTrimmedPrimitiveString } from './primitive-text'
 
 function escapeHtml(raw: string): string {
   return String(raw)
-    .replaceAll("&", '&amp;')
-    .replaceAll("<", '&lt;')
-    .replaceAll(">", '&gt;')
-    .replaceAll("\"", '&quot;')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;')
-}
-
-function coerceTrimmedString(value: unknown): string {
-  return toTrimmedPrimitiveString(value)
 }
 
 function shortId(value: unknown, opts?: { head?: number; tail?: number }): string {
   const head = Math.max(0, opts?.head ?? 8)
   const tail = Math.max(0, opts?.tail ?? 4)
-  const s = coerceTrimmedString(value)
+  const s = toTrimmedPrimitiveString(value)
   if (!s) return ''
   if (s.length <= head + tail + 3) return s
   return `${s.slice(0, head)}…${s.slice(-tail)}`
@@ -33,7 +29,7 @@ function formatConfidence(value: unknown): string {
 function line(label: string, value: string): string {
   if (!value) return ''
   return `<div><span style="opacity:.72">${escapeHtml(label)}:</span> <span style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace">${escapeHtml(
-    value
+    value,
   )}</span></div>`
 }
 
@@ -57,45 +53,40 @@ function inferSourceTarget(link: GraphLinkRecord): { source: string; target: str
   const source = linkEndpointValue(rawSource)
   const target = linkEndpointValue(rawTarget)
 
-  return { source: coerceTrimmedString(source), target: coerceTrimmedString(target) }
+  return { source: toTrimmedPrimitiveString(source), target: toTrimmedPrimitiveString(target) }
 }
 
 export function buildGraphLinkProvenanceTooltipHtml(link: unknown): string {
   if (!isRecord(link)) return ''
   const meta = isRecord(link.meta) ? link.meta : {}
 
-  const kind = coerceTrimmedString(meta.kind ?? link.kind)
-  const label = coerceTrimmedString(meta.predicate ?? link.predicate ?? link.label)
+  const kind = toTrimmedPrimitiveString(meta.kind ?? link.kind)
+  const label = toTrimmedPrimitiveString(meta.predicate ?? link.predicate ?? link.label)
   const conf = formatConfidence(meta.confidence ?? link.confidence ?? link.weight)
   const { source, target } = inferSourceTarget(link)
 
-  const docId = coerceTrimmedString(meta.document_id)
-  const chunkId = coerceTrimmedString(meta.chunk_id)
-  const eventId = coerceTrimmedString(meta.event_id)
+  const docId = toTrimmedPrimitiveString(meta.document_id)
+  const chunkId = toTrimmedPrimitiveString(meta.chunk_id)
+  const eventId = toTrimmedPrimitiveString(meta.event_id)
 
-  const page = coerceTrimmedString(meta.page ?? meta.page_number)
-  const chunkIndex = coerceTrimmedString(meta.chunk_index)
-  const sharedEvents = coerceTrimmedString(meta.shared_events)
-  const contentHash = coerceTrimmedString(meta.content_hash)
+  const page = toTrimmedPrimitiveString(meta.page ?? meta.page_number)
+  const chunkIndex = toTrimmedPrimitiveString(meta.chunk_index)
+  const sharedEvents = toTrimmedPrimitiveString(meta.shared_events)
+  const contentHash = toTrimmedPrimitiveString(meta.content_hash)
 
-  const title =
-    (() => {
+  const title = (() => {
     if (kind === 'entity_relation') {
-        return 'Relation (triple)';
+      return 'Relation (triple)'
+    } else if (kind === 'event_entity') {
+      return 'Evidence (event → entity)'
+    } else if (kind === 'entity_entity') {
+      return 'Co-occurrence (entity ↔ entity)'
+    } else if (kind) {
+      return `Link (${kind})`
+    } else {
+      return 'Link'
     }
-    else if (kind === 'event_entity') {
-            return 'Evidence (event → entity)';
-        }
-        else if (kind === 'entity_entity') {
-                return 'Co-occurrence (entity ↔ entity)';
-            }
-            else if (kind) {
-                    return `Link (${kind})`;
-                }
-                else {
-                    return 'Link';
-                }
-})()
+  })()
 
   const bodyLines = [
     label ? line('label', label) : '',
@@ -114,11 +105,11 @@ export function buildGraphLinkProvenanceTooltipHtml(link: unknown): string {
 
   if (!bodyLines) {
     return `<div style="font-size:12px;line-height:1.2"><div style="font-weight:600;margin-bottom:4px">${escapeHtml(
-      title
+      title,
     )}</div></div>`
   }
 
   return `<div style="font-size:12px;line-height:1.25;max-width:360px"><div style="font-weight:600;margin-bottom:4px">${escapeHtml(
-    title
+    title,
   )}</div>${bodyLines}</div>`
 }

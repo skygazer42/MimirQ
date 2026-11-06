@@ -98,6 +98,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Auth Policy
+         * @description Advertise usable local account entry points without exposing credentials.
+         */
+        get: operations["get_auth_policy_api_v1_auth_policy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/signup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Signup User
+         * @description Register an ordinary local account with viewer access in the default workspace.
+         */
+        post: operations["signup_user_api_v1_auth_signup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/register": {
         parameters: {
             query?: never;
@@ -225,15 +265,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Document Access
-         * @description Get document-level ACL settings (requires document read access).
-         */
+        /** Get Document Access */
         get: operations["get_document_access_api_v1_documents__document_id__access_get"];
-        /**
-         * Put Document Access
-         * @description Update document ACL settings using dataset or unassigned-document ownership policy.
-         */
+        /** Put Document Access */
         put: operations["put_document_access_api_v1_documents__document_id__access_put"];
         post?: never;
         delete?: never;
@@ -315,12 +349,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Patch Document User Metadata
-         * @description Batch patch `documents.metadata.user`.
-         *
-         *     For any documents the caller cannot write, they will be returned in `denied`.
-         */
+        /** Batch Patch Document User Metadata */
         post: operations["batch_patch_document_user_metadata_api_v1_documents_batch_metadata_post"];
         delete?: never;
         options?: never;
@@ -337,10 +366,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Retry Documents
-         * @description Batch retry/reprocess documents (best-effort per id).
-         */
+        /** Batch Retry Documents */
         post: operations["batch_retry_documents_api_v1_documents_batch_retry_post"];
         delete?: never;
         options?: never;
@@ -357,14 +383,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Reingest Documents
-         * @description Batch re-ingest documents by (optionally) patching pipeline overrides and forcing a retry.
-         *
-         *     Notes:
-         *     - This is best-effort per id: failures are returned in `not_found/denied/conflicts`.
-         *     - Intended for generating new pipeline_hash versions and/or rebuilding indexes.
-         */
+        /** Batch Reingest Documents */
         post: operations["batch_reingest_documents_api_v1_documents_batch_reingest_post"];
         delete?: never;
         options?: never;
@@ -381,10 +400,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Update Document Access
-         * @description Batch update document ACL (best-effort per id).
-         */
+        /** Batch Update Document Access */
         post: operations["batch_update_document_access_api_v1_documents_batch_access_post"];
         delete?: never;
         options?: never;
@@ -401,15 +417,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Move Documents
-         * @description Batch move documents between datasets (best-effort).
-         *
-         *     Notes:
-         *     - Disallows moving MinIO-backed documents or documents with MinIO image assets (`metadata.img_ids`)
-         *       because dataset_id is part of the object/key namespace.
-         *     - Disallows moving documents that are pending/processing.
-         */
+        /** Batch Move Documents */
         post: operations["batch_move_documents_api_v1_documents_batch_move_post"];
         delete?: never;
         options?: never;
@@ -426,10 +434,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Disable Documents
-         * @description Batch disable documents (best-effort).
-         */
+        /** Batch Disable Documents */
         post: operations["batch_disable_documents_api_v1_documents_batch_disable_post"];
         delete?: never;
         options?: never;
@@ -446,10 +451,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Enable Documents
-         * @description Batch enable documents (best-effort).
-         */
+        /** Batch Enable Documents */
         post: operations["batch_enable_documents_api_v1_documents_batch_enable_post"];
         delete?: never;
         options?: never;
@@ -466,10 +468,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Archive Documents
-         * @description Batch archive documents (best-effort).
-         */
+        /** Batch Archive Documents */
         post: operations["batch_archive_documents_api_v1_documents_batch_archive_post"];
         delete?: never;
         options?: never;
@@ -486,10 +485,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Unarchive Documents
-         * @description Batch unarchive documents (best-effort).
-         */
+        /** Batch Unarchive Documents */
         post: operations["batch_unarchive_documents_api_v1_documents_batch_unarchive_post"];
         delete?: never;
         options?: never;
@@ -506,10 +502,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Batch Delete Documents
-         * @description Batch delete documents (best-effort per id).
-         */
+        /** Batch Delete Documents */
         post: operations["batch_delete_documents_api_v1_documents_batch_delete_post"];
         delete?: never;
         options?: never;
@@ -648,12 +641,7 @@ export interface paths {
          */
         get: operations["list_document_chunks_api_v1_documents__document_id__chunks_get"];
         put?: never;
-        /**
-         * Create Document Chunk
-         * @description Create a new chunk for a document (appends to the active pipeline version).
-         *
-         *     This is intended for post-ingest manual chunk editing. It does not re-parse the source file.
-         */
+        /** Create Document Chunk */
         post: operations["create_document_chunk_api_v1_documents__document_id__chunks_post"];
         delete?: never;
         options?: never;
@@ -699,17 +687,11 @@ export interface paths {
         get: operations["get_document_chunk_api_v1_documents__document_id__chunks__chunk_id__get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Document Chunk
-         * @description Delete a chunk and update its indexes (vector + BM25) best-effort.
-         */
+        /** Delete Document Chunk */
         delete: operations["delete_document_chunk_api_v1_documents__document_id__chunks__chunk_id__delete"];
         options?: never;
         head?: never;
-        /**
-         * Patch Document Chunk
-         * @description Patch a chunk and update its indexes (vector + BM25) best-effort.
-         */
+        /** Patch Document Chunk */
         patch: operations["patch_document_chunk_api_v1_documents__document_id__chunks__chunk_id__patch"];
         trace?: never;
     };
@@ -818,10 +800,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Create Document With Manual Chunks
-         * @description Create a document from frontend custom chunks.
-         */
+        /** Create Document With Manual Chunks */
         post: operations["create_document_with_manual_chunks_api_v1_documents_manual_post"];
         delete?: never;
         options?: never;
@@ -866,10 +845,7 @@ export interface paths {
         get: operations["get_document_api_v1_documents__document_id__get"];
         put?: never;
         post?: never;
-        /**
-         * Delete Document
-         * @description Delete document.
-         */
+        /** Delete Document */
         delete: operations["delete_document_api_v1_documents__document_id__delete"];
         options?: never;
         head?: never;
@@ -905,28 +881,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Document Lifecycle Metadata
-         * @description Get document lifecycle governance metadata.
-         *
-         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
-         */
+        /** Get Document Lifecycle Metadata */
         get: operations["get_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_get"];
         put?: never;
         post?: never;
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Patch Document Lifecycle Metadata
-         * @description Patch document lifecycle governance metadata (owner/review_due/authority/supersedes).
-         *
-         *     Notes:
-         *     - This does not mutate `documents.metadata.*`; it updates first-class columns.
-         *     - Audit log is best-effort and PII-minimal by construction.
-         *
-         *     RBAC: dataset editor/admin (dataset writable) when the document belongs to a dataset.
-         */
+        /** Patch Document Lifecycle Metadata */
         patch: operations["patch_document_lifecycle_metadata_api_v1_documents__document_id__lifecycle_metadata_patch"];
         trace?: never;
     };
@@ -939,12 +901,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Generate Document Qa
-         * @description Generate (or extract) FAQ-style Q&A pairs for a document and index them as extra chunks.
-         *
-         *     Generated chunks are tagged with `file_type=qa` in chunk metadata.
-         */
+        /** Generate Document Qa */
         post: operations["generate_document_qa_api_v1_documents__document_id__qa_generate_post"];
         delete?: never;
         options?: never;
@@ -965,10 +922,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Patch Document Pipeline
-         * @description Patch `documents.metadata.pipeline` for document-level pipeline overrides.
-         */
+        /** Patch Document Pipeline */
         patch: operations["patch_document_pipeline_api_v1_documents__document_id__pipeline_patch"];
         trace?: never;
     };
@@ -985,10 +939,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /**
-         * Patch Document User Metadata
-         * @description Patch `documents.metadata.user` for user-editable document metadata.
-         */
+        /** Patch Document User Metadata */
         patch: operations["patch_document_user_metadata_api_v1_documents__document_id__metadata_patch"];
         trace?: never;
     };
@@ -999,10 +950,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Document Status
-         * @description Get document processing status (for polling).
-         */
+        /** Get Document Status */
         get: operations["get_document_status_api_v1_documents__document_id__status_get"];
         put?: never;
         post?: never;
@@ -1021,14 +969,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Cancel Document Processing
-         * @description Cancel an in-progress document processing task.
-         *
-         *     Notes:
-         *     - When TASK_QUEUE_ENABLED=true, this will best-effort abort the arq job.
-         *     - When queue is disabled, the in-process/background worker cooperatively checks the cancelled status.
-         */
+        /** Cancel Document Processing */
         post: operations["cancel_document_processing_api_v1_documents__document_id__cancel_post"];
         delete?: never;
         options?: never;
@@ -1045,14 +986,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Retry Document Processing
-         * @description Retry a failed/cancelled document processing task.
-         *
-         *     Notes:
-         *     - Existing chunks and indexes are cleaned by the accepted worker before reprocessing.
-         *     - Use `force=true` to allow retrying completed documents.
-         */
+        /** Retry Document Processing */
         post: operations["retry_document_processing_api_v1_documents__document_id__retry_post"];
         delete?: never;
         options?: never;
@@ -1244,10 +1178,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Disable Document Chunk
-         * @description Disable a chunk (exclude it from retrieval/indexing).
-         */
+        /** Disable Document Chunk */
         post: operations["disable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__disable_post"];
         delete?: never;
         options?: never;
@@ -1264,10 +1195,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Enable Document Chunk
-         * @description Enable a previously-disabled chunk (requires re-embed to restore vector index).
-         */
+        /** Enable Document Chunk */
         post: operations["enable_document_chunk_api_v1_documents__document_id__chunks__chunk_id__enable_post"];
         delete?: never;
         options?: never;
@@ -1284,10 +1212,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Reembed Document Chunks
-         * @description Re-embed selected chunks (vector + BM25) best-effort.
-         */
+        /** Reembed Document Chunks */
         post: operations["reembed_document_chunks_api_v1_documents__document_id__chunks_reembed_post"];
         delete?: never;
         options?: never;
@@ -2994,9 +2919,9 @@ export interface paths {
         put?: never;
         /**
          * Import Manual Kg
-         * @description Import a manually governed KG payload into MimirQ.
+         * @description Import a manually governed KG payload into Ragvia.
          *
-         *     Domain-specific extraction/rule building should happen outside MimirQ and
+         *     Domain-specific extraction/rule building should happen outside Ragvia and
          *     produce this stable import format.
          */
         post: operations["import_manual_kg_api_v1_kg_imports_post"];
@@ -3897,74 +3822,6 @@ export interface paths {
         put?: never;
         /** Verify Evidence Capsule Payload */
         post: operations["verify_evidence_capsule_payload_api_v1_evidence_capsules_verify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Ltr Models */
-        get: operations["list_ltr_models_api_v1_ltr_models_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Register Ltr Model */
-        post: operations["register_ltr_model_api_v1_ltr_models_register_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/activate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Activate Ltr Model */
-        post: operations["activate_ltr_model_api_v1_ltr_models_activate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/ltr/models/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Rollback Ltr Model */
-        post: operations["rollback_ltr_model_api_v1_ltr_models_rollback_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5536,10 +5393,9 @@ export interface paths {
          * @description Extract keywords (for governance/annotation/classification).
          *
          *     Supported providers:
-         *     - provider=auto (prefer HanLP, fallback to jieba)
+         *     - provider=auto (jieba)
          *     - provider=jieba / jieba_tfidf (default)
          *     - provider=jieba_textrank
-         *     - provider=hanlp (optional dependency; requires `hanlp` and `HANLP_TOKENIZER_MODEL`)
          *     - provider=simple (lightweight regex tokenization + term frequency)
          */
         post: operations["extract_keywords_api_v1_pipeline_extract_keywords_post"];
@@ -5687,18 +5543,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Connector Runs
-         * @description List connector runs (requires dataset write permission for each returned run's dataset).
-         */
+        /** List Connector Runs */
         get: operations["list_connector_runs_api_v1_connectors_runs_get"];
         put?: never;
-        /**
-         * Create Connector Run
-         * @description Create a connector run.
-         *
-         *     Requires dataset write permission.
-         */
+        /** Create Connector Run */
         post: operations["create_connector_run_api_v1_connectors_runs_post"];
         delete?: never;
         options?: never;
@@ -5713,10 +5561,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * Get Connector Run
-         * @description Get connector run detail (requires dataset write permission).
-         */
+        /** Get Connector Run */
         get: operations["get_connector_run_api_v1_connectors_runs__run_id__get"];
         put?: never;
         post?: never;
@@ -5735,10 +5580,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Retry Failed Connector Run
-         * @description Create a new connector run that retries only the failed URLs (best-effort).
-         */
+        /** Retry Failed Connector Run */
         post: operations["retry_failed_connector_run_api_v1_connectors_runs__run_id__retry_failed_post"];
         delete?: never;
         options?: never;
@@ -5755,10 +5597,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Resume Connector Run
-         * @description Create a new connector run that resumes from where the previous run stopped (best-effort).
-         */
+        /** Resume Connector Run */
         post: operations["resume_connector_run_api_v1_connectors_runs__run_id__resume_post"];
         delete?: never;
         options?: never;
@@ -5775,10 +5614,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Cancel Connector Run
-         * @description Cancel a running connector run (best-effort).
-         */
+        /** Cancel Connector Run */
         post: operations["cancel_connector_run_api_v1_connectors_runs__run_id__cancel_post"];
         delete?: never;
         options?: never;
@@ -5793,19 +5629,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Connector Configs
-         * @description List saved connector configurations.
-         *
-         *     Note: configs may contain secrets (even if encrypted); we enforce dataset write permission
-         *     semantics similar to connector runs to avoid leaking URLs/auth details to readers.
-         */
+        /** List Connector Configs */
         get: operations["list_connector_configs_api_v1_connectors_configs_get"];
         put?: never;
-        /**
-         * Create Connector Config
-         * @description Create a saved connector configuration.
-         */
+        /** Create Connector Config */
         post: operations["create_connector_config_api_v1_connectors_configs_post"];
         delete?: never;
         options?: never;
@@ -5821,16 +5648,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /**
-         * Update Connector Config
-         * @description Update a saved connector configuration (best-effort).
-         */
+        /** Update Connector Config */
         put: operations["update_connector_config_api_v1_connectors_configs__config_id__put"];
         post?: never;
-        /**
-         * Delete Connector Config
-         * @description Delete a saved connector configuration.
-         */
+        /** Delete Connector Config */
         delete: operations["delete_connector_config_api_v1_connectors_configs__config_id__delete"];
         options?: never;
         head?: never;
@@ -5846,10 +5667,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Run Connector Config
-         * @description Create a connector run from a saved connector configuration.
-         */
+        /** Run Connector Config */
         post: operations["run_connector_config_api_v1_connectors_configs__config_id__run_post"];
         delete?: never;
         options?: never;
@@ -5866,14 +5684,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Reconcile Connector Config
-         * @description Reconcile connector-managed documents for a saved config using the last known local source set.
-         *
-         *     Single-node scope:
-         *     - dry-run: show stale / disabled / missing refs
-         *     - apply: disable stale docs and re-enable matching disabled docs
-         */
+        /** Reconcile Connector Config */
         post: operations["reconcile_connector_config_api_v1_connectors_configs__config_id__reconcile_post"];
         delete?: never;
         options?: never;
@@ -5892,9 +5703,7 @@ export interface paths {
         put?: never;
         /**
          * Scheduled Tick
-         * @description Evaluate saved connector schedules and enqueue due runs (best-effort).
-         *
-         *     This endpoint is intentionally simple and deterministic; it is a "tick hook" for an external scheduler.
+         * @description Evaluate saved connector schedules and enqueue due runs.
          */
         post: operations["scheduled_tick_api_v1_connectors_scheduled_tick_post"];
         delete?: never;
@@ -6038,7 +5847,7 @@ export interface paths {
         put?: never;
         /**
          * Ingest Conversation History
-         * @description Import externally generated chat turns into the standard MimirQ history.
+         * @description Import externally generated chat turns into the standard Ragvia history.
          */
         post: operations["ingest_conversation_history_api_v1_integrations_conversations_ingest_post"];
         delete?: never;
@@ -6138,53 +5947,6 @@ export interface paths {
          *     document section structure for PageIndex-style explainability.
          */
         post: operations["tree_search_preview_api_v1_rag_tree_search_preview_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/rag/image-index": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Index Image Embeddings
-         * @description Build/update the CLIP image embedding index for a dataset (best-effort).
-         *
-         *     Security:
-         *     - Requires dataset write permission (indexing is a compute-heavy admin action).
-         */
-        post: operations["index_image_embeddings_api_v1_rag_image_index_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/rag/image-search-preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Image Search Preview
-         * @description Search the image embedding index using CLIP (text -> image space).
-         *
-         *     Notes:
-         *     - Dataset-scoped only.
-         *     - Returns citation-like chunk payloads (including img_id/img_url) for UI consumers.
-         */
-        post: operations["image_search_preview_api_v1_rag_image_search_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7600,6 +7362,19 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** AuthPolicy */
+        AuthPolicy: {
+            /** Initialized */
+            initialized: boolean;
+            /** Registration Enabled */
+            registration_enabled: boolean;
+            /** Bootstrap Enabled */
+            bootstrap_enabled: boolean;
+            /** Bootstrap Token Required */
+            bootstrap_token_required: boolean;
+            /** Password Min Length */
+            password_min_length: number;
+        };
         /** AuthResponse */
         AuthResponse: {
             user: components["schemas"]["UserPublic"];
@@ -7650,7 +7425,7 @@ export interface components {
              * Providers
              * @description Optional explicit provider list. When omitted, legacy enable_* switches decide providers.
              */
-            providers?: ("cpu" | "llm" | "gliner" | "keyword" | "entity" | "regex" | "pii" | "secret" | "sensitive")[] | null;
+            providers?: ("cpu" | "llm" | "keyword" | "entity" | "regex" | "pii" | "secret" | "sensitive")[] | null;
             /**
              * Enable Llm
              * @description Use configured LLM first for document_focus mode.
@@ -8040,19 +7815,6 @@ export interface components {
             governance_common_lines_min_docs?: number | null;
             /** Governance Common Lines Min Ratio */
             governance_common_lines_min_ratio?: number | null;
-        };
-        /** Body_register_ltr_model_api_v1_ltr_models_register_post */
-        Body_register_ltr_model_api_v1_ltr_models_register_post: {
-            /**
-             * Model File
-             * @description XGBoost model bytes (JSON)
-             */
-            model_file: string;
-            /**
-             * Manifest File
-             * @description LTR manifest JSON (validated)
-             */
-            manifest_file: string;
         };
         /** Body_upload_document_api_v1_documents_upload_post */
         Body_upload_document_api_v1_documents_upload_post: {
@@ -8486,7 +8248,7 @@ export interface components {
             /** Sparse Retrieval Enabled */
             sparse_retrieval_enabled?: boolean | null;
             /** Sparse Retrieval Provider */
-            sparse_retrieval_provider?: ("deterministic" | "splade") | null;
+            sparse_retrieval_provider?: "deterministic" | null;
             /**
              * Enable Weight Rerank
              * @default true
@@ -14254,7 +14016,7 @@ export interface components {
             governance_extract_keywords?: boolean | null;
             /**
              * Governance Keywords Provider
-             * @description Keyword provider: auto / jieba / jieba_textrank / hanlp / simple
+             * @description Keyword provider: auto / jieba / jieba_textrank / simple
              */
             governance_keywords_provider?: string | null;
             /**
@@ -15685,7 +15447,8 @@ export interface components {
             query: string;
             /**
              * Query Image
-             * @description Optional explicit image query routed to CLIP image retrieval
+             * @deprecated
+             * @description Retired image-vector query; nonempty values are rejected
              */
             query_image?: string | null;
             /** History */
@@ -15982,7 +15745,7 @@ export interface components {
         };
         /**
          * ExternalConversationIngestRequest
-         * @description Import conversation turns from any external chat system into MimirQ history.
+         * @description Import conversation turns from any external chat system into Ragvia history.
          */
         ExternalConversationIngestRequest: {
             /**
@@ -15994,7 +15757,7 @@ export interface components {
             source_conversation_id: string;
             /**
              * Conversation Id
-             * @description Append to an existing MimirQ conversation
+             * @description Append to an existing Ragvia conversation
              */
             conversation_id?: string | null;
             /** Title */
@@ -16836,50 +16599,6 @@ export interface components {
             /** Content */
             content: string;
         };
-        /** ImageIndexRequest */
-        ImageIndexRequest: {
-            /**
-             * Dataset Id
-             * Format: uuid
-             */
-            dataset_id: string;
-            /**
-             * Max Chunks
-             * @default 3000
-             */
-            max_chunks: number;
-            /**
-             * Upsert
-             * @description Upsert into the image embedding index (overwrite existing vectors)
-             * @default true
-             */
-            upsert: boolean;
-        };
-        /** ImageIndexResponse */
-        ImageIndexResponse: {
-            /**
-             * Indexed
-             * @default 0
-             */
-            indexed: number;
-            /**
-             * Skipped
-             * @default 0
-             */
-            skipped: number;
-            /**
-             * Failed
-             * @default 0
-             */
-            failed: number;
-            /**
-             * Dim
-             * @default 0
-             */
-            dim: number;
-            /** Errors */
-            errors?: string[];
-        };
         /** ImageInfo */
         ImageInfo: {
             /** Id */
@@ -16888,38 +16607,6 @@ export interface components {
             url: string;
             /** Filename */
             filename: string;
-        };
-        /** ImageSearchRequest */
-        ImageSearchRequest: {
-            /**
-             * Dataset Id
-             * Format: uuid
-             */
-            dataset_id: string;
-            /** Query */
-            query: string;
-            /**
-             * Top K
-             * @default 8
-             */
-            top_k: number;
-            /**
-             * Auto Index
-             * @description Best-effort: index images for the dataset before searching
-             * @default false
-             */
-            auto_index: boolean;
-        };
-        /** ImageSearchResponse */
-        ImageSearchResponse: {
-            /** Citations */
-            citations?: {
-                [key: string]: unknown;
-            }[];
-            /** Metrics */
-            metrics?: {
-                [key: string]: unknown;
-            };
         };
         /** IndexAuditReconcileEnqueueRequest */
         IndexAuditReconcileEnqueueRequest: {
@@ -18411,7 +18098,7 @@ export interface components {
          * @description Manual KG import payload.
          *
          *     The payload is intentionally domain-neutral. Business-specific extraction
-         *     should happen outside MimirQ; this endpoint only imports governed graph rows.
+         *     should happen outside Ragvia; this endpoint only imports governed graph rows.
          */
         KGManualImportRequest: {
             /**
@@ -19093,68 +18780,6 @@ export interface components {
              */
             max_retries: number;
         };
-        /** LTRModelActivateRequest */
-        LTRModelActivateRequest: {
-            /** Model Id */
-            model_id: string;
-        };
-        /** LTRModelActivateResponse */
-        LTRModelActivateResponse: {
-            /** Active */
-            active: {
-                [key: string]: unknown;
-            };
-        };
-        /** LTRModelInfo */
-        LTRModelInfo: {
-            /** Model Id */
-            model_id: string;
-            /** Model Sha256 */
-            model_sha256: string;
-            /**
-             * Size Bytes
-             * @default 0
-             */
-            size_bytes: number;
-            /**
-             * Created At
-             * @default
-             */
-            created_at: string;
-            /** Created By */
-            created_by?: string | null;
-            /**
-             * Feature Spec Version
-             * @default 1
-             */
-            feature_spec_version: number;
-            /**
-             * Feature Schema
-             * @default
-             */
-            feature_schema: string;
-            /** Feature Names */
-            feature_names?: string[];
-            /**
-             * Has Manifest
-             * @default true
-             */
-            has_manifest: boolean;
-            /**
-             * Active
-             * @default false
-             */
-            active: boolean;
-        };
-        /** LTRModelListResponse */
-        LTRModelListResponse: {
-            /** Items */
-            items?: components["schemas"]["LTRModelInfo"][];
-        };
-        /** LTRModelRegisterResponse */
-        LTRModelRegisterResponse: {
-            model: components["schemas"]["LTRModelInfo"];
-        };
         /**
          * LangGraphConfig
          * @description LangGraph execution mode config.
@@ -19516,11 +19141,8 @@ export interface components {
             role: string;
             /** Content */
             content: string;
-            /**
-             * Citations
-             * @default []
-             */
-            citations: components["schemas"]["Citation"][];
+            /** Citations */
+            citations?: components["schemas"]["Citation"][];
             /** Message Metadata */
             message_metadata?: {
                 [key: string]: unknown;
@@ -21344,7 +20966,7 @@ export interface components {
         };
         /**
          * RAGConfig
-         * @description RAG parameter config.
+         * @description Read-compatible RAG config; update requests separately reject retired selections.
          */
         RAGConfig: {
             /**
@@ -22334,7 +21956,7 @@ export interface components {
             sparse_retrieval_enabled?: boolean | null;
             /**
              * Sparse Retrieval Provider
-             * @description Sparse provider: deterministic | splade
+             * @description Sparse provider: deterministic (test implementation)
              */
             sparse_retrieval_provider?: string | null;
             /**
@@ -22399,7 +22021,7 @@ export interface components {
             enable_reranker?: boolean;
             /**
              * Reranker Provider
-             * @description Reranker provider: llm | pc | ltr | colbert | cross_encoder | none
+             * @description Reranker provider: llm | pc | ltr | colbert | openai | dashscope | none
              */
             reranker_provider?: string;
             /**
@@ -22834,7 +22456,7 @@ export interface components {
             sparse_retrieval_enabled?: boolean | null;
             /**
              * Sparse Retrieval Provider
-             * @description Sparse provider: deterministic | splade
+             * @description Sparse provider: deterministic (test implementation)
              */
             sparse_retrieval_provider?: string | null;
             /**
@@ -22899,7 +22521,7 @@ export interface components {
             enable_reranker?: boolean;
             /**
              * Reranker Provider
-             * @description Reranker provider: llm | pc | ltr | colbert | cross_encoder | none
+             * @description Reranker provider: llm | pc | ltr | colbert | openai | dashscope | none
              */
             reranker_provider?: string;
             /**
@@ -23490,7 +23112,8 @@ export interface components {
             query: string;
             /**
              * Query Image
-             * @description Optional explicit image query routed to CLIP image retrieval
+             * @deprecated
+             * @description Retired image-vector query; nonempty values are rejected
              */
             query_image?: string | null;
             /** History */
@@ -23591,6 +23214,21 @@ export interface components {
             return_to: string;
             /** Bridge Code */
             bridge_code?: string | null;
+        };
+        /**
+         * SignupRequest
+         * @description Ordinary signup never accepts caller-selected roles or tenant IDs.
+         */
+        SignupRequest: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Username */
+            username: string;
+            /** Password */
+            password: string;
         };
         /** SimilarityCalculateResponse */
         SimilarityCalculateResponse: {
@@ -23875,7 +23513,7 @@ export interface components {
             minio: components["schemas"]["MinioConfig"];
             rag: components["schemas"]["RAGConfig"];
             cache: components["schemas"]["CacheConfig"];
-            url_ingest: components["schemas"]["UrlIngestConfig"];
+            url_ingest: components["schemas"]["UrlIngestStatus"];
             governance: components["schemas"]["GovernanceConfig"];
             mineru: components["schemas"]["MinerUConfig"];
             etl4llm: components["schemas"]["Etl4LlmConfig"];
@@ -24241,6 +23879,10 @@ export interface components {
             tenant_id: string;
             /** User Id */
             user_id?: string | null;
+            /** Username */
+            username?: string | null;
+            /** Email */
+            email?: string | null;
             /**
              * Role
              * @description owner|admin|auditor|editor|dataset_operator|viewer
@@ -24591,7 +24233,6 @@ export interface components {
             minio?: components["schemas"]["MinioConfig"] | null;
             rag?: components["schemas"]["RAGConfig"] | null;
             cache?: components["schemas"]["CacheConfig"] | null;
-            url_ingest?: components["schemas"]["UrlIngestConfig"] | null;
             governance?: components["schemas"]["GovernanceConfig"] | null;
             mineru?: components["schemas"]["MinerUConfig"] | null;
             etl4llm?: components["schemas"]["Etl4LlmConfig"] | null;
@@ -24608,35 +24249,15 @@ export interface components {
             dify_external_knowledge?: components["schemas"]["DifyExternalKnowledgeConfig"] | null;
         };
         /**
-         * UrlIngestConfig
-         * @description URL ingestion config (server-side fetch; connectors).
+         * UrlIngestStatus
+         * @description Read-only URL import availability for the ingestion workbench.
          */
-        UrlIngestConfig: {
+        UrlIngestStatus: {
             /**
              * Enabled
              * @default false
              */
             enabled: boolean;
-            /**
-             * Max Bytes
-             * @default 50000000
-             */
-            max_bytes: number;
-            /**
-             * Timeout Sec
-             * @default 30
-             */
-            timeout_sec: number;
-            /**
-             * Allow Private Ips
-             * @default false
-             */
-            allow_private_ips: boolean;
-            /**
-             * Follow Redirects
-             * @default false
-             */
-            follow_redirects: boolean;
         };
         /**
          * UrlUploadRequest
@@ -24993,6 +24614,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MetaDetailsResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_auth_policy_api_v1_auth_policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthPolicy"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Range Not Satisfiable */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    signup_user_api_v1_auth_signup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignupRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
                 };
             };
             /** @description Bad Request */
@@ -38821,7 +38565,7 @@ export interface operations {
                 extract_relations?: boolean | null;
                 /** @description Extract Skill/SOP entities (override settings) */
                 extract_skills?: boolean | null;
-                /** @description Extraction backend override: llm, gliner, hybrid, heuristic */
+                /** @description Extraction backend override: llm, heuristic */
                 extraction_backend?: string | null;
                 prompt_template_id?: string | null;
                 prompt_template_key?: string | null;
@@ -41044,286 +40788,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvidenceCapsuleVerifyResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_ltr_models_api_v1_ltr_models_get: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelListResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    register_ltr_model_api_v1_ltr_models_register_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "multipart/form-data": components["schemas"]["Body_register_ltr_model_api_v1_ltr_models_register_post"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelRegisterResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    activate_ltr_model_api_v1_ltr_models_activate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LTRModelActivateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelActivateResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    rollback_ltr_model_api_v1_ltr_models_rollback_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LTRModelActivateResponse"];
                 };
             };
             /** @description Bad Request */
@@ -48568,7 +48032,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Bad Request */
@@ -48636,7 +48102,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": {
+                        [key: string]: number;
+                    };
                 };
             };
             /** @description Bad Request */
@@ -49506,164 +48974,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TreeSearchPreviewResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    index_image_embeddings_api_v1_rag_image_index_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImageIndexRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImageIndexResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    image_search_preview_api_v1_rag_image_search_preview_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImageSearchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImageSearchResponse"];
                 };
             };
             /** @description Bad Request */

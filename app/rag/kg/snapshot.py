@@ -12,13 +12,18 @@ Note:
 
 import hashlib
 import json
-from typing import Any
+from typing import Any, TypedDict
 
 KG_SNAPSHOT_SCHEMA_V1 = "mimirq.kg_snapshot.v1"
 KG_SNAPSHOT_SCHEMA_V2 = "mimirq.kg_snapshot.v2"
 KG_SNAPSHOT_DIFF_SCHEMA_V1 = "mimirq.kg_snapshot_diff.v1"
 KG_SNAPSHOT_DIFF_SCHEMA_V2 = "mimirq.kg_snapshot_diff.v2"
 KG_SNAPSHOT_DIFF_SAMPLE_LIMIT = 200
+
+
+class _EntityTypeDelta(TypedDict):
+    type: str
+    delta: int
 
 
 def _to_int(v: Any) -> int:
@@ -175,15 +180,15 @@ def diff_kg_snapshots(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     b_types = _type_counts(b0)
 
     all_types = sorted(set(a_types.keys()) | set(b_types.keys()))
-    type_deltas: list[dict[str, Any]] = []
+    type_deltas: list[_EntityTypeDelta] = []
     for typ in all_types:
-        d = int(b_types.get(typ, 0) or 0) - int(a_types.get(typ, 0) or 0)
+        d = b_types.get(typ, 0) - a_types.get(typ, 0)
         if d == 0:
             continue
-        type_deltas.append({"type": typ, "delta": int(d)})
+        type_deltas.append({"type": typ, "delta": d})
 
     # Deterministic ordering: larger magnitude first, then type.
-    type_deltas.sort(key=lambda x: (-abs(int(x.get("delta") or 0)), str(x.get("type") or "")))
+    type_deltas.sort(key=lambda x: (-abs(x["delta"]), x["type"]))
     out["entity_types_delta"] = type_deltas
     if has_detail_diff:
         _append_exact_detail_diff(out, a0, b0)

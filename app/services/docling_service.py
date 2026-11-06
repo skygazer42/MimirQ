@@ -62,29 +62,19 @@ class DoclingServiceParser:
         ocr_enabled: bool | None = None,
         session: requests.Session | None = None,
     ) -> None:
-        self.enabled = bool(getattr(settings, "DOCLING_ENABLED", False))
+        self.enabled = bool(settings.DOCLING_ENABLED)
         self.api_url = normalize_docling_base_url(
-            api_url if api_url is not None else str(getattr(settings, "DOCLING_API_URL", "") or "")
+            api_url if api_url is not None else str(settings.DOCLING_API_URL or "")
         )
-        self.api_key = (
-            api_key if api_key is not None else str(getattr(settings, "DOCLING_API_KEY", "") or "")
-        ).strip()
+        self.api_key = (api_key if api_key is not None else str(settings.DOCLING_API_KEY or "")).strip()
         self.request_timeout_sec = float(
-            request_timeout_sec
-            if request_timeout_sec is not None
-            else (getattr(settings, "DOCLING_REQUEST_TIMEOUT_SEC", 600) or 600)
+            request_timeout_sec if request_timeout_sec is not None else (settings.DOCLING_REQUEST_TIMEOUT_SEC or 600)
         )
         self.health_timeout_sec = float(
-            health_timeout_sec
-            if health_timeout_sec is not None
-            else (getattr(settings, "DOCLING_HEALTH_TIMEOUT_SEC", 5) or 5)
+            health_timeout_sec if health_timeout_sec is not None else (settings.DOCLING_HEALTH_TIMEOUT_SEC or 5)
         )
-        self.trust_env = bool(
-            getattr(settings, "DOCLING_HTTP_TRUST_ENV", False) if trust_env is None else trust_env
-        )
-        self.ocr_enabled = bool(
-            getattr(settings, "DOCLING_OCR_ENABLED", True) if ocr_enabled is None else ocr_enabled
-        )
+        self.trust_env = bool(settings.DOCLING_HTTP_TRUST_ENV if trust_env is None else trust_env)
+        self.ocr_enabled = bool(settings.DOCLING_OCR_ENABLED if ocr_enabled is None else ocr_enabled)
         self._session = session or requests.Session()
         if session is None:
             self._session.trust_env = self.trust_env

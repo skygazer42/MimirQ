@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.services.rag_metrics_dashboard import RagTraceBundle
@@ -12,7 +11,7 @@ def _first_event(records: list[dict[str, Any]], event: str) -> dict[str, Any] | 
 
 
 def build_phoenix_trace_payload(bundle: RagTraceBundle) -> dict[str, Any]:
-    records = list(getattr(bundle, "records", []) or [])
+    records = list(bundle.records or [])
     trace = _first_event(records, "rag_trace") or {}
     done = _first_event(records, "rag_done") or {}
     retrieval = trace.get("retrieval") if isinstance(trace.get("retrieval"), dict) else {}
@@ -51,7 +50,7 @@ def build_phoenix_trace_payload(bundle: RagTraceBundle) -> dict[str, Any]:
 
     return {
         "schema": "mimirq.phoenix_adapter.v1",
-        "request_id": str(getattr(bundle, "request_id", "") or ""),
+        "request_id": str(bundle.request_id or ""),
         "spans": spans,
     }
 

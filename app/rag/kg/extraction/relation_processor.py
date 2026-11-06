@@ -7,12 +7,12 @@ Key goals:
 - Return a compact, provenance-friendly payload to be persisted in `kg_relations`.
 """
 
-import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from app.rag.kg.extraction.evidence import clamp_confidence
 from app.rag.kg.utils import get_logger
 from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.models import LLMMessage, LLMRole
@@ -89,16 +89,6 @@ def normalize_predicate(value: str) -> str:
     return mapped or key or "unknown"
 
 
-def _clamp01(value: object, *, default: float) -> float:
-    try:
-        f = float(value)  # type: ignore[arg-type]
-    except Exception:
-        return float(default)
-    if math.isnan(f):
-        return float(default)
-    return max(0.0, min(1.0, float(f)))
-
-
 @dataclass(frozen=True)
 class CandidateEntity:
     """
@@ -113,6 +103,72 @@ class CandidateEntity:
     normalized_name: str = ""
 
 
+def _candidate_prompt_lines(candidates: Sequence[CandidateEntity]) -> list[str]:
+    lines: list[str] = []
+    for candidate in candidates:
+        cid = str(getattr(candidate, "cid", "") or "").strip()
+        if not cid:
+            continue
+        name = str(getattr(candidate, "name", "") or "").strip()
+        if not name:
+            continue
+        etype = str(getattr(candidate, "type", "") or "unknown").strip() or "unknown"
+        lines.append(f"{cid}: {name} ({etype})")
+    return lines
+
+
+def _response_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "relations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "subject_id": {"type": "string"},
+                        "predicate": {"type": "string"},
+                        "object_id": {"type": "string"},
+                        "confidence": {"type": "number"},
+                        "qualifiers": {"type": "object"},
+                        "evidence_quote": {"type": "string"},
+                    },
+                    "required": ["subject_id", "predicate", "object_id"],
+                },
+            }
+        },
+    }
+
+
+def _normalize_relation(
+    raw: dict[str, Any], *, valid_ids: set[str], allowed_predicates: set[str]
+) -> dict[str, Any] | None:
+    subj = str(raw.get("subject_id") or "").strip()
+    obj = str(raw.get("object_id") or "").strip()
+    pred_in = str(raw.get("predicate") or "").strip()
+    if not subj or not obj or not pred_in:
+        return None
+    if subj not in valid_ids or obj not in valid_ids or subj == obj:
+        return None
+
+    pred_key = _normalize_predicate_key(pred_in)
+    pred_norm = normalize_predicate(pred_in)
+    pred_raw: str | None = pred_in if pred_norm != pred_key else None
+    if allowed_predicates and pred_norm not in allowed_predicates:
+        pred_raw = pred_in
+        pred_norm = "unknown"
+
+    return {
+        "subject_id": subj,
+        "predicate": pred_norm,
+        "predicate_raw": pred_raw,
+        "object_id": obj,
+        "confidence": clamp_confidence(raw.get("confidence"), default=0.5),
+        "qualifiers": raw.get("qualifiers") if isinstance(raw.get("qualifiers"), dict) else None,
+        "evidence_quote": str(raw.get("evidence_quote") or "").strip() or None,
+    }
+
+
 class RelationProcessor:
     def __init__(
         self,
@@ -124,75 +180,6 @@ class RelationProcessor:
         # Store normalized allowlist for fast membership checks.
         allow = [normalize_predicate(p) for p in (allowed_predicates or []) if str(p or "").strip()]
         self.allowed_predicates = set(allow)
-
-    @staticmethod
-    def _candidate_prompt_lines(candidates: Sequence[CandidateEntity]) -> list[str]:
-        lines: list[str] = []
-        for candidate in candidates:
-            cid = str(getattr(candidate, "cid", "") or "").strip()
-            if not cid:
-                continue
-            name = str(getattr(candidate, "name", "") or "").strip()
-            if not name:
-                continue
-            etype = str(getattr(candidate, "type", "") or "unknown").strip() or "unknown"
-            lines.append(f"{cid}: {name} ({etype})")
-        return lines
-
-    @staticmethod
-    def _response_schema() -> dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "relations": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "subject_id": {"type": "string"},
-                            "predicate": {"type": "string"},
-                            "object_id": {"type": "string"},
-                            "confidence": {"type": "number"},
-                            "qualifiers": {"type": "object"},
-                            "evidence_quote": {"type": "string"},
-                        },
-                        "required": ["subject_id", "predicate", "object_id"],
-                    },
-                }
-            },
-        }
-
-    @staticmethod
-    def _normalize_relation(
-        raw: dict[str, Any],
-        *,
-        valid_ids: set[str],
-        allowed_predicates: set[str],
-    ) -> dict[str, Any] | None:
-        subj = str(raw.get("subject_id") or "").strip()
-        obj = str(raw.get("object_id") or "").strip()
-        pred_in = str(raw.get("predicate") or "").strip()
-        if not subj or not obj or not pred_in:
-            return None
-        if subj not in valid_ids or obj not in valid_ids or subj == obj:
-            return None
-
-        pred_key = _normalize_predicate_key(pred_in)
-        pred_norm = normalize_predicate(pred_in)
-        pred_raw: str | None = pred_in if pred_norm != pred_key else None
-        if allowed_predicates and pred_norm not in allowed_predicates:
-            pred_raw = pred_in
-            pred_norm = "unknown"
-
-        return {
-            "subject_id": subj,
-            "predicate": pred_norm,
-            "predicate_raw": pred_raw,
-            "object_id": obj,
-            "confidence": _clamp01(raw.get("confidence"), default=0.5),
-            "qualifiers": raw.get("qualifiers") if isinstance(raw.get("qualifiers"), dict) else None,
-            "evidence_quote": str(raw.get("evidence_quote") or "").strip() or None,
-        }
 
     async def extract_relations(
         self,
@@ -222,7 +209,7 @@ class RelationProcessor:
         if max_rels <= 0:
             return []
 
-        cand_lines = self._candidate_prompt_lines(cand_list)
+        cand_lines = _candidate_prompt_lines(cand_list)
         if not cand_lines:
             return []
 
@@ -254,7 +241,7 @@ class RelationProcessor:
         messages = [LLMMessage(role=LLMRole.USER, content=prompt)]
         result = await self.llm_client.chat_with_schema(
             messages,
-            response_schema=self._response_schema(),
+            response_schema=_response_schema(),
             temperature=0.2,
         )
 
@@ -268,7 +255,7 @@ class RelationProcessor:
         for raw in rels_raw:
             if not isinstance(raw, dict):
                 continue
-            normalized = self._normalize_relation(
+            normalized = _normalize_relation(
                 raw,
                 valid_ids=valid_ids,
                 allowed_predicates=self.allowed_predicates,

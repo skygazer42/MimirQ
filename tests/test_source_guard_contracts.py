@@ -16,7 +16,6 @@ SILENT_PASS_GUARD_PATHS = (
     "app/api/v1/datasets.py",
     "app/api/v1/evaluations.py",
     "app/api/v1/evidence.py",
-    "app/api/v1/ltr.py",
     "app/api/v1/parsing.py",
     "app/api/v1/pipeline.py",
     "app/api/v1/pipeline_support/auto_annotations.py",

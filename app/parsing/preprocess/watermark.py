@@ -7,7 +7,6 @@ This provides three best-effort paths:
 3) Local ONNX inpainting with OCR/rule/geometry-derived mask boxes.
 """
 
-
 import math
 import tempfile
 import time
@@ -19,7 +18,7 @@ from PIL import Image, ImageDraw
 
 from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.parsing.enrich.watermark_suppressor import suppress_watermark_file
-from app.parsing.preprocess.model_loader import get_preprocess_model_loader
+from app.parsing.preprocess.model_loader import LoadedModel, get_preprocess_model_loader
 from app.rag.core.logging import get_logger
 
 _RASTER_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff"}
@@ -390,8 +389,8 @@ def _remove_watermark_annots_from_page(page: Any) -> int:
 
 
 def _strip_pdf_meta(meta: dict[str, Any], *, removed: int, scanned_pages: int, start: float) -> dict[str, Any]:
-    meta["removed"] = int(removed)
-    meta["scanned_pages"] = int(scanned_pages)
+    meta["removed"] = removed
+    meta["scanned_pages"] = scanned_pages
     meta["elapsed_ms"] = _elapsed_ms(start)
     return meta
 
@@ -522,7 +521,7 @@ def _resolve_watermark_backend(
 
 
 def _record_mask_info(info: dict[str, Any], boxes: list[dict[str, Any]]) -> None:
-    info["mask_box_count"] = int(len(boxes))
+    info["mask_box_count"] = len(boxes)
     info["mask_reasons"] = [str(item.get("reason") or "") for item in boxes if str(item.get("reason") or "")]
 
 
@@ -556,13 +555,13 @@ def _cleanup_watermark_heuristic(
     return changed, "watermark_ok" if changed else "watermark_no_change", info
 
 
-def _load_watermark_onnx(model_path: str, info: dict[str, Any]) -> Any | None:
+def _load_watermark_onnx(model_path: str, info: dict[str, Any]) -> LoadedModel | None:
     model_ref = str(model_path or "").strip()
     if not model_ref:
         return None
     loaded = get_preprocess_model_loader().load_onnx(name="watermark_removal", model_path=model_ref)
-    info["model_backend"] = str(loaded.backend or "")
-    info["model_name"] = str(loaded.name or "")
+    info["model_backend"] = loaded.backend
+    info["model_name"] = loaded.name
     return loaded
 
 

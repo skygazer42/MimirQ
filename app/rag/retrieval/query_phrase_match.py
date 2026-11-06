@@ -1,7 +1,6 @@
-
 import re
 import unicodedata
-from typing import Any
+from typing import Any, TypedDict
 
 from app.rag.core.logging import get_logger
 from app.rag.preprocessing.stopwords import STOPWORDS
@@ -42,6 +41,13 @@ _QUERY_BOILERPLATE = {
     "work",
     "works",
 }
+
+
+class _QueryPhraseMatch(TypedDict):
+    score: float
+    matched_phrases: list[str]
+    longest_match_tokens: int
+    token_coverage: float
 
 
 def _normalize_text(value: Any) -> str:
@@ -109,7 +115,7 @@ def query_phrase_match(
     *,
     max_phrases: int = 24,
     max_ngram: int = 4,
-) -> dict[str, Any]:
+) -> _QueryPhraseMatch:
     haystack = _normalize_text(text)
     if not haystack:
         return {"score": 0.0, "matched_phrases": [], "longest_match_tokens": 0, "token_coverage": 0.0}
@@ -143,10 +149,10 @@ def query_phrase_match(
     score = min(1.0, exact_component + repeat_component + coverage_component)
 
     return {
-        "score": round(float(score), 6),
+        "score": round(score, 6),
         "matched_phrases": matched[:8],
-        "longest_match_tokens": int(longest),
-        "token_coverage": round(float(coverage), 6),
+        "longest_match_tokens": longest,
+        "token_coverage": round(coverage, 6),
     }
 
 

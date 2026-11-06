@@ -174,7 +174,7 @@ async def test_ragas_conversation_readiness_rejects_cross_account_conversation(
     tenant_id = uuid4()
     conversation = _conversation(tenant_id=tenant_id, owner_account_id="acct-1")
     db = _FakeDB(conversations=[conversation])
-    monkeypatch.setattr(evaluations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(evaluations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await evaluations_api.get_ragas_conversation_readiness(
@@ -197,7 +197,7 @@ async def test_create_ragas_run_rejects_cross_account_conversation(
     tenant_id = uuid4()
     conversation = _conversation(tenant_id=tenant_id, owner_account_id="acct-1")
     db = _FakeDB(conversations=[conversation])
-    monkeypatch.setattr(evaluations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(evaluations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await evaluations_api.create_ragas_run(
@@ -239,7 +239,7 @@ def test_list_ragas_runs_is_scoped_to_creator_account(
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
     db = _FakeDB(conversations=[my_conversation, their_conversation], runs=[global_run, my_run, their_run])
-    monkeypatch.setattr(evaluations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(evaluations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     response = evaluations_api.list_ragas_runs(
         tenant_id=tenant_id,
@@ -267,7 +267,7 @@ async def test_list_ragas_runs_rejects_foreign_conversation_filter(
         created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
     db = _FakeDB(conversations=[my_conversation, their_conversation], runs=[run])
-    monkeypatch.setattr(evaluations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(evaluations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await evaluations_api.list_ragas_runs(
@@ -290,7 +290,7 @@ async def test_get_ragas_run_rejects_cross_account_conversation_run(
     conversation = _conversation(tenant_id=tenant_id, owner_account_id="acct-1")
     run = _evaluation_run(tenant_id=tenant_id, account_id="acct-1", conversation_id=conversation.id)
     db = _FakeDB(conversations=[conversation], runs=[run])
-    monkeypatch.setattr(evaluations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(evaluations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await evaluations_api.get_ragas_run(
@@ -312,7 +312,7 @@ async def test_generate_test_cases_from_conversations_rejects_cross_account_conv
     tenant_id = uuid4()
     conversation = _conversation(tenant_id=tenant_id, owner_account_id="acct-1")
     db = _FakeDB(conversations=[conversation])
-    monkeypatch.setattr(evaluations_api.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(evaluations_api.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await evaluations_api.generate_test_cases_from_conversations(
@@ -359,7 +359,7 @@ def test_run_conversation_ragas_evaluation_fails_closed_without_reading_messages
     run = _evaluation_run(tenant_id=tenant_id, account_id="acct-1", conversation_id=conversation.id)
     db = _FakeDB(conversations=[conversation], runs=[run])
     monkeypatch.setattr(ragas_module, "SessionLocal", lambda: db, raising=True)
-    monkeypatch.setattr(ragas_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ragas_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
 
     ragas_module.run_conversation_ragas_evaluation(
         run_id=run.id,

@@ -11,7 +11,6 @@ fallback RecursiveCharacterTextSplitter inside each release while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -175,7 +174,7 @@ def looks_like_changelog(text: str) -> bool:
 
 
 class ChangelogChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -221,7 +220,7 @@ class ChangelogChunker(BaseChunker):
                     meta["end_char"] = abs_end
                     meta.setdefault("doc_type_kwd", "changelog")
                     if current_release is not None:
-                        meta["release_index"] = int(current_release.index)
+                        meta["release_index"] = current_release.index
                         meta["release_version"] = current_release.version
                         meta["release_title"] = current_release.title
                         if current_release.date:

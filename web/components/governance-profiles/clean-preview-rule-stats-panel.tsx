@@ -1,17 +1,14 @@
-import React from 'react'
-
-import type { CleanPreviewRuleStat } from '@/types'
+import type { CleanPreviewRuleStat } from '@/types/processing'
 
 import { Panel } from '@/components/ui/panel'
 import { cn } from '@/lib/utils'
 
-export function CleanPreviewRuleStatsPanel({
-  ruleStats,
-  className,
-}: Readonly<{
+type CleanPreviewRuleStatsPanelProps = {
   ruleStats: CleanPreviewRuleStat[] | null | undefined
   className?: string
-}>) {
+}
+
+export function CleanPreviewRuleStatsPanel({ ruleStats, className }: Readonly<CleanPreviewRuleStatsPanelProps>) {
   const stats = Array.isArray(ruleStats) ? ruleStats : []
   const hitsOnly = stats.filter((it) => (Number(it.hits) || 0) > 0)
   const totalHits = hitsOnly.reduce((acc, it) => acc + (Number(it.hits) || 0), 0)
@@ -33,10 +30,7 @@ export function CleanPreviewRuleStatsPanel({
       {hitsOnly.length ? (
         <div className="mt-3 space-y-1">
           {hitsOnly.map((it) => (
-            <div
-              key={it.index}
-              className="flex items-start justify-between gap-3 rounded-xl bg-muted/20 px-3 py-2"
-            >
+            <div key={it.index} className="flex items-start justify-between gap-3 rounded-xl bg-muted/20 px-3 py-2">
               <div className="min-w-0">
                 <div className="text-[11px] font-mono text-foreground break-all">{it.pattern}</div>
                 <div className="mt-1 text-[11px] text-muted-foreground font-mono">

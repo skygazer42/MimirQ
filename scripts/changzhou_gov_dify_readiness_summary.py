@@ -3,6 +3,7 @@
 
 import argparse
 import json
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -793,7 +794,9 @@ def _external_probe_next_action(reason: str) -> str:
     return "Run make changzhou-dify-external-probe and inspect /tmp/changzhou_gov_dify_external_probe.json."
 
 
-def _section_or_none(builder: Any, payload: dict[str, Any] | None) -> dict[str, Any] | None:
+def _section_or_none(
+    builder: Callable[[dict[str, Any]], dict[str, Any]], payload: dict[str, Any] | None
+) -> dict[str, Any] | None:
     if payload is None:
         return None
     return builder(payload or {})

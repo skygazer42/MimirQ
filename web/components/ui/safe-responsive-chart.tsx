@@ -1,14 +1,6 @@
 'use client'
 
-import {
-  cloneElement,
-  isValidElement,
-  useEffect,
-  useRef,
-  useState,
-  type ReactElement,
-  type ReactNode,
-} from 'react'
+import { cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 
 import { cn } from '@/lib/utils'
 
@@ -18,11 +10,7 @@ type SafeResponsiveChartProps = Readonly<{
   minHeight?: number
 }>
 
-export function SafeResponsiveChart({
-  children,
-  className,
-  minHeight = 280,
-}: SafeResponsiveChartProps) {
+export function SafeResponsiveChart({ children, className, minHeight = 280 }: SafeResponsiveChartProps) {
   const frameRef = useRef<number | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })

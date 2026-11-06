@@ -8,7 +8,6 @@ The chunker splits the document into sections first, then applies a fallback
 RecursiveCharacterTextSplitter inside each section while preserving offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -160,7 +159,7 @@ def looks_like_meeting_minutes(text: str) -> bool:
 
 
 class MeetingMinutesChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

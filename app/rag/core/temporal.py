@@ -7,7 +7,6 @@ This module is intentionally:
 - fail-open (must never break retrieval)
 """
 
-
 import re
 import time
 from typing import Any
@@ -128,13 +127,13 @@ def apply_recency_boost(
             except Exception:
                 age_days = 0.0
             recency = max(0.0, 1.0 - (age_days / float(window_days)))
-            boost = float(recency) * float(boost_max)
+            boost = recency * boost_max
         else:
             boost = 0.0
 
         base = _doc_base_score(meta)
-        comp = float(base) + float(boost)
-        boosts.append(float(boost))
+        comp = base + boost
+        boosts.append(boost)
         scored.append((comp, i, d))
 
     scored_sorted = sorted(scored, key=lambda x: (-x[0], x[1]))
@@ -152,12 +151,12 @@ def apply_recency_boost(
     return out, {
         "enabled": True,
         "used": True,
-        "docs": int(len(docs)),
-        "docs_with_ts": int(docs_with_ts),
-        "window_days": int(window_days),
-        "boost_max": float(boost_max),
-        "avg_boost": round(float(avg_boost), 6),
-        "max_boost": round(float(max_boost), 6),
+        "docs": len(docs),
+        "docs_with_ts": docs_with_ts,
+        "window_days": window_days,
+        "boost_max": boost_max,
+        "avg_boost": round(avg_boost, 6),
+        "max_boost": round(max_boost, 6),
         "reordered": bool(out != list(docs)),
     }
 
@@ -197,7 +196,7 @@ def _rows_to_updated_timestamps(rows: list[tuple[Any, Any, Any]]) -> dict[str, f
             ts_sec = None
         if ts_sec is None:
             continue
-        out[str(did)] = float(ts_sec)
+        out[str(did)] = ts_sec
     return out
 
 

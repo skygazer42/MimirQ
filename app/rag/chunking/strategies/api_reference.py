@@ -11,7 +11,6 @@ fallback RecursiveCharacterTextSplitter inside each block while preserving
 character offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -63,7 +62,7 @@ def looks_like_api_reference(text: str) -> bool:
 
 
 class APIReferenceChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -144,7 +143,7 @@ class APIReferenceChunker(BaseChunker):
                     base_meta=base_meta,
                     offset=ep.start,
                     extra_meta={
-                        "endpoint_index": int(ep.index),
+                        "endpoint_index": ep.index,
                         "http_method": ep.method,
                         "api_path": ep.path,
                         "endpoint_signature": sig,

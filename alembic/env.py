@@ -12,17 +12,11 @@ import sys
 from logging.config import fileConfig
 from pathlib import Path
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import MetaData, engine_from_config, pool
 
 from alembic import context
 
-
-def _repo_root() -> Path:
-    # alembic/env.py -> alembic/ -> repo root
-    return Path(__file__).resolve().parents[1]
-
-
-_ROOT = _repo_root()
+_ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
@@ -39,21 +33,21 @@ def _get_database_url() -> str:
     try:
         from app.core.config import settings
 
-        url = str(getattr(settings, "DATABASE_URL", "") or "").strip()
+        url = settings.DATABASE_URL.strip()
         if url:
             return url
     except Exception:  # noqa: BLE001
         pass
 
-    env_url = str(os.getenv("DATABASE_URL", "") or "").strip()
+    env_url = os.getenv("DATABASE_URL", "").strip()
     if env_url:
         return env_url
 
     # Last resort: alembic.ini value.
-    return str(config.get_main_option("sqlalchemy.url") or "").strip()
+    return (config.get_main_option("sqlalchemy.url") or "").strip()
 
 
-def _load_target_metadata():
+def _load_target_metadata() -> MetaData:
     # Ensure all model modules are imported so Base.metadata includes every table.
     # This is required for correct autogenerate output.
     import app.models._all as model_registry

@@ -25,19 +25,12 @@ def ensure_repo_root_on_sys_path(script_path: str | Path) -> str:
 ensure_repo_root_on_sys_path(__file__)
 
 
-def _load_remote_kb_boundary_matrix() -> tuple[Any, ...]:
-    from scripts.remote_kb_boundary_matrix import (
-        LiveApi,
-        ensure_success,
-        record_step,
-        wait_for_document_completed,
-    )
-
-    return LiveApi, ensure_success, record_step, wait_for_document_completed
-
-
-LiveApi, ensure_success, record_step, wait_for_document_completed = _load_remote_kb_boundary_matrix()
-
+from scripts.remote_kb_boundary_matrix import (  # noqa: E402
+    LiveApi,
+    ensure_success,
+    record_step,
+    wait_for_document_completed,
+)
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000000"
 

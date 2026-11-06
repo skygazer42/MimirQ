@@ -37,7 +37,7 @@ def _real_hybrid_retriever() -> Any | None:
 
 def get_vector_store():
     try:
-        from app.rag.retriever import get_vector_store as real_get_vector_store
+        from app.storage.vector.factory import get_vector_store as real_get_vector_store
 
         return real_get_vector_store()
     except Exception:

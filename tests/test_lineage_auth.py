@@ -83,7 +83,7 @@ def test_authorize_answer_lineage_access_allows_same_account_member(monkeypatch)
     trace_record = {"tenant_id": str(tenant_id), "account_id": account_id, "request_id": "req-1"}
 
     monkeypatch.setattr(
-        lineage_service.DatasetService,
+        lineage_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
@@ -122,7 +122,7 @@ def test_chunk_lineage_requires_document_acl_when_not_observability_admin(monkey
         raising=True,
     )
     monkeypatch.setattr(
-        lineage_service.DatasetService,
+        lineage_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,
@@ -179,7 +179,7 @@ def test_answer_lineage_forbidden_when_one_citation_document_is_not_readable(mon
 
     monkeypatch.setattr(lineage_api, "load_answer_lineage_trace", lambda **_kwargs: dict(trace_record), raising=True)
     monkeypatch.setattr(
-        lineage_service.DatasetService,
+        lineage_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="member"),
         raising=True,

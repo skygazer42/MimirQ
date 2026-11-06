@@ -1,5 +1,5 @@
-
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any, TypedDict
 
 from app.rag.core.query_rewrite_strategy import (
     DEFAULT_QUERY_REWRITE_STRATEGY_ID,
@@ -11,13 +11,22 @@ from app.rag.workflows.base import BaseWorkflow, WorkflowMode, WorkflowResult
 _SCHEMA = "mimirq.query_rewrite_workflow.v1"
 
 
+class QueryRewriteResult(TypedDict):
+    schema: str
+    original: str
+    rewritten: str
+    used: bool
+    strategy_id: str
+    strategy_hash: str
+
+
 def run_query_rewrite_workflow(
     *,
     question: str,
     history_text: str,
     strategy_id: str | None = None,
     rewriter: Callable[[str, str, str], str] | None = None,
-) -> dict[str, Any]:
+) -> QueryRewriteResult:
     original = str(question or "").strip()
     history = str(history_text or "").strip()
     resolved_strategy = resolve_query_rewrite_strategy_id(strategy_id or DEFAULT_QUERY_REWRITE_STRATEGY_ID)
@@ -63,13 +72,13 @@ class QueryRewriteWorkflow(BaseWorkflow):
         )
         next_state = dict(state)
         next_state["rewrite"] = rewrite
-        next_state["query_for_retrieval"] = rewrite.get("rewritten") or question
+        next_state["query_for_retrieval"] = rewrite["rewritten"] or question
         return self.create_result(
             next_state,
             success=True,
             metadata={
-                "used": bool(rewrite.get("used")),
-                "strategy_id": rewrite.get("strategy_id"),
+                "used": rewrite["used"],
+                "strategy_id": rewrite["strategy_id"],
             },
         )
 

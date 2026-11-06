@@ -1,8 +1,8 @@
-
 from collections.abc import Sequence
 from typing import Any
 
 from app.rag.kg.models import KgSourceEvent
+from app.rag.kg.provenance import confidence_bucket as confidence_bucket
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
@@ -14,29 +14,6 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     if na == 0 or nb == 0:
         return 0.0
     return dot / (na * nb)
-
-
-def confidence_bucket(confidence: float, *, low_max: float = 0.4, mid_max: float = 0.7) -> str:
-    """
-    Coarse confidence buckets for KG relation/path provenance.
-
-    Returns one of: low | mid | high
-    """
-    try:
-        c = float(confidence or 0.0)
-    except Exception:
-        c = 0.0
-
-    lo = float(low_max)
-    mid = float(mid_max)
-    if lo >= mid:
-        lo, mid = 0.4, 0.7
-
-    if c < lo:
-        return "low"
-    if c < mid:
-        return "mid"
-    return "high"
 
 
 def format_events(

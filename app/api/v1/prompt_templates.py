@@ -26,7 +26,7 @@ from app.api.schemas.prompt_template import (
 from app.core.database import get_db
 from app.models.prompt_template import PromptTemplate
 from app.rag.llm.prompts.builtin_library import list_builtin_prompt_templates
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -96,7 +96,7 @@ def sync_builtin_prompt_templates(
             )
             .first()
         )
-        if existing is not None and not bool(getattr(existing, "is_system", False)):
+        if existing is not None and not bool(existing.is_system):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Prompt template key already exists as a user template: {builtin.template_key}",
@@ -245,7 +245,7 @@ def list_prompt_templates(
     Raises:
         HTTPException: 403 if user is not a tenant member
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     query = db.query(PromptTemplate).filter(PromptTemplate.tenant_id == tenant_id)
 
@@ -295,7 +295,7 @@ def get_prompt_template(
         HTTPException: 403 if user is not a tenant member
         HTTPException: 404 if template not found or not in current tenant
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     template = (
         db.query(PromptTemplate)

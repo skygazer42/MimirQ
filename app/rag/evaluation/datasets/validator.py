@@ -1,14 +1,16 @@
-
 from collections import Counter
 from typing import Any
 
-from app.rag.evaluation.datasets.schema import EVAL_DATASET_SCHEMA_V1, normalize_eval_dataset_sample
+from app.rag.evaluation.datasets.schema import (
+    _ANNOTATION_STATUS,
+    _QUERY_TYPES,
+    _REVIEW_STATUS,
+    _ROUTES,
+    _SOURCE_TYPES,
+    EVAL_DATASET_SCHEMA_V1,
+    normalize_eval_dataset_sample,
+)
 
-_QUERY_TYPES = {"factual", "multi_hop", "structured", "unanswerable"}
-_SOURCE_TYPES = {"real_log", "manual_seed", "adversarial", "synthetic"}
-_ROUTES = {"retrieval", "kg", "hybrid", "agentic"}
-_ANNOTATION_STATUS = {"todo", "labeled", "reviewed"}
-_REVIEW_STATUS = {"pending", "reviewed", "approved"}
 _MANIFEST_SCHEMA = "mimirq.eval.dataset.manifest.v1"
 
 

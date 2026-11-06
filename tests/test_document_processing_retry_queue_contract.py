@@ -162,7 +162,7 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry.txt"
     source.write_text("hello", encoding="utf-8")
     document = SimpleNamespace(
@@ -200,15 +200,15 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
         return None
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
@@ -222,9 +222,9 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
         ),
         raising=False,
     )
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
+    monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_task, raising=True)
-    monkeypatch.setattr(documents_module, "_task_queue_required", lambda: True, raising=True)
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=True)
 
     with pytest.raises(HTTPException) as exc_info:
         await document_processing.retry_document_processing(
@@ -237,7 +237,7 @@ async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
         )
 
     assert exc_info.value.status_code == 503
-    assert exc_info.value.detail == documents_module.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
+    assert exc_info.value.detail == documents_module.document_dispatch.DOCUMENT_PROCESSING_QUEUE_UNAVAILABLE_DETAIL
     assert document.status == "failed"
     assert document.current_stage == "failed"
     assert document.error_message == "document_processing_schedule_failed"
@@ -257,7 +257,7 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry-stable.txt"
     source.write_text("hello", encoding="utf-8")
     document = SimpleNamespace(
@@ -294,28 +294,28 @@ async def test_retry_document_processing_hash_ignores_parser_backend_resolved_dr
         return "task-123"
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _task, raising=True)
-    monkeypatch.setattr(documents_module, "_task_queue_required", lambda: True, raising=True)
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=True)
     monkeypatch.setattr(
         documents_module,
         "reconcile_document_index_channels",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    expected_hash = documents_module._compute_pipeline_hash(
+    expected_hash = documents_module.compute_pipeline_hash(
         {key: value for key, value in document.doc_metadata.items() if key != "parser_backend_resolved"}
     )
 
@@ -340,7 +340,7 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
 ) -> None:
     from app.parsing.processors import processor
 
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     source = tmp_path / "retry-local.txt"
     source.write_text("hello", encoding="utf-8")
     document = SimpleNamespace(
@@ -407,23 +407,23 @@ async def test_retry_document_processing_local_fallback_preserves_then_consumes_
         return None
 
     monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=False)
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: SimpleNamespace(id=document.dataset_id),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module.DatasetService,
+        documents_module.dataset_service,
         "assert_dataset_writable",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
-    monkeypatch.setattr(documents_module, "_compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
+    monkeypatch.setattr(documents_module, "compute_pipeline_hash", lambda _meta: "stable-pipeline", raising=True)
     monkeypatch.setattr(documents_module, "enqueue_document_processing", _no_task, raising=True)
-    monkeypatch.setattr(documents_module, "_task_queue_required", lambda: False, raising=True)
-    monkeypatch.setattr(documents_module, "run_document_processing_limited", _process, raising=True)
+    monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=True)
+    monkeypatch.setattr(documents_module.document_dispatch, "run_document_processing_limited", _process, raising=True)
     monkeypatch.setattr(processor, "Indexer", _Indexer)
 
     result = await document_processing.retry_document_processing(

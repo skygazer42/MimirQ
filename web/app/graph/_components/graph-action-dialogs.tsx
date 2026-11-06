@@ -12,16 +12,18 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import type {
-  KGEntityAliasItem,
-  KGEntityDetailResponse,
-  KGEntityMergePreviewResponse,
-  KGGraphNode,
-} from '@/types'
+import type { KGEntityAliasItem, KGEntityDetailResponse, KGEntityMergePreviewResponse, KGGraphNode } from '@/types'
 
 import type { GraphNodeLike } from '../graph-page-utils'
 
@@ -144,7 +146,7 @@ export function GraphActionDialogs({
             onClick={() => onSelectMergeTarget(node)}
             className={cn(
               'w-full text-left rounded-lg border border-border bg-background/60 px-3 py-2 text-xs hover:bg-background transition-colors',
-              mergeTarget?.id === node.id && 'ring-2 ring-primary/20 border-primary/30'
+              mergeTarget?.id === node.id && 'ring-2 ring-primary/20 border-primary/30',
             )}
           >
             <div className="flex items-center justify-between gap-2">
@@ -193,7 +195,8 @@ export function GraphActionDialogs({
           <AlertDialogHeader>
             <AlertDialogTitle>删除节点？</AlertDialogTitle>
             <AlertDialogDescription>
-              你将删除节点 <span className="font-mono">{deleteNodeTarget?.label || '-'}</span> 及其所有连线。此操作不可撤销。
+              你将删除节点 <span className="font-mono">{deleteNodeTarget?.label || '-'}</span>{' '}
+              及其所有连线。此操作不可撤销。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -208,7 +211,8 @@ export function GraphActionDialogs({
           <AlertDialogHeader>
             <AlertDialogTitle>删除 alias？</AlertDialogTitle>
             <AlertDialogDescription>
-              你将删除 alias <span className="font-mono">{aliasDeleteTarget?.alias || '-'}</span>。此操作可通过重新添加恢复。
+              你将删除 alias <span className="font-mono">{aliasDeleteTarget?.alias || '-'}</span>
+              。此操作可通过重新添加恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -269,7 +273,8 @@ export function GraphActionDialogs({
           <AlertDialogHeader>
             <AlertDialogTitle>确认合并？</AlertDialogTitle>
             <AlertDialogDescription>
-              你将把当前实体合并到 <span className="font-mono">{mergeTarget?.label || '-'}</span>。合并会重写事件边与关系边，但可通过“撤销上次变更”恢复。
+              你将把当前实体合并到 <span className="font-mono">{mergeTarget?.label || '-'}</span>
+              。合并会重写事件边与关系边，但可通过“撤销上次变更”恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

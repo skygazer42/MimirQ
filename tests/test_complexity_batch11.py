@@ -1,4 +1,3 @@
-
 import asyncio
 import datetime as dt
 import gzip
@@ -217,7 +216,7 @@ def test_export_access_graph_json_requires_after_kind_and_emits_next_cursor(
 def test_delta_sync_jira_documents_acl_fallback_updates_matching_issue_doc_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_acl as connectors_acl
+    import app.services.connector_document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -258,8 +257,8 @@ def test_delta_sync_jira_documents_acl_fallback_updates_matching_issue_doc_only(
 
     monkeypatch.setattr(
         connectors_acl,
-        "_leader_module",
-        SimpleNamespace(_apply_document_access_from_config=_apply_acl),
+        "_apply_document_access_from_config",
+        _apply_acl,
         raising=True,
     )
 
@@ -294,7 +293,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
     doc_kind: str,
     url_field: str,
 ) -> None:
-    import app.api.v1.connectors_acl as connectors_acl
+    import app.services.connector_document_access as connectors_acl
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -338,7 +337,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
         ),
     ]
 
-    monkeypatch.setattr(connectors_acl, "_leader_module", SimpleNamespace(_now=lambda: now), raising=True)
+    monkeypatch.setattr(connectors_acl, "_now", lambda: now, raising=True)
     disabled = getattr(connectors_acl, func_name)(
         _FlakyDB(rows),
         tenant_id=tenant_id,
@@ -357,7 +356,7 @@ def test_soft_disable_jira_issue_children_fallback_filters_seen_urls(
 def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_issue_urls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_jira as connectors_jira
+    import app.services.connector_execution.jira as connectors_jira
 
     tenant_id = uuid4()
     dataset_id = uuid4()
@@ -393,12 +392,7 @@ def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_
         ),
     ]
 
-    monkeypatch.setattr(
-        connectors_jira,
-        "_leader_module",
-        SimpleNamespace(_now=lambda: now),
-        raising=False,
-    )
+    monkeypatch.setattr(connectors_jira, "_now", lambda: now, raising=True)
 
     reconciled, disabled = connectors_jira._soft_disable_jira_documents_missing_from_full_sync(
         _FlakyDB(rows),
@@ -418,7 +412,7 @@ def test_soft_disable_jira_documents_missing_from_full_sync_fallback_reconciles_
 def test_process_jira_project_issues_tracks_progress_and_completion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import app.api.v1.connectors_jira as connectors_jira
+    import app.services.connector_execution.jira as connectors_jira
 
     async def _fetch_page(*_args, **_kwargs):
         return 1, [{"key": "ABC-1"}]
@@ -428,16 +422,9 @@ def test_process_jira_project_issues_tracks_progress_and_completion(
         kwargs["observed_issue_urls"].add("https://jira.example.com/browse/ABC-1")
 
     monkeypatch.setattr(connectors_jira, "_jira_project_fetch_issue_page", _fetch_page, raising=True)
-    monkeypatch.setattr(
-        connectors_jira,
-        "_leader_module",
-        SimpleNamespace(
-            get_http_client_pool=lambda: object(),
-            _jira_project_run_cancelled=lambda *_a, **_k: False,
-            _process_jira_project_issue=_process_issue,
-        ),
-        raising=False,
-    )
+    monkeypatch.setattr(connectors_jira, "get_http_client_pool", lambda: object(), raising=True)
+    monkeypatch.setattr(connectors_jira, "_jira_project_run_cancelled", lambda *_a, **_k: False, raising=True)
+    monkeypatch.setattr(connectors_jira, "_process_jira_project_issue", _process_issue, raising=True)
 
     progress, observed_issue_urls, listing_complete = asyncio.run(
         connectors_jira._process_jira_project_issues(
@@ -564,14 +551,14 @@ def test_list_dataset_tables_filters_docs_and_audits_fls_masking(
     audits: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(
         dataset_tables, "get_allowed_document_id_sets", lambda *_a, **_k: ({allowed_doc_id}, set()), raising=True
@@ -629,14 +616,14 @@ def test_get_dataset_table_masks_sample_rows_for_matching_table(
     audits: list[dict[str, object]] = []
 
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
     monkeypatch.setattr(
@@ -696,14 +683,14 @@ def test_ask_dataset_table_masks_rows_before_answer_and_hides_sql(
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LLM_ALLOW_RESULT_EGRESS", True, raising=False)
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
     monkeypatch.setattr(
@@ -795,14 +782,14 @@ def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
     )
     monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService,
+        dataset_tables.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(dataset_metadata={}),
         raising=True,
     )
-    monkeypatch.setattr(dataset_tables.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(dataset_tables.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
-        dataset_tables.DatasetService, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
+        dataset_tables.dataset_service, "ensure_member", lambda *_a, **_k: SimpleNamespace(role="member"), raising=True
     )
     monkeypatch.setattr(dataset_tables, "filter_allowed_document_ids", lambda *_a, **_k: [document_id], raising=True)
     monkeypatch.setattr(

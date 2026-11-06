@@ -5,59 +5,52 @@
 
 import type { Remote } from 'comlink'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react'
-import { AlertCircle, Loader2, RotateCcw } from 'lucide-react'
+import { AlertCircle, ChevronLeft, ChevronRight, FileText, Loader2, RotateCcw } from '@/components/icons'
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
-import { ParsingBlock } from '@/lib/parsing-positions'
+import type { ParsingBlock } from '@/lib/parsing-positions'
 import type { ParsingEditFocusHint } from '@/lib/parsing-edit-focus'
 import { classifyParsingBlock } from '@/lib/parsing-layout'
-import {
- computePdfOverlayRect,
- computePdfOverlayScrollTop,
- detectPdfBboxCoordinateSpace,
-} from '@/lib/pdf-bbox'
+import { computePdfOverlayRect, computePdfOverlayScrollTop, detectPdfBboxCoordinateSpace } from '@/lib/pdf-bbox'
 import { toPrimitiveString } from '@/lib/primitive-text'
 import { getAuthHeaders } from '@/lib/auth-headers'
 import { API_BASE_URL } from '@/lib/env'
 import { Button } from '@/components/ui/button'
 import { BboxOverlay, type BboxOverlayItem } from '@/components/parsing/bbox-overlay'
 import { reportClientWarning } from '@/lib/client-logging'
-import {
- MAX_RETAINED_PAGE_CANVASES,
- selectPdfPagesToReleaseForPool,
-} from '@/components/parsing/pdf-render-canvas-pool'
+import { MAX_RETAINED_PAGE_CANVASES, selectPdfPagesToReleaseForPool } from '@/components/parsing/pdf-render-canvas-pool'
 import { detachPromise } from '@/lib/utils'
 import type { PdfPageRenderWorkerApi } from '@/workers/pdf-page-render.worker'
-
 
 type Box = BboxOverlayItem
 type PdfJsModule = typeof import('pdfjs-dist/build/pdf.mjs')
 type PageBaseSize = { width: number; height: number }
 
-interface PdfViewerProps {
- file?: File | null
- fileUrl?: string | null
- scrollToPageIndex?: number | null
- blocks?: ParsingBlock[]
- boxesByPage?: Map<number, Box[]> | null
- blockIdToPageIndex?: Map<string, number> | null
- activeBlockIds?: string[] | null
- hoveredBlockIds?: string[] | null
- showAllBoxes?: boolean
- onHoverBlockId?: (blockId: string | null) => void
- onClickBlockId?: (blockId: string, hint?: ParsingEditFocusHint) => void
+type PdfViewerProps = {
+  showToolbar?: boolean
+  file?: File | null
+  fileUrl?: string | null
+  scrollToPageIndex?: number | null
+  blocks?: ParsingBlock[]
+  boxesByPage?: Map<number, Box[]> | null
+  blockIdToPageIndex?: Map<string, number> | null
+  activeBlockIds?: string[] | null
+  hoveredBlockIds?: string[] | null
+  showAllBoxes?: boolean
+  onHoverBlockId?: (blockId: string | null) => void
+  onClickBlockId?: (blockId: string, hint?: ParsingEditFocusHint) => void
 }
 
 type IdleGlobal = typeof globalThis & {
- requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
- cancelIdleCallback?: (id: number) => void
+  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  cancelIdleCallback?: (id: number) => void
 }
 
 type QueueVisiblePdfPageWindowParams = {
- containerHeight: number
- containerScrollTop: number
- pageCount: number
- pageElements: Map<number, HTMLDivElement>
- queuePageRender: (pageIndex: number) => void
+  containerHeight: number
+  containerScrollTop: number
+  pageCount: number
+  pageElements: Map<number, HTMLDivElement>
+  queuePageRender: (pageIndex: number) => void
 }
 
 const MAX_CONCURRENT_RENDERS = 1
@@ -84,1449 +77,1549 @@ const PDFJS_ICCS_URL = '/pdfjs/iccs/'
 let pdfJsModulePromise: Promise<PdfJsModule> | null = null
 
 function queueVisiblePdfPageWindow({
- containerHeight,
- containerScrollTop,
- pageCount,
- pageElements,
- queuePageRender,
+  containerHeight,
+  containerScrollTop,
+  pageCount,
+  pageElements,
+  queuePageRender,
 }: QueueVisiblePdfPageWindowParams) {
- const viewportTop = Math.max(0, Number(containerScrollTop || 0) - 800)
- const viewportBottom = Number(containerScrollTop || 0) + Math.max(0, Number(containerHeight || 0)) + 800
+  const viewportTop = Math.max(0, Number(containerScrollTop || 0) - 800)
+  const viewportBottom = Number(containerScrollTop || 0) + Math.max(0, Number(containerHeight || 0)) + 800
 
- for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
- const pageElement = pageElements.get(pageIndex)
- if (!pageElement) continue
- const pageTop = pageElement.offsetTop
- const pageBottom = pageTop + Math.max(pageElement.offsetHeight, pageElement.clientHeight, 1)
- if (pageBottom < viewportTop || pageTop > viewportBottom) continue
- queuePageRender(pageIndex)
- }
+  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
+    const pageElement = pageElements.get(pageIndex)
+    if (!pageElement) continue
+    const pageTop = pageElement.offsetTop
+    const pageBottom = pageTop + Math.max(pageElement.offsetHeight, pageElement.clientHeight, 1)
+    if (pageBottom < viewportTop || pageTop > viewportBottom) continue
+    queuePageRender(pageIndex)
+  }
 }
 
 function findNearestScrollableAncestor(container: HTMLElement): HTMLElement | null {
- if (globalThis.window === undefined) return null
+  if (globalThis.window === undefined) return null
 
- let node = container.parentElement
- while (node) {
- if (node === globalThis.document.body || node === globalThis.document.documentElement) return null
+  let node = container.parentElement
+  while (node) {
+    if (node === globalThis.document.body || node === globalThis.document.documentElement) return null
 
- const style = globalThis.window.getComputedStyle(node)
- const canScrollY =
- (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay') &&
- node.scrollHeight > node.clientHeight + 1
- if (canScrollY) return node
+    const style = globalThis.window.getComputedStyle(node)
+    const canScrollY =
+      (style.overflowY === 'auto' || style.overflowY === 'scroll' || style.overflowY === 'overlay') &&
+      node.scrollHeight > node.clientHeight + 1
+    if (canScrollY) return node
 
- node = node.parentElement
- }
+    node = node.parentElement
+  }
 
- return null
+  return null
 }
 
-function scrollPdfPageIntoElement({
- behavior,
- scrollElement,
- targetElement,
-}: {
- behavior: ScrollBehavior
- scrollElement: HTMLElement
- targetElement: HTMLElement
-}) {
- const scrollRect = scrollElement.getBoundingClientRect()
- const targetRect = targetElement.getBoundingClientRect()
- const centeredTop =
- scrollElement.scrollTop +
- targetRect.top -
- scrollRect.top -
- Math.max(24, Math.floor((scrollElement.clientHeight - targetRect.height) / 2))
+type ScrollPdfPageIntoElementOptions = {
+  behavior: ScrollBehavior
+  scrollElement: HTMLElement
+  targetElement: HTMLElement
+}
 
- scrollElement.scrollTo({
- behavior,
- top: Math.max(0, centeredTop),
- })
+function scrollPdfPageIntoElement({ behavior, scrollElement, targetElement }: ScrollPdfPageIntoElementOptions) {
+  const scrollRect = scrollElement.getBoundingClientRect()
+  const targetRect = targetElement.getBoundingClientRect()
+  const centeredTop =
+    scrollElement.scrollTop +
+    targetRect.top -
+    scrollRect.top -
+    Math.max(24, Math.floor((scrollElement.clientHeight - targetRect.height) / 2))
+
+  scrollElement.scrollTo({
+    behavior,
+    top: Math.max(0, centeredTop),
+  })
+}
+
+type ScrollPdfOverlayIntoElementOptions = {
+  behavior: ScrollBehavior
+  overlayHeight: number
+  overlayTop: number
+  pageElement: HTMLElement
+  scrollElement: HTMLElement
 }
 
 function scrollPdfOverlayIntoElement({
- behavior,
- overlayHeight,
- overlayTop,
- pageElement,
- scrollElement,
-}: {
- behavior: ScrollBehavior
- overlayHeight: number
- overlayTop: number
- pageElement: HTMLElement
- scrollElement: HTMLElement
-}) {
- const scrollRect = scrollElement.getBoundingClientRect()
- const pageRect = pageElement.getBoundingClientRect()
- scrollElement.scrollTo({
- behavior,
- top: computePdfOverlayScrollTop({
- containerHeight: scrollElement.clientHeight,
- containerScrollTop: scrollElement.scrollTop,
- containerTop: scrollRect.top,
- overlayHeight,
- overlayTop,
- pageTop: pageRect.top,
- }),
- })
+  behavior,
+  overlayHeight,
+  overlayTop,
+  pageElement,
+  scrollElement,
+}: ScrollPdfOverlayIntoElementOptions) {
+  const scrollRect = scrollElement.getBoundingClientRect()
+  const pageRect = pageElement.getBoundingClientRect()
+  scrollElement.scrollTo({
+    behavior,
+    top: computePdfOverlayScrollTop({
+      containerHeight: scrollElement.clientHeight,
+      containerScrollTop: scrollElement.scrollTop,
+      containerTop: scrollRect.top,
+      overlayHeight,
+      overlayTop,
+      pageTop: pageRect.top,
+    }),
+  })
 }
 
 function installPdfJsCompatPolyfills() {
- const promiseCtor = Promise as typeof Promise & {
- withResolvers?: () => {
- promise: Promise<unknown>
- resolve: (value: unknown) => void
- reject: (reason?: unknown) => void
- }
- }
+  const promiseCtor = Promise as typeof Promise & {
+    withResolvers?: () => {
+      promise: Promise<unknown>
+      resolve: (value: unknown) => void
+      reject: (reason?: unknown) => void
+    }
+  }
 
- if (typeof promiseCtor.withResolvers !== 'function') {
- Object.defineProperty(promiseCtor, 'withResolvers', {
- configurable: true,
- writable: true,
- value() {
- let resolve: (value: unknown) => void = () => {}
- let reject: (reason?: unknown) => void = () => {}
- const promise = new Promise((innerResolve, innerReject) => {
- resolve = innerResolve
- reject = innerReject
- })
+  if (typeof promiseCtor.withResolvers !== 'function') {
+    Object.defineProperty(promiseCtor, 'withResolvers', {
+      configurable: true,
+      writable: true,
+      value() {
+        let resolve: (value: unknown) => void = () => {}
+        let reject: (reason?: unknown) => void = () => {}
+        const promise = new Promise((innerResolve, innerReject) => {
+          resolve = innerResolve
+          reject = innerReject
+        })
 
- return { promise, resolve, reject }
- },
- })
- }
+        return { promise, resolve, reject }
+      },
+    })
+  }
 
- const mapPrototype = Map.prototype as typeof Map.prototype & {
- getOrInsertComputed?: (key: unknown, compute: (key: unknown) => unknown) => unknown
- }
+  const mapPrototype = Map.prototype as typeof Map.prototype & {
+    getOrInsertComputed?: (key: unknown, compute: (key: unknown) => unknown) => unknown
+  }
 
- if (typeof mapPrototype.getOrInsertComputed !== 'function') {
- Object.defineProperty(mapPrototype, 'getOrInsertComputed', {
- configurable: true,
- writable: true,
- value(key: unknown, compute: (key: unknown) => unknown) {
- if (this.has(key)) {
- return this.get(key)
- }
+  if (typeof mapPrototype.getOrInsertComputed !== 'function') {
+    Object.defineProperty(mapPrototype, 'getOrInsertComputed', {
+      configurable: true,
+      writable: true,
+      value(key: unknown, compute: (key: unknown) => unknown) {
+        if (this.has(key)) {
+          return this.get(key)
+        }
 
- const value = compute(key)
- this.set(key, value)
- return value
- },
- })
- }
+        const value = compute(key)
+        this.set(key, value)
+        return value
+      },
+    })
+  }
 }
 
 async function loadPdfJsModule(): Promise<PdfJsModule> {
- try {
- if (!pdfJsModulePromise) {
- installPdfJsCompatPolyfills()
- // Bypass Next's dev-time webpack wrapping for pdf.js. The wrapped chunk crashes
- // on Mozilla's ESM bundle with "Object.defineProperty called on non-object".
- pdfJsModulePromise = import(/* webpackIgnore: true */ PDFJS_MODULE_URL) as Promise<PdfJsModule>
- }
+  try {
+    if (!pdfJsModulePromise) {
+      installPdfJsCompatPolyfills()
+      // Bypass Next's dev-time webpack wrapping for pdf.js. The wrapped chunk crashes
+      // on Mozilla's ESM bundle with "Object.defineProperty called on non-object".
+      pdfJsModulePromise = import(/* webpackIgnore: true */ PDFJS_MODULE_URL) as Promise<PdfJsModule>
+    }
 
- const pdfjsLib = await pdfJsModulePromise
- pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL
- return pdfjsLib
- } catch (error) {
- pdfJsModulePromise = null
- throw error
- }
+    const pdfjsLib = await pdfJsModulePromise
+    pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL
+    return pdfjsLib
+  } catch (error) {
+    pdfJsModulePromise = null
+    throw error
+  }
 }
 
 function canUseOffscreenCanvasRender(): boolean {
- return ENABLE_PDF_OFFSCREEN_RENDER && (
- typeof Worker !== 'undefined' &&
- typeof OffscreenCanvas !== 'undefined' &&
- typeof HTMLCanvasElement !== 'undefined' &&
- typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function'
- )
+  return (
+    ENABLE_PDF_OFFSCREEN_RENDER &&
+    typeof Worker !== 'undefined' &&
+    typeof OffscreenCanvas !== 'undefined' &&
+    typeof HTMLCanvasElement !== 'undefined' &&
+    typeof HTMLCanvasElement.prototype.transferControlToOffscreen === 'function'
+  )
 }
 
 function getPdfSourceHeaders(fileUrl?: string | null): Record<string, string> | undefined {
- const raw = String(fileUrl || '').trim()
- if (!raw || /^blob:/i.test(raw) || /^data:/i.test(raw)) return undefined
+  const raw = String(fileUrl || '').trim()
+  if (!raw || /^blob:/i.test(raw) || /^data:/i.test(raw)) return undefined
 
- try {
- const parsedUrl = new URL(raw, globalThis.window?.location.origin || API_BASE_URL)
- const apiUrl = new URL(API_BASE_URL)
- const isBackendApiUrl = parsedUrl.origin === apiUrl.origin && parsedUrl.pathname.startsWith('/api/')
- const isSameOriginApiUrl =
-   globalThis.window?.location.origin === parsedUrl.origin &&
- parsedUrl.pathname.startsWith('/api/')
- if (!isBackendApiUrl && !isSameOriginApiUrl) return undefined
- } catch {
- return undefined
- }
+  try {
+    const parsedUrl = new URL(raw, globalThis.window?.location.origin || API_BASE_URL)
+    const apiUrl = new URL(API_BASE_URL)
+    const isBackendApiUrl = parsedUrl.origin === apiUrl.origin && parsedUrl.pathname.startsWith('/api/')
+    const isSameOriginApiUrl =
+      globalThis.window?.location.origin === parsedUrl.origin && parsedUrl.pathname.startsWith('/api/')
+    if (!isBackendApiUrl && !isSameOriginApiUrl) return undefined
+  } catch {
+    return undefined
+  }
 
- return getAuthHeaders()
+  return getAuthHeaders()
 }
 
 async function readPdfSourceData(file?: File | null, fileUrl?: string | null): Promise<Uint8Array> {
- if (file) {
- return new Uint8Array(await file.arrayBuffer())
- }
+  if (file) {
+    return new Uint8Array(await file.arrayBuffer())
+  }
 
- if (fileUrl) {
- const response = await fetch(fileUrl, {
- credentials: 'include',
- headers: getPdfSourceHeaders(fileUrl),
- })
- if (!response.ok) {
- throw new Error(`PDF 下载失败 (${response.status})`)
- }
- return new Uint8Array(await response.arrayBuffer())
- }
+  if (fileUrl) {
+    const response = await fetch(fileUrl, {
+      credentials: 'include',
+      headers: getPdfSourceHeaders(fileUrl),
+    })
+    if (!response.ok) {
+      throw new Error(`PDF 下载失败 (${response.status})`)
+    }
+    return new Uint8Array(await response.arrayBuffer())
+  }
 
- throw new Error('未选择 PDF')
+  throw new Error('未选择 PDF')
 }
 
 export function PdfViewer({
- file,
- fileUrl,
- scrollToPageIndex,
- blocks = [],
- boxesByPage,
- blockIdToPageIndex,
- activeBlockIds,
- hoveredBlockIds,
- showAllBoxes = true,
- onHoverBlockId,
- onClickBlockId,
+  showToolbar = false,
+  file,
+  fileUrl,
+  scrollToPageIndex,
+  blocks = [],
+  boxesByPage,
+  blockIdToPageIndex,
+  activeBlockIds,
+  hoveredBlockIds,
+  showAllBoxes = true,
+  onHoverBlockId,
+  onClickBlockId,
 }: Readonly<PdfViewerProps>) {
- const containerRef = useRef<HTMLDivElement | null>(null)
- const contentRef = useRef<HTMLDivElement | null>(null)
- const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
- const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
- const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
- const [pageCount, setPageCount] = useState(0)
- const [scale, setScale] = useState(1)
- const [isLoading, setIsLoading] = useState(false)
- const [loadError, setLoadError] = useState<string | null>(null)
- const [reloadTick, setReloadTick] = useState(0)
- const [defaultPageAspectRatio, setDefaultPageAspectRatio] = useState<number | null>(null)
- const [pageAspectRatios, setPageAspectRatios] = useState<Map<number, number>>(new Map())
- const [defaultPageBaseSize, setDefaultPageBaseSize] = useState<PageBaseSize | null>(null)
- const [pageBaseSizes, setPageBaseSizes] = useState<Map<number, PageBaseSize>>(new Map())
- const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
- const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
- const [failedPages, setFailedPages] = useState<Set<number>>(new Set())
- const [pageRenderErrors, setPageRenderErrors] = useState<Map<number, string>>(new Map())
- const [offscreenRenderEnabled, setOffscreenRenderEnabled] = useState(false)
- const renderedPagesRef = useRef<Set<number>>(new Set())
- const renderingPagesRef = useRef<Set<number>>(new Set())
- const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())
- const pageRenderErrorsRef = useRef<Map<number, string>>(new Map())
- const offscreenRenderWorkerRef = useRef<Worker | null>(null)
- const offscreenRenderApiRef = useRef<Remote<PdfPageRenderWorkerApi> | null>(null)
- const transferredPageCanvasRef = useRef<Set<number>>(new Set())
- const offscreenRenderWorkerDisabledRef = useRef(false)
- const queuedPagesRef = useRef<Set<number>>(new Set())
- const retainedPageIndicesRef = useRef<Set<number>>(new Set())
- const renderQueueRef = useRef<number[]>([])
- const idleRenderHandleRef = useRef<number | null>(null)
- const idleRenderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
- const pageRenderRetryCountsRef = useRef<Map<number, number>>(new Map())
- const pageRenderRetryTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
- const activeRenderCountRef = useRef(0)
- const flushQueuedPageRendersRef = useRef<() => Promise<void>>(async () => {})
- const renderGenRef = useRef(0)
- const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, pageNumber) => pageNumber + 1), [pageCount])
- const renderModeKey = `${reloadTick}-${offscreenRenderEnabled ? 'offscreen' : 'main'}`
- const hasSource = Boolean(file || fileUrl)
-
- const retryLoad = useCallback(() => {
- setReloadTick((prev) => prev + 1)
- }, [])
-
- const terminateOffscreenRenderWorker = useCallback(() => {
- const api = offscreenRenderApiRef.current
- offscreenRenderApiRef.current = null
- transferredPageCanvasRef.current.clear()
- if (api) {
- detachPromise(api.destroy().catch(() => {}))
- }
- offscreenRenderWorkerRef.current?.terminate()
- offscreenRenderWorkerRef.current = null
- }, [])
-
- const disableOffscreenRenderAndReload = useCallback(
- (reason: unknown) => {
- if (offscreenRenderWorkerDisabledRef.current) return
- offscreenRenderWorkerDisabledRef.current = true
- reportClientWarning('PDF offscreen page render failed; falling back to main-thread raster', reason)
- terminateOffscreenRenderWorker()
- setOffscreenRenderEnabled(false)
- setReloadTick((prev) => prev + 1)
- },
- [terminateOffscreenRenderWorker]
- )
-
- const cancelRenderTasks = useCallback(() => {
- renderTasksRef.current.forEach((task) => task.cancel())
- renderTasksRef.current.clear()
- const offscreenApi = offscreenRenderApiRef.current
- if (offscreenApi) {
- detachPromise(offscreenApi.cancelAllRenders().catch(() => {}))
- }
- }, [])
-
- useEffect(() => {
- let cancelled = false
-
- async function loadPdf() {
- cancelRenderTasks()
- pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
- pageRenderRetryTimeoutsRef.current.clear()
- pageRenderRetryCountsRef.current.clear()
-
- if (!hasSource) {
- setPdfDoc(null)
- setPageCount(0)
- setDefaultPageAspectRatio(null)
- setPageAspectRatios(new Map())
- setDefaultPageBaseSize(null)
- setPageBaseSizes(new Map())
- retainedPageIndicesRef.current.clear()
- renderedPagesRef.current = new Set()
- setRenderedPages(new Set())
- setLoadingPages(new Set())
- setFailedPages(new Set())
- pageRenderErrorsRef.current = new Map()
- setPageRenderErrors(new Map())
- setLoadError(null)
- return
- }
-
- setIsLoading(true)
- setLoadError(null)
- try {
- const data = await readPdfSourceData(file, fileUrl)
- const pdfjsLib = await loadPdfJsModule()
- const offscreenCanvasSupported = Boolean(pdfjsLib.FeatureTest.isOffscreenCanvasSupported)
- const doc = await pdfjsLib.getDocument({
- data,
- isOffscreenCanvasSupported: offscreenCanvasSupported,
- enableHWA: offscreenCanvasSupported,
- cMapUrl: PDFJS_CMAPS_URL,
- standardFontDataUrl: PDFJS_STANDARD_FONTS_URL,
- wasmUrl: PDFJS_WASM_URL,
- iccUrl: PDFJS_ICCS_URL,
- }).promise
- if (cancelled) return
- setPdfDoc(doc)
- setPageCount(doc.numPages)
- setDefaultPageAspectRatio(null)
- setPageAspectRatios(new Map())
- setDefaultPageBaseSize(null)
- setPageBaseSizes(new Map())
- retainedPageIndicesRef.current.clear()
- renderedPagesRef.current = new Set()
- setRenderedPages(new Set())
- setLoadingPages(new Set())
- setFailedPages(new Set())
- pageRenderErrorsRef.current = new Map()
- setPageRenderErrors(new Map())
- } catch (err) {
- if (!cancelled) {
- const message = err instanceof Error ? err.message : toPrimitiveString(err)
- setLoadError(message || 'PDF 加载失败')
- setPdfDoc(null)
- setPageCount(0)
- setDefaultPageAspectRatio(null)
- setPageAspectRatios(new Map())
- setDefaultPageBaseSize(null)
- setPageBaseSizes(new Map())
- retainedPageIndicesRef.current.clear()
- renderedPagesRef.current = new Set()
- setRenderedPages(new Set())
- setLoadingPages(new Set())
- setFailedPages(new Set())
- pageRenderErrorsRef.current = new Map()
- setPageRenderErrors(new Map())
- }
- } finally {
- if (!cancelled) setIsLoading(false)
- }
- }
-
- loadPdf()
- return () => {
- cancelled = true
- }
- }, [cancelRenderTasks, file, fileUrl, hasSource, reloadTick])
-
- useEffect(() => {
- containerRef.current?.scrollTo({ top: 0 })
- }, [file, fileUrl, reloadTick])
-
- useEffect(() => {
- // Important: measure the actual content width (max-w-4xl) instead of the scroll container width,
- // otherwise the computed scale will not match the rendered canvas and overlays will drift.
- const container = contentRef.current
- if (!container || !pdfDoc) return
-
- let raf = 0
- const updateScale = async () => {
- if (!container || !pdfDoc) return
- // Prefer the first page container width (clientWidth excludes borders),
- // so the scale matches the canvas CSS size exactly.
- const firstPage = pageRefs.current.get(0)
- const width = (firstPage?.clientWidth || container.clientWidth) ?? 0
- if (!width) return
- try {
- const page = await pdfDoc.getPage(1)
- const viewport = page.getViewport({ scale: 1 })
- const nextScale = width / viewport.width
- const nextAspectRatio = viewport.width / viewport.height
- setDefaultPageBaseSize((prev) =>
- prev != null &&
- Math.abs(prev.width - viewport.width) < 0.001 &&
- Math.abs(prev.height - viewport.height) < 0.001
- ? prev
- : { width: viewport.width, height: viewport.height }
- )
- setScale((prev) => (Math.abs(prev - nextScale) > 0.01 ? nextScale : prev))
- setDefaultPageAspectRatio((prev) =>
- prev != null && Math.abs(prev - nextAspectRatio) < 0.001 ? prev : nextAspectRatio
- )
- } catch {
- // ignore
- }
- }
-
- const handleResize = () => {
- if (raf) cancelAnimationFrame(raf)
- raf = requestAnimationFrame(updateScale)
- }
-
- const observer = new ResizeObserver(handleResize)
- observer.observe(container)
- updateScale()
-
- return () => {
- if (raf) cancelAnimationFrame(raf)
- observer.disconnect()
- }
- }, [pdfDoc])
-
- useEffect(() => {
- let cancelled = false
-
- terminateOffscreenRenderWorker()
- setOffscreenRenderEnabled(false)
-
- if (!hasSource || !pdfDoc) {
- return () => {
- cancelled = true
- }
- }
-
- if (offscreenRenderWorkerDisabledRef.current || !canUseOffscreenCanvasRender()) {
- return () => {
- cancelled = true
- }
- }
-
- detachPromise((async () => {
- try {
- const { transfer, wrap } = await import('comlink')
- if (cancelled) return
-
- const worker = new Worker(new URL('../../workers/pdf-page-render.worker.ts', import.meta.url), {
- type: 'module',
- })
- const api = wrap<PdfPageRenderWorkerApi>(worker)
- offscreenRenderWorkerRef.current = worker
- offscreenRenderApiRef.current = api
-
-  const data = await readPdfSourceData(file, fileUrl)
- await api.initializeDocument(transfer(data, [data.buffer]))
-
- if (cancelled) {
- await api.destroy().catch(() => {})
- worker.terminate()
- return
- }
-
- setOffscreenRenderEnabled(ENABLE_PDF_OFFSCREEN_RENDER)
- } catch (error) {
- reportClientWarning('PDF offscreen render worker failed; falling back to main-thread raster', error)
- offscreenRenderWorkerDisabledRef.current = true
- terminateOffscreenRenderWorker()
- setOffscreenRenderEnabled(false)
- }
- })())
-
- return () => {
- cancelled = true
- terminateOffscreenRenderWorker()
- setOffscreenRenderEnabled(false)
- }
- }, [file, fileUrl, hasSource, pdfDoc, terminateOffscreenRenderWorker])
-
- const clearQueuedRenderFlush = useCallback(() => {
- const idleGlobal: IdleGlobal = globalThis
- const cancelIdleCallback = idleGlobal.cancelIdleCallback
-
- if (idleRenderHandleRef.current != null && typeof cancelIdleCallback === 'function') {
- cancelIdleCallback(idleRenderHandleRef.current)
- }
- if (idleRenderTimeoutRef.current != null) {
- clearTimeout(idleRenderTimeoutRef.current)
- }
-
- idleRenderHandleRef.current = null
- idleRenderTimeoutRef.current = null
- }, [])
-
- const attachOffscreenPageCanvas = useCallback(
- async (pageIndex: number) => {
- if (!offscreenRenderEnabled) return false
-
- const api = offscreenRenderApiRef.current
- const canvas = canvasRefs.current.get(pageIndex)
- if (!api || !canvas) return false
-
- if (transferredPageCanvasRef.current.has(pageIndex)) {
- return true
- }
-
- const { transfer } = await import('comlink')
- const offscreenCanvas = canvas.transferControlToOffscreen()
- await api.attachPageCanvas(
- transfer(
- {
- pageIndex,
- canvas: offscreenCanvas,
- },
- [offscreenCanvas]
- )
- )
-
- transferredPageCanvasRef.current.add(pageIndex)
- return true
- },
- [offscreenRenderEnabled]
- )
-
- const rememberPageAspectRatio = useCallback((pageIndex: number, width: number, height: number) => {
- if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
-
- const nextAspectRatio = width / height
- setPageAspectRatios((prev) => {
- const currentAspectRatio = prev.get(pageIndex)
- if (currentAspectRatio != null && Math.abs(currentAspectRatio - nextAspectRatio) < 0.001) {
- return prev
- }
-
- const next = new Map(prev)
- next.set(pageIndex, nextAspectRatio)
- return next
- })
- }, [])
-
- const rememberPageBaseSize = useCallback((pageIndex: number, width: number, height: number) => {
- if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
-
- setPageBaseSizes((prev) => {
- const current = prev.get(pageIndex)
- if (
- current &&
- Math.abs(current.width - width) < 0.001 &&
- Math.abs(current.height - height) < 0.001
- ) {
- return prev
- }
-
- const next = new Map(prev)
- next.set(pageIndex, { width, height })
- return next
- })
- }, [])
-
- const clearPageRenderRetry = useCallback((pageIndex?: number) => {
- if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
- const timeoutId = pageRenderRetryTimeoutsRef.current.get(pageIndex)
- if (timeoutId) clearTimeout(timeoutId)
- pageRenderRetryTimeoutsRef.current.delete(pageIndex)
- pageRenderRetryCountsRef.current.delete(pageIndex)
- return
- }
-
- pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
- pageRenderRetryTimeoutsRef.current.clear()
- pageRenderRetryCountsRef.current.clear()
- }, [])
-
- const setPageRenderError = useCallback((pageIndex: number, error: unknown) => {
- const message = error instanceof Error ? error.message : toPrimitiveString(error)
- const nextMessage = message || `Page ${pageIndex + 1} render failed`
-
- setPageRenderErrors((prev) => {
- if (prev.get(pageIndex) === nextMessage) return prev
-
- const next = new Map(prev)
- next.set(pageIndex, nextMessage)
- pageRenderErrorsRef.current = next
- return next
- })
-
- if (process.env.NODE_ENV === 'development') {
- reportClientWarning(`PDF page ${pageIndex + 1} render failed`, error)
- }
- }, [])
-
- const clearPageRenderError = useCallback((pageIndex?: number) => {
- if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
- setPageRenderErrors((prev) => {
- if (!prev.has(pageIndex)) return prev
-
- const next = new Map(prev)
- next.delete(pageIndex)
- pageRenderErrorsRef.current = next
- return next
- })
- return
- }
-
- pageRenderErrorsRef.current = new Map()
- setPageRenderErrors(new Map())
- }, [])
-
- const markPageFailed = useCallback((pageIndex: number) => {
- setFailedPages((prev) => {
- if (prev.has(pageIndex)) return prev
-
- const next = new Set(prev)
- next.add(pageIndex)
- return next
- })
- }, [])
-
- const clearPageFailure = useCallback((pageIndex?: number) => {
- if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
- setFailedPages((prev) => {
- if (!prev.has(pageIndex)) return prev
-
- const next = new Set(prev)
- next.delete(pageIndex)
- return next
- })
- return
- }
-
- setFailedPages(new Set())
- }, [])
-
- const markPageRendered = useCallback((pageIndex: number) => {
- if (renderedPagesRef.current.has(pageIndex)) return false
-
- clearPageRenderRetry(pageIndex)
- clearPageFailure(pageIndex)
- clearPageRenderError(pageIndex)
- const next = new Set(renderedPagesRef.current)
- next.add(pageIndex)
- renderedPagesRef.current = next
- setRenderedPages(next)
- return true
- }, [clearPageFailure, clearPageRenderError, clearPageRenderRetry])
-
- const unmarkPageRendered = useCallback((pageIndex: number) => {
- if (!renderedPagesRef.current.has(pageIndex)) return false
-
- const next = new Set(renderedPagesRef.current)
- next.delete(pageIndex)
- renderedPagesRef.current = next
- setRenderedPages(next)
- return true
- }, [])
-
- const markPageLoading = useCallback((pageIndex: number) => {
- setLoadingPages((prev) => {
- if (prev.has(pageIndex)) return prev
-
- const next = new Set(prev)
- next.add(pageIndex)
- return next
- })
- }, [])
-
- const unmarkPageLoading = useCallback((pageIndex: number) => {
- setLoadingPages((prev) => {
- if (!prev.has(pageIndex)) return prev
-
- const next = new Set(prev)
- next.delete(pageIndex)
- return next
- })
- }, [])
-
- const scheduleQueuedRenderFlush = useCallback(() => {
- if (idleRenderHandleRef.current != null || idleRenderTimeoutRef.current != null) return
-
- const flush = () => {
- idleRenderHandleRef.current = null
- if (idleRenderTimeoutRef.current != null) {
- clearTimeout(idleRenderTimeoutRef.current)
- idleRenderTimeoutRef.current = null
- }
- detachPromise(flushQueuedPageRendersRef.current())
- }
-
- const idleGlobal: IdleGlobal = globalThis
- const requestIdleCallback = idleGlobal.requestIdleCallback
- if (typeof requestIdleCallback === 'function') {
- idleRenderHandleRef.current = requestIdleCallback(flush, { timeout: IDLE_RENDER_TIMEOUT_MS })
- return
- }
-
- idleRenderTimeoutRef.current = setTimeout(flush, 0)
- }, [])
-
- const queuePageRender = useCallback(
- (pageIndex: number) => {
- if (pageIndex < 0 || pageIndex >= pageCount) return
- if (renderedPagesRef.current.has(pageIndex)) return
- if (renderingPagesRef.current.has(pageIndex)) return
- if (queuedPagesRef.current.has(pageIndex)) return
-
- clearPageFailure(pageIndex)
- clearPageRenderError(pageIndex)
- queuedPagesRef.current.add(pageIndex)
- markPageLoading(pageIndex)
- renderQueueRef.current.push(pageIndex)
- scheduleQueuedRenderFlush()
- },
- [clearPageFailure, clearPageRenderError, markPageLoading, pageCount, scheduleQueuedRenderFlush]
- )
-
- const schedulePageRenderRetry = useCallback(
- (pageIndex: number) => {
- if (pageIndex < 0 || pageIndex >= pageCount) return
- if (renderedPagesRef.current.has(pageIndex)) {
- clearPageRenderRetry(pageIndex)
- return
- }
- // Important: schedule retries even if the page is currently marked as "rendering".
- // renderPage() calls us from its catch branch before clearing renderingPagesRef.
- if (queuedPagesRef.current.has(pageIndex)) return
- if (pageRenderRetryTimeoutsRef.current.has(pageIndex)) return
-
- const attempts = pageRenderRetryCountsRef.current.get(pageIndex) || 0
- if (attempts >= MAX_PAGE_RENDER_RETRIES) {
- markPageFailed(pageIndex)
- return
- }
-
- pageRenderRetryCountsRef.current.set(pageIndex, attempts + 1)
- markPageLoading(pageIndex)
-
- const timeoutId = setTimeout(() => {
- if (pageRenderRetryTimeoutsRef.current.get(pageIndex) === timeoutId) {
- pageRenderRetryTimeoutsRef.current.delete(pageIndex)
- }
- if (renderedPagesRef.current.has(pageIndex)) {
- clearPageRenderRetry(pageIndex)
- unmarkPageLoading(pageIndex)
- return
- }
- if (renderingPagesRef.current.has(pageIndex) || queuedPagesRef.current.has(pageIndex)) {
- return
- }
-
- queuePageRender(pageIndex)
- detachPromise(flushQueuedPageRendersRef.current())
- }, PAGE_RENDER_RETRY_DELAY_MS)
-
- pageRenderRetryTimeoutsRef.current.set(pageIndex, timeoutId)
- },
- [clearPageRenderRetry, markPageFailed, markPageLoading, pageCount, queuePageRender, unmarkPageLoading]
- )
-
- const releasePage = useCallback((pageIndex: number) => {
- const activeRenderTask = renderTasksRef.current.get(pageIndex)
- activeRenderTask?.cancel()
- renderTasksRef.current.delete(pageIndex)
- renderingPagesRef.current.delete(pageIndex)
- queuedPagesRef.current.delete(pageIndex)
- renderQueueRef.current = renderQueueRef.current.filter((candidate) => candidate !== pageIndex)
- clearPageRenderRetry(pageIndex)
- unmarkPageLoading(pageIndex)
-
- const canvas = canvasRefs.current.get(pageIndex)
- const offscreenApi = offscreenRenderApiRef.current
- if (transferredPageCanvasRef.current.has(pageIndex) && offscreenRenderEnabled && offscreenApi) {
- detachPromise(offscreenApi.releasePage(pageIndex).catch(() => {}))
- } else if (canvas) {
- canvas.width = 0
- canvas.height = 0
- }
-
- unmarkPageRendered(pageIndex)
- }, [clearPageRenderRetry, offscreenRenderEnabled, unmarkPageLoading, unmarkPageRendered])
-
- const retryPageRender = useCallback((pageIndex: number) => {
- if (pageIndex < 0 || pageIndex >= pageCount) return
-
- releasePage(pageIndex)
- clearPageFailure(pageIndex)
- queuePageRender(pageIndex)
- detachPromise(flushQueuedPageRendersRef.current())
- }, [clearPageFailure, pageCount, queuePageRender, releasePage])
-
- const trimRenderedPagePool = useCallback((pageIndex: number) => {
- const stalePageIndices = selectPdfPagesToReleaseForPool({
- renderedPages: renderedPagesRef.current,
- keepPage: pageIndex,
- maxRetainedPages: MAX_RETAINED_PAGE_CANVASES,
- retainedPages: retainedPageIndicesRef.current,
- queuedPages: queuedPagesRef.current,
- renderingPages: renderingPagesRef.current,
- })
-
- for (const stalePageIndex of stalePageIndices) {
- releasePage(stalePageIndex)
- }
- }, [releasePage])
-
- // Invalidate in-flight renders when doc/scale changes.
- useEffect(() => {
- renderGenRef.current += 1
- clearQueuedRenderFlush()
- cancelRenderTasks()
- clearPageRenderRetry()
- clearPageRenderError()
- activeRenderCountRef.current = 0
- queuedPagesRef.current.clear()
- retainedPageIndicesRef.current.clear()
- renderQueueRef.current = []
- renderedPagesRef.current = new Set()
- renderingPagesRef.current.clear()
- setRenderedPages(new Set())
- setLoadingPages(new Set())
- setFailedPages(new Set())
- }, [cancelRenderTasks, clearPageRenderError, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc, scale])
-
- useEffect(() => {
- const doc = pdfDoc
- return () => {
- clearQueuedRenderFlush()
- cancelRenderTasks()
- clearPageRenderRetry()
- clearPageRenderError()
- if (!doc) return
- detachPromise(doc.cleanup())
- }
- }, [cancelRenderTasks, clearPageRenderError, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc])
-
- const renderPage = useCallback(
- async (pageIndex: number) => {
- const doc = pdfDoc
- const totalPages = pageCount
- if (!doc || !totalPages) return
- if (pageIndex < 0 || pageIndex >= totalPages) return
-
- // Prevent duplicate renders for the same page.
- if (renderedPagesRef.current.has(pageIndex)) return
- if (renderingPagesRef.current.has(pageIndex)) return
-
- const gen = renderGenRef.current
- renderingPagesRef.current.add(pageIndex)
- let activeRenderTask: RenderTask | null = null
- let releasePageResources: (() => void) | null = null
- let usedOffscreenWorker = false
- try {
- const page = await doc.getPage(pageIndex + 1)
- releasePageResources = () => {
- page.cleanup()
- releasePageResources = null
- }
- if (renderGenRef.current !== gen) return
- const baseViewport = page.getViewport({ scale: 1 })
- const viewport = page.getViewport({ scale })
- rememberPageAspectRatio(pageIndex, viewport.width, viewport.height)
- rememberPageBaseSize(pageIndex, baseViewport.width, baseViewport.height)
-
- const api = offscreenRenderEnabled ? offscreenRenderApiRef.current : null
- if (api) {
- usedOffscreenWorker = true
- releasePageResources?.()
- const attached = await attachOffscreenPageCanvas(pageIndex)
- if (!attached) {
- throw new Error(`Unable to attach OffscreenCanvas for page ${pageIndex}`)
- }
-
- let timeoutId: ReturnType<typeof setTimeout> | null = null
- try {
- await Promise.race([
- api.renderPage({ pageIndex, scale }),
- new Promise<never>((_, reject) => {
- timeoutId = setTimeout(() => {
- reject(new Error(`Offscreen render timed out for page ${pageIndex + 1}`))
- }, OFFSCREEN_PAGE_RENDER_TIMEOUT_MS)
- }),
- ])
- } finally {
- if (timeoutId) clearTimeout(timeoutId)
- }
- if (renderGenRef.current !== gen) return
-
- if (markPageRendered(pageIndex)) {
- trimRenderedPagePool(pageIndex)
- }
- return
- }
-
- const canvas = canvasRefs.current.get(pageIndex)
- if (!canvas) {
- if (renderGenRef.current !== gen) return
- setPageRenderError(pageIndex, `Canvas not mounted for page ${pageIndex + 1}`)
- schedulePageRenderRetry(pageIndex)
- return
- }
-
- canvas.width = Math.ceil(viewport.width)
- canvas.height = Math.ceil(viewport.height)
- const canvasContext = canvas.getContext('2d', { alpha: false })
- if (!canvasContext) {
- if (renderGenRef.current !== gen) return
- setPageRenderError(pageIndex, `Unable to acquire 2D canvas context for page ${pageIndex + 1}`)
- schedulePageRenderRetry(pageIndex)
- return
- }
-
- canvasContext.clearRect(0, 0, canvas.width, canvas.height)
- const renderTask = page.render({ canvas: null, canvasContext, viewport, background: '#ffffff' })
- activeRenderTask = renderTask
- renderTasksRef.current.set(pageIndex, renderTask)
-
- let renderTimeoutId: ReturnType<typeof setTimeout> | null = null
-
- try {
- await Promise.race([
- (async () => {
- await renderTask.promise
- })(),
- new Promise<never>((_, reject) => {
- renderTimeoutId = setTimeout(() => {
- try {
- renderTask.cancel()
- } catch {
- // ignore
- }
- reject(new Error(`Main-thread render timed out for page ${pageIndex + 1}`))
- }, MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS)
- }),
- ])
- } finally {
- if (renderTimeoutId) clearTimeout(renderTimeoutId)
- renderTimeoutId = null
- }
-
- releasePageResources?.()
- if (renderGenRef.current !== gen) return
- if (markPageRendered(pageIndex)) {
- trimRenderedPagePool(pageIndex)
- }
- } catch (error) {
- // OffscreenCanvas transfer is one-way; if the worker can't render a page, fall back to main-thread
- // by disabling offscreen mode and forcing a reload to remount canvas nodes.
- if (usedOffscreenWorker) {
- setPageRenderError(pageIndex, error)
- disableOffscreenRenderAndReload(error)
- return
- }
- if (renderGenRef.current !== gen) return
- setPageRenderError(pageIndex, error)
- schedulePageRenderRetry(pageIndex)
- } finally {
- if (activeRenderTask && renderTasksRef.current.get(pageIndex) === activeRenderTask) {
- renderTasksRef.current.delete(pageIndex)
- }
- releasePageResources?.()
- renderingPagesRef.current.delete(pageIndex)
- if (!pageRenderRetryTimeoutsRef.current.has(pageIndex)) {
- unmarkPageLoading(pageIndex)
- }
- }
- },
- [
- attachOffscreenPageCanvas,
- disableOffscreenRenderAndReload,
- markPageRendered,
- offscreenRenderEnabled,
- pdfDoc,
- pageCount,
- rememberPageAspectRatio,
- rememberPageBaseSize,
- setPageRenderError,
- schedulePageRenderRetry,
- scale,
- trimRenderedPagePool,
- unmarkPageLoading,
- ]
- )
-
- const flushQueuedPageRenders = useCallback(async () => {
- while (activeRenderCountRef.current < MAX_CONCURRENT_RENDERS && renderQueueRef.current.length > 0) {
- const pageIndex = renderQueueRef.current.shift()
- if (typeof pageIndex !== 'number' || !Number.isFinite(pageIndex)) continue
-
- queuedPagesRef.current.delete(pageIndex)
- if (renderedPagesRef.current.has(pageIndex)) {
- unmarkPageLoading(pageIndex)
- continue
- }
- if (renderingPagesRef.current.has(pageIndex)) {
- unmarkPageLoading(pageIndex)
- continue
- }
-
- activeRenderCountRef.current += 1
- detachPromise(
- renderPage(pageIndex).finally(() => {
- activeRenderCountRef.current = Math.max(0, activeRenderCountRef.current - 1)
- if (renderQueueRef.current.length > 0) {
- scheduleQueuedRenderFlush()
- }
- })
- )
- }
- }, [renderPage, scheduleQueuedRenderFlush, unmarkPageLoading])
-
- useLayoutEffect(() => {
- flushQueuedPageRendersRef.current = flushQueuedPageRenders
- }, [flushQueuedPageRenders])
-
- // Re-observe after scale changes so the first visible pages are re-queued when an
- // initial render was invalidated by the post-layout scale measurement.
- // Render pages on-demand as they enter the viewport.
- useEffect(() => {
- const container = containerRef.current
- const doc = pdfDoc
- const totalPages = pageCount
- if (!container || !doc || !totalPages) return
-
- let cancelled = false
- const observer = new IntersectionObserver(
- (entries) => {
- if (cancelled) return
- for (const entry of entries) {
- if (!entry.isIntersecting) continue
- const idxAttr = (entry.target as HTMLElement).dataset.pageIndex
- const idx = idxAttr ? Number(idxAttr) : Number.NaN
- if (!Number.isFinite(idx)) continue
- queuePageRender(idx)
- }
- },
- {
- root: container,
- // Pre-render a bit ahead/behind for smoother scrolling.
- rootMargin: RENDER_ROOT_MARGIN,
- threshold: 0.01,
- }
- )
-
- // Observe all page containers.
- for (let i = 0; i < totalPages; i += 1) {
- const el = pageRefs.current.get(i)
- if (el) observer.observe(el)
- }
-
- // Kickstart: render the first few pages ASAP so the initial preview is visible even
- // before the observer has fully settled after layout.
- for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1) {
- queuePageRender(pageIndex)
- }
- detachPromise(flushQueuedPageRendersRef.current())
-
- return () => {
- cancelled = true
- observer.disconnect()
- }
- }, [pageCount, pdfDoc, queuePageRender, scale])
-
- useEffect(() => {
- const container = containerRef.current
- const doc = pdfDoc
- const totalPages = pageCount
- if (!container || !doc || !totalPages) return
-
- let raf = 0
- const handleViewportQueue = () => {
- if (raf) cancelAnimationFrame(raf)
- raf = requestAnimationFrame(() => {
- raf = 0
- queueVisiblePdfPageWindow({
- containerScrollTop: container.scrollTop,
- containerHeight: container.clientHeight,
- pageCount: totalPages,
- pageElements: pageRefs.current,
- queuePageRender,
- })
- detachPromise(flushQueuedPageRendersRef.current())
- })
- }
-
- handleViewportQueue()
- container.addEventListener('scroll', handleViewportQueue, { passive: true })
- globalThis.window?.addEventListener('resize', handleViewportQueue)
-
- return () => {
- if (raf) cancelAnimationFrame(raf)
- container.removeEventListener('scroll', handleViewportQueue)
- globalThis.window?.removeEventListener('resize', handleViewportQueue)
- }
- }, [pageCount, pdfDoc, queuePageRender, scale])
-
- useEffect(() => {
- const doc = pdfDoc
- const totalPages = pageCount
- if (!doc || !totalPages) return
-
- const intervalId = setInterval(() => {
- for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1) {
- if (renderedPagesRef.current.has(pageIndex)) continue
- if (renderingPagesRef.current.has(pageIndex)) continue
- if (queuedPagesRef.current.has(pageIndex)) continue
- retryPageRender(pageIndex)
- }
- }, FIRST_PAGE_RENDER_WATCHDOG_INTERVAL_MS)
-
- return () => {
- clearInterval(intervalId)
- }
- }, [pageCount, pdfDoc, retryPageRender, scale])
-
- useEffect(() => {
- const container = containerRef.current
- const doc = pdfDoc
- const totalPages = pageCount
- if (!container || !doc || !totalPages) return
-
- let cancelled = false
- const retentionObserver = new IntersectionObserver(
- (entries) => {
- if (cancelled) return
- for (const entry of entries) {
- const idxAttr = (entry.target as HTMLElement).dataset.pageIndex
- const idx = idxAttr ? Number(idxAttr) : Number.NaN
- if (!Number.isFinite(idx)) continue
- if (entry.isIntersecting) {
- retainedPageIndicesRef.current.add(idx)
- continue
- }
- retainedPageIndicesRef.current.delete(idx)
- if (!renderedPagesRef.current.has(idx)) continue
- releasePage(idx)
- }
- },
- {
- root: container,
- rootMargin: RETAIN_ROOT_MARGIN,
- threshold: 0,
- }
- )
-
- for (let i = 0; i < totalPages; i += 1) {
- const el = pageRefs.current.get(i)
- if (el) retentionObserver.observe(el)
- }
-
- return () => {
- cancelled = true
- retentionObserver.disconnect()
- }
- }, [pageCount, pdfDoc, releasePage])
-
- const resolvedBoxesByPage = useMemo(() => {
- if (boxesByPage) return boxesByPage
-
- const map = new Map<number, Box[]>()
- for (const block of blocks) {
- const kind = classifyParsingBlock(block)
- for (const position of block.positions || []) {
- const pages = position.pages?.length ? position.pages : [0]
- for (const pageIndex of pages) {
- const list = map.get(pageIndex) || []
- list.push({ id: block.id, kind, position })
- map.set(pageIndex, list)
- }
- }
- }
- return map
- }, [blocks, boxesByPage])
- const resolvedBlockIdToPageIndex = useMemo(() => {
- if (blockIdToPageIndex) return blockIdToPageIndex
-
- const map = new Map<string, number>()
- for (const block of blocks) {
- const pageIndex = block.positions.find((position) => position.pages?.length)?.pages?.[0]
- if (typeof pageIndex !== 'number' || !Number.isFinite(pageIndex)) continue
- map.set(block.id, pageIndex)
- }
- return map
- }, [blockIdToPageIndex, blocks])
-
- const activeSet = useMemo(() => new Set(activeBlockIds || []), [activeBlockIds])
- const hoveredSet = useMemo(() => new Set(hoveredBlockIds || []), [hoveredBlockIds])
-
- const handleHoverBlock = useCallback(
- (blockId: string | null) => {
- if (!onHoverBlockId) return
- onHoverBlockId(blockId)
- },
- [onHoverBlockId]
- )
-
- const handleClickBlock = useCallback(
- (blockId: string, hint?: ParsingEditFocusHint) => {
- if (!onClickBlockId) return
- onClickBlockId(blockId, hint)
- },
- [onClickBlockId]
- )
-
- useEffect(() => {
- const pageIndex =
- typeof scrollToPageIndex === 'number' && Number.isFinite(scrollToPageIndex)
- ? Math.max(0, Math.min(pageCount - 1, Math.trunc(scrollToPageIndex)))
- : null
- if (pageIndex == null || pageCount <= 0) return
- const el = pageRefs.current.get(pageIndex)
- const container = containerRef.current
- if (!el || !container) return
- const reduceMotion =
- globalThis.window !== undefined &&
- typeof globalThis.window.matchMedia === 'function' &&
- globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
- const behavior = reduceMotion ? 'auto' : 'smooth'
- const containerCanScroll = container.scrollHeight > container.clientHeight + 1
- if (!containerCanScroll) {
- const scrollElement = findNearestScrollableAncestor(container)
- if (!scrollElement) return
- scrollPdfPageIntoElement({ behavior, scrollElement, targetElement: el })
- return
- }
- container.scrollTo({
- top: Math.max(0, el.offsetTop - 24),
- behavior,
- })
- }, [pageCount, scrollToPageIndex])
-
- useEffect(() => {
- const firstActive = (activeBlockIds || [])[0]
- if (!firstActive) return
- const pageIndex = resolvedBlockIdToPageIndex.get(firstActive)
- if (pageIndex == null) return
- const el = pageRefs.current.get(pageIndex)
- const container = containerRef.current
- if (!el || !container) return
- const reduceMotion =
- globalThis.window !== undefined &&
- typeof globalThis.window.matchMedia === 'function' &&
- globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
- const behavior = reduceMotion ? 'auto' : 'smooth'
- const pageBoxes = resolvedBoxesByPage.get(pageIndex) || []
- const targetBox = pageBoxes.find((box) => box.id === firstActive)
- const pageBaseSize = pageBaseSizes.get(pageIndex) ?? defaultPageBaseSize
- if (targetBox) {
- const coordinateSpace = detectPdfBboxCoordinateSpace({
- items: pageBoxes,
- pageBaseWidth: pageBaseSize?.width ?? null,
- pageBaseHeight: pageBaseSize?.height ?? null,
- })
- const rect = computePdfOverlayRect({
- position: targetBox.position,
- scale,
- pageBaseWidth: pageBaseSize?.width ?? null,
- pageBaseHeight: pageBaseSize?.height ?? null,
- coordinateSpace,
- })
- const containerCanScroll = container.scrollHeight > container.clientHeight + 1
- if (!containerCanScroll) {
- const scrollElement = findNearestScrollableAncestor(container)
- if (!scrollElement) return
- scrollPdfOverlayIntoElement({
- behavior,
- overlayHeight: rect.height,
- overlayTop: rect.top,
- pageElement: el,
- scrollElement,
- })
- return
- }
- const containerRect = container.getBoundingClientRect()
- const pageRect = el.getBoundingClientRect()
- container.scrollTo({
- behavior,
- top: computePdfOverlayScrollTop({
- containerHeight: container.clientHeight,
- containerScrollTop: container.scrollTop,
- containerTop: containerRect.top,
- overlayHeight: rect.height,
- overlayTop: rect.top,
- pageTop: pageRect.top,
- }),
- })
- return
- }
- const containerCanScroll = container.scrollHeight > container.clientHeight + 1
- if (!containerCanScroll) {
- const scrollElement = findNearestScrollableAncestor(container)
- if (!scrollElement) return
- scrollPdfPageIntoElement({ behavior, scrollElement, targetElement: el })
- return
- }
- scrollPdfPageIntoElement({ behavior, scrollElement: container, targetElement: el })
- }, [activeBlockIds, defaultPageBaseSize, pageBaseSizes, resolvedBlockIdToPageIndex, resolvedBoxesByPage, scale])
-
- useEffect(() => {
- if (process.env.NODE_ENV !== 'development') return
- if (globalThis.window === undefined) return
-
- const win = globalThis.window as typeof globalThis.window & {
- __mimirqPdfViewerDebug?: Record<string, unknown>
- }
-
- win.__mimirqPdfViewerDebug = {
- activeRenderCount: activeRenderCountRef.current,
- failedPages: Array.from(failedPages),
- loadingPages: Array.from(loadingPages),
- pageCount,
- pageErrors: Object.fromEntries(pageRenderErrorsRef.current.entries()),
- queuedPages: Array.from(queuedPagesRef.current),
- renderedPages: Array.from(renderedPagesRef.current),
- renderingPages: Array.from(renderingPagesRef.current),
- retryCounts: Object.fromEntries(pageRenderRetryCountsRef.current.entries()),
- scale,
- }
-
- return () => {
- delete win.__mimirqPdfViewerDebug
- }
- }, [failedPages, loadingPages, pageCount, pageRenderErrors, renderedPages, scale])
-
- if (!hasSource) {
- return (
- <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
- 未选择 PDF
- </div>
- )
- }
-
- if (isLoading || (!pdfDoc && !loadError)) {
- return (
- <div className="flex h-full items-center justify-center text-muted-foreground">
- <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
- 正在加载 PDF...
- </div>
- )
- }
-
- if (loadError || !pdfDoc) {
- return (
- <div className="flex h-full items-center justify-center px-6">
- <div className="max-w-md rounded-2xl border border-border/60 bg-card p-5 text-center shadow-sm">
- <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
- <AlertCircle className="h-5 w-5" />
- </div>
- <div className="text-sm font-semibold text-foreground">PDF 加载失败</div>
- <div className="mt-1 text-xs text-muted-foreground">{loadError || '请重试，或重新上传该文件。'}</div>
- <div className="mt-4 flex justify-center gap-2">
- <Button variant="outline" size="sm" className="gap-1.5" onClick={retryLoad}>
- <RotateCcw className="h-4 w-4" />
- 重试
- </Button>
- </div>
- </div>
- </div>
- )
- }
-
- return (
- <div ref={containerRef} className="h-full overflow-y-auto overscroll-contain no-scrollbar px-4 py-6">
- <div ref={contentRef} className="mx-auto flex w-full max-w-4xl flex-col gap-6">
- {pageNumbers.map((pageNumber) => {
- const index = pageNumber - 1
- const pageBoxes = resolvedBoxesByPage.get(index) || []
- const pageBaseSize = pageBaseSizes.get(index) ?? defaultPageBaseSize
- const isRendered = renderedPages.has(index)
- const isPageLoading = loadingPages.has(index)
- const isPageFailed = failedPages.has(index)
- const failedPlaceholderLabel = '渲染失败，点击重试'
- const pagePlaceholderLabel = isPageLoading ? '正在渲染页面...' : '等待进入预览区域'
- const pageAspectRatio = pageAspectRatios.get(index) ?? defaultPageAspectRatio
- const pageStyle = pageAspectRatio
- ? { aspectRatio: String(pageAspectRatio) }
- : { minHeight: DEFAULT_PAGE_PLACEHOLDER_HEIGHT }
-
- return (
- <div
- key={`page-${pageNumber}-${renderModeKey}`}
- ref={(el) => {
- if (el) {
- pageRefs.current.set(index, el)
- return
- }
- pageRefs.current.delete(index)
- }}
- data-page-index={index}
- className="relative rounded-xl bg-card shadow-sm ring-1 ring-border/60"
- style={pageStyle}
- >
- <canvas
- ref={(el) => {
- if (el) {
- canvasRefs.current.set(index, el)
- return
- }
- canvasRefs.current.delete(index)
- }}
- className="block h-auto w-full rounded-xl"
- style={pageAspectRatio ? { aspectRatio: String(pageAspectRatio) } : undefined}
- />
- {isRendered ? null : isPageFailed ? (
- <button
- type="button"
- className="absolute inset-0 flex items-center justify-center rounded-xl bg-card text-xs font-medium text-foreground transition hover:bg-card"
- onClick={() => retryPageRender(index)}
- >
- <RotateCcw className="mr-2 h-4 w-4" />
- {failedPlaceholderLabel}
- </button>
- ) : (
- <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-card text-xs text-muted-foreground" aria-label={pagePlaceholderLabel}>
- {isPageLoading ? (
- <>
- <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
- {pagePlaceholderLabel}
- </>
- ) : (
- <span className="sr-only">{pagePlaceholderLabel}</span>
- )}
- </div>
- )}
- <BboxOverlay
- items={pageBoxes}
- scale={scale}
- pageBaseWidth={pageBaseSize?.width ?? null}
- pageBaseHeight={pageBaseSize?.height ?? null}
- showAll={showAllBoxes}
- activeIds={activeSet}
- hoveredIds={hoveredSet}
- onHoverId={handleHoverBlock}
- onClickId={handleClickBlock}
- />
- </div>
- )
- })}
- </div>
- </div>
- )
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
+  const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map())
+  const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null)
+  const [pageCount, setPageCount] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [scale, setScale] = useState(1)
+  const [zoomPercent, setZoomPercent] = useState('fit')
+  const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
+  const [defaultPageAspectRatio, setDefaultPageAspectRatio] = useState<number | null>(null)
+  const [pageAspectRatios, setPageAspectRatios] = useState<Map<number, number>>(new Map())
+  const [defaultPageBaseSize, setDefaultPageBaseSize] = useState<PageBaseSize | null>(null)
+  const [pageBaseSizes, setPageBaseSizes] = useState<Map<number, PageBaseSize>>(new Map())
+  const [renderedPages, setRenderedPages] = useState<Set<number>>(new Set())
+  const [loadingPages, setLoadingPages] = useState<Set<number>>(new Set())
+  const [failedPages, setFailedPages] = useState<Set<number>>(new Set())
+  const [pageRenderErrors, setPageRenderErrors] = useState<Map<number, string>>(new Map())
+  const [offscreenRenderEnabled, setOffscreenRenderEnabled] = useState(false)
+  const renderedPagesRef = useRef<Set<number>>(new Set())
+  const renderingPagesRef = useRef<Set<number>>(new Set())
+  const renderTasksRef = useRef<Map<number, RenderTask>>(new Map())
+  const pageRenderErrorsRef = useRef<Map<number, string>>(new Map())
+  const offscreenRenderWorkerRef = useRef<Worker | null>(null)
+  const offscreenRenderApiRef = useRef<Remote<PdfPageRenderWorkerApi> | null>(null)
+  const transferredPageCanvasRef = useRef<Set<number>>(new Set())
+  const offscreenRenderWorkerDisabledRef = useRef(false)
+  const queuedPagesRef = useRef<Set<number>>(new Set())
+  const retainedPageIndicesRef = useRef<Set<number>>(new Set())
+  const renderQueueRef = useRef<number[]>([])
+  const idleRenderHandleRef = useRef<number | null>(null)
+  const idleRenderTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pageRenderRetryCountsRef = useRef<Map<number, number>>(new Map())
+  const pageRenderRetryTimeoutsRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map())
+  const activeRenderCountRef = useRef(0)
+  const flushQueuedPageRendersRef = useRef<() => Promise<void>>(async () => {})
+  const renderGenRef = useRef(0)
+  const pageNumbers = useMemo(() => Array.from({ length: pageCount }, (_, pageNumber) => pageNumber + 1), [pageCount])
+  const renderModeKey = `${reloadTick}-${offscreenRenderEnabled ? 'offscreen' : 'main'}`
+  const hasSource = Boolean(file || fileUrl)
+
+  const retryLoad = useCallback(() => {
+    setReloadTick((prev) => prev + 1)
+  }, [])
+
+  const terminateOffscreenRenderWorker = useCallback(() => {
+    const api = offscreenRenderApiRef.current
+    offscreenRenderApiRef.current = null
+    transferredPageCanvasRef.current.clear()
+    if (api) {
+      detachPromise(api.destroy().catch(() => {}))
+    }
+    offscreenRenderWorkerRef.current?.terminate()
+    offscreenRenderWorkerRef.current = null
+  }, [])
+
+  const disableOffscreenRenderAndReload = useCallback(
+    (reason: unknown) => {
+      if (offscreenRenderWorkerDisabledRef.current) return
+      offscreenRenderWorkerDisabledRef.current = true
+      reportClientWarning('PDF offscreen page render failed; falling back to main-thread raster', reason)
+      terminateOffscreenRenderWorker()
+      setOffscreenRenderEnabled(false)
+      setReloadTick((prev) => prev + 1)
+    },
+    [terminateOffscreenRenderWorker],
+  )
+
+  const cancelRenderTasks = useCallback(() => {
+    renderTasksRef.current.forEach((task) => task.cancel())
+    renderTasksRef.current.clear()
+    const offscreenApi = offscreenRenderApiRef.current
+    if (offscreenApi) {
+      detachPromise(offscreenApi.cancelAllRenders().catch(() => {}))
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadPdf() {
+      cancelRenderTasks()
+      pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
+      pageRenderRetryTimeoutsRef.current.clear()
+      pageRenderRetryCountsRef.current.clear()
+
+      if (!hasSource) {
+        setPdfDoc(null)
+        setPageCount(0)
+        setDefaultPageAspectRatio(null)
+        setPageAspectRatios(new Map())
+        setDefaultPageBaseSize(null)
+        setPageBaseSizes(new Map())
+        retainedPageIndicesRef.current.clear()
+        renderedPagesRef.current = new Set()
+        setRenderedPages(new Set())
+        setLoadingPages(new Set())
+        setFailedPages(new Set())
+        pageRenderErrorsRef.current = new Map()
+        setPageRenderErrors(new Map())
+        setLoadError(null)
+        return
+      }
+
+      setIsLoading(true)
+      setLoadError(null)
+      try {
+        const data = await readPdfSourceData(file, fileUrl)
+        const pdfjsLib = await loadPdfJsModule()
+        const offscreenCanvasSupported = Boolean(pdfjsLib.FeatureTest.isOffscreenCanvasSupported)
+        const doc = await pdfjsLib.getDocument({
+          data,
+          isOffscreenCanvasSupported: offscreenCanvasSupported,
+          enableHWA: offscreenCanvasSupported,
+          cMapUrl: PDFJS_CMAPS_URL,
+          standardFontDataUrl: PDFJS_STANDARD_FONTS_URL,
+          wasmUrl: PDFJS_WASM_URL,
+          iccUrl: PDFJS_ICCS_URL,
+        }).promise
+        if (cancelled) return
+        setPdfDoc(doc)
+        setPageCount(doc.numPages)
+        setDefaultPageAspectRatio(null)
+        setPageAspectRatios(new Map())
+        setDefaultPageBaseSize(null)
+        setPageBaseSizes(new Map())
+        retainedPageIndicesRef.current.clear()
+        renderedPagesRef.current = new Set()
+        setRenderedPages(new Set())
+        setLoadingPages(new Set())
+        setFailedPages(new Set())
+        pageRenderErrorsRef.current = new Map()
+        setPageRenderErrors(new Map())
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : toPrimitiveString(err)
+          setLoadError(message || 'PDF 加载失败')
+          setPdfDoc(null)
+          setPageCount(0)
+          setDefaultPageAspectRatio(null)
+          setPageAspectRatios(new Map())
+          setDefaultPageBaseSize(null)
+          setPageBaseSizes(new Map())
+          retainedPageIndicesRef.current.clear()
+          renderedPagesRef.current = new Set()
+          setRenderedPages(new Set())
+          setLoadingPages(new Set())
+          setFailedPages(new Set())
+          pageRenderErrorsRef.current = new Map()
+          setPageRenderErrors(new Map())
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false)
+      }
+    }
+
+    loadPdf()
+    return () => {
+      cancelled = true
+    }
+  }, [cancelRenderTasks, file, fileUrl, hasSource, reloadTick])
+
+  useEffect(() => {
+    containerRef.current?.scrollTo({ top: 0 })
+    setZoomPercent('fit')
+  }, [file, fileUrl, reloadTick])
+
+  useEffect(() => {
+    // Important: measure the actual content width (max-w-4xl) instead of the scroll container width,
+    // otherwise the computed scale will not match the rendered canvas and overlays will drift.
+    const container = contentRef.current
+    if (!container || !pdfDoc) return
+
+    let raf = 0
+    const updateScale = async () => {
+      if (!container || !pdfDoc) return
+      // Prefer the first page container width (clientWidth excludes borders),
+      // so the scale matches the canvas CSS size exactly.
+      const firstPage = pageRefs.current.get(0)
+      const width = (firstPage?.clientWidth || container.clientWidth) ?? 0
+      if (!width) return
+      try {
+        const page = await pdfDoc.getPage(1)
+        const viewport = page.getViewport({ scale: 1 })
+        const nextScale = width / viewport.width
+        const nextAspectRatio = viewport.width / viewport.height
+        setDefaultPageBaseSize((prev) =>
+          prev != null &&
+          Math.abs(prev.width - viewport.width) < 0.001 &&
+          Math.abs(prev.height - viewport.height) < 0.001
+            ? prev
+            : { width: viewport.width, height: viewport.height },
+        )
+        setScale((prev) => (Math.abs(prev - nextScale) > 0.01 ? nextScale : prev))
+        setDefaultPageAspectRatio((prev) =>
+          prev != null && Math.abs(prev - nextAspectRatio) < 0.001 ? prev : nextAspectRatio,
+        )
+      } catch {
+        // ignore
+      }
+    }
+
+    const handleResize = () => {
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(updateScale)
+    }
+
+    const observer = new ResizeObserver(handleResize)
+    observer.observe(container)
+    updateScale()
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      observer.disconnect()
+    }
+  }, [pdfDoc])
+
+  useEffect(() => {
+    let cancelled = false
+
+    terminateOffscreenRenderWorker()
+    setOffscreenRenderEnabled(false)
+
+    if (!hasSource || !pdfDoc) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if (offscreenRenderWorkerDisabledRef.current || !canUseOffscreenCanvasRender()) {
+      return () => {
+        cancelled = true
+      }
+    }
+
+    detachPromise(
+      (async () => {
+        try {
+          const { transfer, wrap } = await import('comlink')
+          if (cancelled) return
+
+          const worker = new Worker(new URL('../../workers/pdf-page-render.worker.ts', import.meta.url), {
+            type: 'module',
+          })
+          const api = wrap<PdfPageRenderWorkerApi>(worker)
+          offscreenRenderWorkerRef.current = worker
+          offscreenRenderApiRef.current = api
+
+          const data = await readPdfSourceData(file, fileUrl)
+          await api.initializeDocument(transfer(data, [data.buffer]))
+
+          if (cancelled) {
+            await api.destroy().catch(() => {})
+            worker.terminate()
+            return
+          }
+
+          setOffscreenRenderEnabled(ENABLE_PDF_OFFSCREEN_RENDER)
+        } catch (error) {
+          reportClientWarning('PDF offscreen render worker failed; falling back to main-thread raster', error)
+          offscreenRenderWorkerDisabledRef.current = true
+          terminateOffscreenRenderWorker()
+          setOffscreenRenderEnabled(false)
+        }
+      })(),
+    )
+
+    return () => {
+      cancelled = true
+      terminateOffscreenRenderWorker()
+      setOffscreenRenderEnabled(false)
+    }
+  }, [file, fileUrl, hasSource, pdfDoc, terminateOffscreenRenderWorker])
+
+  const clearQueuedRenderFlush = useCallback(() => {
+    const idleGlobal: IdleGlobal = globalThis
+    const cancelIdleCallback = idleGlobal.cancelIdleCallback
+
+    if (idleRenderHandleRef.current != null && typeof cancelIdleCallback === 'function') {
+      cancelIdleCallback(idleRenderHandleRef.current)
+    }
+    if (idleRenderTimeoutRef.current != null) {
+      clearTimeout(idleRenderTimeoutRef.current)
+    }
+
+    idleRenderHandleRef.current = null
+    idleRenderTimeoutRef.current = null
+  }, [])
+
+  const attachOffscreenPageCanvas = useCallback(
+    async (pageIndex: number) => {
+      if (!offscreenRenderEnabled) return false
+
+      const api = offscreenRenderApiRef.current
+      const canvas = canvasRefs.current.get(pageIndex)
+      if (!api || !canvas) return false
+
+      if (transferredPageCanvasRef.current.has(pageIndex)) {
+        return true
+      }
+
+      const { transfer } = await import('comlink')
+      const offscreenCanvas = canvas.transferControlToOffscreen()
+      await api.attachPageCanvas(
+        transfer(
+          {
+            pageIndex,
+            canvas: offscreenCanvas,
+          },
+          [offscreenCanvas],
+        ),
+      )
+
+      transferredPageCanvasRef.current.add(pageIndex)
+      return true
+    },
+    [offscreenRenderEnabled],
+  )
+
+  const rememberPageAspectRatio = useCallback((pageIndex: number, width: number, height: number) => {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
+
+    const nextAspectRatio = width / height
+    setPageAspectRatios((prev) => {
+      const currentAspectRatio = prev.get(pageIndex)
+      if (currentAspectRatio != null && Math.abs(currentAspectRatio - nextAspectRatio) < 0.001) {
+        return prev
+      }
+
+      const next = new Map(prev)
+      next.set(pageIndex, nextAspectRatio)
+      return next
+    })
+  }, [])
+
+  const rememberPageBaseSize = useCallback((pageIndex: number, width: number, height: number) => {
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return
+
+    setPageBaseSizes((prev) => {
+      const current = prev.get(pageIndex)
+      if (current && Math.abs(current.width - width) < 0.001 && Math.abs(current.height - height) < 0.001) {
+        return prev
+      }
+
+      const next = new Map(prev)
+      next.set(pageIndex, { width, height })
+      return next
+    })
+  }, [])
+
+  const clearPageRenderRetry = useCallback((pageIndex?: number) => {
+    if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
+      const timeoutId = pageRenderRetryTimeoutsRef.current.get(pageIndex)
+      if (timeoutId) clearTimeout(timeoutId)
+      pageRenderRetryTimeoutsRef.current.delete(pageIndex)
+      pageRenderRetryCountsRef.current.delete(pageIndex)
+      return
+    }
+
+    pageRenderRetryTimeoutsRef.current.forEach((timeoutId) => clearTimeout(timeoutId))
+    pageRenderRetryTimeoutsRef.current.clear()
+    pageRenderRetryCountsRef.current.clear()
+  }, [])
+
+  const setPageRenderError = useCallback((pageIndex: number, error: unknown) => {
+    const message = error instanceof Error ? error.message : toPrimitiveString(error)
+    const nextMessage = message || `Page ${pageIndex + 1} render failed`
+
+    setPageRenderErrors((prev) => {
+      if (prev.get(pageIndex) === nextMessage) return prev
+
+      const next = new Map(prev)
+      next.set(pageIndex, nextMessage)
+      pageRenderErrorsRef.current = next
+      return next
+    })
+
+    if (process.env.NODE_ENV === 'development') {
+      reportClientWarning(`PDF page ${pageIndex + 1} render failed`, error)
+    }
+  }, [])
+
+  const clearPageRenderError = useCallback((pageIndex?: number) => {
+    if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
+      setPageRenderErrors((prev) => {
+        if (!prev.has(pageIndex)) return prev
+
+        const next = new Map(prev)
+        next.delete(pageIndex)
+        pageRenderErrorsRef.current = next
+        return next
+      })
+      return
+    }
+
+    pageRenderErrorsRef.current = new Map()
+    setPageRenderErrors(new Map())
+  }, [])
+
+  const markPageFailed = useCallback((pageIndex: number) => {
+    setFailedPages((prev) => {
+      if (prev.has(pageIndex)) return prev
+
+      const next = new Set(prev)
+      next.add(pageIndex)
+      return next
+    })
+  }, [])
+
+  const clearPageFailure = useCallback((pageIndex?: number) => {
+    if (typeof pageIndex === 'number' && Number.isFinite(pageIndex)) {
+      setFailedPages((prev) => {
+        if (!prev.has(pageIndex)) return prev
+
+        const next = new Set(prev)
+        next.delete(pageIndex)
+        return next
+      })
+      return
+    }
+
+    setFailedPages(new Set())
+  }, [])
+
+  const markPageRendered = useCallback(
+    (pageIndex: number) => {
+      if (renderedPagesRef.current.has(pageIndex)) return false
+
+      clearPageRenderRetry(pageIndex)
+      clearPageFailure(pageIndex)
+      clearPageRenderError(pageIndex)
+      const next = new Set(renderedPagesRef.current)
+      next.add(pageIndex)
+      renderedPagesRef.current = next
+      setRenderedPages(next)
+      return true
+    },
+    [clearPageFailure, clearPageRenderError, clearPageRenderRetry],
+  )
+
+  const unmarkPageRendered = useCallback((pageIndex: number) => {
+    if (!renderedPagesRef.current.has(pageIndex)) return false
+
+    const next = new Set(renderedPagesRef.current)
+    next.delete(pageIndex)
+    renderedPagesRef.current = next
+    setRenderedPages(next)
+    return true
+  }, [])
+
+  const markPageLoading = useCallback((pageIndex: number) => {
+    setLoadingPages((prev) => {
+      if (prev.has(pageIndex)) return prev
+
+      const next = new Set(prev)
+      next.add(pageIndex)
+      return next
+    })
+  }, [])
+
+  const unmarkPageLoading = useCallback((pageIndex: number) => {
+    setLoadingPages((prev) => {
+      if (!prev.has(pageIndex)) return prev
+
+      const next = new Set(prev)
+      next.delete(pageIndex)
+      return next
+    })
+  }, [])
+
+  const scheduleQueuedRenderFlush = useCallback(() => {
+    if (idleRenderHandleRef.current != null || idleRenderTimeoutRef.current != null) return
+
+    const flush = () => {
+      idleRenderHandleRef.current = null
+      if (idleRenderTimeoutRef.current != null) {
+        clearTimeout(idleRenderTimeoutRef.current)
+        idleRenderTimeoutRef.current = null
+      }
+      detachPromise(flushQueuedPageRendersRef.current())
+    }
+
+    const idleGlobal: IdleGlobal = globalThis
+    const requestIdleCallback = idleGlobal.requestIdleCallback
+    if (typeof requestIdleCallback === 'function') {
+      idleRenderHandleRef.current = requestIdleCallback(flush, { timeout: IDLE_RENDER_TIMEOUT_MS })
+      return
+    }
+
+    idleRenderTimeoutRef.current = setTimeout(flush, 0)
+  }, [])
+
+  const queuePageRender = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= pageCount) return
+      if (renderedPagesRef.current.has(pageIndex)) return
+      if (renderingPagesRef.current.has(pageIndex)) return
+      if (queuedPagesRef.current.has(pageIndex)) return
+
+      clearPageFailure(pageIndex)
+      clearPageRenderError(pageIndex)
+      queuedPagesRef.current.add(pageIndex)
+      markPageLoading(pageIndex)
+      renderQueueRef.current.push(pageIndex)
+      scheduleQueuedRenderFlush()
+    },
+    [clearPageFailure, clearPageRenderError, markPageLoading, pageCount, scheduleQueuedRenderFlush],
+  )
+
+  const schedulePageRenderRetry = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= pageCount) return
+      if (renderedPagesRef.current.has(pageIndex)) {
+        clearPageRenderRetry(pageIndex)
+        return
+      }
+      // Important: schedule retries even if the page is currently marked as "rendering".
+      // renderPage() calls us from its catch branch before clearing renderingPagesRef.
+      if (queuedPagesRef.current.has(pageIndex)) return
+      if (pageRenderRetryTimeoutsRef.current.has(pageIndex)) return
+
+      const attempts = pageRenderRetryCountsRef.current.get(pageIndex) || 0
+      if (attempts >= MAX_PAGE_RENDER_RETRIES) {
+        markPageFailed(pageIndex)
+        return
+      }
+
+      pageRenderRetryCountsRef.current.set(pageIndex, attempts + 1)
+      markPageLoading(pageIndex)
+
+      const timeoutId = setTimeout(() => {
+        if (pageRenderRetryTimeoutsRef.current.get(pageIndex) === timeoutId) {
+          pageRenderRetryTimeoutsRef.current.delete(pageIndex)
+        }
+        if (renderedPagesRef.current.has(pageIndex)) {
+          clearPageRenderRetry(pageIndex)
+          unmarkPageLoading(pageIndex)
+          return
+        }
+        if (renderingPagesRef.current.has(pageIndex) || queuedPagesRef.current.has(pageIndex)) {
+          return
+        }
+
+        queuePageRender(pageIndex)
+        detachPromise(flushQueuedPageRendersRef.current())
+      }, PAGE_RENDER_RETRY_DELAY_MS)
+
+      pageRenderRetryTimeoutsRef.current.set(pageIndex, timeoutId)
+    },
+    [clearPageRenderRetry, markPageFailed, markPageLoading, pageCount, queuePageRender, unmarkPageLoading],
+  )
+
+  const releasePage = useCallback(
+    (pageIndex: number) => {
+      const activeRenderTask = renderTasksRef.current.get(pageIndex)
+      activeRenderTask?.cancel()
+      renderTasksRef.current.delete(pageIndex)
+      renderingPagesRef.current.delete(pageIndex)
+      queuedPagesRef.current.delete(pageIndex)
+      renderQueueRef.current = renderQueueRef.current.filter((candidate) => candidate !== pageIndex)
+      clearPageRenderRetry(pageIndex)
+      unmarkPageLoading(pageIndex)
+
+      const canvas = canvasRefs.current.get(pageIndex)
+      const offscreenApi = offscreenRenderApiRef.current
+      if (transferredPageCanvasRef.current.has(pageIndex) && offscreenRenderEnabled && offscreenApi) {
+        detachPromise(offscreenApi.releasePage(pageIndex).catch(() => {}))
+      } else if (canvas) {
+        canvas.width = 0
+        canvas.height = 0
+      }
+
+      unmarkPageRendered(pageIndex)
+    },
+    [clearPageRenderRetry, offscreenRenderEnabled, unmarkPageLoading, unmarkPageRendered],
+  )
+
+  const retryPageRender = useCallback(
+    (pageIndex: number) => {
+      if (pageIndex < 0 || pageIndex >= pageCount) return
+
+      releasePage(pageIndex)
+      clearPageFailure(pageIndex)
+      queuePageRender(pageIndex)
+      detachPromise(flushQueuedPageRendersRef.current())
+    },
+    [clearPageFailure, pageCount, queuePageRender, releasePage],
+  )
+
+  const trimRenderedPagePool = useCallback(
+    (pageIndex: number) => {
+      const stalePageIndices = selectPdfPagesToReleaseForPool({
+        renderedPages: renderedPagesRef.current,
+        keepPage: pageIndex,
+        maxRetainedPages: MAX_RETAINED_PAGE_CANVASES,
+        retainedPages: retainedPageIndicesRef.current,
+        queuedPages: queuedPagesRef.current,
+        renderingPages: renderingPagesRef.current,
+      })
+
+      for (const stalePageIndex of stalePageIndices) {
+        releasePage(stalePageIndex)
+      }
+    },
+    [releasePage],
+  )
+
+  // Invalidate in-flight renders when doc/scale changes.
+  useEffect(() => {
+    renderGenRef.current += 1
+    clearQueuedRenderFlush()
+    cancelRenderTasks()
+    clearPageRenderRetry()
+    clearPageRenderError()
+    activeRenderCountRef.current = 0
+    queuedPagesRef.current.clear()
+    retainedPageIndicesRef.current.clear()
+    renderQueueRef.current = []
+    renderedPagesRef.current = new Set()
+    renderingPagesRef.current.clear()
+    setRenderedPages(new Set())
+    setLoadingPages(new Set())
+    setFailedPages(new Set())
+  }, [cancelRenderTasks, clearPageRenderError, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc, scale])
+
+  useEffect(() => {
+    const doc = pdfDoc
+    return () => {
+      clearQueuedRenderFlush()
+      cancelRenderTasks()
+      clearPageRenderRetry()
+      clearPageRenderError()
+      if (!doc) return
+      detachPromise(doc.cleanup())
+    }
+  }, [cancelRenderTasks, clearPageRenderError, clearPageRenderRetry, clearQueuedRenderFlush, pdfDoc])
+
+  const renderPage = useCallback(
+    async (pageIndex: number) => {
+      const doc = pdfDoc
+      const totalPages = pageCount
+      if (!doc || !totalPages) return
+      if (pageIndex < 0 || pageIndex >= totalPages) return
+
+      // Prevent duplicate renders for the same page.
+      if (renderedPagesRef.current.has(pageIndex)) return
+      if (renderingPagesRef.current.has(pageIndex)) return
+
+      const gen = renderGenRef.current
+      renderingPagesRef.current.add(pageIndex)
+      let activeRenderTask: RenderTask | null = null
+      let releasePageResources: (() => void) | null = null
+      let usedOffscreenWorker = false
+      try {
+        const page = await doc.getPage(pageIndex + 1)
+        releasePageResources = () => {
+          page.cleanup()
+          releasePageResources = null
+        }
+        if (renderGenRef.current !== gen) return
+        const baseViewport = page.getViewport({ scale: 1 })
+        const viewport = page.getViewport({ scale })
+        rememberPageAspectRatio(pageIndex, viewport.width, viewport.height)
+        rememberPageBaseSize(pageIndex, baseViewport.width, baseViewport.height)
+
+        const api = offscreenRenderEnabled ? offscreenRenderApiRef.current : null
+        if (api) {
+          usedOffscreenWorker = true
+          releasePageResources?.()
+          const attached = await attachOffscreenPageCanvas(pageIndex)
+          if (!attached) {
+            throw new Error(`Unable to attach OffscreenCanvas for page ${pageIndex}`)
+          }
+
+          let timeoutId: ReturnType<typeof setTimeout> | null = null
+          try {
+            await Promise.race([
+              api.renderPage({ pageIndex, scale }),
+              new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                  reject(new Error(`Offscreen render timed out for page ${pageIndex + 1}`))
+                }, OFFSCREEN_PAGE_RENDER_TIMEOUT_MS)
+              }),
+            ])
+          } finally {
+            if (timeoutId) clearTimeout(timeoutId)
+          }
+          if (renderGenRef.current !== gen) return
+
+          if (markPageRendered(pageIndex)) {
+            trimRenderedPagePool(pageIndex)
+          }
+          return
+        }
+
+        const canvas = canvasRefs.current.get(pageIndex)
+        if (!canvas) {
+          if (renderGenRef.current !== gen) return
+          setPageRenderError(pageIndex, `Canvas not mounted for page ${pageIndex + 1}`)
+          schedulePageRenderRetry(pageIndex)
+          return
+        }
+
+        canvas.width = Math.ceil(viewport.width)
+        canvas.height = Math.ceil(viewport.height)
+        const canvasContext = canvas.getContext('2d', { alpha: false })
+        if (!canvasContext) {
+          if (renderGenRef.current !== gen) return
+          setPageRenderError(pageIndex, `Unable to acquire 2D canvas context for page ${pageIndex + 1}`)
+          schedulePageRenderRetry(pageIndex)
+          return
+        }
+
+        canvasContext.clearRect(0, 0, canvas.width, canvas.height)
+        const renderTask = page.render({ canvas: null, canvasContext, viewport, background: '#ffffff' })
+        activeRenderTask = renderTask
+        renderTasksRef.current.set(pageIndex, renderTask)
+
+        let renderTimeoutId: ReturnType<typeof setTimeout> | null = null
+
+        try {
+          await Promise.race([
+            (async () => {
+              await renderTask.promise
+            })(),
+            new Promise<never>((_, reject) => {
+              renderTimeoutId = setTimeout(() => {
+                try {
+                  renderTask.cancel()
+                } catch {
+                  // ignore
+                }
+                reject(new Error(`Main-thread render timed out for page ${pageIndex + 1}`))
+              }, MAIN_THREAD_PAGE_RENDER_TIMEOUT_MS)
+            }),
+          ])
+        } finally {
+          if (renderTimeoutId) clearTimeout(renderTimeoutId)
+          renderTimeoutId = null
+        }
+
+        releasePageResources?.()
+        if (renderGenRef.current !== gen) return
+        if (markPageRendered(pageIndex)) {
+          trimRenderedPagePool(pageIndex)
+        }
+      } catch (error) {
+        // OffscreenCanvas transfer is one-way; if the worker can't render a page, fall back to main-thread
+        // by disabling offscreen mode and forcing a reload to remount canvas nodes.
+        if (usedOffscreenWorker) {
+          setPageRenderError(pageIndex, error)
+          disableOffscreenRenderAndReload(error)
+          return
+        }
+        if (renderGenRef.current !== gen) return
+        setPageRenderError(pageIndex, error)
+        schedulePageRenderRetry(pageIndex)
+      } finally {
+        if (activeRenderTask && renderTasksRef.current.get(pageIndex) === activeRenderTask) {
+          renderTasksRef.current.delete(pageIndex)
+        }
+        releasePageResources?.()
+        renderingPagesRef.current.delete(pageIndex)
+        if (!pageRenderRetryTimeoutsRef.current.has(pageIndex)) {
+          unmarkPageLoading(pageIndex)
+        }
+      }
+    },
+    [
+      attachOffscreenPageCanvas,
+      disableOffscreenRenderAndReload,
+      markPageRendered,
+      offscreenRenderEnabled,
+      pdfDoc,
+      pageCount,
+      rememberPageAspectRatio,
+      rememberPageBaseSize,
+      setPageRenderError,
+      schedulePageRenderRetry,
+      scale,
+      trimRenderedPagePool,
+      unmarkPageLoading,
+    ],
+  )
+
+  const flushQueuedPageRenders = useCallback(async () => {
+    while (activeRenderCountRef.current < MAX_CONCURRENT_RENDERS && renderQueueRef.current.length > 0) {
+      const pageIndex = renderQueueRef.current.shift()
+      if (typeof pageIndex !== 'number' || !Number.isFinite(pageIndex)) continue
+
+      queuedPagesRef.current.delete(pageIndex)
+      if (renderedPagesRef.current.has(pageIndex)) {
+        unmarkPageLoading(pageIndex)
+        continue
+      }
+      if (renderingPagesRef.current.has(pageIndex)) {
+        unmarkPageLoading(pageIndex)
+        continue
+      }
+
+      activeRenderCountRef.current += 1
+      detachPromise(
+        renderPage(pageIndex).finally(() => {
+          activeRenderCountRef.current = Math.max(0, activeRenderCountRef.current - 1)
+          if (renderQueueRef.current.length > 0) {
+            scheduleQueuedRenderFlush()
+          }
+        }),
+      )
+    }
+  }, [renderPage, scheduleQueuedRenderFlush, unmarkPageLoading])
+
+  useLayoutEffect(() => {
+    flushQueuedPageRendersRef.current = flushQueuedPageRenders
+  }, [flushQueuedPageRenders])
+
+  // Re-observe after scale changes so the first visible pages are re-queued when an
+  // initial render was invalidated by the post-layout scale measurement.
+  // Render pages on-demand as they enter the viewport.
+  useEffect(() => {
+    const container = containerRef.current
+    const doc = pdfDoc
+    const totalPages = pageCount
+    if (!container || !doc || !totalPages) return
+
+    let cancelled = false
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (cancelled) return
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const idxAttr = (entry.target as HTMLElement).dataset.pageIndex
+          const idx = idxAttr ? Number(idxAttr) : Number.NaN
+          if (!Number.isFinite(idx)) continue
+          queuePageRender(idx)
+        }
+      },
+      {
+        root: container,
+        // Pre-render a bit ahead/behind for smoother scrolling.
+        rootMargin: RENDER_ROOT_MARGIN,
+        threshold: 0.01,
+      },
+    )
+
+    // Observe all page containers.
+    for (let i = 0; i < totalPages; i += 1) {
+      const el = pageRefs.current.get(i)
+      if (el) observer.observe(el)
+    }
+
+    // Kickstart: render the first few pages ASAP so the initial preview is visible even
+    // before the observer has fully settled after layout.
+    for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1) {
+      queuePageRender(pageIndex)
+    }
+    detachPromise(flushQueuedPageRendersRef.current())
+
+    return () => {
+      cancelled = true
+      observer.disconnect()
+    }
+  }, [pageCount, pdfDoc, queuePageRender, scale])
+
+  useEffect(() => {
+    const container = containerRef.current
+    const doc = pdfDoc
+    const totalPages = pageCount
+    if (!container || !doc || !totalPages) return
+
+    let raf = 0
+    const handleViewportQueue = () => {
+      if (raf) cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        raf = 0
+        if (showToolbar) {
+          const containerTop = container.getBoundingClientRect().top
+          for (let index = 0; index < totalPages; index += 1) {
+            const page = pageRefs.current.get(index)
+            if (page && page.getBoundingClientRect().bottom > containerTop + 32) {
+              setCurrentPage(index + 1)
+              break
+            }
+          }
+        }
+        queueVisiblePdfPageWindow({
+          containerScrollTop: container.scrollTop,
+          containerHeight: container.clientHeight,
+          pageCount: totalPages,
+          pageElements: pageRefs.current,
+          queuePageRender,
+        })
+        detachPromise(flushQueuedPageRendersRef.current())
+      })
+    }
+
+    handleViewportQueue()
+    container.addEventListener('scroll', handleViewportQueue, { passive: true })
+    globalThis.window?.addEventListener('resize', handleViewportQueue)
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      container.removeEventListener('scroll', handleViewportQueue)
+      globalThis.window?.removeEventListener('resize', handleViewportQueue)
+    }
+  }, [pageCount, pdfDoc, queuePageRender, scale, showToolbar])
+
+  useEffect(() => {
+    const doc = pdfDoc
+    const totalPages = pageCount
+    if (!doc || !totalPages) return
+
+    const intervalId = setInterval(() => {
+      for (let pageIndex = 0; pageIndex < Math.min(totalPages, INITIAL_PDF_PAGE_PRERENDER_COUNT); pageIndex += 1) {
+        if (renderedPagesRef.current.has(pageIndex)) continue
+        if (renderingPagesRef.current.has(pageIndex)) continue
+        if (queuedPagesRef.current.has(pageIndex)) continue
+        retryPageRender(pageIndex)
+      }
+    }, FIRST_PAGE_RENDER_WATCHDOG_INTERVAL_MS)
+
+    return () => {
+      clearInterval(intervalId)
+    }
+  }, [pageCount, pdfDoc, retryPageRender, scale])
+
+  useEffect(() => {
+    const container = containerRef.current
+    const doc = pdfDoc
+    const totalPages = pageCount
+    if (!container || !doc || !totalPages) return
+
+    let cancelled = false
+    const retentionObserver = new IntersectionObserver(
+      (entries) => {
+        if (cancelled) return
+        for (const entry of entries) {
+          const idxAttr = (entry.target as HTMLElement).dataset.pageIndex
+          const idx = idxAttr ? Number(idxAttr) : Number.NaN
+          if (!Number.isFinite(idx)) continue
+          if (entry.isIntersecting) {
+            retainedPageIndicesRef.current.add(idx)
+            continue
+          }
+          retainedPageIndicesRef.current.delete(idx)
+          if (!renderedPagesRef.current.has(idx)) continue
+          releasePage(idx)
+        }
+      },
+      {
+        root: container,
+        rootMargin: RETAIN_ROOT_MARGIN,
+        threshold: 0,
+      },
+    )
+
+    for (let i = 0; i < totalPages; i += 1) {
+      const el = pageRefs.current.get(i)
+      if (el) retentionObserver.observe(el)
+    }
+
+    return () => {
+      cancelled = true
+      retentionObserver.disconnect()
+    }
+  }, [pageCount, pdfDoc, releasePage])
+
+  const resolvedBoxesByPage = useMemo(() => {
+    if (boxesByPage) return boxesByPage
+
+    const map = new Map<number, Box[]>()
+    for (const block of blocks) {
+      const kind = classifyParsingBlock(block)
+      for (const position of block.positions || []) {
+        const pages = position.pages?.length ? position.pages : [0]
+        for (const pageIndex of pages) {
+          const list = map.get(pageIndex) || []
+          list.push({ id: block.id, kind, position })
+          map.set(pageIndex, list)
+        }
+      }
+    }
+    return map
+  }, [blocks, boxesByPage])
+  const resolvedBlockIdToPageIndex = useMemo(() => {
+    if (blockIdToPageIndex) return blockIdToPageIndex
+
+    const map = new Map<string, number>()
+    for (const block of blocks) {
+      const pageIndex = block.positions.find((position) => position.pages?.length)?.pages?.[0]
+      if (typeof pageIndex !== 'number' || !Number.isFinite(pageIndex)) continue
+      map.set(block.id, pageIndex)
+    }
+    return map
+  }, [blockIdToPageIndex, blocks])
+
+  const activeSet = useMemo(() => new Set(activeBlockIds || []), [activeBlockIds])
+  const hoveredSet = useMemo(() => new Set(hoveredBlockIds || []), [hoveredBlockIds])
+
+  const handleHoverBlock = useCallback(
+    (blockId: string | null) => {
+      if (!onHoverBlockId) return
+      onHoverBlockId(blockId)
+    },
+    [onHoverBlockId],
+  )
+
+  const handleClickBlock = useCallback(
+    (blockId: string, hint?: ParsingEditFocusHint) => {
+      if (!onClickBlockId) return
+      onClickBlockId(blockId, hint)
+    },
+    [onClickBlockId],
+  )
+
+  useEffect(() => {
+    const pageIndex =
+      typeof scrollToPageIndex === 'number' && Number.isFinite(scrollToPageIndex)
+        ? Math.max(0, Math.min(pageCount - 1, Math.trunc(scrollToPageIndex)))
+        : null
+    if (pageIndex == null || pageCount <= 0) return
+    const el = pageRefs.current.get(pageIndex)
+    const container = containerRef.current
+    if (!el || !container) return
+    const reduceMotion =
+      globalThis.window !== undefined &&
+      typeof globalThis.window.matchMedia === 'function' &&
+      globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const behavior = reduceMotion ? 'auto' : 'smooth'
+    const containerCanScroll = container.scrollHeight > container.clientHeight + 1
+    if (!containerCanScroll) {
+      const scrollElement = findNearestScrollableAncestor(container)
+      if (!scrollElement) return
+      scrollPdfPageIntoElement({ behavior, scrollElement, targetElement: el })
+      return
+    }
+    container.scrollTo({
+      top: Math.max(0, el.offsetTop - 24),
+      behavior,
+    })
+  }, [pageCount, scrollToPageIndex])
+
+  useEffect(() => {
+    const firstActive = (activeBlockIds || [])[0]
+    if (!firstActive) return
+    const pageIndex = resolvedBlockIdToPageIndex.get(firstActive)
+    if (pageIndex == null) return
+    const el = pageRefs.current.get(pageIndex)
+    const container = containerRef.current
+    if (!el || !container) return
+    const reduceMotion =
+      globalThis.window !== undefined &&
+      typeof globalThis.window.matchMedia === 'function' &&
+      globalThis.window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const behavior = reduceMotion ? 'auto' : 'smooth'
+    const pageBoxes = resolvedBoxesByPage.get(pageIndex) || []
+    const targetBox = pageBoxes.find((box) => box.id === firstActive)
+    const pageBaseSize = pageBaseSizes.get(pageIndex) ?? defaultPageBaseSize
+    if (targetBox) {
+      const coordinateSpace = detectPdfBboxCoordinateSpace({
+        items: pageBoxes,
+        pageBaseWidth: pageBaseSize?.width ?? null,
+        pageBaseHeight: pageBaseSize?.height ?? null,
+      })
+      const rect = computePdfOverlayRect({
+        position: targetBox.position,
+        scale,
+        pageBaseWidth: pageBaseSize?.width ?? null,
+        pageBaseHeight: pageBaseSize?.height ?? null,
+        coordinateSpace,
+      })
+      const containerCanScroll = container.scrollHeight > container.clientHeight + 1
+      if (!containerCanScroll) {
+        const scrollElement = findNearestScrollableAncestor(container)
+        if (!scrollElement) return
+        scrollPdfOverlayIntoElement({
+          behavior,
+          overlayHeight: rect.height,
+          overlayTop: rect.top,
+          pageElement: el,
+          scrollElement,
+        })
+        return
+      }
+      const containerRect = container.getBoundingClientRect()
+      const pageRect = el.getBoundingClientRect()
+      container.scrollTo({
+        behavior,
+        top: computePdfOverlayScrollTop({
+          containerHeight: container.clientHeight,
+          containerScrollTop: container.scrollTop,
+          containerTop: containerRect.top,
+          overlayHeight: rect.height,
+          overlayTop: rect.top,
+          pageTop: pageRect.top,
+        }),
+      })
+      return
+    }
+    const containerCanScroll = container.scrollHeight > container.clientHeight + 1
+    if (!containerCanScroll) {
+      const scrollElement = findNearestScrollableAncestor(container)
+      if (!scrollElement) return
+      scrollPdfPageIntoElement({ behavior, scrollElement, targetElement: el })
+      return
+    }
+    scrollPdfPageIntoElement({ behavior, scrollElement: container, targetElement: el })
+  }, [activeBlockIds, defaultPageBaseSize, pageBaseSizes, resolvedBlockIdToPageIndex, resolvedBoxesByPage, scale])
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    if (globalThis.window === undefined) return
+
+    const win = globalThis.window as typeof globalThis.window & {
+      __mimirqPdfViewerDebug?: Record<string, unknown>
+    }
+
+    win.__mimirqPdfViewerDebug = {
+      activeRenderCount: activeRenderCountRef.current,
+      failedPages: Array.from(failedPages),
+      loadingPages: Array.from(loadingPages),
+      pageCount,
+      pageErrors: Object.fromEntries(pageRenderErrorsRef.current.entries()),
+      queuedPages: Array.from(queuedPagesRef.current),
+      renderedPages: Array.from(renderedPagesRef.current),
+      renderingPages: Array.from(renderingPagesRef.current),
+      retryCounts: Object.fromEntries(pageRenderRetryCountsRef.current.entries()),
+      scale,
+    }
+
+    return () => {
+      delete win.__mimirqPdfViewerDebug
+    }
+  }, [failedPages, loadingPages, pageCount, pageRenderErrors, renderedPages, scale])
+
+  if (!hasSource) {
+    return <div className="flex h-full items-center justify-center text-sm text-muted-foreground">未选择 PDF</div>
+  }
+
+  if (isLoading || (!pdfDoc && !loadError)) {
+    return (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+        正在加载 PDF...
+      </div>
+    )
+  }
+
+  if (loadError || !pdfDoc) {
+    return (
+      <div className="flex h-full items-center justify-center px-6">
+        <div className="max-w-md rounded-2xl border border-border/60 bg-card p-5 text-center shadow-sm">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+          </div>
+          <div className="text-sm font-semibold text-foreground">PDF 加载失败</div>
+          <div className="mt-1 text-xs text-muted-foreground">{loadError || '请重试，或重新上传该文件。'}</div>
+          <div className="mt-4 flex justify-center gap-2">
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={retryLoad}>
+              <RotateCcw className="h-4 w-4" />
+              重试
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      {showToolbar ? (
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background/60 px-5 text-[13px]">
+          <FileText className="size-3.5 text-muted-foreground" />
+          <span>原文 PDF</span>
+          <div className="ml-auto flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label="上一页原文"
+              disabled={currentPage <= 1}
+              onClick={() => {
+                const page = pageRefs.current.get(currentPage - 2)
+                if (page && containerRef.current)
+                  scrollPdfPageIntoElement({
+                    behavior: 'auto',
+                    scrollElement: containerRef.current,
+                    targetElement: page,
+                  })
+              }}
+            >
+              <ChevronLeft className="size-3.5" />
+            </Button>
+            <span>
+              <span className="text-foreground">{currentPage}</span> / {pageCount} 页
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label="下一页原文"
+              disabled={currentPage >= pageCount}
+              onClick={() => {
+                const page = pageRefs.current.get(currentPage)
+                if (page && containerRef.current)
+                  scrollPdfPageIntoElement({
+                    behavior: 'auto',
+                    scrollElement: containerRef.current,
+                    targetElement: page,
+                  })
+              }}
+            >
+              <ChevronRight className="size-3.5" />
+            </Button>
+            <select
+              aria-label="原文缩放"
+              value={zoomPercent}
+              onChange={(event) => setZoomPercent(event.target.value)}
+              className="ml-1 max-w-24 rounded border-0 border-l border-border bg-transparent py-1 pl-2 text-xs text-muted-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <option value="fit">适合宽度</option>
+              <option value="100">100%</option>
+              <option value="150">150%</option>
+              <option value="200">200%</option>
+            </select>
+          </div>
+        </div>
+      ) : null}
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar px-5 py-7">
+        <div
+          ref={contentRef}
+          className={
+            showToolbar
+              ? 'mx-auto flex w-full max-w-[480px] flex-col gap-6'
+              : 'mx-auto flex w-full max-w-4xl flex-col gap-6'
+          }
+          style={
+            showToolbar && zoomPercent !== 'fit'
+              ? { width: ((defaultPageBaseSize?.width || 595) * Number(zoomPercent)) / 100, maxWidth: 'none' }
+              : undefined
+          }
+        >
+          {pageNumbers.map((pageNumber) => {
+            const index = pageNumber - 1
+            const pageBoxes = resolvedBoxesByPage.get(index) || []
+            const pageBaseSize = pageBaseSizes.get(index) ?? defaultPageBaseSize
+            const isRendered = renderedPages.has(index)
+            const isPageLoading = loadingPages.has(index)
+            const isPageFailed = failedPages.has(index)
+            const failedPlaceholderLabel = '渲染失败，点击重试'
+            const pagePlaceholderLabel = isPageLoading ? '正在渲染页面...' : '等待进入预览区域'
+            const pageAspectRatio = pageAspectRatios.get(index) ?? defaultPageAspectRatio
+            const pageStyle = pageAspectRatio
+              ? { aspectRatio: String(pageAspectRatio) }
+              : { minHeight: DEFAULT_PAGE_PLACEHOLDER_HEIGHT }
+
+            return (
+              <div
+                key={`page-${pageNumber}-${renderModeKey}`}
+                ref={(el) => {
+                  if (el) {
+                    pageRefs.current.set(index, el)
+                    return
+                  }
+                  pageRefs.current.delete(index)
+                }}
+                data-page-index={index}
+                data-page-rendered={isRendered ? 'true' : 'false'}
+                className={
+                  showToolbar
+                    ? 'relative bg-card shadow-sm ring-1 ring-border/60'
+                    : 'relative rounded-xl bg-card shadow-sm ring-1 ring-border/60'
+                }
+                style={pageStyle}
+              >
+                <canvas
+                  ref={(el) => {
+                    if (el) {
+                      canvasRefs.current.set(index, el)
+                      return
+                    }
+                    canvasRefs.current.delete(index)
+                  }}
+                  className={showToolbar ? 'block h-auto w-full' : 'block h-auto w-full rounded-xl'}
+                  style={pageAspectRatio ? { aspectRatio: String(pageAspectRatio) } : undefined}
+                />
+                {isRendered ? null : isPageFailed ? (
+                  <button
+                    type="button"
+                    className="absolute inset-0 flex items-center justify-center rounded-xl bg-card text-xs font-medium text-foreground transition hover:bg-card"
+                    onClick={() => retryPageRender(index)}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    {failedPlaceholderLabel}
+                  </button>
+                ) : (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center rounded-xl bg-card text-xs text-muted-foreground"
+                    aria-label={pagePlaceholderLabel}
+                  >
+                    {isPageLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />
+                        {pagePlaceholderLabel}
+                      </>
+                    ) : (
+                      <span className="sr-only">{pagePlaceholderLabel}</span>
+                    )}
+                  </div>
+                )}
+                <BboxOverlay
+                  items={pageBoxes}
+                  scale={scale}
+                  pageBaseWidth={pageBaseSize?.width ?? null}
+                  pageBaseHeight={pageBaseSize?.height ?? null}
+                  showAll={showAllBoxes}
+                  activeIds={activeSet}
+                  hoveredIds={hoveredSet}
+                  onHoverId={handleHoverBlock}
+                  onClickId={handleClickBlock}
+                />
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }

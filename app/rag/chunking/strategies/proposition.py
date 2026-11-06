@@ -10,7 +10,6 @@ Why baseline first:
 - Provides an upgrade path to LLM-based proposition rewriting later.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -38,11 +37,11 @@ def _units_from_text(text: str) -> list[_PropUnit]:
     splitter = SemanticSentenceChunker(chunk_size=1, chunk_overlap=0)
     raw_units = splitter._build_units(text or "")  # noqa: SLF001
     out: list[_PropUnit] = []
-    for u in raw_units or []:
-        s = int(getattr(u, "start", 0) or 0)
-        e = int(getattr(u, "end", 0) or 0)
-        body = (getattr(u, "text", "") or "").strip()
-        kind = str(getattr(u, "kind", "text") or "text")
+    for u in raw_units:
+        s = u.start
+        e = u.end
+        body = (u.text or "").strip()
+        kind = u.kind or "text"
         if not body or e <= s:
             continue
         out.append(_PropUnit(text=body, start=s, end=e, kind=kind))
@@ -50,7 +49,7 @@ def _units_from_text(text: str) -> list[_PropUnit]:
 
 
 class PropositionChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         # chunk_size/overlap kept for interface compatibility; proposition chunking emits
         # atomic units and does not aggregate across them in the baseline version.
         self.chunk_size = int(chunk_size or 0)
@@ -69,10 +68,10 @@ class PropositionChunker(BaseChunker):
             for i, u in enumerate(units):
                 meta: dict[str, Any] = dict(base_meta)
                 meta["chunk_strategy"] = "proposition"
-                meta["start_char"] = int(u.start)
-                meta["end_char"] = int(u.end)
-                meta["proposition_index"] = int(i)
-                meta["proposition_kind"] = str(u.kind)
+                meta["start_char"] = u.start
+                meta["end_char"] = u.end
+                meta["proposition_index"] = i
+                meta["proposition_kind"] = u.kind
                 out.append(Document(page_content=u.text, metadata=meta))
 
         for idx, chunk in enumerate(out):
@@ -84,4 +83,3 @@ class PropositionChunker(BaseChunker):
 
 
 __all__ = ["PropositionChunker"]
-

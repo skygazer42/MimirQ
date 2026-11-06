@@ -1,13 +1,15 @@
-
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from docx import Document as DocxDocument
 from docx.enum.text import WD_COLOR_INDEX
 
+if TYPE_CHECKING:
+    from docx.document import Document
 
-def _add_highlighted_heading(doc: DocxDocument, title: str, *, highlight_keywords: list[str] | None) -> None:
+
+def _add_highlighted_heading(doc: "Document", title: str, *, highlight_keywords: list[str] | None) -> None:
     paragraph = doc.add_heading("", level=1)
     keywords = [str(item or "").strip() for item in (highlight_keywords or []) if str(item or "").strip()]
     if not keywords:

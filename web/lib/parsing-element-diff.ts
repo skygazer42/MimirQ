@@ -16,7 +16,9 @@ export type ParsingElementDiffSummary = {
 }
 
 function normalizeText(value: string | null | undefined): string {
-  return String(value || '').replace(/\s+/g, ' ').trim()
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function uniqueSorted(values: string[]): string[] {
@@ -25,20 +27,20 @@ function uniqueSorted(values: string[]): string[] {
 
 function normalizePages(pages: number[] | null | undefined): string {
   if (!Array.isArray(pages) || pages.length === 0) return 'na'
-  return pages
-    .filter((value) => Number.isInteger(value) && value > 0)
-    .join(',')
+  return pages.filter((value) => Number.isInteger(value) && value > 0).join(',')
 }
 
-function elementSignature(element: Pick<ParsingElement, 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>): string {
-  const bbox = element.bbox
-    ? `${element.bbox.x0}:${element.bbox.y0}:${element.bbox.x1}:${element.bbox.y1}`
-    : 'na'
+function elementSignature(
+  element: Pick<ParsingElement, 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>,
+): string {
+  const bbox = element.bbox ? `${element.bbox.x0}:${element.bbox.y0}:${element.bbox.x1}:${element.bbox.y1}` : 'na'
   return [
     String(element.kind || 'unknown'),
     typeof element.page === 'number' ? String(element.page) : 'na',
     normalizePages(element.pages),
-    String(element.visual_kind || '').trim().toLowerCase() || 'na',
+    String(element.visual_kind || '')
+      .trim()
+      .toLowerCase() || 'na',
     normalizeText(element.text),
     bbox,
   ].join('|')
@@ -49,8 +51,10 @@ function incrementCount(map: ElementCountMap, kind: ElementKind) {
 }
 
 export function diffParsingElements(
-  base: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined,
-  compare: Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined
+  base:
+    Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined,
+  compare:
+    Array<Pick<ParsingElement, 'id' | 'kind' | 'page' | 'pages' | 'visual_kind' | 'text' | 'bbox'>> | null | undefined,
 ): ParsingElementDiffSummary {
   const baseItems = base || []
   const compareItems = compare || []
@@ -72,7 +76,9 @@ export function diffParsingElements(
       if (text) addedSealTexts.push(text)
     }
     if (element.kind === 'image') {
-      const visualKind = String(element.visual_kind || '').trim().toLowerCase()
+      const visualKind = String(element.visual_kind || '')
+        .trim()
+        .toLowerCase()
       if (visualKind) addedImageVisualKinds.push(visualKind)
     }
   }
@@ -86,7 +92,9 @@ export function diffParsingElements(
       if (text) removedSealTexts.push(text)
     }
     if (element.kind === 'image') {
-      const visualKind = String(element.visual_kind || '').trim().toLowerCase()
+      const visualKind = String(element.visual_kind || '')
+        .trim()
+        .toLowerCase()
       if (visualKind) removedImageVisualKinds.push(visualKind)
     }
   }

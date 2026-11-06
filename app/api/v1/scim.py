@@ -28,11 +28,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.constants import UserRoles
 from app.core.database import get_db
+from app.core.exceptions import MimirQError
 from app.models.tenant import TenantMember
-from app.models.tenant_group import TenantGroupMember
+from app.models.tenant_group import TenantGroup, TenantGroupMember
+from app.services import tenant_group_service
 from app.services.audit_log_service import audit_log_event
-from app.services.tenant_group_service import TenantGroupService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -62,14 +64,14 @@ _REMOVE_MEMBER_FILTER_RE = re.compile(r'members\[\s*value\s+eq\s+"([^"]+)"\s*\]'
 
 
 def get_scim_tenant_id(request: Request, x_tenant_id: str | None = Header(default=None)) -> UUID:
-    tenant_header = str(getattr(settings, "TENANT_HEADER", "") or "X-Tenant-ID").strip() or "X-Tenant-ID"
+    tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
     raw_tenant = (x_tenant_id or "").strip()
     if not raw_tenant and tenant_header.lower() != "x-tenant-id":
         raw_tenant = (request.headers.get(tenant_header) or "").strip()
     if not raw_tenant:
         raise HTTPException(status_code=400, detail=f"{tenant_header} header required")
 
-    bound_tenant = str(getattr(settings, "SCIM_TENANT_ID", "") or "").strip()
+    bound_tenant = settings.SCIM_TENANT_ID.strip()
     try:
         requested_id = UUID(raw_tenant)
         bound_id = UUID(bound_tenant)
@@ -80,8 +82,8 @@ def get_scim_tenant_id(request: Request, x_tenant_id: str | None = Header(defaul
     return bound_id
 
 
-def _dt_iso(dt: Any) -> str | None:
-    if not isinstance(dt, datetime):
+def _dt_iso(dt: datetime | None) -> str | None:
+    if dt is None:
         return None
     try:
         utc = dt.astimezone(UTC)
@@ -96,25 +98,25 @@ def _scim_json(payload: dict[str, Any], *, status_code: int = 200) -> JSONRespon
 
 
 def _scim_error(*, status_code: int, detail: str, scim_type: str | None = None) -> JSONResponse:
-    out: dict[str, Any] = {"schemas": [_URN_ERROR], "status": str(int(status_code)), "detail": str(detail or "")}
+    out: dict[str, Any] = {"schemas": [_URN_ERROR], "status": str(status_code), "detail": detail}
     if scim_type:
-        out["scimType"] = str(scim_type)
+        out["scimType"] = scim_type
     return _scim_json(out, status_code=status_code)
 
 
-def _hash_pii(value: object) -> str:
+def _hash_pii(value: str | None) -> str:
     """Stable short hash for potentially sensitive identifiers."""
-    raw = str(value or "").strip().encode("utf-8", "ignore")
+    raw = (value or "").strip().encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
-def _split_items(raw: object) -> list[str]:
-    return [p for p in _TOKEN_SPLIT_RE.split(str(raw or "").strip()) if p]
+def _split_items(raw: str) -> list[str]:
+    return [part for part in _TOKEN_SPLIT_RE.split(raw.strip()) if part]
 
 
 def _token_matches(provided_token: str, expected_token: str) -> bool:
-    expected = str(expected_token or "").strip()
-    provided = str(provided_token or "").strip()
+    expected = expected_token.strip()
+    provided = provided_token.strip()
     if not expected or not provided:
         return False
     if expected.lower().startswith("sha256:"):
@@ -140,7 +142,7 @@ _allowlist_cache: dict[str, list[ipaddress.IPv4Network | ipaddress.IPv6Network]]
 
 
 def _parse_ip_allowlist(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
-    key = str(raw or "").strip()
+    key = raw.strip()
     if not key:
         return []
     cached = _allowlist_cache.get(key)
@@ -158,16 +160,16 @@ def _parse_ip_allowlist(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6
 
 
 def _require_scim_actor(request: Request, authorization: Annotated[str | None, Header()] = None) -> str:
-    if not bool(getattr(settings, "SCIM_ENABLED", False)):
+    if not settings.SCIM_ENABLED:
         raise HTTPException(status_code=404, detail="SCIM not enabled")
 
-    expected_raw = str(getattr(settings, "SCIM_BEARER_TOKEN", "") or "").strip()
+    expected_raw = settings.SCIM_BEARER_TOKEN.strip()
     expected_tokens = _split_items(expected_raw)
     if not expected_tokens:
         # Misconfiguration; do not expose further detail.
         raise HTTPException(status_code=404, detail="SCIM not enabled")
 
-    allowlist_raw = str(getattr(settings, "SCIM_IP_ALLOWLIST_CIDRS", "") or "").strip()
+    allowlist_raw = settings.SCIM_IP_ALLOWLIST_CIDRS.strip()
     if allowlist_raw:
         client_ip = _extract_client_ip(request)
         if client_ip is None:
@@ -193,9 +195,9 @@ def _require_scim_actor(request: Request, authorization: Annotated[str | None, H
 
 
 def _scim_page(*, start_index: int, count: int) -> tuple[int, int, int]:
-    start = max(1, int(start_index or 1))
-    page_size = max(1, int(count or 200))
-    max_page_size = int(getattr(settings, "SCIM_PAGE_SIZE_MAX", 200) or 200)
+    start = max(1, start_index)
+    page_size = max(1, count or 200)
+    max_page_size = settings.SCIM_PAGE_SIZE_MAX or 200
     if max_page_size > 0:
         page_size = min(page_size, max_page_size)
     skip = start - 1
@@ -207,50 +209,50 @@ def _list_response(
 ) -> dict[str, Any]:
     return {
         "schemas": [_URN_LIST_RESPONSE],
-        "totalResults": int(total),
-        "startIndex": int(start_index),
-        "itemsPerPage": int(items_per_page),
+        "totalResults": total,
+        "startIndex": start_index,
+        "itemsPerPage": items_per_page,
         "Resources": resources,
     }
 
 
 def _scim_user(member: TenantMember) -> dict[str, Any]:
-    uid = str(getattr(member, "user_id", "") or "").strip()
+    uid = (member.user_id or "").strip()
     return {
         "schemas": [_URN_USER],
         "id": uid,
         "userName": uid,
-        "active": bool(getattr(member, "is_active", getattr(member, "is_current", False))),
+        "active": bool(member.is_active),
         "meta": {
             "resourceType": "User",
-            "created": _dt_iso(getattr(member, "created_at", None)),
-            "lastModified": _dt_iso(getattr(member, "updated_at", None)),
+            "created": _dt_iso(member.created_at),
+            "lastModified": _dt_iso(member.updated_at),
         },
     }
 
 
 def _scim_group(
-    group: object,
+    group: TenantGroup,
     *,
     members: Iterable[str] | None = None,
     include_members: bool = False,
 ) -> dict[str, Any]:
-    gid = str(getattr(group, "id", "") or "").strip()
+    gid = str(group.id)
     out: dict[str, Any] = {
         "schemas": [_URN_GROUP],
         "id": gid,
-        "displayName": str(getattr(group, "name", "") or ""),
-        "externalId": getattr(group, "external_id", None),
+        "displayName": group.name,
+        "externalId": group.external_id,
         "meta": {
             "resourceType": "Group",
-            "created": _dt_iso(getattr(group, "created_at", None)),
-            "lastModified": _dt_iso(getattr(group, "updated_at", None)),
+            "created": _dt_iso(group.created_at),
+            "lastModified": _dt_iso(group.updated_at),
         },
     }
     if include_members:
         mem_out: list[dict[str, Any]] = []
-        for raw in members or []:
-            uid = str(raw or "").strip()
+        for raw in members or ():
+            uid = raw.strip()
             if not uid:
                 continue
             mem_out.append({"value": uid, "display": uid})
@@ -270,13 +272,13 @@ def _list_users(db: Session, *, tenant_id: UUID, skip: int, limit: int) -> tuple
         )
         .order_by(TenantMember.user_id.asc())
     )
-    total = int(q.count())
-    items = q.offset(max(0, int(skip or 0))).limit(max(1, min(int(limit or 0), 1000))).all()
+    total = q.count()
+    items = q.offset(max(0, skip)).limit(max(1, min(limit, 1000))).all()
     return total, items
 
 
 def _get_user(db: Session, *, tenant_id: UUID, user_id: str) -> TenantMember | None:
-    uid = str(user_id or "").strip()
+    uid = user_id.strip()
     if not uid or len(uid) > 255:
         return None
     return (
@@ -290,16 +292,14 @@ def _get_user(db: Session, *, tenant_id: UUID, user_id: str) -> TenantMember | N
 
 
 @router.get("/ServiceProviderConfig", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def get_service_provider_config(_actor: Annotated[str, Depends(_require_scim_actor)]):
+def get_service_provider_config(_actor: Annotated[str, Depends(_require_scim_actor)]) -> JSONResponse:
     # See RFC7644 §4 and RFC7643 (ServiceProviderConfig schema).
-    patch_supported = bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)) or bool(
-        getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)
-    )
+    patch_supported = settings.SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED or settings.SCIM_USERS_PATCH_ACTIVE_ENABLED
     return _scim_json(
         {
             "schemas": [_URN_SERVICE_PROVIDER_CONFIG],
             "documentationUri": "https://datatracker.ietf.org/doc/html/rfc7644",
-            "patch": {"supported": bool(patch_supported)},
+            "patch": {"supported": patch_supported},
             "bulk": {"supported": False, "maxOperations": 0, "maxPayloadSize": 0},
             "filter": {"supported": False, "maxResults": 0},
             "changePassword": {"supported": False},
@@ -319,7 +319,7 @@ def get_service_provider_config(_actor: Annotated[str, Depends(_require_scim_act
 
 
 @router.get("/Schemas", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def list_schemas(*, _actor: Annotated[str, Depends(_require_scim_actor)]):
+def list_schemas(*, _actor: Annotated[str, Depends(_require_scim_actor)]) -> JSONResponse:
     # Minimal schema definitions (enough for discovery).
     user_schema = {
         "schemas": [_URN_SCHEMA],
@@ -354,7 +354,7 @@ def list_schemas(*, _actor: Annotated[str, Depends(_require_scim_actor)]):
 
 
 @router.get("/ResourceTypes", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def list_resource_types(_actor: Annotated[str, Depends(_require_scim_actor)]):
+def list_resource_types(_actor: Annotated[str, Depends(_require_scim_actor)]) -> JSONResponse:
     resources = [
         {
             "schemas": [_URN_RESOURCE_TYPE],
@@ -391,9 +391,9 @@ def list_groups(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> JSONResponse:
     skip, limit, start = _scim_page(start_index=start_index, count=count)
-    total, groups = TenantGroupService.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
+    total, groups = tenant_group_service.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
     resources = [_scim_group(g, include_members=False) for g in groups]
     return _scim_json(
         _list_response(
@@ -412,14 +412,11 @@ def get_group(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> JSONResponse:
     try:
-        group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
-        _total, rows = TenantGroupService.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
-    members = [str(getattr(r, "user_id", "") or "").strip() for r in rows]
-    return _scim_json(_scim_group(group, include_members=True, members=members))
+        return _group_response(db=db, tenant_id=tenant_id, group_id=group_id)
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
 
 
 @router.post("/Groups", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -430,8 +427,8 @@ def create_group(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+) -> JSONResponse:
+    if not settings.SCIM_GROUPS_MUTATION_ENABLED:
         return _scim_error(status_code=404, detail="POST /Groups not enabled")
 
     if not isinstance(payload, dict):
@@ -451,10 +448,10 @@ def create_group(
             return _scim_error(status_code=400, detail="externalId too long (max=255)", scim_type="invalidValue")
 
     try:
-        group = TenantGroupService.create_group(db, tenant_id=tenant_id, name=display_name, external_id=external_id)
-    except HTTPException as exc:
-        scim_type = "uniqueness" if int(exc.status_code) == 409 else None
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"), scim_type=scim_type)
+        group = tenant_group_service.create_group(db, tenant_id=tenant_id, name=display_name, external_id=external_id)
+    except MimirQError as exc:
+        scim_type = "uniqueness" if exc.status_code == 409 else None
+        return _scim_error(status_code=exc.status_code, detail=exc.message, scim_type=scim_type)
 
     members_provided = payload.get("members")
     member_count = 0
@@ -467,13 +464,13 @@ def create_group(
         actor_id=actor_id,
         action="scim.group.create",
         resource_type="tenant_group",
-        resource_id=str(getattr(group, "id", "") or ""),
+        resource_id=str(group.id),
         http_request=http_request,
         details={
-            "group_id": str(getattr(group, "id", "") or ""),
+            "group_id": str(group.id),
             "display_name_hash": _hash_pii(display_name),
             "external_id_hash": _hash_pii(external_id) if external_id else None,
-            "members_provided_count": int(member_count),
+            "members_provided_count": member_count,
             "members_apply_via": "PATCH /Groups/{id} (SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED)",
         },
     )
@@ -492,8 +489,8 @@ def put_group(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+) -> JSONResponse:
+    if not settings.SCIM_GROUPS_MUTATION_ENABLED:
         return _scim_error(status_code=404, detail="PUT /Groups not enabled")
 
     if not isinstance(payload, dict):
@@ -516,16 +513,16 @@ def put_group(
         external_id_hash = _hash_pii(raw_ext) if raw_ext else None
 
     try:
-        group = TenantGroupService.update_group(
+        group = tenant_group_service.update_group(
             db,
             tenant_id=tenant_id,
             group_id=group_id,
             name=display_name,
             external_id=external_id_arg,
         )
-    except HTTPException as exc:
-        scim_type = "uniqueness" if int(exc.status_code) == 409 else None
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"), scim_type=scim_type)
+    except MimirQError as exc:
+        scim_type = "uniqueness" if exc.status_code == 409 else None
+        return _scim_error(status_code=exc.status_code, detail=exc.message, scim_type=scim_type)
 
     _audit_scim(
         db,
@@ -533,10 +530,10 @@ def put_group(
         actor_id=actor_id,
         action="scim.group.put",
         resource_type="tenant_group",
-        resource_id=str(getattr(group, "id", "") or ""),
+        resource_id=str(group.id),
         http_request=http_request,
         details={
-            "group_id": str(getattr(group, "id", "") or ""),
+            "group_id": str(group.id),
             "display_name_hash": _hash_pii(display_name),
             "external_id_hash": external_id_hash,
         },
@@ -555,22 +552,22 @@ def delete_group(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(getattr(settings, "SCIM_GROUPS_MUTATION_ENABLED", False)):
+) -> Response:
+    if not settings.SCIM_GROUPS_MUTATION_ENABLED:
         return _scim_error(status_code=404, detail="DELETE /Groups not enabled")
 
     try:
-        group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+        group = tenant_group_service.get_group(db, tenant_id=tenant_id, group_id=group_id)
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
 
-    display_name = str(getattr(group, "name", "") or "")
-    external_id = getattr(group, "external_id", None)
+    display_name = group.name
+    external_id = group.external_id
 
     try:
-        TenantGroupService.delete_group(db, tenant_id=tenant_id, group_id=group_id)
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
+        tenant_group_service.delete_group(db, tenant_id=tenant_id, group_id=group_id)
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
 
     _audit_scim(
         db,
@@ -600,7 +597,7 @@ def list_users(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> JSONResponse:
     skip, limit, start = _scim_page(start_index=start_index, count=count)
     total, members = _list_users(db, tenant_id=tenant_id, skip=skip, limit=limit)
     resources = [_scim_user(m) for m in members]
@@ -622,21 +619,20 @@ def get_user(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     _actor: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> JSONResponse:
     member = _get_user(db, tenant_id=tenant_id, user_id=user_id)
     if member is None:
         return _scim_error(status_code=404, detail="User not found")
     return _scim_json(_scim_user(member))
 
 
-def _coerce_bool(raw: Any) -> bool | None:
-    if raw is None:
-        return None
+def _coerce_bool(raw: object) -> bool | None:
     if isinstance(raw, bool):
         return raw
     if isinstance(raw, (int, float)):
-        if int(raw) in {0, 1}:
-            return bool(int(raw))
+        number = int(raw)
+        if number in {0, 1}:
+            return bool(number)
         return None
     if isinstance(raw, str):
         v = raw.strip().lower()
@@ -688,7 +684,7 @@ def _revoke_group_memberships_for_user(db: Session, *, tenant_id: UUID, user_id:
 
     Caller decides whether to commit (we intentionally do not commit here).
     """
-    uid = str(user_id or "").strip()
+    uid = user_id.strip()
     if not uid or len(uid) > 255:
         return 0
     deleted = (
@@ -699,7 +695,7 @@ def _revoke_group_memberships_for_user(db: Session, *, tenant_id: UUID, user_id:
         )
         .delete(synchronize_session=False)
     )
-    return int(deleted or 0)
+    return deleted
 
 
 @router.post("/Users", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -710,8 +706,8 @@ def create_user(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(getattr(settings, "SCIM_USERS_CREATE_ENABLED", False)):
+) -> JSONResponse:
+    if not settings.SCIM_USERS_CREATE_ENABLED:
         return _scim_error(status_code=404, detail="POST /Users not enabled")
 
     if not isinstance(payload, dict):
@@ -737,24 +733,25 @@ def create_user(
     member = TenantMember(
         tenant_id=tenant_id,
         user_id=user_name,
-        role="viewer",
-        is_active=bool(active),
+        role=UserRoles.VIEWER,
+        is_active=active,
         is_current=False,
     )
     db.add(member)
 
+    user_id_hash = _hash_pii(user_name)
     _audit_scim(
         db,
         tenant_id=tenant_id,
         actor_id=actor_id,
         action="scim.user.create",
         resource_type="tenant_member",
-        resource_id=_hash_pii(user_name),
+        resource_id=user_id_hash,
         http_request=http_request,
         details={
-            "user_id_hash": _hash_pii(user_name),
-            "user_id_chars": int(len(user_name)),
-            "active": bool(active),
+            "user_id_hash": user_id_hash,
+            "user_id_chars": len(user_name),
+            "active": active,
         },
     )
 
@@ -767,7 +764,7 @@ def create_user(
     return _scim_json(_scim_user(member), status_code=201)
 
 
-def _extract_active_patch(ops: Any) -> bool | None:
+def _extract_active_patch(ops: object) -> bool | None:
     if not isinstance(ops, list) or not ops:
         return None
     desired: bool | None = None
@@ -802,8 +799,8 @@ def patch_user(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(getattr(settings, "SCIM_USERS_PATCH_ACTIVE_ENABLED", False)):
+) -> JSONResponse:
+    if not settings.SCIM_USERS_PATCH_ACTIVE_ENABLED:
         return _scim_error(status_code=404, detail="PATCH /Users not enabled")
 
     member = _get_user(db, tenant_id=tenant_id, user_id=user_id)
@@ -819,37 +816,37 @@ def patch_user(
     if desired is None:
         return _scim_error(status_code=400, detail="Only 'active' PATCH is supported", scim_type="invalidPath")
 
-    before = bool(getattr(member, "is_active", True))
-    after = bool(desired)
-    changed = before != after
-    member.is_active = after
-    if not after:
+    before = bool(member.is_active)
+    changed = before != desired
+    member.is_active = desired
+    if not desired:
         # Best-effort: inactive members should not be selected as "current".
         with contextlib.suppress(Exception):
             member.is_current = False
 
     revoked = 0
-    if not after and bool(getattr(settings, "SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED", False)):
+    if not desired and settings.SCIM_DEPROVISION_REVOKE_GROUP_MEMBERSHIPS_ENABLED:
         revoked = _revoke_group_memberships_for_user(
             db,
             tenant_id=tenant_id,
-            user_id=str(getattr(member, "user_id", user_id) or ""),
+            user_id=member.user_id,
         )
 
+    user_id_hash = _hash_pii(member.user_id)
     _audit_scim(
         db,
         tenant_id=tenant_id,
         actor_id=actor_id,
         action="scim.user.patch",
         resource_type="tenant_member",
-        resource_id=_hash_pii(getattr(member, "user_id", user_id)),
+        resource_id=user_id_hash,
         http_request=http_request,
         details={
-            "user_id_hash": _hash_pii(getattr(member, "user_id", user_id)),
-            "active_before": bool(before),
-            "active_after": bool(after),
-            "changed": bool(changed),
-            "group_memberships_revoked": int(revoked),
+            "user_id_hash": user_id_hash,
+            "active_before": before,
+            "active_after": desired,
+            "changed": changed,
+            "group_memberships_revoked": revoked,
         },
     )
 
@@ -858,12 +855,10 @@ def patch_user(
     return _scim_json(_scim_user(member))
 
 
-def _extract_member_ids(raw: Any) -> list[str]:
+def _extract_member_ids(raw: object) -> list[str]:
     # SCIM PATCH commonly sends either:
     # - value: [{"value": "alice"}, {"value": "bob"}]
     # - value: {"members": [{"value": "alice"}]}
-    if raw is None:
-        return []
     values = raw
     if isinstance(values, dict) and "members" in values:
         values = values.get("members")
@@ -887,17 +882,6 @@ def _extract_member_ids(raw: Any) -> list[str]:
     return out
 
 
-def _validate_group_membership_patch_payload(payload: dict[str, Any]) -> tuple[list[Any] | None, JSONResponse | None]:
-    schemas = payload.get("schemas") if isinstance(payload, dict) else None
-    if not isinstance(schemas, list) or _URN_PATCH_OP not in {str(s or "") for s in schemas}:
-        return None, _scim_error(status_code=400, detail="Invalid SCIM PATCH payload", scim_type="invalidSyntax")
-
-    ops = payload.get("Operations") if isinstance(payload, dict) else None
-    if not isinstance(ops, list) or not ops:
-        return None, _scim_error(status_code=400, detail="Missing Operations", scim_type="invalidSyntax")
-    return ops, None
-
-
 def _membership_patch_targets(ops: list[Any]) -> tuple[list[str], list[str]]:
     to_add: list[str] = []
     to_remove: list[str] = []
@@ -919,68 +903,16 @@ def _membership_patch_targets(ops: list[Any]) -> tuple[list[str], list[str]]:
                 continue
             m = _REMOVE_MEMBER_FILTER_RE.search(path)
             if m:
-                uid = str(m.group(1) or "").strip()
+                uid = m.group(1).strip()
                 if uid:
                     to_remove.append(uid)
     return to_add, to_remove
 
 
-def _apply_membership_patch(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    group_id: UUID,
-    to_add: list[str],
-    to_remove: list[str],
-) -> tuple[int, int] | JSONResponse:
-    added = 0
-    removed = 0
-    try:
-        if to_add:
-            added = TenantGroupService.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=to_add)
-        if to_remove:
-            removed = TenantGroupService.remove_members(
-                db,
-                tenant_id=tenant_id,
-                group_id=group_id,
-                member_ids=to_remove,
-            )
-    except HTTPException as exc:
-        return _scim_error(status_code=int(exc.status_code), detail=str(exc.detail or "error"))
-    return added, removed
-
-
-def _audit_membership_patch(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    actor_id: str,
-    group_id: UUID,
-    to_add: list[str],
-    to_remove: list[str],
-    added: int,
-    removed: int,
-) -> None:
-    audit_log_event(
-        db,
-        tenant_id=tenant_id,
-        actor_id=actor_id,
-        action="scim.group.members.patch",
-        resource_type="tenant_group",
-        resource_id=str(group_id),
-        details={
-            "member_add_requested": int(len(to_add)),
-            "member_remove_requested": int(len(to_remove)),
-            "member_add_updated": int(added),
-            "member_remove_updated": int(removed),
-        },
-    )
-
-
-def _membership_patch_response(*, db: Session, tenant_id: UUID, group_id: UUID) -> JSONResponse:
-    group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
-    _total, rows = TenantGroupService.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
-    members = [str(getattr(r, "user_id", "") or "").strip() for r in rows]
+def _group_response(*, db: Session, tenant_id: UUID, group_id: UUID) -> JSONResponse:
+    group = tenant_group_service.get_group(db, tenant_id=tenant_id, group_id=group_id)
+    _total, rows = tenant_group_service.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=0, limit=2000)
+    members = [row.user_id for row in rows]
     return _scim_json(_scim_group(group, include_members=True, members=members))
 
 
@@ -992,38 +924,50 @@ def patch_group_membership(
     tenant_id: Annotated[UUID, Depends(get_scim_tenant_id)],
     actor_id: Annotated[str, Depends(_require_scim_actor)],
     db: Annotated[Session, Depends(get_db)],
-):
-    if not bool(getattr(settings, "SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED", False)):
+) -> JSONResponse:
+    if not settings.SCIM_PATCH_GROUP_MEMBERSHIP_ENABLED:
         return _scim_error(status_code=404, detail="PATCH group membership not enabled")
 
-    ops, error = _validate_group_membership_patch_payload(payload)
-    if error is not None:
-        return error
+    schemas = payload.get("schemas") if isinstance(payload, dict) else None
+    if not isinstance(schemas, list) or _URN_PATCH_OP not in {str(s or "") for s in schemas}:
+        return _scim_error(status_code=400, detail="Invalid SCIM PATCH payload", scim_type="invalidSyntax")
+
+    ops = payload.get("Operations") if isinstance(payload, dict) else None
+    if not isinstance(ops, list) or not ops:
+        return _scim_error(status_code=400, detail="Missing Operations", scim_type="invalidSyntax")
 
     # Idempotent: underlying service dedupes (add) and deletes only existing (remove).
-    to_add, to_remove = _membership_patch_targets(ops or [])
-    applied = _apply_membership_patch(
-        db=db,
-        tenant_id=tenant_id,
-        group_id=group_id,
-        to_add=to_add,
-        to_remove=to_remove,
-    )
-    if isinstance(applied, JSONResponse):
-        return applied
-    added, removed = applied
+    to_add, to_remove = _membership_patch_targets(ops)
+    added = 0
+    removed = 0
+    try:
+        if to_add:
+            added = tenant_group_service.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=to_add)
+        if to_remove:
+            removed = tenant_group_service.remove_members(
+                db,
+                tenant_id=tenant_id,
+                group_id=group_id,
+                member_ids=to_remove,
+            )
+    except MimirQError as exc:
+        return _scim_error(status_code=exc.status_code, detail=exc.message)
 
-    _audit_membership_patch(
-        db=db,
+    audit_log_event(
+        db,
         tenant_id=tenant_id,
         actor_id=actor_id,
-        group_id=group_id,
-        to_add=to_add,
-        to_remove=to_remove,
-        added=added,
-        removed=removed,
+        action="scim.group.members.patch",
+        resource_type="tenant_group",
+        resource_id=str(group_id),
+        details={
+            "member_add_requested": len(to_add),
+            "member_remove_requested": len(to_remove),
+            "member_add_updated": added,
+            "member_remove_updated": removed,
+        },
     )
     with contextlib.suppress(Exception):
         db.commit()
 
-    return _membership_patch_response(db=db, tenant_id=tenant_id, group_id=group_id)
+    return _group_response(db=db, tenant_id=tenant_id, group_id=group_id)

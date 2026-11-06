@@ -55,7 +55,7 @@ def _dt_to_json(v: datetime | None) -> str | None:
 def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:
     out: dict[str, int] = {}
     for k, v in counter.most_common(max(0, int(max_items or 0))):
-        out[str(k)] = int(v)
+        out[str(k)] = v
     return out
 
 
@@ -100,8 +100,7 @@ def _list_dataset_ids_for_index_audit(
         .all()
     )
     out: list[UUID] = []
-    for r in rows:
-        ds_id = r[0] if isinstance(r, tuple) and r else None
+    for (ds_id,) in rows:
         if isinstance(ds_id, UUID):
             out.append(ds_id)
     return out
@@ -190,13 +189,13 @@ def _run_dataset_evidence_drift_audit(
 
     return {
         "dataset_id": str(audit.dataset_id),
-        "total_items": int(audit.total_items),
-        "total_references": int(audit.total_references),
-        "ok_references": int(audit.ok_references),
-        "drift_references": int(audit.drift_references),
-        "drift_rate": float(audit.drift_rate),
+        "total_items": audit.total_items,
+        "total_references": audit.total_references,
+        "ok_references": audit.ok_references,
+        "drift_references": audit.drift_references,
+        "drift_rate": audit.drift_rate,
         "reasons": dict(audit.reasons or {}),
-        "details_truncated": bool(audit.details_truncated),
+        "details_truncated": audit.details_truncated,
     }
 
 
@@ -219,9 +218,9 @@ def _summarize_index_audit_result(res: dict[str, Any], dataset_id: UUID) -> tupl
             "dataset_id": str(res.get("dataset_id") or dataset_id),
             "active_documents": int(res.get("active_documents") or 0),
             "active_chunks": int(res.get("active_chunks") or 0),
-            "vector_id_missing": int(vector_id_missing),
-            "vector_ids_missing_in_backend": int(missing_backend),
-            "milvus_orphan_ids_sampled": int(orphan_count),
+            "vector_id_missing": vector_id_missing,
+            "vector_ids_missing_in_backend": missing_backend,
+            "milvus_orphan_ids_sampled": orphan_count,
             "vector_ids_missing_in_backend_sample": list(res.get("vector_ids_missing_in_backend_sample") or [])[:20],
             "milvus_orphan_ids_sample": list(orphan_ids)[:20],
         },
@@ -296,8 +295,8 @@ def run_daily_index_audit_report(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -365,22 +364,22 @@ def run_daily_index_audit_report(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "max_datasets": int(cap_ds),
+        "max_datasets": cap_ds,
         "max_check_ids": int(max_check_ids or 0),
         "milvus_list_limit": int(milvus_list_limit or 0),
         "sample_limit": int(sample_limit or 0),
-        "scanned_datasets": int(scanned),
-        "datasets_with_issues": int(datasets_with_issues),
-        "vector_id_missing_total": int(vector_id_missing_total),
-        "vector_ids_missing_in_backend_total": int(vector_missing_backend_total),
-        "milvus_orphan_ids_sampled_total": int(milvus_orphan_ids_total),
+        "scanned_datasets": scanned,
+        "datasets_with_issues": datasets_with_issues,
+        "vector_id_missing_total": vector_id_missing_total,
+        "vector_ids_missing_in_backend_total": vector_missing_backend_total,
+        "milvus_orphan_ids_sampled_total": milvus_orphan_ids_total,
         "top_issue_datasets": list(top_issue_datasets),
         "errors_sample": list(errors),
         "ok": True,
         "skipped": False,
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
@@ -415,8 +414,8 @@ def run_daily_embedding_drift_report(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -454,7 +453,7 @@ def run_daily_embedding_drift_report(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "ok": bool(snap.get("ok") is True),
+        "ok": snap.get("ok") is True,
         "skipped": False,
         "schema": str(snap.get("schema") or "mimirq.embedding_drift_snapshot.v1"),
         "vector_backend": snap.get("vector_backend"),
@@ -472,7 +471,7 @@ def run_daily_embedding_drift_report(
         "scope": snap.get("scope"),
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
@@ -524,8 +523,8 @@ def run_daily_evidence_drift_audit_report(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -596,9 +595,9 @@ def run_daily_evidence_drift_audit_report(
         per_dataset.append(
             {
                 "dataset_id": str(res.get("dataset_id") or ds_id),
-                "total_items": int(ti),
-                "total_references": int(tr),
-                "drift_references": int(dr),
+                "total_items": ti,
+                "total_references": tr,
+                "drift_references": dr,
                 "drift_rate": float(res.get("drift_rate") or 0.0),
             }
         )
@@ -618,17 +617,17 @@ def run_daily_evidence_drift_audit_report(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "max_datasets": int(cap_ds),
+        "max_datasets": cap_ds,
         "include_archived_items": bool(include_archived_items),
         "include_details": bool(include_details),
         "details_limit": int(details_limit or 0),
         "slice_top_n": int(slice_top_n or 0),
-        "scanned_datasets": int(scanned),
-        "total_items": int(total_items),
-        "total_references": int(total_refs),
-        "ok_references": int(ok_refs),
-        "drift_references": int(drift_refs),
-        "drift_rate": float(overall_drift_rate),
+        "scanned_datasets": scanned,
+        "total_items": total_items,
+        "total_references": total_refs,
+        "ok_references": ok_refs,
+        "drift_references": drift_refs,
+        "drift_rate": overall_drift_rate,
         "reasons": _bounded_top_counts(reasons, max_items=50),
         "top_drift_datasets": list(top_drift_datasets),
         "errors_sample": list(errors),
@@ -636,7 +635,7 @@ def run_daily_evidence_drift_audit_report(
         "skipped": False,
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 
@@ -684,8 +683,8 @@ def run_daily_access_review_summary(
     report_date = now0.date().isoformat()
 
     if (
-        bool(execute)
-        and (not bool(force))
+        execute
+        and not force
         and _audit_already_written(
             db,
             tenant_id=tenant_id,
@@ -760,13 +759,13 @@ def run_daily_access_review_summary(
             .count()
         )
         doc_known = doc_inherit_count + doc_partial_count + doc_only_me_count + doc_all_team_count
-        doc_unknown_count = max(0, int(document_count - doc_known))
+        doc_unknown_count = max(0, document_count - doc_known)
         document_access_mode_counts = {
-            "inherit": int(doc_inherit_count),
-            "partial_members": int(doc_partial_count),
-            "only_me": int(doc_only_me_count),
-            "all_team_members": int(doc_all_team_count),
-            "unknown": int(doc_unknown_count),
+            "inherit": doc_inherit_count,
+            "partial_members": doc_partial_count,
+            "only_me": doc_only_me_count,
+            "all_team_members": doc_all_team_count,
+            "unknown": doc_unknown_count,
         }
 
         document_member_allowlist_count = int(
@@ -790,21 +789,21 @@ def run_daily_access_review_summary(
         "tenant_id": str(tenant_id),
         "report_date": report_date,
         "ran_at": _dt_to_json(now0),
-        "group_count": int(group_count),
-        "group_member_count": int(group_member_count),
-        "dataset_count": int(dataset_count),
+        "group_count": group_count,
+        "group_member_count": group_member_count,
+        "dataset_count": dataset_count,
         "dataset_permission_counts": dict(dataset_permission_counts),
-        "dataset_member_allowlist_count": int(dataset_member_allowlist_count),
-        "dataset_group_allowlist_count": int(dataset_group_allowlist_count),
-        "document_count": int(document_count),
+        "dataset_member_allowlist_count": dataset_member_allowlist_count,
+        "dataset_group_allowlist_count": dataset_group_allowlist_count,
+        "document_count": document_count,
         "document_access_mode_counts": dict(document_access_mode_counts),
-        "document_member_allowlist_count": int(document_member_allowlist_count),
-        "document_group_allowlist_count": int(document_group_allowlist_count),
+        "document_member_allowlist_count": document_member_allowlist_count,
+        "document_group_allowlist_count": document_group_allowlist_count,
         "ok": True,
         "skipped": False,
     }
 
-    if not bool(execute):
+    if not execute:
         summary["dry_run"] = True
         return summary
 

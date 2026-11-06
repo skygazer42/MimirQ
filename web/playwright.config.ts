@@ -7,8 +7,7 @@ const useExternalServer = process.env.PLAYWRIGHT_EXTERNAL_SERVER === '1'
 const reuseBuildOutput = process.env.PLAYWRIGHT_REUSE_BUILD === '1'
 const runLiveStack = process.env.PLAYWRIGHT_LIVE_STACK === '1'
 const browserChannel = process.env.PLAYWRIGHT_CHANNEL
-const markdownImageProxySecret =
-  process.env.MARKDOWN_IMAGE_PROXY_SECRET || 'playwright-markdown-image-proxy-secret'
+const markdownImageProxySecret = process.env.MARKDOWN_IMAGE_PROXY_SECRET || 'playwright-markdown-image-proxy-secret'
 const LOCAL_NO_PROXY_HOSTS = ['127.0.0.1', 'localhost']
 
 function ensureLocalNoProxy(envName: 'NO_PROXY' | 'no_proxy') {
@@ -17,7 +16,7 @@ function ensureLocalNoProxy(envName: 'NO_PROXY' | 'no_proxy') {
     current
       .split(',')
       .map((entry) => entry.trim())
-      .filter(Boolean)
+      .filter(Boolean),
   )
   for (const host of LOCAL_NO_PROXY_HOSTS) entries.add(host)
   process.env[envName] = Array.from(entries).join(',')
@@ -45,18 +44,20 @@ export default defineConfig({
     video: browserChannel ? 'off' : 'retain-on-failure',
     viewport: { width: 1600, height: 1000 },
   },
-  webServer: useExternalServer ? undefined : {
-    command: useProdServer
-      ? reuseBuildOutput
-        ? `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
-        : `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
-      : `pnpm exec next dev --webpack -H 127.0.0.1 -p ${PORT}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI && !useProdServer,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    timeout: useProdServer ? 900_000 : 120_000,
-  },
+  webServer: useExternalServer
+    ? undefined
+    : {
+        command: useProdServer
+          ? reuseBuildOutput
+            ? `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
+            : `MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} pnpm exec next build --webpack && MARKDOWN_IMAGE_PROXY_SECRET=${markdownImageProxySecret} HOST=127.0.0.1 PORT=${PORT} pnpm start`
+          : `pnpm exec next dev --webpack -H 127.0.0.1 -p ${PORT}`,
+        url: baseURL,
+        reuseExistingServer: !process.env.CI && !useProdServer,
+        stdout: 'pipe',
+        stderr: 'pipe',
+        timeout: useProdServer ? 900_000 : 120_000,
+      },
   projects: [
     {
       name: 'chromium',

@@ -1,8 +1,8 @@
-
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.rag.llm.base import BaseLLMClient
 from app.rag.llm.factory import create_llm_client
 from app.rag.llm.models import LLMMessage, LLMRole
 from app.rag.llm.prompts.tagger_prompts import AUTO_TAGGER_RESPONSE_SCHEMA, AUTO_TAGGER_SYSTEM_PROMPT
@@ -92,7 +92,7 @@ def _append_document_tag(
     value: str,
     confidence: float = 0.85,
 ) -> None:
-    normalized = str(value or "").strip(" \t\r\n，,。.;；:：")
+    normalized = value.strip(" \t\r\n，,。.;；:：")
     if not normalized:
         return
     key = (tag_type, normalized.casefold())
@@ -173,7 +173,7 @@ def _normalize_span_annotations(raw: dict[str, Any], *, max_items: int) -> list[
 async def extract_llm_tags(
     *,
     text: str,
-    llm_client: Any | None = None,
+    llm_client: BaseLLMClient | None = None,
     model: str | None = None,
     max_chars: int = 3000,
     max_items: int = 16,

@@ -58,8 +58,8 @@ def _mineru_backend_availability() -> tuple[bool, str | None]:
 
 
 def _deepseek_ocr_backend_availability() -> tuple[bool, str | None]:
-    enabled = bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-    api_key = bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
+    enabled = bool(settings.DEEPSEEK_OCR_ENABLED)
+    api_key = bool((settings.SILICONFLOW_API_KEY or "").strip())
     if not enabled:
         return False, "Set DEEPSEEK_OCR_ENABLED=true."
     if not api_key:
@@ -77,10 +77,10 @@ def _qianfan_ocr_backend_availability() -> tuple[bool, str | None]:
 
 
 def _textin_backend_availability() -> tuple[bool, str | None]:
-    enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
-    api_url = bool((getattr(settings, "TEXTIN_API_URL", "") or "").strip())
-    app_id = bool((getattr(settings, "TEXTIN_APP_ID", "") or "").strip())
-    secret_code = bool((getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip())
+    enabled = bool(settings.TEXTIN_ENABLED)
+    api_url = bool((settings.TEXTIN_API_URL or "").strip())
+    app_id = bool((settings.TEXTIN_APP_ID or "").strip())
+    secret_code = bool((settings.TEXTIN_SECRET_CODE or "").strip())
     if not enabled:
         return False, "Set TEXTIN_ENABLED=true."
     if not api_url:
@@ -138,14 +138,14 @@ def _docling_backend_availability() -> tuple[bool, str | None]:
 
 
 def _magicpdf_backend_availability() -> tuple[bool, str | None]:
-    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+    if not bool(settings.MAGIC_PDF_ENABLED):
         return False, "MAGIC_PDF_ENABLED=false"
-    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+    if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True, None
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
+    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
     if not resolve_cli_command(cli):
         return False, f"MagicPDF CLI not found: {cli} (try activating the env or set MAGIC_PDF_CLI to full path)"
-    models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+    models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     if not models_dir:
         return False, "MagicPDF models not found: mount PDF-Extract-Kit cache or set MAGIC_PDF_MODELS_DIR"
     return True, None
@@ -153,9 +153,7 @@ def _magicpdf_backend_availability() -> tuple[bool, str | None]:
 
 _PARSER_BACKEND_CHECKS: dict[str, Callable[[], tuple[bool, str | None]]] = {
     "mineru": _mineru_backend_availability,
-    "deepdoc": lambda: (
-        (True, None) if bool(getattr(settings, "DEEPDOC_ENABLED", False)) else (False, "Set DEEPDOC_ENABLED=true.")
-    ),
+    "deepdoc": lambda: (True, None) if bool(settings.DEEPDOC_ENABLED) else (False, "Set DEEPDOC_ENABLED=true."),
     "deepseek_ocr": _deepseek_ocr_backend_availability,
     "qianfan_ocr": _qianfan_ocr_backend_availability,
     "textin": _textin_backend_availability,
@@ -288,18 +286,16 @@ _CHUNK_STRATEGY_NOTES = {
 
 
 def _llama_index_chunk_availability() -> tuple[bool, str | None]:
-    if not bool(getattr(settings, "LLAMA_INDEX_ENABLED", False)):
+    if not bool(settings.LLAMA_INDEX_ENABLED):
         return False, "Set LLAMA_INDEX_ENABLED=true."
     ok, err = check_dependency("llama_index.core")
     return ok, None if ok else f"llama-index-core not installed: {err}"
 
 
 def _integrated_pipeline_chunk_note() -> str:
-    vision_enabled = bool(getattr(settings, "VISION_LLM_ENABLED", False))
-    vision_key_ok = bool(
-        ((getattr(settings, "VISION_LLM_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "").strip())
-    )
-    vision_model = (getattr(settings, "VISION_LLM_MODEL", "") or "").strip()
+    vision_enabled = bool(settings.VISION_LLM_ENABLED)
+    vision_key_ok = bool(((settings.VISION_LLM_API_KEY or settings.LLM_API_KEY or "").strip()))
+    vision_model = (settings.VISION_LLM_MODEL or "").strip()
     if vision_enabled and vision_key_ok:
         return f"Integrated pipeline (parse+chunk). Vision enrichment enabled (model={vision_model or 'configured'})."
     if vision_enabled and not vision_key_ok:

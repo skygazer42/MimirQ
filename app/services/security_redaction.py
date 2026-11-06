@@ -4,7 +4,6 @@ Security redaction helpers for API-safe responses.
 Best-effort and fail-open: helpers should not raise for malformed payloads.
 """
 
-
 import re
 from typing import Any
 

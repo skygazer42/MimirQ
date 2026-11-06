@@ -2,17 +2,21 @@ import hashlib
 import re
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
 from langchain_core.documents import Document
 from sqlalchemy.orm import Session
 
+from app.api.schemas.chat import ChatRAGConfig, ChatRequest
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.http import httpx_trust_env
 from app.rag.retrieval.source_labels import derive_document_title, maybe_build_source_identification_answer
+
+if TYPE_CHECKING:
+    from app.rag.engine import RAGEngine
 
 
 @dataclass(frozen=True)
@@ -28,14 +32,14 @@ class ChatExecutionContext:
     db: Session
     tenant_id: UUID
     account_id: str
-    request: Any
+    request: ChatRequest
     conversation_id: UUID | None
     request_id: str
     doc_ids_to_use: list[UUID]
     history_for_llm: list[dict[str, Any]]
     scope_dataset_id: UUID | None
     dataset_id_used: UUID | None
-    effective_rag_config: Any
+    effective_rag_config: ChatRAGConfig
     effective_prompt_template_id: UUID | None
     effective_prompt_template_key: str | None
     effective_prompt_ab_experiment_key: str | None
@@ -75,10 +79,10 @@ def is_model_provider_unavailable_error(exc: BaseException) -> bool:
 
 
 def _model_provider_circuit_key() -> str:
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
-    api_base = str(getattr(settings, "LLM_API_BASE", "") or "").strip()
-    mock_enabled = bool(getattr(settings, "LLM_MOCK_ENABLED", False))
+    api_key = str(settings.LLM_API_KEY or "").strip()
+    model = str(settings.LLM_MODEL or "").strip()
+    api_base = str(settings.LLM_API_BASE or "").strip()
+    mock_enabled = bool(settings.LLM_MOCK_ENABLED)
     digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
     return "|".join((api_base, model, digest, str(mock_enabled)))
 
@@ -102,7 +106,7 @@ def mark_model_provider_unavailable(*, ttl_sec: float = _MODEL_PROVIDER_UNAVAILA
 
 def is_model_provider_unavailable_circuit_open() -> bool:
     _ensure_model_provider_circuit_key()
-    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+    if bool(settings.LLM_MOCK_ENABLED):
         return False
     return time.monotonic() < _MODEL_PROVIDER_UNAVAILABLE_UNTIL
 
@@ -118,7 +122,7 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
 
     _ensure_model_provider_circuit_key()
     now = time.monotonic()
-    if bool(getattr(settings, "LLM_MOCK_ENABLED", False)):
+    if bool(settings.LLM_MOCK_ENABLED):
         _MODEL_PROVIDER_AVAILABLE_UNTIL = now + _MODEL_PROVIDER_AVAILABLE_TTL_SEC
         return True, None
     if now < _MODEL_PROVIDER_UNAVAILABLE_UNTIL:
@@ -126,9 +130,9 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
     if now < _MODEL_PROVIDER_AVAILABLE_UNTIL:
         return True, None
 
-    api_key = str(getattr(settings, "LLM_API_KEY", "") or "").strip()
-    model = str(getattr(settings, "LLM_MODEL", "") or "").strip()
-    api_base = str(getattr(settings, "LLM_API_BASE", "") or "").strip()
+    api_key = str(settings.LLM_API_KEY or "").strip()
+    model = str(settings.LLM_MODEL or "").strip()
+    api_base = str(settings.LLM_API_BASE or "").strip()
     if not api_key or not model or not api_base:
         mark_model_provider_unavailable()
         return False, "LLM_API_KEY/LLM_API_BASE/LLM_MODEL is not configured"
@@ -577,12 +581,12 @@ def execute_extractive_fallback_once(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     doc_ids_to_use: list[UUID],
     history_for_llm: list[dict[str, Any]],
     scope_dataset_id: UUID | None,
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     original_error: BaseException | None = None,
     reason: str = "model_provider_unavailable",
 ) -> ExecutedGraphChatOnceResult:
@@ -743,7 +747,7 @@ def _graph_runtime_context(
     }
 
 
-def _graph_modality_meta(*, request: Any) -> tuple[str, dict[str, Any]]:
+def _graph_modality_meta(*, request: ChatRequest) -> tuple[str, dict[str, Any]]:
     multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
     try:
         from app.rag.policy.modality_router import classify_query_modality
@@ -764,8 +768,8 @@ def _graph_tag_context_docs(
     db: Session,
     tenant_id: UUID,
     doc_ids_to_use: list[UUID],
-    request: Any,
-    effective_rag_config: Any,
+    request: ChatRequest,
+    effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any]]:
     try:
         import inspect
@@ -785,48 +789,16 @@ def _graph_tag_context_docs(
         return [], {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
 
 
-def _graph_image_context_docs(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: Any,
-    modality: str,
-    dataset_id_used: UUID | None,
-    scope_dataset_id: UUID | None,
-) -> tuple[list[Any], dict[str, Any]]:
-    try:
-        if str(modality or "text").lower().strip() != "image":
-            return [], {"enabled": False, "used": False, "reason": "not_run"}
-
-        from app.services.chat_image_service import build_chat_image_context_docs
-
-        ds_for_images = dataset_id_used or scope_dataset_id
-        if ds_for_images is None:
-            return [], {"enabled": False, "used": False, "reason": "missing_dataset_id"}
-        image_docs, image_meta = build_chat_image_context_docs(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=ds_for_images,
-            question=request.message,
-            top_k=6,
-        )
-        return list(image_docs or []), image_meta
-    except Exception as exc:  # noqa: BLE001
-        return [], {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
-
-
 def _graph_multimodal_enrichment(
     *,
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     doc_ids_to_use: list[UUID],
     dataset_id_used: UUID | None,
     scope_dataset_id: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
 ) -> tuple[list[Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     modality, multimodal_meta = _graph_modality_meta(request=request)
     tag_docs, tag_meta = _graph_tag_context_docs(
@@ -836,16 +808,8 @@ def _graph_multimodal_enrichment(
         request=request,
         effective_rag_config=effective_rag_config,
     )
-    image_docs, image_meta = _graph_image_context_docs(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        request=request,
-        modality=modality,
-        dataset_id_used=dataset_id_used,
-        scope_dataset_id=scope_dataset_id,
-    )
-    return [*tag_docs, *image_docs], multimodal_meta, tag_meta, image_meta
+    image_meta = {"enabled": False, "used": False, "reason": "image_vector_retrieval_retired"}
+    return tag_docs, multimodal_meta, tag_meta, image_meta
 
 
 def _apply_source_identification_override(
@@ -885,7 +849,7 @@ def _setdefault_graph_metrics(
 def _parse_graph_structured_output(
     *,
     parse_json_from_text,
-    request: Any,
+    request: ChatRequest,
     full_response: str,
     metrics_data: dict[str, Any],
 ) -> object | None:
@@ -1019,7 +983,7 @@ def execute_graph_chat_once(
     state.pop("db", None)
     db.rollback()
 
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
     config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
     graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
 
@@ -1057,7 +1021,7 @@ def execute_graph_chat_once(
 
 async def execute_langchain_chat_once(
     *,
-    engine: Any,
+    engine: "RAGEngine",
     context: ChatExecutionContext,
 ) -> ExecutedGraphChatOnceResult:
     db = context.db

@@ -1,4 +1,4 @@
-import type { HealthDetailsResponse, HealthResponse, ReadyResponse } from '@/types'
+import type { HealthDetailsResponse, HealthResponse, ReadyResponse } from '@/types/backend'
 import { z } from 'zod'
 
 import { openapiRequest } from '@/lib/api/core'

@@ -10,14 +10,12 @@ Security posture:
 - Never emits document content/filenames/URLs (not present in the export; we also ignore extra keys).
 """
 
-
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
-from app.rag.core.logging import get_logger
 
 ACCESS_GRAPH_DIFF_SCHEMA_V1 = "mimirq.access_graph_diff.v1"
 
@@ -177,12 +175,8 @@ def _changed_fields(kind: str, fp_a: tuple[str | None, ...], fp_b: tuple[str | N
 
     out: list[str] = []
     for idx, name in enumerate(names):
-        try:
-            if fp_a[idx] != fp_b[idx]:
-                out.append(str(name))
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
+        if fp_a[idx] != fp_b[idx]:
+            out.append(name)
     return out
 
 
@@ -236,10 +230,10 @@ def _changed_examples_for_kind(
             continue
         changed += 1
         if len(examples) < max_examples:
-            rec_id = key[0] if key else ""
+            rec_id = key[0]
             examples.append(
                 {
-                    "id": str(rec_id),
+                    "id": rec_id,
                     "changed_fields": _changed_fields(kind, fp_a, fp_b),
                 }
             )
@@ -258,24 +252,24 @@ def _parent_churn_rows(
     rm_cnt: Counter[str] = Counter()
     for key in added:
         if len(key) > parent_idx:
-            add_cnt[str(key[parent_idx])] += 1
+            add_cnt[key[parent_idx]] += 1
     for key in removed:
         if len(key) > parent_idx:
-            rm_cnt[str(key[parent_idx])] += 1
+            rm_cnt[key[parent_idx]] += 1
 
     totals: Counter[str] = Counter()
     for key, value in add_cnt.items():
-        totals[key] += int(value)
+        totals[key] += value
     for key, value in rm_cnt.items():
-        totals[key] += int(value)
+        totals[key] += value
 
     rows: list[dict[str, Any]] = []
     for parent_id, _total in totals.most_common(max_examples):
         rows.append(
             {
-                label: str(parent_id),
-                "added": int(add_cnt.get(parent_id) or 0),
-                "removed": int(rm_cnt.get(parent_id) or 0),
+                label: parent_id,
+                "added": add_cnt[parent_id],
+                "removed": rm_cnt[parent_id],
             }
         )
     return rows
@@ -302,8 +296,8 @@ def diff_access_graph_records(
     }
 
     for kind in sorted(_SUPPORTED_KINDS):
-        a_keys = keys_a.get(kind) or set()
-        b_keys = keys_b.get(kind) or set()
+        a_keys = keys_a[kind]
+        b_keys = keys_b[kind]
         added = b_keys - a_keys
         removed = a_keys - b_keys
 
@@ -319,19 +313,19 @@ def diff_access_graph_records(
             examples[f"{kind}_changed"] = changed_examples
 
         kinds_summary[kind] = {
-            "a": int(counts_a.get(kind) or 0),
-            "b": int(counts_b.get(kind) or 0),
-            "added": int(len(added)),
-            "removed": int(len(removed)),
-            "changed": int(changed),
+            "a": counts_a[kind],
+            "b": counts_b[kind],
+            "added": len(added),
+            "removed": len(removed),
+            "changed": changed,
         }
 
     # Churn summaries (PII-minimal): aggregate changes by parent resource id.
     top_churn: dict[str, list[dict[str, Any]]] = {}
 
     def _churn_by_parent(kind: str, *, parent_idx: int, label: str) -> None:
-        a_keys = keys_a.get(kind) or set()
-        b_keys = keys_b.get(kind) or set()
+        a_keys = keys_a[kind]
+        b_keys = keys_b[kind]
         top_churn[f"{kind}_by_{label}"] = _parent_churn_rows(
             added=b_keys - a_keys,
             removed=a_keys - b_keys,

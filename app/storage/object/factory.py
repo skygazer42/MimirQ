@@ -1,17 +1,31 @@
 import threading
 from collections.abc import Mapping
+from typing import TypedDict
 
 from app.core.config import (
     normalize_object_storage_provider_name,
     parse_object_storage_region_profiles,
     settings,
 )
-from app.storage.object.minio import minio_service
+from app.storage.object.minio import MinIOService, minio_service
 from app.storage.object.s3_compatible import S3CompatibleObjectStore
 
 _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH = "./logs/object_store_metrics.jsonl"
 _OBJECT_STORE_CACHE: dict[tuple[object, ...], S3CompatibleObjectStore] = {}
 _OBJECT_STORE_CACHE_LOCK = threading.RLock()
+
+
+class _ObjectStoreConfig(TypedDict):
+    region: str | None
+    provider: str
+    enabled: bool
+    endpoint: str
+    access_key: str
+    secret_key: str
+    bucket_name: str
+    use_ssl: bool
+    metrics_log_path: str
+    documents_enabled: bool
 
 
 def _normalize_region(region: str | None = None) -> str:
@@ -28,7 +42,7 @@ def normalize_object_store_provider(provider: str | None = None) -> str:
     )
 
 
-def _resolve_object_store_config(provider: str | None = None, *, region: str | None = None) -> dict[str, object]:
+def _resolve_object_store_config(provider: str | None = None, *, region: str | None = None) -> _ObjectStoreConfig:
     region_key = _normalize_region(region)
     region_profile = _load_region_profiles().get(region_key, {}) if region_key else {}
 
@@ -67,19 +81,18 @@ def _resolve_object_store_config(provider: str | None = None, *, region: str | N
     }
 
 
-def _build_s3_compatible_store(provider: str, *, config: Mapping[str, object] | None = None) -> S3CompatibleObjectStore:
-    cfg = dict(config or {})
+def _build_s3_compatible_store(provider: str, *, config: _ObjectStoreConfig) -> S3CompatibleObjectStore:
     return S3CompatibleObjectStore(
         provider_name=provider,
-        enabled=bool(cfg.get("enabled", False)),
-        endpoint=str(cfg.get("endpoint") or "").strip(),
-        access_key=str(cfg.get("access_key") or "").strip(),
-        secret_key=str(cfg.get("secret_key") or "").strip(),
-        bucket_name=str(cfg.get("bucket_name") or "").strip(),
-        use_ssl=bool(cfg.get("use_ssl", True)),
-        metrics_log_path=str(cfg.get("metrics_log_path") or _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH),
-        documents_enabled=bool(cfg.get("documents_enabled", False)),
-        region=str(cfg.get("region") or "").strip() or None,
+        enabled=config["enabled"],
+        endpoint=config["endpoint"],
+        access_key=config["access_key"],
+        secret_key=config["secret_key"],
+        bucket_name=config["bucket_name"],
+        use_ssl=config["use_ssl"],
+        metrics_log_path=config["metrics_log_path"],
+        documents_enabled=config["documents_enabled"],
+        region=config["region"],
     )
 
 
@@ -111,10 +124,10 @@ def get_object_store(
     *,
     region: str | None = None,
     prefer_legacy_minio: bool = True,
-):
+) -> MinIOService:
     cfg = _resolve_object_store_config(provider, region=region)
-    normalized = str(cfg.get("provider") or "minio")
-    if prefer_legacy_minio and normalized == "minio" and not cfg.get("region"):
+    normalized = cfg["provider"]
+    if prefer_legacy_minio and normalized == "minio" and not cfg["region"]:
         return minio_service
     cache_key = _object_store_cache_key(cfg)
     with _OBJECT_STORE_CACHE_LOCK:

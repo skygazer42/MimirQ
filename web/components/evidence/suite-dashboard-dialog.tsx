@@ -1,7 +1,8 @@
 'use client'
 
+import { workspaceStyles as ws } from '@/components/ui/operational-workspace'
 import type { ReactNode } from 'react'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw } from '@/components/icons'
 
 import type { EvidenceCoverageHeatmap, EvidenceSuite, EvidenceSuiteDashboard } from '@/types'
 import { cn } from '@/lib/utils'
@@ -81,7 +82,9 @@ function renderLanguageXFileTypeHeatmap(heatmap: EvidenceCoverageHeatmap | null 
 
     rowNodes.push(
       <div key={`hm-row:${languageLabel}`} className="contents">
-        <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">{languageLabel}</div>
+        <div className="bg-muted/30 px-2 py-1 text-[11px] font-mono text-muted-foreground truncate">
+          {languageLabel}
+        </div>
         {cellNodes}
       </div>,
     )
@@ -134,7 +137,10 @@ export function SuiteDashboardDialog({
   )
   const generatedSummary = dashboard ? (
     <div className="text-xs text-muted-foreground font-mono tabular-nums">
-      generated {String(dashboard.generated_at || '').slice(0, 19).replaceAll('T', ' ')}
+      generated{' '}
+      {String(dashboard.generated_at || '')
+        .slice(0, 19)
+        .replaceAll('T', ' ')}
     </div>
   ) : null
 
@@ -142,7 +148,9 @@ export function SuiteDashboardDialog({
   if (throughput) {
     throughputSection = (
       <div>
-        <div className="mb-2 text-xs font-medium text-muted-foreground">Throughput (last {throughput.window_days}d)</div>
+        <div className="mb-2 text-xs font-medium text-muted-foreground">
+          Throughput (last {throughput.window_days}d)
+        </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <Badge variant="outline" className="font-mono tabular-nums">
             created {throughput.last_window?.created ?? 0}
@@ -265,9 +273,13 @@ export function SuiteDashboardDialog({
         </div>
 
         <Panel className="p-3">
-          <div className="mb-2 text-xs font-medium text-muted-foreground">Heatmap: language × file_type (unique items)</div>
+          <div className="mb-2 text-xs font-medium text-muted-foreground">
+            Heatmap: language × file_type (unique items)
+          </div>
           {coverage.heatmaps?.language_x_file_type ? (
-            <div className="overflow-x-auto">{renderLanguageXFileTypeHeatmap(coverage.heatmaps.language_x_file_type)}</div>
+            <div className="overflow-x-auto">
+              {renderLanguageXFileTypeHeatmap(coverage.heatmaps.language_x_file_type)}
+            </div>
           ) : (
             <div className="text-xs text-muted-foreground">No heatmap data.</div>
           )}
@@ -300,40 +312,46 @@ export function SuiteDashboardDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl overflow-hidden">
-        <DialogHeader>
+      <DialogContent className={`${ws.dialog} ${ws.wideDialog}`}>
+        <DialogHeader className={ws.dialogHeader}>
           <DialogTitle>Suite Dashboard</DialogTitle>
-          <DialogDescription className="text-pretty">
-            {suiteDescription}
-          </DialogDescription>
+          <DialogDescription className="text-pretty">{suiteDescription}</DialogDescription>
         </DialogHeader>
+        <div className={ws.dialogBody}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
+              <Checkbox
+                checked={includeArchived}
+                onCheckedChange={(value) => onIncludeArchivedChange(Boolean(value))}
+                aria-label="Include archived items"
+              />
+              include archived items
+            </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="inline-flex items-center gap-2 select-none text-xs text-muted-foreground">
-            <Checkbox
-              checked={includeArchived}
-              onCheckedChange={(value) => onIncludeArchivedChange(Boolean(value))}
-              aria-label="Include archived items"
-            />
-            include archived items
+            <div className="flex items-center gap-2 sm:ml-auto">
+              {generatedSummary}
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={onRefresh}
+                disabled={!selectedSuiteId || loading}
+              >
+                <RefreshCw
+                  className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')}
+                  aria-hidden="true"
+                />
+                refresh
+              </Button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:ml-auto">
-            {generatedSummary}
-            <Button variant="outline" size="sm" className="gap-2" onClick={onRefresh} disabled={!selectedSuiteId || loading}>
-              <RefreshCw className={cn('size-4', loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />
-              refresh
-            </Button>
-          </div>
+          {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
+
+          <ScrollArea className="max-h-[70vh] pr-3">
+            <div className="space-y-4">{dashboardContent}</div>
+          </ScrollArea>
         </div>
-
-        {error ? <div className="text-xs text-destructive text-pretty">{error}</div> : null}
-
-        <ScrollArea className="max-h-[70vh] pr-3">
-          <div className="space-y-4">
-            {dashboardContent}
-          </div>
-        </ScrollArea>
       </DialogContent>
     </Dialog>
   )

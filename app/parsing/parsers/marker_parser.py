@@ -9,7 +9,6 @@ Config via env/.env:
 - MARKER_API_URL=http://localhost:2080/v1/marker/convert  (recommended: full endpoint)
 """
 
-
 import json
 import re
 import zipfile
@@ -33,6 +32,14 @@ def _sanitize_run_id(value: str) -> str:
     text = (value or "").strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "marker"
     return text
+
+
+def _looks_like_zip(resp: requests.Response) -> bool:
+    ctype = str(resp.headers.get("content-type") or "").lower()
+    if "application/zip" in ctype or "application/x-zip" in ctype:
+        return True
+    body = getattr(resp, "content", b"") or b""
+    return len(body) >= 4 and body[:2] == b"PK"
 
 
 class MarkerParser:
@@ -114,18 +121,6 @@ class MarkerParser:
             raise RuntimeError("Marker parser requires at least one candidate upload URL.")
         return last_response
 
-    @staticmethod
-    def _looks_like_zip(resp: requests.Response) -> bool:
-        ctype = str(resp.headers.get("content-type") or "").lower()
-        if "application/zip" in ctype or "application/x-zip" in ctype:
-            return True
-        body = getattr(resp, "content", b"") or b""
-        return len(body) >= 4 and body[:2] == b"PK"
-
-    @staticmethod
-    def _extract_markdown_from_json(data: Any) -> str:
-        return extract_markdown_response_text(data)
-
     def _handle_zip_response(self, *, resp: requests.Response, artifact_root: Path) -> tuple[str, str | None]:
         artifact_root.mkdir(parents=True, exist_ok=True)
 
@@ -174,7 +169,7 @@ class MarkerParser:
         markdown_text = ""
         asset_base_dir: str | None = None
 
-        if self._looks_like_zip(resp):
+        if _looks_like_zip(resp):
             markdown_text, asset_base_dir = self._handle_zip_response(resp=resp, artifact_root=artifact_root)
         else:
             ctype = str(resp.headers.get("content-type") or "").lower()
@@ -183,11 +178,11 @@ class MarkerParser:
                     data = resp.json()
                 except Exception:
                     data = json.loads((resp.text or "").strip() or "{}")
-                markdown_text = self._extract_markdown_from_json(data)
+                markdown_text = extract_markdown_response_text(data)
             else:
                 markdown_text = resp.text or ""
 
-        if not str(markdown_text or "").strip():
+        if not markdown_text.strip():
             raise RuntimeError("Marker API returned empty Markdown.")
 
         metadata: dict[str, Any] = {

@@ -34,14 +34,14 @@ export const findShortestPath = (
   nodes: GraphNode[],
   links: GraphLinkLike[],
   startNodeId: string,
-  endNodeId: string
+  endNodeId: string,
 ): { nodeIds: string[]; linkIds: string[] } | null => {
   if (startNodeId === endNodeId) return { nodeIds: [startNodeId], linkIds: [] }
 
   // Build Adjacency List
   const adj: { [key: string]: { neighbor: string; linkId: string }[] } = {}
-  
-  nodes.forEach(node => {
+
+  nodes.forEach((node) => {
     adj[node.id] = []
   })
 
@@ -50,7 +50,7 @@ export const findShortestPath = (
     const sourceId = getGraphEndpointId(link.source)
     const targetId = getGraphEndpointId(link.target)
     if (!sourceId || !targetId) return
-    
+
     // Assuming undirected graph for path finding convenience, or directed if preferred.
     // Let's treat it as Undirected for easier navigation in knowledge graphs.
     if (!adj[sourceId]) adj[sourceId] = []
@@ -59,7 +59,7 @@ export const findShortestPath = (
     // Store index or a unique ID if available. Using index as ID fallback.
     const linkId = getGraphLinkId(link, index)
     // Ensure we attach this ID to the link object in the main component if not present
-    
+
     adj[sourceId].push({ neighbor: targetId, linkId })
     adj[targetId].push({ neighbor: sourceId, linkId })
   })
@@ -78,7 +78,7 @@ export const findShortestPath = (
       const pathNodeIds: string[] = []
       const pathLinkIds: string[] = []
       let temp = endNodeId
-      
+
       while (temp !== startNodeId) {
         pathNodeIds.unshift(temp)
         const p = parent[temp]
@@ -86,7 +86,7 @@ export const findShortestPath = (
         temp = p.id
       }
       pathNodeIds.unshift(startNodeId)
-      
+
       return { nodeIds: pathNodeIds, linkIds: pathLinkIds }
     }
 

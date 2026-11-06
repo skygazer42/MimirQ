@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  mintMarkdownImageProxyToken,
-  resolveMarkdownImageProxyToken,
-} from '@/lib/markdown-image-proxy-token'
+import { mintMarkdownImageProxyToken, resolveMarkdownImageProxyToken } from '@/lib/markdown-image-proxy-token'
 
 describe('markdown image proxy token', () => {
   it('round-trips an authenticated URL and rejects a modified token', () => {

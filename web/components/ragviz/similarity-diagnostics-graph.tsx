@@ -48,7 +48,7 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
       })),
       links,
     }),
-    [links, nodes]
+    [links, nodes],
   )
 
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
@@ -85,7 +85,10 @@ export function SimilarityDiagnosticsGraph({ nodes, links }: SimilarityDiagnosti
 
   return (
     <div className="space-y-3">
-      <div ref={containerRef} className="relative h-[420px] overflow-hidden rounded-2xl border border-border/60 bg-card">
+      <div
+        ref={containerRef}
+        className="relative h-[420px] overflow-hidden rounded-2xl border border-border/60 bg-card"
+      >
         {exceedsGraphComplexityBudget ? (
           <div className="flex h-full items-center justify-center px-6 text-center">
             <div className="max-w-lg">
@@ -197,9 +200,7 @@ function DiagnosticsDetailCard({
     <div
       className={cn(
         'rounded-2xl border px-4 py-3',
-        tone === 'warning'
-          ? 'border-warning/30 bg-warning/5'
-          : 'border-border/60 bg-background/70'
+        tone === 'warning' ? 'border-warning/30 bg-warning/5' : 'border-border/60 bg-background/70',
       )}
     >
       <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</div>

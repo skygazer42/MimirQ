@@ -61,7 +61,7 @@ def test_retrieve_preview_preserves_dataset_acl_error_semantics(
     status_code: int,
     detail: str,
 ) -> None:
-    monkeypatch.setattr(rag_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(rag_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
 
     async def _fake_quota(**_kwargs):
         return {}
@@ -90,7 +90,7 @@ def test_get_readable_datasets_map_distinguishes_missing_from_blocked(monkeypatc
     blocked_dataset = uuid4()
     missing_dataset = uuid4()
 
-    monkeypatch.setattr(document_access.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(document_access.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         document_access,
         "_resolve_allowed_dataset_ids",
@@ -139,13 +139,13 @@ def test_assert_dataset_ids_readable_uses_batch_acl_helper(monkeypatch: pytest.M
 
     monkeypatch.setattr(rag_api, "get_readable_datasets_map", _fake_get_readable_datasets_map, raising=True)
     monkeypatch.setattr(
-        rag_api.DatasetService,
+        rag_api.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: pytest.fail("per-dataset get_dataset lookup should not run"),
         raising=True,
     )
     monkeypatch.setattr(
-        rag_api.DatasetService,
+        rag_api.dataset_service,
         "assert_dataset_readable",
         lambda *_args, **_kwargs: pytest.fail("per-dataset assert_dataset_readable should not run"),
         raising=True,

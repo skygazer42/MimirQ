@@ -6,7 +6,6 @@ Splits by file blocks first (`diff --git ...`), then splits large file blocks
 at hunk boundaries (`@@ -a,b +c,d @@`) while preserving character offsets.
 """
 
-
 import re
 import shlex
 from dataclasses import dataclass
@@ -121,7 +120,7 @@ def looks_like_diff_patch(text: str) -> bool:
 
 
 class DiffPatchChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -164,16 +163,16 @@ class DiffPatchChunker(BaseChunker):
         meta["start_char"] = chunk_start
         meta["end_char"] = chunk_end
         meta.setdefault("doc_type_kwd", "diff")
-        meta["diff_file_index"] = int(file_block.index)
+        meta["diff_file_index"] = file_block.index
         meta["diff_path_a"] = file_block.a_path
         meta["diff_path_b"] = file_block.b_path
         if hunk_range is None:
             meta["diff_hunk_count"] = 0
         else:
             start_idx, end_idx = hunk_range
-            meta["diff_hunk_count"] = int(end_idx - start_idx)
-            meta["diff_hunk_start_index"] = int(start_idx)
-            meta["diff_hunk_end_index"] = int(end_idx - 1)
+            meta["diff_hunk_count"] = end_idx - start_idx
+            meta["diff_hunk_start_index"] = start_idx
+            meta["diff_hunk_end_index"] = end_idx - 1
         out.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
 
     def _next_hunk_start(self, *, hunks: list[_Span], start_idx: int, end_idx: int) -> int:

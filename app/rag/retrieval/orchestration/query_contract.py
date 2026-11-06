@@ -317,7 +317,7 @@ def _normalize_rag_config_template(raw: Any) -> dict[str, Any] | None:
 
     try:
         version = int(raw.get("version") or 0)
-    except (TypeError, ValueError, AttributeError):
+    except (OverflowError, TypeError, ValueError):
         version = 0
     if version > 0:
         out["version"] = version

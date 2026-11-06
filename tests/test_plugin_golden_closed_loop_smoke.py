@@ -1,4 +1,3 @@
-
 import pytest
 
 from scripts.plugin_golden_closed_loop_smoke import select_plugin_ref

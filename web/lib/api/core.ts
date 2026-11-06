@@ -1,9 +1,15 @@
 import axios, { AxiosHeaders } from 'axios'
-import type { AxiosRequestConfig, AxiosResponse } from 'axios'
+import type { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 
 import { extractBackendMessage, extractBackendRequestId, extractRateLimitDetail } from '@/lib/api-errors'
 import { getAuthHeaders } from '@/lib/auth-headers'
-import { clearAuthSession, getAccessToken, setAccessToken } from '@/lib/auth-storage'
+import {
+  clearAuthSession,
+  getAccessToken,
+  getAuthCacheScope,
+  getAuthSessionRevision,
+  setAccessToken,
+} from '@/lib/auth-storage'
 import { API_TIMEOUT_MS, API_V1_BASE_URL } from '@/lib/env'
 import { tryRefreshOidcAccessToken } from '@/lib/oidc-session'
 import { createOpenApiAxiosClient } from '@/lib/openapi-request'
@@ -20,7 +26,7 @@ function headerValueToString(value: unknown): string | undefined {
     const joined = value
       .filter(
         (item): item is PrimitiveHeaderValue =>
-          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean',
       )
       .map(String)
       .join(', ')
@@ -50,6 +56,8 @@ type RateLimitLogMessageInput = {
 }
 type RetriableRequestConfig = AxiosRequestConfig & {
   __mimirqOidcRetried?: boolean
+  __mimirqAuthSessionRevision?: number
+  __mimirqAuthScope?: string
 }
 type ApiClientError = Error & {
   code?: string
@@ -71,9 +79,7 @@ type HtmlResponseError = Error & {
 
 function asApiClientError(error: unknown): ApiClientError {
   if (error instanceof Error) return error
-  const apiError = new Error(
-    toTrimmedPrimitiveString(error, 'API request failed')
-  ) as ApiClientError
+  const apiError = new Error(toTrimmedPrimitiveString(error, 'API request failed')) as ApiClientError
   if (error && typeof error === 'object') {
     Object.assign(apiError, error)
   }
@@ -110,11 +116,10 @@ export function coerceRetryAfterSeconds(retryAfterBody: unknown, retryAfterHeade
   return toFiniteNumber(retryAfterBody) ?? toFiniteNumber(retryAfterHeader)
 }
 
-export function formatRateLimitLogMessage({
-  retryAfterSec,
-  scope,
-  limit,
-}: Readonly<RateLimitLogMessageInput>): { message: string; extra: string } {
+export function formatRateLimitLogMessage({ retryAfterSec, scope, limit }: Readonly<RateLimitLogMessageInput>): {
+  message: string
+  extra: string
+} {
   const bits: string[] = []
   if (scope) bits.push(`scope=${scope}`)
   if (typeof limit === 'number' && Number.isFinite(limit) && limit > 0) bits.push(`limit=${String(limit)}`)
@@ -145,28 +150,34 @@ function isRequestCancellationError(error: unknown): boolean {
 async function handleUnauthorizedApiError(error: ApiClientError, requestId?: string) {
   logRequestScopedError('[API] 未授权，请检查登录状态', requestId)
 
+  if (error.config?.signal?.aborted) throw new axios.CanceledError('canceled')
+  const requestOwnsSession = () =>
+    error.config?.__mimirqAuthSessionRevision === getAuthSessionRevision() &&
+    error.config?.__mimirqAuthScope === getAuthCacheScope()
+  if (!requestOwnsSession()) return undefined
   const token = getAccessToken()
   const requestAuthorization = error.config
     ? headerValueToString(
-        AxiosHeaders.from(
-          (error.config.headers ?? {}) as Record<string, string | number | boolean>
-        ).get('Authorization')
+        AxiosHeaders.from((error.config.headers ?? {}) as Record<string, string | number | boolean>).get(
+          'Authorization',
+        ),
       )
     : undefined
   const requestUsesSessionToken = !!token && requestAuthorization === `Bearer ${token}`
   const canAttemptRefresh =
-    requestUsesSessionToken &&
-    globalThis.window !== undefined &&
-    !!error.config &&
-    !error.config.__mimirqOidcRetried
+    requestUsesSessionToken && globalThis.window !== undefined && !!error.config && !error.config.__mimirqOidcRetried
   if (canAttemptRefresh && error.config) {
     error.config.__mimirqOidcRetried = true
 
     const refreshed = await tryRefreshOidcAccessToken()
+    if (error.config.signal?.aborted) throw new axios.CanceledError('canceled')
+    if (!requestOwnsSession()) return undefined
+    const activeToken = getAccessToken()
+    if (activeToken !== token && activeToken !== refreshed?.access_token) return undefined
     if (refreshed) {
-      setAccessToken(refreshed)
+      if (activeToken !== refreshed.access_token) setAccessToken(refreshed)
       error.config.headers = AxiosHeaders.from(
-        (error.config.headers ?? {}) as Record<string, string | number | boolean>
+        (error.config.headers ?? {}) as Record<string, string | number | boolean>,
       ).set('Authorization', `Bearer ${refreshed.access_token}`)
       return apiClient.request(error.config)
     }
@@ -191,7 +202,7 @@ function handleResponseStatusError(
   detail: string,
   requestId: string | undefined,
   data: unknown,
-  error: ApiClientError
+  error: ApiClientError,
 ) {
   if (status === 403) {
     logRequestScopedError('[API] 无权限访问', requestId)
@@ -250,9 +261,7 @@ async function handleApiClientError(error: unknown) {
   }
 
   if (apiError.request) {
-    const headers = AxiosHeaders.from(
-      (apiError.config?.headers ?? {}) as Record<string, string | number | boolean>
-    )
+    const headers = AxiosHeaders.from((apiError.config?.headers ?? {}) as Record<string, string | number | boolean>)
     const requestId = headerValueToString(headers.get('X-Request-ID'))
     apiError.requestId = requestId
     logRequestScopedError('[API] 网络连接中断或后端不可达，请检查后端服务 / API 地址', requestId)
@@ -261,7 +270,12 @@ async function handleApiClientError(error: unknown) {
   throw apiError
 }
 
-apiClient.interceptors.request.use((config) => {
+function prepareApiRequest(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
+  const requestConfig = config as InternalAxiosRequestConfig & RetriableRequestConfig
+  if (requestConfig.__mimirqAuthSessionRevision === undefined) {
+    requestConfig.__mimirqAuthSessionRevision = getAuthSessionRevision()
+    requestConfig.__mimirqAuthScope = getAuthCacheScope()
+  }
   const headers = AxiosHeaders.from(config.headers)
   const authHeaders = getAuthHeaders()
   for (const [key, value] of Object.entries(authHeaders)) {
@@ -273,34 +287,34 @@ apiClient.interceptors.request.use((config) => {
   getOrCreateRequestId(headers)
   config.headers = headers
   return config
-})
+}
 
-apiClient.interceptors.response.use(
-  (response) => {
-    const responseType = response.config?.responseType
-    const expectsJson = !responseType || responseType === 'json'
-    if (expectsJson) {
-      const contentType = String(response.headers?.['content-type'] || '').toLowerCase()
-      if (typeof response.data === 'string') {
-        const trimmed = response.data.trimStart().slice(0, 200).toLowerCase()
-        const looksHtml = trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
-        if (looksHtml || contentType.includes('text/html')) {
-          const err: HtmlResponseError = new Error(
-            'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)'
-          )
-          err.code = 'ERR_BAD_RESPONSE'
-          err.response = response
-          err.config = response.config
-          err.request = response.request
-          return Promise.reject(err)
-        }
+function rejectUnexpectedHtmlResponse(response: AxiosResponse): AxiosResponse | Promise<never> {
+  const responseType = response.config?.responseType
+  const expectsJson = !responseType || responseType === 'json'
+  if (expectsJson) {
+    const contentType = String(response.headers?.['content-type'] || '').toLowerCase()
+    if (typeof response.data === 'string') {
+      const trimmed = response.data.trimStart().slice(0, 200).toLowerCase()
+      const looksHtml = trimmed.startsWith('<!doctype html') || trimmed.startsWith('<html')
+      if (looksHtml || contentType.includes('text/html')) {
+        const err: HtmlResponseError = new Error(
+          'Backend returned HTML (可能 API 地址配错了；请检查 NEXT_PUBLIC_API_URL / 反向代理配置)',
+        )
+        err.code = 'ERR_BAD_RESPONSE'
+        err.response = response
+        err.config = response.config
+        err.request = response.request
+        return Promise.reject(err)
       }
     }
+  }
 
-    return response
-  },
-  handleApiClientError
-)
+  return response
+}
+
+apiClient.interceptors.request.use(prepareApiRequest)
+apiClient.interceptors.response.use(rejectUnexpectedHtmlResponse, handleApiClientError)
 
 export const openapiRequest = createOpenApiAxiosClient(apiClient)
 

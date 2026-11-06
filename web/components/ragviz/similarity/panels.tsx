@@ -1,15 +1,8 @@
 'use client'
 
-import type {
-  DiagnosticDecision,
-  SimilarityDiagnosticsResult,
-} from '@/components/ragviz/similarity-diagnostics'
+import type { DiagnosticDecision, SimilarityDiagnosticsResult } from '@/components/ragviz/similarity-diagnostics'
 import type { ColorSchemeKey, SimilarityMatrixEntry } from './color-schemes'
-import {
-  HeatmapScaleLegend,
-  SimilarityDiagnosticsView,
-  SimilarityEmptyState,
-} from './display-components'
+import { HeatmapScaleLegend, SimilarityDiagnosticsView, SimilarityEmptyState } from './display-components'
 import { EchartsHeatmap } from './echarts-heatmap'
 import type { SelectedHeatmapCell } from './heatmap-types'
 
@@ -51,12 +44,7 @@ export function SimilarityMainPanel({
   }
 
   if (mainView === 'diagnostics') {
-    return (
-      <SimilarityDiagnosticsPanel
-        diagnostics={diagnostics}
-        onDecisionChange={onDecisionChange}
-      />
-    )
+    return <SimilarityDiagnosticsPanel diagnostics={diagnostics} onDecisionChange={onDecisionChange} />
   }
 
   return (
@@ -77,26 +65,16 @@ function SimilarityDiagnosticsPanel({
   onDecisionChange,
 }: Readonly<{
   diagnostics: SimilarityDiagnosticsResult | null
-  onDecisionChange: (
-    candidateId: string,
-    decision: DiagnosticDecision | null
-  ) => void
+  onDecisionChange: (candidateId: string, decision: DiagnosticDecision | null) => void
 }>) {
   if (diagnostics) {
-    return (
-      <SimilarityDiagnosticsView
-        diagnostics={diagnostics}
-        onDecisionChange={onDecisionChange}
-      />
-    )
+    return <SimilarityDiagnosticsView diagnostics={diagnostics} onDecisionChange={onDecisionChange} />
   }
 
   return (
     <div className="flex h-full items-center justify-center px-6">
       <div className="rounded-2xl border border-dashed border-sidebar-border/60 bg-muted/30 px-6 py-8 text-center">
-        <div className="text-sm font-semibold text-foreground">
-          向量诊断暂不可用
-        </div>
+        <div className="text-sm font-semibold text-foreground">向量诊断暂不可用</div>
         <p className="mt-2 text-sm text-muted-foreground">
           当前处于差值模式，3D 投影预览和异常点标注只在单个主图矩阵上启用。
         </p>
@@ -123,8 +101,8 @@ function SimilarityHeatmapPanel({
   onCellSelect: (cell: SelectedHeatmapCell) => void
 }>) {
   return (
-    <div className="h-full overflow-auto p-4">
-      <section className="flex min-h-[560px] flex-col overflow-hidden rounded-[1.75rem] border border-border/38 bg-card/76 shadow-[0_24px_70px_-58px_hsl(var(--foreground)/0.42),inset_0_1px_0_hsl(var(--card)/0.7)]">
+    <div className="h-full overflow-auto">
+      <section className="flex h-full min-h-[560px] flex-col overflow-hidden bg-background">
         <div className="flex items-center justify-between gap-3 border-b border-border/34 bg-muted/[0.10] px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-foreground">
@@ -135,7 +113,7 @@ function SimilarityHeatmapPanel({
             </div>
           </div>
           <div className="rounded-full border border-border/34 bg-background/44 px-2.5 py-1 text-[11px] font-medium text-muted-foreground/70">
-            点击单元格查看右侧统计
+            点击单元格查看详情
           </div>
         </div>
 
@@ -150,10 +128,7 @@ function SimilarityHeatmapPanel({
           />
         </div>
 
-        <HeatmapScaleLegend
-          colorScheme={colorScheme}
-          isDifference={isDifferenceMode}
-        />
+        <HeatmapScaleLegend colorScheme={colorScheme} isDifference={isDifferenceMode} />
       </section>
     </div>
   )

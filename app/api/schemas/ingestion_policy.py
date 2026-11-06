@@ -9,7 +9,6 @@ Security notes:
 - Validation and normalization is enforced in app/services/ingestion_policy.py.
 """
 
-
 from datetime import datetime
 from typing import Any, Literal
 

@@ -9,7 +9,6 @@ Why:
 These helpers normalize URLs so we keep consistent, provider-compatible behavior.
 """
 
-
 _STRIP_SUFFIXES = (
     "/chat/completions",
     "/completions",

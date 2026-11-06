@@ -45,4 +45,3 @@ export function flattenFolderTree(folderTree: FolderTreePayload | null | undefin
 
   return out
 }
-

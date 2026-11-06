@@ -18,7 +18,7 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
 from app.models.document import Document as DBDocument
 from app.rag.preprocessing.rule_packs import list_governance_rule_packs
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -42,7 +42,7 @@ def list_rule_packs(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     return {"items": list_governance_rule_packs()}
 
 
@@ -109,9 +109,9 @@ def list_stale_documents_by_dataset(
 
     RBAC: dataset editor/admin (dataset writable).
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+    dataset_service.assert_dataset_writable(db, ds, account_id)
 
     now = as_of or datetime.now(UTC)
     upper = due_before or (now + timedelta(days=int(due_within_days or 0)))
@@ -158,15 +158,15 @@ def list_stale_documents_by_dataset(
         items.append(
             StaleDocumentItem(
                 id=d.id,
-                filename=str(getattr(d, "filename", "") or ""),
-                file_type=str(getattr(d, "file_type", "") or ""),
-                status=str(getattr(d, "status", "") or ""),
-                lifecycle_owner=getattr(d, "lifecycle_owner", None),
-                review_due_at=getattr(d, "review_due_at", None),
-                authority_level=getattr(d, "authority_level", None),
-                supersedes_document_id=getattr(d, "supersedes_document_id", None),
-                created_at=getattr(d, "created_at", None),
-                updated_at=getattr(d, "updated_at", None),
+                filename=str(d.filename or ""),
+                file_type=str(d.file_type or ""),
+                status=str(d.status or ""),
+                lifecycle_owner=d.lifecycle_owner,
+                review_due_at=d.review_due_at,
+                authority_level=d.authority_level,
+                supersedes_document_id=d.supersedes_document_id,
+                created_at=d.created_at,
+                updated_at=d.updated_at,
             )
         )
 

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 入库管理布局对比",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC 和现有全局侧栏。五版共用产品文档数据集、本地 12 个待提交文件（19.13 MB），选中入库并解析，比较添加文件、配置执行终点和提交任务的五种主流布局。保留文件类型与运行状态识别色。候选为静态设计预览，不上传文件或执行真实入库。",
+  "round": "入库管理 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 批量宽表",
+      "concept": "先核对整个文件批次，再用一组共享设置提交。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，13px 文件名，12px 格式与状态",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#3D7771", "#526EA0"],
+      "traits": ["顶部紧凑配置横带", "12 个文件连续宽表", "适合批量核对与重复上传"],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-wizard",
+      "name": "B · 分步向导",
+      "concept": "每一步只做一组决定，确认处理方式后再提交。",
+      "typography": "Manrope / Noto Sans SC；15px 区域标题，13px 设置，12px 辅助说明",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#3D7771", "#526EA0"],
+      "traits": ["来源与文件 → 处理设置 → 确认提交", "当前为第二步，文件收为摘要", "适合首次或不频繁的导入"],
+      "source": "b-wizard.html"
+    },
+    {
+      "id": "c-split",
+      "name": "C · 文件与配置分栏",
+      "concept": "左边核对文件，右边随时看清这次会执行到哪一步。",
+      "typography": "Manrope / Noto Sans SC；13px 文件与配置，12px 元数据，20px 页标题",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#3D7771", "#526EA0"],
+      "traits": ["文件清单与雾灰配置栏并列", "三个执行终点持续可见", "适合反复调整参数后批量提交"],
+      "source": "c-split.html"
+    },
+    {
+      "id": "d-pipeline",
+      "name": "D · 横向流程",
+      "concept": "用流程本身说明登记、解析与建索引的范围。",
+      "typography": "Manrope / Noto Sans SC；15px 阶段标题，13px 文件与设置，12px 执行边界",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#3D7771", "#526EA0"],
+      "traits": ["四个开放阶段主导横向构图", "本次止于解析，后续阶段退后", "强调流程范围而不是监控指标"],
+      "source": "d-pipeline.html"
+    },
+    {
+      "id": "e-form",
+      "name": "E · 单页导入表单",
+      "concept": "按内容、处理方式、导入选项一次读完并提交。",
+      "typography": "Manrope / Noto Sans SC；15px 章节标题，13px 文件与设置，12px 标签",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#3D7771", "#526EA0"],
+      "traits": ["三段开放表单，没有内部侧栏", "文件用三列紧凑清单承载", "所有主要决定在一页内完成"],
+      "source": "e-form.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "concept": "真实本地页面的空任务与加载状态，作为现状参照。",
+      "typography": "当前正式页面的字体与样式",
+      "palette": ["#F6F7F8", "#20262E", "#476F8B"],
+      "traits": ["现有左配置与顶部执行路径", "空任务，尚未选择目标数据集", "真实页面截图"],
+      "kind": "image",
+      "baseline": true,
+      "source": "current.png"
+    }
+  ]
+}

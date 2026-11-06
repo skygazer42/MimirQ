@@ -178,9 +178,9 @@ def wait_ready(
         try:
             resp = client.get(url)
             payload = _parse_json(resp)
-            ok = bool(isinstance(payload, dict) and payload.get("ok") is True)
+            ok = isinstance(payload, dict) and payload.get("ok") is True
             if resp.status_code == 200 and ok:
-                return payload if isinstance(payload, dict) else {"ok": True}
+                return payload
 
             note = f"status={resp.status_code}"
             if isinstance(payload, dict):
@@ -361,7 +361,7 @@ def _summarize_retrieval_evidence(
         for item in rows
     )
     return {
-        "has_evidence": bool(isinstance(payload, dict) and payload.get("has_evidence") is True),
+        "has_evidence": isinstance(payload, dict) and payload.get("has_evidence") is True,
         "citation_count": len(rows),
         "matched": matched,
     }
@@ -842,9 +842,9 @@ def _record_ingestion_status(
         api_base=api_base,
         headers=headers,
         document_id=document_id,
-        timeout_sec=float(args.ingest_timeout_sec),
-        poll_interval_sec=float(args.poll_interval_sec),
-        verbose=bool(args.verbose),
+        timeout_sec=args.ingest_timeout_sec,
+        poll_interval_sec=args.poll_interval_sec,
+        verbose=args.verbose,
     )
     print("[smoke] ingest: completed")
     if secondary_api_base:
@@ -853,9 +853,9 @@ def _record_ingestion_status(
             api_base=secondary_api_base,
             headers=headers,
             document_id=document_id,
-            timeout_sec=float(args.ingest_timeout_sec),
-            poll_interval_sec=float(args.poll_interval_sec),
-            verbose=bool(args.verbose),
+            timeout_sec=args.ingest_timeout_sec,
+            poll_interval_sec=args.poll_interval_sec,
+            verbose=args.verbose,
         )
         print("[smoke] secondary ingest view: completed")
 
@@ -987,7 +987,7 @@ def _validate_chat_response(
     require_structured: bool,
     report: dict[str, Any],
 ) -> bool:
-    structured_flag = bool(chat_json.get("structured") is True)
+    structured_flag = chat_json.get("structured") is True
     structured_data = chat_json.get("structured_data")
     content = str(chat_json.get("content") or "")
     answer = ""
@@ -1043,7 +1043,7 @@ def _run_chat_mode(
     report: dict[str, Any],
     started: float,
 ) -> None:
-    structured_preset = str(args.structured_preset or "summary")
+    structured_preset = args.structured_preset or "summary"
     chat_resp = request_with_retries(
         client,
         "POST",
@@ -1078,7 +1078,7 @@ def _run_chat_mode(
         chat_json=chat_json,
         smoke_fact=smoke_fact,
         structured_preset=structured_preset,
-        require_structured=not bool(args.allow_unstructured),
+        require_structured=not args.allow_unstructured,
         report=report,
     )
     structured_data = chat_json.get("structured_data")
@@ -1104,28 +1104,28 @@ def _execute_smoke(
     report: dict[str, Any],
     started: float,
 ) -> int | None:
-    timeout = httpx.Timeout(float(args.timeout_sec))
+    timeout = httpx.Timeout(args.timeout_sec)
     limits = httpx.Limits(max_connections=10, max_keepalive_connections=10)
     with _create_client(timeout=timeout, limits=limits) as client:
         report["ready"] = wait_ready(
             client,
             api_base=api_base,
-            timeout_sec=float(args.ready_timeout_sec),
-            poll_interval_sec=float(args.poll_interval_sec),
+            timeout_sec=args.ready_timeout_sec,
+            poll_interval_sec=args.poll_interval_sec,
         )
         print("[smoke] ready: ok")
         if args.web_base_url:
             report["web_auth"] = _probe_web_auth_page(
                 client,
-                web_base=str(args.web_base_url),
+                web_base=args.web_base_url,
             )
             print("[smoke] web: auth page ok")
         if secondary_api_base:
             report["secondary_ready"] = wait_ready(
                 client,
                 api_base=secondary_api_base,
-                timeout_sec=float(args.ready_timeout_sec),
-                poll_interval_sec=float(args.poll_interval_sec),
+                timeout_sec=args.ready_timeout_sec,
+                poll_interval_sec=args.poll_interval_sec,
             )
             print("[smoke] secondary ready: ok")
 
@@ -1149,8 +1149,8 @@ def _execute_smoke(
             api_base=api_base,
             headers=headers,
             dataset_id=dataset_id,
-            parser_backend=str(args.parser_backend or "auto"),
-            core_only=bool(args.core_only),
+            parser_backend=args.parser_backend or "auto",
+            core_only=args.core_only,
         )
         report["document_id"] = doc_id
         _record_ingestion_status(

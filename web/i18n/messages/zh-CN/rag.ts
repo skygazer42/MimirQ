@@ -1,5 +1,5 @@
 const ragMessages = {
-SimilarityDiagnosticsGraph: {
+  SimilarityDiagnosticsGraph: {
     loadingMessage: '正在重建向量邻域...',
     loadingSrMessage: 'Loading embedding diagnostics graph',
     loadingHint: '基于当前相似度矩阵派生诊断，不额外请求后端坐标。',
@@ -22,7 +22,7 @@ SimilarityDiagnosticsGraph: {
     nodeTooltip: '[{axis}] {label}{outlierSuffix}\n均值 {mean}% / 峰值 {peak}%',
     nodeTooltipOutlierSuffix: ' · 异常点',
   },
-RagTrace: {
+  RagTrace: {
     dialog: {
       title: 'RAG Trace',
       loadingMessage: '正在加载 RAG Trace...',
@@ -56,7 +56,8 @@ RagTrace: {
         scoreShiftTitle: '分数漂移',
         addedEmpty: '当前候选 trace 没有带来新的最终 citations。',
         removedEmpty: '当前 trace 没有丢失任何最终 citations。',
-        missingLocalSummary: '当前 request_id B 不在已加载的 trace 列表里，所以只能显示 bundle diff，无法给出本地 evidence drift 摘要。',
+        missingLocalSummary:
+          '当前 request_id B 不在已加载的 trace 列表里，所以只能显示 bundle diff，无法给出本地 evidence drift 摘要。',
       },
       fusionSimulator: {
         title: 'Fusion Simulator',
@@ -74,7 +75,8 @@ RagTrace: {
       },
       evidencePreview: {
         title: '证据解读',
-        description: '这块用于判断回答到底引用了什么。当前展示排名前 {count} 条证据；如果证据偏题，就说明召回或 Dify 回传证据需要调整。',
+        description:
+          '这块用于判断回答到底引用了什么。当前展示排名前 {count} 条证据；如果证据偏题，就说明召回或 Dify 回传证据需要调整。',
         loading: '正在加载切片',
         loaded: '已加载切片',
         score: '相关度',
@@ -126,7 +128,7 @@ RagTrace: {
           },
           sparse: {
             label: 'Sparse',
-            summary: '检查 learned sparse / SPLADE 风格通道是否带来额外证据。',
+            summary: '检查 稀疏检索通道是否带来额外证据。',
           },
           colbert: {
             label: 'ColBERT',
@@ -165,7 +167,8 @@ RagTrace: {
       },
       states: {
         notEnabledTitle: 'RAG Trace 未启用',
-        notEnabledDescription: '后端未开启 metrics JSONL（ENABLE_METRICS_LOG=false），或当前环境未配置 METRICS_LOG_PATH。',
+        notEnabledDescription:
+          '后端未开启 metrics JSONL（ENABLE_METRICS_LOG=false），或当前环境未配置 METRICS_LOG_PATH。',
         emptyTitle: '暂无 RAG Trace',
         emptyHint: '提示：只有走到检索链路时才会记录 trace。',
         emptyFollowup: '可尝试在该会话继续提问后再刷新。',
@@ -183,7 +186,7 @@ RagTrace: {
       },
     },
   },
-EvidenceWorkbench: {
+  EvidenceWorkbench: {
     controls: {
       datasetScope: '数据集范围',
       datasetPlaceholder: '选择数据集',
@@ -236,7 +239,7 @@ EvidenceWorkbench: {
         noCitations: '没有检索到可用的 citations。',
       },
     },
-  }
+  },
 } as const
 
 export default ragMessages

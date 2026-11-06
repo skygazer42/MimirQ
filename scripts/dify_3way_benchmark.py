@@ -22,9 +22,9 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, replace
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,10 @@ from scripts.changzhou_gov_collect_dify_answers import (  # noqa: E402
     load_cases,
 )
 from scripts.evaluate_mixed_rag_quality import (  # noqa: E402
+    _case_id,
+    _case_question,
+    _text,
+    _utc_now_text,
     build_markdown_report,
     evaluate_mixed_rag_quality,
 )
@@ -91,22 +95,6 @@ class AppSpec:
     description: str
     api_key: str
     mode: str = "chat"
-
-
-def _text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _utc_now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
-
-
-def _case_id(case: dict[str, Any]) -> str:
-    return _text(case.get("id") or case.get("case_id"))
-
-
-def _case_question(case: dict[str, Any]) -> str:
-    return _text(case.get("question") or case.get("query"))
 
 
 def _case_title(case: dict[str, Any]) -> str:
@@ -293,14 +281,7 @@ def build_truth_manifest(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def load_prebuilt_cases(path: str) -> list[dict[str, Any]]:
-    payload = load_cases(path)
-    if isinstance(payload, dict):
-        cases = payload.get("cases")
-        if isinstance(cases, list):
-            return [dict(item) for item in cases if isinstance(item, dict)]
-    if isinstance(payload, list):
-        return [dict(item) for item in payload if isinstance(item, dict)]
-    raise ValueError("prebuilt cases file must be a list or an object with cases[]")
+    return [dict(item) for item in load_cases(path)]
 
 
 def _endpoint_path(mode: str) -> str:
@@ -509,8 +490,6 @@ def _iter_record_containers(value: Any, *, depth: int = 0) -> list[dict[str, Any
 
 def _extract_records_from_response(response: dict[str, Any]) -> list[dict[str, Any]]:
     for container in _iter_record_containers(response):
-        if not isinstance(container, dict):
-            continue
         for key in (*_RECORD_CONTAINER_KEYS, *_JSON_RECORD_CONTAINER_KEYS):
             raw = _parse_jsonish(container.get(key))
             if isinstance(raw, list):
@@ -943,7 +922,7 @@ def resolve_app_modes(
     user_prefix: str,
     response_mode: str = "blocking",
     force: bool = False,
-    probe_fn: Any | None = None,
+    probe_fn: Callable[..., Any] | None = None,
 ) -> tuple[list[AppSpec], dict[str, Any]]:
     probe = probe_fn or _call_case
     resolved: list[AppSpec] = []
@@ -1037,9 +1016,9 @@ def _call_case(
     workflow_query_key: str,
     user_prefix: str,
     response_mode: str = "blocking",
-    request_json_fn: Any | None = None,
-    history_records_fn: Any | None = None,
-    console_records_fn: Any | None = None,
+    request_json_fn: Callable[..., Any] | None = None,
+    history_records_fn: Callable[..., Any] | None = None,
+    console_records_fn: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
     started = time.perf_counter()
     item: dict[str, Any] = {
@@ -1096,7 +1075,7 @@ def _call_case(
         if not item["ok"]:
             item["error"] = "empty answer"
     except Exception as exc:  # noqa: BLE001
-        error = str(exc)[:1200]
+        error = _safe_error(str(exc), secrets=[app.api_key])
         item["error"] = error
         item.update(diagnose_dify_error(error))
     item["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
@@ -1166,7 +1145,7 @@ def _call_mimirq_case(
         )
         item["ok"] = bool(records)
     except Exception as exc:  # noqa: BLE001
-        item["error"] = str(exc)[:1200]
+        item["error"] = _safe_error(str(exc), secrets=[token])
     item["latency_ms"] = round((time.perf_counter() - started) * 1000, 2)
     return item
 
@@ -1218,7 +1197,7 @@ def _execution_stats(
 ) -> dict[str, Any]:
     executed = [item for item in items if _text(item.get("case_id") or item.get("id")) in executed_case_ids]
     latencies = [
-        int(round(float(item.get("total_latency_ms", item.get("latency_ms")))))
+        round(float(item.get("total_latency_ms", item.get("latency_ms"))))
         for item in executed
         if item.get("total_latency_ms", item.get("latency_ms")) is not None
     ]
@@ -1566,13 +1545,13 @@ def _execute_case_futures(
     *,
     pending: list[dict[str, Any]],
     items: list[dict[str, Any]],
-    worker: Any,
+    worker: Callable[[dict[str, Any]], dict[str, Any]],
     max_workers: int,
     total_cases: int,
     label: str,
     run_path: Path | None,
     flush_every: int,
-    snapshot: Any,
+    snapshot: Callable[[], None],
 ) -> None:
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [executor.submit(worker, case) for case in pending]
@@ -1605,7 +1584,7 @@ def _retry_timed_out_cases(
     label: str,
     retry_timeout: float,
     concurrency: int,
-    worker: Any,
+    worker: Callable[[dict[str, Any]], dict[str, Any]],
 ) -> list[dict[str, Any]]:
     retry_cases = [case for case in pending if _case_id(case) in timeout_case_ids]
     if not retry_cases:
@@ -1666,7 +1645,7 @@ def _history_records_lookup(
     enabled: bool,
     wait_sec: float,
     poll_sec: float,
-) -> Any:
+) -> Callable[..., dict[str, Any]] | None:
     if not enabled or app.kind != "http_to_mimirq":
         return None
     return lambda *, app, item, **_kwargs: lookup_mimirq_history_records(
@@ -1683,7 +1662,7 @@ def _console_records_lookup(
     enabled: bool,
     console_base_url: str,
     console_token: str,
-) -> Any:
+) -> Callable[..., dict[str, Any]] | None:
     if not enabled or not _text(console_token) or app.kind != "http_to_mimirq":
         return None
     return lambda *, app, item, timeout, **_kwargs: lookup_dify_console_mimirq_records(
@@ -2271,12 +2250,12 @@ def build_verdict_summary(audit_rows: list[dict[str, Any]]) -> list[dict[str, An
             {
                 "system": system,
                 "cases": total,
-                "accurate": counts.get("准确", 0),
-                "partially_accurate": counts.get("部分准确", 0),
-                "insufficient_evidence": counts.get("证据不足", 0),
-                "no_answer": counts.get("无答案", 0),
-                "accurate_rate": round(counts.get("准确", 0) / total, 6) if total else 0.0,
-                "usable_rate": round((counts.get("准确", 0) + counts.get("部分准确", 0)) / total, 6) if total else 0.0,
+                "accurate": counts["准确"],
+                "partially_accurate": counts["部分准确"],
+                "insufficient_evidence": counts["证据不足"],
+                "no_answer": counts["无答案"],
+                "accurate_rate": round(counts["准确"] / total, 6) if total else 0.0,
+                "usable_rate": round((counts["准确"] + counts["部分准确"]) / total, 6) if total else 0.0,
             }
         )
     return summary
@@ -2455,10 +2434,10 @@ def _increment_system(summary: dict[str, Any], system: str, key: str, label: str
     row = summary.setdefault(
         system, {"case_type_wins": 0, "dimension_wins": 0, "winning_case_types": [], "winning_dimensions": []}
     )
-    row[key] = int(row.get(key) or 0) + 1
+    row[key] = row[key] + 1
     list_key = "winning_case_types" if key == "case_type_wins" else "winning_dimensions"
     if label:
-        row.setdefault(list_key, []).append(label)
+        row[list_key].append(label)
 
 
 def build_advantage_summary(report: dict[str, Any]) -> dict[str, Any]:
@@ -2481,13 +2460,13 @@ def build_advantage_summary(report: dict[str, Any]) -> dict[str, Any]:
             {
                 "system": system,
                 **values,
-                "total_wins": int(values.get("case_type_wins") or 0) + int(values.get("dimension_wins") or 0),
+                "total_wins": values["case_type_wins"] + values["dimension_wins"],
             }
             for system, values in system_summary.items()
         ),
         key=lambda item: (
-            int(item.get("total_wins") or 0),
-            int(item.get("dimension_wins") or 0),
+            item["total_wins"],
+            item["dimension_wins"],
             _text(item.get("system")),
         ),
         reverse=True,

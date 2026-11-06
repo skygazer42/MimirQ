@@ -1,6 +1,5 @@
 """Evidence audit schemas (PII-safe)."""
 
-
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -48,4 +47,3 @@ class EvidenceReferenceDriftAuditOut(BaseModel):
     # Optional PII-safe details (bounded).
     details_truncated: bool = False
     drifted_references: list[EvidenceReferenceDriftDetailOut] = Field(default_factory=list)
-

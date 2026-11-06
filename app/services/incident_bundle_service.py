@@ -5,7 +5,6 @@ These are thin utilities intended for ops tooling (scripts/CLI) to package a sma
 set of diagnostics artifacts into a single zip file for sharing/debugging.
 """
 
-
 import json
 import zipfile
 from collections.abc import Mapping

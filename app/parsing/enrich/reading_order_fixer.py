@@ -1,4 +1,3 @@
-
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -200,7 +199,7 @@ def fix_reading_order_elements(
     warnings = ["missing_geometry"] if invalid else []
     return ReadingOrderFixResult(
         elements=fixed,
-        changed=bool(changed),
+        changed=changed,
         items=int(len(valid)),
         pages=[int(page) for page in pages],
         column_pages=int(column_pages),

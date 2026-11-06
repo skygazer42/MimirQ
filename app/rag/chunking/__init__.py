@@ -27,15 +27,19 @@ Usage:
     from app.rag.chunking import hierarchical_chunk_markdown
     result = hierarchical_chunk_markdown(markdown_text)
 """
+
+from typing import Any
+
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
 
 
-def integrated_chunk_file(*args, **kwargs):
+def integrated_chunk_file(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
     """Backward compatible entrypoint for integrated parse+chunk (lazy import)."""
     from app.rag.chunking.integrated_pipeline.bridge import chunk_file
 
     return chunk_file(*args, **kwargs)
+
 
 __all__ = [
     "chunker_factory",

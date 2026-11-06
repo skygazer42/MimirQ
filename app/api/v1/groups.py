@@ -22,9 +22,9 @@ from app.api.schemas.group import (
     TenantGroupUpdateRequest,
 )
 from app.core.database import get_db
+from app.services import tenant_group_service
 from app.services.audit_log_service import audit_log_event
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
-from app.services.tenant_group_service import TenantGroupService
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -55,7 +55,7 @@ def list_groups(
         TenantPermissions.SETTINGS_READ,
         detail="No permission to view groups",
     )
-    total, groups = TenantGroupService.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
+    total, groups = tenant_group_service.list_groups(db, tenant_id=tenant_id, skip=skip, limit=limit)
     return TenantGroupListResponse(total=total, items=[TenantGroupOut.model_validate(g) for g in groups])
 
 
@@ -74,7 +74,9 @@ def create_group(
         TenantPermissions.SETTINGS_WRITE,
         detail=_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL,
     )
-    group = TenantGroupService.create_group(db, tenant_id=tenant_id, name=payload.name, external_id=payload.external_id)
+    group = tenant_group_service.create_group(
+        db, tenant_id=tenant_id, name=payload.name, external_id=payload.external_id
+    )
     audit_log_event(
         db,
         tenant_id=tenant_id,
@@ -107,7 +109,7 @@ def get_group(
         TenantPermissions.SETTINGS_READ,
         detail="No permission to view groups",
     )
-    group = TenantGroupService.get_group(db, tenant_id=tenant_id, group_id=group_id)
+    group = tenant_group_service.get_group(db, tenant_id=tenant_id, group_id=group_id)
     return TenantGroupOut.model_validate(group)
 
 
@@ -127,7 +129,7 @@ def patch_group(
         TenantPermissions.SETTINGS_WRITE,
         detail=_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL,
     )
-    group = TenantGroupService.update_group(
+    group = tenant_group_service.update_group(
         db,
         tenant_id=tenant_id,
         group_id=group_id,
@@ -166,7 +168,7 @@ def delete_group(
         TenantPermissions.SETTINGS_WRITE,
         detail=_NO_PERMISSION_TO_MANAGE_GROUPS_DETAIL,
     )
-    TenantGroupService.delete_group(db, tenant_id=tenant_id, group_id=group_id)
+    tenant_group_service.delete_group(db, tenant_id=tenant_id, group_id=group_id)
     audit_log_event(
         db,
         tenant_id=tenant_id,
@@ -200,7 +202,7 @@ def list_group_members(
         TenantPermissions.SETTINGS_READ,
         detail="No permission to view group members",
     )
-    total, rows = TenantGroupService.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=skip, limit=limit)
+    total, rows = tenant_group_service.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=skip, limit=limit)
     items = [TenantGroupMemberOut(user_id=str(r.user_id or ""), created_at=r.created_at) for r in rows]
     return TenantGroupMemberListResponse(total=total, items=items)
 
@@ -223,7 +225,7 @@ def add_group_members(
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage group members",
     )
-    added = TenantGroupService.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
+    added = tenant_group_service.add_members(db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids)
     audit_log_event(
         db,
         tenant_id=tenant_id,
@@ -261,7 +263,7 @@ def remove_group_members(
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage group members",
     )
-    removed = TenantGroupService.remove_members(
+    removed = tenant_group_service.remove_members(
         db, tenant_id=tenant_id, group_id=group_id, member_ids=payload.member_ids
     )
     audit_log_event(

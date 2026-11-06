@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "lang": "zh",
+  "project": "Ragvia · 反馈质检布局对比",
+  "brief": "固定雾灰／墨色、Manrope 与 Noto Sans SC，以及现有全局侧栏。五版共用 12 条反馈、相同评分／来源／处理状态和 FB-0128 的问题、原回答、用户期望与引用，比较批量筛选、逐条分析、回答对照、分类浏览和质量概览五种主流构图。保留低分、正向、待确认及文件类型的识别色。候选为静态设计预览，未连接真实写入操作；数据用于对比设计。",
+  "round": "反馈质检 01",
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "id": "a-table",
+      "name": "A · 管理宽表",
+      "concept": "先对照整批反馈，再进入值得检查的记录。",
+      "typography": "Manrope / Noto Sans SC；20px 页标题，13px 问题与原因，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#31754D", "#805E18"],
+      "traits": ["连续宽表，首屏 12 条反馈", "评分、原因、来源与状态同列对照", "适合筛选、比较和批量管理"],
+      "source": "a-table.html"
+    },
+    {
+      "id": "b-inbox",
+      "name": "B · 质检收件箱",
+      "concept": "在一个位置读完原回答与用户反馈，再处理下一条。",
+      "typography": "Manrope / Noto Sans SC；13px 队列与原因，14px 阅读正文，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#31754D", "#805E18"],
+      "traits": ["紧凑反馈队列与宽阅读区", "当前问题、回答与来源同时可见", "适合每天连续逐条分析"],
+      "source": "b-inbox.html"
+    },
+    {
+      "id": "c-compare",
+      "name": "C · 回答对照",
+      "concept": "把原回答和用户期望并排，直接找到缺漏。",
+      "typography": "Manrope / Noto Sans SC；20px 问题，14px 对照正文，12px 来源元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#31754D", "#805E18"],
+      "traits": ["原回答与用户期望等宽对照", "引用依据紧跟对应正文", "适合深度阅读与回归用例整理"],
+      "source": "c-compare.html"
+    },
+    {
+      "id": "d-board",
+      "name": "D · 分类看板",
+      "concept": "按评分和归档状态分拣，先看到最需要分析的反馈。",
+      "typography": "Manrope / Noto Sans SC；14px 分组标题，13px 问题与原因，12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#31754D", "#805E18"],
+      "traits": ["低分／中立／正向／已归档四列", "12 条反馈各出现一次", "适合分类巡视与快速分拣"],
+      "source": "d-board.html"
+    },
+    {
+      "id": "e-overview",
+      "name": "E · 质量概览",
+      "concept": "先看质量变化和集中问题，再追查具体反馈。",
+      "typography": "Manrope / Noto Sans SC；紧凑数字、13px 明细与分析标签、12px 元信息",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#A74740", "#31754D", "#805E18"],
+      "traits": ["一体化统计、七日趋势与问题分布", "下方保留连续反馈明细", "适合质量巡检与周期复盘"],
+      "source": "e-overview.html"
+    },
+    {
+      "id": "current",
+      "name": "当前页面 · 参照",
+      "concept": "真实本地页面的空反馈状态，作为现状参照。",
+      "typography": "当前正式页面的字体与组件",
+      "palette": ["#F6F7F8", "#20262E", "#EDF0F2", "#526EA0"],
+      "traits": ["现有统计卡、反馈列表与分析侧栏", "真实页面暂无反馈", "截图保留当前外观"],
+      "kind": "image",
+      "baseline": true,
+      "nativeViewport": "1280x720",
+      "source": "current.png"
+    }
+  ]
+}

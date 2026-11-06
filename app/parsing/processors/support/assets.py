@@ -66,14 +66,14 @@ def _collect_parser_asset_refs(
 
 def _inline_asset_audit_needed(inline_result: InlineAssetResult) -> bool:
     return (
-        int(getattr(inline_result, "image_codes_added", 0) or 0) > 0
-        or isinstance(getattr(inline_result, "image_code_audit", None), dict)
-        or int(getattr(inline_result, "captions_added", 0) or 0) > 0
-        or isinstance(getattr(inline_result, "caption_audit", None), dict)
-        or int(getattr(inline_result, "formulas_added", 0) or 0) > 0
-        or isinstance(getattr(inline_result, "formula_audit", None), dict)
-        or int(getattr(inline_result, "charts_added", 0) or 0) > 0
-        or isinstance(getattr(inline_result, "chart_audit", None), dict)
+        inline_result.image_codes_added > 0
+        or isinstance(inline_result.image_code_audit, dict)
+        or inline_result.captions_added > 0
+        or isinstance(inline_result.caption_audit, dict)
+        or inline_result.formulas_added > 0
+        or isinstance(inline_result.formula_audit, dict)
+        or inline_result.charts_added > 0
+        or isinstance(inline_result.chart_audit, dict)
     )
 
 
@@ -115,13 +115,13 @@ def _apply_inline_asset_audit_patch(
             ),
         )
         for count_key, count_attr, backend_key, backend_attr, audit_key, audit_attr in field_specs:
-            meta_patch[count_key] = int(getattr(inline_result, count_attr, 0) or 0)
-            backend_value = getattr(inline_result, backend_attr, None) if backend_attr else None
+            meta_patch[count_key] = getattr(inline_result, count_attr)
+            backend_value = getattr(inline_result, backend_attr) if backend_attr else None
             if backend_key and backend_value:
                 meta_patch[backend_key] = str(backend_value or "")
-            audit_value = getattr(inline_result, audit_attr, None)
+            audit_value = getattr(inline_result, audit_attr)
             if isinstance(audit_value, dict):
-                meta_patch[audit_key] = dict(audit_value or {})
+                meta_patch[audit_key] = dict(audit_value)
         db_document.doc_metadata = meta_patch
         db.commit()
         db.refresh(db_document)

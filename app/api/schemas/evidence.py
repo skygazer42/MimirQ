@@ -7,7 +7,6 @@ These schemas power the Evidence Workbench (enterprise ground-truth evidence man
 - Sync into RAGAS regression cases for retrieval-only evaluation
 """
 
-
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -37,7 +36,7 @@ class EvidenceSuitePatchRequest(BaseModel):
 
     @model_validator(mode="after")
     def _non_empty_patch(self):
-        if not (getattr(self, "model_fields_set", None) or set()):
+        if not self.model_fields_set:
             raise ValueError("No fields to patch")
         return self
 
@@ -91,7 +90,7 @@ class EvidenceItemPatchRequest(BaseModel):
 
     @model_validator(mode="after")
     def _non_empty_patch(self):
-        if not (getattr(self, "model_fields_set", None) or set()):
+        if not self.model_fields_set:
             raise ValueError("No fields to patch")
         return self
 

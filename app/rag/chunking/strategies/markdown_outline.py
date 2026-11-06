@@ -63,7 +63,7 @@ def _heading_from_line(raw_line: str, *, line_start: int) -> MarkdownHeading | N
         start=line_start,
         end=line_start + len(raw_line),
         title=title,
-        level=int(level),
+        level=level,
     )
 
 
@@ -129,7 +129,7 @@ def _build_sections(text: str, headings: list[MarkdownHeading]) -> list[_Section
 
 
 def _update_heading_stack(stack: list[str], *, level: int, title: str) -> None:
-    level = max(1, int(level))
+    level = max(1, level)
     while len(stack) >= level:
         stack.pop()
     stack.append(title)
@@ -140,7 +140,7 @@ class MarkdownOutlineChunker(BaseChunker):
     Chunker optimized for markdown documents with clear heading hierarchy.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -173,7 +173,7 @@ class MarkdownOutlineChunker(BaseChunker):
         )
         if section.heading is not None:
             meta["md_heading"] = section.heading.title
-            meta["md_level"] = int(section.heading.level)
+            meta["md_level"] = section.heading.level
         if outline_path:
             outline_path_str = " / ".join(outline_path)
             meta["outline_path"] = outline_path

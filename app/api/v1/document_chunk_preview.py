@@ -6,9 +6,10 @@ import shutil
 import time
 import uuid
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, TypedDict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile
@@ -24,35 +25,31 @@ from app.api.schemas.document import (
     ChunkPreviewReviewSignals,
     ChunkPreviewStats,
 )
-from app.api.utils.upload import save_upload_file_with_hash
-from app.api.v1.documents import (
+from app.api.utils.pipeline_options import (
     CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL,
-    DATA_IMAGE_PREFIX,
-    MINIO_IMAGE_REF_RE,
-    POSITION_TAG_RE,
-    PREVIEW_IMAGE_REF_RE,
-    _coerce_bool_preview,
-    _coerce_float_preview,
-    _coerce_int_preview,
-    _decode_escaped_input_preview,
-    _filter_chunker_kwargs_for_strategy,
     _parse_pipeline_json,
-    _sanitize_filename,
-    _to_pipeline_options,
-    logger,
+    to_pipeline_options,
 )
+from app.api.utils.upload import _sanitize_filename, save_upload_file_with_hash
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.env import is_production_env
 from app.core.token_utils import estimate_tokens, num_tokens_from_string
+from app.parsing.artifact_stats import POSITION_TAG_RE
 from app.parsing.factory import parser_factory
-from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError
+from app.parsing.subprocess_runner import SubprocessCancelled, SubprocessWorkerError, run_subprocess_worker
 from app.rag.chunking.factory import chunker_factory
 from app.rag.chunking.strategies.separator import SeparatorChunker
-from app.rag.preprocessing.processor import governance_processor
+from app.rag.core.logging import get_logger
+from app.rag.preprocessing.cleaning import RegexRule
+from app.rag.preprocessing.processor import GovernanceCleanOptions, governance_processor
 from app.rag.preprocessing.rules import build_governance_rules
-from app.services.dataset_service import DatasetService
+from app.services import dataset_service
+from app.services.document_governance import build_governance_options
 from app.services.document_preview_utils import (
+    DATA_IMAGE_PREFIX,
+    MINIO_IMAGE_REF_RE,
+    PREVIEW_IMAGE_REF_RE,
     _compute_chunk_coverage_metrics_from_ranges,
     _compute_chunk_length_histogram,
     _compute_chunk_preview_quality,
@@ -64,6 +61,7 @@ from app.services.document_preview_utils import (
 )
 from app.services.pipeline_config import resolve_pipeline_effective
 from app.services.preview_cache import ParseCacheEntry, preview_parse_cache, preview_parse_locks
+from app.types.pipeline import PipelineEffective
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -74,6 +72,102 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger("api.documents")
+
+
+def _coerce_bool_preview(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "n", "off"}:
+            return False
+    return None
+
+
+def _coerce_int_preview(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        try:
+            return int(value)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            return int(float(value.strip()))
+        except Exception:
+            return None
+    return None
+
+
+def _coerce_float_preview(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return float(value)
+    if isinstance(value, (int, float)):
+        try:
+            return float(value)
+        except Exception:
+            return None
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except Exception:
+            return None
+    return None
+
+
+def _decode_escaped_input_preview(value: str) -> str:
+    """
+    Best-effort decode for user input strings like "\\n\\n" / "\\t" / "\\u4e2d".
+
+    Keep aligned with frontend behavior and ingestion SeparatorChunker handling.
+    """
+    raw = str(value or "")
+    if not raw:
+        return raw
+    try:
+        escaped = raw.replace('"', '\\"')
+        return json.loads(f'"{escaped}"')
+    except Exception:
+        return raw
+
+
+def _filter_chunker_kwargs_for_strategy(strategy: str, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """
+    Filter kwargs to match the chunker __init__ signature (mirrors chunker_factory.get_chunker behavior).
+    """
+    if not kwargs:
+        return {}
+    chunker_cls = chunker_factory.SUPPORTED_STRATEGIES.get(strategy)
+    if chunker_cls is None:
+        return {}
+
+    import inspect
+
+    try:
+        sig = inspect.signature(chunker_cls.__init__)
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+            return dict(kwargs)
+        accepted = {
+            p.name
+            for p in sig.parameters.values()
+            if p.name not in {"self", "chunk_size", "chunk_overlap"}
+            and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+        }
+        return {k: v for k, v in kwargs.items() if k in accepted}
+    except Exception:
+        return {}
 
 
 @dataclass
@@ -136,11 +230,19 @@ class PreviewRequestConfig:
 
 @dataclass
 class PreviewPipelineState:
-    pipeline_effective: Any
+    pipeline_effective: PipelineEffective
     chunker_kwargs: dict[str, Any]
     separator_config: dict[str, Any] | None
     strategy_params_out: dict[str, Any]
-    governance_kwargs: dict[str, Any]
+    governance_options: GovernanceCleanOptions
+    governance_rules: list[RegexRule] | None
+
+
+class _PreviewPageText(TypedDict):
+    text: str
+    page: Any
+    page_index: Any
+    start: int
 
 
 @dataclass
@@ -209,19 +311,19 @@ def _build_preview_request_config(
             f"strategy params child_ratio/min_child_size ignored for chunk_strategy={resolved_chunk_strategy}"
         )
     include_original = _should_include_original_preview_text(
-        include_original_text=bool(include_original_text),
-        original_text_max_chars=int(original_text_max_chars or 0),
+        include_original_text=include_original_text,
+        original_text_max_chars=(original_text_max_chars or 0),
     )
     return PreviewRequestConfig(
         chunk_size=chunk_size,
         effective_chunk_overlap=effective_chunk_overlap,
         include_original=include_original,
-        include_chunks=bool(include_chunks),
-        include_review_signals=bool(include_review_signals),
-        original_text_max_chars=int(original_text_max_chars or 0),
-        max_chunks=int(max_chunks or 0),
-        use_parse_cache=bool(use_parse_cache),
-        parser_backend=str(parser_backend or ""),
+        include_chunks=include_chunks,
+        include_review_signals=include_review_signals,
+        original_text_max_chars=(original_text_max_chars or 0),
+        max_chunks=(max_chunks or 0),
+        use_parse_cache=use_parse_cache,
+        parser_backend=(parser_backend or ""),
         resolved_chunk_strategy=resolved_chunk_strategy,
         warnings_out=warnings_out,
     )
@@ -237,9 +339,9 @@ def _resolve_preview_dataset_meta(
     if not dataset_id:
         return {}
     try:
-        ds = DatasetService.get_dataset(db, tenant_id, UUID(str(dataset_id)))
-        DatasetService.assert_dataset_readable(db, ds, account_id)
-        return dict(getattr(ds, "dataset_metadata", None) or {})
+        ds = dataset_service.get_dataset(db, tenant_id, UUID(dataset_id))
+        dataset_service.assert_dataset_readable(db, ds, account_id)
+        return dict(ds.dataset_metadata or {})
     except HTTPException:
         raise
     except Exception:
@@ -267,17 +369,17 @@ def _resolve_parent_child_chunker_kwargs(
             raise HTTPException(status_code=400, detail="child_ratio must be a float")
         if ratio < 0.05 or ratio > 1.0:
             raise HTTPException(status_code=400, detail="child_ratio must be between 0.05 and 1.0")
-        out["child_ratio"] = float(ratio)
+        out["child_ratio"] = ratio
     if "min_child_size" in merged:
         min_size = _coerce_int_preview(merged.get("min_child_size"))
         if min_size is None:
             raise HTTPException(status_code=400, detail="min_child_size must be an int")
         if min_size < 50 or min_size > 4000:
             raise HTTPException(status_code=400, detail="min_child_size must be between 50 and 4000")
-        if min_size > int(chunk_size or 0):
+        if min_size > (chunk_size or 0):
             warnings_out.append("min_child_size > chunk_size; clamping to chunk_size")
-            min_size = int(chunk_size or 0)
-        out["min_child_size"] = int(min_size)
+            min_size = chunk_size or 0
+        out["min_child_size"] = min_size
     return out
 
 
@@ -325,63 +427,13 @@ def _resolve_separator_chunker_state(
     return {}, separator_config
 
 
-def _build_preview_governance_kwargs(pipeline_effective: Any) -> dict[str, Any]:
-    extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
-    combined_rules = build_governance_rules(extra_rules) if extra_rules else None
-    return {
-        **({"rules": combined_rules} if combined_rules else {}),
-        "remove_toc_lines": pipeline_effective.governance_remove_toc_lines,
-        "remove_noise_lines": pipeline_effective.governance_remove_noise_lines,
-        "unwrap_lines": pipeline_effective.governance_unwrap_lines,
-        "remove_common_lines": False,
-        "remove_boilerplate": pipeline_effective.governance_remove_boilerplate,
-        "remove_images": pipeline_effective.governance_remove_images,
-        "extract_frontmatter": pipeline_effective.governance_extract_frontmatter,
-        "strip_frontmatter": pipeline_effective.governance_strip_frontmatter,
-        "detect_language": pipeline_effective.governance_detect_language,
-        "language_min_chars": pipeline_effective.governance_language_min_chars,
-        "normalize_urls": pipeline_effective.governance_normalize_urls,
-        "normalize_urls_strip_tracking": pipeline_effective.governance_normalize_urls_strip_tracking,
-        "drop_duplicate_paragraphs": pipeline_effective.governance_drop_duplicate_paragraphs,
-        "drop_duplicate_paragraphs_min_occurrences": (
-            pipeline_effective.governance_drop_duplicate_paragraphs_min_occurrences
-        ),
-        "drop_duplicate_paragraphs_min_chars": pipeline_effective.governance_drop_duplicate_paragraphs_min_chars,
-        "drop_duplicate_paragraphs_max_chars": pipeline_effective.governance_drop_duplicate_paragraphs_max_chars,
-        "trim_references": pipeline_effective.governance_trim_references,
-        "extract_keywords": pipeline_effective.governance_extract_keywords,
-        "keywords_provider": pipeline_effective.governance_keywords_provider,
-        "keywords_top_k": pipeline_effective.governance_keywords_top_k,
-        "keywords_max_chars": pipeline_effective.governance_keywords_max_chars,
-        "normalize_tables": pipeline_effective.governance_normalize_tables,
-        "strip_code_line_numbers": pipeline_effective.governance_strip_code_line_numbers,
-        "pii_anonymize": pipeline_effective.governance_pii_anonymize,
-        "pii_mode": pipeline_effective.governance_pii_mode,
-        "pii_mask": pipeline_effective.governance_pii_mask,
-        "secrets_redact": pipeline_effective.governance_secrets_redact,
-        "secrets_mode": pipeline_effective.governance_secrets_mode,
-        "secrets_mask": pipeline_effective.governance_secrets_mask,
-        "max_blank_lines": pipeline_effective.governance_max_blank_lines,
-        "drop_outline_only": pipeline_effective.governance_drop_outline_only,
-        "drop_outline_min_content_chars": pipeline_effective.governance_drop_outline_min_content_chars,
-        "drop_outline_max_heading_ratio": pipeline_effective.governance_drop_outline_max_heading_ratio,
-        "drop_low_density": pipeline_effective.governance_drop_low_density,
-        "drop_low_density_threshold": pipeline_effective.governance_drop_low_density_threshold,
-        "unwrap_max_line_length": pipeline_effective.governance_unwrap_max_line_length,
-        "noise_min_chars": pipeline_effective.governance_noise_min_chars,
-        "noise_ratio_threshold": pipeline_effective.governance_noise_ratio_threshold,
-        "common_lines_min_docs": pipeline_effective.governance_common_lines_min_docs,
-        "common_lines_min_ratio": pipeline_effective.governance_common_lines_min_ratio,
-    }
-
-
 def _resolve_preview_pipeline_state(
     *,
     config: PreviewRequestConfig,
     dataset_meta: dict[str, Any],
     params: ChunkPreviewRequestFields,
 ) -> PreviewPipelineState:
-    pipeline_options = _to_pipeline_options(
+    pipeline_options = to_pipeline_options(
         pipeline=_parse_pipeline_json(params.pipeline),
         governance_enabled=params.governance_enabled,
         governance_remove_toc_lines=params.governance_remove_toc_lines,
@@ -399,7 +451,10 @@ def _resolve_preview_pipeline_state(
         document_metadata={},
         request_overrides=pipeline_options,
     )
-    pipeline_strategy_params = dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {})
+    from app.services.pipeline_config import validate_pipeline_execution
+
+    validate_pipeline_execution(pipeline_effective)
+    pipeline_strategy_params = dict(pipeline_effective.chunk_strategy_params or {})
     if config.resolved_chunk_strategy == "parent_child":
         chunker_kwargs = _resolve_parent_child_chunker_kwargs(
             pipeline_strategy_params=pipeline_strategy_params,
@@ -423,12 +478,15 @@ def _resolve_preview_pipeline_state(
             pipeline_strategy_params,
         )
         separator_config = None
+    extra_rules = list(pipeline_effective.governance_regex_rules or [])
+    combined_rules = build_governance_rules(extra_rules) if extra_rules else None
     return PreviewPipelineState(
         pipeline_effective=pipeline_effective,
         chunker_kwargs=chunker_kwargs,
         separator_config=separator_config,
         strategy_params_out={},
-        governance_kwargs=_build_preview_governance_kwargs(pipeline_effective),
+        governance_options=build_governance_options(pipeline_effective, remove_common_lines=False),
+        governance_rules=combined_rules or None,
     )
 
 
@@ -454,7 +512,8 @@ def _apply_preview_governance(
     started_at = time.perf_counter()
     cleaned_documents, _stats = governance_processor.clean_documents(
         documents,
-        **pipeline_state.governance_kwargs,
+        rules=pipeline_state.governance_rules,
+        options=pipeline_state.governance_options,
     )
     duration_ms = int(max(0.0, (time.perf_counter() - started_at) * 1000.0))
     return cleaned_documents, duration_ms
@@ -506,11 +565,11 @@ def _filter_preview_chunks(
     max_chunks: int,
     warnings_out: list[str],
 ) -> tuple[list[Document], int, bool]:
-    merge_min = max(0, int(getattr(pipeline_state.pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
+    merge_min = max(0, (pipeline_state.pipeline_effective.chunk_merge_small_min_chars or 0))
     if merge_min > 0 and documents and chunks:
         chunks = _merge_small_chunks_preview(documents=documents, chunks=chunks, min_chars=merge_min)
 
-    min_chars = max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0))
+    min_chars = max(0, (settings.CHUNK_MIN_CHARS or 0))
     if min_chars > 0 and chunks:
         before = len(chunks)
         original_chunks = chunks
@@ -540,10 +599,10 @@ def _filter_preview_chunks(
 
     total_chunks_full = len(chunks)
     chunks_truncated = False
-    if max_chunks > 0 and len(chunks) > int(max_chunks):
+    if max_chunks > 0 and len(chunks) > max_chunks:
         chunks_truncated = True
-        warnings_out.append(f"chunks truncated to max_chunks={int(max_chunks)} (full={total_chunks_full})")
-        chunks = chunks[: int(max_chunks)]
+        warnings_out.append(f"chunks truncated to max_chunks={max_chunks} (full={total_chunks_full})")
+        chunks = chunks[:max_chunks]
     return chunks, total_chunks_full, chunks_truncated
 
 
@@ -558,7 +617,7 @@ def _build_preview_text_context(
         total_characters = sum(len(chunk.page_content or "") for chunk in chunks)
         total_characters += 2 * (len(chunks) - 1) if chunks else 0
         original_text_value = None
-        if include_original and total_characters <= int(original_text_max_chars or 0):
+        if include_original and total_characters <= (original_text_max_chars or 0):
             original_text_value = "\n\n".join(chunk.page_content or "" for chunk in chunks) if chunks else ""
         integrated_map = {}
         current_pos = 0
@@ -567,7 +626,7 @@ def _build_preview_text_context(
             current_pos += len(chunk.page_content or "") + 2
         return integrated_map, {}, {}, total_characters, original_text_value
 
-    page_texts: list[dict[str, object]] = []
+    page_texts: list[_PreviewPageText] = []
     current_pos = 0
     for doc in documents:
         text = doc.page_content or ""
@@ -581,20 +640,18 @@ def _build_preview_text_context(
             }
         )
         current_pos += len(text) + 1
-    total_characters = sum(len(str(item.get("text") or "")) for item in page_texts) + max(0, len(page_texts) - 1)
+    total_characters = sum(len(item["text"]) for item in page_texts) + max(0, len(page_texts) - 1)
     page_index_start_map = {
-        int(item.get("page_index")): int(item.get("start") or 0)
-        for item in page_texts
-        if item.get("page_index") is not None
+        int(item.get("page_index")): item["start"] for item in page_texts if item.get("page_index") is not None
     }
     page_start_map: dict[object, int] = {}
     for item in page_texts:
         page = item.get("page")
         if page is not None and page not in page_start_map:
-            page_start_map[page] = int(item.get("start") or 0)
+            page_start_map[page] = item["start"]
     original_text_value = None
-    if include_original and total_characters <= int(original_text_max_chars or 0):
-        original_text_value = "\n".join(str(item.get("text") or "") for item in page_texts) if page_texts else ""
+    if include_original and total_characters <= (original_text_max_chars or 0):
+        original_text_value = "\n".join(item["text"] for item in page_texts) if page_texts else ""
     return {}, page_start_map, page_index_start_map, total_characters, original_text_value
 
 
@@ -651,7 +708,7 @@ def _annotate_preview_semantic_quality(
     config: PreviewRequestConfig,
     idx: int,
     prev_token_set: set[str] | None,
-    score_chunk_semantic_quality: Any,
+    score_chunk_semantic_quality: Callable[..., tuple[dict[str, Any], set[str]]],
 ) -> tuple[int, set[str] | None]:
     if not (config.include_chunks or config.include_review_signals) or idx >= 512:
         return 0, prev_token_set
@@ -662,11 +719,11 @@ def _annotate_preview_semantic_quality(
     with contextlib.suppress(Exception):
         scores, prev_token_set = score_chunk_semantic_quality(
             content,
-            tokens_est=int(tokens_est or 0),
+            tokens_est=tokens_est,
             prev_token_set=prev_token_set,
         )
         meta["semantic_quality"] = scores
-        if bool(scores.get("needs_review")):
+        if scores["needs_review"]:
             meta["needs_review"] = True
             return 1, prev_token_set
     return 0, prev_token_set
@@ -723,10 +780,10 @@ def _collect_preview_chunk_metrics(
             content=content,
             resolved_chunk_strategy=config.resolved_chunk_strategy,
         )
-        total_tokens_est += int(tokens_est or 0)
-        if int(tokens_est or 0) > 0:
-            token_lengths.append(int(tokens_est or 0))
-        unit_len = int(tokens_est or 0) if unit == "tokens" else len(content)
+        total_tokens_est += tokens_est
+        if tokens_est > 0:
+            token_lengths.append(tokens_est)
+        unit_len = tokens_est if unit == "tokens" else len(content)
         length_samples.append(unit_len)
         total_len += unit_len
         if unit_len > 0 and unit_len < short_threshold:
@@ -795,7 +852,7 @@ def _build_preview_stats(
         token_stats = compute_chunking_stats_from_lengths(
             token_lengths,
             short_threshold=40,
-            duplicate_count=int(duplicate_count),
+            duplicate_count=duplicate_count,
             unit="tokens",
             bins=CHUNK_TOKEN_BINS,
         )
@@ -803,27 +860,26 @@ def _build_preview_stats(
         return ChunkPreviewStats(unit=unit, **coverage), token_stats
 
     def _pct(percentile: int) -> int:
-        pos = int((max(0, min(100, int(percentile))) / 100.0) * (len(sorted_lengths) - 1))
+        pos = int((max(0, min(100, percentile)) / 100.0) * (len(sorted_lengths) - 1))
         pos = max(0, min(len(sorted_lengths) - 1, pos))
-        return int(sorted_lengths[pos] or 0)
+        return sorted_lengths[pos]
 
     histogram = _compute_chunk_length_histogram(sorted_lengths, unit=unit, target_bins=8)
-    coverage = _compute_chunk_coverage_metrics_from_ranges(chunk_ranges, total_characters=total_characters)
     return (
         ChunkPreviewStats(
             unit=unit,
             count=len(sorted_lengths),
-            total=int(total_len),
-            min=int(sorted_lengths[0]),
-            max=int(sorted_lengths[-1]),
+            total=total_len,
+            min=sorted_lengths[0],
+            max=sorted_lengths[-1],
             avg=int(round(total_len / len(sorted_lengths))) if sorted_lengths else 0,
             median=_pct(50),
             p10=_pct(10),
             p90=_pct(90),
             p95=_pct(95),
-            total_tokens_est=int(total_tokens_est),
-            short_count=int(short_count),
-            duplicate_count=int(duplicate_count),
+            total_tokens_est=total_tokens_est,
+            short_count=short_count,
+            duplicate_count=duplicate_count,
             histogram=histogram,
             **coverage,
         ),
@@ -892,7 +948,7 @@ def _store_preview_parse_cache(
 ) -> None:
     if not cache_key:
         return
-    total_chars = sum(len(str(item.get("page_content") or "")) for item in (parsed_docs_payload or []))
+    total_chars = sum(len(str(item.get("page_content") or "")) for item in parsed_docs_payload)
     if cache_max_doc_chars > 0 and total_chars > cache_max_doc_chars:
         return
     preview_parse_cache.set(
@@ -901,10 +957,10 @@ def _store_preview_parse_cache(
             created_at_monotonic=time.monotonic(),
             created_at_wall=time.time(),
             file_sha256=str(file_sha256 or ""),
-            parser_backend=str(parser_backend or ""),
+            parser_backend=(parser_backend or ""),
             resolved_backend=str(resolved_backend or ""),
-            documents=list(parsed_docs_payload or []),
-            total_chars=int(total_chars),
+            documents=list(parsed_docs_payload),
+            total_chars=total_chars,
         ),
         ttl_sec=cache_ttl_sec,
         max_entries=cache_max_entries,
@@ -913,7 +969,6 @@ def _store_preview_parse_cache(
 
 async def _parse_uncached_preview_documents(
     *,
-    documents_module: Any,
     temp_path: Path,
     file_ext: str,
     tenant_id: UUID,
@@ -941,7 +996,7 @@ async def _parse_uncached_preview_documents(
         duration_ms = int(max(0.0, (time.perf_counter() - parse_started) * 1000.0))
         return _serialize_preview_parse_documents(parsed_documents), str(backend or config.parser_backend), duration_ms
 
-    parsed = await documents_module.run_subprocess_worker(
+    parsed = await run_subprocess_worker(
         tenant_id=tenant_id,
         payload={
             "action": "parse_documents",
@@ -952,7 +1007,7 @@ async def _parse_uncached_preview_documents(
             "mode": "preview",
         },
         disconnect_check=request.is_disconnected,
-        timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
     )
     duration_ms = int(max(0.0, (time.perf_counter() - parse_started) * 1000.0))
     return (
@@ -964,7 +1019,6 @@ async def _parse_uncached_preview_documents(
 
 async def _load_preview_parsed_payload(
     *,
-    documents_module: Any,
     temp_path: Path,
     file_ext: str,
     tenant_id: UUID,
@@ -973,11 +1027,11 @@ async def _load_preview_parsed_payload(
     config: PreviewRequestConfig,
     file_sha256: str | None,
 ) -> tuple[list[dict[str, Any]], str, bool, int | None, int]:
-    cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
-    cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
-    cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
-    cache_max_doc_chars = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_DOC_CHARS", 0) or 0)
-    cache_version = str(getattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1") or "v1").strip() or "v1"
+    cache_enabled = settings.PREVIEW_PARSE_CACHE_ENABLED
+    cache_ttl_sec = settings.PREVIEW_PARSE_CACHE_TTL_SEC or 0
+    cache_max_entries = settings.PREVIEW_PARSE_CACHE_MAX_ENTRIES or 0
+    cache_max_doc_chars = settings.PREVIEW_PARSE_CACHE_MAX_DOC_CHARS or 0
+    cache_version = (settings.PREVIEW_PARSE_CACHE_VERSION or "v1").strip() or "v1"
     cache_key: str | None = None
     parsed_docs_payload: list[dict[str, Any]] | None = None
     resolved_backend = str(config.parser_backend)
@@ -1004,7 +1058,7 @@ async def _load_preview_parsed_payload(
             parse_cache_hit = True
             parse_cache_age_ms = age_ms
             parsed_docs_payload = list(cached.documents or [])
-            resolved_backend = str(cached.resolved_backend or config.parser_backend)
+            resolved_backend = cached.resolved_backend or config.parser_backend
 
     if parsed_docs_payload is None:
         lock = preview_parse_locks.get(cache_key) if cache_key else None
@@ -1014,13 +1068,12 @@ async def _load_preview_parsed_payload(
                 if cached is not None:
                     return (
                         list(cached.documents or []),
-                        str(cached.resolved_backend or config.parser_backend),
+                        cached.resolved_backend or config.parser_backend,
                         True,
                         age_ms,
                         0,
                     )
                 parsed_docs_payload, resolved_backend, parse_duration_ms = await _parse_uncached_preview_documents(
-                    documents_module=documents_module,
                     temp_path=temp_path,
                     file_ext=file_ext,
                     tenant_id=tenant_id,
@@ -1040,7 +1093,6 @@ async def _load_preview_parsed_payload(
                 )
         else:
             parsed_docs_payload, resolved_backend, parse_duration_ms = await _parse_uncached_preview_documents(
-                documents_module=documents_module,
                 temp_path=temp_path,
                 file_ext=file_ext,
                 tenant_id=tenant_id,
@@ -1063,7 +1115,6 @@ async def _load_preview_parsed_payload(
 
 async def _build_uploaded_preview_execution_state(
     *,
-    documents_module: Any,
     request: Request,
     temp_path: Path,
     file_ext: str,
@@ -1075,7 +1126,7 @@ async def _build_uploaded_preview_execution_state(
 ) -> PreviewExecutionState:
     if config.resolved_chunk_strategy in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
         integrated_started = time.perf_counter()
-        result = await documents_module.run_subprocess_worker(
+        result = await run_subprocess_worker(
             tenant_id=tenant_id,
             payload={
                 "action": "integrated_chunk",
@@ -1086,7 +1137,7 @@ async def _build_uploaded_preview_execution_state(
                 "mode": "preview",
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
         )
         chunks = _materialize_preview_documents(result.get("documents") if isinstance(result, dict) else [])
         chunks, governance_duration_ms = _apply_preview_governance(chunks, pipeline_state=pipeline_state)
@@ -1110,7 +1161,6 @@ async def _build_uploaded_preview_execution_state(
         parse_cache_age_ms,
         parse_duration_ms,
     ) = await _load_preview_parsed_payload(
-        documents_module=documents_module,
         temp_path=temp_path,
         file_ext=file_ext,
         tenant_id=tenant_id,
@@ -1152,7 +1202,6 @@ def _clean_preview_original_text(original_text_value: str | None) -> str | None:
 
 async def _run_uploaded_chunk_preview(
     *,
-    documents_module: Any,
     request: Request,
     response: Response,
     file: UploadFile,
@@ -1180,7 +1229,6 @@ async def _run_uploaded_chunk_preview(
     )
     pipeline_state = _resolve_preview_pipeline_state(config=config, dataset_meta=dataset_meta, params=params)
     execution_state = await _build_uploaded_preview_execution_state(
-        documents_module=documents_module,
         request=request,
         temp_path=temp_path,
         file_ext=file_ext,
@@ -1214,7 +1262,6 @@ def _preview_failure_detail(exc: Exception, *, production_message: str) -> str:
 
 async def _execute_preview_chunking(
     *,
-    documents_module: Any,
     request: Request,
     response: Response,
     file: UploadFile,
@@ -1223,7 +1270,7 @@ async def _execute_preview_chunking(
     tenant_id: UUID,
     account_id: str,
 ) -> ChunkPreviewResponse:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     file.filename = _sanitize_filename(file.filename)
     preview_started = time.perf_counter()
     config = _build_preview_request_config(
@@ -1254,7 +1301,6 @@ async def _execute_preview_chunking(
     temp_path = run_dir / f"input{file_ext}"
     try:
         return await _run_uploaded_chunk_preview(
-            documents_module=documents_module,
             request=request,
             response=response,
             file=file,
@@ -1285,13 +1331,13 @@ def _set_preview_server_timing(
     with contextlib.suppress(Exception):
         timing_parts: list[str] = []
         if upload_duration_ms is not None:
-            timing_parts.append(f"upload;dur={int(upload_duration_ms)}")
+            timing_parts.append(f"upload;dur={upload_duration_ms}")
         if parse_duration_ms is not None:
-            timing_parts.append(f"parse;dur={int(parse_duration_ms)}")
-        timing_parts.append(f"govern;dur={int(governance_duration_ms)}")
-        timing_parts.append(f"chunk;dur={int(chunking_duration_ms)}")
-        timing_parts.append(f"stats;dur={int(stats_duration_ms)}")
-        timing_parts.append(f"total;dur={int(preview_duration_ms)}")
+            timing_parts.append(f"parse;dur={parse_duration_ms}")
+        timing_parts.append(f"govern;dur={governance_duration_ms}")
+        timing_parts.append(f"chunk;dur={chunking_duration_ms}")
+        timing_parts.append(f"stats;dur={stats_duration_ms}")
+        timing_parts.append(f"total;dur={preview_duration_ms}")
         if timing_parts:
             response.headers["Server-Timing"] = ", ".join(timing_parts)
 
@@ -1342,7 +1388,7 @@ def _build_chunk_preview_response(
         page_index_start_map=page_index_start_map,
     )
     if needs_review_count > 0:
-        config.warnings_out.append(f"{int(needs_review_count)} chunks flagged needs_review (semantic heuristics)")
+        config.warnings_out.append(f"{needs_review_count} chunks flagged needs_review (semantic heuristics)")
     stats, token_stats = _build_preview_stats(
         chunk_ranges=chunk_ranges,
         length_samples=length_samples,
@@ -1358,13 +1404,13 @@ def _build_chunk_preview_response(
     original_text_truncated = _is_original_preview_text_truncated(
         include_original=config.include_original,
         original_text_value=original_text_value,
-        total_characters=int(total_characters or 0),
+        total_characters=(total_characters or 0),
         original_text_max_chars=config.original_text_max_chars,
     )
     quality_gate, recommendations, recommendation_patches = _compute_chunk_preview_quality(
         stats=stats,
         total_chunks=len(execution_state.chunks),
-        total_characters=int(total_characters or 0),
+        total_characters=(total_characters or 0),
         chunk_size=config.chunk_size,
         chunk_overlap=config.effective_chunk_overlap,
         original_text_included=original_text_value is not None,
@@ -1395,17 +1441,17 @@ def _build_chunk_preview_response(
         file_type=file_type,
         file_size=file_size,
         file_sha256=file_sha256,
-        parse_cache_hit=bool(execution_state.parse_cache_hit),
+        parse_cache_hit=execution_state.parse_cache_hit,
         parse_cache_age_ms=execution_state.parse_cache_age_ms,
         preview_duration_ms=preview_duration_ms,
         upload_duration_ms=upload_duration_ms,
         parse_duration_ms=execution_state.parse_duration_ms,
-        governance_duration_ms=int(execution_state.governance_duration_ms),
-        chunking_duration_ms=int(execution_state.chunking_duration_ms),
-        stats_duration_ms=int(stats_duration_ms),
+        governance_duration_ms=execution_state.governance_duration_ms,
+        chunking_duration_ms=execution_state.chunking_duration_ms,
+        stats_duration_ms=stats_duration_ms,
         total_chunks=len(execution_state.chunks),
-        total_chunks_full=int(execution_state.total_chunks_full),
-        chunks_truncated=bool(execution_state.chunks_truncated),
+        total_chunks_full=execution_state.total_chunks_full,
+        chunks_truncated=execution_state.chunks_truncated,
         chunks_max_count=config.max_chunks,
         total_characters=total_characters,
         params=ChunkPreviewParams(
@@ -1434,32 +1480,32 @@ def _build_chunk_preview_response(
 
 
 def _should_inline_preview_parse(file_ext: str) -> bool:
-    if not bool(getattr(settings, "PREVIEW_INLINE_TEXT_PARSE_ENABLED", True)):
+    if not settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED:
         return False
-    ext = str(file_ext or "").strip().lower()
+    ext = (file_ext or "").strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
 
 
 def _serialize_preview_parse_documents(documents: list[Document]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for doc in documents or []:
-        metadata = getattr(doc, "metadata", None) or {}
+    for doc in documents:
+        metadata = doc.metadata or {}
         try:
             safe_metadata = json.loads(json.dumps(metadata, ensure_ascii=False, default=str))
         except Exception:
             safe_metadata = {}
         out.append(
             {
-                "page_content": str(getattr(doc, "page_content", "") or ""),
-                "metadata": safe_metadata if isinstance(safe_metadata, dict) else {},
-                "id": str(getattr(doc, "id", "") or "") or None,
+                "page_content": doc.page_content or "",
+                "metadata": safe_metadata,
+                "id": doc.id or None,
             }
         )
     return out
 
 
 def _should_include_original_preview_text(*, include_original_text: bool, original_text_max_chars: int) -> bool:
-    return bool(include_original_text) and int(original_text_max_chars or 0) > 0
+    return include_original_text and (original_text_max_chars or 0) > 0
 
 
 def _is_original_preview_text_truncated(
@@ -1469,9 +1515,7 @@ def _is_original_preview_text_truncated(
     total_characters: int,
     original_text_max_chars: int,
 ) -> bool:
-    return bool(
-        include_original and original_text_value is None and total_characters > int(original_text_max_chars or 0)
-    )
+    return bool(include_original and original_text_value is None and total_characters > (original_text_max_chars or 0))
 
 
 @router.post("/chunk-preview", response_model=ChunkPreviewResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -1491,11 +1535,8 @@ async def preview_chunking(
     Upload a file and preview chunking with the given parameters (no DB writes).
     Returns chunk results with positions for frontend highlighting.
     """
-    from app.api.v1 import documents as documents_module
-
     try:
         return await _execute_preview_chunking(
-            documents_module=documents_module,
             request=request,
             response=response,
             file=file,
@@ -1539,7 +1580,7 @@ def preview_chunking_by_sha(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     preview_started = time.perf_counter()
     sha = str(file_fields.file_sha256 or "").strip().lower()
@@ -1580,16 +1621,20 @@ def preview_chunking_by_sha(
             detail="Integrated pipeline strategies do not support by-sha preview; please upload the file",
         )
 
-    cache_enabled = bool(getattr(settings, "PREVIEW_PARSE_CACHE_ENABLED", False))
-    cache_ttl_sec = int(getattr(settings, "PREVIEW_PARSE_CACHE_TTL_SEC", 0) or 0)
-    cache_max_entries = int(getattr(settings, "PREVIEW_PARSE_CACHE_MAX_ENTRIES", 0) or 0)
-    cache_version = str(getattr(settings, "PREVIEW_PARSE_CACHE_VERSION", "v1") or "v1").strip() or "v1"
+    cache_enabled = settings.PREVIEW_PARSE_CACHE_ENABLED
+    cache_ttl_sec = settings.PREVIEW_PARSE_CACHE_TTL_SEC or 0
+    cache_max_entries = settings.PREVIEW_PARSE_CACHE_MAX_ENTRIES or 0
+    cache_version = (settings.PREVIEW_PARSE_CACHE_VERSION or "v1").strip() or "v1"
     if not (cache_enabled and config.use_parse_cache and cache_ttl_sec > 0 and cache_max_entries > 0):
         raise HTTPException(status_code=400, detail="parse cache disabled; please upload the file")
 
-    cache_key = (
-        f"parse:{str(tenant_id)}:{str(account_id)}:{sha}:{str(file_ext)}:"
-        f"{str(config.parser_backend or '').strip().lower()}:{cache_version}"
+    cache_key = _preview_parse_cache_key(
+        tenant_id=tenant_id,
+        account_id=account_id,
+        file_sha256=sha,
+        file_ext=file_ext,
+        parser_backend=config.parser_backend,
+        cache_version=cache_version,
     )
 
     cached, age_ms = preview_parse_cache.get(cache_key, ttl_sec=cache_ttl_sec)
@@ -1622,7 +1667,7 @@ def preview_chunking_by_sha(
     execution_state = PreviewExecutionState(
         documents=documents,
         chunks=chunks,
-        resolved_backend=str(cached.resolved_backend or config.parser_backend),
+        resolved_backend=cached.resolved_backend or config.parser_backend,
         parse_cache_hit=True,
         parse_cache_age_ms=age_ms,
         parse_duration_ms=0,
@@ -1640,6 +1685,6 @@ def preview_chunking_by_sha(
         upload_duration_ms=0,
         filename=safe_name,
         file_type=file_ext.lstrip("."),
-        file_size=int(file_fields.file_size or 0),
+        file_size=(file_fields.file_size or 0),
         file_sha256=sha,
     )

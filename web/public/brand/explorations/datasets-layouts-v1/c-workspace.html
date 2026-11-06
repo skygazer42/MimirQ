@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1600, initial-scale=1">
+  <title>数据集 · Ragvia</title>
+  <link rel="stylesheet" href="./common.css">
+  <style>
+    .c-page-header{height:72px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);background:var(--canvas)}
+    .c-page-title{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:630;line-height:26px}
+    .c-page-title .icon{width:20px;height:20px;opacity:.88}
+    .c-primary{height:34px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:7px;background:var(--ink);color:var(--surface);padding:0 13px;font-size:13px;font-weight:550}
+    .c-primary .icon{width:16px;height:16px;filter:brightness(0) invert(1);opacity:1}
+    .c-workspace{display:flex;height:928px;background:var(--surface)}
+    .c-queue{width:304px;flex-shrink:0;display:flex;flex-direction:column;background:var(--canvas);border-right:1px solid var(--line)}
+    .c-queue-tools{padding:16px 14px;flex-shrink:0}
+    .c-search{height:36px;display:flex;align-items:center;gap:9px;padding:0 11px;background:var(--surface);border:1px solid var(--line);border-radius:7px}
+    .c-search .icon{width:16px;height:16px}
+    .c-search input{min-width:0;flex:1;border:0;outline:0;background:none;font-size:13px;padding:0}
+    .c-search input::placeholder{color:var(--muted);opacity:1}
+    .c-filters{display:flex;gap:8px;margin-top:10px}
+    .c-filter{flex:1;height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:12px}
+    .c-filter .icon{width:13px;height:13px}
+    .c-queue-list{padding:0 10px 20px}
+    .c-dataset{height:80px;display:flex;flex-direction:column;justify-content:center;padding:12px 13px;border-bottom:1px solid var(--line);position:relative}
+    .c-dataset-name{font-size:14px;font-weight:520;line-height:21px;word-break:normal}
+    .c-dataset-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:7px;font-size:12px;line-height:18px;color:var(--muted);font-variant-numeric:tabular-nums}
+    .c-dataset-status{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+    .c-status-dot{width:5px;height:5px;border-radius:50%;background:var(--muted);display:inline-block}
+    .c-status-ring{width:7px;height:7px;border:1px solid var(--muted);border-radius:50%;display:inline-block}
+    .c-dataset.c-selected{background:var(--selected);border-bottom-color:var(--selected);border-radius:7px}
+    .c-dataset.c-selected:before{content:'';position:absolute;left:0;top:17px;bottom:17px;width:2px;border-radius:2px;background:var(--ink)}
+    .c-selected .c-dataset-name{font-weight:650}
+    .c-selected .c-dataset-meta{color:var(--ink)}
+    .c-selected .c-status-dot{background:var(--ink)}
+    .c-dataset-name-long{font-size:12.5px;line-height:18px}
+    .c-detail{flex:1;min-width:0;padding:27px 32px 0;overflow:hidden}
+    .c-object-path{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);line-height:20px}
+    .c-path-separator{color:var(--line)}
+    .c-object-title-row{display:flex;align-items:center;gap:11px;margin-top:10px}
+    .c-object-title-row>.icon{width:23px;height:23px;opacity:.86}
+    .c-object-title{font-size:20px;font-weight:650;line-height:30px}
+    .c-object-status{margin-left:3px;display:inline-flex;align-items:center;gap:6px;padding:2px 8px;background:var(--canvas);border:1px solid var(--line);border-radius:5px;font-size:12px;font-weight:470;line-height:20px}
+    .c-object-description{margin-top:9px;font-size:14px;line-height:22px;color:var(--muted)}
+    .c-summary{display:flex;align-items:center;gap:24px;margin-top:26px;padding-bottom:24px;border-bottom:1px solid var(--line)}
+    .c-stats{display:flex;gap:35px}
+    .c-stat{min-width:74px}
+    .c-stat-label{font-size:12px;line-height:18px;color:var(--muted)}
+    .c-stat-value{margin-top:4px;font-size:20px;font-weight:620;line-height:28px;font-variant-numeric:tabular-nums}
+    .c-readonly-meta{margin-left:auto;display:flex;gap:42px}
+    .c-meta-label{font-size:12px;line-height:18px;color:var(--muted)}
+    .c-meta-value{margin-top:7px;display:flex;align-items:center;gap:6px;font-size:13px;line-height:23px;white-space:nowrap}
+    .c-meta-value .icon{width:15px;height:15px}
+    .c-toolbar{display:flex;align-items:center;gap:5px;padding:15px 0;border-bottom:1px solid var(--line)}
+    .c-toolbar .c-primary{margin-right:10px;padding:0 16px}
+    .c-tool-button{height:32px;display:inline-flex;align-items:center;gap:6px;padding:0 10px;font-size:13px;white-space:nowrap;border-radius:6px}
+    .c-tool-button .icon{width:16px;height:16px}
+    .c-tool-divider{height:17px;width:1px;background:var(--line);margin:0 7px}
+    .c-tool-more{margin-left:auto;padding-right:0}
+    .c-documents{padding-top:23px}
+    .c-document-heading{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:17px}
+    .c-section-title{display:flex;align-items:baseline;gap:8px;font-size:15px;font-weight:620;line-height:24px}
+    .c-section-count{font-size:12px;font-weight:470;color:var(--muted);font-variant-numeric:tabular-nums}
+    .c-document-controls{display:flex;align-items:center;gap:12px}
+    .c-document-search{width:220px;height:32px;background:var(--canvas);border-color:var(--canvas)}
+    .c-sort{height:30px;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+    .c-sort .icon{width:13px;height:13px}
+    .c-documents-table{border-collapse:collapse;table-layout:fixed;width:100%;font-size:13px}
+    .c-documents-table th{height:35px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:12px;font-weight:450;line-height:18px;color:var(--muted);text-align:left;background:var(--canvas)}
+    .c-documents-table th:first-child{padding-left:12px}
+    .c-documents-table td{height:78px;border-bottom:1px solid var(--line);vertical-align:middle;font-variant-numeric:tabular-nums}
+    .c-documents-table th:nth-child(1){width:49%}
+    .c-documents-table th:nth-child(2){width:15%}
+    .c-documents-table th:nth-child(3){width:11%}
+    .c-documents-table th:nth-child(4){width:21%}
+    .c-documents-table th:nth-child(5){width:4%}
+    .c-file-cell{display:flex;align-items:center;gap:12px;padding-left:12px}
+    .c-file-icon{width:29px;height:34px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+    .c-file-icon .icon{width:24px;height:24px;opacity:.7}
+    .c-file-name{font-size:14px;font-weight:520;line-height:22px}
+    .c-file-meta{margin-top:3px;font-size:12px;color:var(--muted);line-height:18px}
+    .c-ready{display:inline-flex;align-items:center;gap:6px;font-size:12px}
+    .c-ready .icon{width:14px;height:14px;opacity:.75}
+    .c-updated{font-size:12px;color:var(--muted)}
+    .c-row-more{width:28px;height:28px;display:flex;align-items:center;justify-content:center}
+    .c-row-more .icon{width:16px;height:16px}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="global-sidebar" aria-label="全局导航">
+ <div class="brand-row"><img class="brand" src="../../ragvia/logo.svg" alt="ragvia"><img class="collapse" src="../../../icons/ragvia/panel-left-close.svg" alt=""></div>
+ <div class="global-new"><img class="icon" src="../../../icons/ragvia/plus.svg" alt="">新对话</div>
+ <div class="global-search"><img class="icon" src="../../../icons/ragvia/search.svg" alt="">搜索与命令<kbd>⌘K</kbd></div>
+ <div class="global-groups">
+  <div class="global-group-label">工作区<span>⌄</span></div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/conversation.svg" alt="">对话</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/conversation-history.svg" alt="">问答历史</div>
+  <div class="global-group-label" style="margin-top:19px">知识库管理<span>⌄</span></div>
+  <div class="global-nav active"><img class="icon" src="../../../icons/ragvia/dataset.svg" alt="">数据集</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/knowledge-base.svg" alt="">知识库</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/quarantine.svg" alt="">隔离队列</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/feedback.svg" alt="">反馈质检</div>
+  <div class="global-group-label" style="margin-top:19px">入库流程<span>⌄</span></div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/ingestion.svg" alt="">入库管理</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/parsing.svg" alt="">文档解析</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/data-governance.svg" alt="">数据治理</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/braces.svg" alt="">治理配置</div>
+  <div class="global-nav"><img class="icon" src="../../../icons/ragvia/chunking.svg" alt="">切块预览</div>
+ </div>
+ <footer class="global-footer"><div class="global-profile"><div class="global-avatar"><img class="icon" src="../../../icons/ragvia/user.svg" alt=""></div><div><strong>开发模式</strong><small>本地开发环境</small></div><div class="profile-end"><img class="icon" src="../../../icons/ragvia/log-out.svg" alt=""><img class="icon" src="../../../icons/ragvia/sun.svg" alt=""></div></div><div class="global-appearance"><img class="icon" src="../../../icons/ragvia/palette.svg" alt="">界面外观<small>5 种风格</small></div><div class="global-service"><span></span>服务已就绪</div></footer>
+</aside>
+
+    <main class="main">
+      <header class="c-page-header">
+        <h1 class="c-page-title"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset" data-icon-appearance="color" data-icon-tone="source"><g data-icon-fill="true" opacity="0.12" stroke="none"><rect x="5" y="3.5" width="14" height="5" rx="1" fill="currentColor" stroke="none" /></g><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>数据集</h1>
+        <button class="c-primary" type="button"><img class="icon" src="../../../icons/ragvia/plus.svg" alt="">新建数据集</button>
+      </header>
+      <div class="c-workspace">
+        <aside class="c-queue" aria-label="数据集队列">
+          <div class="c-queue-tools">
+            <label class="c-search"><img class="icon" src="../../../icons/ragvia/search.svg" alt=""><input type="text" placeholder="搜索数据集" aria-label="搜索数据集" readonly></label>
+            <div class="c-filters">
+              <button class="c-filter" type="button"><span>全部状态</span><img class="icon" src="../../../icons/ragvia/chevron-down.svg" alt=""></button>
+              <button class="c-filter" type="button"><span>全部分类</span><img class="icon" src="../../../icons/ragvia/chevron-down.svg" alt=""></button>
+            </div>
+          </div>
+          <div class="c-queue-list">
+            <div class="c-dataset c-selected" aria-current="true">
+              <div class="c-dataset-name">产品使用文档<span class="selection-check"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6" /></svg></span></div>
+              <div class="c-dataset-meta"><span>128 文档</span><span class="c-dataset-status semantic-status" data-state="active"><i class="c-status-dot"></i>正常</span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">API 与集成指南</div>
+              <div class="c-dataset-meta"><span>64 文档</span><span class="c-dataset-status semantic-status" data-state="active"><i class="c-status-dot"></i>正常</span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">客户交付资料</div>
+              <div class="c-dataset-meta"><span>86 文档</span><span class="c-dataset-status semantic-status" data-state="anomaly"><svg class="icon" aria-hidden="true" focusable="false" style="width:12px;height:12px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-circle"><circle cx="12" cy="12" r="9" /><path d="M12 7v6" /><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" /></svg>异常<span class="issue-number">3</span></span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">销售与产品资料</div>
+              <div class="c-dataset-meta"><span>41 文档</span><span class="c-dataset-status semantic-status" data-state="active"><i class="c-status-dot"></i>正常</span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">研发规范</div>
+              <div class="c-dataset-meta"><span>38 文档</span><span class="c-dataset-status semantic-status" data-state="pending"><i class="c-status-ring"></i>待处理</span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">内部制度</div>
+              <div class="c-dataset-meta"><span>25 文档</span><span class="c-dataset-status semantic-status" data-state="active"><i class="c-status-dot"></i>正常</span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">会议与项目纪要</div>
+              <div class="c-dataset-meta"><span>58 文档</span><span class="c-dataset-status semantic-status" data-state="pending"><i class="c-status-ring"></i>待处理</span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">历史合同归档</div>
+              <div class="c-dataset-meta"><span>143 文档</span><span class="c-dataset-status semantic-status" data-state="anomaly"><svg class="icon" aria-hidden="true" focusable="false" style="width:12px;height:12px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="alert-circle"><circle cx="12" cy="12" r="9" /><path d="M12 7v6" /><circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" /></svg>异常<span class="issue-number">5</span></span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name">检索评测集</div>
+              <div class="c-dataset-meta"><span>12 文档</span><span class="c-dataset-status semantic-status" data-state="testing"><svg class="icon" aria-hidden="true" focusable="false" style="width:12px;height:12px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="evaluation"><path d="M4 3.5h10l6 6v11H4Zm10 0v6h6M8 16l2 2 4-5" /><path d="M8 8h2" /></svg>测试集</span></div>
+            </div>
+            <div class="c-dataset">
+              <div class="c-dataset-name c-dataset-name-long">Parsing Workspace [b10fb173]</div>
+              <div class="c-dataset-meta"><span>0 文档</span><span class="c-dataset-status semantic-status" data-state="active"><i class="c-status-dot"></i>正常</span></div>
+            </div>
+          </div>
+        </aside>
+        <section class="c-detail" aria-label="产品使用文档工作台">
+          <div class="c-object-path"><span>产品研发</span><span class="c-path-separator">/</span><span>7e3a9c12</span></div>
+          <div class="c-object-title-row">
+            <svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset" data-icon-appearance="color" data-icon-tone="source"><g data-icon-fill="true" opacity="0.12" stroke="none"><rect x="5" y="3.5" width="14" height="5" rx="1" fill="currentColor" stroke="none" /></g><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+            <h2 class="c-object-title">产品使用文档</h2>
+            <span class="c-object-status semantic-status" data-state="active"><i class="c-status-dot"></i>正常</span>
+          </div>
+          <p class="c-object-description">产品功能、操作说明与常见问题。</p>
+          <div class="c-summary">
+            <div class="c-stats">
+              <div class="c-stat"><div class="c-stat-label">文档</div><div class="c-stat-value">128</div></div>
+              <div class="c-stat"><div class="c-stat-label">切块</div><div class="c-stat-value">2,148</div></div>
+              <div class="c-stat"><div class="c-stat-label">成员</div><div class="c-stat-value">8</div></div>
+            </div>
+            <div class="c-readonly-meta">
+              <div><div class="c-meta-label">访问权限</div><div class="c-meta-value"><img class="icon" src="../../../icons/ragvia/members.svg" alt="">全员</div></div>
+              <div><div class="c-meta-label">最近更新</div><div class="c-meta-value"><img class="icon" src="../../../icons/ragvia/clock.svg" alt="">12 分钟前</div></div>
+            </div>
+          </div>
+          <div class="c-toolbar" aria-label="数据集操作">
+            <button class="c-primary" type="button"><img class="icon" src="../../../icons/ragvia/ingestion.svg" alt="">入库</button>
+            <button class="c-tool-button" type="button"><img class="icon" src="../../../icons/ragvia/retrieval.svg" alt="">检索测试</button>
+            <span class="c-tool-divider"></span>
+            <button class="c-tool-button" type="button"><img class="icon" src="../../../icons/ragvia/scan-line.svg" alt="">预检扫描</button>
+            <button class="c-tool-button" type="button"><img class="icon" src="../../../icons/ragvia/profile-discovery.svg" alt="">数据画像</button>
+            <button class="c-tool-button" type="button"><img class="icon" src="../../../icons/ragvia/settings2.svg" alt="">入库策略</button>
+            <button class="c-tool-button c-tool-more" type="button">更多<img class="icon" src="../../../icons/ragvia/chevron-down.svg" alt=""></button>
+          </div>
+          <section class="c-documents" aria-label="数据集文档">
+            <div class="c-document-heading">
+              <h3 class="c-section-title">文档<span class="c-section-count">128</span></h3>
+              <div class="c-document-controls">
+                <label class="c-search c-document-search"><img class="icon" src="../../../icons/ragvia/search.svg" alt=""><input type="text" placeholder="搜索文档" aria-label="搜索文档" readonly></label>
+                <button class="c-sort" type="button">最近更新<img class="icon" src="../../../icons/ragvia/chevron-down.svg" alt=""></button>
+              </div>
+            </div>
+            <table class="c-documents-table">
+              <thead><tr><th>文档名称</th><th>状态</th><th>切块</th><th>最近更新</th><th></th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><div class="c-file-cell"><span class="c-file-icon"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf" data-icon-appearance="color" data-icon-tone="pdf"><g data-icon-fill="true" opacity="0.12" stroke="none"><path d="M5 3.5h9l5 5v12H5Z" fill="currentColor" stroke="none" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" fill="currentColor" stroke="none" /></g><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg></span><div><div class="c-file-name">产品使用手册.pdf</div><div class="c-file-meta">PDF · 4.2 MB</div></div></div></td>
+                  <td><span class="c-ready semantic-status" data-state="active"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span></td><td>162</td><td class="c-updated">12 分钟前</td>
+                  <td><button class="c-row-more" type="button" aria-label="产品使用手册更多操作"><img class="icon" src="../../../icons/ragvia/more-horizontal.svg" alt=""></button></td>
+                </tr>
+                <tr>
+                  <td><div class="c-file-cell"><span class="c-file-icon"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown" data-icon-appearance="color" data-icon-tone="neutral"><g data-icon-fill="true" opacity="0.12" stroke="none"><rect x="3" y="5" width="18" height="14" rx="1" fill="currentColor" stroke="none" /></g><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg></span><div><div class="c-file-name">知识库接入规范.md</div><div class="c-file-meta">MD · 84 KB</div></div></div></td>
+                  <td><span class="c-ready semantic-status" data-state="active"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span></td><td>24</td><td class="c-updated">35 分钟前</td>
+                  <td><button class="c-row-more" type="button" aria-label="知识库接入规范更多操作"><img class="icon" src="../../../icons/ragvia/more-horizontal.svg" alt=""></button></td>
+                </tr>
+                <tr>
+                  <td><div class="c-file-cell"><span class="c-file-icon"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-pdf" data-icon-appearance="color" data-icon-tone="pdf"><g data-icon-fill="true" opacity="0.12" stroke="none"><path d="M5 3.5h9l5 5v12H5Z" fill="currentColor" stroke="none" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" fill="currentColor" stroke="none" /></g><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m8 17 3-7 1.5 5 3.5 2H8Z" /></svg></span><div><div class="c-file-name">权限与成员管理.pdf</div><div class="c-file-meta">PDF · 1.8 MB</div></div></div></td>
+                  <td><span class="c-ready semantic-status" data-state="active"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span></td><td>76</td><td class="c-updated">1 小时前</td>
+                  <td><button class="c-row-more" type="button" aria-label="权限与成员管理更多操作"><img class="icon" src="../../../icons/ragvia/more-horizontal.svg" alt=""></button></td>
+                </tr>
+                <tr>
+                  <td><div class="c-file-cell"><span class="c-file-icon"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-markdown" data-icon-appearance="color" data-icon-tone="neutral"><g data-icon-fill="true" opacity="0.12" stroke="none"><rect x="3" y="5" width="18" height="14" rx="1" fill="currentColor" stroke="none" /></g><rect x="3" y="5" width="18" height="14" rx="1" /><path d="M6.5 15V9l3 3 3-3v6M17 9v6m-2-2 2 2 2-2" /></svg></span><div><div class="c-file-name">常见问题与排查.md</div><div class="c-file-meta">MD · 126 KB</div></div></div></td>
+                  <td><span class="c-ready semantic-status" data-state="active"><svg class="icon" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check-circle"><circle cx="12" cy="12" r="9" /><path d="m7.5 12 3 3 6-6" /></svg>已就绪</span></td><td>38</td><td class="c-updated">昨天</td>
+                  <td><button class="c-row-more" type="button" aria-label="常见问题与排查更多操作"><img class="icon" src="../../../icons/ragvia/more-horizontal.svg" alt=""></button></td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+        </section>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

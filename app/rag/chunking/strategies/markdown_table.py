@@ -8,7 +8,6 @@ substring of the original text so highlight offsets remain valid).
 Non-table text is chunked with a fallback RecursiveCharacterTextSplitter.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -173,7 +172,7 @@ def _iter_table_rows(text: str, *, start: int, end: int, header_end: int) -> lis
 
 
 class MarkdownTableChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -258,8 +257,8 @@ class MarkdownTableChunker(BaseChunker):
         return [self._build_text_chunk(base_meta, block, split_doc) for split_doc in split_docs]
 
     def _split_table_block(self, text: str, base_meta: dict[str, Any], block: _Block) -> list[Document]:
-        header_end = int(block.header_end or block.start)
-        header_text = text[block.start:header_end]
+        header_end = block.header_end or block.start
+        header_text = text[block.start : header_end]
         rows = _iter_table_rows(text, start=block.start, end=block.end, header_end=header_end)
         if not rows:
             meta = self._table_meta(
@@ -290,9 +289,9 @@ class MarkdownTableChunker(BaseChunker):
                 table_end=block.end,
                 header_text=header_text,
             )
-            meta["table_row_count"] = int(end_idx - start_idx)
-            meta["table_row_start_index"] = int(start_idx)
-            meta["table_row_end_index"] = int(end_idx - 1)
+            meta["table_row_count"] = end_idx - start_idx
+            meta["table_row_start_index"] = start_idx
+            meta["table_row_end_index"] = end_idx - 1
             chunks.append(Document(page_content=text[chunk_start:chunk_end], metadata=meta))
 
             next_start = self._next_table_row_start(rows, start_idx=start_idx, end_idx=end_idx)

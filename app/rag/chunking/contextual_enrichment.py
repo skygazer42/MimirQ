@@ -1,6 +1,6 @@
-
 import re
 from collections import Counter
+from typing import Any
 
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 
@@ -77,7 +77,7 @@ def _is_mostly_cjk(text: str) -> bool:
     return (cjk / max(1, len(raw))) >= 0.12
 
 
-def _extract_section(meta: dict) -> str | None:
+def _extract_section(meta: dict[str, Any]) -> str | None:
     if not isinstance(meta, dict):
         return None
     header = meta.get("header_path") or meta.get("outline_path_str") or meta.get("header_context")
@@ -121,10 +121,7 @@ def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
     counts = Counter(filtered)
     out: list[str] = []
     for tok, _n in counts.most_common(max(0, int(top_k or 0))):
-        tok_norm = str(tok).strip()
-        if not tok_norm:
-            continue
-        out.append(tok_norm[:40])
+        out.append(tok[:40])
     return out
 
 
@@ -163,7 +160,7 @@ def build_context_prefix(
     content: str,
     *,
     document_title: str | None,
-    meta: dict,
+    meta: dict[str, Any],
     max_prefix_chars: int = 240,
     keywords_top_k: int = 6,
     keywords_max_chars: int = 2000,

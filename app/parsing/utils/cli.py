@@ -2,7 +2,6 @@
 Small helpers for resolving optional CLI tools.
 """
 
-
 import os
 import shutil
 import subprocess

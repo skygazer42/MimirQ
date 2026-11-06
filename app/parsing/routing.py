@@ -99,10 +99,7 @@ def _magicpdf_available() -> bool:
     if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
         return True
     cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    return bool(
-        resolve_cli_command(cli)
-        and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-    )
+    return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", "")))
 
 
 def _etl4llm_available() -> bool:

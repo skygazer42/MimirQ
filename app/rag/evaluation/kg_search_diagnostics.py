@@ -13,9 +13,9 @@ Optional persistence (compact run snapshots) is handled at the API layer.
 
 import asyncio
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from uuid import UUID
 
 from sqlalchemy import func, or_
@@ -42,9 +42,13 @@ from app.rag.evaluation.kg_hardcase_generator import generate_hardcases_llm
 from app.rag.evaluation.kg_search_diagnostics_metrics import compute_kg_hit_metrics
 from app.rag.kg.models import KgEntity, KgEventEntity, KgRelation, KgSourceEvent
 from app.rag.kg.search.config import RerankStrategy, SearchConfig
-from app.rag.kg.search.searcher import KGSearcher
+from app.rag.kg.search.searcher import search as search_kg
 from app.rag.kg.utils import get_logger
 from app.services.regression_run_scope import validate_case_ids_belong_to_dataset
+
+if TYPE_CHECKING:
+    from app.rag.evaluation.kg_hardcase_generator import Hardcase
+    from app.rag.llm.base import BaseLLMClient
 
 logger = get_logger("eval.kg_search_diagnostics")
 _KG_DIAGNOSTICS_FALLBACK_LOG_MESSAGE = "Ignoring non-critical KG diagnostics fallback failure: %s"
@@ -59,6 +63,28 @@ _KG_RELATION_DEBUG_KEYS = (
     "max_neighbors",
 )
 _KG_SKILL_ENTITY_TYPES = {"Skill", "SkillTag", "SkillCategory"}
+
+
+class _PreflightError(TypedDict):
+    document_id: str
+    error: str
+    event_count: int
+
+
+class _PreflightState(TypedDict):
+    enabled: bool
+    documents_total: int
+    documents_missing_kg: int
+    documents_extracted_ok: int
+    documents_extracted_failed: int
+    elapsed_sec: float
+    errors: list[_PreflightError]
+
+
+class _ClueCounts(TypedDict):
+    total: int
+    query_to_entity: int
+    query_to_event: int
 
 
 @dataclass(frozen=True)
@@ -110,7 +136,7 @@ class _SearchOutcome:
 class _EvaluatedSearch:
     outcome: _SearchOutcome
     metrics: KGSearchRunMetrics
-    clue_counts: dict[str, int]
+    clue_counts: _ClueCounts
     first_hit_rank: int | None
     selected_has_skill: bool
     relation_debug: dict[str, Any] | None
@@ -135,7 +161,7 @@ class _CaseEvaluation:
 
 @dataclass
 class _DiagnosticsRunState:
-    preflight: dict[str, Any]
+    preflight: _PreflightState
     items_out: list[KGSearchDiagnosticsItem] = field(default_factory=list)
     failure_breakdown: dict[str, int] = field(default_factory=dict)
     baseline_hits: list[float] = field(default_factory=list)
@@ -154,25 +180,25 @@ class _DiagnosticsRunState:
 
     def record_baseline(self, metrics: KGSearchRunMetrics) -> None:
         self.baseline_hits.append(1.0 if metrics.hit_at_k else 0.0)
-        self.baseline_mrrs.append(float(metrics.mrr))
-        self.baseline_recalls.append(float(metrics.recall))
-        self.baseline_ndcgs.append(float(metrics.ndcg))
-        self.baseline_maps.append(float(metrics.map))
+        self.baseline_mrrs.append(metrics.mrr)
+        self.baseline_recalls.append(metrics.recall)
+        self.baseline_ndcgs.append(metrics.ndcg)
+        self.baseline_maps.append(metrics.map)
 
     def record_hardcase(self, metrics: KGSearchRunMetrics) -> None:
         self.hardcase_hits.append(1.0 if metrics.hit_at_k else 0.0)
-        self.hardcase_mrrs.append(float(metrics.mrr))
-        self.hardcase_recalls.append(float(metrics.recall))
-        self.hardcase_ndcgs.append(float(metrics.ndcg))
-        self.hardcase_maps.append(float(metrics.map))
+        self.hardcase_mrrs.append(metrics.mrr)
+        self.hardcase_recalls.append(metrics.recall)
+        self.hardcase_ndcgs.append(metrics.ndcg)
+        self.hardcase_maps.append(metrics.map)
 
     def record_failure(self, primary_cause: str) -> None:
         if primary_cause == "ok":
             return
-        self.failure_breakdown[primary_cause] = int(self.failure_breakdown.get(primary_cause, 0) or 0) + 1
+        self.failure_breakdown[primary_cause] = (self.failure_breakdown.get(primary_cause, 0) or 0) + 1
 
     def can_generate_deterministic_hardcases(self, limits: _DiagnosticsLimits) -> bool:
-        return int(self.deterministic_failed_cases_used) < int(limits.max_failed_for_hardcase)
+        return self.deterministic_failed_cases_used < limits.max_failed_for_hardcase
 
     def note_deterministic_case_used(self) -> None:
         self.deterministic_failed_cases_used += 1
@@ -213,7 +239,7 @@ def _extract_evidence_fields(case: RagasRegressionCase) -> tuple[list[str], list
     """
     Returns: (chunk_ids, document_ids, evidence_snippets)
     """
-    refs = getattr(case, "reference_sources", None) or []
+    refs = case.reference_sources or []
     chunk_ids: list[str] = []
     doc_ids: list[str] = []
     snippets: list[str] = []
@@ -249,7 +275,7 @@ def _first_hit_rank(events: Sequence[dict[str, Any]], evidence_chunk_ids: set[st
     return None
 
 
-def _summarize_clues(clues: Any) -> dict[str, int]:
+def _summarize_clues(clues: Any) -> _ClueCounts:
     if not isinstance(clues, list):
         return {"total": 0, "query_to_entity": 0, "query_to_event": 0}
     q2e = 0
@@ -262,7 +288,7 @@ def _summarize_clues(clues: Any) -> dict[str, int]:
             q2e += 1
         if rel == "query->event":
             q2v += 1
-    return {"total": int(len(clues)), "query_to_entity": int(q2e), "query_to_event": int(q2v)}
+    return {"total": len(clues), "query_to_entity": q2e, "query_to_event": q2v}
 
 
 def _event_out(ev: dict[str, Any]) -> KGSearchEventOut:
@@ -322,7 +348,7 @@ async def _ensure_kg_extracted_for_document(
             replace_existing=True,
             prune_orphan_entities=True,
         )
-        return True, None, int(len(events or []))
+        return True, None, len(events or [])
     except Exception as exc:  # noqa: BLE001
         return False, str(exc)[:200], 0
 
@@ -433,9 +459,9 @@ def _normalize_limits(req: KGSearchDiagnosticsRequest) -> _DiagnosticsLimits:
     )
 
 
-def _new_preflight_state(*, enabled: bool) -> dict[str, Any]:
+def _new_preflight_state(*, enabled: bool) -> _PreflightState:
     return {
-        "enabled": bool(enabled),
+        "enabled": enabled,
         "documents_total": 0,
         "documents_missing_kg": 0,
         "documents_extracted_ok": 0,
@@ -501,12 +527,14 @@ def _load_missing_kg_document_ids(
     return missing
 
 
-def _increment_preflight(preflight: dict[str, Any], key: str) -> None:
-    preflight[key] = int(preflight.get(key, 0) or 0) + 1
+def _increment_preflight(
+    preflight: _PreflightState, key: Literal["documents_extracted_ok", "documents_extracted_failed"]
+) -> None:
+    preflight[key] += 1
 
 
 def _append_preflight_error(
-    preflight: dict[str, Any],
+    preflight: _PreflightState,
     *,
     document_id: UUID,
     error: str | None,
@@ -514,15 +542,11 @@ def _append_preflight_error(
 ) -> None:
     if not error:
         return
-    errors = preflight.get("errors")
-    if not isinstance(errors, list):
-        errors = []
-        preflight["errors"] = errors
-    errors.append(
+    preflight["errors"].append(
         {
             "document_id": str(document_id),
             "error": str(error)[:200],
-            "event_count": int(event_count),
+            "event_count": event_count,
         }
     )
 
@@ -534,24 +558,24 @@ async def _run_preflight_extraction(
     account_id: str,
     cases: Sequence[RagasRegressionCase],
     limits: _DiagnosticsLimits,
-    preflight: dict[str, Any],
+    preflight: _PreflightState,
 ) -> None:
     if not preflight.get("enabled") or not cases:
         return
 
     t0 = time.perf_counter()
     doc_uuids = _collect_case_document_ids(cases)
-    preflight["documents_total"] = int(len(doc_uuids))
+    preflight["documents_total"] = len(doc_uuids)
     if not doc_uuids:
-        preflight["elapsed_sec"] = round(float(time.perf_counter() - t0), 3)
+        preflight["elapsed_sec"] = round(time.perf_counter() - t0, 3)
         return
 
     missing = _load_missing_kg_document_ids(db, tenant_id=tenant_id, document_ids=doc_uuids)
-    preflight["documents_missing_kg"] = int(len(missing))
+    preflight["documents_missing_kg"] = len(missing)
     if missing:
         max_conc = max(
             1,
-            min(int(getattr(settings, "KG_EXTRACT_MAX_CONCURRENCY", 3) or 3), 5),
+            min(int(settings.KG_EXTRACT_MAX_CONCURRENCY or 3), 5),
         )
         sem = asyncio.Semaphore(max_conc)
 
@@ -582,7 +606,7 @@ async def _run_preflight_extraction(
         except Exception as exc:
             logger.debug(_KG_DIAGNOSTICS_FALLBACK_LOG_MESSAGE, exc)
 
-    preflight["elapsed_sec"] = round(float(time.perf_counter() - t0), 3)
+    preflight["elapsed_sec"] = round(time.perf_counter() - t0, 3)
 
 
 def _build_case_context(
@@ -599,7 +623,7 @@ def _build_case_context(
         tenant_id=tenant_id,
         evidence_chunk_ids=chunk_ids,
     )
-    scope_doc_ids_raw = getattr(case, "document_ids", None) or []
+    scope_doc_ids_raw = case.document_ids or []
     return _CaseContext(
         case=case,
         question=question,
@@ -671,12 +695,12 @@ def _build_search_config(
             cfg.expand.max_hops = max(1, min(int(expand_max_hops), 5))
         except Exception as exc:
             logger.debug(_KG_DIAGNOSTICS_FALLBACK_LOG_MESSAGE, exc)
-    cfg.rerank.max_results = int(scope.max_results)
+    cfg.rerank.max_results = scope.max_results
     return cfg
 
 
 async def _run_search(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     query: str,
@@ -700,7 +724,7 @@ async def _run_search(
         graph_embeddings_enabled=graph_embeddings_enabled,
     )
     try:
-        raw = await searcher.search(cfg)
+        raw = await search(cfg)
         return _SearchOutcome(
             cfg=cfg,
             raw_events=list((raw or {}).get("events") or []),
@@ -759,7 +783,7 @@ def _evaluated_run_to_result(query: str, evaluated: _EvaluatedSearch) -> KGSearc
 
 
 async def _run_evaluated_search(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     query: str,
@@ -774,7 +798,7 @@ async def _run_evaluated_search(
     graph_embeddings_enabled: bool | None = None,
 ) -> _EvaluatedSearch:
     outcome = await _run_search(
-        searcher,
+        search,
         scope=scope,
         query=query,
         relation_expansion_enabled=relation_expansion_enabled,
@@ -796,24 +820,24 @@ def _delta_vs_baseline(
     alt_rank = alt_run.first_hit_rank
     rank_delta = None
     if base_rank is not None and alt_rank is not None:
-        rank_delta = int(base_rank) - int(alt_rank)
+        rank_delta = base_rank - alt_rank
     return {
         "delta_hit_at_k": int(alt_run.metrics.hit_at_k) - int(baseline.metrics.hit_at_k),
-        "delta_mrr": round(float(alt_run.metrics.mrr - baseline.metrics.mrr), 6),
-        "delta_recall": round(float(alt_run.metrics.recall - baseline.metrics.recall), 6),
+        "delta_mrr": round(alt_run.metrics.mrr - baseline.metrics.mrr, 6),
+        "delta_recall": round(alt_run.metrics.recall - baseline.metrics.recall, 6),
         "delta_first_hit_rank": rank_delta,
     }
 
 
 def _ablation_result_payload(run: _EvaluatedSearch) -> dict[str, Any]:
     return {
-        "hit_at_k": bool(run.metrics.hit_at_k),
-        "mrr": float(run.metrics.mrr),
-        "recall": float(run.metrics.recall),
-        "first_hit_rank": int(run.first_hit_rank) if run.first_hit_rank is not None else None,
-        "returned_events": int(len(run.outcome.raw_events)),
-        "selected_entities": int(len(run.outcome.raw_entities)),
-        "selected_has_skill": bool(run.selected_has_skill),
+        "hit_at_k": run.metrics.hit_at_k,
+        "mrr": run.metrics.mrr,
+        "recall": run.metrics.recall,
+        "first_hit_rank": run.first_hit_rank,
+        "returned_events": len(run.outcome.raw_events),
+        "selected_entities": len(run.outcome.raw_entities),
+        "selected_has_skill": run.selected_has_skill,
         "clues": run.clue_counts,
         "relation_expansion": _compact_relation_debug(run.relation_debug),
         "error": run.outcome.error,
@@ -821,7 +845,7 @@ def _ablation_result_payload(run: _EvaluatedSearch) -> dict[str, Any]:
 
 
 async def _run_rerank_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -832,7 +856,7 @@ async def _run_rerank_ablation(
     base = baseline.outcome.cfg.rerank.strategy
     alt = RerankStrategy.RRF if base == RerankStrategy.PAGERANK else RerankStrategy.PAGERANK
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -846,12 +870,12 @@ async def _run_rerank_ablation(
             "alt_run": _ablation_result_payload(alt_run),
             "delta": _delta_vs_baseline(baseline, alt_run),
         },
-        bool(alt_run.metrics.hit_at_k),
+        alt_run.metrics.hit_at_k,
     )
 
 
 async def _run_relation_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -861,7 +885,7 @@ async def _run_relation_ablation(
 ) -> tuple[dict[str, Any], bool]:
     base_rel = bool((baseline.relation_debug or {}).get("enabled"))
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -875,12 +899,12 @@ async def _run_relation_ablation(
             "alt_run": _ablation_result_payload(alt_run),
             "delta": _delta_vs_baseline(baseline, alt_run),
         },
-        bool(alt_run.metrics.hit_at_k),
+        alt_run.metrics.hit_at_k,
     )
 
 
 async def _run_path_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -888,9 +912,9 @@ async def _run_path_ablation(
     k: int,
     baseline: _EvaluatedSearch,
 ) -> tuple[dict[str, Any], bool]:
-    base_expand = bool(getattr(baseline.outcome.cfg.expand, "enabled", True))
+    base_expand = bool(baseline.outcome.cfg.expand.enabled)
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -904,12 +928,12 @@ async def _run_path_ablation(
             "alt_run": _ablation_result_payload(alt_run),
             "delta": _delta_vs_baseline(baseline, alt_run),
         },
-        bool(alt_run.metrics.hit_at_k),
+        alt_run.metrics.hit_at_k,
     )
 
 
 async def _run_skill_nodes_ablation(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     question: str,
@@ -918,7 +942,7 @@ async def _run_skill_nodes_ablation(
     baseline: _EvaluatedSearch,
 ) -> tuple[dict[str, Any], bool]:
     alt_run = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=question,
         evidence_set=evidence_set,
@@ -931,12 +955,12 @@ async def _run_skill_nodes_ablation(
             "alt_run": _ablation_result_payload(alt_run),
             "delta": _delta_vs_baseline(baseline, alt_run),
         },
-        bool(alt_run.metrics.hit_at_k),
+        alt_run.metrics.hit_at_k,
     )
 
 
 async def _run_case_ablations(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     case_ctx: _CaseContext,
@@ -957,7 +981,7 @@ async def _run_case_ablations(
     for key, cause, runner in steps:
         try:
             payload, hit = await runner(
-                searcher,
+                search,
                 scope=scope,
                 question=case_ctx.question,
                 evidence_set=case_ctx.evidence_set,
@@ -979,12 +1003,12 @@ def _build_attribution_signals(
     ablations: dict[str, Any],
 ) -> dict[str, Any]:
     signals: dict[str, Any] = {
-        "ground_truth_event_count": int(len(case_ctx.gt_event_ids)),
-        "ground_truth_has_skill": bool(case_ctx.gt_has_skill),
-        "selected_has_skill": bool(evaluated.selected_has_skill),
-        "first_hit_rank": (int(evaluated.first_hit_rank) if evaluated.first_hit_rank is not None else None),
-        "returned_events": int(len(evaluated.outcome.raw_events)),
-        "selected_entities": int(len(evaluated.outcome.raw_entities)),
+        "ground_truth_event_count": len(case_ctx.gt_event_ids),
+        "ground_truth_has_skill": case_ctx.gt_has_skill,
+        "selected_has_skill": evaluated.selected_has_skill,
+        "first_hit_rank": evaluated.first_hit_rank,
+        "returned_events": len(evaluated.outcome.raw_events),
+        "selected_entities": len(evaluated.outcome.raw_entities),
         "clues": evaluated.clue_counts,
         "relation_expansion": evaluated.relation_debug or {},
     }
@@ -1000,15 +1024,15 @@ def _determine_primary_cause(
     ablation_override: str | None,
 ) -> str:
     primary_cause = _pick_primary_cause(
-        gt_event_count=int(len(case_ctx.gt_event_ids)),
+        gt_event_count=len(case_ctx.gt_event_ids),
         metrics=evaluated.metrics,
         first_hit_rank=evaluated.first_hit_rank,
         relation_debug=evaluated.relation_debug,
         ground_truth_has_skill=case_ctx.gt_has_skill,
-        selected_has_skill=bool(evaluated.selected_has_skill),
+        selected_has_skill=evaluated.selected_has_skill,
         clue_counts=evaluated.clue_counts,
-        selected_entities=int(len(evaluated.outcome.raw_entities)),
-        returned_events=int(len(evaluated.outcome.raw_events)),
+        selected_entities=len(evaluated.outcome.raw_entities),
+        returned_events=len(evaluated.outcome.raw_events),
     )
     if ablation_override is not None:
         return str(ablation_override)
@@ -1038,7 +1062,7 @@ def _build_case_item(
 
 
 async def _evaluate_case(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     db: Session,
     tenant_id: UUID,
@@ -1054,14 +1078,14 @@ async def _evaluate_case(
         scope_doc_uuids=case_ctx.scope_doc_uuids,
     )
     baseline = await _run_evaluated_search(
-        searcher,
+        search,
         scope=scope,
         query=case_ctx.question,
         evidence_set=case_ctx.evidence_set,
         k=limits.k,
     )
     ablations, override = await _run_case_ablations(
-        searcher,
+        search,
         scope=scope,
         case_ctx=case_ctx,
         baseline=baseline,
@@ -1253,7 +1277,7 @@ def _pick_primary_cause(
     relation_debug: dict[str, Any] | None,
     ground_truth_has_skill: bool,
     selected_has_skill: bool,
-    clue_counts: dict[str, int],
+    clue_counts: _ClueCounts,
     selected_entities: int,
     returned_events: int,
 ) -> str:
@@ -1261,7 +1285,7 @@ def _pick_primary_cause(
         return "extraction_missing"
     if metrics.hit_at_k:
         return "ok"
-    if first_hit_rank is not None and int(first_hit_rank) > int(metrics.k):
+    if first_hit_rank is not None and first_hit_rank > metrics.k:
         return "rerank_cutoff"
     if ground_truth_has_skill and not selected_has_skill:
         return "skill"
@@ -1324,19 +1348,19 @@ def _queue_llm_hardcase_case(
 
 
 async def _append_hardcase_runs(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     scope: _SearchScope,
     evidence_set: set[str],
     k: int,
     target: KGSearchDiagnosticsItem,
-    hardcases: Sequence[Any],
+    hardcases: "Sequence[Hardcase]",
     state: _DiagnosticsRunState,
 ) -> None:
     for hardcase in hardcases:
         state.hardcases_generated += 1
         evaluated = await _run_evaluated_search(
-            searcher,
+            search,
             scope=scope,
             query=str(hardcase.question),
             evidence_set=set(evidence_set),
@@ -1354,7 +1378,7 @@ async def _append_hardcase_runs(
 
 
 async def _run_deterministic_hardcases_for_case(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     db: Session,
     tenant_id: UUID,
@@ -1377,7 +1401,7 @@ async def _run_deterministic_hardcases_for_case(
     if hardcases:
         state.note_deterministic_case_used()
     await _append_hardcase_runs(
-        searcher,
+        search,
         scope=evaluation.scope,
         evidence_set=evaluation.ctx.evidence_set,
         k=limits.k,
@@ -1387,7 +1411,7 @@ async def _run_deterministic_hardcases_for_case(
     )
 
 
-async def _load_kg_diagnostics_llm_client() -> Any | None:
+async def _load_kg_diagnostics_llm_client() -> "BaseLLMClient | None":
     try:
         from app.rag.llm.factory import create_llm_client
 
@@ -1398,7 +1422,7 @@ async def _load_kg_diagnostics_llm_client() -> Any | None:
 
 
 async def _run_llm_hardcases(
-    searcher: KGSearcher,
+    search: Callable[[SearchConfig], Awaitable[dict[str, Any]]],
     *,
     tenant_id: UUID,
     account_id: str,
@@ -1432,7 +1456,7 @@ async def _run_llm_hardcases(
             scope_doc_uuids=pending.scope_doc_uuids,
         )
         await _append_hardcase_runs(
-            searcher,
+            search,
             scope=scope,
             evidence_set=pending.evidence_set,
             k=limits.k,
@@ -1445,7 +1469,7 @@ async def _run_llm_hardcases(
 def _mean(values: Sequence[float]) -> float:
     if not values:
         return 0.0
-    return float(sum(values) / max(1, len(values)))
+    return sum(values) / max(1, len(values))
 
 
 def _build_summary(
@@ -1457,9 +1481,9 @@ def _build_summary(
 ) -> KGSearchDiagnosticsSummary:
     return KGSearchDiagnosticsSummary(
         dataset_id=limits.dataset_id,
-        cases_total=int(total),
-        cases_evaluated=int(len(cases)),
-        hardcases_generated=int(state.hardcases_generated),
+        cases_total=total,
+        cases_evaluated=len(cases),
+        hardcases_generated=state.hardcases_generated,
         baseline_hit_rate=round(_mean(state.baseline_hits), 4),
         baseline_mrr=round(_mean(state.baseline_mrrs), 4),
         baseline_recall=round(_mean(state.baseline_recalls), 4),
@@ -1513,10 +1537,10 @@ async def run_kg_search_diagnostics(
         preflight=state.preflight,
     )
 
-    searcher = KGSearcher()
+    search = search_kg
     for case in cases:
         evaluation = await _evaluate_case(
-            searcher,
+            search,
             db=db,
             tenant_id=tenant_id,
             account_id=account_id,
@@ -1529,7 +1553,7 @@ async def run_kg_search_diagnostics(
 
         if _should_generate_deterministic_hardcases(limits, state, evaluation):
             await _run_deterministic_hardcases_for_case(
-                searcher,
+                search,
                 db=db,
                 tenant_id=tenant_id,
                 limits=limits,
@@ -1545,7 +1569,7 @@ async def run_kg_search_diagnostics(
         )
 
     await _run_llm_hardcases(
-        searcher,
+        search,
         tenant_id=tenant_id,
         account_id=account_id,
         limits=limits,

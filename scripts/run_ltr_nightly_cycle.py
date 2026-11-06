@@ -6,6 +6,7 @@ import importlib.util
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from app.rag.core.hashing import stable_hash
@@ -26,7 +27,7 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _load_hard_negative_nightly_module():
+def _load_hard_negative_nightly_module() -> ModuleType:
     path = Path(__file__).resolve().with_name("mine_hard_negatives_nightly.py")
     spec = importlib.util.spec_from_file_location("mine_hard_negatives_nightly", str(path))
     if spec is None or spec.loader is None:
@@ -96,12 +97,12 @@ def main(argv: list[str] | None = None) -> int:
             "steps": {
                 "hard_negative_mining": {
                     "status": "error",
-                    "exit_code": int(hard_neg_rc),
+                    "exit_code": hard_neg_rc,
                 }
             },
         }
         cycle_manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        return int(hard_neg_rc)
+        return hard_neg_rc
 
     hard_neg_jsonl = out_dir / "hard_negatives.nightly.jsonl"
     hard_neg_manifest = out_dir / "hard_negatives.nightly.manifest.json"
@@ -149,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
                 "feedback_events": str(args.feedback_events or ""),
                 "tenant_id": str(args.tenant_id or ""),
                 "retrieval_config_hash": str(args.retrieval_config_hash or ""),
-                "hard_neg_rows": int(hard_neg_rows),
+                "hard_neg_rows": hard_neg_rows,
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -167,7 +168,7 @@ def main(argv: list[str] | None = None) -> int:
                 "status": "ok",
                 "output_path": str(hard_neg_jsonl),
                 "manifest_path": str(hard_neg_manifest),
-                "records_written": int(hard_neg_rows),
+                "records_written": hard_neg_rows,
             }
         },
         "lineage": lineage,

@@ -9,7 +9,6 @@ The chunker splits by target blocks (target line + recipe) and groups multiple
 targets per chunk to respect chunk_size/overlap while preserving offsets.
 """
 
-
 from dataclasses import dataclass
 from typing import Any
 
@@ -116,7 +115,7 @@ def looks_like_makefile(text: str) -> bool:
 
 
 class MakefileChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -168,7 +167,7 @@ class MakefileChunker(BaseChunker):
         meta["start_char"] = chunk_start
         meta["end_char"] = chunk_end
         meta.setdefault("doc_type_kwd", "makefile")
-        meta["make_target_count"] = int(end_idx - start_idx)
+        meta["make_target_count"] = end_idx - start_idx
         uniq = MakefileChunker._target_names(targets, start_idx=start_idx, end_idx=end_idx)
         if uniq:
             meta["make_targets"] = uniq

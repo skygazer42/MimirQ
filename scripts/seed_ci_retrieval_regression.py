@@ -271,11 +271,11 @@ def _upsert_document(
             dataset_id=dataset_id,
             filename=filename,
             file_type=file_type,
-            file_size=int(total_chars),
+            file_size=total_chars,
             file_path=f"ci://{filename}",
             status="completed",
             chunk_count=len(chunks),
-            total_characters=int(total_chars),
+            total_characters=total_chars,
             doc_metadata=dict(doc_meta),
         )
         db.add(row)
@@ -283,12 +283,12 @@ def _upsert_document(
         row.dataset_id = dataset_id
         row.filename = filename
         row.file_type = file_type
-        row.file_size = int(total_chars)
+        row.file_size = total_chars
         row.file_path = f"ci://{filename}"
         row.status = "completed"
         row.error_message = None
         row.chunk_count = len(chunks)
-        row.total_characters = int(total_chars)
+        row.total_characters = total_chars
         row.doc_metadata = dict(doc_meta)
 
     _replace_document_chunks(
@@ -352,11 +352,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.membership_only:
         if not args.tenant_id:
             p.error("--membership-only requires at least one --tenant-id")
-        if not str(args.account_id or "").strip():
+        if not args.account_id.strip():
             p.error("--membership-only requires --account-id")
         seed_tenant_memberships(
-            tenant_ids=[UUID(str(value)) for value in args.tenant_id],
-            account_id=str(args.account_id),
+            tenant_ids=[UUID(value) for value in args.tenant_id],
+            account_id=args.account_id,
         )
         print("[seed_ci_retrieval_regression] memberships OK")
         return 0

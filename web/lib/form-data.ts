@@ -1,4 +1,4 @@
-import type { DocumentPipelineOptions } from '@/types'
+import type { DocumentPipelineOptions } from '@/types/backend'
 
 export function appendPipelineOptionsToFormData(formData: FormData, pipeline?: DocumentPipelineOptions): void {
   if (!pipeline) return

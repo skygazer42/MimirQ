@@ -10,11 +10,14 @@ Supports any embedding API that follows the OpenAI embeddings format:
 - ModelScope
 - Any OpenAI-compatible endpoint
 """
+
+from typing import Unpack
+
 import httpx
 
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
-from app.rag.embedding.base import BaseEmbeddingModel
+from app.rag.embedding.base import BaseEmbeddingModel, EmbeddingModelOptions
 from app.rag.embedding.providers._embedding_http import (
     EmbeddingHTTPConcurrency,
     post_with_retries_async,
@@ -34,7 +37,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
     - Response: {"data": [{"embedding": [...]}]}
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Unpack[EmbeddingModelOptions]) -> None:
         """Initialize OpenAI-compatible embedding model.
 
         Args:
@@ -55,12 +58,12 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
         self.http_client = pool.get_external_sync_client()
         self.http_async_client = pool.get_external_async_client()
 
-    def _build_payload(self, message: str | list[str]) -> dict:
+    def _build_payload(self, message: str | list[str]) -> dict[str, str | list[str] | None]:
         """Build API request payload."""
         return {"model": self.model, "input": message}
 
     def _effective_batch_size(self) -> int:
-        configured = max(1, int(getattr(settings, "EMBEDDING_API_BATCH_SIZE", 64) or 64))
+        configured = max(1, settings.EMBEDDING_API_BATCH_SIZE or 64)
         base_url = str(self.base_url or "").lower()
         if "dashscope.aliyuncs.com" in base_url:
             return min(configured, _DASHSCOPE_OPENAI_COMPAT_BATCH_CAP)
@@ -68,7 +71,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
 
     def _encode_one_batch(self, texts: list[str]) -> list[list[float]]:
         payload = self._build_payload(texts)
-        timeout_sec = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
+        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
         try:
             return post_with_retries_sync(
                 client=self.http_client,
@@ -113,7 +116,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
 
     async def _aencode_one_batch(self, texts: list[str]) -> list[list[float]]:
         payload = self._build_payload(texts)
-        timeout_sec = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
+        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
         try:
             return await post_with_retries_async(
                 client=self.http_async_client,

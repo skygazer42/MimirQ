@@ -27,7 +27,7 @@ describe('openapiRequest response schema validation', () => {
         method: 'get',
         responseSchema,
         responseSchemaName: 'HealthResponse',
-      } as any)
+      } as any),
     ).resolves.toEqual({
       ok: true,
       time: '2026-03-29T00:00:00.000Z',
@@ -55,7 +55,7 @@ describe('openapiRequest response schema validation', () => {
           time: z.string(),
         }),
         responseSchemaName: 'HealthResponse',
-      } as any)
+      } as any),
     ).rejects.toThrow(/request_id=rid-health-bad/)
   })
 })

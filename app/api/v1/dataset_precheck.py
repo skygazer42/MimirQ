@@ -84,17 +84,17 @@ def _precheck_scan_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _precheck_scan_reference_time(row: object) -> datetime | None:
-    ts = getattr(row, "updated_at", None) or getattr(row, "created_at", None)
+def _precheck_scan_reference_time(row: DBDatasetPrecheckScanRun) -> datetime | None:
+    ts = row.updated_at or row.created_at
     if ts is None:
         return None
-    if getattr(ts, "tzinfo", None) is None:
+    if ts.tzinfo is None:
         return ts.replace(tzinfo=timezone.utc)
     return ts
 
 
-def _is_stale_precheck_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
+def _is_stale_precheck_scan_run(row: DBDatasetPrecheckScanRun, *, now: datetime) -> bool:
+    status = str(row.status or "").strip().lower()
     if status not in {"pending", "running"}:
         return False
     ts = _precheck_scan_reference_time(row)
@@ -105,8 +105,8 @@ def _is_stale_precheck_scan_run(row: object, *, now: datetime) -> bool:
     return ts + _PRECHECK_SCAN_RUNNING_STALE_AFTER <= now
 
 
-def _is_hard_stale_precheck_scan_run(row: object, *, now: datetime) -> bool:
-    status = str(getattr(row, "status", "") or "").strip().lower()
+def _is_hard_stale_precheck_scan_run(row: DBDatasetPrecheckScanRun, *, now: datetime) -> bool:
+    status = str(row.status or "").strip().lower()
     ts = _precheck_scan_reference_time(row)
     if ts is None:
         return False
@@ -130,10 +130,10 @@ async def _expire_stale_precheck_scan_runs(db: Session, *, tenant_id: UUID, data
     )
     expired = 0
     for row in rows:
-        status = str(getattr(row, "status", "") or "").strip().lower()
+        status = str(row.status or "").strip().lower()
         if not _is_stale_precheck_scan_run(row, now=now):
             continue
-        if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+        if bool(settings.TASK_QUEUE_ENABLED):
             job_id = f"dataset_precheck_scan:{tenant_id}:{dataset_id}:{row.id}"
             job_status: str | None = None
             try:
@@ -515,7 +515,7 @@ def cancel_dataset_precheck_scan_run(
     if row is None:
         raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
-    st = str(getattr(row, "status", "") or "").lower()
+    st = str(row.status or "").lower()
     if st in {"completed", "failed", "cancelled"}:
         return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
@@ -765,9 +765,9 @@ def diff_dataset_precheck_scan_runs(
     if target is None:
         raise HTTPException(status_code=404, detail="Target scan run not found")
 
-    base_summary = getattr(base, "summary", None)
+    base_summary = base.summary
     base_summary = base_summary if isinstance(base_summary, dict) else {}
-    target_summary = getattr(target, "summary", None)
+    target_summary = target.summary
     target_summary = target_summary if isinstance(target_summary, dict) else {}
     if not base_summary or not target_summary:
         raise HTTPException(status_code=404, detail="Summary not available")
@@ -798,7 +798,7 @@ def get_dataset_precheck_ingestion_policy_suggestion(
     dataset = get_dataset_for_precheck(
         db, tenant_id=tenant_id, dataset_id=dataset_id, account_id=account_id, require_write=False
     )
-    before_policy = parse_ingestion_policy_from_metadata(dict(getattr(dataset, "dataset_metadata", None) or {}))
+    before_policy = parse_ingestion_policy_from_metadata(dict(dataset.dataset_metadata or {}))
     row = (
         db.query(DBDatasetPrecheckScanRun)
         .filter(
@@ -918,9 +918,9 @@ def export_dataset_precheck_html_report(
     if row is None:
         raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
-    cfg = getattr(row, "config", None)
+    cfg = row.config
     cfg = cfg if isinstance(cfg, dict) else {}
-    artifacts = getattr(row, "artifacts", None)
+    artifacts = row.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
 
     summary = load_precheck_summary_from_row(row)
@@ -943,7 +943,7 @@ def export_dataset_precheck_html_report(
 
     html = render_precheck_html(
         title="MimirQ · 预检扫描报告",
-        dataset_name=str(getattr(dataset, "name", "") or ""),
+        dataset_name=str(dataset.name or ""),
         dataset_id=str(dataset_id),
         root_path=root_path,
         generated_at=summary.generated_at,
@@ -952,7 +952,7 @@ def export_dataset_precheck_html_report(
         redact=effective_redact,
     )
 
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(getattr(dataset, "name", "") or "dataset"))[:64]
+    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(dataset.name or "dataset"))[:64]
     filename = f"{safe}.precheck.html"
     return Response(
         content=html,

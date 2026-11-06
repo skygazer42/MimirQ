@@ -1181,13 +1181,11 @@ def main() -> int:
         downloaded = download_corpus(corpus_dir, evidence)
         generated = generate_office_files(corpus_dir, evidence)
         files = downloaded + generated
-        api = Api(args.base_url, args.tenant_id, args.user_id, timeout=float(args.timeout))
+        api = Api(args.base_url, args.tenant_id, args.user_id, timeout=args.timeout)
         ensure_runtime_settings(api, evidence)
-        probe_llm_provider(api, evidence, timeout_sec=float(args.llm_probe_timeout))
+        probe_llm_provider(api, evidence, timeout_sec=args.llm_probe_timeout)
         dataset_id = create_dataset(api, evidence)
-        per_upload_timeout = (
-            float(args.processing_timeout) if args.per_upload_timeout is None else float(args.per_upload_timeout)
-        )
+        per_upload_timeout = args.processing_timeout if args.per_upload_timeout is None else args.per_upload_timeout
         doc_ids = upload_documents(
             api,
             dataset_id,
@@ -1195,7 +1193,7 @@ def main() -> int:
             evidence,
             per_upload_timeout_sec=per_upload_timeout,
         )
-        wait_for_documents(api, doc_ids, evidence, timeout_sec=float(args.processing_timeout))
+        wait_for_documents(api, doc_ids, evidence, timeout_sec=args.processing_timeout)
         run_chunk_previews(api, dataset_id, files, evidence)
         ensure_kg(api, dataset_id, doc_ids, evidence)
         warm_retrieval_path(api, dataset_id, evidence)

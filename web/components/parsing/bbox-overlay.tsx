@@ -17,7 +17,7 @@ export type BboxOverlayItem = {
   position: ParsingPosition
 }
 
-export function BboxOverlay(props: Readonly<{
+type BboxOverlayProps = {
   items: BboxOverlayItem[]
   scale: number
   pageBaseWidth?: number | null
@@ -27,7 +27,9 @@ export function BboxOverlay(props: Readonly<{
   hoveredIds: Set<string>
   onHoverId?: (id: string | null) => void
   onClickId?: (id: string, hint?: ParsingEditFocusHint) => void
-}>) {
+}
+
+export function BboxOverlay(props: Readonly<BboxOverlayProps>) {
   const { items, scale, pageBaseWidth, pageBaseHeight, showAll, activeIds, hoveredIds, onHoverId, onClickId } = props
   const coordinateSpace = detectPdfBboxCoordinateSpace({
     items,
@@ -65,7 +67,7 @@ export function BboxOverlay(props: Readonly<{
               layoutMeta.overlayClassName,
               isHovered && 'z-10 ring-2 ring-primary/20',
               isActive &&
-                'z-20 border-primary bg-primary/15 ring-4 ring-primary/40 shadow-[0_0_0_2px_hsl(var(--background))]'
+                'z-20 border-primary bg-primary/15 ring-4 ring-primary/40 shadow-[0_0_0_2px_hsl(var(--background))]',
             )}
             style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
             onMouseEnter={() => onHoverId?.(item.id)}

@@ -1,4 +1,3 @@
-
 from typing import Any
 
 AUTO_TAGGER_SYSTEM_PROMPT = """你是 MimirQ 的 RAG 入库前文档语义打标器。

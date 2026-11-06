@@ -5,7 +5,6 @@ Generate a secure SECRET_KEY for MimirQ.
 Default output is URL-safe and >= 32 chars (suitable for AUTH_MODE=jwt).
 """
 
-
 import argparse
 import secrets
 
@@ -20,7 +19,7 @@ def main() -> int:
     )
     args = p.parse_args()
 
-    nbytes = max(16, int(args.nbytes or 32))
+    nbytes = max(16, args.nbytes or 32)
     key = secrets.token_urlsafe(nbytes)
     print(key)
     return 0
@@ -28,4 +27,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

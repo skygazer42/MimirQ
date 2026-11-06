@@ -30,7 +30,7 @@ def _threshold(cfg: dict[str, Any], key: str, default: float) -> float:
     v = _as_float(cfg.get(key))
     if v is None:
         return float(default)
-    return float(v)
+    return v
 
 
 def _compare_metric(
@@ -50,12 +50,12 @@ def _compare_metric(
     if baseline_ms is None or current_ms is None:
         return out
 
-    delta_ms = float(current_ms - baseline_ms)
+    delta_ms = current_ms - baseline_ms
     out["delta_ms"] = delta_ms
 
     ratio = None
     if baseline_ms > 0:
-        ratio = float((current_ms / baseline_ms) - 1.0)
+        ratio = (current_ms / baseline_ms) - 1.0
         out["delta_ratio"] = ratio
 
     regressed = bool(
@@ -139,7 +139,7 @@ def diff_perf_suite_reports(
             "p99": p99,
         }
 
-    strict_gate = {"passed": regressions == 0, "regressions": int(regressions)}
+    strict_gate = {"passed": regressions == 0, "regressions": regressions}
 
     return {
         "schema": PERF_SUITE_DIFF_SCHEMA_V1,

@@ -96,7 +96,7 @@ flowchart TD
     F --> H[处理新版本]
 ```
 
-MimirQ 通过 `pipeline_hash` 实现文档版本化：
+Ragvia 通过 `pipeline_hash` 实现文档版本化：
 
 - 每次处理生成一个基于 pipeline 配置的 hash
 - 同一文档可有多个版本（不同 pipeline 配置）

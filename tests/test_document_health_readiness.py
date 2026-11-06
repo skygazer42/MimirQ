@@ -55,7 +55,7 @@ def test_document_health_card_exposes_index_readiness(monkeypatch) -> None:  # n
     )
 
     monkeypatch.setattr(
-        document_health_api.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True
+        document_health_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True
     )
     monkeypatch.setattr(
         document_health_api,

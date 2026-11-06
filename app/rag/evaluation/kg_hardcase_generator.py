@@ -8,7 +8,6 @@ We generate two kinds of "hard" queries from baseline failures:
 This module is designed to be unit-testable with a mocked LLM client.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any, Literal

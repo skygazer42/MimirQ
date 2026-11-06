@@ -20,15 +20,20 @@ Golden-set format:
 Paths are resolved relative to --golden-dir when not absolute.
 """
 
-
 import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from app.parsing.factory import ParserFactory
 from app.parsing.quality.benchmark import compute_parsing_proxy_metrics
+
+
+class _ParsingCase(TypedDict):
+    id: str
+    input_path: Path
+    golden_markdown_path: Path
 
 
 def _load_json(path: Path) -> Any:
@@ -42,17 +47,17 @@ def _resolve_path(base: Path, raw: str) -> Path:
     return p
 
 
-def _load_cases(*, golden_dir: Path, cases_json: Path) -> list[dict[str, Any]]:
+def _load_cases(*, golden_dir: Path, cases_json: Path) -> list[_ParsingCase]:
     data = _load_json(cases_json)
     rows = data.get("cases") if isinstance(data, dict) else data
     if not isinstance(rows, list):
         raise ValueError("cases_json must contain a list or {'cases':[...]} structure")
 
-    out: list[dict[str, Any]] = []
+    out: list[_ParsingCase] = []
     for i, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
-        cid = str(row.get("id") or f"case-{i+1}").strip()
+        cid = str(row.get("id") or f"case-{i + 1}").strip()
         input_path = str(row.get("path") or row.get("input_path") or row.get("input") or "").strip()
         golden_md = str(row.get("golden_markdown_path") or row.get("golden_markdown") or "").strip()
         if not input_path or not golden_md:
@@ -106,9 +111,9 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     for case in cases:
-        cid = str(case["id"])
-        input_path = Path(case["input_path"])
-        golden_md_path = Path(case["golden_markdown_path"])
+        cid = case["id"]
+        input_path = case["input_path"]
+        golden_md_path = case["golden_markdown_path"]
         case_row: dict[str, Any] = {
             "id": cid,
             "input_path": str(input_path),
@@ -124,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         for backend in backends:
-            key = str(backend)
+            key = backend
             try:
                 # resolve_backend validates enablement/configuration; we keep this explicit so
                 # "skip-unavailable" can work without running the backend.

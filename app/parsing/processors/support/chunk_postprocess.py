@@ -27,7 +27,7 @@ def _initial_uniform_sample(indices: list[int], k: int) -> tuple[list[int], set[
     seen: set[int] = set()
     for i in range(k):
         pos = round(i * (n - 1) / (k - 1))
-        pos = max(0, min(n - 1, int(pos)))
+        pos = max(0, min(n - 1, pos))
         idx = indices[pos]
         if idx in seen:
             continue
@@ -76,8 +76,8 @@ def _truncate_head_chunks(
     )
     return kept_chunks, {
         "strategy": "head",
-        "asset_total": int(len(asset_indices)),
-        "asset_kept": int(asset_kept),
+        "asset_total": len(asset_indices),
+        "asset_kept": asset_kept,
     }
 
 
@@ -102,8 +102,8 @@ def _truncate_asset_uniform_chunks(
 
     return [chunks[i] for i in range(len(chunks)) if i in keep_set], {
         "strategy": "asset_uniform",
-        "asset_total": int(len(asset_indices)),
-        "asset_kept": int(sum(1 for idx in asset_indices if idx in keep_set)),
+        "asset_total": len(asset_indices),
+        "asset_kept": sum(1 for idx in asset_indices if idx in keep_set),
     }
 
 
@@ -119,8 +119,8 @@ def _truncate_chunks_for_limit(
         asset_indices = _chunk_asset_indices(chunks)
         return chunks, {
             "strategy": "record_identity_preserved",
-            "asset_total": int(len(asset_indices)),
-            "asset_kept": int(len(asset_indices)),
+            "asset_total": len(asset_indices),
+            "asset_kept": len(asset_indices),
             "truncation_skipped": True,
         }
 
@@ -164,7 +164,7 @@ def _joined_text_total_characters(
         total += len(doc.page_content or "")
         if idx < last_index:
             total += sep_len
-    return int(total)
+    return total
 
 
 def _document_page_index(doc: Document, index: int) -> int:

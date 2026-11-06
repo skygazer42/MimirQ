@@ -12,7 +12,6 @@ Buckets (v3):
 - table_heavy: spreadsheet-like content (often better served by structured indexing)
 """
 
-
 from collections.abc import Iterable
 
 
@@ -46,4 +45,3 @@ def risk_buckets_for_file(*, file_type: str, findings: Iterable[str] | None) -> 
 
 
 __all__ = ["risk_buckets_for_file"]
-

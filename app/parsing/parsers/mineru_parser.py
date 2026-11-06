@@ -10,6 +10,7 @@ Supports:
 - Formula recognition
 - Complex layout analysis
 """
+
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -42,21 +43,13 @@ class MinerUParser(BaseAdvancedParser):
 
     def _create_parser(self) -> Any:
 
-        return DeepDocMinerUParser(
-            mineru_api=self._api,
-            mineru_server_url=self._server_url
-        )
+        return DeepDocMinerUParser(mineru_api=self._api, mineru_server_url=self._server_url)
 
     def _check_parser_installation(self, parser: Any) -> tuple[bool, str]:
         return parser.check_installation()
 
     def _call_parse_method(
-        self,
-        parser: Any,
-        file_path: Path,
-        binary: bytes | None,
-        callback: Callable[[float, str], None],
-        **kwargs
+        self, parser: Any, file_path: Path, binary: bytes | None, callback: Callable[[float, str], None], **kwargs
     ) -> tuple[list, list]:
         return parser.parse_pdf(
             filepath=str(file_path),
@@ -65,7 +58,7 @@ class MinerUParser(BaseAdvancedParser):
             backend=settings.MINERU_BACKEND,
             server_url=self._server_url,
             delete_output=True,
-            **kwargs
+            **kwargs,
         )
 
     def parse(self, file_path: Path, **kwargs) -> list:

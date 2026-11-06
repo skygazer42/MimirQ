@@ -1,4 +1,3 @@
-
 import hashlib
 import re
 
@@ -7,7 +6,7 @@ _QUOTED_IDENT_RE = re.compile(r'"([^"]+)"')
 
 
 def normalize_sql_for_fingerprint(sql: str) -> str:
-    raw = str(sql or "").strip()
+    raw = sql.strip()
     if not raw:
         return ""
     # Keep literals as-is, but normalize whitespace and quoted identifiers.

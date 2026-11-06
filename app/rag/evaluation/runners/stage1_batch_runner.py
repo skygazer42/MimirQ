@@ -1,4 +1,3 @@
-
 import json
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -71,9 +70,7 @@ def run_stage1_batch(
             cited_chunk_ids = _chunk_ids(citations)
             retrieved_items = route_result.get("retrieved_chunk_ids")
             retrieved_chunk_ids = (
-                _chunk_ids(retrieved_items)
-                if isinstance(retrieved_items, (list, tuple))
-                else list(cited_chunk_ids)
+                _chunk_ids(retrieved_items) if isinstance(retrieved_items, (list, tuple)) else list(cited_chunk_ids)
             )
             route_config = dict(route_result.get("route_config") or {})
             evaluators = {

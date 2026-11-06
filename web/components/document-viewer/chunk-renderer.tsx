@@ -3,8 +3,8 @@
 import { Button } from '@/components/ui/button'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { cn } from '@/lib/utils'
-import type { DocumentChunk } from '@/types'
-import { Copy, Link2, Loader2, Pencil, Trash2 } from 'lucide-react'
+import type { DocumentChunk } from '@/types/backend'
+import { Copy, Link2, Loader2, Pencil, Trash2 } from '@/components/icons'
 
 import { HighlightLayer } from './highlight-layer'
 
@@ -42,7 +42,7 @@ export function DocumentChunkCard({
         'group rounded-xl border p-4 transition-colors transition-shadow duration-200 motion-reduce:transition-none',
         isActive
           ? 'bg-primary/5 border-primary shadow-[0_0_0_1px_rgba(var(--primary),0.2)] ring-1 ring-primary/20'
-          : 'bg-background border-border hover:border-primary/30 hover:shadow-sm'
+          : 'bg-background border-border hover:border-primary/30 hover:shadow-sm',
       )}
     >
       <div className="mb-2 flex items-center justify-between">
@@ -56,7 +56,7 @@ export function DocumentChunkCard({
           <div
             className={cn(
               'flex items-center gap-1',
-              showHoverActions ? 'opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100' : ''
+              showHoverActions ? 'opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100' : '',
             )}
           >
             <Button

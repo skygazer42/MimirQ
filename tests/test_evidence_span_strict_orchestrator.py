@@ -1,4 +1,3 @@
-
 import uuid
 
 from langchain_core.documents import Document
@@ -203,10 +202,7 @@ def test_orchestrator_strict_span_empty_runs_single_deterministic_fallback(monke
     monkeypatch.setattr(orch_mod, "hybrid_retriever", _FallbackRetriever(), raising=True)
 
     def _build_citations(docs, **_kwargs):  # noqa: ANN001, ANN202
-        roles = {
-            str((getattr(doc, "metadata", None) or {}).get("retrieval_role") or "")
-            for doc in (docs or [])
-        }
+        roles = {str((getattr(doc, "metadata", None) or {}).get("retrieval_role") or "") for doc in (docs or [])}
         if "hard_fallback" in roles:
             return [
                 {

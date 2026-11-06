@@ -6,11 +6,12 @@ JSONL metrics log (ENABLE_METRICS_LOG / METRICS_LOG_PATH).
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -18,8 +19,9 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.utils.response_headers import download_response_headers
 from app.core.config import settings
 from app.core.database import get_db
+from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.corpus_cache_tokens import invalidate_dataset_cache_namespace
-from app.services.dataset_service import DatasetService
 from app.services.metrics_logger import log_metrics
 from app.services.ops_config_snapshot_service import build_ops_config_snapshot
 from app.services.periodic_job_freshness_service import build_periodic_job_freshness_snapshot
@@ -40,7 +42,11 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     416: {"description": "Range Not Satisfiable"},
 }
 
+if TYPE_CHECKING:
+    from app.models.index_drift_item import IndexDriftItem
+
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
 
 
 def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
@@ -115,7 +121,7 @@ class OnlineQualitySummaryResponse(BaseModel):
 
 
 def _queryset_health_history_path() -> str:
-    return str(getattr(settings, "QUERYSET_HEALTH_HISTORY_PATH", "./runs/queryset_health/history.jsonl") or "")
+    return str(settings.QUERYSET_HEALTH_HISTORY_PATH or "")
 
 
 def _filter_queryset_health_rows(rows: list[Any], *, profile_hash: str | None) -> list[Any]:
@@ -177,7 +183,7 @@ def _build_queryset_health_timeseries(rows: list[Any]) -> dict[str, list[Any]]:
 
 
 def _visible_queryset_health_rows(rows: list[Any], *, limit: int) -> tuple[int, bool, list[Any]]:
-    total = int(len(rows))
+    total = len(rows)
     cap = max(1, int(limit or 1))
     truncated = total > cap
     return total, truncated, rows[-cap:] if cap else rows
@@ -192,7 +198,7 @@ def report_frontend_web_vital(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     log_metrics(
         {
@@ -221,7 +227,7 @@ def report_frontend_trace(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     log_metrics(
         {
@@ -551,11 +557,12 @@ def _audit_index_reconcile_request(
             details=details,
         )
         db.commit()
-    except Exception:  # noqa: BLE001
+    except SQLAlchemyError as exc:
         try:
             db.rollback()
-        except Exception:  # noqa: BLE001
-            pass
+        except SQLAlchemyError as rollback_error:
+            logger.warning("Index audit rollback failed (%s)", type(rollback_error).__name__)
+        logger.warning("Index audit event commit failed (%s)", type(exc).__name__)
 
 
 class IndexDriftItemResponse(BaseModel):
@@ -638,27 +645,27 @@ class PerfSuiteRunResponse(_SchemaAliasedModel):
     diff: dict[str, Any] = Field(default_factory=dict)
 
 
-def _serialize_index_drift_item(item: Any) -> dict[str, Any]:
+def _serialize_index_drift_item(item: "IndexDriftItem") -> dict[str, Any]:
     return {
-        "id": str(getattr(item, "id", "") or ""),
-        "tenant_id": str(getattr(item, "tenant_id", "") or ""),
-        "dataset_id": str(getattr(item, "dataset_id", "") or "") or None,
-        "document_id": str(getattr(item, "document_id", "") or "") or None,
-        "chunk_id": str(getattr(item, "chunk_id", "") or "") or None,
-        "operation": str(getattr(item, "operation", "") or ""),
-        "channel": str(getattr(item, "channel", "") or ""),
-        "strictness": str(getattr(item, "strictness", "") or ""),
-        "status": str(getattr(item, "status", "") or ""),
-        "reason": str(getattr(item, "reason", "") or ""),
-        "details": dict(getattr(item, "details", {}) or {}),
-        "reconcile_task_id": str(getattr(item, "reconcile_task_id", "") or "") or None,
-        "replay_count": int(getattr(item, "replay_count", 0) or 0),
-        "created_at": getattr(item, "created_at", None),
-        "updated_at": getattr(item, "updated_at", None),
-        "last_replayed_at": getattr(item, "last_replayed_at", None),
-        "resolved_at": getattr(item, "resolved_at", None),
-        "resolved_by": str(getattr(item, "resolved_by", "") or "") or None,
-        "resolution_note": str(getattr(item, "resolution_note", "") or "") or None,
+        "id": str(item.id or ""),
+        "tenant_id": str(item.tenant_id or ""),
+        "dataset_id": str(item.dataset_id or "") or None,
+        "document_id": str(item.document_id or "") or None,
+        "chunk_id": str(item.chunk_id or "") or None,
+        "operation": str(item.operation or ""),
+        "channel": str(item.channel or ""),
+        "strictness": str(item.strictness or ""),
+        "status": str(item.status or ""),
+        "reason": str(item.reason or ""),
+        "details": dict(item.details or {}),
+        "reconcile_task_id": str(item.reconcile_task_id or "") or None,
+        "replay_count": int(item.replay_count or 0),
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "last_replayed_at": item.last_replayed_at,
+        "resolved_at": item.resolved_at,
+        "resolved_by": str(item.resolved_by or "") or None,
+        "resolution_note": str(item.resolution_note or "") or None,
     }
 
 
@@ -752,7 +759,7 @@ def list_queryset_health_runs(
         enabled=bool(path.exists()),
         path=str(path),
         total=total,
-        truncated=bool(truncated),
+        truncated=truncated,
         items=items,
         timeseries=_build_queryset_health_timeseries(visible),
     )
@@ -780,7 +787,7 @@ def diff_queryset_health_runs(
     from app.services.queryset_health_diff_service import diff_queryset_health_snapshots
     from app.services.queryset_health_service import load_queryset_health_history
 
-    path_str = str(getattr(settings, "QUERYSET_HEALTH_HISTORY_PATH", "./runs/queryset_health/history.jsonl") or "")
+    path_str = str(settings.QUERYSET_HEALTH_HISTORY_PATH or "")
     path = Path(path_str)
     rows = load_queryset_health_history(path)
 
@@ -1005,11 +1012,13 @@ def invalidate_dataset_cache_namespace_endpoint(
 ):
     _ensure_admin(db, tenant_id, account_id)
     try:
-        return invalidate_dataset_cache_namespace(
+        result = invalidate_dataset_cache_namespace(
             db,
             tenant_id=tenant_id,
             dataset_id=dataset_id,
         )
+        db.commit()
+        return result
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -1281,7 +1290,7 @@ async def enqueue_index_audit_reconcile_job_endpoint(
     report-only inside the job and are not auto-rebuilt.
     """
     _ensure_admin(db, tenant_id, account_id)
-    DatasetService.get_dataset(db, tenant_id, payload.dataset_id)
+    dataset_service.get_dataset(db, tenant_id, payload.dataset_id)
 
     if payload.document_id is not None:
         from app.services.index_audit_service import get_index_audit_reconcile_document_state
@@ -1311,7 +1320,7 @@ async def enqueue_index_audit_reconcile_job_endpoint(
         dry_run=bool(payload.dry_run),
         job_id=job_id,
     )
-    if not bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if not bool(settings.TASK_QUEUE_ENABLED):
         response = {
             "schema": "mimirq.index_audit_reconcile_enqueue.v1",
             "job_name": "reconcile_index_audit_job",

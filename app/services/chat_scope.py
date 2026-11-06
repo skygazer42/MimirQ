@@ -5,12 +5,12 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.chat import Conversation
+from app.services import dataset_service
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.chat_conversation_titles import (
     CONVERSATION_TITLE_SOURCE_AUTO,
     apply_auto_conversation_title,
 )
-from app.services.dataset_service import DatasetService
 from app.services.document_access import (
     filter_allowed_document_ids,
     get_allowed_document_id_sets,
@@ -112,9 +112,9 @@ def _resolve_requested_dataset_scope(
     request_dataset_id: UUID,
     conversation: Conversation | None = None,
 ) -> tuple[UUID, list[UUID]]:
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    dataset = DatasetService.get_dataset(db, tenant_id, request_dataset_id)
-    DatasetService.assert_dataset_readable(db, dataset, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    dataset = dataset_service.get_dataset(db, tenant_id, request_dataset_id)
+    dataset_service.assert_dataset_readable(db, dataset, account_id)
     if conversation is not None:
         conversation.dataset_id = request_dataset_id
         conversation.document_ids = []
@@ -162,7 +162,7 @@ def _get_existing_conversation_scope(
         conversation.dataset_id = None
         return None, allowed_doc_ids
 
-    scope_dataset_id = getattr(conversation, "dataset_id", None)
+    scope_dataset_id = conversation.dataset_id
     if scope_dataset_id is None and not allow_open_scope:
         raise HTTPException(status_code=400, detail=dataset_required_detail)
     return scope_dataset_id, []
@@ -216,7 +216,7 @@ def _load_conversation(
         )
         .first()
     )
-    if not conversation:
+    if conversation is None:
         raise HTTPException(status_code=404, detail=conversation_not_found_detail)
     ensure_conversation_access(db, tenant_id, account_id, conversation)
     return conversation
@@ -234,7 +234,7 @@ def _create_conversation(
     conversation = Conversation(
         id=uuid4(),
         tenant_id=tenant_id,
-        owner_account_id=str(account_id or "").strip() or None,
+        owner_account_id=account_id.strip() or None,
         title_source=CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
         document_ids=allowed_doc_ids,
@@ -268,8 +268,7 @@ def enforce_non_empty_chat_scope(
         )
         q = q.filter(DBDocument.publication_status == "published")
         q = q.filter(
-            (DBDocument.status == "completed")
-            | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
+            (DBDocument.status == "completed") | (DBDocument.doc_metadata["active_pipeline_ready"].astext == "true")  # type: ignore[attr-defined]
         )
         if not q.with_entities(DBDocument.id).limit(1).first():
             raise HTTPException(status_code=400, detail=error_detail)

@@ -23,7 +23,7 @@ def _heading_level(element: Mapping[str, Any]) -> int | None:
     if isinstance(attrs, Mapping):
         explicit = _coerce_int(attrs.get("heading_level") or attrs.get("level"))
         if explicit is not None:
-            return max(1, min(6, int(explicit)))
+            return max(1, min(6, explicit))
 
     text = str(element.get("text") or "").strip()
     if not text:
@@ -61,13 +61,13 @@ def build_section_tree(elements: Sequence[Mapping[str, Any]] | None) -> list[dic
         node = {
             "id": str(raw.get("id") or f"section:{index}"),
             "text": str(raw.get("text") or "").strip(),
-            "level": int(level),
+            "level": level,
             "page": raw.get("page"),
             "bbox": raw.get("bbox") if isinstance(raw.get("bbox"), Mapping) else None,
             "source_element_id": raw.get("source_element_id"),
             "parent_id": None,
         }
-        while stack and int(stack[-1].get("level") or 0) >= int(level):
+        while stack and stack[-1]["level"] >= level:
             stack.pop()
         if stack:
             node["parent_id"] = stack[-1].get("id")

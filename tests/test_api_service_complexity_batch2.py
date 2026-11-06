@@ -250,7 +250,7 @@ def test_get_document_parsed_content_uses_text_fallback_and_metadata(monkeypatch
         }
     )
 
-    monkeypatch.setattr(document_content.DatasetService, "ensure_member", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(document_content.dataset_service, "ensure_member", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(document_content, "assert_document_acl_readable", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         document_content,
@@ -453,18 +453,18 @@ def test_execute_graph_chat_once_collects_multimodal_state_and_structured_metric
     assert result.metrics["structured_preset"] == "json_object"
     assert result.metrics["multimodal_router"]["modality"] == "image"
     assert result.metrics["tag"]["used"] is True
-    assert result.metrics["image"]["used"] is True
+    assert result.metrics["image"]["used"] is False
+    assert result.metrics["image"]["reason"] == "image_vector_retrieval_retired"
     assert captured["tag_kwargs"]["must_recall_expected_source_keys"] == ["policy"]
-    assert captured["image_kwargs"]["dataset_id"] == dataset_id
     assert "db" not in captured["invoke_state"]
-    assert captured["invoke_state"]["tag_docs"] == [{"kind": "tag"}, {"kind": "image"}]
+    assert captured["invoke_state"]["tag_docs"] == [{"kind": "tag"}]
     assert captured["invoke_state"]["rag_config_template"] == {"template": "balanced"}
     assert captured["invoke_config"]["recursion_limit"] == 17
     assert captured["invoke_context"]["tenant_id"] == str(tenant_id)
 
 
 def test_execute_confluence_space_run_probes_completion_before_soft_delete(monkeypatch) -> None:
-    from app.api.v1 import connectors_confluence
+    import app.services.connector_execution.confluence as connectors_confluence
 
     tenant_id = uuid4()
     run_id = uuid4()
@@ -519,7 +519,8 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
         "_finalize_cancelled_confluence_space_run": lambda *_args, **_kwargs: pytest.fail("run should not cancel"),
     }
 
-    monkeypatch.setattr(connectors_confluence, "_resolve_connectors_helper", lambda name: helpers[name])
+    for helper_name, helper in helpers.items():
+        monkeypatch.setattr(connectors_confluence, helper_name, helper, raising=True)
     monkeypatch.setattr(
         connectors_confluence,
         "_build_confluence_space_run_settings",
@@ -541,7 +542,7 @@ def test_execute_confluence_space_run_probes_completion_before_soft_delete(monke
     monkeypatch.setattr(connectors_confluence, "_confluence_space_run_cancelled", lambda *_args, **_kwargs: False)
 
     asyncio.run(
-        connectors_confluence._execute_confluence_space_run(
+        connectors_confluence.execute(
             run_id=run_id,
             tenant_id=tenant_id,
             requested_by="owner",

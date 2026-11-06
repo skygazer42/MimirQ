@@ -4,7 +4,6 @@ JSON and Code Text Splitters
 Provides specialized splitters for JSON data and programming code.
 """
 
-
 import json
 import re
 from typing import Any
@@ -40,7 +39,7 @@ class JSONChunker(BaseChunker):
         chunk_overlap: int = 0,  # Usually 0 for JSON
         min_chunk_size: int = 200,
         max_depth: int | None = None,
-    ):
+    ) -> None:
         """
         Initialize the JSON chunker.
 
@@ -128,11 +127,13 @@ class JSONChunker(BaseChunker):
 
             if current_size + item_size > self.chunk_size and current_batch:
                 # Flush current batch
-                chunks.append(self._create_chunk(
-                    current_batch,
-                    base_metadata,
-                    f"{path}[{idx - len(current_batch)}:{idx}]",
-                ))
+                chunks.append(
+                    self._create_chunk(
+                        current_batch,
+                        base_metadata,
+                        f"{path}[{idx - len(current_batch)}:{idx}]",
+                    )
+                )
                 current_batch = []
                 current_size = 2
 
@@ -150,11 +151,13 @@ class JSONChunker(BaseChunker):
                 current_size += item_size
 
         if current_batch:
-            chunks.append(self._create_chunk(
-                current_batch,
-                base_metadata,
-                f"{path}[{len(arr) - len(current_batch)}:{len(arr)}]",
-            ))
+            chunks.append(
+                self._create_chunk(
+                    current_batch,
+                    base_metadata,
+                    f"{path}[{len(arr) - len(current_batch)}:{len(arr)}]",
+                )
+            )
 
         return chunks
 
@@ -188,11 +191,13 @@ class JSONChunker(BaseChunker):
                 chunks.extend(sub_chunks)
             else:
                 # Create chunk for this key-value pair
-                chunks.append(self._create_chunk(
-                    {key: value},
-                    base_metadata,
-                    f"{path}.{key}",
-                ))
+                chunks.append(
+                    self._create_chunk(
+                        {key: value},
+                        base_metadata,
+                        f"{path}.{key}",
+                    )
+                )
 
         return chunks
 
@@ -351,7 +356,7 @@ class CodeChunker(BaseChunker):
         chunk_overlap: int = 200,
         language: str | None = None,
         preserve_functions: bool = True,
-    ):
+    ) -> None:
         """
         Initialize the code chunker.
 
@@ -379,10 +384,7 @@ class CodeChunker(BaseChunker):
 
             # Detect language
             language = self._detect_language(doc)
-            separators = self.LANGUAGE_SEPARATORS.get(
-                language,
-                self.LANGUAGE_SEPARATORS["default"]
-            )
+            separators = self.LANGUAGE_SEPARATORS.get(language, self.LANGUAGE_SEPARATORS["default"])
 
             # Create language-specific splitter
             splitter = RecursiveCharacterTextSplitter(
@@ -452,12 +454,12 @@ class CodeChunker(BaseChunker):
     def _detect_language_from_content(self, text: str) -> str:
         """Detect language from code content."""
         patterns = {
-            "python": [r'\bdef\s+\w+\s*\(', r'\bclass\s+\w+:', r'\bimport\s+\w+'],
-            "javascript": [r'\bfunction\s+\w+\s*\(', r'\bconst\s+\w+\s*=', r'\blet\s+\w+\s*='],
-            "typescript": [r'\binterface\s+\w+', r'\btype\s+\w+\s*=', r':\s*\w+\s*[;=]'],
-            "java": [r'\bpublic\s+class\s+', r'\bprivate\s+\w+\s+\w+', r'\@\w+'],
-            "go": [r'\bfunc\s+\w+\s*\(', r'\bpackage\s+\w+', r'\btype\s+\w+\s+struct'],
-            "sql": [r'\bSELECT\s+', r'\bFROM\s+', r'\bWHERE\s+'],
+            "python": [r"\bdef\s+\w+\s*\(", r"\bclass\s+\w+:", r"\bimport\s+\w+"],
+            "javascript": [r"\bfunction\s+\w+\s*\(", r"\bconst\s+\w+\s*=", r"\blet\s+\w+\s*="],
+            "typescript": [r"\binterface\s+\w+", r"\btype\s+\w+\s*=", r":\s*\w+\s*[;=]"],
+            "java": [r"\bpublic\s+class\s+", r"\bprivate\s+\w+\s+\w+", r"\@\w+"],
+            "go": [r"\bfunc\s+\w+\s*\(", r"\bpackage\s+\w+", r"\btype\s+\w+\s+struct"],
+            "sql": [r"\bSELECT\s+", r"\bFROM\s+", r"\bWHERE\s+"],
         }
 
         scores = {}
@@ -476,28 +478,28 @@ class CodeChunker(BaseChunker):
         """Extract context (function/class name) from code chunk."""
         patterns = {
             "python": [
-                r'^\s*def\s+(\w+)\s*\(',
-                r'^\s*class\s+(\w+)',
-                r'^\s*async\s+def\s+(\w+)\s*\(',
+                r"^\s*def\s+(\w+)\s*\(",
+                r"^\s*class\s+(\w+)",
+                r"^\s*async\s+def\s+(\w+)\s*\(",
             ],
             "javascript": [
-                r'function\s+(\w+)\s*\(',
-                r'const\s+(\w+)\s*=\s*(?:async\s*)?\(',
+                r"function\s+(\w+)\s*\(",
+                r"const\s+(\w+)\s*=\s*(?:async\s*)?\(",
                 CLASS_NAME_RE,
             ],
             "typescript": [
-                r'function\s+(\w+)\s*\(',
-                r'const\s+(\w+)\s*=',
+                r"function\s+(\w+)\s*\(",
+                r"const\s+(\w+)\s*=",
                 CLASS_NAME_RE,
-                r'interface\s+(\w+)',
+                r"interface\s+(\w+)",
             ],
             "java": [
                 CLASS_NAME_RE,
-                r'(?:public|private|protected)\s+\w+\s+(\w+)\s*\(',
+                r"(?:public|private|protected)\s+\w+\s+(\w+)\s*\(",
             ],
             "go": [
-                r'func\s+(\w+)\s*\(',
-                r'type\s+(\w+)\s+struct',
+                r"func\s+(\w+)\s*\(",
+                r"type\s+(\w+)\s+struct",
             ],
         }
 
@@ -523,7 +525,7 @@ class SmartCodeChunker(BaseChunker):
         chunk_size: int = 1500,
         chunk_overlap: int = 200,
         target_language: str = "python",
-    ):
+    ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.target_language = target_language
@@ -554,32 +556,34 @@ class SmartCodeChunker(BaseChunker):
             search_pos = 0
 
             for unit_text, unit_type, unit_name in units:
-                unit_start = text.find(unit_text, max(0, int(search_pos)))
+                unit_start = text.find(unit_text, max(0, search_pos))
                 if unit_start < 0:
-                    unit_start = max(0, min(int(search_pos), len(text)))
+                    unit_start = max(0, min(search_pos, len(text)))
                 unit_end = min(len(text), unit_start + len(unit_text))
                 search_pos = max(unit_end, unit_start + 1)
 
                 if len(unit_text) <= self.chunk_size:
                     # Unit fits in one chunk
-                    all_chunks.append(Document(
-                        page_content=unit_text,
-                        metadata={
-                            **original_metadata,
-                            "chunk_strategy": "smart_code",
-                            "language": "python",
-                            "chunk_index": len(all_chunks),
-                            "code_unit_type": unit_type,
-                            "code_unit_name": unit_name,
-                            "start_char": unit_start,
-                            "end_char": unit_end,
-                        },
-                    ))
+                    all_chunks.append(
+                        Document(
+                            page_content=unit_text,
+                            metadata={
+                                **original_metadata,
+                                "chunk_strategy": "smart_code",
+                                "language": "python",
+                                "chunk_index": len(all_chunks),
+                                "code_unit_type": unit_type,
+                                "code_unit_name": unit_name,
+                                "start_char": unit_start,
+                                "end_char": unit_end,
+                            },
+                        )
+                    )
                 else:
                     # Split large unit
-                    sub_chunks = self._base_chunker.split_documents([
-                        Document(page_content=unit_text, metadata=original_metadata)
-                    ])
+                    sub_chunks = self._base_chunker.split_documents(
+                        [Document(page_content=unit_text, metadata=original_metadata)]
+                    )
                     for sub in sub_chunks:
                         meta = dict(sub.metadata or {})
                         rel_start = meta.get("start_char")
@@ -597,10 +601,10 @@ class SmartCodeChunker(BaseChunker):
 
         return all_chunks
 
-    def _split_python_units(self, text: str) -> list[tuple]:
+    def _split_python_units(self, text: str) -> list[tuple[str, str, str]]:
         """Split Python code into logical units (functions, classes)."""
         units = []
-        lines = text.split('\n')
+        lines = text.split("\n")
 
         current_unit = []
         current_type = "module"
@@ -608,17 +612,19 @@ class SmartCodeChunker(BaseChunker):
 
         for line in lines:
             # Check for class/function definition
-            class_match = re.match(r'^class\s+(\w+)', line)
-            func_match = re.match(r'^(?:async\s+)?def\s+(\w+)', line)
+            class_match = re.match(r"^class\s+(\w+)", line)
+            func_match = re.match(r"^(?:async\s+)?def\s+(\w+)", line)
 
             if class_match or func_match:
                 # Save previous unit if exists
                 if current_unit:
-                    units.append((
-                        '\n'.join(current_unit),
-                        current_type,
-                        current_name,
-                    ))
+                    units.append(
+                        (
+                            "\n".join(current_unit),
+                            current_type,
+                            current_name,
+                        )
+                    )
                     current_unit = []
 
                 if class_match:
@@ -632,10 +638,12 @@ class SmartCodeChunker(BaseChunker):
 
         # Save last unit
         if current_unit:
-            units.append((
-                '\n'.join(current_unit),
-                current_type,
-                current_name,
-            ))
+            units.append(
+                (
+                    "\n".join(current_unit),
+                    current_type,
+                    current_name,
+                )
+            )
 
         return units

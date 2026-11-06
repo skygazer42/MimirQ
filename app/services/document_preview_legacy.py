@@ -11,7 +11,7 @@ from app.services.document_preview_utils import PREVIEW_IMAGE_REF_RE
 
 def _preview_id_variants(preview_id: str) -> tuple[str, str] | None:
     try:
-        value = UUID(str(preview_id))
+        value = UUID(preview_id)
     except ValueError:
         return None
     return value.hex, str(value)
@@ -42,7 +42,7 @@ def find_legacy_preview_document_ids(
         return set()
     compact_id, _hyphenated_id = variants
     needles = tuple(f"/api/v1/documents/image/{value}" for value in variants)
-    limit = max(1, int(max_scan_rows or 1))
+    limit = max(1, max_scan_rows or 1)
     document_ids: set[UUID] = set()
 
     # Preserve request-time exact-ref verification; ownership resolution stays outside this scan.

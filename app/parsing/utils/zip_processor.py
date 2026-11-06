@@ -49,9 +49,9 @@ class ZipImageProcessor:
         Extract a zip safely (zip-slip + basic zip-bomb limits).
         """
         infos = zip_ref.infolist()
-        max_files = int(getattr(settings, "ZIP_MAX_FILES", 2000))
-        max_total = int(getattr(settings, "ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES", 500_000_000))
-        max_single = int(getattr(settings, "ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES", 100_000_000))
+        max_files = int(settings.ZIP_MAX_FILES)
+        max_total = int(settings.ZIP_MAX_TOTAL_UNCOMPRESSED_BYTES)
+        max_single = int(settings.ZIP_MAX_SINGLE_UNCOMPRESSED_BYTES)
 
         if len(infos) > max_files:
             raise ValueError(f"ZIP contains too many files: {len(infos)} > {max_files}")
@@ -160,7 +160,7 @@ class ZipImageProcessor:
 
     @classmethod
     def _limit_image_files(cls, image_files: list[Path]) -> list[Path]:
-        max_images = max(0, int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0))
+        max_images = max(0, int(settings.ZIP_MAX_IMAGES or 0))
         if not max_images or len(image_files) <= max_images:
             return image_files
         cls._logger.warning(

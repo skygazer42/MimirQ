@@ -33,7 +33,7 @@ logger = get_logger("rag.evaluation.agent_evals")
 
 
 # Configuration
-AGENT_EVALS_ENABLED = getattr(settings, "AGENT_EVALS_ENABLED", False)
+AGENT_EVALS_ENABLED = settings.AGENT_EVALS_ENABLED
 
 
 class MetricType(str, Enum):
@@ -363,6 +363,18 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
 # ============================================================================
 
 
+def _is_relevant(question: str, context: str) -> bool:
+    """Check if context is relevant to question."""
+    q_words = set(question.lower().split())
+    c_words = set(context.lower().split())
+
+    common = {"the", "a", "an", "is", "are", "was", "were", "what", "how", "why", "的", "是", "在", "有"}
+    q_words -= common
+
+    overlap = len(q_words & c_words)
+    return overlap >= len(q_words) * 0.3
+
+
 class ContextPrecisionEvaluator(BaseEvaluator):
     """
     Evaluates precision of retrieved contexts.
@@ -392,7 +404,7 @@ class ContextPrecisionEvaluator(BaseEvaluator):
 
         relevant_count = 0
         for ctx in contexts:
-            if self._is_relevant(question, ctx):
+            if _is_relevant(question, ctx):
                 relevant_count += 1
 
         precision = relevant_count / len(contexts) if contexts else 0
@@ -403,17 +415,6 @@ class ContextPrecisionEvaluator(BaseEvaluator):
             explanation=f"{relevant_count}/{len(contexts)} contexts relevant",
             details={"relevant": relevant_count, "total": len(contexts)},
         )
-
-    def _is_relevant(self, question: str, context: str) -> bool:
-        """Check if context is relevant to question."""
-        q_words = set(question.lower().split())
-        c_words = set(context.lower().split())
-
-        common = {"the", "a", "an", "is", "are", "was", "were", "what", "how", "why", "的", "是", "在", "有"}
-        q_words -= common
-
-        overlap = len(q_words & c_words)
-        return overlap >= len(q_words) * 0.3
 
 
 # ============================================================================
@@ -526,6 +527,50 @@ class TrajectoryStep:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+def _evaluate_efficiency(trajectory: list[TrajectoryStep]) -> float:
+    """Evaluate trajectory efficiency (fewer steps = better)."""
+    step_count = len(trajectory)
+    if step_count <= 3:
+        return 1.0
+    elif step_count <= 5:
+        return 0.8
+    elif step_count <= 8:
+        return 0.6
+    elif step_count <= 12:
+        return 0.4
+    else:
+        return 0.2
+
+
+def _evaluate_coherence(trajectory: list[TrajectoryStep]) -> float:
+    """Evaluate if steps are logically connected."""
+    if len(trajectory) <= 1:
+        return 1.0
+
+    coherent_transitions = 0
+    for i in range(len(trajectory) - 1):
+        # Simple check: observation should influence next action
+        if trajectory[i].observation and trajectory[i + 1].action:
+            coherent_transitions += 1
+
+    return coherent_transitions / (len(trajectory) - 1)
+
+
+def _evaluate_completeness(
+    trajectory: list[TrajectoryStep],
+    question: str,
+) -> float:
+    """Evaluate if trajectory addresses the question."""
+    q_words = set(question.lower().split())
+
+    addressed = set()
+    for step in trajectory:
+        step_words = set((step.action + " " + step.observation).lower().split())
+        addressed |= q_words & step_words
+
+    return len(addressed) / len(q_words) if q_words else 0
+
+
 class TrajectoryEvaluator(BaseEvaluator):
     """
     Evaluates agent trajectory quality.
@@ -552,9 +597,9 @@ class TrajectoryEvaluator(BaseEvaluator):
             )
 
         # Evaluate trajectory properties
-        efficiency_score = self._evaluate_efficiency(trajectory)
-        coherence_score = self._evaluate_coherence(trajectory)
-        completeness_score = self._evaluate_completeness(trajectory, question)
+        efficiency_score = _evaluate_efficiency(trajectory)
+        coherence_score = _evaluate_coherence(trajectory)
+        completeness_score = _evaluate_completeness(trajectory, question)
 
         overall = (efficiency_score + coherence_score + completeness_score) / 3
 
@@ -572,48 +617,6 @@ class TrajectoryEvaluator(BaseEvaluator):
                 "step_count": len(trajectory),
             },
         )
-
-    def _evaluate_efficiency(self, trajectory: list[TrajectoryStep]) -> float:
-        """Evaluate trajectory efficiency (fewer steps = better)."""
-        step_count = len(trajectory)
-        if step_count <= 3:
-            return 1.0
-        elif step_count <= 5:
-            return 0.8
-        elif step_count <= 8:
-            return 0.6
-        elif step_count <= 12:
-            return 0.4
-        else:
-            return 0.2
-
-    def _evaluate_coherence(self, trajectory: list[TrajectoryStep]) -> float:
-        """Evaluate if steps are logically connected."""
-        if len(trajectory) <= 1:
-            return 1.0
-
-        coherent_transitions = 0
-        for i in range(len(trajectory) - 1):
-            # Simple check: observation should influence next action
-            if trajectory[i].observation and trajectory[i + 1].action:
-                coherent_transitions += 1
-
-        return coherent_transitions / (len(trajectory) - 1)
-
-    def _evaluate_completeness(
-        self,
-        trajectory: list[TrajectoryStep],
-        question: str,
-    ) -> float:
-        """Evaluate if trajectory addresses the question."""
-        q_words = set(question.lower().split())
-
-        addressed = set()
-        for step in trajectory:
-            step_words = set((step.action + " " + step.observation).lower().split())
-            addressed |= q_words & step_words
-
-        return len(addressed) / len(q_words) if q_words else 0
 
 
 # ============================================================================

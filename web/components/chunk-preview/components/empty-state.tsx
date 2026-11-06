@@ -4,14 +4,7 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  Upload,
-  BookOpen,
-  HelpCircle,
-  ScanLine,
-  Cpu,
-  FileUp,
-} from 'lucide-react'
+import { Upload, BookOpen, HelpCircle, Parsing, Cpu, FileUp } from '@/components/icons'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { UPLOAD_ACCEPT } from '@/lib/upload-extensions'
@@ -33,11 +26,15 @@ export function EmptyState() {
             <span className="text-xs font-semibold text-muted-foreground">{t('emptyState.badge')}</span>
           </div>
           <h1 className="mt-4 text-2xl font-bold  text-foreground">{t('emptyState.title')}</h1>
-          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">
-            {t('emptyState.description')}
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground leading-relaxed">{t('emptyState.description')}</p>
           <div className="mt-4 flex items-center gap-2">
-            <Button type="button" variant="outline" size="sm" className="h-8 px-3 text-[11px]" onClick={() => setHelpOpen(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 px-3 text-[11px]"
+              onClick={() => setHelpOpen(true)}
+            >
               <HelpCircle className="w-3.5 h-3.5 mr-1.5" />
               {t('emptyState.help')}
             </Button>
@@ -61,7 +58,7 @@ export function EmptyState() {
           type="button"
           className={cn(
             'w-full bg-card rounded-3xl p-2 text-left shadow-strong border border-border/70 transition-colors transition-shadow duration-200 motion-reduce:transition-none focus-ring',
-            isDragging ? 'ring-4 ring-primary/15 border-primary/25' : 'hover:border-primary/25'
+            isDragging ? 'ring-4 ring-primary/15 border-primary/25' : 'hover:border-primary/25',
           )}
           onClick={() => document.getElementById('chunk-file-input')?.click()}
           onDragOver={handleDragOver}
@@ -71,7 +68,7 @@ export function EmptyState() {
           <div
             className={cn(
               'relative w-full h-60 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center transition-colors duration-200 motion-reduce:transition-none cursor-pointer overflow-hidden',
-              isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40 hover:bg-primary/5'
+              isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40 hover:bg-primary/5',
             )}
           >
             <div className="w-14 h-14 bg-card rounded-2xl shadow-sm border border-border flex items-center justify-center mb-5">
@@ -98,7 +95,7 @@ export function EmptyState() {
           >
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                <BookOpen className="w-5 h-5" />
+                <BookOpen appearance="color" className="size-5" />
               </div>
               <div>
                 <div className="font-semibold text-foreground text-sm">{t('emptyState.exampleTitle')}</div>
@@ -110,7 +107,7 @@ export function EmptyState() {
           <div className="bg-card p-5 rounded-2xl border border-border/70">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                <ScanLine className="w-5 h-5" />
+                <Parsing appearance="color" className="size-5" />
               </div>
               <div>
                 <div className="font-semibold text-foreground text-sm">{t('emptyState.previewTitle')}</div>
@@ -122,7 +119,7 @@ export function EmptyState() {
           <div className="bg-card p-5 rounded-2xl border border-border/70">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-info/10 text-info">
-                <Cpu className="w-5 h-5" />
+                <Cpu appearance="color" className="size-5" />
               </div>
               <div>
                 <div className="font-semibold text-foreground text-sm">{t('emptyState.tipsTitle')}</div>

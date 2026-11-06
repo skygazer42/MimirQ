@@ -1,6 +1,6 @@
 # Lexical Retrieval for Keyword Mode
 
-MimirQ exposes a persisted lexical retrieval channel backed by Postgres full-text search and `pg_trgm`.
+Ragvia exposes a persisted lexical retrieval channel backed by Postgres full-text search and `pg_trgm`.
 It is intended to catch the kinds of exact-ish queries that vector retrieval often misses:
 
 - version numbers such as `v1.2.3`
@@ -14,7 +14,7 @@ It is intended to catch the kinds of exact-ish queries that vector retrieval oft
 
 - `LEXICAL_DB_ENABLED=true` and `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED=false`
   - run lexical DB only
-  - skip in-memory BM25
+  - skip the Milvus BM25 channel
 - `LEXICAL_DB_ENABLED=true` and `RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED=true`
   - run lexical DB first
   - run BM25 as a secondary keyword channel

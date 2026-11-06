@@ -28,3 +28,9 @@ export * from './knowledge-graph'
 
 // ==================== Evaluation ====================
 export * from './evaluation'
+
+// ==================== Settings ====================
+export * from './settings'
+
+// ==================== Settings ====================
+export * from './settings'

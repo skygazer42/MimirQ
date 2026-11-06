@@ -1,13 +1,16 @@
 <div align="center">
 
-<img src="./web/public/brand/mimirq-mark.png" alt="MimirQ Logo" width="136"/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./web/public/brand/ragvia/logo-inverse.svg"/>
+  <img src="./web/public/brand/ragvia/logo.svg" alt="Ragvia" width="230"/>
+</picture>
 
-<h1>MimirQ</h1>
+<h1>Ragvia</h1>
 
 <p><b>フルスタックでオープンソース、中国語ファーストのエンタープライズ RAG ナレッジベース</b><br/>パース、ガバナンス、チャンク分割、検索、リランク、引用を、検査・差し替え・回帰検証できるナレッジパイプラインにします。</p>
 
 <p>
-  <a href="#mimirq-を作った理由"><b>なぜ MimirQ か</b></a> ·
+  <a href="#ragvia-を作った理由"><b>なぜ Ragvia か</b></a> ·
   <a href="#プロダクト画面"><b>プロダクト画面</b></a> ·
   <a href="#クイックスタート"><b>クイックスタート</b></a> ·
   <a href="#dify-連携"><b>Dify 連携</b></a> ·
@@ -30,13 +33,15 @@
 
 </div>
 
+現在の製品名は **Ragvia** です。開発は [`feat/ragvia-ui`](https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui) に統一し、`main` は過去のベースラインとして保持します。GitHub リポジトリのアドレスは引き続き `skygazer42/MimirQ` です。
+
 ---
 
-## MimirQ を作った理由
+## Ragvia を作った理由
 
 **企業向けナレッジベースで本当に難しいのは、文書をベクトル化することではなく、誤りの所在を特定し、戦略を差し替え、品質を回帰検証できるようにすることです。**
 
-MimirQ は、実際の行政ナレッジベース導入から生まれました。回答が誤ったとき、表を失ったパース、ルールを漏らしたガバナンス、意味を壊したチャンク分割、根拠を逃した検索、順位を誤ったリランク、引用から離れた生成のどこに原因があるかを判断する必要がありました。この流れを「アップロードして会話を開始」のボタンに隠すと、試作は速くても、長期運用の見積もり・受け入れ・統制が難しくなります。
+Ragvia は、実際の行政ナレッジベース導入から生まれました。回答が誤ったとき、表を失ったパース、ルールを漏らしたガバナンス、意味を壊したチャンク分割、根拠を逃した検索、順位を誤ったリランク、引用から離れた生成のどこに原因があるかを判断する必要がありました。この流れを「アップロードして会話を開始」のボタンに隠すと、試作は速くても、長期運用の見積もり・受け入れ・統制が難しくなります。
 
 > **制御可能なエンタープライズ・ナレッジパイプライン**
 >
@@ -46,11 +51,11 @@ MimirQ は、実際の行政ナレッジベース導入から生まれました�
 
 パース結果をスクリプト、ルール DSL、プラグインで統制した後、すべてに同じ固定長とオーバーラップを当てるのではなく、見出し、節、業務レコード、親子構造で分割します。索引では Milvus などのベクトルストアと BM25、ベクトル検索、リランクを組み合わせられます。上位アプリケーションは Dify、LangGraph、PydanticAI、または小さな API サービスでも構いません。
 
-MimirQ は、すべてのプラットフォームを置き換えようとはしません。
+Ragvia は、すべてのプラットフォームを置き換えようとはしません。
 
 - **単純で安定したローコード業務**では、Dify や RAGFlow の方が通常は速く導入できます。
 - **DeepDoc と GraphRAG を一体で使いたい場合**、RAGFlow は成熟した選択肢です。
-- **ナレッジ処理を差し替え・監査・回帰検証したい場合**、MimirQ はその能力をチャット業務から分離し、Dify の外部ナレッジ層としても利用できます。
+- **ナレッジ処理を差し替え・監査・回帰検証したい場合**、Ragvia はその能力をチャット業務から分離し、Dify の外部ナレッジ層としても利用できます。
 
 現在のリポジトリは 30 のパース基盤、86 種のチャンク戦略、13 系統のリランカー、固定 800 問の評価履歴を備えています。数は幅を示すだけで、目的は各段階の検査、引用と版の追跡、Golden セットによるリリース保護です。詳細は[エンタープライズ・ナレッジパイプライン設計原則](./docs/guides/rag_platform_design_principles.md)を参照してください。
 
@@ -58,48 +63,50 @@ MimirQ は、すべてのプラットフォームを置き換えようとはし�
 
 ## プロダクト画面
 
+以下は改名前の MimirQ ベースラインの画面です。現在のブランチには承認済みの Ragvia UI とブランドを適用していますが、スクリーンショットは未更新です。
+
 以下の画面は、リポジトリに含まれる公開の行政サービスプラグインサンプルで生成しています。本番のナレッジベースデータは含まれていません。
 
 <table>
   <tr>
     <td colspan="2" align="center">
-      <img src="./docs/images/screenshots/knowledge-graph.png" alt="MimirQ ナレッジグラフ画面" width="100%"/>
+      <img src="./docs/images/screenshots/knowledge-graph.png" alt="Ragvia ナレッジグラフ画面" width="100%"/>
       <br/><strong>ナレッジグラフ</strong>
       <br/><sub>エンティティ・イベント・関係を一つのキャンバスで検索・分析。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/dataset-management.png" alt="MimirQ ナレッジベース管理画面" width="100%"/>
+      <img src="./docs/images/screenshots/dataset-management.png" alt="Ragvia ナレッジベース管理画面" width="100%"/>
       <br/><strong>ナレッジベース管理</strong>
       <br/><sub>データセット・ドキュメント・チャンク・取り込み状況を一元的に把握。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/rag-evaluation.png" alt="MimirQ ゴールデン回帰評価画面" width="100%"/>
+      <img src="./docs/images/screenshots/rag-evaluation.png" alt="Ragvia ゴールデン回帰評価画面" width="100%"/>
       <br/><strong>ゴールデン回帰評価</strong>
       <br/><sub>標準 Q&A、実行履歴、Recall / MRR などの指標を同一画面で確認。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/settings.png" alt="MimirQ システム設定画面" width="100%"/>
+      <img src="./docs/images/screenshots/settings.png" alt="Ragvia システム設定画面" width="100%"/>
       <br/><strong>システム設定</strong>
       <br/><sub>依存関係の状態、パース能力、モデルサービス連携を一元的に確認。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/chat-history.png" alt="MimirQ 会話履歴とエビデンス確認画面" width="100%"/>
+      <img src="./docs/images/screenshots/chat-history.png" alt="Ragvia 会話履歴とエビデンス確認画面" width="100%"/>
       <br/><strong>会話履歴とエビデンス確認</strong>
       <br/><sub>過去のセッションを検索し、完全な回答・出典・フィードバック導線を振り返り。</sub>
     </td>
   </tr>
   <tr>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="MimirQ 取り込み実行モニター" width="100%"/>
+      <img src="./docs/images/screenshots/ingestion-monitor.png" alt="Ragvia 取り込み実行モニター" width="100%"/>
       <br/><strong>取り込み実行モニター</strong>
       <br/><sub>データセットごとにパース・チャンク分割・ガバナンス・エクスポート・再試行の状態を監視。</sub>
     </td>
     <td width="50%" align="center">
-      <img src="./docs/images/screenshots/data-governance.png" alt="MimirQ データガバナンスワークベンチ" width="100%"/>
+      <img src="./docs/images/screenshots/data-governance.png" alt="Ragvia データガバナンスワークベンチ" width="100%"/>
       <br/><strong>データガバナンス</strong>
       <br/><sub>ドキュメントのプレビュー・品質チェック・クレンジング・アノテーションを一つのワークベンチで。</sub>
     </td>
@@ -120,7 +127,7 @@ MimirQ は、すべてのプラットフォームを置き換えようとはし�
 ### 初期化
 
 ```bash
-git clone --depth 1 --single-branch https://github.com/skygazer42/MimirQ.git
+git clone --depth 1 --single-branch --branch feat/ragvia-ui https://github.com/skygazer42/MimirQ.git
 cd MimirQ
 make init
 ```
@@ -149,7 +156,7 @@ make api-ping
 
 [http://localhost:3000](http://localhost:3000) にアクセスします。初期管理者を設定していない場合は、画面で最初のアカウントを登録します。初回ビルド、プロキシ、本番用シークレット、ネットワーク設定は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
 
-停止は `make down`、永続データの削除は `make docker-reset`、このプロジェクトのサービスイメージも含めた削除は `make docker-purge` を使用します。MimirQ は独立した Compose プロジェクト名 `mimirq` を使用するため、同じホストの Dify は削除対象になりません。後者 2 つは元に戻せません。PowerShell、所有関係の確認、旧データ移行、復旧、正確な対象範囲は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
+停止は `make down`、永続データの削除は `make docker-reset`、このプロジェクトのサービスイメージも含めた削除は `make docker-purge` を使用します。Ragvia は独立した Compose プロジェクト名 `mimirq` を使用するため、同じホストの Dify は削除対象になりません。後者 2 つは元に戻せません。PowerShell、所有関係の確認、旧データ移行、復旧、正確な対象範囲は [Docker Compose ガイド](./docs/deployment/docker_compose.md)を参照してください。
 
 ### 方法 2：ソース開発（Python venv + pip + pnpm）
 
@@ -192,32 +199,32 @@ make api-ping
 
 ## Dify 連携
 
-MimirQ は、ワークフローキャンバスを再実装することなく、ガバナンス可能な RAG レイヤーとして既存の Dify アプリに組み込めます。現在、2 つの方式をサポートしています。
+Ragvia は、ワークフローキャンバスを再実装することなく、ガバナンス可能な RAG レイヤーとして既存の Dify アプリに組み込めます。現在、2 つの方式をサポートしています。
 
-- **External Knowledge API**：Dify がオーケストレーションと生成を担い、MimirQ がドキュメントガバナンス・検索・リランク・権限フィルタリング・エビデンス返却を担います。
-- **Workflow HTTP ノード**：Dify がカスタムルーティングとパラメータを担い、MimirQ が指定されたナレッジ範囲に対してエビデンスとトレースを返します。
+- **External Knowledge API**：Dify がオーケストレーションと生成を担い、Ragvia がドキュメントガバナンス・検索・リランク・権限フィルタリング・エビデンス返却を担います。
+- **Workflow HTTP ノード**：Dify がカスタムルーティングとパラメータを担い、Ragvia が指定されたナレッジ範囲に対してエビデンスとトレースを返します。
 
 ### Workflow HTTP ノード
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-http-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP ノードが MimirQ の検索 API を呼び出しエビデンスをマージ" width="1100" style="max-width: 100%; height: auto;"/>
+    <img src="./docs/images/screenshots/dify-mimirq-http-workflow.png" alt="Dify HTTP ノードが Ragvia の検索 API を呼び出しエビデンスをマージ" width="1100" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>実際の Dify HTTP サブチェーン（マスキング済み）：JSON リクエストを安全に構築 → HTTP ノードが MimirQ の retrieval エンドポイントを呼び出し → 結果を変換 → ナレッジエビデンスをマージ。</sub>
+  <sub>実際の Dify HTTP サブチェーン（マスキング済み）：JSON リクエストを安全に構築 → HTTP ノードが Ragvia の retrieval エンドポイントを呼び出し → 結果を変換 → ナレッジエビデンスをマージ。</sub>
 </p>
 
 ### External Knowledge API
 
 <p align="center">
   <a href="./docs/images/screenshots/dify-mimirq-workflow.png">
-    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify ワークフローが地域ルーティングで 8 つの MimirQ 行政ナレッジベースに接続" width="560" style="max-width: 100%; height: auto;"/>
+    <img src="./docs/images/screenshots/dify-mimirq-workflow.png" alt="Dify ワークフローが地域ルーティングで 8 つの Ragvia 行政ナレッジベースに接続" width="560" style="max-width: 100%; height: auto;"/>
   </a>
   <br/>
-  <sub>実際の Dify Chatflow（マスキング済み）：緑色のナレッジ検索ノードが External Knowledge API 経由で MimirQ を呼び出し、エビデンスを統一的にマージ。クリックで原寸表示。</sub>
+  <sub>実際の Dify Chatflow（マスキング済み）：緑色のナレッジ検索ノードが External Knowledge API 経由で Ragvia を呼び出し、エビデンスを統一的にマージ。クリックで原寸表示。</sub>
 </p>
 
-> 図中の地域ルーティングはオプションのサンプルプラグインによるものです。MimirQ コアは地域・事項・業種ルールを内蔵しません。
+> 図中の地域ルーティングはオプションのサンプルプラグインによるものです。Ragvia コアは地域・事項・業種ルールを内蔵しません。
 
 Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/integrations/dify/retrieval` です。`POST /api/v1/integrations/dify/conversation-turns` は、回答・引用・会話識別子の返送に使用できます。設定は [`.env.example`](./.env.example)、デプロイ前の検証は [readiness gate](./scripts/README.md)、実測結果は[実運用での検証](#実運用での検証)を参照してください。
 
@@ -229,7 +236,7 @@ Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/
 <summary><b>Dify、RAGFlow、FastGPT、AnythingLLM、LangChain との機能比較を開く</b></summary>
 
 
-| 機能領域 | **MimirQ** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
+| 機能領域 | **Ragvia** | [Dify](https://github.com/langgenius/dify) | [RAGFlow](https://github.com/infiniflow/ragflow) | [FastGPT](https://github.com/labring/FastGPT) | [AnythingLLM](https://github.com/Mintplex-Labs/anything-llm) | [LangChain](https://github.com/langchain-ai/langchain) |
 |:---|:---|:---|:---|:---|:---|:---|
 | **ドキュメントパース** | **30 のパース基盤**：PDF、OCR、レイアウト、表、数式、VLM | Knowledge Pipeline；PDF、PPT など一般的な形式 | **DeepDoc**；複雑なレイアウトとスキャン；MinerU / Docling | PDF・スキャン・表・数式を Markdown 化 | PDF、TXT、DOCX などのドキュメントパイプライン | Document Loaders とサードパーティパーサー連携 |
 | **チャンク分割** | **86 種の戦略**：再帰、セマンティック、親子、RAPTOR、Late Chunking；可視化プレビュー | 汎用、親子、Q&A、パイプライン定義の処理 | テンプレートベースのチャンク分割；可視化した人手介入 | 自動、手動、Q&A、拡張処理 | ドキュメントパイプラインの自動チャンク分割 | Text Splitters；アプリケーションコードで組み立て |
@@ -252,7 +259,7 @@ Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/
 
 ## 実運用での検証
 
-MimirQ は、7 つの地区レベルと 1 つの市レベルのナレッジベースにまたがる**市レベルの行政 Q&A アシスタント**で使われています。2026-07-27 に同じ固定 800 問を実セルフホストモデルで再測定し、5 経路すべてが最終的に **800 / 800** を完了しました。
+Ragvia は、7 つの地区レベルと 1 つの市レベルのナレッジベースにまたがる**市レベルの行政 Q&A アシスタント**で使われています。2026-07-27 に同じ固定 800 問を実セルフホストモデルで再測定し、5 経路すべてが最終的に **800 / 800** を完了しました。
 
 <!-- データ出典：artifacts/dify_4way_800_20260727/comparison_report.json、artifacts/dify_4way_800_20260727/summary_for_sharing.md、artifacts/changzhou_local_3model_800_20260727/summary.json；入力 SHA-256 5a4c67c42e8f8123774279d46af39ccc793da1b89fdea19a7359f63c8cb2fac2。 -->
 
@@ -262,27 +269,27 @@ MimirQ は、7 つの地区レベルと 1 つの市レベルのナレッジベ�
 
 | エビデンス経路 | 正確率 | 利用可能率 | エビデンスカバレッジ | レイテンシ（平均 / P95） |
 |:---|---:|---:|---:|---:|
-| **MimirQ 検索コア** | **98.9%** | **100%** | **99.5%** | **3.64s / 12.58s** |
+| **Ragvia 検索コア** | **98.9%** | **100%** | **99.5%** | **3.64s / 12.58s** |
 
 ### エンドツーエンド回答（LLM 生成あり）
 
 | 回答経路 | 正確率 | 利用可能率 | カバレッジ（エビデンス / 回答） | レイテンシ（平均 / P95） |
 |:---|---:|---:|---:|---:|
-| **MimirQ RAG 生成** | **90.9%** | **100%** | **99.7% / 96.6%** | **2.59s / 8.15s** |
-| **Dify HTTP → MimirQ** | 64.3% | 92.1% | 96.3% / 83.6% | 13.15s / 17.33s |
-| **Dify External → MimirQ** | 62.7% | 91.7% | **99.7%** / 83.8% | 12.14s / 23.49s |
+| **Ragvia RAG 生成** | **90.9%** | **100%** | **99.7% / 96.6%** | **2.59s / 8.15s** |
+| **Dify HTTP → Ragvia** | 64.3% | 92.1% | 96.3% / 83.6% | 13.15s / 17.33s |
+| **Dify External → Ragvia** | 62.7% | 91.7% | **99.7%** / 83.8% | 12.14s / 23.49s |
 | **Dify ネイティブナレッジ¹** | 38.6% | 74.5% | 83.8% / 66.1% | 13.67s / 29.55s |
 
-¹ Dify ネイティブナレッジは MimirQ を経由しません。正確・部分正確・エビデンス不足の件数は詳細レポートを参照してください。
+¹ Dify ネイティブナレッジは Ragvia を経由しません。正確・部分正確・エビデンス不足の件数は詳細レポートを参照してください。
 
-Dify HTTP / External の検索エビデンスカバレッジは 96.3% / 99.7%、生成回答の条項カバレッジは 83.6% / 83.8% でした。主な損失は MimirQ の検索ではなく、Dify の回答生成で生じています。
+Dify HTTP / External の検索エビデンスカバレッジは 96.3% / 99.7%、生成回答の条項カバレッジは 83.6% / 83.8% でした。主な損失は Ragvia の検索ではなく、Dify の回答生成で生じています。
 
 <details>
 <summary><b>テスト境界、並列性、汎用性の説明</b></summary>
 
 - 検索コアはエビデンスを返し、他の 4 経路は生成回答を返します。2 表の正確率とレイテンシは同一タスクとして直接比較できません。
 - 検索の並列度 5 では初回に設定済み admission backpressure が 15 件発生しました。並列度 3 で該当問題だけを再試行し、800 / 800 に復旧しました。
-- MimirQ には地域・事項・問題の特別扱いはありません。異なる Embedding ランタイムをまたぐマルチナレッジベース要求は汎用検索レイヤーがシャーディングします。
+- Ragvia には地域・事項・問題の特別扱いはありません。異なる Embedding ランタイムをまたぐマルチナレッジベース要求は汎用検索レイヤーがシャーディングします。
 
 </details>
 
@@ -363,7 +370,7 @@ cd web && pnpm lint && pnpm test
 
 ```bash
 # フォークしてクローン
-git clone https://github.com/<your-username>/MimirQ.git
+git clone --branch feat/ragvia-ui https://github.com/<your-username>/MimirQ.git
 cd MimirQ
 make init
 
@@ -389,7 +396,7 @@ make enterprise-checks
 
 ## 謝辞
 
-MimirQ は優れたオープンソースエコシステムの上に構築されています。以下のプロジェクトに感謝します。
+Ragvia は優れたオープンソースエコシステムの上に構築されています。以下のプロジェクトに感謝します。
 
 [Dify](https://github.com/langgenius/dify) · [RAGFlow](https://github.com/infiniflow/ragflow) · [FastAPI](https://fastapi.tiangolo.com/) · [LangChain](https://langchain.com/) · [LangGraph](https://langchain-ai.github.io/langgraph/) · [Milvus](https://milvus.io/) · [Next.js](https://nextjs.org/) · [PostgreSQL](https://www.postgresql.org/) · [RAGAS](https://docs.ragas.io/) · [PyMuPDF](https://pymupdf.readthedocs.io/) · [MinerU](https://github.com/opendatalab/MinerU) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/)
 

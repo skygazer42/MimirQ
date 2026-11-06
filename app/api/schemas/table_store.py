@@ -2,7 +2,6 @@
 Structured table store (TAG) API schemas.
 """
 
-
 from typing import Any
 from uuid import UUID
 

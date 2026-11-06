@@ -6,12 +6,12 @@ We treat dataset defaults as *fallbacks*:
 - Otherwise, apply the dataset's override (if any).
 """
 
-
 from collections.abc import Iterable
 from typing import Any
 
 from app.api.schemas.chat import ChatRAGConfig
 from app.api.schemas.dataset import DatasetRAGDefaults
+from app.services.rag_config_template_apply import validate_rag_config_patch
 
 
 def _coerce_dataset_defaults(raw_dataset_defaults: Any) -> DatasetRAGDefaults | None:
@@ -47,9 +47,10 @@ def _merge_dataset_rag_overrides(
         if key in provided:
             continue
         merged[key] = value
-        applied.append(str(key))
+        applied.append(key)
     if not applied:
         return rag_config, []
+    validate_rag_config_patch(merged)
     return ChatRAGConfig(**merged), applied
 
 

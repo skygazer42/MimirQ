@@ -5,27 +5,34 @@ This is a scaffold for future LangGraph-based long-term memory. When disabled,
 the graph runs without a store (default).
 """
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from app.core.config import settings
 from app.core.optional_deps import require_dependency
 from app.rag.core.logging import get_logger
 
+if TYPE_CHECKING:
+    from langgraph.store.base import BaseStore
+
 logger = get_logger("rag.store.factory")
 
-_store = None
+_store: BaseStore | None = None
 
 
-def get_langgraph_store():
+def get_langgraph_store() -> BaseStore | None:
     """Return a LangGraph BaseStore instance (or None when disabled)."""
     global _store
 
-    enabled = bool(getattr(settings, "LANGGRAPH_STORE_ENABLED", False))
+    enabled = bool(settings.LANGGRAPH_STORE_ENABLED)
     if not enabled:
         return None
 
     if _store is not None:
         return _store
 
-    backend = str(getattr(settings, "LANGGRAPH_STORE_BACKEND", "memory") or "memory").strip().lower()
+    backend = str(settings.LANGGRAPH_STORE_BACKEND or "memory").strip().lower()
     if backend in {"none", "disabled"}:
         return None
 

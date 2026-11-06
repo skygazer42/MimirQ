@@ -39,14 +39,14 @@ class _MetadataAwareChunker(BaseChunker):
         metadata_generate_questions: bool,
     ) -> None:
         self._inner = inner
-        self._enrich_document_metadata = bool(enrich_document_metadata)
-        self._inject_metadata_header = bool(inject_metadata_header)
-        self._metadata_keywords_provider = str(metadata_keywords_provider or "auto")
-        self._metadata_keyword_top_k = int(metadata_keyword_top_k or 8)
-        self._metadata_keyword_max_chars = int(metadata_keyword_max_chars or 4000)
-        self._metadata_summary_max_chars = int(metadata_summary_max_chars or 220)
-        self._metadata_question_count = int(metadata_question_count or 3)
-        self._metadata_generate_questions = bool(metadata_generate_questions)
+        self._enrich_document_metadata = enrich_document_metadata
+        self._inject_metadata_header = inject_metadata_header
+        self._metadata_keywords_provider = metadata_keywords_provider or "auto"
+        self._metadata_keyword_top_k = metadata_keyword_top_k or 8
+        self._metadata_keyword_max_chars = metadata_keyword_max_chars or 4000
+        self._metadata_summary_max_chars = metadata_summary_max_chars or 220
+        self._metadata_question_count = metadata_question_count or 3
+        self._metadata_generate_questions = metadata_generate_questions
 
     def _enrichment_kwargs(self) -> dict[str, Any]:
         return {

@@ -9,8 +9,8 @@ describe('conversation ops panel source', () => {
 
     expect(source).toContain('data-history-ops-panel="true"')
     expect(source).toContain('data-history-ops-boundary="ruled"')
-    expect(source).toContain('border border-foreground/15 bg-background')
-    expect(source).toContain('rounded-md border border-foreground/10 bg-background/70')
+    expect(source).toContain('variant="seamless"')
+    expect(source).toContain('padding="none"')
     expect(source).not.toContain('linear-gradient')
     expect(source).not.toContain('blur-2xl')
     expect(source).not.toContain('shadow-[0_12px_36px')

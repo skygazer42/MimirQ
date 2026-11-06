@@ -14,7 +14,6 @@ Usage:
         )
 """
 
-
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -63,29 +62,29 @@ class Command:
     send: list["Send"] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate command configuration."""
         if self.resume is not None and (self.goto or self.update):
             # Resume is a special case - shouldn't combine with regular flow
             pass  # Allow for flexibility, but log warning in actual use
 
     @classmethod
-    def continue_to(cls, node: str, **updates) -> "Command":
+    def continue_to(cls, node: str, **updates: Any) -> "Command":
         """Create a command that continues to a specific node."""
         return cls(update=updates, goto=node)
 
     @classmethod
-    def finish(cls, **updates) -> "Command":
+    def finish(cls, **updates: Any) -> "Command":
         """Create a command that finishes the workflow."""
         return cls(update=updates, goto="__end__")
 
     @classmethod
-    def retry(cls, **updates) -> "Command":
+    def retry(cls, **updates: Any) -> "Command":
         """Create a command that retries the current node."""
         return cls(update=updates, goto="__retry__")
 
     @classmethod
-    def fan_out(cls, nodes: list[str], **updates) -> "Command":
+    def fan_out(cls, nodes: list[str], **updates: Any) -> "Command":
         """Create a command that fans out to multiple nodes."""
         return cls(update=updates, goto=nodes)
 
@@ -94,7 +93,7 @@ class Command:
         """Create a command that resumes an interrupted workflow."""
         return cls(resume=value)
 
-    def with_update(self, **updates) -> "Command":
+    def with_update(self, **updates: Any) -> "Command":
         """Return a new Command with additional updates."""
         merged = {**self.update, **updates}
         return Command(
@@ -105,7 +104,7 @@ class Command:
             metadata=self.metadata,
         )
 
-    def with_metadata(self, **meta) -> "Command":
+    def with_metadata(self, **meta: Any) -> "Command":
         """Return a new Command with additional metadata."""
         merged = {**self.metadata, **meta}
         return Command(
@@ -181,7 +180,7 @@ def interrupt(
     value: Any = None,
     prompt: str = "",
     options: list[str] | None = None,
-    **metadata,
+    **metadata: Any,
 ) -> Interrupt:
     """
     Create an interrupt to pause workflow execution.
@@ -224,7 +223,7 @@ class CommandProcessor:
     Used internally by workflow engines to interpret Command returns.
     """
 
-    def __init__(self, state: dict[str, Any]):
+    def __init__(self, state: dict[str, Any]) -> None:
         """Initialize with current state."""
         self.state = dict(state)
         self.pending_sends: list[Send] = []

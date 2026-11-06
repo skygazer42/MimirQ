@@ -4,6 +4,7 @@ Default embedding model configurations.
 This module defines the supported embedding models with their configurations.
 Models are identified by "provider/model_name" format.
 """
+
 from pydantic import BaseModel, ConfigDict, Field
 
 DEFAULT_BGE_M3_NAME = "BAAI/bge-m3"
@@ -140,28 +141,6 @@ DEFAULT_EMBED_MODELS: dict[str, EmbedModelInfo] = {
         base_url="https://api-inference.modelscope.cn/v1/embeddings",
         api_key=MODELSCOPE_ENV_VAR,
     ),
-    # Local sentence-transformers models
-    "local/BAAI/bge-m3": EmbedModelInfo(
-        model_id="local/BAAI/bge-m3",
-        name=DEFAULT_BGE_M3_NAME,
-        dimension=1024,
-        base_url="local",
-        api_key="no_api_key",
-    ),
-    "local/BAAI/bge-large-zh-v1.5": EmbedModelInfo(
-        model_id="local/BAAI/bge-large-zh-v1.5",
-        name="BAAI/bge-large-zh-v1.5",
-        dimension=1024,
-        base_url="local",
-        api_key="no_api_key",
-    ),
-    "local/shibing624/text2vec-base-chinese": EmbedModelInfo(
-        model_id="local/shibing624/text2vec-base-chinese",
-        name="shibing624/text2vec-base-chinese",
-        dimension=768,
-        base_url="local",
-        api_key="no_api_key",
-    ),
 }
 
 
@@ -195,8 +174,4 @@ def get_models_by_provider(provider: str) -> dict[str, EmbedModelInfo]:
     Returns:
         Dictionary of model_id to EmbedModelInfo
     """
-    return {
-        k: v
-        for k, v in DEFAULT_EMBED_MODELS.items()
-        if k.startswith(f"{provider}/")
-    }
+    return {k: v for k, v in DEFAULT_EMBED_MODELS.items() if k.startswith(f"{provider}/")}

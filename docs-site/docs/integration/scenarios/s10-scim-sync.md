@@ -5,7 +5,7 @@ sidebar_position: 10
 
 # 场景: SCIM 用户同步
 
-通过 SCIM 协议将 IdP（Identity Provider）中的用户与组同步到 MimirQ 租户。
+通过 SCIM 协议将 IdP（Identity Provider）中的用户与组同步到 Ragvia 租户。
 
 ## 场景描述
 
@@ -16,7 +16,7 @@ sidebar_position: 10
 ```mermaid
 sequenceDiagram
     participant IdP as Identity Provider
-    participant SCIM as MimirQ SCIM Endpoint
+    participant SCIM as Ragvia SCIM Endpoint
     participant DB as 用户数据库
     IdP->>SCIM: POST /scim/v2/Users (创建用户)
     SCIM->>DB: 写入用户记录
@@ -36,7 +36,7 @@ sequenceDiagram
 | SCIM Endpoint | `{BASE_URL}/scim/v2/` |
 | 认证方式 | Bearer Token（管理员级别） |
 | 用户属性映射 | `userName` → 登录名，`emails` → 邮箱 |
-| 组映射 | SCIM Groups → MimirQ 角色/租户 |
+| 组映射 | SCIM Groups → Ragvia 角色/租户 |
 
 :::info
 SCIM 端点是否启用以及具体路径以部署配置与 [Redoc](https://skygazer42.github.io/MimirQ/) 为准。
@@ -66,15 +66,15 @@ curl -s "$BASE_URL/scim/v2/Users?filter=userName eq \"john.doe@company.com\"" \
 
 | 操作 | 预期 |
 |------|------|
-| 创建用户 | MimirQ 中出现对应用户，可登录 |
+| 创建用户 | Ragvia 中出现对应用户，可登录 |
 | 更新属性 | 用户信息同步更新 |
 | 禁用用户 | 用户无法登录但数据保留 |
 
 ## 注意事项
 
-- SCIM 同步为**最终一致**，IdP 侧修改后同步到 MimirQ 可能有延迟
+- SCIM 同步为**最终一致**，IdP 侧修改后同步到 Ragvia 可能有延迟
 - 删除用户时建议使用**禁用**（`active: false`）而非硬删除，保留审计数据
-- 组映射配置影响用户在 MimirQ 中的角色与租户归属
+- 组映射配置影响用户在 Ragvia 中的角色与租户归属
 
 ## 排障
 

@@ -25,24 +25,20 @@ def build_db_profile_cache_key(
     table_fingerprint: str,
     profile_version: int,
 ) -> str:
-    return (
-        f"db_profile:v{int(profile_version)}:{str(tenant_id)}:{str(dataset_id)}:"
-        f"{str(entitlement_hash)}:{str(table_fingerprint)}"
-    )
+    return f"db_profile:v{profile_version}:{tenant_id}:{dataset_id}:{entitlement_hash}:{table_fingerprint}"
 
 
 def get_cached_db_profile(key: str, *, ttl_sec: float) -> dict[str, Any] | None:
-    ttl = float(ttl_sec or 0.0)
-    if ttl <= 0:
+    if ttl_sec <= 0:
         return None
 
-    cached = _cache.get(str(key))
+    cached = _cache.get(key)
     if cached is None:
         return None
 
     ts, payload = cached
-    if (time.monotonic() - float(ts)) > ttl:
-        _cache.pop(str(key), None)
+    if (time.monotonic() - ts) > ttl_sec:
+        _cache.pop(key, None)
         return None
 
     return dict(payload)
@@ -51,4 +47,4 @@ def get_cached_db_profile(key: str, *, ttl_sec: float) -> dict[str, Any] | None:
 def set_cached_db_profile(key: str, payload: dict[str, Any]) -> None:
     if len(_cache) > _CACHE_MAX_ENTRIES:
         _cache.clear()
-    _cache[str(key)] = (time.monotonic(), dict(payload or {}))
+    _cache[key] = (time.monotonic(), dict(payload))

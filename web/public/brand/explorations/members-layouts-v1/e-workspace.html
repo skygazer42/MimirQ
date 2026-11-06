@@ -1,0 +1,256 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=1600,initial-scale=1"><title>E · 分类工作区 · Ragvia</title><link rel="stylesheet" href="common.css"><style>
+.e-workspace{height:928px;display:grid;grid-template-columns:200px minmax(0,1fr);overflow:hidden}
+.e-task-directory{border-right:1px solid var(--line);background:var(--fog);padding:22px 12px 20px;display:flex;flex-direction:column;min-width:0}
+.e-directory-title{font-size:12px;line-height:20px;color:var(--muted);padding:0 12px;margin-bottom:17px}
+.e-task-group{font-size:12px;line-height:20px;color:var(--muted);padding:0 12px;margin:0 0 8px}
+.e-task-entry{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;position:relative;min-height:68px}
+.e-task-entry>.icon{width:17px;height:17px;margin-top:3px;color:var(--muted)}
+.e-task-entry strong{font-size:14px;line-height:24px;font-weight:500;display:block;white-space:nowrap}
+.e-task-entry small{font-size:12px;line-height:20px;color:var(--muted);display:block}
+.e-task-entry.active{background:var(--selected);border-radius:5px}
+.e-task-entry.active:before{content:'';position:absolute;left:0;top:16px;bottom:16px;width:3px;background:var(--ink);border-radius:0 2px 2px 0}
+.e-task-entry.active>.icon{color:var(--ink)}.e-task-entry.active strong{font-weight:600}
+.e-identity-group{margin-top:25px;padding-top:20px;border-top:1px solid var(--line)}
+.e-task-explanation{font-size:12px;line-height:21px;color:var(--muted);padding:0 12px;margin-top:11px}
+.e-account-context{margin-top:auto;padding:17px 12px 0;border-top:1px solid var(--line)}
+.e-account-context>span{font-size:12px;line-height:20px;color:var(--muted)}
+.e-current-account{font-size:14px;line-height:24px;margin:4px 0 3px;display:flex;align-items:center;gap:8px}
+.e-current-account .role-label{font-size:12px}
+.e-account-context p{font-size:12px;line-height:20px;color:var(--muted)}
+.e-main-content{min-width:0;padding:22px 28px 20px;background:var(--surface)}
+.e-roster-intro{display:flex;align-items:center;justify-content:space-between;height:45px;margin-bottom:12px}
+.e-roster-intro h2{font-size:16px;line-height:26px;font-weight:600}
+.e-roster-intro p{font-size:12px;line-height:20px;color:var(--muted)}
+.e-roster-intro>span{font-size:12px;line-height:22px;color:var(--muted)}
+.e-roster{border-top:1px solid var(--line)}
+.e-roster .member-filters{min-height:54px;height:54px;padding:8px 0;gap:10px}
+.e-roster .member-filters>.search{width:300px;height:34px}
+.e-roster .member-filters>.select{width:142px;height:34px}
+.e-roster .scope-label{font-size:12px}
+.e-roster-table{border-collapse:collapse;table-layout:fixed;width:100%}
+.e-roster-table th{height:35px;font-size:12px;line-height:20px;font-weight:450;color:var(--muted);text-align:left;padding:0 12px;border-bottom:1px solid var(--line);background:var(--fog)}
+.e-roster-table th:first-child{padding-left:14px}
+.e-roster-table td{height:42px;border-bottom:1px solid #E8EBEE;padding:0 12px;font-size:14px;line-height:24px;vertical-align:middle;white-space:nowrap}
+.e-roster-table tr.selected td{background:#EEF1F4}
+.e-roster-table tr.selected td:first-child{box-shadow:inset 3px 0 var(--ink)}
+.e-roster-table td:first-child{padding-left:14px}
+.e-roster-table tbody tr:last-child td{border-bottom:0}
+.e-table-member{display:flex;align-items:center;gap:9px;min-width:0}
+.e-table-member .member-avatar{width:28px;height:28px;font-size:12px;background:var(--subtle)}
+.e-table-member strong{font-size:14px;font-weight:500}
+.e-table-member small{font-size:12px;line-height:20px;color:var(--muted);margin-left:1px}
+.e-roster-table .e-email{font-size:13px;color:var(--muted)}
+.e-roster-table .e-date{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.e-roster-table .role-button{height:28px;padding:0 8px;min-width:120px;border-color:transparent;background:transparent}
+.e-roster-table tr.selected .role-button{background:var(--surface);border-color:var(--line)}
+.e-roster-table .role-label{font-size:13px}
+.e-roster-table .e-row-action{height:28px;width:28px}
+.e-roster-table .e-row-action .icon{width:15px;height:15px}
+.e-roster .member-footer{padding:0 12px;height:40px;font-size:12px;border-bottom:1px solid var(--line)}
+.e-role-context{margin-top:20px;border-top:1px solid var(--line);background:var(--fog);padding:18px 20px 16px;display:grid;grid-template-columns:170px minmax(0,1fr) auto;column-gap:24px;row-gap:13px;align-items:start}
+.e-role-summary{border-right:1px solid var(--line);padding-right:20px}
+.e-role-summary>span{display:block;font-size:12px;line-height:20px;color:var(--muted);margin-bottom:3px}
+.e-role-summary .role-label{font-size:16px;line-height:26px;font-weight:550}
+.e-role-summary p{font-size:12px;line-height:20px;color:var(--muted);margin-top:4px}
+.e-selected-role h3{font-size:14px;line-height:24px;font-weight:550}
+.e-selected-role p{font-size:14px;line-height:24px;margin-top:3px}
+.e-selected-role>span{display:block;font-size:12px;line-height:20px;color:var(--muted);margin-top:4px}
+.e-role-context-actions{display:flex;align-items:center;gap:8px;padding-top:4px}
+.e-role-context-actions .btn{height:33px}
+.e-role-context-actions .e-remove{color:var(--muted);padding:0 8px}
+.e-role-boundary{grid-column:1/-1;border-top:1px solid var(--line);padding-top:10px;display:flex;align-items:center;justify-content:space-between;gap:24px;font-size:12px;line-height:20px;color:var(--muted)}
+</style></head><body><div class="app"><aside class="sidebar"><div class="brand"><img src="../../ragvia/logo.svg" alt="Ragvia"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="panel-left-close"><rect x="3" y="4" width="18" height="16" rx="1" /><path d="M9 4v16m8-12-4 4 4 4" /></svg>
+</div><div class="sidebar-new"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16" /></svg>
+新对话</div><div class="sidebar-search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+搜索与命令<small>⌘K</small></div><nav class="nav-scroll"><div class="nav-group">工作区<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="M8 9h8m-8 3.5h5" /></svg>
+对话</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7" /><path d="M12 6v6l4 2" /></svg>
+问答历史</div><div class="nav-group">知识库管理<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1" /><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3" /></svg>
+数据集</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15" /><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2" /></svg>
+知识库</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="quarantine"><rect x="3" y="3.5" width="18" height="4" rx="0.5" /><path d="M5 7.5v13h14v-13M12 11v4" /><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none" /></svg>
+隔离队列</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="feedback"><path d="M4 4.5h16v12H9l-5 4Z" /><path d="m8 10 2.5 2.5L16 7" /></svg>
+反馈质检</div><div class="nav-group">入库流程<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4" /><path d="M4 5H2.5v6H4m16-6h1.5v6H20" /></svg>
+入库管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="parsing"><path d="M12.5 3.5H4v17h8.5M8 8h3M8 12h3M8 16h3M15 7h5m-5 5h5m-5 5h5" /><path d="m17 5 3 2-3 2" /></svg>
+文档解析</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="data-governance"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="M8 9h8M8 12h5M8 15h5" /></svg>
+数据治理</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="rule-set"><path d="M8 3.5H5v7l-2 1.5 2 1.5v7h3m8-17h3v7l2 1.5-2 1.5v7h-3M10 8h4m-4 4h4m-4 4h4" /></svg>
+治理配置</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1" /><rect x="3.5" y="14" width="17" height="6" rx="1" /><path d="M8 7h8M8 17h8" /><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true" /></svg>
+切块预览</div><div class="nav-group">分析工具<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-graph"><path d="m7.3 6.3 8 4.4m-8 7 8-4.4M5 7.5v9" /><circle cx="5" cy="5" r="2.5" /><circle cx="18" cy="12" r="3" /><circle cx="5" cy="19" r="2.5" /></svg>
+知识图谱</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="evaluation"><path d="M4 3.5h10l6 6v11H4Zm10 0v6h6M8 16l2 2 4-5" /><path d="M8 8h2" /></svg>
+RAG 评测</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="reports"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="M8 16v-3m4 3V10m4 6v-4M8 7h2" /></svg>
+数据报告</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="prompts"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="m7 9 3 3-3 3m6 0h4" /></svg>
+提示词</div><div class="nav-group">系统<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="diagnostics"><rect x="3.5" y="4" width="17" height="16" rx="1" /><path d="M3.5 12H8l2-4 4 8 2-4h4.5" /></svg>
+诊断</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="usage"><path d="M4 20V4h16v16ZM8 16v-3m4 3V9m4 7V6" /></svg>
+用量 / 配额</div><div class="nav-item"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="audit-log"><path d="M6 3.5h13v17H6M3 7h5M3 12h5M3 17h5m4-10h3m-3 5h3m-3 5h3" /></svg>
+审计日志</div><div class="nav-item active"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="members"><circle cx="9" cy="7" r="3" /><path d="M3 20v-3c0-5 12-5 12 0v3M17 7l2 2 3-4M18 14v6m-2-3h4" /></svg>
+成员权限</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="groups"><circle cx="8" cy="7" r="2.5" /><circle cx="17" cy="9" r="2.5" /><path d="M2.5 20v-2.5c0-5 11-5 11 0V20m3-5c3 0 5 1 5 3.5V20" /></svg>
+组管理</div><div class="nav-item "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="settings"><path d="m9 3-.5 3-2 1L4 6l-2 4 2.5 2v2L2 16l2 4 2.5-1 2 1 .5 2h6l.5-2 2-1 2.5 1 2-4-2.5-2v-2L22 10l-2-4-2.5 1-2-1L15 3Z" /><circle cx="12" cy="12.5" r="3" /></svg>
+设置</div></nav><div class="sidebar-bottom"><div class="profile"><span class="avatar"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="user"><circle cx="12" cy="7.5" r="3" /><path d="M5 20v-2.5a7 5.5 0 0 1 14 0V20" /></svg>
+</span><div><strong>开发模式</strong><small>本地开发环境</small></div><span class="profile-icons"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="log-out"><path d="M12 3H3v18h9m-2-9h12m-4-4 4 4-4 4" /></svg>
+<svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="sun"><circle cx="12" cy="12" r="4.5" /><path d="M12 1v3m0 16v3M1 12h3m16 0h3M4 4l2 2m12 12 2 2M4 20l2-2M18 6l2-2" /></svg>
+</span></div><div class="appearance"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="palette"><path d="M12 3a9 9 0 0 0 0 18h2c3 0 3-4 0-4h-1c-3 0-3-4 0-4h5c6 0 4-10-6-10Z" /><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none" /><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="6" cy="14" r="1" fill="currentColor" stroke="none" /></svg>
+界面外观<span>5 种风格</span></div><div class="service"><i></i>服务已就绪</div></div></aside><main class="main"><header class="page-header"><div class="members-heading"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="members"><circle cx="9" cy="7" r="3" /><path d="M3 20v-3c0-5 12-5 12 0v3M17 7l2 2 3-4M18 14v6m-2-3h4" /></svg>
+<h1>成员权限</h1></div><div class="header-end"><button type="button" class="btn "><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="refresh-cw"><path d="M20 9a8 8 0 0 0-14-3L3 9m0-6v6h6m-5 6a8 8 0 0 0 14 3l3-3m-6 0h6v6" /></svg>
+<span>刷新成员</span></button></div></header>
+<section class="e-workspace">
+  <aside class="e-task-directory" aria-label="成员权限任务目录">
+    <p class="e-directory-title">成员与身份</p>
+    <div class="e-task-group">成员管理</div>
+    <div class="e-task-entry active" aria-current="page"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="members"><circle cx="9" cy="7" r="3" /><path d="M3 20v-3c0-5 12-5 12 0v3M17 7l2 2 3-4M18 14v6m-2-3h4" /></svg>
+<div><strong>成员名册</strong><small>12 名成员</small></div></div>
+    <div class="e-task-entry"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="shield-check"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z" /><path d="m8 12 3 3 5-6" /></svg>
+<div><strong>角色说明</strong><small>6 种固定角色</small></div></div>
+    <div class="e-identity-group"><div class="e-task-group">身份接入</div>
+      <div class="e-task-entry"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="key-round"><circle cx="8" cy="8" r="5" /><path d="m11.5 11.5 9 9h2v-4h-4v-4h-3.5" /></svg>
+<div><strong>SCIM 服务测试</strong><small>未测试</small></div></div>
+      <div class="e-task-entry"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="file-code"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5" /><path d="m9.5 11-2 2.5 2 2.5m5-5 2 2.5-2 2.5" /></svg>
+<div><strong>SAML 元数据</strong><small>未读取</small></div></div>
+      <p class="e-task-explanation">按需测试 SCIM 服务配置<br>或读取 SAML 元数据。</p>
+    </div>
+    <div class="e-account-context"><span>当前账号</span><div class="e-current-account">林澈<span class="role-label violet"><i></i><span>所有者</span></span></div><p>当前账号不可移除</p></div>
+  </aside>
+  <div class="e-main-content">
+    <div class="e-roster-intro"><div><h2>成员名册</h2><p>查找成员，核对并逐一调整角色</p></div><span>当前租户 · 12 名成员</span></div>
+    <section class="e-roster" aria-label="成员名册">
+      <div class="member-filters"><div class="search"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m15.25 15.25 5 5" /></svg>
+<span>搜索名称、邮箱或 ID</span></div><div class="select"><span>全部角色</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><div class="select"><span>全部成员</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</div><span class="spacer"></span><span class="scope-label">当前租户</span></div>
+      <table class="e-roster-table"><colgroup><col style="width:19%"><col style="width:25%"><col style="width:15%"><col style="width:15%"><col style="width:21%"><col style="width:5%"></colgroup><thead><tr><th scope="col">成员</th><th scope="col">邮箱</th><th scope="col">当前角色</th><th scope="col">加入日期</th><th scope="col">最近更新</th><th scope="col"></th></tr></thead><tbody>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">林</span><strong>林澈</strong><small>当前账号</small></div></td>
+      <td class="e-email">lin.che@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整林澈的角色"><span class="role-label violet"><i></i><span>所有者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-09-12</td>
+      <td class="e-date">2026-10-25 16:20</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="林澈的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">陈</span><strong>陈宁</strong></div></td>
+      <td class="e-email">chen.ning@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整陈宁的角色"><span class="role-label blue"><i></i><span>管理员</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-09-15</td>
+      <td class="e-date">2026-10-25 14:08</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="陈宁的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">周</span><strong>周遥</strong></div></td>
+      <td class="e-email">zhou.yao@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整周遥的角色"><span class="role-label blue"><i></i><span>管理员</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-09-18</td>
+      <td class="e-date">2026-10-24 18:42</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="周遥的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">许</span><strong>许文</strong></div></td>
+      <td class="e-email">xu.wen@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整许文的角色"><span class="role-label amber"><i></i><span>审计员</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-09-20</td>
+      <td class="e-date">2026-10-24 10:36</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="许文的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">苏</span><strong>苏晴</strong></div></td>
+      <td class="e-email">su.qing@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整苏晴的角色"><span class="role-label teal"><i></i><span>编辑者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-09-24</td>
+      <td class="e-date">2026-10-23 17:12</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="苏晴的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">陆</span><strong>陆远</strong></div></td>
+      <td class="e-email">lu.yuan@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整陆远的角色"><span class="role-label teal"><i></i><span>编辑者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-10-01</td>
+      <td class="e-date">2026-10-23 15:26</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="陆远的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">江</span><strong>江屿</strong></div></td>
+      <td class="e-email">jiang.yu@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整江屿的角色"><span class="role-label green"><i></i><span>数据集运维</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-10-02</td>
+      <td class="e-date">2026-10-22 11:04</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="江屿的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="selected" aria-selected="true">
+      <td><div class="e-table-member"><span class="member-avatar ">季</span><strong>季禾</strong></div></td>
+      <td class="e-email">ji.he@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整季禾的角色"><span class="role-label neutral"><i></i><span>查看者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-10-25</td>
+      <td class="e-date">2026-10-25 15:54</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="季禾的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">顾</span><strong>顾言</strong></div></td>
+      <td class="e-email">gu.yan@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整顾言的角色"><span class="role-label neutral"><i></i><span>查看者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-10-25</td>
+      <td class="e-date">2026-10-25 11:20</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="顾言的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">宋</span><strong>宋予</strong></div></td>
+      <td class="e-email">song.yu@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整宋予的角色"><span class="role-label neutral"><i></i><span>查看者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-10-24</td>
+      <td class="e-date">2026-10-24 16:32</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="宋予的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">唐</span><strong>唐溪</strong></div></td>
+      <td class="e-email">tang.xi@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整唐溪的角色"><span class="role-label neutral"><i></i><span>查看者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-10-24</td>
+      <td class="e-date">2026-10-24 09:18</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="唐溪的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr>
+    <tr class="">
+      <td><div class="e-table-member"><span class="member-avatar ">叶</span><strong>叶舟</strong></div></td>
+      <td class="e-email">ye.zhou@example.com</td>
+      <td><button type="button" class="role-button" aria-label="调整叶舟的角色"><span class="role-label neutral"><i></i><span>查看者</span><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6" /></svg>
+</span></button></td>
+      <td class="e-date">2026-10-22</td>
+      <td class="e-date">2026-10-22 13:40</td>
+      <td><button type="button" class="btn square quiet e-row-action" aria-label="叶舟的更多操作"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
+</button></td>
+    </tr></tbody></table>
+      <footer class="member-footer"><span>共 12 名成员</span><span class="spacer"></span><span>每页 20 条</span><span class="member-pager"><button type="button" class="btn square quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-left"><path d="m15 6-6 6 6 6" /></svg>
+<span></span></button><span>1 / 1</span><button type="button" class="btn square quiet"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6" /></svg>
+<span></span></button></span></footer>
+    </section>
+    <section class="e-role-context" aria-label="季禾的当前角色说明">
+      <div class="e-role-summary"><span>当前角色</span><span class="role-label neutral"><i></i><span>查看者</span></span><p>5 名成员使用此角色</p></div>
+      <div class="e-selected-role"><h3>季禾 · 当前角色说明</h3><p>新注册账号默认角色，内容访问按授权。</p><span>成员 ID · member-viewer-a　／　租户操作权限 · 0 / 9</span></div>
+      <div class="e-role-context-actions"><button type="button" class="btn solid"><svg aria-hidden="true" class="icon " xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-right-left"><path d="M3 7h17m-4-4 4 4-4 4M21 17H4m4-4-4 4 4 4" /></svg>
+<span>调整角色</span></button><button type="button" class="btn quiet e-remove"><span>移除成员</span></button></div>
+      <div class="e-role-boundary"><span>数据集与文档的可访问内容由各自授权决定。</span><span>最后一个有效管理员受保护</span></div>
+    </section>
+  </div>
+</section>
+</main></div></body></html>

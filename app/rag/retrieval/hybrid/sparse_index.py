@@ -19,6 +19,7 @@ from app.rag.retrieval.hybrid.common import (
     _log_retriever_fallback,
     logger,
 )
+from app.rag.retrieval.hybrid.result_values import candidate_metadata_from_doc
 from app.rag.retrieval.sparse import SparseVector
 
 
@@ -41,27 +42,8 @@ class SparseIndexMixin:
     ) -> tuple[dict[str, Any], Any]:
         synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
+        encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
         return provider_config, encoder
 
     @staticmethod
@@ -202,9 +184,8 @@ class SparseIndexMixin:
         """
         Build (or rebuild) a sparse retrieval index for the current scope key.
 
-        This is SPLADE-style sparse retrieval:
-        - deterministic provider for tests/offline
-        - optional SPLADE provider (HF/transformers) for production experiments (opt-in)
+        Only the deterministic provider for tests/offline is supported.
+        The in-process SPLADE model provider has been retired.
 
         Indices can be persisted to disk when enabled.
         """
@@ -445,16 +426,7 @@ class SparseIndexMixin:
     ) -> tuple[str, dict[str, Any], dict[str, Any]]:
         synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
-        provider_config = build_sparse_provider_config(
-            provider=provider,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
         return synonyms_raw, synonyms, provider_config
 
     def _load_persisted_sparse_vectors_for_search(
@@ -573,7 +545,7 @@ class SparseIndexMixin:
                 matcher=self._match_metadata_filter,
             ):
                 continue
-            out_meta = self._candidate_metadata_from_doc(meta, chunk_id=doc.id)
+            out_meta = candidate_metadata_from_doc(meta, chunk_id=doc.id)
             out_meta["sparse_score"] = float(score)
             results.append(
                 {
@@ -690,17 +662,7 @@ class SparseIndexMixin:
             docs=docs,
         )
 
-        encoder = get_sparse_encoder(
-            provider=provider,
-            synonyms=synonyms,
-            synonyms_raw=synonyms_raw,
-            model_name=str(getattr(settings, "SPARSE_SPLADE_MODEL_NAME", "") or ""),
-            device=str(getattr(settings, "SPARSE_SPLADE_DEVICE", "cpu") or "cpu"),
-            batch_size=int(getattr(settings, "SPARSE_SPLADE_BATCH_SIZE", 8) or 8),
-            max_length=int(getattr(settings, "SPARSE_SPLADE_MAX_LENGTH", 256) or 256),
-            top_k=int(getattr(settings, "SPARSE_SPLADE_TOP_K", 128) or 128),
-            min_weight=float(getattr(settings, "SPARSE_SPLADE_MIN_WEIGHT", 0.0) or 0.0),
-        )
+        encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
         scored = topk_scores(
             query_vec=self._sparse_query_vector(encoder, raw_query),
             docs=sparse_vecs,

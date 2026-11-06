@@ -56,13 +56,13 @@ export function deltaSign(value: number): string {
 
 export function deltaFill(value: number): string {
   const direction = deltaDirection(value)
-  if (direction === 'positive') return '#10b981'
-  if (direction === 'negative') return '#f43f5e'
-  return '#94a3b8'
+  if (direction === 'positive') return 'hsl(var(--success))'
+  if (direction === 'negative') return 'hsl(var(--destructive))'
+  return 'hsl(var(--muted-foreground))'
 }
 
 export function driftScoreToneForSeverity(severity: AuditSeverity): SnapshotInlineStatTone {
-  if (severity === 'healthy') return 'positive'
+  if (severity === 'healthy') return 'neutral'
   if (severity === 'notice') return 'warning'
   return 'negative'
 }
@@ -95,17 +95,14 @@ export function getHashPairTone(hasA: boolean, hasB: boolean): SnapshotInlineSta
 export function getSnapshotScopeSubtitle(
   documentCount: number,
   datasetId: string | undefined,
-  datasetLabel: string
+  datasetLabel: string,
 ): string {
   if (documentCount > 0) return `${documentCount} 个文档范围`
   if (datasetId) return `${datasetLabel} · 数据集范围`
   return '后端全局范围'
 }
 
-export function getSelectedDatasetLabel(
-  selectedDataset: Dataset | null,
-  selectedDatasetId: string
-): string {
+export function getSelectedDatasetLabel(selectedDataset: Dataset | null, selectedDatasetId: string): string {
   if (selectedDataset) return getDatasetLabel(selectedDataset)
   if (selectedDatasetId) return selectedDatasetId
   return '全部数据集'
@@ -173,10 +170,7 @@ export function compactHashLabel(hash: string): string {
   return `${value.slice(0, 10)}…${value.slice(-6)}`
 }
 
-export function mergePipelineCandidate(
-  map: Map<string, PipelineCandidate>,
-  candidate: PipelineCandidate
-) {
+export function mergePipelineCandidate(map: Map<string, PipelineCandidate>, candidate: PipelineCandidate) {
   const hash = candidate.hash.trim()
   if (!hash) return
   const current = map.get(hash)
@@ -212,20 +206,15 @@ export function tabLabelForView(view: SnapshotView) {
 
 export function exactDiffCount(
   summary: SnapshotExactDiffSummary | null | undefined,
-  key: keyof SnapshotExactDiffSummary
+  key: keyof SnapshotExactDiffSummary,
 ): number {
   const value = Number(summary?.[key] ?? 0)
   return Number.isFinite(value) ? value : 0
 }
 
-export function exactDiffSample(
-  diff: SnapshotDiffPayload | null,
-  key: string
-): Array<Record<string, unknown>> {
+export function exactDiffSample(diff: SnapshotDiffPayload | null, key: string): Array<Record<string, unknown>> {
   const value = diff?.[key]
   return Array.isArray(value)
-    ? value.filter((item): item is Record<string, unknown> =>
-        Boolean(item && typeof item === 'object')
-      )
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
     : []
 }

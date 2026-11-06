@@ -6,7 +6,6 @@ when MarkItDown is unavailable or fails. We preserve CSV structure as
 key-value rows, which works well for downstream chunking and retrieval.
 """
 
-
 import csv
 import io
 from pathlib import Path
@@ -55,7 +54,7 @@ def _read_csv_rows(
     if first is None:
         return [], []
 
-    header = [c.strip() or f"col{i+1}" for i, c in enumerate(first)]
+    header = [c.strip() or f"col{i + 1}" for i, c in enumerate(first)]
     rows: list[list[str]] = []
     if not has_header:
         rows.append(first)
@@ -89,7 +88,7 @@ def _render_csv_content(
     for idx, row in enumerate(rows, start=1):
         pairs = []
         for j, val in enumerate(row):
-            key = header[j] if j < len(header) else f"col{j+1}"
+            key = header[j] if j < len(header) else f"col{j + 1}"
             pairs.append(f"{key}={_safe_cell(val, max_chars=max_cell_chars)}")
         out.write(f"row {idx}: " + " | ".join(pairs) + "\n")
 
@@ -128,7 +127,7 @@ class CsvParser:
             "file_type": "csv",
             "csv_delimiter": delimiter,
             "csv_has_header": bool(has_header),
-            "csv_rows_emitted": int(row_count),
+            "csv_rows_emitted": row_count,
             "encoding": decoded.encoding,
             "encoding_confidence": decoded.confidence,
             "encoding_had_bom": decoded.had_bom,

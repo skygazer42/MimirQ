@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # 前端手册总览
 
-本手册面向 **前端开发者与全栈工程师**，帮助你理解 MimirQ Web 端的路由结构、组件体系与 API 调用层。类型与路径以 [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) 为权威参考，前端路由以 `web/app/**/page.tsx` 为准。
+本手册面向 **前端开发者与全栈工程师**，帮助你理解 Ragvia Web 端的路由结构、组件体系与 API 调用层。类型与路径以 [OpenAPI / Redoc](https://skygazer42.github.io/MimirQ/) 为权威参考，前端路由以 `web/app/**/page.tsx` 为准。
 
 ## 技术栈
 

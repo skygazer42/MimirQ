@@ -120,7 +120,7 @@ def _normalize_threshold_entry(value: Any) -> dict[str, float]:
     for bound in ("min", "max"):
         numeric = _safe_float(value.get(bound))
         if numeric is not None:
-            entry[bound] = float(numeric)
+            entry[bound] = numeric
     return entry
 
 
@@ -242,31 +242,31 @@ def _run_regression_gate_subprocess(*, args: argparse.Namespace) -> int:
         sys.executable,
         "scripts/regression_gate.py",
         "--base-url",
-        str(args.base_url),
+        args.base_url,
         "--cases",
-        str(args.cases),
+        args.cases,
         "--metrics",
-        str(args.regression_metrics),
+        args.regression_metrics,
     ]
     if args.tenant_id:
-        cmd.extend(["--tenant-id", str(args.tenant_id)])
+        cmd.extend(["--tenant-id", args.tenant_id])
     if args.user_id:
-        cmd.extend(["--user-id", str(args.user_id)])
+        cmd.extend(["--user-id", args.user_id])
     if args.bearer:
-        cmd.extend(["--bearer", str(args.bearer)])
+        cmd.extend(["--bearer", args.bearer])
     if args.thresholds:
-        cmd.extend(["--thresholds", str(args.thresholds)])
+        cmd.extend(["--thresholds", args.thresholds])
     if args.regression_retrieval_mode:
-        cmd.extend(["--retrieval-mode", str(args.regression_retrieval_mode)])
+        cmd.extend(["--retrieval-mode", args.regression_retrieval_mode])
     if args.regression_out_run_json:
-        cmd.extend(["--out-run-json", str(args.regression_out_run_json)])
+        cmd.extend(["--out-run-json", args.regression_out_run_json])
     if args.regression_skip_import:
         cmd.append("--skip-import")
     if args.regression_overwrite:
         cmd.append("--overwrite")
 
     proc = subprocess.run(cmd, check=False)
-    return int(proc.returncode)
+    return proc.returncode
 
 
 def _extract_questions(items: list[dict[str, Any]]) -> list[str]:
@@ -612,7 +612,7 @@ def _gate_retrieval_leaderboard(
 
     violations: list[GateViolation] = []
     notes: list[str] = []
-    observed: dict[str, Any] = {"policy": policy, "rows_total": int(len(rows)), "top_n": int(top_n)}
+    observed: dict[str, Any] = {"policy": policy, "rows_total": len(rows), "top_n": top_n}
 
     if not rows:
         msg = "missing leaderboard rows"
@@ -637,7 +637,7 @@ def _gate_retrieval_leaderboard(
 
     def _row_score(row: dict[str, Any]) -> float:
         v = _safe_float(row.get("retrieval_mrr"))
-        return float(v) if v is not None else -1.0
+        return v if v is not None else -1.0
 
     best = sorted(candidates, key=_row_score, reverse=True)[0]
     observed["label"] = str(best.get("label") or "")
@@ -736,9 +736,9 @@ def _gate_queryset_health_diff(
     )
 
     observed = {
-        "hard_case_added_count": int(len(hard.get("added_ids") or [])),
-        "degradation_flag_added_count": int(len(flags.get("added_flags") or [])),
-        "parse_risk_tail_added_count": int(len(parse_tail.get("added_document_ids") or [])),
+        "hard_case_added_count": len(hard.get("added_ids") or []),
+        "degradation_flag_added_count": len(flags.get("added_flags") or []),
+        "parse_risk_tail_added_count": len(parse_tail.get("added_document_ids") or []),
     }
 
     violations: list[GateViolation] = []
@@ -776,7 +776,7 @@ def _gate_parsing_proof_summary(
         "query_count_total": int((summary or {}).get("query_count_total") or 0),
         "hit_at_k_mean": _safe_float((summary or {}).get("hit_at_k_mean")),
         "mrr_mean": _safe_float((summary or {}).get("mrr_mean")),
-        "failed_case_count": int(len((summary or {}).get("failed_case_ids") or [])),
+        "failed_case_count": len((summary or {}).get("failed_case_ids") or []),
     }
 
     violations: list[GateViolation] = []
@@ -815,7 +815,7 @@ def _gate_parsing_proof_diff(
     observed = {
         "hit_at_k_mean_delta": _safe_float(metric_deltas.get("hit_at_k_mean_delta")),
         "mrr_mean_delta": _safe_float(metric_deltas.get("mrr_mean_delta")),
-        "failed_case_added_count": int(len((failed_drift.get("added_ids") or []))),
+        "failed_case_added_count": len(failed_drift.get("added_ids") or []),
     }
 
     violations: list[GateViolation] = []
@@ -1249,7 +1249,7 @@ def _run_regression_step(args: argparse.Namespace) -> int:
     rc = _run_regression_gate_subprocess(args=args)
     if rc != 0:
         print(f"[release_gate] ERROR: regression gate failed (exit={rc})", file=sys.stderr)
-    return int(rc)
+    return rc
 
 
 def _load_case_bundle_for_probe(args: argparse.Namespace) -> tuple[str, list[dict[str, Any]], Path | None]:
@@ -1268,9 +1268,9 @@ def _build_release_report(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "schema": "mimirq.release_gate_report.v1",
         "generated_at_ts": time.time(),
-        "base_url": str(args.base_url),
-        "tenant_id": str(args.tenant_id or ""),
-        "user_id": str(args.user_id or ""),
+        "base_url": args.base_url,
+        "tenant_id": args.tenant_id,
+        "user_id": args.user_id,
         "probe": {},
         "slo": {},
         "cost": {},
@@ -1296,7 +1296,7 @@ def _collect_probe_signal(
     case_items: list[dict[str, Any]],
     cases_path: Path | None,
 ) -> dict[str, Any] | int:
-    if int(args.probe_chat_requests or 0) <= 0:
+    if args.probe_chat_requests <= 0:
         return {}
     if not cases_path or not cases_path.exists():
         print("[release_gate] ERROR: --cases is required for --probe-chat-requests", file=sys.stderr)
@@ -1312,10 +1312,10 @@ def _collect_probe_signal(
             headers=headers,
             dataset_id=dataset_id,
             questions=questions,
-            count=int(args.probe_chat_requests),
-            retrieval_mode=str(args.probe_retrieval_mode),
-            top_k=int(args.probe_top_k),
-            score_threshold=float(args.probe_score_threshold),
+            count=args.probe_chat_requests,
+            retrieval_mode=args.probe_retrieval_mode,
+            top_k=args.probe_top_k,
+            score_threshold=args.probe_score_threshold,
         )
     except Exception as exc:
         print(
@@ -1328,13 +1328,13 @@ def _collect_probe_signal(
         client=client,
         base_url=base_url,
         headers=headers,
-        window_minutes=int(args.probe_window_minutes),
-        want_increase_by=int(args.probe_chat_requests),
-        poll_sec=float(args.probe_poll_sec),
-        timeout_sec=float(args.probe_timeout_sec),
+        window_minutes=args.probe_window_minutes,
+        want_increase_by=args.probe_chat_requests,
+        poll_sec=args.probe_poll_sec,
+        timeout_sec=args.probe_timeout_sec,
     )
     return {
-        "chat_requests": int(args.probe_chat_requests),
+        "chat_requests": args.probe_chat_requests,
         "request_ids": request_ids[:20],
         "metrics_summary": snapshot,
     }
@@ -1518,7 +1518,7 @@ def _finalize_release_gate(
         }
         for violation in violations
     ]
-    report["passed"] = not bool(violations)
+    report["passed"] = not violations
     _write_release_report(args, report)
 
     for note in notes:
@@ -1551,11 +1551,11 @@ def main() -> int:
 
     dataset_id, case_items, cases_path = _load_case_bundle_for_probe(args)
     headers = _headers(
-        tenant_id=str(args.tenant_id),
-        user_id=str(args.user_id),
-        bearer=str(args.bearer),
+        tenant_id=args.tenant_id,
+        user_id=args.user_id,
+        bearer=args.bearer,
     )
-    base_url = str(args.base_url)
+    base_url = args.base_url
     report = _build_release_report(args)
     obs_rc, violations, notes = _collect_observability_results(
         args=args,
@@ -1577,8 +1577,8 @@ def main() -> int:
         section_name="queryset_health",
         cfg=_merge_gate_cfg(
             budgets.get("queryset_health"),
-            path_override=str(args.queryset_health_snapshot or ""),
-            policy_override=str(args.queryset_health_policy or ""),
+            path_override=args.queryset_health_snapshot,
+            policy_override=args.queryset_health_policy,
         ),
         default_policy="warn",
         missing_message_prefix="queryset health snapshot not found",
@@ -1591,7 +1591,7 @@ def main() -> int:
         section_name="queryset_health_hybrid",
         cfg=_merge_gate_cfg(
             budgets.get("queryset_health_hybrid"),
-            path_override=str(args.queryset_health_snapshot_hybrid or ""),
+            path_override=args.queryset_health_snapshot_hybrid,
         ),
         default_policy="warn",
         missing_message_prefix="hybrid queryset health snapshot not found",
@@ -1604,7 +1604,7 @@ def main() -> int:
         section_name="queryset_health_diff",
         cfg=_merge_gate_cfg(
             budgets.get("queryset_health_diff"),
-            path_override=str(args.queryset_health_diff or ""),
+            path_override=args.queryset_health_diff,
         ),
         default_policy="fail",
         missing_message_prefix="queryset health diff not found",
@@ -1621,7 +1621,7 @@ def main() -> int:
         section_name="queryset_health_diff_hybrid",
         cfg=_merge_gate_cfg(
             budgets.get("queryset_health_diff_hybrid"),
-            path_override=str(args.queryset_health_diff_hybrid or ""),
+            path_override=args.queryset_health_diff_hybrid,
         ),
         default_policy="fail",
         missing_message_prefix="hybrid queryset health diff not found",
@@ -1638,7 +1638,7 @@ def main() -> int:
         section_name="parsing_proof",
         cfg=_merge_gate_cfg(
             budgets.get("parsing_proof"),
-            path_override=str(args.parsing_proof_summary or ""),
+            path_override=args.parsing_proof_summary,
         ),
         default_policy="warn",
         missing_message_prefix="parsing proof summary not found",
@@ -1659,7 +1659,7 @@ def main() -> int:
         section_name="parsing_proof_diff",
         cfg=_merge_gate_cfg(
             budgets.get("parsing_proof_diff"),
-            path_override=str(args.parsing_proof_diff or ""),
+            path_override=args.parsing_proof_diff,
         ),
         default_policy="warn",
         missing_message_prefix="parsing proof diff not found",
@@ -1677,8 +1677,8 @@ def main() -> int:
         section_name="retrieval_leaderboard",
         cfg=_merge_gate_cfg(
             budgets.get("retrieval_leaderboard"),
-            path_override=str(args.retrieval_leaderboard or ""),
-            policy_override=str(args.retrieval_leaderboard_policy or ""),
+            path_override=args.retrieval_leaderboard,
+            policy_override=args.retrieval_leaderboard_policy,
         ),
         default_policy="fail",
         missing_message_prefix="leaderboard artifact not found",

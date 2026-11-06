@@ -81,7 +81,7 @@ def _iter_trace_records(path: Path, *, max_records: int = 0) -> Iterator[dict[st
         for line in f:
             if max_records and emitted >= int(max_records):
                 break
-            line = (line or "").strip()
+            line = line.strip()
             if not line:
                 continue
             try:
@@ -109,7 +109,7 @@ def _iter_feedback_event_rows(path: Path, *, max_records: int = 0) -> Iterator[d
         for line in f:
             if max_records and emitted >= int(max_records):
                 break
-            line = (line or "").strip()
+            line = line.strip()
             if not line:
                 continue
             try:
@@ -212,9 +212,6 @@ def _build_target_hashes(items: list[dict[str, Any]]) -> tuple[dict[str, dict[st
     target_hashes: dict[str, dict[str, Any]] = {}
     skipped = 0
     for item in items:
-        if not isinstance(item, dict):
-            skipped += 1
-            continue
         question = str(item.get("question") or item.get("query") or "").strip()
         if not question:
             skipped += 1

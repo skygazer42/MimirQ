@@ -111,7 +111,7 @@ def _render_bar_table(items: list[tuple[str, int]], *, total: int) -> str:
 def _render_histogram(bins: Any) -> str:
     if not isinstance(bins, list) or not bins:
         return EMPTY_DATA_DIV
-    rows: list[str] = []
+    rows: list[tuple[str, int]] = []
     total = 0
     for b in bins:
         if not isinstance(b, dict):
@@ -749,15 +749,15 @@ def _render_kg_top_docs_table(kgd: dict[str, Any], *, redact: bool, include_fail
             continue
         rows.append(
             "<tr>"
-            f'<td class=\\"k\\">{escape(source or did[:8])}</td>'
-            f'<td class=\\"v\\">{_fmt_int(_int_from(item, "event_count"))}</td>'
+            f'<td class="k">{escape(source or did[:8])}</td>'
+            f'<td class="v">{_fmt_int(_int_from(item, "event_count"))}</td>'
             "<td></td>"
             "</tr>"
         )
     header = (
         '<table class="bars"><thead><tr><th>doc</th><th>events</th><th>skipped</th><th>failed</th></tr></thead><tbody>'
         if include_failures
-        else '<table class=\\"bars\\"><thead><tr><th>doc</th><th>events</th><th></th></tr></thead><tbody>'
+        else '<table class="bars"><thead><tr><th>doc</th><th>events</th><th></th></tr></thead><tbody>'
     )
     return _render_table_or_empty(header, rows)
 
@@ -807,17 +807,17 @@ def _render_rr_slice_table(rr_slices: Any, dim: str, *, redact: bool) -> str:
             continue
         rows.append(
             "<tr>"
-            f'<td class=\\"k\\">{escape(key)}</td>'
-            f'<td class=\\"v\\">{_fmt_int(_int_from(bucket, "items"))}</td>'
-            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("retrieval_recall")))}</td>'
-            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("retrieval_hit_at_20")))}</td>'
-            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("retrieval_mrr")))}</td>'
-            f'<td class=\\"v\\">{escape(_fmt_scalar(bucket.get("abstain_rate")))}</td>'
+            f'<td class="k">{escape(key)}</td>'
+            f'<td class="v">{_fmt_int(_int_from(bucket, "items"))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("retrieval_recall")))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("retrieval_hit_at_20")))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("retrieval_mrr")))}</td>'
+            f'<td class="v">{escape(_fmt_scalar(bucket.get("abstain_rate")))}</td>'
             "</tr>"
         )
     return _render_table_or_empty(
         (
-            '<table class=\\"bars\\"><thead><tr><th>bucket</th><th>items</th><th>recall</th>'
+            '<table class="bars"><thead><tr><th>bucket</th><th>items</th><th>recall</th>'
             "<th>hit@20</th><th>mrr</th><th>abstain</th></tr></thead><tbody>"
         ),
         rows,
@@ -835,10 +835,10 @@ def _render_rr_slices_section(
     rr_slices = _as_dict(_as_dict(rr_summary).get("retrieval_slices"))
     if not rr_slices:
         return ""
-    blocks: list[str] = [f'<div class=\\"section\\"><h2>{title}</h2>']
+    blocks: list[str] = [f'<div class="section"><h2>{title}</h2>']
     for index, dims in enumerate(rows):
-        margin = ' style=\\"margin-top:12px\\"' if index > 0 else ""
-        blocks.append(f'<div class=\\"two\\"{margin}>')
+        margin = ' style="margin-top:12px"' if index > 0 else ""
+        blocks.append(f'<div class="two"{margin}>')
         for dim in dims:
             blocks.append(f"<div><h2>{dim}</h2>{_render_rr_slice_table(rr_slices, dim, redact=redact)}</div>")
         blocks.append("</div>")
@@ -855,9 +855,7 @@ def _render_governance_audit_section(governance_audit: Any) -> str:
     note = ""
     if ga_used_docs > 0:
         truncated = " (truncated)" if bool(ga0.get("truncated") or False) else ""
-        note = (
-            f'<div class=\\"sub\\" style=\\"margin-top:6px\\">sample: {escape(_fmt_int(ga_used_docs))}{truncated}</div>'
-        )
+        note = f'<div class="sub" style="margin-top:6px">sample: {escape(_fmt_int(ga_used_docs))}{truncated}</div>'
     rows = [
         ("docs_changed", _int_from(ga0, "docs_changed")),
         ("docs_dropped", _int_from(ga0, "docs_dropped")),
@@ -889,7 +887,7 @@ def _render_governance_audit_section(governance_audit: Any) -> str:
         ("code_lines_stripped_total", _int_from(ga0, "code_lines_stripped_total")),
     ]
     return (
-        '<div class=\\"section\\"><h2>Governance Audit（治理效果）</h2>'
+        '<div class="section"><h2>Governance Audit（治理效果）</h2>'
         + note
         + _render_metric_value_table(rows)
         + "</div>"

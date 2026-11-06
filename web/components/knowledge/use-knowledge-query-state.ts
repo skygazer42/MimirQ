@@ -1,4 +1,4 @@
-export type KnowledgeTabType = 'documents' | 'retrieval' | 'settings'
+export type KnowledgeTabType = 'documents' | 'retrieval'
 export type KnowledgeViewMode = 'grid' | 'list'
 export type KnowledgeStatusFilter = 'all' | 'completed' | 'processing' | 'failed' | 'quarantined'
 export type KnowledgeLifecycleFilter = 'active' | 'archived' | 'disabled' | 'all'
@@ -16,13 +16,18 @@ export type KnowledgeQueryState = {
   sortKey: KnowledgeSortKey
   sortDir: KnowledgeSortDir
   connectorRunId: string | null
+  tasksOpen: boolean
 }
 
 const DEFAULT_DATASET_ALL = '__all__'
 
+type KnowledgeQueryOptions = {
+  datasetAllValue?: string
+}
+
 export function parseKnowledgeQueryState(
   searchParams: URLSearchParams,
-  opts?: { datasetAllValue?: string }
+  opts?: KnowledgeQueryOptions,
 ): KnowledgeQueryState {
   const DATASET_ALL = opts?.datasetAllValue ?? DEFAULT_DATASET_ALL
 
@@ -38,10 +43,11 @@ export function parseKnowledgeQueryState(
     sortKey: 'created_at',
     sortDir: 'desc',
     connectorRunId: null,
+    tasksOpen: searchParams.get('tasks') === '1',
   }
 
   const tab = searchParams.get('tab')
-  if (tab === 'documents' || tab === 'retrieval' || tab === 'settings') state.activeTab = tab
+  if (tab === 'documents' || tab === 'retrieval') state.activeTab = tab
 
   const view = searchParams.get('view')
   if (view === 'grid' || view === 'list') state.viewMode = view
@@ -50,7 +56,13 @@ export function parseKnowledgeQueryState(
   if (typeof q === 'string' && q.trim()) state.docFilter = q
 
   const status = searchParams.get('status')
-  if (status === 'all' || status === 'completed' || status === 'processing' || status === 'failed' || status === 'quarantined') {
+  if (
+    status === 'all' ||
+    status === 'completed' ||
+    status === 'processing' ||
+    status === 'failed' ||
+    status === 'quarantined'
+  ) {
     state.statusFilter = status
   }
 
@@ -73,17 +85,14 @@ export function parseKnowledgeQueryState(
 
   const run = searchParams.get('run')
   if (run?.trim()) {
-    state.activeTab = 'settings'
     state.connectorRunId = run.trim()
+    state.tasksOpen = true
   }
 
   return state
 }
 
-export function serializeKnowledgeQueryState(
-  state: KnowledgeQueryState,
-  opts?: { datasetAllValue?: string }
-): string {
+export function serializeKnowledgeQueryState(state: KnowledgeQueryState, opts?: KnowledgeQueryOptions): string {
   const DATASET_ALL = opts?.datasetAllValue ?? DEFAULT_DATASET_ALL
 
   const params = new URLSearchParams()
@@ -96,6 +105,7 @@ export function serializeKnowledgeQueryState(
   if (state.datasetScope !== DATASET_ALL && state.folderPath) params.set('folder', state.folderPath)
   if (state.sortKey !== 'created_at') params.set('order_by', state.sortKey)
   if (state.sortDir !== 'desc') params.set('order_dir', state.sortDir)
-  if (state.activeTab === 'settings' && state.connectorRunId) params.set('run', state.connectorRunId)
+  if (state.connectorRunId) params.set('run', state.connectorRunId)
+  else if (state.tasksOpen) params.set('tasks', '1')
   return params.toString()
 }

@@ -24,61 +24,15 @@ from typing import Any
 
 import httpx
 
-from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker, build_ltr_feature_spec_fingerprint
-from app.rag.reranker.types import RerankCandidate
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker, build_ltr_feature_spec_fingerprint  # noqa: E402
+from app.rag.reranker.types import RerankCandidate  # noqa: E402
+from scripts.retrieval_ablation import _headers, _load_json, coerce_case_bundle  # noqa: E402
 
 METRIC_KEYS = ("hit", "mrr", "recall", "ndcg")
-
-
-def _load_json(path: Path) -> Any:
-    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
-    return json.loads(path.read_text(encoding="utf-8-sig"))
-
-
-def _headers(args: argparse.Namespace) -> dict[str, str]:
-    h: dict[str, str] = {"Content-Type": "application/json"}
-    if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
-    if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
-    if args.bearer:
-        h["Authorization"] = f"Bearer {args.bearer}"
-    return h
-
-
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Normalize case bundle payloads into: (dataset_id, items[]).
-
-    Supported shapes:
-    - Export bundle v1: {"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}
-    - Minimal bundle: {"dataset_id":"...","items":[...]}
-    - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
-    """
-    if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        ds = str(obj.get("dataset_id") or "").strip()
-        if ds:
-            items = [x for x in obj.get("items") if isinstance(x, dict)]
-            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-            return ds, cleaned
-        return coerce_case_bundle(list(obj.get("items") or []))
-
-    if isinstance(obj, list):
-        items = [x for x in obj if isinstance(x, dict)]
-        dsids: list[str] = []
-        for it in items:
-            ds = str(it.get("dataset_id") or "").strip()
-            if ds and ds not in dsids:
-                dsids.append(ds)
-        if not dsids:
-            raise ValueError("dataset_id is required in cases bundle")
-        if len(dsids) > 1:
-            raise ValueError("mixed dataset_id in cases bundle")
-        dsid = dsids[0]
-        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-        return dsid, cleaned
-
-    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
 
 
 def _extract_reference_chunk_ids(item: dict[str, Any]) -> set[str]:
@@ -231,7 +185,7 @@ def _hit_mrr_recall_ndcg_at_k(*, ranked_ids: list[str], relevant: set[str], k: i
         idcg += 1.0 / math.log2(float(i) + 1.0)
     ndcg = (dcg / idcg) if idcg > 0.0 else 0.0
 
-    return {"hit": float(hit), "mrr": float(rr), "recall": float(recall), "ndcg": float(ndcg)}
+    return {"hit": hit, "mrr": rr, "recall": recall, "ndcg": ndcg}
 
 
 def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
@@ -359,7 +313,7 @@ def _load_cases_bundle_from_path(
         raise ValueError(str(exc)[:200]) from exc
 
     if max_cases > 0:
-        items = list(items)[:max_cases]
+        items = items[:max_cases]
     return dataset_id, items, cases_sha256, (cases_schema or None)
 
 
@@ -381,12 +335,12 @@ def _build_retrieve_request(
     return {
         "query": question,
         "history": [],
-        "dataset_id": str(dataset_id),
+        "dataset_id": dataset_id,
         "document_ids": [],
         "rag_config": {
             "retrieval_profile": str(args.retrieval_profile),
             "retrieval_mode": str(args.retrieval_mode),
-            "top_k": int(top_k),
+            "top_k": top_k,
             "score_threshold": float(args.score_threshold),
             "alpha": float(args.alpha),
             # Always collect pre-rerank candidates from the backend.
@@ -445,7 +399,7 @@ def _build_reranked_ids(
 def _average_metrics(metric_sum: dict[str, float], *, cases_used: int) -> dict[str, float]:
     if cases_used <= 0:
         return metric_sum
-    return {key: round(float(metric_sum[key]) / float(cases_used), 4) for key in METRIC_KEYS}
+    return {key: round(metric_sum[key] / float(cases_used), 4) for key in METRIC_KEYS}
 
 
 def _evaluate_items(
@@ -467,8 +421,6 @@ def _evaluate_items(
 
     with httpx.Client(timeout=timeout) as client:
         for item in items:
-            if not isinstance(item, dict):
-                continue
             question = str(item.get("question") or item.get("query") or "").strip()
             if not question:
                 continue
@@ -509,8 +461,8 @@ def _evaluate_items(
             ltr_metrics = _hit_mrr_recall_ndcg_at_k(ranked_ids=reranked, relevant=relevant, k=k)
             cases_used += 1
             for key in METRIC_KEYS:
-                baseline_sum[key] += float(base_metrics.get(key, 0.0) or 0.0)
-                ltr_sum[key] += float(ltr_metrics.get(key, 0.0) or 0.0)
+                baseline_sum[key] += base_metrics[key]
+                ltr_sum[key] += ltr_metrics[key]
 
     return baseline_sum, ltr_sum, cases_used, retrieval_config
 
@@ -557,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:
     reranker = LTRReranker(model_path=str(model_path), spec=spec)
     baseline_sum, ltr_sum, cases_used, retrieval_config = _evaluate_items(
         args=args,
-        dataset_id=str(dataset_id),
+        dataset_id=dataset_id,
         items=items,
         reranker=reranker,
         top_k=top_k,
@@ -569,8 +521,8 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = build_eval_summary(
         generated_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        elapsed_sec=float(time.monotonic() - t0),
-        dataset_id=str(dataset_id),
+        elapsed_sec=time.monotonic() - t0,
+        dataset_id=dataset_id,
         cases_total=len(items),
         cases_used=cases_used,
         cases_sha256=cases_sha256,

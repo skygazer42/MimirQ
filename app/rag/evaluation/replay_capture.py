@@ -58,10 +58,7 @@ def _sanitize_capture_citation(citation: dict[str, Any]) -> dict[str, Any]:
     safe = {
         key: citation.get(key) for key in _CAPTURE_CITATION_KEYS if key in citation and citation.get(key) is not None
     }
-    if "chunk_id" not in safe:
-        chunk_id = citation.get("chunk_id")
-        if chunk_id is not None:
-            safe["chunk_id"] = chunk_id
+
     return safe
 
 
@@ -111,7 +108,7 @@ def fingerprint_citations(citations: Any) -> str:
     for idx, c in enumerate(safe, 1):
         cleaned.append(
             {
-                "rank": int(idx),
+                "rank": idx,
                 "chunk_id": str(c.get("chunk_id") or ""),
                 "document_id": str(c.get("document_id") or "") or None,
                 "relevance_score": _round_float(c.get("relevance_score")),
@@ -154,9 +151,9 @@ def build_retrieval_replay_capture_record(
     rec: dict[str, Any] = {
         "schema": RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,
         "query_hash": qh or None,
-        "query_chars": int(len(q)) if q else 0,
+        "query_chars": len(q) if q else 0,
         "dataset_id_hash": (stable_hash(str(dataset_id), length=16) if dataset_id else None),
-        "document_ids_count": int(len(document_ids or [])),
+        "document_ids_count": len(document_ids or []),
         "rag_config": dict(rag_config or {}),
         "retrieval_config_hash": retrieval_cfg_hash,
         "seed": int(seed) if seed is not None else None,

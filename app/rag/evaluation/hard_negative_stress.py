@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.evaluation.metrics.answer_det import evaluate_answer_deterministic
@@ -23,17 +22,13 @@ def evaluate_hard_negative_case(case: dict[str, Any]) -> dict[str, Any]:
     )
 
     citations = list(payload.get("citations") or [])
-    answer_em = float(answer_metrics.get("answer_em") or 0.0)
-    answer_f1 = float(answer_metrics.get("answer_f1") or 0.0)
+    answer_em = answer_metrics.get("answer_em") or 0.0
+    answer_f1 = answer_metrics.get("answer_f1") or 0.0
     obvious_hallucination = bool(answer_metrics.get("obvious_hallucination"))
     refusal_correct = answer_metrics.get("refusal_correct")
 
     hard_negative_triggered = bool(
-        citations
-        and answer_em < 1.0
-        and answer_f1 > 0.0
-        and not obvious_hallucination
-        and refusal_correct is not True
+        citations and answer_em < 1.0 and answer_f1 > 0.0 and not obvious_hallucination and refusal_correct is not True
     )
     reason_codes = ["hard_negative_triggered"] if hard_negative_triggered else []
 
@@ -55,12 +50,12 @@ def run_hard_negative_stress(cases: list[dict[str, Any]]) -> dict[str, Any]:
     total_cases = len(results)
     failed_cases = sum(1 for result in results if not bool(result.get("passed")))
     pass_rate = round((total_cases - failed_cases) / float(total_cases), 4) if total_cases else None
-    avg_answer_f1 = _average([float(result.get("answer_f1") or 0.0) for result in results])
+    avg_answer_f1 = _average([result.get("answer_f1") or 0.0 for result in results])
 
     return {
         "schema": HARD_NEGATIVE_STRESS_SUMMARY_SCHEMA_V1,
-        "total_cases": int(total_cases),
-        "failed_cases": int(failed_cases),
+        "total_cases": total_cases,
+        "failed_cases": failed_cases,
         "pass_rate": pass_rate,
         "avg_answer_f1": avg_answer_f1,
         "results": results,

@@ -1,4 +1,3 @@
-
 from uuid import UUID
 
 from scripts.import_dify_benchmark_feedback import (
@@ -86,9 +85,7 @@ def test_build_feedback_payload_keeps_benchmark_context_for_triage():
     assert payload.extra["source"] == "benchmark"
     assert payload.extra["feedback_issue"] == "回答良好"
     assert payload.extra["source_record_title"] == "测试事项"
-    assert payload.message_metadata["benchmark_feedback_import_key"].endswith(
-        "dify_http_mimirq:bench-0001-mixed-case"
-    )
+    assert payload.message_metadata["benchmark_feedback_import_key"].endswith("dify_http_mimirq:bench-0001-mixed-case")
     assert len(payload.citations) == 1
     citation = payload.citations[0]
     assert UUID(citation["document_id"])

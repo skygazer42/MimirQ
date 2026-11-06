@@ -1,7 +1,7 @@
 """Engine result/log models."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +34,14 @@ class StageResult(BaseModel):
     stats: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
     duration: float | None = None
+
+
+def _stage_result_payload(stage: StageResult, results_key: Literal["data_ids", "data_full"]) -> dict[str, Any]:
+    return {
+        "status": stage.status,
+        "results": getattr(stage, results_key),
+        "stats": stage.stats,
+    }
 
 
 class TaskResult(BaseModel):
@@ -71,26 +79,16 @@ class TaskResult(BaseModel):
             "duration": self.duration,
         }
 
-        results_key = "data_ids" if output_config.mode == OutputMode.ID_ONLY else "data_full"
+        results_key: Literal["data_ids", "data_full"] = (
+            "data_ids" if output_config.mode == OutputMode.ID_ONLY else "data_full"
+        )
 
         if self.load_result:
-            data["load"] = {
-                "status": self.load_result.status,
-                "results": getattr(self.load_result, results_key),
-                "stats": self.load_result.stats,
-            }
+            data["load"] = _stage_result_payload(self.load_result, results_key)
         if self.extract_result:
-            data["extract"] = {
-                "status": self.extract_result.status,
-                "results": getattr(self.extract_result, results_key),
-                "stats": self.extract_result.stats,
-            }
+            data["extract"] = _stage_result_payload(self.extract_result, results_key)
         if self.search_result:
-            data["search"] = {
-                "status": self.search_result.status,
-                "results": getattr(self.search_result, results_key),
-                "stats": self.search_result.stats,
-            }
+            data["search"] = _stage_result_payload(self.search_result, results_key)
 
         if output_config.include_logs:
             data["logs"] = [

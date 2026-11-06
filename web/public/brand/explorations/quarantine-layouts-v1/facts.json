@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-22",
+  "scope": "全部数据集",
+  "summary": { "total": 12, "pending": 8, "reviewed": 4, "high": 4, "medium": 5, "low": 3 },
+  "selectedId": "q-001",
+  "documents": [
+    { "id": "q-001", "name": "用户协议.pdf", "kind": "pdf", "dataset": "企业制度", "reason": "个人信息超阈值", "reasonKey": "pii_exceeded", "group": "敏感信息", "risk": "high", "review": "pending", "status": "quarantined", "source": "文档解析", "size": "1.24 MB", "time": "09:42", "note": "文档包含联系电话等个人信息，已在入库前隔离。" },
+    { "id": "q-002", "name": "环境变量清单.md", "kind": "md", "dataset": "工程资料", "reason": "疑似密钥超阈值", "reasonKey": "secrets_exceeded", "group": "敏感信息", "risk": "high", "review": "pending", "status": "quarantined", "source": "文档解析", "size": "42 KB", "time": "09:38", "note": "命中凭证特征，需确认是否为真实密钥。" },
+    { "id": "q-003", "name": "客户联系人.csv", "kind": "sheet", "dataset": "产品文档", "reason": "个人信息超阈值", "reasonKey": "pii_exceeded", "group": "敏感信息", "risk": "high", "review": "pending", "status": "quarantined", "source": "文档解析", "size": "680 KB", "time": "09:31", "note": "联系人字段命中个人信息规则。" },
+    { "id": "q-004", "name": "接口凭证说明.txt", "kind": "text", "dataset": "工程资料", "reason": "疑似密钥超阈值", "reasonKey": "secrets_exceeded", "group": "敏感信息", "risk": "high", "review": "pending", "status": "quarantined", "source": "文档解析", "size": "28 KB", "time": "09:24", "note": "接口示例含疑似访问令牌。" },
+    { "id": "q-005", "name": "产品目录.pptx", "kind": "slides", "dataset": "产品文档", "reason": "仅包含大纲", "reasonKey": "outline_only", "group": "内容质量", "risk": "medium", "review": "pending", "status": "quarantined", "source": "文档解析", "size": "3.45 MB", "time": "09:20", "note": "标题占比过高，正文不足。" },
+    { "id": "q-006", "name": "设备巡检扫描件.pdf", "kind": "pdf", "dataset": "工程资料", "reason": "正文密度过低", "reasonKey": "low_density", "group": "内容质量", "risk": "medium", "review": "pending", "status": "quarantined", "source": "文档解析", "size": "2.16 MB", "time": "09:14", "note": "扫描页提取到的有效文字较少。" },
+    { "id": "q-007", "name": "项目大纲.docx", "kind": "word", "dataset": "产品文档", "reason": "仅包含大纲", "reasonKey": "outline_only", "group": "内容质量", "risk": "low", "review": "reviewed", "status": "quarantined", "source": "文档解析", "size": "860 KB", "time": "09:10", "note": "已复核，保留隔离状态。" },
+    { "id": "q-008", "name": "会议纪要.pdf", "kind": "pdf", "dataset": "企业制度", "reason": "正文密度过低", "reasonKey": "low_density", "group": "内容质量", "risk": "low", "review": "reviewed", "status": "quarantined", "source": "文档解析", "size": "1.09 MB", "time": "09:06", "note": "正文以短句为主，已完成人工复核。" },
+    { "id": "q-009", "name": "报销流程.pdf", "kind": "pdf", "dataset": "企业制度", "reason": "解析失败", "reasonKey": "parsing_failed", "group": "处理失败", "risk": "medium", "review": "pending", "status": "failed", "source": "文档解析", "size": "1.76 MB", "time": "08:56", "note": "解析未完成，可检查入库详情后重试。" },
+    { "id": "q-010", "name": "数据接入指南.pdf", "kind": "pdf", "dataset": "产品文档", "reason": "索引写入失败", "reasonKey": "index_failed", "group": "处理失败", "risk": "medium", "review": "pending", "status": "failed", "source": "索引入库", "size": "2.30 MB", "time": "08:42", "note": "索引写入未完成，原文仍可预览。" },
+    { "id": "q-011", "name": "组织结构图.docx", "kind": "word", "dataset": "企业制度", "reason": "解析失败", "reasonKey": "parsing_failed", "group": "处理失败", "risk": "low", "review": "reviewed", "status": "failed", "source": "文档解析", "size": "456 KB", "time": "08:31", "note": "已确认解析问题，待调整后重试。" },
+    { "id": "q-012", "name": "部署操作手册.pdf", "kind": "pdf", "dataset": "工程资料", "reason": "索引写入失败", "reasonKey": "index_failed", "group": "处理失败", "risk": "medium", "review": "reviewed", "status": "failed", "source": "索引入库", "size": "2.84 MB", "time": "08:20", "note": "已复核入库记录，待重新处理。" }
+  ],
+  "preview": {
+    "heading": "用户协议",
+    "section": "第三条　联系与通知",
+    "paragraphs": [
+      "本协议说明用户在使用知识库服务时的账号、资料与通知约定。服务通知将通过用户登记的联系方式送达。",
+      "联系电话：138****1024；备用电话：139****2301。上述字段在处理过程中命中个人信息规则。",
+      "用户应及时维护登记信息，确保账号通知能够送达。涉及个人信息的资料应按所属数据集的访问范围管理。"
+    ],
+    "governance": "文档命中个人信息规则，未继续执行分片与索引入库。先核对原文，再决定保留隔离或放行并重试。"
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "nativeViewport": "1600x1000",
+  "candidates": [
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/execution-monitor/a.html",
+      "name": "A 任务宽表",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "A 任务宽表"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/execution-monitor/b.html",
+      "name": "B 队列与详情",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "B 队列与详情"
+      ]
+    },
+    {
+      "kind": "url",
+      "url": "http://127.0.0.1:3000/brand/explorations/remaining-batch-two-v1/execution-monitor/c.html",
+      "name": "C 时间与阶段",
+      "concept": "清楚当前对象、问题、动作与结果",
+      "typography": "Manrope / Noto Sans SC",
+      "palette": [
+        "#f6f7f8",
+        "#20262e",
+        "#edf0f3"
+      ],
+      "traits": [
+        "C 时间与阶段"
+      ]
+    }
+  ]
+}

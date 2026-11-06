@@ -58,9 +58,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
     if not a and not b:
         return 0.0
     union = a | b
-    if not union:
-        return 0.0
-    return float(len(a & b) / len(union))
+    return len(a & b) / len(union)
 
 
 def _pronoun_count(text: str) -> int:
@@ -74,7 +72,7 @@ def _pronoun_count(text: str) -> int:
         zh = sum(1 for _ in _PRONOUN_ZH_RE.finditer(text))
     except Exception:
         zh = 0
-    return int(en + zh)
+    return en + zh
 
 
 def _semantic_completeness_score(text: str) -> float:
@@ -135,7 +133,7 @@ def validate_chunk_size_bounds(tokens_est: int) -> dict[str, Any]:
         - recommendation: Suggested action
         - severity: Issue severity (critical/warning/info/none)
     """
-    result = {
+    result: dict[str, Any] = {
         "is_valid": True,
         "tokens": tokens_est,
         "size_category": "optimal",
@@ -263,11 +261,11 @@ def score_chunk_semantic_quality(
     sample = trimmed[: max(0, int(max_tokenize_chars or 0))] if max_tokenize_chars else trimmed
     tokens = tokenize_for_bm25(sample)
     token_set = set(tokens or [])
-    keyword_count = int(len(token_set))
+    keyword_count = len(token_set)
 
     denom_tokens = int(tokens_est or 0)
     if denom_tokens <= 0:
-        denom_tokens = max(1, int(len(tokens or [])))
+        denom_tokens = max(1, len(tokens or []))
 
     # P0 Optimization: Validate chunk size bounds
     size_validation = validate_chunk_size_bounds(denom_tokens)
@@ -275,10 +273,10 @@ def score_chunk_semantic_quality(
     # P0 Optimization: Detect Context Cliff risk
     cliff_detection = detect_context_cliff(denom_tokens)
 
-    information_density = float(keyword_count / max(1, denom_tokens))
+    information_density = keyword_count / max(1, denom_tokens)
 
     pronouns = _pronoun_count(trimmed)
-    pronoun_ratio = float(pronouns / max(1, denom_tokens))
+    pronoun_ratio = pronouns / max(1, denom_tokens)
     # Map pronoun ratio to a "self-containedness" score (lower pronoun ratio => higher score).
     self_containedness = _clamp01(1.0 - (pronoun_ratio / 0.06))
 
@@ -309,7 +307,7 @@ def score_chunk_semantic_quality(
         "semantic_completeness": round(_clamp01(semantic_completeness), 4),
         "self_containedness": round(_clamp01(self_containedness), 4),
         "pronoun_ratio": round(_clamp01(pronoun_ratio), 4),
-        "dedup_risk_prev_jaccard": (round(float(dedup_prev), 4) if dedup_prev is not None else None),
+        "dedup_risk_prev_jaccard": (round(dedup_prev, 4) if dedup_prev is not None else None),
         "needs_review": bool(reasons),
         "reasons": reasons[:6],  # Increased from 4 to 6 to accommodate new checks
         # P0 Optimization: Include size validation and cliff detection

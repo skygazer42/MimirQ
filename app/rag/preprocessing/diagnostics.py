@@ -59,7 +59,7 @@ def _line_stats(text: str) -> tuple[int, float, float, float]:
     avg = sum(lengths) / max(1, n)
     short_ratio = sum(1 for x in lengths if x <= 80) / max(1, n)
     very_short_ratio = sum(1 for x in lengths if x <= 40) / max(1, n)
-    return n, float(avg), float(short_ratio), float(very_short_ratio)
+    return n, avg, short_ratio, very_short_ratio
 
 
 def _density(text: str) -> float:
@@ -68,7 +68,7 @@ def _density(text: str) -> float:
     if non_space <= 0:
         return 0.0
     alnum = len(_ALNUM_CJK_RE.findall(raw))
-    return float(alnum / non_space)
+    return alnum / non_space
 
 
 def _append_issue(issues: list[GovernanceIssue], issue: GovernanceIssue | None) -> None:
@@ -178,7 +178,7 @@ def _tracking_urls_issue(raw: str, opts: dict[str, Any]) -> GovernanceIssue | No
         code="tracking_urls",
         severity="info",
         message="检测到带追踪参数的 URL：建议开启“规范化 URL（去追踪参）”。",
-        count=int(tracking),
+        count=tracking,
         samples=[],
         suggested_pipeline_patch={
             "governance_normalize_urls": True,
@@ -296,6 +296,6 @@ def analyze_governance(
     # Merge issue-level patches into one patch (best-effort, last wins).
     for it in issues:
         if it.suggested_pipeline_patch:
-            patch.update(dict(it.suggested_pipeline_patch))
+            patch.update(it.suggested_pipeline_patch)
 
     return issues, patch

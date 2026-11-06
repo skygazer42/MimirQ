@@ -4,7 +4,6 @@ Dataset precheck diff helpers (pure functions).
 Goal: compare two scan-run summaries and return objective deltas for reporting.
 """
 
-
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -100,4 +99,3 @@ def diff_precheck_summaries(
 
 
 __all__ = ["diff_precheck_summaries"]
-

@@ -155,16 +155,14 @@ export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
     const secret = trimPrimitiveString(obj.client_secret) || undefined
     const rawMethod = trimPrimitiveString(obj.client_auth_method).toLowerCase()
     const clientAuthMethod = (() => {
-    if (rawMethod === 'post') {
-        return 'post';
-    }
-    else if (rawMethod === 'basic') {
-            return 'basic';
-        }
-        else {
-            return undefined;
-        }
-})()
+      if (rawMethod === 'post') {
+        return 'post'
+      } else if (rawMethod === 'basic') {
+        return 'basic'
+      } else {
+        return undefined
+      }
+    })()
 
     seen.add(id)
     out.push({
@@ -187,7 +185,12 @@ export function getOidcServerProvidersFromEnv(): OidcProviderServer[] {
         issuer,
         client_id: clientId,
         client_secret: String(readEnv('OIDC_CLIENT_SECRET') || '').trim() || undefined,
-        client_auth_method: (String(readEnv('OIDC_CLIENT_AUTH_METHOD') || '').trim().toLowerCase() === 'post' ? 'post' : 'basic'),
+        client_auth_method:
+          String(readEnv('OIDC_CLIENT_AUTH_METHOD') || '')
+            .trim()
+            .toLowerCase() === 'post'
+            ? 'post'
+            : 'basic',
       })
     }
   }

@@ -19,7 +19,6 @@ Notes:
 
 import argparse
 import json
-import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,119 +33,8 @@ if str(REPO_ROOT) not in sys.path:
 from app.rag.reranker.colbert import ColBERTReranker  # noqa: E402
 from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker  # noqa: E402
 from app.rag.reranker.types import RerankCandidate  # noqa: E402
-
-
-def _load_json(path: Path) -> Any:
-    # PowerShell commonly writes UTF-8 JSON with BOM; `utf-8-sig` handles both BOM/no-BOM.
-    return json.loads(path.read_text(encoding="utf-8-sig"))
-
-
-def _headers(args: argparse.Namespace) -> dict[str, str]:
-    h: dict[str, str] = {"Content-Type": "application/json"}
-    if args.tenant_id:
-        h["X-Tenant-ID"] = str(args.tenant_id)
-    if args.user_id:
-        h["X-User-ID"] = str(args.user_id)
-    if args.bearer:
-        h["Authorization"] = f"Bearer {args.bearer}"
-    return h
-
-
-def coerce_case_bundle(obj: Any) -> tuple[str, list[dict[str, Any]]]:
-    """
-    Normalize case bundle payloads into: (dataset_id, items[]).
-
-    Supported shapes:
-    - Export bundle v1: {"schema":"mimirq.regression_cases.v1","dataset_id":"...","items":[...]}
-    - Minimal bundle: {"dataset_id":"...","items":[...]}
-    - Legacy: [{"dataset_id":"...","question":"...","reference_sources":[...], ...}, ...]
-    """
-    if isinstance(obj, dict) and isinstance(obj.get("items"), list):
-        ds = str(obj.get("dataset_id") or "").strip()
-        if ds:
-            items = [x for x in obj.get("items") if isinstance(x, dict)]
-            cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-            return ds, cleaned
-        return coerce_case_bundle(list(obj.get("items") or []))
-
-    if isinstance(obj, list):
-        items = [x for x in obj if isinstance(x, dict)]
-        dsids: list[str] = []
-        for it in items:
-            ds = str(it.get("dataset_id") or "").strip()
-            if ds and ds not in dsids:
-                dsids.append(ds)
-        if not dsids:
-            raise ValueError("dataset_id is required in cases bundle")
-        if len(dsids) > 1:
-            raise ValueError("mixed dataset_id in cases bundle")
-        dsid = dsids[0]
-        cleaned = [{k: v for k, v in it.items() if k != "dataset_id"} for it in items]
-        return dsid, cleaned
-
-    raise ValueError("cases file must be a JSON array, or an object with { dataset_id, items: [...] }")
-
-
-def _extract_reference_chunk_ids(item: dict[str, Any]) -> set[str]:
-    refs = item.get("reference_sources") or []
-    if not isinstance(refs, list):
-        return set()
-    out: set[str] = set()
-    for src in refs:
-        if not isinstance(src, dict):
-            continue
-        cid = str(src.get("chunk_id") or "").strip()
-        if cid:
-            out.add(cid)
-    return out
-
-
-def _as_float(value: Any) -> float:
-    try:
-        if value is None:
-            return 0.0
-        return float(value)
-    except Exception:
-        return 0.0
-
-
-def _hit_mrr_recall_ndcg_at_k(*, ranked_ids: list[str], relevant: set[str], k: int) -> dict[str, float]:
-    kk = max(1, int(k or 0))
-    top = ranked_ids[:kk]
-    if not relevant:
-        return {"hit": 0.0, "mrr": 0.0, "recall": 0.0, "ndcg": 0.0}
-
-    hit = 1.0 if any(cid in relevant for cid in top) else 0.0
-
-    rr = 0.0
-    for i, cid in enumerate(top, 1):
-        if cid in relevant:
-            rr = 1.0 / float(i)
-            break
-
-    rel_found = sum(1 for cid in top if cid in relevant)
-    recall = float(rel_found) / float(len(relevant)) if relevant else 0.0
-
-    # Binary NDCG@K
-    def _dcg(ids: list[str]) -> float:
-        total = 0.0
-        for i, cid in enumerate(ids, 1):
-            if cid not in relevant:
-                continue
-            denom = math.log2(float(i) + 1.0)
-            total += 1.0 / denom
-        return total
-
-    dcg = _dcg(top)
-    ideal = sorted([1] * min(len(relevant), kk) + [0] * max(0, kk - min(len(relevant), kk)), reverse=True)
-    idcg = 0.0
-    for i, rel in enumerate(ideal, 1):
-        if not rel:
-            continue
-        idcg += 1.0 / math.log2(float(i) + 1.0)
-    ndcg = (dcg / idcg) if idcg > 0.0 else 0.0
-
-    return {"hit": float(hit), "mrr": float(rr), "recall": float(recall), "ndcg": float(ndcg)}
+from scripts.eval_ltr_offline import _as_float, _extract_reference_chunk_ids, _hit_mrr_recall_ndcg_at_k  # noqa: E402
+from scripts.retrieval_ablation import _headers, _load_json, coerce_case_bundle  # noqa: E402
 
 
 def _build_candidate_from_citation(c: dict[str, Any]) -> RerankCandidate | None:
@@ -203,7 +91,7 @@ def build_pipeline_summary(
     metric_keys = ("hit", "mrr", "recall", "ndcg")
     baseline_out = {key: round(_as_float(baseline.get(key)), 4) for key in metric_keys}
     pipeline_out = {key: round(_as_float(pipeline_metrics.get(key)), 4) for key in metric_keys}
-    delta_metrics = {key: round(pipeline_out.get(key, 0.0) - baseline_out.get(key, 0.0), 4) for key in metric_keys}
+    delta_metrics = {key: round(pipeline_out[key] - baseline_out[key], 4) for key in metric_keys}
 
     delta_counts: dict[str, dict[str, int]] = {}
     for key in metric_keys:
@@ -451,12 +339,12 @@ def _build_retrieve_body(config: _EvaluationConfig, question: str) -> dict[str, 
     return {
         "query": question,
         "history": [],
-        "dataset_id": str(config.dataset_id),
+        "dataset_id": config.dataset_id,
         "document_ids": [],
         "rag_config": {
             "retrieval_profile": str(args.retrieval_profile),
             "retrieval_mode": str(args.retrieval_mode),
-            "top_k": int(config.top_k),
+            "top_k": config.top_k,
             "score_threshold": float(args.score_threshold),
             "alpha": float(args.alpha),
             "enable_reranker": False,
@@ -543,8 +431,6 @@ def _evaluate_items(
     case_metrics: list[dict[str, Any]] = []
     cases_used = 0
     for item in config.items:
-        if not isinstance(item, dict):
-            continue
         metrics = _evaluate_case(client, config, item)
         if metrics is None:
             continue
@@ -552,8 +438,8 @@ def _evaluate_items(
         cases_used += 1
         case_metrics.append({"baseline": baseline, "pipeline": piped})
         for key in _METRIC_KEYS:
-            baseline_totals[key] += float(baseline.get(key, 0.0) or 0.0)
-            pipeline_totals[key] += float(piped.get(key, 0.0) or 0.0)
+            baseline_totals[key] += baseline[key]
+            pipeline_totals[key] += piped[key]
     return baseline_totals, pipeline_totals, case_metrics, cases_used
 
 
@@ -562,7 +448,7 @@ def _average_metrics(totals: dict[str, float], cases_used: int) -> dict[str, flo
     if cases_used <= 0:
         return averaged
     for key in _METRIC_KEYS:
-        averaged[key] = round(float(totals[key]) / float(cases_used), 4)
+        averaged[key] = round(totals[key] / float(cases_used), 4)
     return averaged
 
 

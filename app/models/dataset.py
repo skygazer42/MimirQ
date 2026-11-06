@@ -3,6 +3,7 @@ Knowledge base data models and permission management.
 
 Defines dataset tables and permission relationships.
 """
+
 import enum
 import uuid
 from datetime import UTC, datetime
@@ -22,6 +23,7 @@ class DatasetPermissionEnum(str, enum.Enum):
 
 class Dataset(Base):
     """Knowledge base / dataset"""
+
     __tablename__ = "datasets"
     __table_args__ = (
         # Required for composite FKs: (tenant_id, dataset_id) -> datasets(tenant_id, id).
@@ -52,6 +54,7 @@ class Dataset(Base):
 
 class DatasetPermission(Base):
     """Dataset partial member permissions"""
+
     __tablename__ = "dataset_permissions"
     __table_args__ = (
         UniqueConstraint("tenant_id", "dataset_id", "account_id", name="uq_dataset_permission_member"),

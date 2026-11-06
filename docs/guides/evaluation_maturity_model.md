@@ -1,6 +1,6 @@
 # Evaluation Maturity Model (for RAG Quality)
 
-This guide is a pragmatic maturity model for evaluating and gating RAG quality in MimirQ—starting from ad-hoc QA and evolving toward **continuous**, **slice-aware**, **PII-safe** evaluation with CI gates.
+This guide is a pragmatic maturity model for evaluating and gating RAG quality in Ragvia—starting from ad-hoc QA and evolving toward **continuous**, **slice-aware**, **PII-safe** evaluation with CI gates.
 
 > 目标（中文摘要）：把“感觉更好”变成“可测、可回归、可解释、可审计”，并且默认 **PII-safe**。
 
@@ -38,7 +38,7 @@ Use this when you want **fast, cheap, deterministic** gating:
 - Empty/weak evidence rates (`abstain_rate` is a strong proxy when using strict grounding)
 - Latency (p50/p95) and error rate
 
-MimirQ supports a **retrieval-only regression gate** that does not depend on RAGAS/LLMs. See:
+Ragvia supports a **retrieval-only regression gate** that does not depend on RAGAS/LLMs. See:
 - `docs/guides/regression_gate.md`
 - `docs/guides/evidence_retrieval_gate.md`
 
@@ -54,7 +54,7 @@ Use this when retrieval is “good enough” and you need to validate the end-to
 
 Note: answer-level evaluation is usually **less deterministic** (judge model variance, provider drift). Treat it as a *signal* unless you pin the judge model/prompt and budget it carefully.
 
-For deterministic CI checks on answer-side summary metrics, MimirQ also provides:
+For deterministic CI checks on answer-side summary metrics, Ragvia also provides:
 
 - `scripts/answer_quality_gate.py`
 - thresholds artifact: `ci/answer_quality_thresholds.v1.json`
@@ -94,7 +94,7 @@ Think of this as a ladder. You can adopt Levels 2–4 incrementally, per dataset
 - Export/share regression case bundles across environments.
 - Record the run context (pipeline/retrieval/rerank configs).
 
-**MimirQ building blocks:**
+**Ragvia building blocks:**
 - Regression case export/import + runs: `docs/guides/regression_gate.md`
 - Evidence Pack → regression cases: `docs/guides/evidence_pack_to_regression.md`
 
@@ -115,7 +115,7 @@ Think of this as a ladder. You can adopt Levels 2–4 incrementally, per dataset
 - For multi-hop datasets, add explicit thresholds for chain coverage/order metrics.
 - Run proof-consistency audit artifact (`must_recall_proof_audit`) for release evidence.
 
-**MimirQ building blocks:**
+**Ragvia building blocks:**
 - CLI gate: `scripts/regression_gate.py` (run with `--metrics ""` for retrieval-only)
 - Thresholds v2 (slice-aware): documented in `docs/guides/regression_gate.md`
 - Seeded CI fixture exists (good for wiring the workflow before using real data)
@@ -157,7 +157,7 @@ Think of this as a ladder. You can adopt Levels 2–4 incrementally, per dataset
 
 ---
 
-## Suggested adoption path for MimirQ (lowest effort → highest leverage)
+## Suggested adoption path for Ragvia (lowest effort → highest leverage)
 
 1) **Wire the workflow** using the existing retrieval-only gate docs and fixture:
    - Start here: `docs/guides/regression_gate.md`

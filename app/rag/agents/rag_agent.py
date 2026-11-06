@@ -3,7 +3,7 @@ import threading
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from langchain_core.documents import Document
@@ -19,12 +19,14 @@ from app.rag.pipelines.langgraph import _build_context, _build_history_text, bui
 from app.rag.retrieval.decomposition_chain import build_chained_query, summarize_chain_step
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.rag.workflows.crag_streaming import run_crag_streaming
-from app.rag.workflows.critic import run_critic_review
-from app.rag.workflows.self_rag import run_self_rag_reflection
+from app.rag.workflows.critic import CriticReview, run_critic_review
+from app.rag.workflows.self_rag import SelfRagReflection, run_self_rag_reflection
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 if TYPE_CHECKING:
+    from app.rag.agents.multi_agent import MultiAgentRAGRunner
     from app.rag.engine import RAGEngine
+    from app.rag.tools.mcp_client import MCPToolRegistry
 
 logger = get_logger(__name__)
 
@@ -159,8 +161,8 @@ class _AgenticGenerationState:
     answer_tokens: int = 0
     answer_chars: int = 0
     structured_data: dict[str, Any] | None = None
-    self_rag_reflection: dict[str, Any] | None = None
-    critic_review: dict[str, Any] | None = None
+    self_rag_reflection: SelfRagReflection | None = None
+    critic_review: CriticReview | None = None
 
 
 _AGENTIC_STREAM_REQUEST_KEYS = {
@@ -233,10 +235,10 @@ def resolve_agentic_stream_request(
         updated_fields["state_overrides"] = state_overrides
     if not updated_fields:
         return request
-    return cast(AgenticStreamRequest, replace(request, **updated_fields))
+    return replace(request, **updated_fields)
 
 
-def get_agentic_tool_registry() -> Any:
+def get_agentic_tool_registry() -> "MCPToolRegistry":
     from app.rag.tools.mcp_client import get_mcp_registry
     from app.rag.tools.mcp_tools import register_default_tools
 
@@ -244,7 +246,7 @@ def get_agentic_tool_registry() -> Any:
     return register_default_tools(registry)
 
 
-def get_multi_agent_runner(*, engine: "RAGEngine | None" = None) -> Any:
+def get_multi_agent_runner(*, engine: "RAGEngine | None" = None) -> "MultiAgentRAGRunner":
     from app.rag.agents.multi_agent import get_multi_agent_runner as _get_multi_agent_runner
 
     return _get_multi_agent_runner(engine=engine)
@@ -266,7 +268,7 @@ class AgenticRAGRunner:
         try:
             plan_chain = (
                 self._engine.decompose_prompt
-                | planner_llm.bind(temperature=float(getattr(settings, "QUERY_DECOMPOSITION_TEMPERATURE", 0.2) or 0.2))
+                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE or 0.2)
                 | StrOutputParser()
             )
             raw = await plan_chain.ainvoke({"query": question, "n": max_steps})
@@ -314,8 +316,8 @@ class AgenticRAGRunner:
             return False
         citations = result.get("citations") or []
         metrics = result.get("metrics") or {}
-        min_citations = max(1, int(getattr(settings, "RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN", 1) or 1))
-        min_top_score = float(getattr(settings, "RAG_AGENTIC_REFLECT_TOP_SCORE_MIN", 0.35) or 0.35)
+        min_citations = max(1, settings.RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN or 1)
+        min_top_score = settings.RAG_AGENTIC_REFLECT_TOP_SCORE_MIN or 0.35
         if len(citations) >= min_citations:
             return True
         try:
@@ -345,7 +347,7 @@ class AgenticRAGRunner:
         dataset_id: UUID | None,
         account_id: str | None,
     ) -> list[AgenticToolInvocation]:
-        if not bool(getattr(settings, "RAG_AGENTIC_TOOLS_ENABLED", False)):
+        if not settings.RAG_AGENTIC_TOOLS_ENABLED:
             return []
 
         question_norm = " ".join((question or "").split())
@@ -519,10 +521,10 @@ class AgenticRAGRunner:
                     },
                 }
                 result = await registry.call_tool(invocation.name, invocation.arguments)
-                success = bool(getattr(result, "success", False))
-                data = getattr(result, "data", None)
-                error = getattr(result, "error", None)
-                metadata = dict(getattr(result, "metadata", None) or {})
+                success = bool(result.success)
+                data = result.data
+                error = result.error
+                metadata = dict(result.metadata or {})
                 state.tool_metrics.append(
                     {
                         "name": invocation.name,
@@ -565,7 +567,7 @@ class AgenticRAGRunner:
                 "type": "agentic_step",
                 "data": {
                     "step": "retrieving",
-                    "round": int(round_idx),
+                    "round": round_idx,
                     "query": retrieval_query,
                     "rationale": step.rationale,
                 },
@@ -606,7 +608,7 @@ class AgenticRAGRunner:
         retrieval_result: dict[str, Any],
         state: _AgenticRetrievalState,
     ) -> tuple[dict[str, Any], str] | None:
-        if not bool(getattr(settings, "RAG_CRAG_STREAMING_ENABLED", False)):
+        if not settings.RAG_CRAG_STREAMING_ENABLED:
             return None
         crag_result = await run_crag_streaming(
             question=question,
@@ -746,10 +748,7 @@ class AgenticRAGRunner:
         collected_docs: list[Document],
         generation_state: _AgenticGenerationState,
     ) -> AsyncIterator[dict[str, Any]]:
-        if not (
-            bool(getattr(settings, "RAG_SELF_RAG_ENABLED", False))
-            or bool(getattr(settings, "RAG_CRITIC_ENABLED", False))
-        ):
+        if not (settings.RAG_SELF_RAG_ENABLED or settings.RAG_CRITIC_ENABLED):
             return
         evidence_text = "\n".join(
             [
@@ -772,7 +771,7 @@ class AgenticRAGRunner:
                 "need_retrieval": generation_state.self_rag_reflection.get("need_retrieval"),
             },
         }
-        if not bool(getattr(settings, "RAG_CRITIC_ENABLED", False)):
+        if not settings.RAG_CRITIC_ENABLED:
             return
         generation_state.critic_review = run_critic_review(
             question=question,
@@ -813,19 +812,19 @@ class AgenticRAGRunner:
             ),
             "complexity_score": round(float(complexity_score), 3),
             "agentic_used": True,
-            "agentic_rounds": int(retrieval_state.rounds_executed),
-            "agentic_planned_steps": int(len(plan_steps)),
+            "agentic_rounds": retrieval_state.rounds_executed,
+            "agentic_planned_steps": len(plan_steps),
             "agentic_queries": [step.query for step in plan_steps[:max_rounds]],
             "agentic_route_reason": f"complexity {complexity_score:.1f} >= threshold {threshold}",
             "model_route": model_route,
             "abstain_triggered": bool(retrieval_state.final_result.get("abstain_triggered")),
             "abstain_reason": retrieval_state.final_result.get("abstain_reason"),
-            "docs_returned": int(len(retrieval_state.collected_docs)),
+            "docs_returned": len(retrieval_state.collected_docs),
             "agentic_tools_used": int(sum(1 for item in retrieval_state.tool_metrics if item.get("success"))),
             "agentic_tool_calls": retrieval_state.tool_metrics,
-            "agentic_crag_used": bool(retrieval_state.crag_used),
+            "agentic_crag_used": retrieval_state.crag_used,
             "agentic_crag_provider": retrieval_state.crag_provider,
-            "agentic_crag_web_results": int(retrieval_state.crag_web_results),
+            "agentic_crag_web_results": retrieval_state.crag_web_results,
             "agentic_self_rag_used": bool(generation_state.self_rag_reflection is not None),
             "agentic_self_rag_verdict": self_rag_reflection.get("verdict")
             if generation_state.self_rag_reflection
@@ -859,7 +858,7 @@ class AgenticRAGRunner:
         *,
         request: AgenticStreamRequest | None = None,
         **_kwargs: Any,
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         stream_request = resolve_agentic_stream_request(
             request=request,
             legacy_overrides=_kwargs,
@@ -874,12 +873,12 @@ class AgenticRAGRunner:
         retrieval_mode = stream_request.retrieval_mode
         structured_output = stream_request.structured_output
         complexity_score = self._engine._score_question_complexity(question, history)
-        threshold = float(getattr(settings, "RAG_AGENTIC_COMPLEXITY_THRESHOLD", 250.0) or 250.0)
+        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD or 250.0
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
-        max_rounds = max(1, int(getattr(settings, "RAG_AGENTIC_MAX_RETRIEVE_ROUNDS", 3) or 3))
+        max_rounds = max(1, settings.RAG_AGENTIC_MAX_RETRIEVE_ROUNDS or 3)
         plan_steps = await self._plan(question=question, llm=llm, max_steps=max_rounds)
 
-        if bool(getattr(settings, "RAG_MULTI_AGENT_ENABLED", False)) and len(plan_steps) > 1:
+        if settings.RAG_MULTI_AGENT_ENABLED and len(plan_steps) > 1:
             runner = get_multi_agent_runner(engine=self._engine)
             async for event in runner.stream(request=stream_request):
                 yield event
@@ -960,8 +959,8 @@ class AgenticRAGRunner:
             "type": "done",
             "data": {
                 "conversation_id": str(conversation_id) if conversation_id else None,
-                "total_tokens": int(generation_state.answer_tokens),
-                "total_chars": int(generation_state.answer_chars),
+                "total_tokens": generation_state.answer_tokens,
+                "total_chars": generation_state.answer_chars,
                 "citations_count": len(citations),
                 "model_used": getattr(llm, "model_name", None) or getattr(llm, "model", None),
                 "route": "agentic",

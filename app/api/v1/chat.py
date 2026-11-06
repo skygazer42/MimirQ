@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import (
+    ChatRAGConfig,
     ChatRequest,
     ChatResponse,
 )
@@ -153,7 +154,7 @@ def _build_extractive_fallback_kwargs(
     history_for_llm: list[dict[str, Any]],
     scope_dataset_id: UUID | None,
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
 ) -> dict[str, Any]:
     return {
         "tenant_id": tenant_id,
@@ -211,7 +212,7 @@ def _build_chat_execution_context(
     history_for_llm: list[dict[str, Any]],
     scope_dataset_id: UUID | None,
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     effective_prompt_template_id: UUID | None,
     effective_prompt_template_key: str | None,
     effective_prompt_ab_experiment_key: str | None,
@@ -243,7 +244,7 @@ async def _execute_provider_chat_once(
     runtime_metrics: dict[str, Any],
     conversation_id: UUID,
     request_id: str,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     tenant_id: UUID,
     account_id: str,
     request: ChatRequest,
@@ -321,7 +322,7 @@ async def _run_non_streaming_chat_generation(
     history_for_llm: list[dict[str, Any]],
     scope_dataset_id: UUID | None,
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     effective_prompt_template_id: UUID | None,
     effective_prompt_template_key: str | None,
     effective_prompt_ab_experiment_key: str | None,
@@ -338,7 +339,7 @@ async def _run_non_streaming_chat_generation(
         dataset_id_used=dataset_id_used,
         effective_rag_config=effective_rag_config,
     )
-    if getattr(effective_rag_config, "answer_mode", "llm") == "extractive":
+    if effective_rag_config.answer_mode == "extractive":
         return await _run_extractive_chat_fallback(
             request_db=db,
             fallback_kwargs=fallback_kwargs,
@@ -420,11 +421,11 @@ def _maybe_schedule_summary_update(
     tenant_id: UUID,
     conversation_id: UUID | None,
 ) -> None:
-    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False)):
+    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED):
         return
-    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE", False)):
+    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE):
         return
-    if not bool(getattr(request, "enable_summary_memory", False)):
+    if not bool(request.enable_summary_memory):
         return
     if not conversation_id:
         return
@@ -497,8 +498,8 @@ async def chat(
     full_response = ""
     allowed_doc_ids: list[UUID] = []
     long_term_messages: list[dict] = []
-    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
-    allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+    allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
+    allow_open_scope = bool(settings.CHAT_ALLOW_OPEN_SCOPE)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -586,7 +587,7 @@ async def chat(
             history=request.history,
             enable_long_term_memory=bool(request.enable_long_term_memory),
             long_term_messages=long_term_messages,
-            enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
+            enable_structured_memory=bool(request.enable_structured_memory),
             question=request.message,
             rag_config=rag_cfg,
             prompt_config=prompt_cfg,
@@ -644,7 +645,7 @@ async def chat(
         )
         metrics_data = _annotate_chat_singleflight_metrics(
             metrics_data,
-            enabled=bool(getattr(settings, "CHAT_RESPONSE_SINGLEFLIGHT_ENABLED", False)),
+            enabled=bool(settings.CHAT_RESPONSE_SINGLEFLIGHT_ENABLED),
             hit=singleflight_hit,
             role=_singleflight_role(
                 singleflight_hit=singleflight_hit,
@@ -686,7 +687,7 @@ async def chat(
                 cache_key=cache_key,
                 singleflight_key=singleflight_key,
                 singleflight_leader=singleflight_leader,
-                request_enable_structured_memory=bool(getattr(request, "enable_structured_memory", False)),
+                request_enable_structured_memory=bool(request.enable_structured_memory),
                 ip=getattr(getattr(http_request, "client", None), "host", None),
                 user_agent=http_request.headers.get("user-agent"),
                 enable_online_eval=bool(effective_rag_config.use_graph) or bool(cache_hit),
@@ -737,7 +738,7 @@ async def chat(
         "prompt_tokens": 0,
         "completion_tokens": total_tokens,
         "total_tokens": total_tokens,
-        "source": "mock" if bool(getattr(settings, "LLM_MOCK_ENABLED", False)) else "estimate",
+        "source": "mock" if bool(settings.LLM_MOCK_ENABLED) else "estimate",
     }
 
     return {
@@ -773,8 +774,8 @@ async def stream_chat(
     """
 
     long_term_messages: list[dict] = []
-    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
-    allow_open_scope = bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False))
+    allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
+    allow_open_scope = bool(settings.CHAT_ALLOW_OPEN_SCOPE)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -782,16 +783,7 @@ async def stream_chat(
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="chat")
 
     quota_meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
-    if quota_meta.get("enabled") and quota_meta.get("exceeded") and quota_meta.get("mode") == "block":
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "message": "Chat quota exceeded (assistant tokens)",
-                "retry_after_sec": None,
-                "limit": int(quota_meta.get("limit") or 0),
-                "scope": "chat_tokens",
-            },
-        )
+    _raise_chat_quota_exceeded_if_needed(quota_meta)
 
     turn_session = _prepare_chat_turn_session(
         db=db,

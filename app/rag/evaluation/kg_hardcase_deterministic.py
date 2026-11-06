@@ -12,16 +12,9 @@ Design goals:
 
 import re
 from collections.abc import Iterable, Sequence
-from typing import Any
 
-from app.rag.evaluation.kg_hardcase_generator import Hardcase
+from app.rag.evaluation.kg_hardcase_generator import Hardcase, _collapse_ws
 from app.rag.kg.extraction.alias import is_abbrev_token
-
-_WS_RE = re.compile(r"\s+")
-
-
-def _collapse_ws(text: Any) -> str:
-    return _WS_RE.sub(" ", str(text or "").strip())
 
 
 def _contains_cjk(text: str) -> bool:

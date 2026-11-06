@@ -2,7 +2,6 @@
 Prometheus metrics endpoint.
 """
 
-
 import hashlib
 import hmac
 from typing import Annotated
@@ -44,7 +43,7 @@ async def require_metrics_access(
     x_user_id: Annotated[str | None, Header()] = None,
     x_tenant_id: Annotated[str | None, Header()] = None,
 ) -> None:
-    expected_token = str(getattr(settings, "METRICS_BEARER_TOKEN", "") or "").strip()
+    expected_token = str(settings.METRICS_BEARER_TOKEN or "").strip()
     if expected_token:
         auth = str(authorization or "").strip()
         if not auth:

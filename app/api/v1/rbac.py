@@ -7,7 +7,6 @@ Notes:
 - This router provides a small admin surface to view/update member roles.
 """
 
-
 from typing import Annotated
 from uuid import UUID
 
@@ -33,9 +32,10 @@ from app.models.dataset import DatasetPermission
 from app.models.document import DocumentPermission
 from app.models.tenant import TenantMember
 from app.models.tenant_group import TenantGroupMember
+from app.models.user import User
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
-from app.services.dataset_service import DatasetService
-from app.services.navigation_visibility import navigation_user_visible_modules_from_settings
+from app.services.navigation_visibility import normalize_navigation_modules
 from app.services.rbac_service import TenantPermissions, all_tenant_permissions, ensure_tenant_permission, role_allows
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -47,12 +47,37 @@ def _lock_active_admin_members(db: Session, tenant_id: UUID) -> list[TenantMembe
         .filter(
             TenantMember.tenant_id == tenant_id,
             TenantMember.is_active.is_(True),
-            TenantMember.role.in_(list(UserRoles.ADMIN_ROLES)),
+            TenantMember.role.in_(UserRoles.ADMIN_ROLES),
         )
         .order_by(TenantMember.id.asc())
         .with_for_update()
         .all()
     )
+
+
+def _member_outputs(db: Session, members: list[TenantMember]) -> list[TenantMemberOut]:
+    # Local IDs are UUIDs; external IdP subjects may be arbitrary strings. Batch
+    # the identity lookup without casting a UUID column to database-specific text.
+    user_ids = []
+    for member in members:
+        try:
+            user_ids.append(UUID(str(member.user_id)))
+        except ValueError:
+            continue
+    users = db.query(User).filter(User.id.in_(user_ids)).all() if user_ids else []
+    identities = {str(user.id): user for user in users}
+    output = []
+    for member in members:
+        identity = identities.get(str(member.user_id))
+        output.append(
+            TenantMemberOut.model_validate(member).model_copy(
+                update={
+                    "username": identity.username if identity else None,
+                    "email": identity.email if identity else None,
+                }
+            )
+        )
+    return output
 
 
 @router.get("/me", response_model=TenantAccessOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -61,18 +86,18 @@ def get_current_tenant_access(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
-    member = DatasetService.ensure_member(db, tenant_id, account_id)
-    role = str(getattr(member, "role", "") or "").strip().lower()
+) -> TenantAccessOut:
+    member = dataset_service.ensure_member(db, tenant_id, account_id)
+    role = (member.role or "").strip().lower()
     permissions = [permission for permission in all_tenant_permissions() if role_allows(permission, role=role)]
     return TenantAccessOut(
         tenant_id=tenant_id,
         account_id=account_id,
         role=role,
         permissions=permissions,
-        navigation_user_visible_modules=navigation_user_visible_modules_from_settings(settings),
-        is_active=bool(getattr(member, "is_active", True)),
-        is_current=bool(getattr(member, "is_current", False)),
+        navigation_user_visible_modules=normalize_navigation_modules(settings.NAVIGATION_USER_VISIBLE_MODULES),
+        is_active=bool(member.is_active),
+        is_current=bool(member.is_current),
     )
 
 
@@ -84,7 +109,7 @@ def list_tenant_members(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantMemberListResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -93,10 +118,10 @@ def list_tenant_members(
         detail="No permission to view tenant members",
     )
 
-    q = db.query(TenantMember).filter(TenantMember.tenant_id == tenant_id)
-    total = int(q.count())
+    members = db.query(TenantMember).filter(TenantMember.tenant_id == tenant_id)
+    total = members.count()
     items = (
-        q.order_by(
+        members.order_by(
             TenantMember.is_current.desc(),
             TenantMember.updated_at.desc().nullslast(),
             TenantMember.created_at.desc().nullslast(),
@@ -105,7 +130,7 @@ def list_tenant_members(
         .limit(limit)
         .all()
     )
-    return TenantMemberListResponse(total=total, items=[TenantMemberOut.model_validate(it) for it in items])
+    return TenantMemberListResponse(total=total, items=_member_outputs(db, items))
 
 
 @router.patch("/members/{user_id}", response_model=TenantMemberOut, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
@@ -116,7 +141,7 @@ def patch_tenant_member_role(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantMemberOut:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -125,7 +150,7 @@ def patch_tenant_member_role(
         detail="No permission to manage tenant member roles",
     )
 
-    uid = str(user_id or "").strip()
+    uid = user_id.strip()
     if not uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="user_id is required")
 
@@ -136,18 +161,18 @@ def patch_tenant_member_role(
         .with_for_update()
         .first()
     )
-    if not member:
+    if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant member not found")
 
-    next_role = str(payload.role or "").strip().lower()
-    current_role = str(getattr(member, "role", "") or "").strip().lower()
+    next_role = payload.role
+    current_role = (member.role or "").strip().lower()
     if current_role in UserRoles.ADMIN_ROLES and next_role not in UserRoles.ADMIN_ROLES and len(active_admins) <= 1:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能降级最后一个管理员")
 
     member.role = next_role
     db.commit()
     db.refresh(member)
-    return TenantMemberOut.model_validate(member)
+    return _member_outputs(db, [member])[0]
 
 
 @router.delete(
@@ -161,7 +186,7 @@ def delete_tenant_member(
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
-):
+) -> TenantMemberDeleteResponse:
     ensure_tenant_permission(
         db,
         tenant_id,
@@ -170,10 +195,10 @@ def delete_tenant_member(
         detail="没有权限移除成员",
     )
 
-    uid = str(user_id or "").strip()
+    uid = user_id.strip()
     if not uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少成员 ID")
-    if uid == str(account_id or "").strip():
+    if uid == account_id.strip():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除当前用户")
 
     active_admins = _lock_active_admin_members(db, tenant_id)
@@ -183,31 +208,27 @@ def delete_tenant_member(
         .with_for_update()
         .first()
     )
-    if not member:
+    if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到该成员")
 
-    member_role = str(getattr(member, "role", "") or "").strip().lower()
-    if member_role in UserRoles.ADMIN_ROLES and bool(getattr(member, "is_active", True)):
-        if len(active_admins) <= 1:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除最后一个管理员")
+    member_role = (member.role or "").strip().lower()
+    if member_role in UserRoles.ADMIN_ROLES and member.is_active and len(active_admins) <= 1:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除最后一个管理员")
 
-    revoked_groups = int(
+    revoked_groups = (
         db.query(TenantGroupMember)
         .filter(TenantGroupMember.tenant_id == tenant_id, TenantGroupMember.user_id == uid)
         .delete(synchronize_session=False)
-        or 0
     )
-    revoked_datasets = int(
+    revoked_datasets = (
         db.query(DatasetPermission)
         .filter(DatasetPermission.tenant_id == tenant_id, DatasetPermission.account_id == uid)
         .delete(synchronize_session=False)
-        or 0
     )
-    revoked_documents = int(
+    revoked_documents = (
         db.query(DocumentPermission)
         .filter(DocumentPermission.tenant_id == tenant_id, DocumentPermission.account_id == uid)
         .delete(synchronize_session=False)
-        or 0
     )
     db.delete(member)
 

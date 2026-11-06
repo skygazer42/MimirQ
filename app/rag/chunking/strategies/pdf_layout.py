@@ -20,7 +20,7 @@ Notes:
 """
 
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -97,7 +97,7 @@ def _parse_tag(match: re.Match[str]) -> PositionTag | None:
         return None
     if not pages:
         return None
-    return PositionTag(pages=pages, left=float(left), right=float(right), top=float(top), bottom=float(bottom))
+    return PositionTag(pages=pages, left=left, right=right, top=top, bottom=bottom)
 
 
 def _extract_position_blocks(raw: str) -> list[_Block]:
@@ -122,18 +122,18 @@ def _extract_position_blocks(raw: str) -> list[_Block]:
         text_chunk = raw[cursor : m.start()]
         has_text = bool(text_chunk.strip())
         if has_text or not blocks:
-            blocks.append(_Block(raw_start=int(cursor), raw_end=int(m.end()), tags=[tag]))
+            blocks.append(_Block(raw_start=cursor, raw_end=m.end(), tags=[tag]))
         else:
             # Attach to previous block.
-            blocks[-1].raw_end = int(m.end())
+            blocks[-1].raw_end = m.end()
             blocks[-1].tags.append(tag)
 
-        cursor = int(m.end())
+        cursor = m.end()
 
     # Trailing text without any tag is kept as a tagless block (best-effort).
     tail = raw[cursor:]
     if tail.strip():
-        blocks.append(_Block(raw_start=int(cursor), raw_end=len(raw), tags=[]))
+        blocks.append(_Block(raw_start=cursor, raw_end=len(raw), tags=[]))
 
     return blocks
 
@@ -163,10 +163,10 @@ def _union_boxes(items: list[tuple[float, float, float, float]]) -> dict[str, fl
     ts = [x[2] for x in items]
     bs = [x[3] for x in items]
     return {
-        "x0": round(float(min(ls)), 3),
-        "x1": round(float(max(rs)), 3),
-        "y0": round(float(min(ts)), 3),
-        "y1": round(float(max(bs)), 3),
+        "x0": round(min(ls), 3),
+        "x1": round(max(rs), 3),
+        "y0": round(min(ts), 3),
+        "y1": round(max(bs), 3),
     }
 
 
@@ -196,14 +196,14 @@ def _build_page_columns(
 
     col_items: list[dict[str, Any]] = []
     for col in (0, 1):
-        union = _union_boxes(cols.get(col, []))
+        union = _union_boxes(cols[col])
         if union is None:
             continue
         col_items.append(
             {
-                "col": int(col),
+                "col": col,
                 "bbox": union,
-                "boxes": int(len(cols[col])),
+                "boxes": len(cols[col]),
             }
         )
     return col_items
@@ -217,11 +217,11 @@ def _build_page_layout_entry(
         return None
     column_count, page_width = _detect_column_count(boxes)
     return {
-        "page": int(page),
-        "column_count": int(column_count),
+        "page": page,
+        "column_count": column_count,
         "bbox": _union_boxes(boxes),
         "columns": _build_page_columns(boxes, column_count=column_count, page_width=page_width),
-        "boxes": int(len(boxes)),
+        "boxes": len(boxes),
     }
 
 
@@ -247,7 +247,7 @@ def _layout_meta_from_tags(tags: list[PositionTag]) -> dict[str, Any] | None:
         "schema": "mimirq.pdf_layout.v1",
         "pages": pages,
         "page_layout": page_layout,
-        "tag_count": int(len(tags)),
+        "tag_count": len(tags),
     }
 
 
@@ -279,7 +279,7 @@ def _find_window_end(cleaned_lens: list[int], start_i: int, chunk_size: int) -> 
     end_i = start_i - 1
 
     while i < len(cleaned_lens):
-        blen = int(cleaned_lens[i] or 0)
+        blen = cleaned_lens[i] or 0
         if blen <= 0:
             i += 1
             continue
@@ -311,7 +311,7 @@ def _next_window_start(
     overlap = 0
     j = end_i
     while j >= start_i and overlap < chunk_overlap:
-        overlap += int(cleaned_lens[j] or 0)
+        overlap += cleaned_lens[j] or 0
         j -= 1
     next_i = max(start_i + 1, j + 1)
     return next_i if next_i < current_i else current_i
@@ -345,7 +345,7 @@ class PDFLayoutChunker(BaseChunker):
     Layout-aware chunker for parsed PDF markdown containing @@...## tags.
     """
 
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
         self._fallback = LangChainRecursiveChunker(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
@@ -374,8 +374,8 @@ class PDFLayoutChunker(BaseChunker):
                 chunk_size=self.chunk_size,
                 chunk_overlap=self.chunk_overlap,
             ):
-                raw_start = int(blocks[start_i].raw_start)
-                raw_end = int(blocks[end_i].raw_end)
+                raw_start = blocks[start_i].raw_start
+                raw_end = blocks[end_i].raw_end
                 raw_slice = raw[raw_start:raw_end]
                 cleaned = _strip_position_tags(raw_slice).strip()
                 if not cleaned:
@@ -393,10 +393,10 @@ class PDFLayoutChunker(BaseChunker):
                 if layout is not None:
                     meta["layout"] = layout
                     try:
-                        pages = layout.get("pages") if isinstance(layout, Mapping) else None
-                        if isinstance(pages, list) and pages:
-                            meta.setdefault("page", int(pages[0]))
-                            meta.setdefault("page_number", int(pages[0]))
+                        pages = layout["pages"]
+                        if pages:
+                            meta.setdefault("page", pages[0])
+                            meta.setdefault("page_number", pages[0])
                     except Exception as exc:
                         logger.debug("Ignoring PDF layout page metadata hint failure: %s", exc)
 

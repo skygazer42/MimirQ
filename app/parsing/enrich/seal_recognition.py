@@ -191,12 +191,12 @@ def _bbox_to_payload(bbox: tuple[int, int, int, int] | None) -> dict[str, int] |
 def _serialize_seal_candidate(result: SealRecognitionResult) -> dict[str, Any]:
     return {
         "text": result.text,
-        "score": float(result.score),
-        "detection_score": float(result.detection_score),
+        "score": result.score,
+        "detection_score": result.detection_score,
         "engine": result.engine,
-        "region_count": int(result.region_count),
+        "region_count": result.region_count,
         "seal_kind": result.seal_kind,
-        "rank": float(result.rank),
+        "rank": result.rank,
         "bbox": _bbox_to_payload(result.bbox),
     }
 

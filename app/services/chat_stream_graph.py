@@ -1,4 +1,3 @@
-
 import asyncio
 import contextlib
 import threading
@@ -8,7 +7,6 @@ from typing import Any, AsyncIterator, Callable, cast
 from app.core.config import settings
 from app.services.chat_execution_runtime import ChatExecutionContext
 from app.services.chat_runtime import (
-    ChatStreamPersistInput,
     annotate_chat_cache_metrics,
     apply_chat_runtime_metrics_context,
     store_chat_response_cache_if_needed,
@@ -17,7 +15,7 @@ from app.services.chat_stream_common import (
     build_chat_stream_done_event,
     log_chat_stream_completion_metrics,
 )
-from app.services.chat_stream_persistence import dispatch_chat_stream_persistence
+from app.services.chat_stream_persistence import ChatStreamPersistInput, dispatch_chat_stream_persistence
 
 _SYNC_STREAM_END = object()
 
@@ -253,7 +251,7 @@ def _build_graph_stream_state(
 
 def _build_graph_stream_config(*, conversation_id: Any, request_id: str) -> dict[str, Any]:
     thread_id = str(conversation_id) if conversation_id else f"rag-{request_id}"
-    recursion_limit = max(1, int(getattr(settings, "LANGGRAPH_RECURSION_LIMIT", 25) or 25))
+    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
     return {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
 
 
@@ -511,8 +509,7 @@ async def stream_graph_chat_session_events(
         metrics=metrics_data,
         retrieval_mode_default=effective_rag_config.retrieval_mode,
         vector_backend_default=settings.VECTOR_BACKEND,
-        structured=bool(metrics_data.get("structured_parse_ok"))
-        and structured_data is not None,
+        structured=bool(metrics_data.get("structured_parse_ok")) and structured_data is not None,
         structured_data=structured_data,
     )
 

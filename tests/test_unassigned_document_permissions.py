@@ -16,7 +16,13 @@ from app.api.schemas.document import (
 )
 from app.api.schemas.qa import DocumentQAGenerateRequest
 from app.api.v1 import document_mutations, document_processing, document_versions
-from app.services import document_access_service
+from app.services import (
+    document_access_service,
+    document_batch_operations,
+    document_metadata_operations,
+    document_processing_operations,
+    document_qa_service,
+)
 
 
 class _Query:
@@ -137,7 +143,7 @@ def test_unassigned_document_writable_helper_requires_edit_role(monkeypatch: pyt
     document = _unassigned_document(access_mode="all_team_members")
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
         raising=True,
@@ -159,7 +165,7 @@ def test_unassigned_document_writable_helper_denies_non_owner_editor(monkeypatch
     document = _unassigned_document(access_mode="all_team_members")
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
@@ -181,7 +187,7 @@ def test_unassigned_document_writable_helper_allows_owner_editor(monkeypatch: py
     document = _unassigned_document(access_mode="all_team_members", owner_id="editor-account")
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
@@ -199,7 +205,7 @@ def test_unassigned_document_writable_helper_allows_admin_override(monkeypatch: 
     document = _unassigned_document(access_mode="only_me", owner_id="other-owner")
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="admin"),
         raising=True,
@@ -217,7 +223,7 @@ def test_unassigned_document_writable_helper_requires_admin_when_owner_missing(m
     document = _unassigned_document(access_mode="all_team_members", owner_id="")
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
@@ -239,7 +245,7 @@ def test_unassigned_document_writable_helper_allows_admin_when_owner_missing(mon
     document = _unassigned_document(access_mode="all_team_members", owner_id="")
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="owner"),
         raising=True,
@@ -261,19 +267,19 @@ async def test_unassigned_document_processing_and_mutation_writes_require_edit_r
     db = _DB(document)
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
         raising=True,
     )
     monkeypatch.setattr(
-        document_processing._documents_module().DatasetService,
+        document_processing_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
         raising=True,
     )
     monkeypatch.setattr(
-        document_mutations._documents_module().DatasetService,
+        document_qa_service.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
         raising=True,
@@ -313,7 +319,7 @@ def test_unassigned_document_versions_are_readable_but_not_writable_for_viewers(
     db = _DB(document)
 
     monkeypatch.setattr(
-        document_versions.DatasetService,
+        document_versions.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="viewer"),
         raising=True,
@@ -357,7 +363,7 @@ async def test_document_processing_endpoints_use_shared_unassigned_acl(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    documents_module = document_processing._documents_module()
+    documents_module = document_processing
     document = _unassigned_document(
         access_mode="all_team_members", status="processing", file_path=str(tmp_path / "retry.txt")
     )
@@ -365,16 +371,16 @@ async def test_document_processing_endpoints_use_shared_unassigned_acl(
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(documents_module.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_readable_for_lifecycle",
+        "assert_document_readable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(HTTPException(status_code=403, detail="shared-read-policy")),
         raising=True,
     )
     monkeypatch.setattr(
         documents_module,
-        "_assert_document_writable_for_lifecycle",
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
@@ -410,15 +416,25 @@ async def test_document_processing_endpoints_use_shared_unassigned_acl(
 
 
 def test_document_mutation_endpoints_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
-    documents_module = document_mutations._documents_module()
     document = _unassigned_document(access_mode="all_team_members")
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_qa_service.dataset_service,
+        "ensure_member",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_qa_service,
+        "assert_document_writable_for_lifecycle",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_metadata_operations,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
@@ -461,9 +477,14 @@ def test_document_access_put_uses_shared_acl_management_policy(monkeypatch: pyte
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(document_access.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        document_access,
+        document_access_service.dataset_service,
+        "ensure_member",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_access_service,
         "assert_document_access_manageable",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
@@ -489,13 +510,13 @@ def test_document_access_management_preserves_dataset_write_authority(monkeypatc
     writable_calls: list[tuple[object, str]] = []
 
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "get_dataset",
         lambda *_args, **_kwargs: dataset,
         raising=True,
     )
     monkeypatch.setattr(
-        document_access_service.DatasetService,
+        document_access_service.dataset_service,
         "assert_dataset_writable",
         lambda _db, value, account_id: writable_calls.append((value, account_id)),
         raising=True,
@@ -518,20 +539,21 @@ def test_document_access_management_preserves_dataset_write_authority(monkeypatc
 
 
 def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
+    from app.api.v1 import document_chunks_write
+    from app.services import document_chunk_operations
 
     document = _unassigned_document(access_mode="all_team_members")
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_chunk_operations.document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        documents_module._assert_document_writable_for_chunk_ops(
+        document_chunks_write._assert_document_writable_for_chunk_ops(
             _DB(document),
             tenant_id=document.tenant_id,
             account_id="acct-1",
@@ -542,16 +564,21 @@ def test_documents_chunk_write_helper_delegates_to_shared_policy(monkeypatch: py
 
 
 def test_document_chunk_write_endpoints_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_chunks_write
+    from app.services import document_chunk_operations
 
     document = _unassigned_document(access_mode="all_team_members")
     db = _DB(document)
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(documents_module.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
     monkeypatch.setattr(
-        documents_module,
+        document_chunk_operations.dataset_service,
+        "ensure_member",
+        lambda *_args, **_kwargs: None,
+        raising=True,
+    )
+    monkeypatch.setattr(
+        document_chunk_operations,
         "_assert_document_writable_for_chunk_ops",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
@@ -594,7 +621,6 @@ def test_document_chunk_write_endpoints_use_shared_unassigned_acl(monkeypatch: p
 
 
 def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(access_mode="all_team_members")
@@ -602,14 +628,14 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
     sentinel = HTTPException(status_code=403, detail="shared-write-policy")
 
     monkeypatch.setattr(
-        document_batches._documents_module().DatasetService,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sentinel),
         raising=True,
     )
@@ -620,8 +646,8 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
         account_id="acct-1",
         db=db,
     )
-    assert metadata_result["updated"] == 0
-    assert metadata_result["denied"] == [document.id]
+    assert metadata_result.updated == 0
+    assert metadata_result.denied == [document.id]
 
     move_result = document_batches.batch_move_documents(
         payload=DocumentBatchMoveRequest(document_ids=[document.id], target_dataset_id=None),
@@ -629,12 +655,11 @@ def test_document_batch_mutations_use_shared_unassigned_acl(monkeypatch: pytest.
         account_id="acct-1",
         db=db,
     )
-    assert move_result["moved"] == 0
-    assert move_result["denied"] == [document.id]
+    assert move_result.moved == 0
+    assert move_result.denied == [document.id]
 
 
 def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(owner_id="other-owner", access_mode="all_team_members")
@@ -642,14 +667,14 @@ def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.Mo
     db = _BatchDB([document])
 
     monkeypatch.setattr(
-        document_batches._documents_module().DatasetService,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -661,13 +686,12 @@ def test_batch_move_to_unassigned_denies_non_owner_editor(monkeypatch: pytest.Mo
         db=db,
     )
 
-    assert move_result["moved"] == 0
-    assert move_result["denied"] == [document.id]
+    assert move_result.moved == 0
+    assert move_result.denied == [document.id]
     assert document.dataset_id is not None
 
 
 def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(owner_id="editor-account", access_mode="all_team_members")
@@ -676,14 +700,14 @@ def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.Monkey
     db = _BatchDB([document])
 
     monkeypatch.setattr(
-        document_batches._documents_module().DatasetService,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="editor"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -695,13 +719,12 @@ def test_batch_move_to_unassigned_allows_owner_editor(monkeypatch: pytest.Monkey
         db=db,
     )
 
-    assert move_result["moved"] == 1
-    assert move_result["denied"] == []
+    assert move_result.moved == 1
+    assert move_result.denied == []
     assert document.dataset_id is None
 
 
 def test_batch_move_to_unassigned_allows_admin_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    import app.api.v1.documents as documents_module
     from app.api.v1 import document_batches
 
     document = _unassigned_document(owner_id="other-owner", access_mode="only_me")
@@ -710,14 +733,14 @@ def test_batch_move_to_unassigned_allows_admin_override(monkeypatch: pytest.Monk
     db = _BatchDB([document])
 
     monkeypatch.setattr(
-        document_batches._documents_module().DatasetService,
+        document_batch_operations.dataset_service,
         "ensure_member",
         lambda *_args, **_kwargs: SimpleNamespace(role="admin"),
         raising=True,
     )
     monkeypatch.setattr(
-        documents_module,
-        "_assert_document_writable_for_lifecycle",
+        document_access_service,
+        "assert_document_writable_for_lifecycle",
         lambda *_args, **_kwargs: None,
         raising=True,
     )
@@ -729,8 +752,8 @@ def test_batch_move_to_unassigned_allows_admin_override(monkeypatch: pytest.Monk
         db=db,
     )
 
-    assert move_result["moved"] == 1
-    assert move_result["denied"] == []
+    assert move_result.moved == 1
+    assert move_result.denied == []
     assert document.dataset_id is None
 
 
@@ -740,7 +763,9 @@ def test_document_version_endpoints_use_shared_unassigned_acl(monkeypatch: pytes
     read_exc = HTTPException(status_code=403, detail="shared-read-policy")
     write_exc = HTTPException(status_code=403, detail="shared-write-policy")
 
-    monkeypatch.setattr(document_versions.DatasetService, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
+    monkeypatch.setattr(
+        document_versions.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True
+    )
     monkeypatch.setattr(
         document_versions,
         "assert_document_readable_for_lifecycle",

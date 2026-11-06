@@ -492,34 +492,32 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     client = LiveApiClient(
-        base_url=str(args.base_url),
-        tenant_id=str(args.tenant_id),
-        account_id=str(args.account_id),
-        user_id=str(args.user_id),
-        bearer=str(args.bearer or ""),
-        timeout_sec=float(args.timeout),
+        base_url=args.base_url,
+        tenant_id=args.tenant_id,
+        account_id=args.account_id,
+        user_id=args.user_id,
+        bearer=args.bearer,
+        timeout_sec=args.timeout,
     )
     try:
         result = run_closed_loop_smoke(
             client=client,
-            dataset_id=str(args.dataset_id),
-            plugin_ref=str(args.plugin_ref or ""),
-            max_items=int(args.max_items),
-            max_chunks=int(args.max_chunks),
-            include_unmarked_chunks=bool(args.include_unmarked_chunks),
-            overwrite=bool(args.overwrite),
-            poll_timeout_sec=float(args.poll_timeout),
-            poll_interval_sec=float(args.poll_interval),
-            min_expected_metadata_hit_rate=float(args.min_expected_metadata_hit_rate),
-            min_expected_metadata_recall=float(args.min_expected_metadata_recall),
-            enable_hierarchy_recall=not bool(args.disable_hierarchy_recall),
-            hierarchy_sibling_window=int(args.hierarchy_sibling_window),
-            hierarchy_overfetch_factor=int(args.hierarchy_overfetch_factor),
-            regression_top_k=int(args.regression_top_k),
-            regression_reranker_top_n=(
-                int(args.regression_reranker_top_n) if int(args.regression_reranker_top_n or 0) > 0 else None
-            ),
-            regression_score_threshold=float(args.regression_score_threshold),
+            dataset_id=args.dataset_id,
+            plugin_ref=args.plugin_ref,
+            max_items=args.max_items,
+            max_chunks=args.max_chunks,
+            include_unmarked_chunks=args.include_unmarked_chunks,
+            overwrite=args.overwrite,
+            poll_timeout_sec=args.poll_timeout,
+            poll_interval_sec=args.poll_interval,
+            min_expected_metadata_hit_rate=args.min_expected_metadata_hit_rate,
+            min_expected_metadata_recall=args.min_expected_metadata_recall,
+            enable_hierarchy_recall=not args.disable_hierarchy_recall,
+            hierarchy_sibling_window=args.hierarchy_sibling_window,
+            hierarchy_overfetch_factor=args.hierarchy_overfetch_factor,
+            regression_top_k=args.regression_top_k,
+            regression_reranker_top_n=(args.regression_reranker_top_n if args.regression_reranker_top_n > 0 else None),
+            regression_score_threshold=args.regression_score_threshold,
         )
     except Exception as exc:  # noqa: BLE001
         print(f"[plugin-golden-smoke] ERR: {exc}", file=sys.stderr)

@@ -1,10 +1,10 @@
 'use client'
 
-import * as React from "react"
+import * as React from 'react'
 import { useTranslations } from 'next-intl'
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
-interface PageLoadingProps {
+type PageLoadingProps = {
   /**
    * 中文提示文字，默认 "正在加载..."
    */
@@ -19,24 +19,13 @@ interface PageLoadingProps {
   readonly className?: string
 }
 
-const PageLoading = ({
-  message,
-  srMessage,
-  className,
-}: PageLoadingProps) => {
+export function PageLoading({ message, srMessage, className }: PageLoadingProps) {
   const t = useTranslations('CommonUi')
   const resolvedMessage = message ?? t('pageLoading.message')
   const resolvedSrMessage = srMessage ?? t('pageLoading.srMessage')
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={cn(
-        "flex-1 flex items-center justify-center",
-        className
-      )}
-    >
+    <div role="status" aria-live="polite" className={cn('flex-1 flex items-center justify-center', className)}>
       <div className="flex items-center gap-3 text-muted-foreground font-medium">
         <div
           className="h-6 w-6 animate-spin motion-reduce:animate-none rounded-full border-2 border-border border-t-primary"
@@ -49,6 +38,4 @@ const PageLoading = ({
   )
 }
 
-PageLoading.displayName = "PageLoading"
-
-export { PageLoading }
+PageLoading.displayName = 'PageLoading'

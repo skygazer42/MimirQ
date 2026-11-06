@@ -15,7 +15,6 @@ This module is intentionally dependency-free and line-oriented; it is NOT a full
 Markdown parser.
 """
 
-
 from dataclasses import dataclass
 
 from app.rag.preprocessing.normalization import normalize_text
@@ -296,12 +295,12 @@ def canonicalize_markdown(text: str) -> MarkdownCanonicalizeResult:
     return MarkdownCanonicalizeResult(
         text=final,
         changed=(final != original),
-        headings_changed=int(headings_changed),
-        list_markers_changed=int(list_markers_changed),
-        ordered_list_markers_changed=int(olist_markers_changed),
-        code_fences_changed=int(code_fences_changed),
-        tables=int(tbl.tables or 0),
-        table_rows_changed=int(tbl.rows_changed or 0),
+        headings_changed=headings_changed,
+        list_markers_changed=list_markers_changed,
+        ordered_list_markers_changed=olist_markers_changed,
+        code_fences_changed=code_fences_changed,
+        tables=tbl.tables,
+        table_rows_changed=tbl.rows_changed,
     )
 
 

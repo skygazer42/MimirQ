@@ -59,10 +59,7 @@ def test_validate_regex_rules_accumulates_first_failure_per_rule() -> None:
     with pytest.raises(RegexRulesValidationError) as exc_info:
         validate_regex_rules(rules, max_pattern_len=3, max_repl_len=3, allowed_flag_bits=2)
 
-    assert [
-        (error.index, error.field, error.code)
-        for error in exc_info.value.errors
-    ] == [
+    assert [(error.index, error.field, error.code) for error in exc_info.value.errors] == [
         (0, "pattern", "required"),
         (1, "pattern", "too_long"),
         (2, "pattern", "too_long"),

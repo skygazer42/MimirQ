@@ -73,16 +73,14 @@ function main() {
 
   if (!missing.length && !unexpectedV1Extras.length) {
     process.stdout.write(
-      `[openapi-coverage] OK: ${backend.size} backend routes covered (${openapi.size} OpenAPI routes; extras: ${extras.length})\n`
+      `[openapi-coverage] OK: ${backend.size} backend routes covered (${openapi.size} OpenAPI routes; extras: ${extras.length})\n`,
     )
     return
   }
 
   if (missing.length) {
     missing.sort((a, b) => a.key.localeCompare(b.key))
-    process.stderr.write(
-      `[openapi-coverage] FAIL: missing ${missing.length} backend routes in web/openapi.json\n\n`
-    )
+    process.stderr.write(`[openapi-coverage] FAIL: missing ${missing.length} backend routes in web/openapi.json\n\n`)
     for (const m of missing.slice(0, 200)) {
       process.stderr.write(`- ${m.key}  (backend: ${m.src})\n`)
     }
@@ -94,7 +92,7 @@ function main() {
   if (unexpectedV1Extras.length) {
     if (missing.length) process.stderr.write('\n')
     process.stderr.write(
-      `[openapi-coverage] FAIL: ${unexpectedV1Extras.length} OpenAPI /api/v1 routes are not represented by app/api/v1 route parsing\n\n`
+      `[openapi-coverage] FAIL: ${unexpectedV1Extras.length} OpenAPI /api/v1 routes are not represented by app/api/v1 route parsing\n\n`,
     )
     for (const item of unexpectedV1Extras.slice(0, 200)) {
       process.stderr.write(`- ${item.key}  (openapi: ${item.route.rawPath})\n`)

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1395, initial-scale=1">
+  <title>Ragvia · 问答历史 · 青石</title>
+  <link rel="stylesheet" href="./fonts.css">
+
+  <style>
+    :root{--ground:#eef3f0;--surface:#f8faf7;--paper:#fbfcfa;--ink:#263a34;--pine:#24584e;--muted:#53675b;--quiet:#596f60;--line:#ccd8d1;--sage:#dce8e1}
+    *{box-sizing:border-box}
+    html,body{margin:0;width:1395px;height:1004px;overflow:hidden}
+    body{font-family:"History Bahnschrift","History Deng",sans-serif;font-size:14px;line-height:1.5;color:var(--ink);background:var(--ground);font-synthesis:none}
+    button,input{font:inherit}
+    button{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);background:var(--surface);color:var(--ink);height:34px;padding:0 12px;border-radius:4px;white-space:nowrap}
+    button .glyph{width:15px;height:15px}
+    .canvas{display:flex;width:1395px;height:1004px}
+    main{width:1131px;height:1004px}
+    .page-header{height:72px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid var(--line);background:var(--surface)}
+    .page-heading{display:flex;align-items:center;gap:16px}
+    h1{margin:0;font-size:22px;font-weight:700;letter-spacing:0;line-height:30px}
+    .page-context{padding-left:16px;border-left:1px solid var(--line);font-size:12px;color:var(--muted);line-height:16px}
+    .header-actions{display:flex;gap:8px}
+    .icon-button{width:34px;padding:0;background:transparent}
+    .workspace{height:932px;display:grid;grid-template-columns:715px 416px}
+    .records{position:relative;min-width:0;background:var(--ground)}
+    .toolbar{height:80px;padding:22px 24px;display:flex;gap:8px;align-items:center}
+    .search{height:36px;display:flex;align-items:center;gap:9px;flex:1;min-width:0;border:1px solid #bfcfc5;border-radius:4px;background:var(--paper);padding:0 11px;color:var(--muted)}
+    .search .glyph{width:16px;height:16px}
+    .search input{border:0;outline:0;width:100%;padding:0;background:transparent;color:var(--ink);font-size:14px}
+    .search input::placeholder{color:#708277;opacity:1}
+    .filter{height:36px;background:transparent;font-size:13px;padding:0 11px}
+    .filter.all{background:var(--pine);border-color:var(--pine);color:white}
+    .filter .glyph{width:13px;height:13px}
+    .records-table{margin:0 24px;border-top:1px solid var(--line)}
+    .table-head,.record-row{display:grid;grid-template-columns:28px minmax(0,1fr) 98px 52px 24px;align-items:center}
+    .table-head{height:40px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+    .table-head .sorted{display:flex;align-items:center;gap:5px}
+    .table-head .glyph{width:12px;height:12px}
+    .number-heading{text-align:center}
+    .record-row{height:78px;border-bottom:1px solid #d5dfd8;color:var(--ink);position:relative}
+    .record-row.selected{background:var(--sage);margin-left:-10px;margin-right:-10px;padding-left:10px;padding-right:10px;border-radius:4px;border-bottom-color:transparent;box-shadow:inset 0 0 0 1px #bed0c4}
+    .selection{width:14px;height:14px;border:1px solid #acbdb2;border-radius:3px;display:flex;align-items:center;justify-content:center;background:transparent}
+    .selected .selection{color:white;background:var(--pine);border-color:var(--pine)}
+    .selection .glyph{width:11px;height:11px}
+    .record-copy{min-width:0;padding-right:10px}
+    .record-title{font-size:14px;font-weight:700;line-height:22px;white-space:nowrap;letter-spacing:0}
+    .record-preview{font-size:12px;line-height:19px;color:var(--muted);margin-top:4px;white-space:nowrap}
+    .record-date{font-size:12px;line-height:18px;color:#53685b}
+    .record-time{font-size:13px;line-height:18px;color:var(--muted);margin-top:1px;font-variant-numeric:tabular-nums}
+    .record-count{text-align:center;font-size:15px;line-height:22px;font-variant-numeric:tabular-nums;color:#5f7568}
+    .row-chevron{display:flex;justify-content:flex-end;color:#7a8b80}
+    .row-chevron .glyph{width:14px;height:14px}
+    .selected .row-chevron{color:var(--pine)}
+    .table-footer{display:flex;align-items:center;justify-content:space-between;margin:20px 24px 0;font-size:12px;color:var(--muted)}
+    .pagination{display:flex;gap:6px;align-items:center}
+    .pagination button{height:28px;width:28px;border-color:#d2ded5;background:transparent;color:#90a095;padding:0}
+    .pagination .page{color:var(--pine);background:#e0eae3;border-color:#c7d7cc;font-size:12px}
+    .records-bottom{position:absolute;bottom:25px;left:24px;right:24px;display:flex;align-items:center;gap:8px;border-top:1px solid #d5dfd8;padding-top:15px;color:#718479;font-size:12px}
+    .records-bottom .glyph{width:14px;height:14px}
+    .inspector{height:932px;border-left:1px solid var(--line);background:var(--paper);position:relative}
+    .inspector-head{height:58px;padding:0 27px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+    .inspector-title{font-weight:700;font-size:14px}
+    .inspector-head-right{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:12px}
+    .inspector-head-right .glyph{width:15px;height:15px}
+    .inspector-content{padding:22px 27px 0}
+    .eyebrow{font-size:11px;line-height:16px;color:var(--muted);letter-spacing:.4px;font-weight:700}
+    .question{margin:7px 0 8px;font-size:17px;line-height:27px;font-weight:700;letter-spacing:0}
+    .question-meta{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:11px;line-height:18px}
+    .question-meta .dot{height:2px;width:2px;background:#9aac9e;border-radius:50%}
+    .answer{margin-top:22px}
+    .answer-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .assistant{display:flex;align-items:center;gap:7px;color:var(--pine);font-size:12px;font-weight:700}
+    .assistant .glyph{width:14px;height:14px}
+    .answer-copy{color:var(--quiet);display:flex;align-items:center}
+    .answer-copy .glyph{width:14px;height:14px}
+    .answer-lead{margin:0 0 15px;font-size:14px;line-height:23px}
+    .answer-items{margin:0;padding:0;list-style:none}
+    .answer-item{display:grid;grid-template-columns:21px minmax(0,1fr);gap:8px;margin-top:14px}
+    .answer-number{font-size:12px;line-height:21px;font-weight:700;color:#789181;font-variant-numeric:tabular-nums}
+    .answer-item h3{font-size:14px;line-height:21px;font-weight:700;margin:0 0 3px;color:var(--pine)}
+    .answer-item p{font-size:14px;line-height:21px;margin:0;color:#455d4f}
+    .answer-note{margin:17px 0 0;padding-top:13px;border-top:1px solid #d6e0d9;font-size:13px;line-height:21px;color:#526d5c}
+    .sources{margin-top:20px}
+    .sources-heading{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.3px;color:var(--muted);margin-bottom:5px}
+    .sources-heading .count{font-size:11px;color:var(--pine);font-weight:400}
+    .source{display:grid;grid-template-columns:34px minmax(0,1fr) 14px;align-items:center;gap:9px;min-height:48px;border-bottom:1px solid #dce4dd}
+    .extension{width:31px;height:24px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;letter-spacing:.3px;border-radius:3px;color:#854a35;background:#f3e8df;border:1px solid #dcc4b7}
+    .extension.md{color:#42685a;background:#e4eee6;border-color:#bdd0c3}
+    .source-name{font-size:13px;line-height:19px;font-weight:700}
+    .source-page{font-size:11px;line-height:17px;color:var(--muted)}
+    .source .glyph{width:13px;height:13px;color:#7c9181}
+    .follow-up{margin-top:17px;display:grid;grid-template-columns:14px minmax(0,1fr);gap:8px;color:var(--muted);font-size:12px;line-height:20px}
+    .follow-up .glyph{width:14px;height:14px;margin-top:3px}
+    .follow-up-label{font-size:10px;line-height:14px;color:#809386;margin-bottom:3px;letter-spacing:.3px}
+    .inspector-actions{position:absolute;bottom:0;left:0;right:0;padding:17px 27px 22px;background:var(--paper);border-top:1px solid var(--line);display:grid;grid-template-columns:1fr 102px;gap:8px}
+    .continue{height:38px;color:white;background:var(--pine);border-color:var(--pine);font-weight:700;font-size:13px;justify-content:space-between;padding:0 14px}
+    .trace{height:38px;background:transparent;font-size:13px}
+    .search input::placeholder,.records-bottom,.follow-up-label{color:var(--muted)}
+    .record-count{color:#466351}
+    .answer-number{color:#536c5b}
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <ragvia-sidebar><template shadowrootmode="open" shadowrootserializable=""><style>:host{display:block;width:264px;height:1004px;flex:none;overflow:hidden;background:#eef0f2;border-right:1px solid #d9dde2;box-sizing:border-box;color:#242b33;font:450 14px/1.5 "History Manrope","History Sans",sans-serif}*{box-sizing:border-box}svg{display:block;width:100%;height:100%}.logo{width:132px;margin:20px 0 0 23px;height:27px;display:flex;align-items:center}.top{height:64px;display:flex;align-items:flex-start}.close{width:14px;height:14px;margin:25px 0 0 62px;color:#65707a}.new{height:40px;margin:16px 12px 9px;padding:0 13px;display:flex;gap:12px;align-items:center;border:1px solid #d8dce0;border-radius:8px;background:#fff;font-weight:550}.search{height:40px;margin:0 12px;display:flex;gap:12px;align-items:center;padding:0 13px}.shortcut{margin-left:auto;color:#65707a;font-size:12px}.icon{width:17px;height:17px;display:inline-flex;flex:none;color:#65707a}.sections{padding:15px 12px 0;height:640px;overflow:hidden}.group{margin:13px 12px 12px;color:#66727b;display:flex;align-items:center;justify-content:space-between;font-size:12px}.group svg{width:12px;height:12px}.row{height:44px;display:flex;gap:14px;align-items:center;padding:0 13px;position:relative}.row.active{font-weight:650;background:#e2e5e8;border-radius:8px}.row.active:before{content:"";height:24px;width:3px;position:absolute;left:4px;background:#242b33;border-radius:2px}.section+.section{margin-top:18px}.bottom{position:absolute;bottom:0;width:263px;border-top:1px solid #d9dde2;padding:20px 19px 18px}.profile{display:flex;gap:13px;align-items:center;margin:4px 0 25px}.avatar{width:36px;height:36px;border:1px solid #d4d9df;border-radius:50%;display:grid;place-items:center}.sub{font-size:12px;color:#687580;margin-top:3px}.appearance{display:flex;align-items:center;gap:9px;margin:0 2px 21px;font-size:13px}.status{display:flex;align-items:center;gap:8px;font-size:12px;color:#64717b}.dot{height:6px;width:6px;background:#31805a;border-radius:50%}</style><div class="top"><div class="logo"><svg xmlns="http://www.w3.org/2000/svg" width="306" height="96" viewBox="0 0 306 96" role="img" aria-label="Ragvia"><title>Ragvia</title><g transform="translate(0 0) scale(1.0)"><g transform="translate(0 9) scale(1.1875)"><path fill="#20262E" d="M8 15C16 10 27 7 36 8V18C26 17 20 23 14 29Z"></path><path fill="#20262E" d="M9 35C22 33 28 29 35 22L42 29C34 39 25 44 9 45Z"></path><path fill="#20262E" d="M20 48C35 42 45 37 45 32H55C54 46 42 54 25 58Z"></path><circle fill="#B84A2A" cx="49" cy="14" r="6.5"></circle></g><path fill="#20262E" d="M140 0V1080H347.6V817.2L321.6 851.2Q341.8 904.8 375.0 949.2Q408.20000000000005 993.6 454 1022.4Q494 1050.2 542.9 1065.5Q591.8 1080.8 643.2 1084.3Q694.6 1087.8 743.2 1080V860.8Q693.8 875 631.2 869.5Q568.6 864 517.2 833.6Q467.4 805.4 436.3 762.4Q405.20000000000005 719.4 390.6 665.0999999999999Q376 610.8 376 548V0Z" transform="translate(81.000 68.000) scale(0.0385000 -0.0385000)"></path><path fill="#20262E" d="M442.8 -30Q324.8 -30 243.8 14.399999999999999Q162.8 58.8 121.4 132.8Q80 206.8 80 295.6Q80 374.6 106.7 436.70000000000005Q133.4 498.8 188.0 544.0Q242.6 589.2 327.6 618Q394.4 639.4 482.3 655.9Q570.2 672.4 672.4000000000001 686.8Q774.6 701.2 884.4 717.6L800 670.4Q801 785.4 749.3 840.0999999999999Q697.6 894.8 573.6 894.8Q498.4 894.8 429.9 859.5Q361.4 824.2 334 740L118.8 807.2Q158.8 944.4 271.5 1027.2Q384.2 1110 574.4 1110Q718.8 1110 827.5999999999999 1062.6Q936.4 1015.2 989.2 908Q1017.6 852 1023.5999999999999 792.6Q1029.6 733.2 1029.6 663.2V0H823.6V236.8L858.8 199.6Q787 81.6 688.2 25.799999999999997Q589.4 -30 442.8 -30ZM488.4 158Q571.8 158 630.9 187.6Q690 217.2 725.5 260.29999999999995Q761 303.4 772.8 344Q791.2 390.4 794.0 450.0Q796.8 509.6 796.8 546.4L869.6 523.6Q762.2 506.6 683.5 494.1Q604.8 481.6 547.2 470.1Q489.6 458.6 444.8 444Q403 428.8 373.0 408.8Q343 388.8 326.7 361.8Q310.4 334.8 310.4 298.4Q310.4 258.4 330.4 226.6Q350.4 194.8 389.9 176.4Q429.4 158 488.4 158Z" transform="translate(109.838 68.000) scale(0.0385000 -0.0385000)"></path><path fill="#20262E" d="M592 -510Q502.8 -510 420.6 -482.0Q338.4 -454 272.1 -401.5Q205.8 -349 163.2 -274.8L379.6 -167.2Q411.20000000000005 -227.8 469.6 -257.1Q528 -286.4 593.6 -286.4Q671.4 -286.4 730.9 -259.1Q790.4 -231.8 823.0 -177.9Q855.6 -124 854 -44V262.4H882.8V1080H1088.8V-47.2Q1088.8 -89 1085.6 -126.6Q1082.4 -164.2 1074 -201.2Q1050 -306.6 982.9 -374.8Q915.8 -443 815.4 -476.5Q715 -510 592 -510ZM572.4 -30Q422.6 -30 312.1 45.1Q201.6 120.2 140.8 249.29999999999998Q80 378.4 80 540.4Q80 704.2 141.4 832.8Q202.8 961.4 315.1 1035.7Q427.4 1110 580.4 1110Q733.8 1110 838.5 1035.3Q943.2 960.6 997.0 831.7Q1050.8 702.8 1050.8 540.4Q1050.8 378.6 996.7 249.5Q942.6 120.4 836.2 45.2Q729.8 -30 572.4 -30ZM607.6 180.4Q705.8 180.4 766.5 226.0Q827.2 271.6 855.0 352.9Q882.8 434.2 882.8 540.4Q882.8 647 854.9 728.1Q827 809.2 767.9 854.4000000000001Q708.8 899.6 615.6 899.6Q517 899.6 453.3 851.3Q389.6 803 359.0 721.5Q328.4 640 328.4 540.4Q328.4 439.8 358.6 358.1Q388.8 276.4 450.5 228.39999999999998Q512.2 180.4 607.6 180.4Z" transform="translate(152.398 68.000) scale(0.0385000 -0.0385000)"></path><path fill="#20262E" d="M432 0 40 1080H275.20000000000005L550 290L824.4 1080H1060L668 0Z" transform="translate(198.007 68.000) scale(0.0385000 -0.0385000)"></path><path fill="#20262E" d="M160 1246.4V1464H394.4V1246.4ZM160 0V1080H394.4V0Z" transform="translate(238.657 68.000) scale(0.0385000 -0.0385000)"></path><path fill="#20262E" d="M442.8 -30Q324.8 -30 243.8 14.399999999999999Q162.8 58.8 121.4 132.8Q80 206.8 80 295.6Q80 374.6 106.7 436.70000000000005Q133.4 498.8 188.0 544.0Q242.6 589.2 327.6 618Q394.4 639.4 482.3 655.9Q570.2 672.4 672.4000000000001 686.8Q774.6 701.2 884.4 717.6L800 670.4Q801 785.4 749.3 840.0999999999999Q697.6 894.8 573.6 894.8Q498.4 894.8 429.9 859.5Q361.4 824.2 334 740L118.8 807.2Q158.8 944.4 271.5 1027.2Q384.2 1110 574.4 1110Q718.8 1110 827.5999999999999 1062.6Q936.4 1015.2 989.2 908Q1017.6 852 1023.5999999999999 792.6Q1029.6 733.2 1029.6 663.2V0H823.6V236.8L858.8 199.6Q787 81.6 688.2 25.799999999999997Q589.4 -30 442.8 -30ZM488.4 158Q571.8 158 630.9 187.6Q690 217.2 725.5 260.29999999999995Q761 303.4 772.8 344Q791.2 390.4 794.0 450.0Q796.8 509.6 796.8 546.4L869.6 523.6Q762.2 506.6 683.5 494.1Q604.8 481.6 547.2 470.1Q489.6 458.6 444.8 444Q403 428.8 373.0 408.8Q343 388.8 326.7 361.8Q310.4 334.8 310.4 298.4Q310.4 258.4 330.4 226.6Q350.4 194.8 389.9 176.4Q429.4 158 488.4 158Z" transform="translate(258.301 68.000) scale(0.0385000 -0.0385000)"></path></g></svg>
+</div><span class="close"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="panel-left-close"><rect x="3" y="4" width="18" height="16" rx="1"></rect><path d="M9 4v16m8-12-4 4 4 4"></path></svg>
+</span></div><div class="new"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="plus"><path d="M12 4v16M4 12h16"></path></svg>
+</span>新对话</div><div class="search"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.25 15.25 5 5"></path></svg>
+</span><span>搜索与命令</span><span class="shortcut">⌘K</span></div><div class="sections"><div class="section"><div class="group">工作区<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6"></path></svg>
+</div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="conversation"><path d="M4 4.5h16v12H9l-5 4Z"></path><path d="M8 9h8m-8 3.5h5"></path></svg>
+</span><span>对话</span></div><div class="row active"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7"></path><path d="M12 6v6l4 2"></path></svg>
+</span><span>问答历史</span></div></div><div class="section"><div class="group">知识库管理<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6"></path></svg>
+</div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="dataset"><rect x="5" y="3.5" width="14" height="5" rx="1"></rect><path d="M3.5 11v4h17v-4M3.5 18v3h17v-3"></path></svg>
+</span><span>数据集</span></div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="knowledge-base"><path d="M12 5.5C9 3.5 6 3.5 3 4v15c3-.5 6-.5 9 1.5 3-2 6-2 9-1.5V4c-3-.5-6-.5-9 1.5Zm0 0v15"></path><path d="M6.5 8h2M6.5 11h2m7-3h2m-2 3h2"></path></svg>
+</span><span>知识库</span></div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="quarantine"><rect x="3" y="3.5" width="18" height="4" rx="0.5"></rect><path d="M5 7.5v13h14v-13M12 11v4"></path><circle cx="12" cy="18" r="1" fill="currentColor" stroke="none"></circle></svg>
+</span><span>隔离队列</span></div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="feedback"><path d="M4 4.5h16v12H9l-5 4Z"></path><path d="m8 10 2.5 2.5L16 7"></path></svg>
+</span><span>反馈质检</span></div></div><div class="section"><div class="group">入库流程<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6"></path></svg>
+</div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="ingestion"><path d="M4 14v6h16v-6M8 16h8M12 3v10m-4-4 4 4 4-4"></path><path d="M4 5H2.5v6H4m16-6h1.5v6H20"></path></svg>
+</span><span>入库管理</span></div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="document"><path d="M5 3.5h9l5 5v12H5Z M14 3.5v5h5"></path><path d="M8 12h8m-8 4h6"></path></svg>
+</span><span>文档解析</span></div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="shield"><path d="M12 3 20 6v6c0 4-3.5 7-8 9-4.5-2-8-5-8-9V6Z"></path></svg>
+</span><span>数据治理</span></div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="braces"><path d="M8 3H6v7l-3 2 3 2v7h2m8-18h2v7l3 2-3 2v7h-2"></path></svg>
+</span><span>治理配置</span></div><div class="row"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chunking"><rect x="3.5" y="4" width="17" height="6" rx="1"></rect><rect x="3.5" y="14" width="17" height="6" rx="1"></rect><path d="M8 7h8M8 17h8"></path><path d="M2 12h20" stroke-dasharray="1 3" data-chunk-boundary="true"></path></svg>
+</span><span>切块预览</span></div></div></div><div class="bottom"><div class="profile"><span class="avatar"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="user"><circle cx="12" cy="7.5" r="3"></circle><path d="M5 20v-2.5a7 5.5 0 0 1 14 0V20"></path></svg>
+</span></span><div><b>开发模式</b><div class="sub">本地开发环境</div></div></div><div class="appearance"><span class="icon"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="palette"><path d="M12 3a9 9 0 0 0 0 18h2c3 0 3-4 0-4h-1c-3 0-3-4 0-4h5c6 0 4-10-6-10Z"></path><circle cx="7" cy="9" r="1" fill="currentColor" stroke="none"></circle><circle cx="12" cy="6" r="1" fill="currentColor" stroke="none"></circle><circle cx="17" cy="8" r="1" fill="currentColor" stroke="none"></circle><circle cx="6" cy="14" r="1" fill="currentColor" stroke="none"></circle></svg>
+</span><span>界面外观</span></div><div class="status"><span class="dot"></span>服务已就绪</div></div></template></ragvia-sidebar>
+    <main id="history-root">
+      <header class="page-header">
+        <div class="page-heading"><h1>问答历史</h1><span class="page-context">8 段对话</span></div>
+        <div class="header-actions"><button type="button"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="download"><path d="M4 16v4h16v-4M12 3v13m-5-5 5 5 5-5"></path></svg>
+</span>导出记录</button><button type="button" class="icon-button" aria-label="更多操作"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="more-horizontal"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"></circle><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"></circle></svg>
+</span></button></div>
+      </header>
+      <div class="workspace">
+        <section class="records" aria-label="历史对话列表">
+          <div class="toolbar">
+            <label class="search"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="search"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.25 15.25 5 5"></path></svg>
+</span><input aria-label="搜索对话" placeholder="搜索对话" readonly=""></label>
+            <button type="button" class="filter all">全部<span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6"></path></svg>
+</span></button>
+            <button type="button" class="filter"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="calendar"><rect x="3.5" y="5" width="17" height="16" rx="1"></rect><path d="M3.5 10h17M8 2v6m8-6v6M8 14h3m3 0h2M8 17h3"></path></svg>
+</span>最近 7 天<span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6"></path></svg>
+</span></button>
+          </div>
+          <div class="records-table" role="table" aria-label="问答历史">
+            <div class="table-head" role="row"><div role="columnheader"></div><div role="columnheader">对话主题</div><div class="sorted" role="columnheader">更新时间<span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-down"><path d="m6 9 6 6 6-6"></path></svg>
+</span></div><div class="number-heading" role="columnheader">消息</div><div role="columnheader"></div></div>
+
+      <div class="record-row selected" role="row" aria-selected="true">
+        <div role="cell"><span class="selection"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6"></path></svg>
+</span></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">如何为不同的 PDF 选择解析方式？</div><div class="record-preview">文字型、扫描件和复杂版式的选择</div></div>
+        <div role="cell"><div class="record-date">10 月 21 日</div><div class="record-time">10:42</div></div>
+        <div class="record-count" role="cell">6</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+      <div class="record-row " role="row">
+        <div role="cell"><span class="selection"></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">回答中的引用来源在哪里查看？</div><div class="record-preview">从回答定位到原文和对应切块</div></div>
+        <div role="cell"><div class="record-date">10 月 21 日</div><div class="record-time">09:18</div></div>
+        <div class="record-count" role="cell">4</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+      <div class="record-row " role="row">
+        <div role="cell"><span class="selection"></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">长文档应该怎样设置切块？</div><div class="record-preview">切块大小、重叠与段落完整性</div></div>
+        <div role="cell"><div class="record-date">10 月 20 日</div><div class="record-time">16:35</div></div>
+        <div class="record-count" role="cell">8</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+      <div class="record-row " role="row">
+        <div role="cell"><span class="selection"></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">文档入库失败，从哪里开始排查？</div><div class="record-preview">查看解析、切块和索引阶段的状态</div></div>
+        <div role="cell"><div class="record-date">10 月 20 日</div><div class="record-time">14:06</div></div>
+        <div class="record-count" role="cell">6</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+      <div class="record-row " role="row">
+        <div role="cell"><span class="selection"></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">如何只检索指定知识库？</div><div class="record-preview">选择知识范围并检查检索配置</div></div>
+        <div role="cell"><div class="record-date">10 月 20 日</div><div class="record-time">11:24</div></div>
+        <div class="record-count" role="cell">4</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+      <div class="record-row " role="row">
+        <div role="cell"><span class="selection"></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">待复核的文档怎样重新入库？</div><div class="record-preview">检查问题后重新提交处理</div></div>
+        <div role="cell"><div class="record-date">10 月 19 日</div><div class="record-time">17:08</div></div>
+        <div class="record-count" role="cell">4</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+      <div class="record-row " role="row">
+        <div role="cell"><span class="selection"></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">知识图谱与普通检索有什么区别？</div><div class="record-preview">实体关系和文档片段的不同用法</div></div>
+        <div role="cell"><div class="record-date">10 月 19 日</div><div class="record-time">10:51</div></div>
+        <div class="record-count" role="cell">6</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+      <div class="record-row " role="row">
+        <div role="cell"><span class="selection"></span></div>
+        <div class="record-copy" role="cell"><div class="record-title">数据集和知识库分别用来做什么？</div><div class="record-preview">整理资料与限定问答范围</div></div>
+        <div role="cell"><div class="record-date">10 月 18 日</div><div class="record-time">15:32</div></div>
+        <div class="record-count" role="cell">4</div>
+        <div class="row-chevron" role="cell"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></div>
+      </div>
+          </div>
+          <div class="table-footer"><span>共 8 条记录</span><div class="pagination"><button aria-label="上一页"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-left"><path d="m15 6-6 6 6 6"></path></svg>
+</span></button><button class="page" aria-label="第 1 页">1</button><button aria-label="下一页"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="chevron-right"><path d="m9 6 6 6-6 6"></path></svg>
+</span></button></div></div>
+          <div class="records-bottom"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="history"><path d="M3 9h6M3 3v6a9 9 0 1 1 .5 7"></path><path d="M12 6v6l4 2"></path></svg>
+</span><span>保留问题与引用，随时回到上次的思路。</span></div>
+        </section>
+        <aside class="inspector" aria-label="选中对话详情">
+          <header class="inspector-head"><span class="inspector-title">对话详情</span><span class="inspector-head-right"><span>6 条消息</span><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-up-right"><path d="M5 19 19 5M6 5h13v13"></path></svg>
+</span></span></header>
+          <div class="inspector-content">
+            <div class="eyebrow">问题</div>
+            <h2 class="question">有些 PDF 能选中文字，有些是扫描件，解析方式应该怎么选？</h2>
+            <div class="question-meta"><span>今天 10:42</span><span class="dot"></span><span>产品使用文档</span></div>
+            <section class="answer" aria-label="Ragvia 回答">
+              <div class="answer-label"><span class="assistant"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="check"><path d="m4 12 5 5L20 6"></path></svg>
+</span>Ragvia</span><span class="answer-copy" aria-label="复制回答"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="copy"><rect x="8" y="8" width="12.5" height="12.5" rx="1"></rect><path d="M16 4H3.5v12"></path></svg>
+</span></span></div>
+              <p class="answer-lead">先看文档能否选中文字，再根据版式和内容选择解析方式。</p>
+              <ol class="answer-items"><li class="answer-item"><span class="answer-number">01</span><div><h3>文字型 PDF</h3><p>从基础解析（PyMuPDF）开始，适合正文清楚、版式简单的文档。</p></div></li><li class="answer-item"><span class="answer-number">02</span><div><h3>扫描件与图片</h3><p>选择带 OCR 的解析方式，先识别文字，再检查识别结果。</p></div></li><li class="answer-item"><span class="answer-number">03</span><div><h3>表格与复杂版式</h3><p>可尝试 Docling 结构化解析，重点检查表格、标题和阅读顺序。</p></div></li></ol>
+              <p class="answer-note">解析后先看切块预览，确认内容和段落顺序，再继续入库。</p>
+            </section>
+            <section class="sources" aria-label="引用来源"><div class="sources-heading">引用来源 <span class="count">2</span></div><div class="source"><span class="extension pdf">PDF</span><div><div class="source-name">文档解析使用说明.pdf</div><div class="source-page">第 4–6 页</div></div><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="external-link"><path d="M10 4H4v16h16v-6M13 3h8v8M10 14 21 3"></path></svg>
+</span></div><div class="source"><span class="extension md">MD</span><div><div class="source-name">知识库接入规范.md</div><div class="source-page">解析与入库</div></div><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="external-link"><path d="M10 4H4v16h16v-6M13 3h8v8M10 14 21 3"></path></svg>
+</span></div></section>
+            <div class="follow-up"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-right"><path d="M4 12h15m-6-6 6 6-6 6"></path></svg>
+</span><div><div class="follow-up-label">后续追问</div>如果主要是扫描的合同，需要额外注意什么？</div></div>
+          </div>
+          <footer class="inspector-actions"><button type="button" class="continue">继续对话<span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="arrow-right"><path d="M4 12h15m-6-6 6 6-6 6"></path></svg>
+</span></button><button type="button" class="trace"><span class="glyph " aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" data-platform-icon="route"><circle cx="5" cy="5" r="2"></circle><circle cx="19" cy="19" r="2"></circle><path d="M7 5h10a4 4 0 0 1 0 8H7a3 3 0 0 0 0 6h10"></path></svg>
+</span>查看溯源</button></footer>
+        </aside>
+      </div></main>
+  </div>
+
+
+
+</body></html>

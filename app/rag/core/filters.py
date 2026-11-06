@@ -2,7 +2,6 @@
 Small, dependency-light filter helpers shared across modules.
 """
 
-
 from typing import Any
 
 from app.rag.pipeline_plugins.contracts import INDEXED_METADATA_KEY
@@ -257,7 +256,7 @@ class _MetadataFilterSummary:
 
     def _bump_operator(self, operator: str) -> None:
         if operator:
-            self.operators[operator] = int(self.operators.get(operator, 0) or 0) + 1
+            self.operators[operator] = self.operators.get(operator, 0) + 1
 
     def _visit_operator(self, operator: str, value: Any, *, depth: int) -> None:
         self._bump_operator(operator)
@@ -327,15 +326,10 @@ def summarize_metadata_filter(
         keys_sample = []
 
     # Keep ops deterministic and bounded.
-    ops_sorted = dict(
-        sorted(
-            ((str(key), int(value or 0)) for key, value in summary.operators.items()),
-            key=lambda item: item[0],
-        )
-    )
+    ops_sorted = dict(sorted(summary.operators.items()))
 
     out: dict[str, Any] = {
-        "keys_count": int(len(keys_sorted)),
+        "keys_count": len(keys_sorted),
         "keys_sample": keys_sample,
         "ops": ops_sorted,
     }
@@ -358,11 +352,11 @@ def apply_metadata_filter_with_stats(
 
     if filter_spec is None or (isinstance(filter_spec, dict) and not filter_spec):
         # No filter.
-        return items, {"enabled": False, "matched": int(len(items)), "blocked": 0, "summary": None}
+        return items, {"enabled": False, "matched": len(items), "blocked": 0, "summary": None}
 
     if not isinstance(filter_spec, dict):
         # Invalid shape: fail closed and record a small, safe hint.
-        return [], {"enabled": True, "invalid": True, "matched": 0, "blocked": int(len(items)), "summary": summary}
+        return [], {"enabled": True, "invalid": True, "matched": 0, "blocked": len(items), "summary": summary}
 
     matched = 0
     blocked = 0
@@ -377,8 +371,8 @@ def apply_metadata_filter_with_stats(
 
     return out, {
         "enabled": True,
-        "matched": int(matched),
-        "blocked": int(blocked),
+        "matched": matched,
+        "blocked": blocked,
         "summary": summary,
     }
 

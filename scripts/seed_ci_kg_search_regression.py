@@ -350,7 +350,7 @@ def _add_relations(*, db: Any, tenant_id: UUID, relations: list[dict[str, Any]])
         )
 
 
-def _seed_kg_rows(*, db, tenant_id: UUID, account_id: str, fixture: dict[str, Any]) -> None:
+def _seed_kg_rows(*, db: Any, tenant_id: UUID, account_id: str, fixture: dict[str, Any]) -> None:
     _ensure_app_imports()
     kg = fixture.get("kg") if isinstance(fixture.get("kg"), dict) else {}
     if not kg:
@@ -461,11 +461,11 @@ def _upsert_document(
         "dataset_id": dataset_id,
         "filename": filename,
         "file_type": file_type,
-        "file_size": int(total_chars),
+        "file_size": total_chars,
         "file_path": f"ci://{filename}",
         "status": "completed",
         "chunk_count": len(chunks),
-        "total_characters": int(total_chars),
+        "total_characters": total_chars,
         "doc_metadata": dict(doc_meta),
     }
     if row is None:

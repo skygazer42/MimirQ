@@ -19,6 +19,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_model_provider
 from app.core.redis_client import LazyRedisClient
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -65,8 +66,7 @@ _invalidate_redis_client = _redis_client_slot.invalidate
 
 def _normalize_provider(provider: str | None) -> str:
     p = str(provider or "").strip().lower()
-    if p in {"cross-encoder", "sentence_transformers", "sentence-transformers"}:
-        return "cross_encoder"
+    reject_retired_model_provider(p, capability="reranker")
     if p in {"xgboost_ltr"}:
         return "ltr"
     if p in {"late_interaction"}:
@@ -86,9 +86,9 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
     if normalized == "ltr":
         sig.update(
             {
-                "ltr_model_path": str(getattr(settings, "LTR_MODEL_PATH", "") or ""),
-                "ltr_manifest_path": str(getattr(settings, "LTR_MODEL_MANIFEST_PATH", "") or ""),
-                "ltr_feature_spec_version": int(getattr(settings, "LTR_FEATURE_SPEC_VERSION", 1) or 1),
+                "ltr_model_path": str(settings.LTR_MODEL_PATH or ""),
+                "ltr_manifest_path": str(settings.LTR_MODEL_MANIFEST_PATH or ""),
+                "ltr_feature_spec_version": int(settings.LTR_FEATURE_SPEC_VERSION or 1),
             }
         )
         return sig
@@ -96,32 +96,16 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
     if normalized == "colbert":
         sig.update(
             {
-                "colbert_provider": str(
-                    getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"
-                )
-                .strip()
-                .lower(),
-                "colbert_model_name": str(getattr(settings, "COLBERT_RERANK_MODEL_NAME", "") or ""),
-                "colbert_device": str(getattr(settings, "COLBERT_RERANK_DEVICE", "cpu") or "cpu").strip().lower(),
-                "colbert_batch_size": int(getattr(settings, "COLBERT_RERANK_BATCH_SIZE", 16) or 16),
-                "colbert_max_length": int(getattr(settings, "COLBERT_RERANK_MAX_LENGTH", 256) or 256),
-                "colbert_embed_dim": int(getattr(settings, "COLBERT_RERANK_EMBED_DIM", 64) or 64),
-            }
-        )
-        return sig
-
-    if normalized == "cross_encoder":
-        sig.update(
-            {
-                "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
+                "colbert_provider": str(settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower(),
+                "colbert_embed_dim": int(settings.COLBERT_RERANK_EMBED_DIM or 64),
             }
         )
         return sig
 
     sig.update(
         {
-            "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
-            "reranker_api_base": str(getattr(settings, "RERANKER_API_BASE", "") or ""),
+            "reranker_model": str(settings.RERANKER_MODEL or ""),
+            "reranker_api_base": str(settings.RERANKER_API_BASE or ""),
         }
     )
     return sig
@@ -210,7 +194,7 @@ def build_evidence_post_rerank_cache_key(
     }
     raw = json.dumps(sig, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     digest = stable_hash(raw, length=32)
-    prefix = str(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_PREFIX", "eprr") or "eprr").strip() or "eprr"
+    prefix = str(settings.EVIDENCE_POST_RERANK_CACHE_PREFIX or "eprr").strip() or "eprr"
     return f"{prefix}:{digest}"
 
 
@@ -224,13 +208,13 @@ class _TTLCache:
             self._data.clear()
 
     def _ttl_sec(self) -> float:
-        return float(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0)
+        return float(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC or 0)
 
     def _max_entries(self) -> int:
-        return max(0, int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES", 0) or 0))
+        return max(0, int(settings.EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES or 0))
 
     def _enabled(self) -> bool:
-        return bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)) and self._max_entries() > 0
+        return bool(settings.EVIDENCE_POST_RERANK_CACHE_ENABLED) and self._max_entries() > 0
 
     def get(self, key: str) -> dict[str, Any] | None:
         if not key or not self._enabled():
@@ -272,14 +256,14 @@ _CACHE = _TTLCache()
 
 
 def get_evidence_post_rerank_cache_backend() -> str:
-    backend = str(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_BACKEND", "memory") or "memory").strip().lower()
+    backend = str(settings.EVIDENCE_POST_RERANK_CACHE_BACKEND or "memory").strip().lower()
     if backend not in {"memory", "redis"}:
         return "memory"
     return backend
 
 
 def _get_cached_payload_from_redis(key: str) -> dict[str, Any] | None:
-    if not key or not bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)):
+    if not key or not settings.EVIDENCE_POST_RERANK_CACHE_ENABLED:
         return None
     client = _get_redis_client()
     if client is None:
@@ -300,12 +284,12 @@ def _get_cached_payload_from_redis(key: str) -> dict[str, Any] | None:
 
 
 def _set_cached_payload_to_redis(key: str, payload: dict[str, Any]) -> bool:
-    if not key or not bool(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_ENABLED", False)):
+    if not key or not settings.EVIDENCE_POST_RERANK_CACHE_ENABLED:
         return False
     client = _get_redis_client()
     if client is None:
         return False
-    ttl = int(getattr(settings, "EVIDENCE_POST_RERANK_CACHE_TTL_SEC", 0) or 0)
+    ttl = int(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC or 0)
     try:
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
     except Exception:  # noqa: BLE001
@@ -376,8 +360,8 @@ def set_cached_evidence_post_rerank_result(key: str, result: RerankResult) -> bo
     }
     backend = get_evidence_post_rerank_cache_backend()
     if backend == "redis":
-        return bool(_set_cached_payload_to_redis(key, payload))
-    return bool(_CACHE.set(key, payload))
+        return _set_cached_payload_to_redis(key, payload)
+    return _CACHE.set(key, payload)
 
 
 def clear_evidence_post_rerank_cache_for_tests() -> None:

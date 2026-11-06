@@ -93,10 +93,7 @@ def test_generate_deterministic_sql_keeps_count_priority_over_sum() -> None:
         sample_rows=None,
     )
 
-    assert sql == (
-        'SELECT "region", COUNT(*) AS count FROM "sales" '
-        'GROUP BY "region" ORDER BY count DESC LIMIT 20'
-    )
+    assert sql == ('SELECT "region", COUNT(*) AS count FROM "sales" GROUP BY "region" ORDER BY count DESC LIMIT 20')
     assert planner["reason"] == "aggregation_group"
     assert planner["aggregation"] == "count"
     assert planner["aggregation_column"] is None

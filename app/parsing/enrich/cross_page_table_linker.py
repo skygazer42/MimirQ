@@ -8,7 +8,7 @@ from app.parsing.enrich.table_renderers import render_table_csv, render_table_ht
 
 
 def _is_table_doc(doc: Document) -> bool:
-    meta = dict(getattr(doc, "metadata", None) or {})
+    meta = dict(doc.metadata or {})
     return (
         str(meta.get("content_type") or meta.get("element_kind") or meta.get("doc_type_kwd") or "").lower() == "table"
     )
@@ -55,13 +55,13 @@ def _rows(meta: Mapping[str, Any]) -> list[list[str]]:
 def _near_page_bottom(meta: Mapping[str, Any]) -> bool:
     bbox = _bbox(meta)
     y1 = _coerce_int(bbox.get("y1"))
-    return bool(y1 is not None and int(y1) >= 720)
+    return y1 is not None and y1 >= 720
 
 
 def _near_page_top(meta: Mapping[str, Any]) -> bool:
     bbox = _bbox(meta)
     y0 = _coerce_int(bbox.get("y0"))
-    return bool(y0 is not None and int(y0) <= 180)
+    return y0 is not None and y0 <= 180
 
 
 def _should_merge(left: Document, right: Document) -> bool:
@@ -69,13 +69,13 @@ def _should_merge(left: Document, right: Document) -> bool:
     right_meta = dict(right.metadata or {})
     left_page = _page(left_meta)
     right_page = _page(right_meta)
-    if left_page is None or right_page is None or int(right_page) != int(left_page) + 1:
+    if left_page is None or right_page is None or right_page != left_page + 1:
         return False
     if _columns(left_meta) != _columns(right_meta) or not _columns(left_meta):
         return False
-    right_text = str(getattr(right, "page_content", "") or "")
+    right_text = str(right.page_content or "")
     has_continuation_hint = any(token in right_text for token in ("续表", "continued", "Continuation"))
-    return bool((_near_page_bottom(left_meta) and _near_page_top(right_meta)) or has_continuation_hint)
+    return (_near_page_bottom(left_meta) and _near_page_top(right_meta)) or has_continuation_hint
 
 
 def _make_extraction(meta: Mapping[str, Any], rows: list[list[str]]) -> TableExtraction:
@@ -90,7 +90,7 @@ def _make_extraction(meta: Mapping[str, Any], rows: list[list[str]]) -> TableExt
     cells = [TableCell(row_index=0, col_index=i, text=col, is_header=True) for i, col in enumerate(columns)]
     for row_index, row in enumerate(rows, start=1):
         for col_index, text in enumerate(row[: len(columns)]):
-            cells.append(TableCell(row_index=row_index, col_index=col_index, text=str(text), is_header=False))
+            cells.append(TableCell(row_index=row_index, col_index=col_index, text=text, is_header=False))
     return TableExtraction(
         columns=columns,
         rows=rows,
@@ -112,8 +112,8 @@ def _merge_group(group: list[Document]) -> Document:
     for doc in group:
         doc_meta = dict(doc.metadata or {})
         page = _page(doc_meta)
-        if page is not None and int(page) not in pages:
-            pages.append(int(page))
+        if page is not None and page not in pages:
+            pages.append(page)
         sid = str(doc_meta.get("source_element_id") or doc_meta.get("element_id") or "")
         if sid and sid not in source_ids:
             source_ids.append(sid)

@@ -1,4 +1,3 @@
-
 from datetime import datetime
 from uuid import UUID
 
@@ -15,6 +14,8 @@ class TenantMemberOut(BaseModel):
     id: UUID
     tenant_id: UUID
     user_id: str | None = None
+    username: str | None = None
+    email: str | None = None
     role: str = Field(default=UserRoles.VIEWER, description=_TENANT_ROLE_DESCRIPTION)
     is_active: bool = True
     is_current: bool = False
@@ -50,7 +51,7 @@ class TenantMemberUpdateRequest(BaseModel):
 
     @field_validator("role", mode="before")
     @classmethod
-    def _normalize_role(cls, v):  # noqa: ANN001
+    def _normalize_role(cls, v: object) -> str:
         return str(v or "").strip().lower()
 
     @field_validator("role")

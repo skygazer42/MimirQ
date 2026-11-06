@@ -1,4 +1,3 @@
-
 from dataclasses import dataclass, field
 
 from app.rag.safety.regex_prompt_screen import RegexPromptScreen

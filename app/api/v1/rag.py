@@ -7,11 +7,11 @@ For debugging and validating:
 """
 
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.api.dependencies.auth import get_current_account_id
@@ -19,9 +19,10 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.model_execution import RetiredModelProviderError
 from app.rag.core.logging import get_logger
+from app.services import dataset_service
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
-from app.services.dataset_service import DatasetService
 from app.services.document_access import (
     filter_allowed_document_ids,
     get_readable_datasets_map,
@@ -51,6 +52,19 @@ NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL = "No accessible documents for retrieval
 DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL = "dataset_id and dataset_ids are mutually exclusive"
 RETRIEVAL_SCOPE_MAX_DATASET_IDS = 80
 RETRIEVAL_SCOPE_MAX_DOCUMENT_IDS = 200
+
+
+class _IterativeRetrievalResult(TypedDict):
+    citations: list[dict[str, Any]]
+    metrics: dict[str, Any]
+    query_for_retrieval: str
+    query_debug: dict[str, Any] | None
+    abstain_triggered: bool
+    abstain_reason: Any
+    has_evidence: bool
+    selected_pass: str
+    fallback: dict[str, Any] | None
+    iterative_summary: dict[str, Any] | None
 
 
 def _unique_dataset_ids(dataset_ids: list[UUID] | None) -> list[UUID]:
@@ -108,9 +122,9 @@ def _enforce_non_empty_retrieval_scope(
     allow_empty_scope: bool = False,
 ) -> None:
     dataset_ids = _unique_dataset_ids(scope_dataset_ids)
-    if allow_empty_scope and bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)):
+    if allow_empty_scope and bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS):
         return
-    if bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True)) and scope_dataset_id is None and not dataset_ids:
+    if bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS) and scope_dataset_id is None and not dataset_ids:
         return
     if scope_document_ids:
         return
@@ -159,87 +173,22 @@ def _enforce_non_empty_retrieval_scope(
         raise HTTPException(status_code=400, detail=NO_ACCESSIBLE_DOCS_FOR_RETRIEVAL_DETAIL)
 
 
-def _inject_query_image_context(
-    *,
-    state: dict[str, Any],
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    scope_dataset_id: UUID | None,
-    scope_document_ids: list[UUID],
-    text_query: str,
-    query_image: str | None,
-    enable_auto_detect: bool,
+def _resolve_multimodal_query_meta(
+    *, text_query: str, enable_auto_detect: bool
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    multimodal_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
-    image_meta: dict[str, Any] = {"enabled": False, "used": False, "reason": "not_run"}
+    image_meta = {"enabled": False, "used": False, "reason": "image_vector_retrieval_retired"}
+    if not enable_auto_detect:
+        return {"enabled": True, "modality": "text", "reasons": []}, image_meta
+    from app.rag.policy.modality_router import classify_query_modality
 
-    query_source: str | None = None
-    image_query = str(query_image or "").strip()
-    if image_query:
-        multimodal_meta["modality"] = "image"
-        multimodal_meta["reasons"] = ["explicit_query_image"]
-        query_source = "query_image"
-    elif enable_auto_detect:
-        try:
-            from app.rag.policy.modality_router import classify_query_modality  # noqa: WPS433
+    modality, reasons = classify_query_modality(text_query)
+    return {"enabled": True, "modality": modality, "reasons": reasons}, image_meta
 
-            modality, reasons = classify_query_modality(text_query)
-            multimodal_meta["modality"] = modality
-            multimodal_meta["reasons"] = reasons
-            if str(modality or "text").lower().strip() == "image":
-                image_query = str(text_query or "").strip()
-                query_source = "query"
-        except Exception as exc:  # noqa: BLE001
-            return (
-                {"enabled": False, "modality": "text", "reasons": [f"router_exception:{str(exc)[:80]}"]},
-                image_meta,
-            )
 
-    if not image_query or not query_source:
-        return multimodal_meta, image_meta
-
-    try:
-        from app.services.chat_image_service import build_chat_image_context_docs  # noqa: WPS433
-
-        ds_for_images = scope_dataset_id
-        if ds_for_images is None and scope_document_ids:
-            ds_for_images = resolve_single_dataset_id_for_documents(
-                db,
-                tenant_id=tenant_id,
-                document_ids=scope_document_ids,
-            )
-        if ds_for_images is None:
-            return multimodal_meta, {
-                "enabled": False,
-                "used": False,
-                "reason": "missing_dataset_id",
-                "query_source": query_source,
-            }
-
-        image_docs, image_meta = build_chat_image_context_docs(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=ds_for_images,
-            question=image_query,
-            top_k=6,
-        )
-        image_meta = dict(image_meta or {})
-        image_meta["query_source"] = query_source
-        if image_docs:
-            state["tag_docs"] = image_docs
-        return multimodal_meta, image_meta
-    except Exception as exc:  # noqa: BLE001
-        return (
-            {"enabled": False, "modality": "text", "reasons": [f"image_exception:{str(exc)[:80]}"]},
-            {
-                "enabled": False,
-                "used": False,
-                "reason": f"image_exception:{str(exc)[:120]}",
-                "query_source": query_source,
-            },
-        )
+def _reject_retired_image_query(value: str | None) -> str | None:
+    if value and value.strip():
+        raise ValueError("query_image vector retrieval has been retired; use the regular text/OCR query")
+    return value
 
 
 def _resolve_retrieval_scope(
@@ -251,7 +200,6 @@ def _resolve_retrieval_scope(
     dataset_id: UUID | None,
     dataset_ids: list[UUID] | None = None,
     allow_multi_dataset: bool = False,
-    query_image: str | None = None,
 ) -> tuple[UUID | None, list[UUID], list[UUID]]:
     requested_dataset_ids = _unique_dataset_ids(dataset_ids)
     if allow_multi_dataset and dataset_id is not None and requested_dataset_ids:
@@ -271,10 +219,10 @@ def _resolve_retrieval_scope(
         )
         scope_dataset_ids = requested_dataset_ids
     elif dataset_id:
-        ds = DatasetService.get_dataset(db, tenant_id, dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = dataset_id
-    elif not bool(getattr(settings, "CHAT_ALLOW_OPEN_SCOPE", False)):
+    elif not bool(settings.CHAT_ALLOW_OPEN_SCOPE):
         raise HTTPException(
             status_code=400,
             detail=DATASET_REQUIRED_WHEN_DOC_IDS_EMPTY_DETAIL,
@@ -287,7 +235,7 @@ def _resolve_retrieval_scope(
         scope_document_ids=scope_document_ids,
         scope_dataset_id=scope_dataset_id,
         scope_dataset_ids=scope_dataset_ids,
-        allow_empty_scope=bool(str(query_image or "").strip()),
+        allow_empty_scope=False,
     )
     return scope_dataset_id, scope_dataset_ids, scope_document_ids
 
@@ -304,7 +252,7 @@ def _resolve_dataset_defaults_rag_config(
 ) -> tuple[ChatRAGConfig, list[str], dict[str, Any] | None, set[str]]:
     rag_config_provided = "rag_config" in request_fields_set
     effective_rag_config = rag_config
-    rag_fields_set = set(getattr(rag_config, "model_fields_set", set()) or set())
+    rag_fields_set = set(rag_config.model_fields_set or set())
     if default_profile and not rag_config_provided:
         effective_rag_config = ChatRAGConfig(retrieval_profile=default_profile)
         rag_fields_set = set()
@@ -326,6 +274,8 @@ def _resolve_dataset_defaults_rag_config(
                 request_fields_set=rag_fields_set,
                 raw_dataset_defaults=raw_defaults,
             )
+    except RetiredModelProviderError:
+        raise
     except Exception:
         dataset_rag_defaults_applied_fields = []
         dataset_defaults_meta = None
@@ -337,7 +287,7 @@ def _resolve_preview_rag_template_meta(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    body: Any,
+    body: "RetrievePreviewRequest",
     request_fields_set: set[str],
     dataset_defaults_meta: dict[str, Any] | None,
     effective_rag_config: ChatRAGConfig,
@@ -395,6 +345,8 @@ def _resolve_preview_rag_template_meta(
                     db.commit()
                 except Exception:
                     db.rollback()
+    except RetiredModelProviderError:
+        raise
     except Exception:
         rag_config_template_meta = None
         rag_config_template_patch_applied_fields = []
@@ -468,15 +420,15 @@ async def _maybe_apply_iterative_retrieval_fallback(
     query_debug: dict[str, Any] | None,
     abstain_triggered: bool,
     has_evidence: bool,
-) -> dict[str, Any]:
+) -> _IterativeRetrievalResult:
     try:
-        iterative_enabled = bool(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_ENABLED", False))
-        max_passes = max(1, int(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES", 2) or 2))
+        iterative_enabled = bool(settings.EVIDENCE_ITERATIVE_RETRIEVE_ENABLED)
+        max_passes = max(1, int(settings.EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES or 2))
     except Exception:
         iterative_enabled = False
         max_passes = 1
 
-    result = {
+    result: _IterativeRetrievalResult = {
         "citations": citations,
         "metrics": metrics,
         "query_for_retrieval": query_for_retrieval,
@@ -494,17 +446,11 @@ async def _maybe_apply_iterative_retrieval_fallback(
     from app.rag.core.text import normalize_retrieval_mode
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    fallback_profile = (
-        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE", "coverage80") or "coverage80")
-        .strip()
-        .lower()
-    )
+    fallback_profile = str(settings.EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE or "coverage80").strip().lower()
     if fallback_profile not in {"recall20", "recall50", "coverage80"}:
         fallback_profile = "coverage80"
 
-    fallback_mode = (
-        str(getattr(settings, "EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE", "keyword") or "keyword").strip().lower()
-    )
+    fallback_mode = str(settings.EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE or "keyword").strip().lower()
     fallback_mode = normalize_retrieval_mode(fallback_mode)
     if fallback_mode not in {"hybrid", "vector", "keyword", "mmr"}:
         fallback_mode = "keyword"
@@ -544,7 +490,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
 
     iterative_summary = {
         "enabled": True,
-        "max_passes": int(max_passes),
+        "max_passes": max_passes,
         "selected_pass": "fallback" if use_fallback else "primary",
         "passes": [
             {
@@ -554,8 +500,8 @@ async def _maybe_apply_iterative_retrieval_fallback(
                 "empty_retrieval": metrics.get("empty_retrieval")
                 if isinstance(metrics.get("empty_retrieval"), dict)
                 else None,
-                "citations": int(p_n),
-                "top_relevance_score": round(float(p_top), 3),
+                "citations": p_n,
+                "top_relevance_score": round(p_top, 3),
                 "abstain_triggered": bool(abstain_triggered),
                 "has_evidence": bool(has_evidence),
                 "retrieval_elapsed_sec": float(metrics.get("retrieval_elapsed_sec") or 0.0),
@@ -563,14 +509,14 @@ async def _maybe_apply_iterative_retrieval_fallback(
             {
                 "pass": "fallback",
                 "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
-                "retrieval_profile": str(fallback_profile),
+                "retrieval_profile": fallback_profile,
                 "empty_retrieval": f_metrics.get("empty_retrieval")
                 if isinstance(f_metrics.get("empty_retrieval"), dict)
                 else None,
-                "citations": int(f_n),
-                "top_relevance_score": round(float(f_top), 3),
-                "abstain_triggered": bool(f_abstain),
-                "has_evidence": bool(f_has_evidence),
+                "citations": f_n,
+                "top_relevance_score": round(f_top, 3),
+                "abstain_triggered": f_abstain,
+                "has_evidence": f_has_evidence,
                 "retrieval_elapsed_sec": float(f_metrics.get("retrieval_elapsed_sec") or 0.0),
             },
         ],
@@ -585,9 +531,9 @@ async def _maybe_apply_iterative_retrieval_fallback(
     result["query_for_retrieval"] = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()
     qd = fallback.get("query_debug")
     result["query_debug"] = qd if isinstance(qd, dict) else query_debug
-    result["abstain_triggered"] = bool(f_abstain)
+    result["abstain_triggered"] = f_abstain
     result["abstain_reason"] = fallback.get("abstain_reason") or f_metrics.get("abstain_reason") or None
-    result["has_evidence"] = bool(f_has_evidence)
+    result["has_evidence"] = f_has_evidence
     result["selected_pass"] = "fallback"
     return result
 
@@ -598,7 +544,7 @@ def _apply_min_top_relevance_gate(
     metrics: dict[str, Any],
     has_evidence: bool,
 ) -> bool:
-    min_top_rel = float(getattr(settings, "RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE", 0.0) or 0.0)
+    min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
     if not has_evidence or min_top_rel <= 0.0:
         return has_evidence
 
@@ -665,7 +611,7 @@ def _build_evidence_capsule_payload(
     selected_pass: str,
 ) -> dict[str, Any] | None:
     try:
-        if not bool(getattr(settings, "RAG_EVIDENCE_CAPSULE_ENABLED", True)):
+        if not bool(settings.RAG_EVIDENCE_CAPSULE_ENABLED):
             return None
         from app.rag.core.evidence_capsule_builder import build_evidence_capsule
 
@@ -715,10 +661,11 @@ def _observe_evidence_retrieve_metrics(
 
 class RetrievePreviewRequest(BaseModel):
     query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    query_image: str | None = Field(
+    query_image: Annotated[str | None, AfterValidator(_reject_retired_image_query)] = Field(
         default=None,
         max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
-        description="Optional explicit image query routed to CLIP image retrieval",
+        description="Retired image-vector query; nonempty values are rejected",
+        deprecated=True,
     )
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
@@ -817,7 +764,7 @@ def _build_document_structure_trace(
         )
         return {
             "schema": "mimirq.document_structure_trace.v1",
-            "document_count": int(len(structures)),
+            "document_count": len(structures),
             "documents": list(structures.values()),
             "selected_sections": selected_sections,
         }
@@ -856,32 +803,6 @@ def _attach_document_structure_trace(
     return trace
 
 
-class ImageIndexRequest(BaseModel):
-    dataset_id: UUID
-    max_chunks: int = Field(default=3000, ge=1, le=20_000)
-    upsert: bool = Field(default=True, description="Upsert into the image embedding index (overwrite existing vectors)")
-
-
-class ImageIndexResponse(BaseModel):
-    indexed: int = 0
-    skipped: int = 0
-    failed: int = 0
-    dim: int = 0
-    errors: list[str] = Field(default_factory=list)
-
-
-class ImageSearchRequest(BaseModel):
-    dataset_id: UUID
-    query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    top_k: int = Field(default=8, ge=1, le=50)
-    auto_index: bool = Field(default=False, description="Best-effort: index images for the dataset before searching")
-
-
-class ImageSearchResponse(BaseModel):
-    citations: list[dict[str, Any]] = Field(default_factory=list)
-    metrics: dict[str, Any] = Field(default_factory=dict)
-
-
 @router.post("/document-structure", response_model=dict[str, Any], responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 def document_structure_preview(
     body: DocumentStructureRequest,
@@ -891,9 +812,9 @@ def document_structure_preview(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Return document structure derived from existing chunk hierarchy metadata."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
+    ds = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
+    dataset_service.assert_dataset_readable(db, ds, account_id)
 
     from app.rag.retrieval.document_structure import load_document_structure
 
@@ -922,7 +843,7 @@ async def retrieve_preview(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Execute retrieval only (no answer generation); for parameter tuning and retrieval quality debugging."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -937,7 +858,6 @@ async def retrieve_preview(
         dataset_id=body.dataset_id,
         dataset_ids=body.dataset_ids,
         allow_multi_dataset=True,
-        query_image=body.query_image,
     )
 
     from app.rag.pipelines.langgraph import build_rag_state
@@ -947,7 +867,7 @@ async def retrieve_preview(
     #
     # For this debug endpoint, we default to a recall-first profile when the caller omits rag_config,
     # so retrieval tuning starts from a "must-recall" baseline.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
         dataset_rag_defaults_applied_fields,
@@ -1050,17 +970,7 @@ async def retrieve_preview(
     )
     if rag_config_template_meta:
         state["rag_config_template"] = rag_config_template_meta
-    multimodal_meta, image_meta = _inject_query_image_context(
-        state=state,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-        text_query=body.query,
-        query_image=body.query_image,
-        enable_auto_detect=False,
-    )
+    multimodal_meta, image_meta = _resolve_multimodal_query_meta(text_query=body.query, enable_auto_detect=False)
     state["multimodal_router"] = multimodal_meta
     state["image_meta"] = image_meta
 
@@ -1200,104 +1110,26 @@ async def tree_search_preview(
     )
 
 
-@router.post("/image-index", response_model=ImageIndexResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/image-index", include_in_schema=False)
 def index_image_embeddings(
-    body: ImageIndexRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
 ):
-    """
-    Build/update the CLIP image embedding index for a dataset (best-effort).
-
-    Security:
-    - Requires dataset write permission (indexing is a compute-heavy admin action).
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_writable(db, ds, account_id)
-
-    from app.services.image_embedding_index import index_clip_image_embeddings_for_dataset
-
-    stats = index_clip_image_embeddings_for_dataset(
-        db=db,
-        tenant_id=tenant_id,
-        dataset_id=body.dataset_id,
-        max_chunks=int(body.max_chunks or 0),
-        upsert=bool(body.upsert),
-    )
-    return ImageIndexResponse(
-        indexed=int(stats.indexed),
-        skipped=int(stats.skipped),
-        failed=int(stats.failed),
-        dim=int(stats.dim),
-        errors=list(stats.errors or []),
+    raise HTTPException(
+        status_code=410, detail={"code": "feature_retired", "message": "Local image-vector indexing has been retired"}
     )
 
 
-@router.post("/image-search-preview", response_model=ImageSearchResponse, responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+@router.post("/image-search-preview", include_in_schema=False)
 async def image_search_preview(
-    body: ImageSearchRequest,
     *,
     tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
 ):
-    """
-    Search the image embedding index using CLIP (text -> image space).
-
-    Notes:
-    - Dataset-scoped only.
-    - Returns citation-like chunk payloads (including img_id/img_url) for UI consumers.
-    """
-    DatasetService.ensure_member(db, tenant_id, account_id)
-    ds = DatasetService.get_dataset(db, tenant_id, body.dataset_id)
-    DatasetService.assert_dataset_readable(db, ds, account_id)
-
-    # Best-effort per-tenant aggregate QPS limiter.
-    from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
-
-    tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
-
-    from app.services.image_embedding_index import (
-        build_image_citations,
-        index_clip_image_embeddings_for_dataset,
-        search_clip_images,
+    raise HTTPException(
+        status_code=410, detail={"code": "feature_retired", "message": "Local image-vector search has been retired"}
     )
-
-    indexed: int | None = None
-    if bool(body.auto_index):
-        # Best-effort; do not fail the search if indexing fails.
-        try:
-            stats = index_clip_image_embeddings_for_dataset(
-                db=db,
-                tenant_id=tenant_id,
-                dataset_id=body.dataset_id,
-                max_chunks=3000,
-                upsert=True,
-            )
-            indexed = int(stats.indexed)
-        except Exception:
-            indexed = None
-
-    hits = search_clip_images(
-        db=db,
-        tenant_id=tenant_id,
-        dataset_id=body.dataset_id,
-        query=body.query,
-        top_k=int(body.top_k or 0),
-    )
-    citations = build_image_citations(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=body.dataset_id,
-        hits=hits,
-        max_items=int(body.top_k or 0),
-    )
-    metrics: dict[str, Any] = {"hits": int(len(citations)), "indexed": indexed, "tenant_qps_quota": tenant_qps_meta}
-    return ImageSearchResponse(citations=citations, metrics=metrics)
 
 
 class EvidenceRetrieveRequest(BaseModel):
@@ -1309,10 +1141,11 @@ class EvidenceRetrieveRequest(BaseModel):
     """
 
     query: str = Field(min_length=1, max_length=settings.RETRIEVAL_QUERY_MAX_CHARS)
-    query_image: str | None = Field(
+    query_image: Annotated[str | None, AfterValidator(_reject_retired_image_query)] = Field(
         default=None,
         max_length=settings.RETRIEVAL_QUERY_MAX_CHARS,
-        description="Optional explicit image query routed to CLIP image retrieval",
+        description="Retired image-vector query; nonempty values are rejected",
+        deprecated=True,
     )
     history: list[HistoryMessage] = Field(default_factory=list)
     dataset_id: UUID | None = None
@@ -1369,7 +1202,7 @@ async def retrieve_evidence(
     Defaults to a recall-first profile when the caller omits rag_config.
     """
     t_api_start = time.monotonic()
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -1384,14 +1217,13 @@ async def retrieve_evidence(
         dataset_id=body.dataset_id,
         dataset_ids=body.dataset_ids,
         allow_multi_dataset=True,
-        query_image=body.query_image,
     )
 
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
         dataset_rag_defaults_applied_fields,
@@ -1485,20 +1317,9 @@ async def retrieve_evidence(
     # Optional: multi-modal routing (image/table/text).
     #
     # This endpoint is "retrieval-only" (no answer generation), so we keep routing deterministic:
-    # - Explicit `query_image` takes precedence and routes to CLIP.
     # - Otherwise image intent can still be inferred from the text query.
     # - Table routing (TAG/NL2SQL) is intentionally *not* applied here by default.
-    multimodal_meta, image_meta = _inject_query_image_context(
-        state=state,
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        scope_dataset_id=scope_dataset_id,
-        scope_document_ids=scope_document_ids,
-        text_query=body.query,
-        query_image=body.query_image,
-        enable_auto_detect=True,
-    )
+    multimodal_meta, image_meta = _resolve_multimodal_query_meta(text_query=body.query, enable_auto_detect=True)
 
     state["multimodal_router"] = multimodal_meta
     state["image_meta"] = image_meta
@@ -1547,14 +1368,14 @@ async def retrieve_evidence(
     metrics = iterative_result["metrics"]
     query_for_retrieval = iterative_result["query_for_retrieval"]
     query_debug = iterative_result["query_debug"]
-    abstain_triggered = bool(iterative_result["abstain_triggered"])
+    abstain_triggered = iterative_result["abstain_triggered"]
     abstain_reason = iterative_result["abstain_reason"]
     has_evidence = _apply_min_top_relevance_gate(
         citations=[c for c in citations if isinstance(c, dict)],
         metrics=metrics,
-        has_evidence=bool(iterative_result["has_evidence"]),
+        has_evidence=iterative_result["has_evidence"],
     )
-    selected_pass = str(iterative_result["selected_pass"])
+    selected_pass = iterative_result["selected_pass"]
     fallback = iterative_result["fallback"]
     iterative_summary = iterative_result["iterative_summary"]
     if iterative_summary and isinstance(iterative_summary, dict):
@@ -1655,7 +1476,7 @@ async def prompt_preview(
 ):
     """Execute retrieval and return final prompt (no LLM call); for debugging prompt/context assembly."""
     t0 = time.time()
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     # Best-effort per-tenant aggregate QPS limiter.
     from app.services.tenant_quota_service import enforce_tenant_qps_quota_async
@@ -1663,15 +1484,11 @@ async def prompt_preview(
     tenant_qps_meta = await enforce_tenant_qps_quota_async(tenant_id=tenant_id, key="retrieval")
 
     scope_dataset_id, _scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        document_ids=body.document_ids,
-        dataset_id=body.dataset_id,
+        db=db, tenant_id=tenant_id, account_id=account_id, document_ids=body.document_ids, dataset_id=body.dataset_id
     )
 
     # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
-    request_fields_set = set(getattr(body, "model_fields_set", set()) or set())
+    request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
         dataset_rag_defaults_applied_fields,

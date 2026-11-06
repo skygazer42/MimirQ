@@ -1,17 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 import { API_V1_BASE_URL } from '@/lib/env'
+import { isFalsey, readEnv } from '@/lib/server-auth-route'
 
 export const runtime = 'nodejs'
-
-function readEnv(name: string): string {
-  return String(process.env[name] || '').trim()
-}
-
-function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
-  return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
-}
 
 function isSamlEnabled(): boolean {
   const enabled = readEnv('SAML_ENABLED')

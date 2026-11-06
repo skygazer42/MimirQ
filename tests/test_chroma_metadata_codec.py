@@ -12,7 +12,7 @@ def test_chroma_metadata_codec_round_trips_complex_values() -> None:
         "stats": {"headings_changed": 1, "nested": {"ok": True}},
         "tags": ["release", "backend"],
         "empty": [],
-        "reserved_looking": "__mimirq_json_v1__:{\"not\":\"encoded\"}",
+        "reserved_looking": '__mimirq_json_v1__:{"not":"encoded"}',
     }
 
     encoded = factory_module._encode_chroma_metadata(raw)

@@ -228,7 +228,7 @@ def _replacement_decoded_text(
         return DecodedText(
             text=blob.decode(fallback, errors="replace"),
             encoding=str(fallback),
-            confidence=float(detected_confidence or 0.0),
+            confidence=detected_confidence or 0.0,
             had_bom=had_bom,
         )
     except Exception:
@@ -286,7 +286,5 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             had_bom=had_bom,
         )
 
-    confidence = (
-        float(detected_confidence or 0.0) if _normalize_encoding(detected_encoding or "") == best_encoding else 0.0
-    )
-    return DecodedText(text=best_text, encoding=str(best_encoding), confidence=confidence, had_bom=had_bom)
+    confidence = detected_confidence or 0.0 if _normalize_encoding(detected_encoding or "") == best_encoding else 0.0
+    return DecodedText(text=best_text, encoding=best_encoding, confidence=confidence, had_bom=had_bom)

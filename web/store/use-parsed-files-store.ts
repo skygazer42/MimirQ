@@ -15,18 +15,17 @@ import { generateRequestId } from '@/lib/request-id'
 import { detachPromise } from '@/lib/utils'
 import type { ParsingElement } from '@/lib/api/parsing'
 
-
 export const ROOT_FOLDER_ID = 'root'
 const PARSED_FILES_STORAGE_KEY = 'mimirq_parsed_files'
 
-export interface FolderNode {
+export type FolderNode = {
   id: string
   name: string
   parentId: string
   createdAt: string
 }
 
-export interface ParsedFileData {
+export type ParsedFileData = {
   id: string
   filename: string
   fileType: string
@@ -44,6 +43,26 @@ export interface ParsedFileData {
   source?: 'parsing_workspace' | 'knowledge_base'
   sourcePath?: string | null
   governanceStatus?: 'draft' | 'ready' | 'submitted'
+  /** Review metadata for the saved Markdown; drafts remain in the governance workspace. */
+  governanceReview?: {
+    qualityScore: number | null
+    issues: Array<{
+      id: string
+      type: 'error' | 'warning' | 'info'
+      message: string
+      position?: { start: number; end: number }
+    }>
+    annotations: Array<{
+      id: string
+      text: string
+      type: 'entity' | 'keyword' | 'sensitive' | 'custom'
+      label: string
+      start: number
+      end: number
+    }>
+    tags: string[]
+    category: string | null
+  }
   chunkStatus?: 'draft' | 'ready' | 'submitted'
   /**
    * UI status for the document library.
@@ -90,7 +109,7 @@ function clearParsedFileUpdateVersionsForScope(scope: string) {
   }
 }
 
-interface ParsedFilesState {
+type ParsedFilesState = {
   files: ParsedFileData[]
   folders: FolderNode[]
   activeFolderId: string
@@ -115,16 +134,13 @@ interface ParsedFilesState {
   setLoaded: (loaded: boolean) => void
 }
 
-const makeId = () => generateRequestId()
-
 function getUpdatedMarkdownFields(updates: ParsedFileUpdates): {
   nextMarkdown: string | undefined
   nextOriginal: string | undefined
 } {
   return {
     nextMarkdown: typeof updates.markdownContent === 'string' ? updates.markdownContent : undefined,
-    nextOriginal:
-      typeof updates.originalMarkdownContent === 'string' ? updates.originalMarkdownContent : undefined,
+    nextOriginal: typeof updates.originalMarkdownContent === 'string' ? updates.originalMarkdownContent : undefined,
   }
 }
 
@@ -143,16 +159,19 @@ async function persistParsedMarkdownReliably(
   id: string,
   markdownContent: string,
   originalMarkdownContent: string,
-  scope: string
+  scope: string,
 ) {
   let lastError: unknown = null
   for (let attempt = 0; attempt < RELIABLE_SYNC_MAX_ATTEMPTS; attempt += 1) {
     try {
-      await saveDocContentToCache({
-        id,
-        markdownContent,
-        originalMarkdownContent,
-      }, scope)
+      await saveDocContentToCache(
+        {
+          id,
+          markdownContent,
+          originalMarkdownContent,
+        },
+        scope,
+      )
       return
     } catch (error) {
       lastError = error
@@ -249,7 +268,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         const newFile: ParsedFileData = {
           ...file,
           originalMarkdownContent: file.originalMarkdownContent ?? file.markdownContent,
-          id: makeId(),
+          id: generateRequestId(),
           parsedAt: new Date().toISOString(),
           folderId: file.folderId || ROOT_FOLDER_ID,
           status: file.status ?? 'parsed',
@@ -313,14 +332,12 @@ export const useParsedFiles = create<ParsedFilesState>()(
         const updateVersion = registerParsedFileUpdate(updateScope, id)
         const applyUpdates = () =>
           set((state) => ({
-            files: state.files.map((f) =>
-              f.id === id ? { ...f, ...updates, id: f.id } : f
-            ),
+            files: state.files.map((f) => (f.id === id ? { ...f, ...updates, id: f.id } : f)),
           }))
 
         const { nextMarkdown, nextOriginal } = getUpdatedMarkdownFields(updates)
         const shouldPersistMarkdown =
-          globalThis.window !== undefined && (typeof nextMarkdown === 'string' || typeof nextOriginal === 'string')
+          globalThis.window !== undefined && (nextMarkdown !== undefined || nextOriginal !== undefined)
         const shouldAwaitPersistence = shouldPersistMarkdown && updates.status === 'parsed'
         const markdownContent = nextMarkdown ?? ''
         const originalMarkdownContent = nextOriginal ?? ''
@@ -332,11 +349,16 @@ export const useParsedFiles = create<ParsedFilesState>()(
 
         if (!shouldAwaitPersistence) {
           applyUpdates()
-          detachPromise(saveDocContentToCache({
-            id,
-            markdownContent,
-            originalMarkdownContent,
-          }, updateScope))
+          detachPromise(
+            saveDocContentToCache(
+              {
+                id,
+                markdownContent,
+                originalMarkdownContent,
+              },
+              updateScope,
+            ),
+          )
           return
         }
 
@@ -366,7 +388,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
           detachPromise(
             clearDocCachesForScope(scope).catch((error) => {
               console.warn('Failed to clear parsed file browser cache for auth scope', error)
-            })
+            }),
           )
         }
       },
@@ -374,7 +396,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
       createFolder: (name, parentId) => {
         const trimmed = name.trim()
         const newFolder: FolderNode = {
-          id: makeId(),
+          id: generateRequestId(),
           name: trimmed || '新建文件夹',
           parentId: parentId || get().activeFolderId || ROOT_FOLDER_ID,
           createdAt: new Date().toISOString(),
@@ -399,15 +421,12 @@ export const useParsedFiles = create<ParsedFilesState>()(
         const folders = get().folders
         const idsToDelete = new Set([id, ...collectFolderDescendantIds(folders, id)])
         const fileIdsToDelete = get()
-          .files
-          .filter((file) => Boolean(file.folderId) && idsToDelete.has(String(file.folderId)))
+          .files.filter((file) => Boolean(file.folderId) && idsToDelete.has(String(file.folderId)))
           .map((file) => file.id)
 
         set((state) => ({
           folders: state.folders.filter((f) => !idsToDelete.has(f.id)),
-          files: state.files.filter((file) =>
-            !(file.folderId && idsToDelete.has(file.folderId))
-          ),
+          files: state.files.filter((file) => !(file.folderId && idsToDelete.has(file.folderId))),
           activeFolderId: idsToDelete.has(state.activeFolderId) ? ROOT_FOLDER_ID : state.activeFolderId,
         }))
 
@@ -436,7 +455,7 @@ export const useParsedFiles = create<ParsedFilesState>()(
         }
 
         const prevParentId = byId.get(id)?.parentId || ROOT_FOLDER_ID
-        if ((prevParentId || ROOT_FOLDER_ID) === (normalizedParentId || ROOT_FOLDER_ID)) return false
+        if (prevParentId === normalizedParentId) return false
 
         set((state) => ({
           folders: state.folders.map((f) => (f.id === id ? { ...f, parentId: normalizedParentId } : f)),
@@ -492,12 +511,15 @@ export const useParsedFiles = create<ParsedFilesState>()(
           ...(normalized as Partial<ParsedFilesState>),
           files: normalizedFiles,
           folders: normalizedFolders,
-          activeFolderId: typeof normalized.activeFolderId === 'string' && normalized.activeFolderId ? normalized.activeFolderId : ROOT_FOLDER_ID,
+          activeFolderId:
+            typeof normalized.activeFolderId === 'string' && normalized.activeFolderId
+              ? normalized.activeFolderId
+              : ROOT_FOLDER_ID,
           isLoaded: true,
         }
-      }
-    }
-  )
+      },
+    },
+  ),
 )
 
 globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
@@ -524,6 +546,6 @@ globalThis.window?.addEventListener(AUTH_SCOPE_CHANGED_EVENT, () => {
           isSwitchingParsedFilesScope = false
         }
       }
-    })()
+    })(),
   )
 })

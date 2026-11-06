@@ -5,7 +5,7 @@ Design goals:
 - Deterministic: model ids are content-addressed (sha256).
 - Safe defaults: activation requires a validated manifest.
 - Reproducible: active selection is persisted in a small active.json record.
-- Fail-closed for activation/validation; fail-open for reads/listing.
+- Fail-closed for activation/validation; fail-open for reads.
 """
 
 import hashlib
@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
-from app.rag.core.logging import get_logger
 from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 from app.rag.reranker.ltr import LTRFeatureSpec, build_ltr_feature_spec_fingerprint
 
@@ -58,7 +57,7 @@ def _atomic_write_bytes(path: Path, data: bytes) -> None:
 
 
 def _registry_root() -> Path:
-    root = Path(getattr(settings, "UPLOAD_DIR", "./uploads") or "./uploads")
+    root = Path(settings.UPLOAD_DIR or "./uploads")
     return (root / ".ltr_registry").resolve(strict=False)
 
 
@@ -231,7 +230,7 @@ def _clean_manifest_training(training_raw: Any) -> dict[str, Any] | None:
             continue
         value = _safe_manifest_int(training_raw.get(key))
         if value is not None:
-            training_out[key] = max(0, int(value))
+            training_out[key] = max(0, value)
     return training_out or None
 
 
@@ -306,13 +305,13 @@ def _validate_manifest_obj(*, manifest: dict[str, Any], model_sha256: str) -> tu
 
     num_boost_round = _safe_manifest_int(manifest.get("num_boost_round"))
     if num_boost_round is not None:
-        cleaned["num_boost_round"] = max(0, int(num_boost_round))
+        cleaned["num_boost_round"] = max(0, num_boost_round)
 
     seed = _safe_manifest_int(manifest.get("seed"))
     if seed is not None:
-        cleaned["seed"] = int(seed)
+        cleaned["seed"] = seed
 
-    cleaned["feature_spec_version"] = int(version)
+    cleaned["feature_spec_version"] = version
     cleaned["feature_spec"] = build_ltr_feature_spec_fingerprint(spec=spec, version=version)
 
     training = _clean_manifest_training(manifest.get("training"))
@@ -388,10 +387,10 @@ def register_model(
             "schema": _MODEL_META_SCHEMA_V1,
             "model_id": model_id,
             "model_sha256": model_sha,
-            "size_bytes": int(len(model_bytes)),
+            "size_bytes": len(model_bytes),
             "created_at": _now_utc_iso(),
             "created_by": (str(actor_id0) if actor_id0 else None),
-            "feature_spec_version": int(spec_version),
+            "feature_spec_version": spec_version,
             "feature_schema": str(manifest_clean.get("feature_schema") or ""),
             "feature_names": list(manifest_clean.get("feature_names") or []),
             "paths": {
@@ -404,47 +403,14 @@ def register_model(
         return LTRRegisteredModel(
             model_id=model_id,
             model_sha256=model_sha,
-            size_bytes=int(len(model_bytes)),
+            size_bytes=len(model_bytes),
             created_at=str(meta.get("created_at") or ""),
             created_by=(str(actor_id0) if actor_id0 else None),
-            feature_spec_version=int(spec_version),
+            feature_spec_version=spec_version,
             feature_schema=str(manifest_clean.get("feature_schema") or ""),
             feature_names=list(manifest_clean.get("feature_names") or []),
             has_manifest=True,
         )
-
-
-def list_models() -> list[LTRRegisteredModel]:
-    """List registered LTR models (best-effort)."""
-    root = _models_root()
-    if not root.exists():
-        return []
-    out: list[LTRRegisteredModel] = []
-    for p in sorted(root.iterdir()):
-        if not p.is_dir():
-            continue
-        meta = _read_json(p / "meta.json") or {}
-        if str(meta.get("schema") or "") != _MODEL_META_SCHEMA_V1:
-            continue
-        try:
-            out.append(
-                LTRRegisteredModel(
-                    model_id=str(meta.get("model_id") or p.name),
-                    model_sha256=str(meta.get("model_sha256") or ""),
-                    size_bytes=int(meta.get("size_bytes") or 0),
-                    created_at=str(meta.get("created_at") or ""),
-                    created_by=(str(meta.get("created_by")) if meta.get("created_by") is not None else None),
-                    feature_spec_version=int(meta.get("feature_spec_version") or 1),
-                    feature_schema=str(meta.get("feature_schema") or ""),
-                    feature_names=list(meta.get("feature_names") or []),
-                    has_manifest=bool(_manifest_path(str(meta.get("model_id") or p.name)).exists()),
-                )
-            )
-        except Exception:
-            get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
-            continue
-    out.sort(key=lambda m: (m.created_at or "", m.model_id))
-    return out
 
 
 def _load_active() -> dict[str, Any]:
@@ -484,7 +450,7 @@ def activate_model(*, model_id: str, actor_id: str | None) -> dict[str, Any]:
         spec_version = int(meta.get("feature_spec_version") or 1)
         settings.LTR_MODEL_PATH = str(mp)
         settings.LTR_MODEL_MANIFEST_PATH = str(man_p)
-        settings.LTR_FEATURE_SPEC_VERSION = int(spec_version)
+        settings.LTR_FEATURE_SPEC_VERSION = spec_version
 
         active = {
             "schema": _ACTIVE_SCHEMA_V1,
@@ -543,9 +509,9 @@ def apply_canary_activation(
         active = activate_model(model_id=model_id, actor_id=actor_id)
         canary = {
             "enabled": True,
-            "ratio": round(float(ratio), 6),
-            "min_ratio": round(float(low), 6),
-            "max_ratio": round(float(high), 6),
+            "ratio": round(ratio, 6),
+            "min_ratio": round(low, 6),
+            "max_ratio": round(high, 6),
             "applied_at": _now_utc_iso(),
             "applied_by": (str(actor_id) if actor_id else None),
         }
@@ -576,7 +542,7 @@ def resolve_active_model_paths() -> tuple[str | None, str | None, int | None, st
         spec_version = int(meta.get("feature_spec_version") or 1)
     except Exception:
         spec_version = 1
-    return str(mp), str(man_p), int(spec_version), mid
+    return str(mp), str(man_p), spec_version, mid
 
 
 def evaluate_online_rollback_trigger(
@@ -625,12 +591,12 @@ def evaluate_online_rollback_trigger(
     return {
         "schema": "mimirq.ltr_online_rollback_trigger.v1",
         "metric_key": key,
-        "max_allowed_delta": round(float(threshold), 4),
-        "min_consecutive_windows": int(required),
-        "windows_evaluated": int(len(rows)),
-        "degraded_windows_total": int(degraded_total),
-        "degraded_consecutive": int(trailing_consecutive),
-        "triggered": bool(triggered),
+        "max_allowed_delta": round(threshold, 4),
+        "min_consecutive_windows": required,
+        "windows_evaluated": len(rows),
+        "degraded_windows_total": degraded_total,
+        "degraded_consecutive": trailing_consecutive,
+        "triggered": triggered,
         "reasons": reasons,
     }
 
@@ -640,7 +606,6 @@ __all__ = [
     "activate_model",
     "apply_canary_activation",
     "evaluate_online_rollback_trigger",
-    "list_models",
     "register_model",
     "resolve_active_model_paths",
     "rollback_active_model",

@@ -89,10 +89,10 @@ def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
     parsed = parse_markdown_hash_heading(s)
     if parsed is not None:
         level, title = parsed
-        title = str(title).rstrip(":：").strip()
+        title = title.rstrip(":：").strip()
         key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
-            return title, key, int(level)
+            return title, key, level
         return None
 
     # Numbered heading or plain heading.
@@ -158,7 +158,7 @@ def looks_like_prd_spec(text: str) -> bool:
 
 
 class PRDSpecChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

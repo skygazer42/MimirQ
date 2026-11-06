@@ -35,6 +35,66 @@ def _sanitize_run_id(value: str) -> str:
     return text
 
 
+def _looks_like_zip(resp: requests.Response) -> bool:
+    ctype = str(resp.headers.get("content-type") or "").lower()
+    if "application/zip" in ctype or "application/x-zip" in ctype:
+        return True
+    body = getattr(resp, "content", b"") or b""
+    return len(body) >= 4 and body[:2] == b"PK"
+
+
+def _extract_markdown_from_json(data: Any) -> str:
+    if isinstance(data, dict):
+        for key in ("markdown", "md", "content", "text", "result"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+    return ""
+
+
+def _pick_output_root(extract_root: Path) -> Path:
+    """
+    Some services zip a single top-level folder; normalize to the folder that
+    contains page_* dirs / markdown.
+    """
+    root = extract_root
+    try:
+        has_pages = bool(list(root.glob("page_*")))
+    except Exception:
+        has_pages = False
+
+    if has_pages:
+        return root
+
+    try:
+        children = [p for p in root.iterdir() if p.is_dir()]
+    except Exception:
+        children = []
+
+    if len(children) == 1:
+        return children[0]
+    return root
+
+
+def _page_dirs(output_dir: Path) -> list[Path]:
+    return sorted([p for p in output_dir.glob("page_*") if p.is_dir()])
+
+
+def _page_number(page_dir: Path) -> int | None:
+    try:
+        return int(page_dir.name.split("_", 1)[1])
+    except Exception:
+        logger.warning("[paddle_vl] invalid page directory: %s", page_dir.name)
+        return None
+
+
+def _full_image_mapping(image_mapping: dict[int, dict[str, str]]) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for page_mapping in image_mapping.values():
+        merged.update(page_mapping)
+    return merged
+
+
 class PaddleVLParser:
     """
     Call a PaddleOCR-VL-compatible HTTP API and return Markdown output.
@@ -96,59 +156,6 @@ class PaddleVLParser:
             raise last_error
         raise RuntimeError("PaddleOCR-VL parser requires at least one candidate API URL.")
 
-    @staticmethod
-    def _looks_like_zip(resp: requests.Response) -> bool:
-        ctype = str(resp.headers.get("content-type") or "").lower()
-        if "application/zip" in ctype or "application/x-zip" in ctype:
-            return True
-        body = getattr(resp, "content", b"") or b""
-        return len(body) >= 4 and body[:2] == b"PK"
-
-    @staticmethod
-    def _extract_markdown_from_json(data: Any) -> str:
-        if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val
-        return ""
-
-    @staticmethod
-    def _pick_output_root(extract_root: Path) -> Path:
-        """
-        Some services zip a single top-level folder; normalize to the folder that
-        contains page_* dirs / markdown.
-        """
-        root = extract_root
-        try:
-            has_pages = bool(list(root.glob("page_*")))
-        except Exception:
-            has_pages = False
-
-        if has_pages:
-            return root
-
-        try:
-            children = [p for p in root.iterdir() if p.is_dir()]
-        except Exception:
-            children = []
-
-        if len(children) == 1:
-            return children[0]
-        return root
-
-    @staticmethod
-    def _page_dirs(output_dir: Path) -> list[Path]:
-        return sorted([p for p in output_dir.glob("page_*") if p.is_dir()])
-
-    @staticmethod
-    def _page_number(page_dir: Path) -> int | None:
-        try:
-            return int(page_dir.name.split("_", 1)[1])
-        except Exception:
-            logger.warning("[paddle_vl] invalid page directory: %s", page_dir.name)
-            return None
-
     def _move_page_images(
         self, *, page_dir: Path, standard_image_dir: Path, image_counter: int
     ) -> tuple[int, dict[str, str]]:
@@ -181,9 +188,9 @@ class PaddleVLParser:
     ) -> tuple[dict[int, dict[str, str]], int, list[Path]]:
         image_mapping: dict[int, dict[str, str]] = {}
         image_counter = 1
-        page_dirs = self._page_dirs(output_dir)
+        page_dirs = _page_dirs(output_dir)
         for page_dir in page_dirs:
-            page_num = self._page_number(page_dir)
+            page_num = _page_number(page_dir)
             if page_num is None:
                 continue
             image_counter, page_mapping = self._move_page_images(
@@ -256,13 +263,6 @@ class PaddleVLParser:
             return None
         return standard_json
 
-    @staticmethod
-    def _full_image_mapping(image_mapping: dict[int, dict[str, str]]) -> dict[str, str]:
-        merged: dict[str, str] = {}
-        for page_mapping in image_mapping.values():
-            merged.update(page_mapping)
-        return merged
-
     def _normalize_markdown_file(self, *, output_dir: Path, image_mapping: dict[int, dict[str, str]]) -> Path | None:
         md_files = list(output_dir.rglob("*.md"))
         if not md_files:
@@ -282,7 +282,7 @@ class PaddleVLParser:
 
         try:
             content = main_md.read_text(encoding="utf-8", errors="ignore")
-            full_image_mapping = self._full_image_mapping(image_mapping)
+            full_image_mapping = _full_image_mapping(image_mapping)
             new_content = re.sub(
                 r"!\[([^\]]*)\]\(([^)]+)\)",
                 lambda match: self._replace_markdown_image(match, full_image_mapping),
@@ -411,7 +411,7 @@ class PaddleVLParser:
         markdown_text = ""
         asset_base_dir: str | None = None
 
-        if self._looks_like_zip(resp):
+        if _looks_like_zip(resp):
             markdown_text, asset_base_dir = self._handle_zip_response(
                 resp=resp,
                 artifact_root=artifact_root,
@@ -426,7 +426,7 @@ class PaddleVLParser:
                     data = resp.json()
                 except Exception:
                     data = json.loads((resp.text or "").strip() or "{}")
-                markdown_text = self._extract_markdown_from_json(data)
+                markdown_text = _extract_markdown_from_json(data)
             else:
                 markdown_text = resp.text or ""
 

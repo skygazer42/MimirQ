@@ -10,7 +10,7 @@ import {
   Radar,
   ShieldAlert,
   Workflow,
-} from 'lucide-react'
+} from '@/components/icons'
 
 import { EChart } from '@/components/ui/echart'
 import { SalesPanelHeader } from '@/app/knowledge/ingestion/components/sales-panel-header'
@@ -98,15 +98,14 @@ export function SalesAuditSummaryPanel({
       title="入库依据"
       className={cn(
         'relative overflow-hidden rounded-[1.3rem] border border-border/60 bg-background/86 p-2.5 shadow-[0_24px_68px_-44px_rgba(15,23,42,0.24)] md:p-3',
-        'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:28px_28px]'
+        'bg-[linear-gradient(rgba(148,163,184,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(148,163,184,0.08)_1px,transparent_1px)] [background-size:28px_28px]',
       )}
     >
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 opacity-70"
         style={{
-          background:
-            'radial-gradient(circle at 36% 24%, rgba(255,255,255,0.48), transparent 28%)',
+          background: 'radial-gradient(circle at 36% 24%, rgba(255,255,255,0.48), transparent 28%)',
         }}
       />
       <div className="relative z-10 space-y-2">
@@ -114,14 +113,10 @@ export function SalesAuditSummaryPanel({
           <div className="grid gap-1.5 xl:grid-cols-[184px_minmax(0,1fr)] xl:items-stretch">
             <div className="rounded-[0.9rem] border border-border/50 bg-[linear-gradient(180deg,hsl(var(--card)),hsl(var(--muted)/0.3))] px-2.5 py-2">
               <div className="flex items-center justify-between gap-2">
-                <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-                  入库依据
-                </div>
+                <div className="text-[7px] font-medium uppercase tracking-[0.18em] text-muted-foreground">入库依据</div>
                 <FileDigit className="h-3 w-3 text-muted-foreground/65" />
               </div>
-              <div className="mt-1 text-[11px] font-medium text-foreground">
-                核心摘要
-              </div>
+              <div className="mt-1 text-[11px] font-medium text-foreground">核心摘要</div>
               <p className="mt-1 text-[9px] leading-3.5 text-muted-foreground">
                 默认输出脱敏后的客观事实，用于解释入库策略、预检范围与人工阻断来源。
               </p>
@@ -139,7 +134,7 @@ export function SalesAuditSummaryPanel({
                     key={label}
                     className={cn(
                       SALES_PANEL_INSET_CLASS,
-                      'px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]'
+                      'px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.58)]',
                     )}
                   >
                     <div className="flex items-center gap-1.5">
@@ -150,14 +145,9 @@ export function SalesAuditSummaryPanel({
                         {label}
                       </div>
                     </div>
-                    <div className="mt-1 font-mono text-[11px] font-medium leading-none text-foreground">
-                      {value}
-                    </div>
+                    <div className="mt-1 font-mono text-[11px] font-medium leading-none text-foreground">{value}</div>
                     <div
-                      className={cn(
-                        'mt-0.5 text-[7px] leading-3',
-                        index === 2 ? 'text-rose' : 'text-muted-foreground'
-                      )}
+                      className={cn('mt-0.5 text-[7px] leading-3', index === 2 ? 'text-rose' : 'text-muted-foreground')}
                     >
                       {note}
                     </div>
@@ -180,10 +170,7 @@ export function SalesAuditSummaryPanel({
           </section>
 
           <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-            <SalesPanelHeader
-              title="文档长度分布（按字符数）"
-              icon={FileSearch}
-            />
+            <SalesPanelHeader title="文档长度分布（按字符数）" icon={FileSearch} />
             <div className="mt-1.5 grid gap-2 xl:grid-cols-[1fr_148px]">
               <div className="h-[8rem]">
                 <EChart option={lengthOption} />
@@ -195,14 +182,9 @@ export function SalesAuditSummaryPanel({
                   ['P99', lengthPercentiles?.p99 || 0],
                   ['最大值', lengthPercentiles?.p99 || 0],
                 ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="flex items-center justify-between gap-2 text-[8px]"
-                  >
+                  <div key={label} className="flex items-center justify-between gap-2 text-[8px]">
                     <span className="text-muted-foreground">{label}</span>
-                    <span className="font-mono text-[9px] text-foreground">
-                      {value}
-                    </span>
+                    <span className="font-mono text-[9px] text-foreground">{value}</span>
                   </div>
                 ))}
               </div>
@@ -210,29 +192,21 @@ export function SalesAuditSummaryPanel({
           </section>
 
           <section className={cn(SALES_PANEL_CLASS, 'p-2.5')}>
-            <SalesPanelHeader
-              title="复杂度细节"
-              icon={Radar}
-              iconTone="text-accent"
-            />
+            <SalesPanelHeader title="复杂度细节" icon={Radar} iconTone="text-accent" />
             <div className="mt-1.5 space-y-1">
               {costDrivers.map((driver) => (
                 <div
                   key={driver.key}
                   className={cn(
                     SALES_PANEL_INSET_CLASS,
-                    'flex items-center justify-between gap-3 px-2 py-1 text-[8px]'
+                    'flex items-center justify-between gap-3 px-2 py-1 text-[8px]',
                   )}
                 >
                   <div className="flex items-center gap-2">
-                    <span
-                      className={cn('h-2 w-2 rounded-full', getDriverDotTone(driver.key))}
-                    />
+                    <span className={cn('h-2 w-2 rounded-full', getDriverDotTone(driver.key))} />
                     <span className="text-foreground">{driver.label}</span>
                   </div>
-                  <span className="font-mono text-[9px] text-foreground">
-                    {driver.count}
-                  </span>
+                  <span className="font-mono text-[9px] text-foreground">{driver.count}</span>
                 </div>
               ))}
             </div>
@@ -264,8 +238,7 @@ export function SalesAuditSummaryPanel({
                     {item.count.toLocaleString()}
                   </div>
                   <div className="mt-0.5 text-[8px] text-muted-foreground">
-                    占比{' '}
-                    {((item.count / Math.max(1, totalFiles || 1)) * 100).toFixed(1)}%
+                    占比 {((item.count / Math.max(1, totalFiles || 1)) * 100).toFixed(1)}%
                   </div>
                 </button>
               ))}
@@ -282,10 +255,7 @@ export function SalesAuditSummaryPanel({
             />
             <div className="mt-1.5 grid gap-1.5 sm:grid-cols-4">
               {processingLanes.map((lane) => (
-                <div
-                  key={lane.key}
-                  className={cn('rounded-[0.9rem] border px-2 py-1.5', lane.tone)}
-                >
+                <div key={lane.key} className={cn('rounded-[0.9rem] border px-2 py-1.5', lane.tone)}>
                   <div className="text-[8px]">{lane.label}</div>
                   <div className="mt-1 text-center font-mono text-[14px] font-semibold">
                     {lane.count.toLocaleString()}
@@ -319,18 +289,10 @@ export function SalesAuditSummaryPanel({
                 <tbody>
                   {pocCandidates.map((row) => (
                     <tr key={row.id} className="border-t border-border/50">
-                      <td className="px-2 py-1 font-mono text-foreground">
-                        {row.fileName}
-                      </td>
-                      <td className="px-2 py-1 text-muted-foreground">
-                        {row.fileType}
-                      </td>
-                      <td className="px-2 py-1 font-mono text-muted-foreground">
-                        {row.fileSizeLabel}
-                      </td>
-                      <td className="px-2 py-1 text-muted-foreground">
-                        {row.primaryRisk}
-                      </td>
+                      <td className="px-2 py-1 font-mono text-foreground">{row.fileName}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{row.fileType}</td>
+                      <td className="px-2 py-1 font-mono text-muted-foreground">{row.fileSizeLabel}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{row.primaryRisk}</td>
                       <td className="px-2 py-1">
                         <span className="rounded-full border border-border/60 px-1.5 py-0.5 text-[7px] text-foreground">
                           {row.actionLabel}
@@ -364,15 +326,9 @@ export function SalesAuditSummaryPanel({
                 <tbody>
                   {highRiskFiles.map((row) => (
                     <tr key={row.id} className="border-t border-border/50">
-                      <td className="px-2 py-1 font-mono text-foreground">
-                        {row.fileName}
-                      </td>
-                      <td className="px-2 py-1 text-muted-foreground">
-                        {row.primaryRisk}
-                      </td>
-                      <td className="px-2 py-1 text-muted-foreground">
-                        {row.riskDescription}
-                      </td>
+                      <td className="px-2 py-1 font-mono text-foreground">{row.fileName}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{row.primaryRisk}</td>
+                      <td className="px-2 py-1 text-muted-foreground">{row.riskDescription}</td>
                       <td className="px-2 py-1">
                         <button
                           type="button"
@@ -397,9 +353,7 @@ export function SalesAuditSummaryPanel({
                 <FileSearch className="size-3.5" />
               </span>
               <div>
-                <div className="text-[11px] font-semibold text-foreground">
-                  批次数据画像
-                </div>
+                <div className="text-[11px] font-semibold text-foreground">批次数据画像</div>
                 <div className="mt-0.5 text-[9px] text-muted-foreground text-pretty">
                   按 3/1000 抽代表样本，已出现的文件类型每类至少覆盖 1 个
                 </div>
@@ -423,26 +377,18 @@ export function SalesAuditSummaryPanel({
             </div>
             <div className="grid gap-2">
               <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
-                <div className="text-[8px] text-muted-foreground">
-                  预检样本
-                </div>
+                <div className="text-[8px] text-muted-foreground">预检样本</div>
                 <div className="mt-1 text-[18px] font-semibold text-foreground tabular-nums">
                   {sampleTarget || '--'} 个
                 </div>
-                <div className="mt-1 text-[8px] text-muted-foreground">
-                  {sampleTargetDetail}
-                </div>
+                <div className="mt-1 text-[8px] text-muted-foreground">{sampleTargetDetail}</div>
               </div>
               <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5">
-                <div className="text-[8px] text-muted-foreground">
-                  批次体量
-                </div>
+                <div className="text-[8px] text-muted-foreground">批次体量</div>
                 <div className="mt-1 font-mono text-[13px] font-semibold text-foreground tabular-nums">
                   {totalSizeLabel}
                 </div>
-                <div className="mt-1 text-[8px] text-muted-foreground">
-                  {samplePoolLabel}
-                </div>
+                <div className="mt-1 text-[8px] text-muted-foreground">{samplePoolLabel}</div>
               </div>
               <div className="rounded-[1rem] border border-border/45 bg-muted/18 px-3 py-2.5 text-[8px] leading-3.5 text-muted-foreground text-pretty">
                 {imageProxyNote}

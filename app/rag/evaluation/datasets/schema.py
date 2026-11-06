@@ -1,4 +1,3 @@
-
 from typing import Any
 
 EVAL_DATASET_SCHEMA_V1 = "mimirq.eval.dataset.sample.v1"
@@ -23,11 +22,7 @@ def normalize_eval_dataset_sample(sample: dict[str, Any]) -> dict[str, Any]:
     expected_route = _safe_str(payload.get("expected_route"), max_len=64)
     if expected_route is not None and expected_route not in _ROUTES:
         expected_route = None
-    gold_chunk_ids = [
-        str(item).strip()
-        for item in (payload.get("gold_chunk_ids") or [])
-        if str(item or "").strip()
-    ]
+    gold_chunk_ids = [str(item).strip() for item in (payload.get("gold_chunk_ids") or []) if str(item or "").strip()]
 
     return {
         "schema_version": EVAL_DATASET_SCHEMA_V1,
@@ -44,9 +39,7 @@ def normalize_eval_dataset_sample(sample: dict[str, Any]) -> dict[str, Any]:
         "review_status": _safe_str(payload.get("review_status"), max_len=64) or "pending",
         "construction_method": _safe_str(payload.get("construction_method"), max_len=128),
         "parent_sample_ids": [
-            str(item).strip()
-            for item in (payload.get("parent_sample_ids") or [])
-            if str(item or "").strip()
+            str(item).strip() for item in (payload.get("parent_sample_ids") or []) if str(item or "").strip()
         ],
         "critique": dict(payload.get("critique") or {}),
         "notes": _safe_str(payload.get("notes")),

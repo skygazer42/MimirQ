@@ -1,15 +1,15 @@
 # SAML SSO
 
-MimirQ now supports a production-oriented SAML 2.0 ACS flow that terminates in the same app JWT/session model used by password login.
+Ragvia now supports a production-oriented SAML 2.0 ACS flow that terminates in the same app JWT/session model used by password login.
 
 ## Current Flow
 
 1. The IdP POSTs a `SAMLResponse` to `POST /api/saml/acs`.
 2. The Next.js ACS route acts as the browser-facing bridge and forwards the raw assertion to `POST /api/v1/auth/saml/exchange`.
-3. The backend validates the assertion and issues a normal MimirQ `AuthResponse`.
+3. The backend validates the assertion and issues a normal Ragvia `AuthResponse`.
 4. The frontend redirects to `/auth/saml/callback`, which stores the session via `setAuthSession(...)` and returns the user to the requested path.
 
-This keeps browser-facing SAML ingress on the web origin while preserving the backend as the only component that maps identities and signs MimirQ JWTs.
+This keeps browser-facing SAML ingress on the web origin while preserving the backend as the only component that maps identities and signs Ragvia JWTs.
 
 ## Security Checks
 
@@ -22,7 +22,7 @@ The backend exchange rejects the response unless all of the following pass:
 - Subject confirmation recipient match
 - `NotBefore` / `NotOnOrAfter` window validation with bounded clock skew
 - Replay protection on assertion ID / response ID
-- Existing local MimirQ account resolution from `email` or `NameID`
+- Existing local Ragvia account resolution from `email` or `NameID`
 
 ## Configuration
 

@@ -212,18 +212,18 @@ def _run_postgres_job(
         )
         result["job"] = "postgres_maintenance"
         results.append(result)
-        return bool(result.get("ok") is True)
+        return result.get("ok") is True
     except Exception as exc:  # noqa: BLE001
         results.append(_job_error("postgres_maintenance", exc))
         return False
 
 
 def _tenant_ids(args: argparse.Namespace, results: list[dict[str, Any]]) -> tuple[list[UUID], bool]:
-    if bool(args.all_tenants):
+    if args.all_tenants:
         db = _get_session_local()()
         try:
             rows = db.query(_get_tenant_model().id).all()
-            tenant_ids = [row[0] for row in rows if isinstance(row, tuple) and row and isinstance(row[0], UUID)]
+            tenant_ids = [tenant_id for (tenant_id,) in rows if isinstance(tenant_id, UUID)]
             return tenant_ids, True
         except Exception as exc:  # noqa: BLE001
             results.append(_job_error("tenant_list", exc))
@@ -274,7 +274,7 @@ def _run_retention_jobs(
     for tenant_id in tenant_ids:
         db = _get_session_local()()
         try:
-            if bool(args.audit_logs):
+            if args.audit_logs:
                 job_ok = _run_retention_job(
                     _get_audit_retention_runner(),
                     "audit_logs_retention",
@@ -286,7 +286,7 @@ def _run_retention_jobs(
                     results=results,
                 )
                 ok = job_ok and ok
-            if bool(args.regression_runs):
+            if args.regression_runs:
                 job_ok = _run_retention_job(
                     _get_regression_retention_runner(),
                     "regression_runs_retention",
@@ -314,17 +314,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    dry_run = not bool(args.execute)
+    dry_run = not args.execute
     ran_at = datetime.now(timezone.utc)
     results: list[dict[str, Any]] = []
     ok = True
 
-    if bool(args.vacuum) or bool(args.analyze):
+    if args.vacuum or args.analyze:
         ok = _run_postgres_job(args, dry_run=dry_run, ran_at=ran_at, results=results) and ok
-    if bool(args.audit_logs) or bool(args.regression_runs):
+    if args.audit_logs or args.regression_runs:
         ok = _run_retention_jobs(args, dry_run=dry_run, ran_at=ran_at, results=results) and ok
 
-    print(json.dumps({"ok": bool(ok), "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
+    print(json.dumps({"ok": ok, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 0 if ok else 1
 
 

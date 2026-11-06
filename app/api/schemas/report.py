@@ -1,6 +1,5 @@
 """Report-related Pydantic schemas."""
 
-
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -278,9 +277,7 @@ class DatasetReportOut(BaseModel):
     dataset_name: str | None = None
     pipeline_hash: str | None = None
     generated_at: datetime
-    data_provenance: DatasetReportDataProvenanceOut = Field(
-        default_factory=DatasetReportDataProvenanceOut
-    )
+    data_provenance: DatasetReportDataProvenanceOut = Field(default_factory=DatasetReportDataProvenanceOut)
 
     profile: DatasetProfileSummary
     compliance: ComplianceSummary

@@ -1,11 +1,14 @@
 import math
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
 from app.rag.core.filters import match_metadata_filter
 from app.rag.embedding import create_langchain_embeddings_from_config
+
+if TYPE_CHECKING:
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
 
 class QdrantVectorStore:
@@ -18,7 +21,7 @@ class QdrantVectorStore:
     - can later be swapped to a real qdrant-client implementation
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         provider = EmbeddingProviders.PROVIDER_MAP.get(
             (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
         )
@@ -34,7 +37,7 @@ class QdrantVectorStore:
         )
         self.storage: list[tuple[list[float], dict[str, Any]]] = []
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         texts = [d.get("content", "") for d in docs]
         vectors = self.emb.embed_documents(texts)
         ids: list[str] = []
@@ -123,5 +126,5 @@ class QdrantVectorStore:
             )
         ]
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return self.emb

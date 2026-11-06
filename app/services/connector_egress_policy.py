@@ -28,7 +28,7 @@ def _parse_allow_networks(raw: str | None) -> tuple[ipaddress._BaseNetwork, ...]
 
 
 def _normalize_ip_literal(value: str) -> ipaddress._BaseAddress | None:
-    candidate = str(value or "").strip()
+    candidate = value.strip()
     if candidate.startswith("[") and candidate.endswith("]"):
         candidate = candidate[1:-1].strip()
     try:

@@ -9,19 +9,24 @@ import math
 import os
 import threading
 import time
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from app.core.config import settings
 from app.core.constants import EmbeddingProviders
-from app.rag.core.filters import match_metadata_filter
+from app.rag.core.filters import match_metadata_filter as _match_metadata_filter
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
 from app.rag.embedding import create_langchain_embeddings_from_config
 from app.storage.vector.milvus import milvus_store
 from app.storage.vector.pgvector import PGVectorStore
 from app.storage.vector.qdrant import QdrantVectorStore
+
+if TYPE_CHECKING:
+    from langchain_core.documents import Document
+
+    from app.rag.embedding.adapter import LangChainEmbeddingsAdapter
 
 logger = get_logger("storage.vector.factory")
 
@@ -90,11 +95,6 @@ def _get_chroma_cls():
                 "Chroma vector backend requires optional dependencies. "
                 "Install `chromadb` and `langchain-chroma` (preferred) or `langchain-community`."
             ) from exc2
-
-
-def _match_metadata_filter(meta: dict[str, Any], filter_spec: dict[str, Any]) -> bool:
-    """Metadata filter matcher (supports operators)."""
-    return match_metadata_filter(meta, filter_spec)
 
 
 def _tenant_lock_key(tenant_id: UUID | None) -> str:
@@ -189,7 +189,7 @@ def _similarity_hits(
     score_threshold: float,
     allowed: set[str] | None,
     metadata_filter: dict[str, Any] | None,
-    metadata_loader,
+    metadata_loader: Callable[["Document"], dict[str, Any]],
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for doc, score in results:
@@ -211,6 +211,22 @@ def _similarity_hits(
             }
         )
     return out
+
+
+def _document_write_metadata(
+    doc: dict[str, Any], *, document_id: UUID, tenant_id: UUID, chunk_index: int
+) -> dict[str, Any]:
+    """Build the shared FAISS/Chroma document projection before backend encoding."""
+    meta = dict(doc.get("metadata") or {})
+    meta.setdefault("document_id", str(document_id))
+    meta.setdefault("tenant_id", str(tenant_id))
+    meta.setdefault("chunk_index", chunk_index)
+    if meta.get("chunk_id"):
+        meta["chunk_id"] = str(meta.get("chunk_id"))
+    if "img_id" in meta and "image_id" not in meta:
+        meta["image_id"] = meta.get("img_id")
+    meta.setdefault("image_url", meta.get("img_url"))
+    return meta
 
 
 def _docstore_ids_matching_filter(docstore: Any, *, document_id: UUID, metadata_filter: dict[str, Any]) -> list[str]:
@@ -244,7 +260,7 @@ def _chroma_ids_matching_filter(collection: Any, *, document_id: UUID, metadata_
 class BaseVectorStore:
     """Unified interface for future FAISS/Chroma/Memory extensions."""
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         raise NotImplementedError
 
     def search(
@@ -276,14 +292,14 @@ class BaseVectorStore:
         """
         raise NotImplementedError
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         raise NotImplementedError
 
 
 class MilvusVectorStore(BaseVectorStore):
     """Milvus backend wrapper."""
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         return milvus_store.add_documents(docs, document_id, tenant_id)
 
     def search(
@@ -318,14 +334,14 @@ class MilvusVectorStore(BaseVectorStore):
             document_id=document_id, tenant_id=tenant_id, metadata_filter=metadata_filter
         )
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return milvus_store.get_embedding_model()
 
 
 class StubVectorStore(BaseVectorStore):
     """Placeholder implementation for future backends."""
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         raise RuntimeError("Vector backend not implemented")
 
     def search(
@@ -351,7 +367,7 @@ class StubVectorStore(BaseVectorStore):
     ) -> None:
         raise NotImplementedError("Vector backend not implemented")
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         raise RuntimeError("Vector backend does not expose an embedding client")
 
 
@@ -361,7 +377,7 @@ class MemoryVectorStore(BaseVectorStore):
     Uses OpenAI-compatible embeddings (requires EMBEDDING_API_KEY/LLM_API_KEY).
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         provider = EmbeddingProviders.PROVIDER_MAP.get(
             (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
         )
@@ -378,7 +394,7 @@ class MemoryVectorStore(BaseVectorStore):
         self.storage: list[tuple[list[float], dict[str, Any]]] = []
         self._lock = threading.RLock()
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         with self._lock:
             texts = [d.get("content", "") for d in docs]
             vectors = self.emb.embed_documents(texts)
@@ -474,7 +490,7 @@ class MemoryVectorStore(BaseVectorStore):
                 )
             ]
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return self.emb
 
 
@@ -483,7 +499,7 @@ class FAISSVectorStore(BaseVectorStore):
     FAISS backend for single-node/local development with optional persistence.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
         base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
@@ -541,22 +557,13 @@ class FAISSVectorStore(BaseVectorStore):
                     store = None
             return key, store
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         with self._get_tenant_lock(tenant_id):
             texts = [d.get("content", "") for d in docs]
             metadatas = []
             ids = []
             for idx, doc in enumerate(docs):
-                meta = dict(doc.get("metadata") or {})
-                meta.setdefault("document_id", str(document_id))
-                meta.setdefault("tenant_id", str(tenant_id))
-                meta.setdefault("chunk_index", idx)
-                if meta.get("chunk_id"):
-                    meta["chunk_id"] = str(meta.get("chunk_id"))
-                if "img_id" in meta and "image_id" not in meta:
-                    meta["image_id"] = meta.get("img_id")
-                if "image_url" not in meta:
-                    meta.setdefault("image_url", meta.get("img_url"))
+                meta = _document_write_metadata(doc, document_id=document_id, tenant_id=tenant_id, chunk_index=idx)
                 metadatas.append(meta)
                 ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
 
@@ -690,14 +697,14 @@ class FAISSVectorStore(BaseVectorStore):
                 os.makedirs(self.persist_path, exist_ok=True)
                 store.save_local(self.persist_path, index_name=key)
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return self.emb
 
 
 class ChromaVectorStore(BaseVectorStore):
     """Chroma backend persisted to a local path."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
         base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
@@ -741,21 +748,13 @@ class ChromaVectorStore(BaseVectorStore):
                 self.store_by_tenant[key] = store
             return key, store
 
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID):
+    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         with self._get_tenant_lock(tenant_id):
             texts = [d.get("content", "") for d in docs]
             metadatas = []
             ids = []
             for idx, doc in enumerate(docs):
-                meta = dict(doc.get("metadata") or {})
-                meta.setdefault("document_id", str(document_id))
-                meta.setdefault("tenant_id", str(tenant_id))
-                meta.setdefault("chunk_index", idx)
-                if meta.get("chunk_id"):
-                    meta["chunk_id"] = str(meta.get("chunk_id"))
-                if "img_id" in meta and "image_id" not in meta:
-                    meta["image_id"] = meta.get("img_id")
-                meta.setdefault("image_url", meta.get("img_url"))
+                meta = _document_write_metadata(doc, document_id=document_id, tenant_id=tenant_id, chunk_index=idx)
                 metadatas.append(_encode_chroma_metadata(meta))
                 ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
             _key, store = self._get_store(tenant_id)
@@ -856,7 +855,7 @@ class ChromaVectorStore(BaseVectorStore):
             except Exception as exc:
                 raise NotImplementedError("Selective delete is not supported for Chroma backend") from exc
 
-    def get_embedding_client(self):  # noqa: ANN201
+    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
         return self.emb
 
 
@@ -957,6 +956,6 @@ def get_vector_store(*, backend: str | None = None, region: str | None = None) -
         return store
 
 
-def get_embedding_client(*, backend: str | None = None, region: str | None = None):  # noqa: ANN201
+def get_embedding_client(*, backend: str | None = None, region: str | None = None) -> "LangChainEmbeddingsAdapter":
     store = get_vector_store(backend=backend, region=region)
     return store.get_embedding_client()

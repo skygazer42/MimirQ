@@ -335,7 +335,7 @@ class StructuredOutputGenerator:
     Handles mode detection, schema selection, and output parsing.
     """
 
-    def __init__(self, llm: Any = None):
+    def __init__(self, llm: Any = None) -> None:
         """
         Initialize the generator.
 

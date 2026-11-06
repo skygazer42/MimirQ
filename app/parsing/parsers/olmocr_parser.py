@@ -9,7 +9,6 @@ Config via env/.env:
 - OLMOCR_API_URL=http://localhost:2085/convert  (recommended: full endpoint)
 """
 
-
 import json
 import re
 from pathlib import Path
@@ -30,6 +29,15 @@ def _sanitize_run_id(value: str) -> str:
     text = (value or "").strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "olmocr"
     return text
+
+
+def _extract_markdown_from_json(data: Any) -> str:
+    if isinstance(data, dict):
+        for key in ("markdown", "md", "content", "text", "result"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+    return ""
 
 
 class OlmocrParser:
@@ -92,15 +100,6 @@ class OlmocrParser:
             raise last_error
         raise RuntimeError("olmOCR parser requires at least one candidate API URL.")
 
-    @staticmethod
-    def _extract_markdown_from_json(data: Any) -> str:
-        if isinstance(data, dict):
-            for key in ("markdown", "md", "content", "text", "result"):
-                val = data.get(key)
-                if isinstance(val, str) and val.strip():
-                    return val
-        return ""
-
     def parse(
         self,
         file_path: Path,
@@ -130,7 +129,7 @@ class OlmocrParser:
                 data = resp.json()
             except Exception:
                 data = json.loads((resp.text or "").strip() or "{}")
-            markdown_text = self._extract_markdown_from_json(data)
+            markdown_text = _extract_markdown_from_json(data)
         else:
             markdown_text = resp.text or ""
 

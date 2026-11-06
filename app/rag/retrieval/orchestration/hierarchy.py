@@ -265,7 +265,7 @@ def _hierarchy_dedup_limits(top_k: int, overfetch_factor: int) -> tuple[int, int
 def _hierarchy_dedup_candidates(primary_list: list[Document], refill: list[Document] | None) -> list[Document]:
     candidates: list[Document] = list(primary_list)
     if refill:
-        candidates.extend([doc for doc in (refill or []) if doc is not None])
+        candidates.extend(doc for doc in refill if doc is not None)
     return candidates
 
 

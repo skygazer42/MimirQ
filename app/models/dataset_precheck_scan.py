@@ -10,7 +10,6 @@ Heavy per-file details are stored on disk as JSONL under uploads/{tenant}/preche
 and queried on demand (drill-down).
 """
 
-
 import uuid
 
 from sqlalchemy import Column, DateTime, ForeignKeyConstraint, Index, Integer, String, Text, text

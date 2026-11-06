@@ -1,4 +1,4 @@
-# MimirQ HTTP API 参考（导读）
+# Ragvia HTTP API 参考（导读）
 
 本目录提供 **人类可读** 的 API 导览；**完整路径、请求/响应模型** 以 OpenAPI 为准。
 

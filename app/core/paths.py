@@ -11,22 +11,10 @@ from pathlib import Path
 # Project root
 # =============================================================================
 
-def _find_project_root() -> Path:
-    """
-    Find project root.
-
-    Walk upward from this file until a directory containing app/ is found.
-
-    Returns:
-        Project root path.
-    """
-    current = Path(__file__).resolve()
-    # app/core/paths.py -> app/core -> app -> repo root
-    return current.parents[2]
-
 
 # Project root (repo root)
-PROJECT_ROOT: Path = _find_project_root()
+# app/core/paths.py -> app/core -> app -> repo root
+PROJECT_ROOT: Path = Path(__file__).resolve().parents[2]
 
 # App directory (app/)
 APP_DIR: Path = PROJECT_ROOT / "app"
@@ -63,6 +51,7 @@ ALEMBIC_INI: Path = PROJECT_ROOT / "alembic.ini"
 # =============================================================================
 # Path utilities
 # =============================================================================
+
 
 def ensure_dir(path: Path) -> Path:
     """
@@ -179,6 +168,7 @@ def get_relative_path(path: Path) -> str:
 # =============================================================================
 # Environment overrides
 # =============================================================================
+
 
 def _get_path_from_env(env_key: str, default: Path) -> Path:
     """

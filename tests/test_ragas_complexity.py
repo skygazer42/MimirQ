@@ -1,4 +1,3 @@
-
 import datetime as _datetime
 import sys
 from datetime import timezone
@@ -221,9 +220,7 @@ def test_resolve_metrics_uses_aliases_defaults_and_rejects_unknown(
     fake_metrics.ContextPrecision = lambda: _Metric(name="context_precision")
     fake_metrics.IDBasedContextRecall = lambda: _Metric(name="id_based_context_recall")
     fake_metrics.IDBasedContextPrecision = lambda: _Metric(name="id_based_context_precision")
-    fake_metrics.LLMContextPrecisionWithoutReference = lambda: _Metric(
-        name="llm_context_precision_without_reference"
-    )
+    fake_metrics.LLMContextPrecisionWithoutReference = lambda: _Metric(name="llm_context_precision_without_reference")
     monkeypatch.setitem(sys.modules, "ragas.metrics", fake_metrics)
     monkeypatch.setattr(ragas_module, "_resolve_response_relevancy_strictness", lambda: 7)
 
@@ -256,7 +253,7 @@ def test_run_conversation_ragas_evaluation_timeout_falls_back_to_deterministic_p
     )
     db = _RunDB(run, item_model=ragas_module.RagasEvaluationItem)
     monkeypatch.setattr(ragas_module, "SessionLocal", lambda: db, raising=True)
-    monkeypatch.setattr(ragas_module.DatasetService, "ensure_member", lambda *_a, **_k: None, raising=True)
+    monkeypatch.setattr(ragas_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(
         ragas_module,
         "_load_conversation_for_evaluation",

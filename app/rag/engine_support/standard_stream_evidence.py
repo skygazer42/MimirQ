@@ -23,9 +23,7 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
     if runtime.data.temporal_intent_enabled and runtime.data.docs:
         try:
             runtime.data.temporal_intent_meta = runtime.module.detect_temporal_intent(runtime.data.query_for_retrieval)
-            runtime.data.temporal_boost_enabled = bool(
-                getattr(settings, "RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED", True)
-            )
+            runtime.data.temporal_boost_enabled = bool(settings.RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED)
             if (
                 bool(runtime.data.temporal_intent_meta.get("detected"))
                 and bool(runtime.data.temporal_boost_enabled)
@@ -34,7 +32,7 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
                 # Extract candidate document ids (bounded).
                 runtime.data.doc_ids: list[str] = []
                 runtime.data.seen_doc_ids: set[str] = set()
-                runtime.data.max_docs = max(0, int(getattr(settings, "RAG_TEMPORAL_INTENT_MAX_DOCS", 200) or 200))
+                runtime.data.max_docs = max(0, int(settings.RAG_TEMPORAL_INTENT_MAX_DOCS or 200))
                 for runtime.data.d in runtime.data.docs:
                     runtime.data.meta = getattr(runtime.data.d, "metadata", None)
                     runtime.data.meta = runtime.data.meta if isinstance(runtime.data.meta, dict) else {}
@@ -58,8 +56,8 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
                 runtime.data.docs, runtime.data.temporal_recency_meta = runtime.module.apply_recency_boost(
                     runtime.data.docs,
                     updated_ts_by_document_id=runtime.data.updated_ts,
-                    boost_max=float(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX", 0.0) or 0.0),
-                    window_days=int(getattr(settings, "RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS", 180) or 180),
+                    boost_max=float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX or 0.0),
+                    window_days=int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS or 180),
                 )
             else:
                 runtime.data.temporal_recency_meta = {
@@ -119,7 +117,7 @@ async def apply_rail_and_build_citations(runtime: StandardStreamState) -> AsyncG
     )
 
     runtime.data.evidence_span_strict_enabled = bool(
-        bool(getattr(settings, "RAG_EVIDENCE_REQUIRE_SPANS_ENABLED", False))
+        bool(settings.RAG_EVIDENCE_REQUIRE_SPANS_ENABLED)
         or bool(runtime.data.retrieval_contract_policy.get("require_evidence_spans"))
     )
     runtime.data.evidence_span_missing_citations = 0
@@ -150,7 +148,7 @@ async def apply_rail_and_build_citations(runtime: StandardStreamState) -> AsyncG
     # Strict visible-evidence-only grounding treats missing evidence as non-existent:
     # abstain is a normal success path (no error).
     runtime.data.strict_visible = bool(
-        bool(getattr(settings, "RAG_VISIBLE_EVIDENCE_ONLY_ENABLED", False))
+        bool(settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED)
         or bool(runtime.data.visible_evidence_only)
         or bool(runtime.data.retrieval_contract_policy.get("force_visible_evidence_only"))
     )
@@ -193,7 +191,7 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
 
     runtime.data.out_of_scope_guard = runtime.module.maybe_apply_out_of_scope_live_guard(
         query=runtime.data.query_for_retrieval,
-        enabled=bool(getattr(settings, "RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED", False)),
+        enabled=bool(settings.RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED),
         candidate=bool(runtime.data.abstain_triggered or not runtime.data.citations),
         current_triggered=bool(runtime.data.abstain_triggered),
         current_reason=runtime.data.abstain_reason,
@@ -203,10 +201,10 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
             query=runtime.data.query_for_retrieval,
             tenant_id=str(runtime.data.tenant_id or ""),
             dataset_id=str(runtime.data.dataset_id or ""),
-            ruleset_name=(str(getattr(settings, "RAG_OUT_OF_SCOPE_RULESET", "") or "").strip() or None),
+            ruleset_name=(str(settings.RAG_OUT_OF_SCOPE_RULESET or "").strip() or None),
             hyde_query=runtime.data.hyde_text if bool(runtime.data.hyde_used and runtime.data.hyde_text) else None,
-            vector_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD", 0.35) or 0.35),
-            hyde_similarity_threshold=float(getattr(settings, "RAG_OUT_OF_SCOPE_HYDE_THRESHOLD", 0.4) or 0.4),
+            vector_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD or 0.35),
+            hyde_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_HYDE_THRESHOLD or 0.4),
         ),
     )
     runtime.data.abstain_triggered = bool(runtime.data.out_of_scope_guard.get("abstain_triggered"))
@@ -226,9 +224,9 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
         {
             "attempt": int(runtime.data.corrective_attempt_count),
             "retrieval_profile": runtime.data.profile_norm or None,
-            "query_count": int(len(runtime.data.retrieval_queries)),
-            "docs_count": int(len(runtime.data.docs)),
-            "citations_count": int(len(runtime.data.citations)),
+            "query_count": len(runtime.data.retrieval_queries),
+            "docs_count": len(runtime.data.docs),
+            "citations_count": len(runtime.data.citations),
             "abstain_triggered": bool(runtime.data.abstain_triggered),
             "top_relevance_score": round(float(runtime.data.top_rel or 0.0), 3),
         }
@@ -279,7 +277,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
             "unsupported_claims": [],
             "method": "claim_support_ratio",
         }
-        if bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)):
+        if bool(settings.FAITHFULNESS_SCORE_ENABLED):
             runtime.data.evidence_text = "\n".join(
                 [
                     str(getattr(d, "page_content", "") or "")
@@ -287,27 +285,19 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                     if str(getattr(d, "page_content", "") or "").strip()
                 ]
             )
-            runtime.data.max_evidence_chars = max(
-                0, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS", 24_000) or 24_000)
-            )
+            runtime.data.max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000))
             if runtime.data.max_evidence_chars and len(runtime.data.evidence_text) > runtime.data.max_evidence_chars:
                 runtime.data.evidence_text = runtime.data.evidence_text[: runtime.data.max_evidence_chars]
             runtime.data.faithfulness_meta = runtime.module.compute_faithfulness_score(
                 answer=str(runtime.data.full_response or ""),
                 evidence_text=runtime.data.evidence_text,
-                max_claims=max(1, int(getattr(settings, "FAITHFULNESS_SCORE_MAX_CLAIMS", 24) or 24)),
-                verifier_mode=(
-                    str(getattr(settings, "RAG_CLAIM_VERIFIER_MODE", "token_overlap") or "token_overlap")
-                    .strip()
-                    .lower()
-                ),
-                verifier_enable_contradiction_check=bool(
-                    getattr(settings, "RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK", True)
-                ),
-                use_nli_fallback=bool(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_ENABLED", False)),
-                nli_provider=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_PROVIDER", "none") or "none"),
-                nli_model_name=str(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_MODEL", "") or ""),
-                nli_timeout_sec=float(getattr(settings, "RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC", 8) or 8),
+                max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS or 24)),
+                verifier_mode=(str(settings.RAG_CLAIM_VERIFIER_MODE or "token_overlap").strip().lower()),
+                verifier_enable_contradiction_check=bool(settings.RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK),
+                use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
+                nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
+                nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+                nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
             )
         runtime.data.confidence_meta = runtime.module.compute_confidence_score(
             faithfulness_score=runtime.data.faithfulness_meta.get("score"),
@@ -391,7 +381,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                     "kg_query_expansion_used": bool(runtime.data.kg_query_expansion_used),
                     "kg_query_expansion_entities_total": int(runtime.data.kg_query_expansion_entities_total),
                     "kg_query_expansion_entities_selected": int(runtime.data.kg_query_expansion_entities_selected),
-                    "kg_query_expansion_query_count": int(len(runtime.data.kg_query_expansion_queries)),
+                    "kg_query_expansion_query_count": len(runtime.data.kg_query_expansion_queries),
                     "kg_query_expansion_elapsed_sec": round(float(runtime.data.kg_query_expansion_elapsed), 3),
                     "kg_query_expansion_error": runtime.data.kg_query_expansion_error,
                     "kg_chunks_injected": int(runtime.data.kg_chunks_injected or 0),
@@ -427,7 +417,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                         runtime.data.vision_generation_meta.get("returned_images") or 0
                     ),
                     "vision_generation_model": runtime.data.vision_generation_meta.get("model"),
-                    "faithfulness_score_enabled": bool(getattr(settings, "FAITHFULNESS_SCORE_ENABLED", True)),
+                    "faithfulness_score_enabled": bool(settings.FAITHFULNESS_SCORE_ENABLED),
                     "faithfulness_score_method": str(
                         runtime.data.faithfulness_meta.get("method") or "claim_support_ratio"
                     ),
@@ -442,9 +432,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                     "confidence_reasons": list(runtime.data.confidence_meta.get("reasons") or []),
                     "sentence_citations_count": 0,
                     "sentence_citations": [],
-                    "sentence_citations_inline_enabled": bool(
-                        getattr(settings, "SENTENCE_CITATIONS_INLINE_ENABLED", False)
-                    ),
+                    "sentence_citations_inline_enabled": bool(settings.SENTENCE_CITATIONS_INLINE_ENABLED),
                     "sentence_citations_inline_used": False,
                     "sentence_citations_inline_count": 0,
                     "abstain_enabled": bool(runtime.data.abstain_enabled),
@@ -499,7 +487,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                 answer=str(runtime.data.full_response or ""),
                 contexts=[str(getattr(d, "page_content", "") or "") for d in (runtime.data.docs or [])],
                 retrieval_mode=str(runtime.data.mode_used or "") or None,
-                citations_count=int(len(runtime.data.citations or [])),
+                citations_count=len(runtime.data.citations or []),
             )
         except Exception as exc:
             runtime.module.logger.debug(runtime.module._RAG_ENGINE_FALLBACK_LOG_MESSAGE, exc)
@@ -510,6 +498,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
 async def recall_kg_context(runtime: StandardStreamState) -> None:
     # Step 2: Additional KG event recall (optional).
     runtime.data.kg_context = ""
+    runtime.data.kg_context_failure = None
     if (
         (not runtime.data.strict_visible)
         and settings.KG_ENABLED
@@ -518,11 +507,20 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
         and runtime.data.document_ids
     ):
         try:
-            runtime.data.kg_result = runtime.data.kg_result_cached or await runtime.module.kg_search(
-                query=runtime.data.question,
-                tenant_id=runtime.data.tenant_id,
-                document_ids=runtime.data.document_ids,
-            )
+            kg_expansion = getattr(getattr(runtime.data, "query_plan", None), "kg", None)
+            if kg_expansion is not None and kg_expansion.failure is not None:
+                runtime.data.kg_context_failure = kg_expansion.failure
+                runtime.data.kg_result = None
+            elif kg_expansion is not None and kg_expansion.response is not None:
+                runtime.data.kg_result = kg_expansion.response
+            elif runtime.data.kg_result_cached is not None:
+                runtime.data.kg_result = runtime.data.kg_result_cached
+            else:
+                runtime.data.kg_result = await runtime.module.kg_search(
+                    query=runtime.data.question,
+                    tenant_id=runtime.data.tenant_id,
+                    document_ids=runtime.data.document_ids,
+                )
             runtime.data.events = (runtime.data.kg_result or {}).get("events") or []
             if runtime.data.events:
                 runtime.data.parts = []
@@ -535,7 +533,7 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
                         f"[Event {runtime.data.idx}] {runtime.data.title}\n{runtime.data.summary}"
                     )
                 runtime.data.kg_context = "\n\n".join(runtime.data.parts)
-                runtime.data.max_kg_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_KG_TOKENS", 0) or 0))
+                runtime.data.max_kg_tokens = max(0, int(settings.RAG_CONTEXT_MAX_KG_TOKENS or 0))
                 if runtime.data.max_kg_tokens:
                     runtime.data.kg_context = runtime.module.truncate(
                         runtime.data.kg_context,
@@ -546,8 +544,9 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
                     and len(runtime.data.kg_context) > settings.RAG_CONTEXT_MAX_KG_CHARS
                 ):
                     runtime.data.kg_context = runtime.data.kg_context[: settings.RAG_CONTEXT_MAX_KG_CHARS] + "..."
-        except Exception:
+        except Exception as exc:
             runtime.data.kg_context = ""
+            runtime.data.kg_context_failure = exc
 
     # Step 3: Build context (document chunks + optional KG events).
     runtime.data.chunk_context = ""
@@ -641,8 +640,8 @@ async def build_chunk_context(runtime: StandardStreamState) -> None:
         runtime.data.context_docs = runtime.data.docs
     runtime.data.max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
     runtime.data.max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
-    runtime.data.max_per_chunk_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_TOKENS_PER_CHUNK", 0) or 0))
-    runtime.data.max_total_tokens = max(0, int(getattr(settings, "RAG_CONTEXT_MAX_TOTAL_TOKENS", 0) or 0))
+    runtime.data.max_per_chunk_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK or 0))
+    runtime.data.max_total_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS or 0))
     runtime.data.total_chars = 0
     runtime.data.total_tokens = 0
     runtime.data.context_parts = []
@@ -671,7 +670,7 @@ async def join_context_sections(runtime: StandardStreamState) -> None:
 def _post_rerank_pipeline_summary() -> list[dict[str, Any]]:
     summary = []
     try:
-        raw_pipeline = str(getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE", "") or "").strip()
+        raw_pipeline = str(settings.EVIDENCE_POST_RERANK_PIPELINE or "").strip()
         pipeline = json.loads(raw_pipeline) if raw_pipeline else []
         if not isinstance(pipeline, list):
             return summary
@@ -748,7 +747,7 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
                 "reranker_provider": str(runtime.data.rerank_provider or ""),
                 "reranker_tier": runtime.module.describe_reranker_provider(
                     str(runtime.data.rerank_provider or ""),
-                    provider_name=str(getattr(settings, "COLBERT_RERANK_PROVIDER", "deterministic") or "deterministic"),
+                    provider_name=str(settings.COLBERT_RERANK_PROVIDER or "deterministic"),
                 ).get("tier"),
                 "reranker_top_n": int(runtime.data.rerank_top_n),
                 "visible_evidence_only": bool(runtime.data.visible_evidence_only),
@@ -756,24 +755,18 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
                 "must_recall_requested": bool(runtime.data.must_recall),
                 "must_recall_expected_source_keys": list(runtime.data.must_recall_expected_source_keys or []),
                 "must_recall_required_anchor_fields": list(runtime.data.must_recall_required_anchor_fields or []),
-                "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
-                "bm25_enabled": bool(getattr(settings, "BM25_INDEX_ENABLED", False)),
-                "lexical_enabled": bool(getattr(settings, "LEXICAL_DB_TRGM_ENABLED", False)),
-                "sparse_enabled": bool(getattr(settings, "SPARSE_RETRIEVAL_ENABLED", False)),
-                "sparse_provider": str(getattr(settings, "SPARSE_RETRIEVAL_PROVIDER", "") or ""),
-                "sparse_index_persist_enabled": bool(
-                    getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", False)
-                ),
-                "colbert_enabled": bool(getattr(settings, "COLBERT_RETRIEVAL_ENABLED", False)),
-                "colbert_provider": str(getattr(settings, "COLBERT_RETRIEVAL_PROVIDER", "") or ""),
-                "colbert_index_persist_enabled": bool(
-                    getattr(settings, "COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED", False)
-                ),
-                "colbert_max_docs": int(getattr(settings, "COLBERT_RETRIEVAL_MAX_DOCS", 0) or 0),
-                "parent_child_auto_merge_enabled": bool(
-                    getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)
-                ),
-                "parent_child_auto_merge_mode": str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "") or ""),
+                "vector_backend": str(settings.VECTOR_BACKEND or ""),
+                "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
+                "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
+                "sparse_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
+                "sparse_provider": str(settings.SPARSE_RETRIEVAL_PROVIDER or ""),
+                "sparse_index_persist_enabled": bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED),
+                "colbert_enabled": bool(settings.COLBERT_RETRIEVAL_ENABLED),
+                "colbert_provider": str(settings.COLBERT_RETRIEVAL_PROVIDER or ""),
+                "colbert_index_persist_enabled": bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED),
+                "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0),
+                "parent_child_auto_merge_enabled": bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED),
+                "parent_child_auto_merge_mode": str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or ""),
                 "kg_query_expansion_enabled": bool(runtime.data.kg_query_expansion_enabled),
                 "kg_chunk_injection_enabled": bool(runtime.data.kg_chunk_injection_enabled),
                 "kg_chunk_injection_max_chunks": int(runtime.data.kg_chunk_injection_max_chunks_i or 0),
@@ -782,12 +775,10 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
                 "kg_chunk_boost_max_promoted": runtime.data.kg_chunk_boost_meta.get("max_promoted"),
                 "kg_chunk_boost_promoted": int(runtime.data.kg_chunk_boost_meta.get("promoted", 0) or 0),
                 "kg_chunk_boost_top_changed": bool(runtime.data.kg_chunk_boost_meta.get("top_changed")),
-                "evidence_post_rerank_enabled": bool(getattr(settings, "EVIDENCE_POST_RERANK_ENABLED", False)),
-                "evidence_post_rerank_provider": str(getattr(settings, "EVIDENCE_POST_RERANK_PROVIDER", "") or ""),
-                "evidence_post_rerank_top_n": int(getattr(settings, "EVIDENCE_POST_RERANK_TOP_N", 0) or 0),
-                "evidence_post_rerank_pipeline_enabled": bool(
-                    getattr(settings, "EVIDENCE_POST_RERANK_PIPELINE_ENABLED", False)
-                ),
+                "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
+                "evidence_post_rerank_provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or ""),
+                "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
+                "evidence_post_rerank_pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
                 "evidence_post_rerank_pipeline": runtime.data.pipe_summary,
                 "multi_query": {
                     "enabled": bool(runtime.data.mq_enabled),
@@ -836,7 +827,7 @@ async def build_rag_trace_payload(runtime: StandardStreamState) -> None:
         "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context or ""),
         **runtime.module.compute_context_cliff_metrics(
             context_tokens=runtime.module.num_tokens_from_string(runtime.data.context or ""),
-            threshold_tokens=int(getattr(settings, "RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS", 2500) or 2500),
+            threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS or 2500),
         ),
         "citations_count": len(runtime.data.citations),
         "context_evidence": {
@@ -884,14 +875,14 @@ async def build_rag_trace_payload(runtime: StandardStreamState) -> None:
             "kg_query_expansion_used": bool(runtime.data.kg_query_expansion_used),
             "kg_query_expansion_entities_total": int(runtime.data.kg_query_expansion_entities_total),
             "kg_query_expansion_entities_selected": int(runtime.data.kg_query_expansion_entities_selected),
-            "kg_query_expansion_query_count": int(len(runtime.data.kg_query_expansion_queries)),
+            "kg_query_expansion_query_count": len(runtime.data.kg_query_expansion_queries),
             "kg_query_expansion_elapsed_sec": round(float(runtime.data.kg_query_expansion_elapsed), 3),
             "kg_query_expansion_error": runtime.data.kg_query_expansion_error,
             "hyde_enabled": bool(runtime.data.hyde_enabled),
             "hyde_used": bool(runtime.data.hyde_used),
             "hyde_elapsed_sec": round(runtime.data.hyde_elapsed, 3),
             "hyde_model_used": runtime.data.hyde_model_used,
-            "decompose_enabled": bool(runtime.data.dq_enabled),
+            "decompose_enabled": bool(runtime.data.decompose_enabled),
             "decompose_used": bool(runtime.data.decompose_used),
             "decompose_count": len(runtime.data.sub_questions),
             "decompose_elapsed_sec": round(runtime.data.decompose_elapsed, 3),

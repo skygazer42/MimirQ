@@ -1,11 +1,11 @@
-import {themes as prismThemes} from 'prism-react-renderer';
-import type {Config} from '@docusaurus/types';
-import type * as Preset from '@docusaurus/preset-classic';
+import { themes as prismThemes } from 'prism-react-renderer'
+import type { Config } from '@docusaurus/types'
+import type * as Preset from '@docusaurus/preset-classic'
 
 const config: Config = {
-  title: 'MimirQ Docs',
+  title: 'Ragvia Docs',
   tagline: '可控、可观测、可回归的企业知识能力层',
-  favicon: 'img/favicon.ico',
+  favicon: 'favicon.svg',
 
   url: 'https://skygazer42.github.io',
   baseUrl: '/MimirQ/handbook/',
@@ -15,7 +15,7 @@ const config: Config = {
 
   trailingSlash: false,
 
-  staticDirectories: ['static', '../docs/images'],
+  staticDirectories: ['static', '../docs/images', '../web/public/brand/ragvia'],
 
   onBrokenLinks: 'throw',
 
@@ -53,7 +53,7 @@ const config: Config = {
           path: 'docs',
           routeBasePath: 'docs',
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/skygazer42/MimirQ/tree/main/docs-site/',
+          editUrl: 'https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui/docs-site/',
         },
         blog: false,
         theme: {
@@ -64,12 +64,12 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'app-icon.png',
     navbar: {
-      title: 'MimirQ',
       logo: {
-        alt: 'MimirQ',
-        src: 'img/mimirq-logo-image2-badge.png',
+        alt: 'Ragvia',
+        src: 'logo.svg',
+        srcDark: 'logo-inverse.svg',
       },
       items: [
         {
@@ -89,9 +89,9 @@ const config: Config = {
           position: 'left',
           label: '开发者资源',
           items: [
-            {to: '/docs/backend/welcome', label: '后端契约'},
-            {to: '/docs/frontend/welcome', label: '前端路由'},
-            {to: '/docs/integration/welcome', label: '集成与联调'},
+            { to: '/docs/backend/welcome', label: '后端契约' },
+            { to: '/docs/frontend/welcome', label: '前端路由' },
+            { to: '/docs/integration/welcome', label: '集成与联调' },
           ],
         },
         {
@@ -110,7 +110,7 @@ const config: Config = {
           position: 'right',
         },
         {
-          href: 'https://github.com/skygazer42/MimirQ',
+          href: 'https://github.com/skygazer42/MimirQ/tree/feat/ragvia-ui',
           label: 'GitHub',
           position: 'right',
         },
@@ -123,7 +123,7 @@ const config: Config = {
     },
     footer: {
       style: 'light',
-      copyright: `© ${new Date().getFullYear()} MimirQ · 可控、可观测、可回归`,
+      copyright: `© ${new Date().getFullYear()} Ragvia · 可控、可观测、可回归`,
     },
     tableOfContents: {
       minHeadingLevel: 2,
@@ -134,6 +134,6 @@ const config: Config = {
       darkTheme: prismThemes.dracula,
     },
   } satisfies Preset.ThemeConfig,
-};
+}
 
-export default config;
+export default config

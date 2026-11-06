@@ -2,14 +2,15 @@
  * Dataset, reporting, and analysis types re-exported by `@/types`.
  */
 
+import type { DocumentFolderTreeResponse, DocumentPipelineOptions } from './backend'
 import type { JsonObject, PermissionEnum } from './common'
-import type { DocumentFolderTreeResponse } from './documents'
 import type { components } from './openapi'
-import type { DocumentPipelineOptions, IngestionPolicy } from './processing'
+import type { IngestionPolicy } from './processing'
+import type { RAGConfig } from './settings'
 
 // ==================== 数据集相关类型 ====================
 
-export interface DatasetEmbeddingDefaults {
+export type DatasetEmbeddingDefaults = {
   provider?: string | null
   model?: string | null
   api_base?: string | null
@@ -17,7 +18,26 @@ export interface DatasetEmbeddingDefaults {
 
 export type DatasetRagDefaults = components['schemas']['DatasetRAGDefaults']
 
-export interface Dataset {
+// The workbench combines system RAG settings with these dataset-only overrides.
+export type DatasetRagViewConfig = RAGConfig &
+  Pick<
+    DatasetRagDefaults,
+    | 'retrieval_profile'
+    | 'retrieval_mode'
+    | 'retrieval_contract_mode'
+    | 'alpha'
+    | 'fusion_strategy'
+    | 'fusion_budgets'
+    | 'fusion_min_scores'
+    | 'fusion_weights'
+    | 'enable_weight_rerank'
+    | 'vector_weight'
+    | 'keyword_weight'
+    | 'mmr_lambda'
+    | 'visible_evidence_only'
+  >
+
+export type Dataset = {
   id: string
   tenant_id: string
   name: string
@@ -33,7 +53,7 @@ export interface Dataset {
   operational_status?: DatasetOperationalStatus | null
 }
 
-export interface DatasetCreate {
+export type DatasetCreate = {
   name: string
   description?: string | null
   permission: PermissionEnum
@@ -44,7 +64,7 @@ export interface DatasetCreate {
   pipeline?: DocumentPipelineOptions | null
 }
 
-export interface DatasetUpdate {
+export type DatasetUpdate = {
   name?: string | null
   description?: string | null
   permission?: PermissionEnum | null
@@ -57,7 +77,7 @@ export interface DatasetUpdate {
 
 export type DatasetOperationalStatus = 'active' | 'anomaly' | 'pending' | 'testing'
 
-export interface DatasetIngestionSummary {
+export type DatasetIngestionSummary = {
   total_documents: number
   by_status?: Record<string, number>
   total_chunks: number
@@ -66,19 +86,19 @@ export interface DatasetIngestionSummary {
   last_processed_at?: string | null
 }
 
-export interface DatasetListFacets {
+export type DatasetListFacets = {
   scope_total: number
   filtered_total: number
   status_counts?: Record<string, number>
 }
 
-export interface DatasetListResponse {
+export type DatasetListResponse = {
   total: number
   items: Dataset[]
   facets?: DatasetListFacets | null
 }
 
-export interface DatasetCategoryNode {
+export type DatasetCategoryNode = {
   id: string
   name: string
   parent_id?: string | null
@@ -88,28 +108,28 @@ export interface DatasetCategoryNode {
   children?: DatasetCategoryNode[]
 }
 
-export interface DatasetCategoryTreeResponse {
+export type DatasetCategoryTreeResponse = {
   total: number
   items: DatasetCategoryNode[]
 }
 
-export interface DatasetCategoryCreate {
+export type DatasetCategoryCreate = {
   name: string
   parent_id?: string | null
   sort_order?: number | null
 }
 
-export interface DatasetCategoryUpdate {
+export type DatasetCategoryUpdate = {
   name?: string | null
   sort_order?: number | null
 }
 
-export interface DatasetCategoryMoveRequest {
+export type DatasetCategoryMoveRequest = {
   parent_id?: string | null
   sort_order?: number | null
 }
 
-export interface DatasetCategoryOut {
+export type DatasetCategoryOut = {
   id: string
   tenant_id: string
   name: string
@@ -119,16 +139,16 @@ export interface DatasetCategoryOut {
   updated_at?: string | null
 }
 
-export interface DatasetCategoryAssignmentRequest {
+export type DatasetCategoryAssignmentRequest = {
   category_ids?: string[]
 }
 
-export interface DatasetCategoryAssignmentResponse {
+export type DatasetCategoryAssignmentResponse = {
   dataset_id: string
   category_ids?: string[]
 }
 
-export interface DatasetIngestionStats {
+export type DatasetIngestionStats = {
   dataset_id: string
   total_documents: number
   by_status?: Record<string, number>
@@ -138,7 +158,7 @@ export interface DatasetIngestionStats {
   last_processed_at?: string | null
 }
 
-export interface DatasetHealthIngestionSummary {
+export type DatasetHealthIngestionSummary = {
   total_documents: number
   by_status?: Record<string, number>
   pending: number
@@ -151,19 +171,19 @@ export interface DatasetHealthIngestionSummary {
 
 export type DatasetHealthResponse = import('./backend').DatasetHealthResponse
 
-export interface DatasetReportCompliance {
+export type DatasetReportCompliance = {
   pii_hits_total: Record<string, number>
   secrets_hits_total: Record<string, number>
   quarantined_documents: number
   failed_documents: number
 }
 
-export interface DatasetReportPipelineVersion {
+export type DatasetReportPipelineVersion = {
   pipeline_hash: string
   documents: number
 }
 
-export interface DatasetReportConnectorRun {
+export type DatasetReportConnectorRun = {
   id: string
   connector_id: string
   status: string
@@ -173,14 +193,14 @@ export interface DatasetReportConnectorRun {
   stats: Record<string, unknown>
 }
 
-export interface DatasetReportDataProvenance {
+export type DatasetReportDataProvenance = {
   source: string
   mocked: boolean
   generated_by?: string | null
   sections: Record<string, string>
 }
 
-export interface DatasetGovernanceMetrics {
+export type DatasetGovernanceMetrics = {
   total_documents: number
   used_documents: number
   truncated: boolean
@@ -192,7 +212,7 @@ export interface DatasetGovernanceMetrics {
   rule_packs_docs: Record<string, number>
 }
 
-export interface DatasetGovernanceAudit {
+export type DatasetGovernanceAudit = {
   total_documents: number
   used_documents: number
   truncated: boolean
@@ -222,7 +242,7 @@ export interface DatasetGovernanceAudit {
   code_lines_stripped_total: number
 }
 
-export interface DatasetRetrievalAuditGate {
+export type DatasetRetrievalAuditGate = {
   name: string
   status: string
   metrics: Record<string, unknown>
@@ -231,7 +251,7 @@ export interface DatasetRetrievalAuditGate {
   source?: string | null
 }
 
-export interface DatasetRetrievalAudit {
+export type DatasetRetrievalAudit = {
   status: string
   plugin_refs: string[]
   plugin_package_hashes: string[]
@@ -241,7 +261,7 @@ export interface DatasetRetrievalAudit {
   recommended_next_action?: string | null
 }
 
-export interface DatasetReport {
+export type DatasetReport = {
   dataset_id: string
   dataset_name?: string | null
   pipeline_hash?: string | null
@@ -258,7 +278,7 @@ export interface DatasetReport {
   retrieval_audit?: DatasetRetrievalAudit | null
 }
 
-export interface DatasetConfigBundle {
+export type DatasetConfigBundle = {
   default_parser_backend?: string | null
   default_chunk_strategy?: string | null
   rag_defaults?: DatasetRagDefaults | null
@@ -271,7 +291,7 @@ export interface DatasetConfigBundle {
   workflow_layout?: Record<string, unknown> | null
 }
 
-export interface DatasetConfigExport {
+export type DatasetConfigExport = {
   version: string
   dataset_id: string
   name: string
@@ -279,12 +299,12 @@ export interface DatasetConfigExport {
   config: DatasetConfigBundle
 }
 
-export interface DatasetConfigImportRequest {
+export type DatasetConfigImportRequest = {
   config: DatasetConfigBundle
   replace: boolean
 }
 
-export interface DatasetCloneRequest {
+export type DatasetCloneRequest = {
   name: string
   description?: string | null
   copy_permission: boolean
@@ -295,14 +315,14 @@ export interface DatasetCloneRequest {
 
 export type DatasetProfileFindingSeverity = 'info' | 'warning' | 'error'
 
-export interface DatasetProfileHistogramBin {
+export type DatasetProfileHistogramBin = {
   label: string
   min?: number | null
   max?: number | null
   count: number
 }
 
-export interface DatasetProfilePercentiles {
+export type DatasetProfilePercentiles = {
   p25: number
   p50: number
   p75: number
@@ -310,13 +330,13 @@ export interface DatasetProfilePercentiles {
   p99: number
 }
 
-export interface DatasetProfilePdfScanStats {
+export type DatasetProfilePdfScanStats = {
   scanned: number
   not_scanned: number
   unknown: number
 }
 
-export interface DatasetProfileParsingProvenanceStats {
+export type DatasetProfileParsingProvenanceStats = {
   docs_with_provenance: number
   by_resolved_backend: Record<string, number>
   fallback_docs: number
@@ -325,7 +345,7 @@ export interface DatasetProfileParsingProvenanceStats {
 
 export type DatasetProfileTargetCheckStatus = 'pass' | 'warn' | 'fail'
 
-export interface DatasetProfileTargetCheck {
+export type DatasetProfileTargetCheck = {
   key: string
   label: string
   status: DatasetProfileTargetCheckStatus
@@ -335,7 +355,7 @@ export interface DatasetProfileTargetCheck {
   suggestions: string[]
 }
 
-export interface DatasetProfileFindingSummary {
+export type DatasetProfileFindingSummary = {
   key: string
   label: string
   severity: DatasetProfileFindingSeverity
@@ -343,7 +363,7 @@ export interface DatasetProfileFindingSummary {
   description?: string | null
 }
 
-export interface DatasetProfileScanRunSummary {
+export type DatasetProfileScanRunSummary = {
   id: string
   kind: string
   status: string
@@ -355,7 +375,7 @@ export interface DatasetProfileScanRunSummary {
   error_message?: string | null
 }
 
-export interface DatasetProfileSummary {
+export type DatasetProfileSummary = {
   dataset_id: string
   generated_at: string
 
@@ -397,7 +417,7 @@ export interface DatasetProfileSummary {
   latest_scan_run?: DatasetProfileScanRunSummary | null
 }
 
-export interface DatasetProfileDocumentOut {
+export type DatasetProfileDocumentOut = {
   id: string
   dataset_id?: string | null
   filename: string
@@ -414,17 +434,17 @@ export interface DatasetProfileDocumentOut {
   preview_truncated?: boolean
 }
 
-export interface DatasetProfileFindingListResponse {
+export type DatasetProfileFindingListResponse = {
   total: number
   items: DatasetProfileDocumentOut[]
 }
 
-export interface DatasetProfileDocumentListResponse {
+export type DatasetProfileDocumentListResponse = {
   total: number
   items: DatasetProfileDocumentOut[]
 }
 
-export interface DatasetProfileScanRunCreateRequest {
+export type DatasetProfileScanRunCreateRequest = {
   backfill_pdf_quality?: boolean
   backfill_text_quality?: boolean
   backfill_chunk_stats?: boolean
@@ -432,7 +452,7 @@ export interface DatasetProfileScanRunCreateRequest {
   max_documents?: number | null
 }
 
-export interface DatasetProfileScanRunOut {
+export type DatasetProfileScanRunOut = {
   id: string
   tenant_id: string
   dataset_id: string
@@ -449,7 +469,7 @@ export interface DatasetProfileScanRunOut {
   updated_at?: string | null
 }
 
-export interface DatasetProfileScanRunListResponse {
+export type DatasetProfileScanRunListResponse = {
   total: number
   items: DatasetProfileScanRunOut[]
 }
@@ -458,14 +478,14 @@ export interface DatasetProfileScanRunListResponse {
 
 export type DatasetPrecheckFindingSeverity = 'info' | 'warning' | 'error'
 
-export interface DatasetPrecheckHistogramBin {
+export type DatasetPrecheckHistogramBin = {
   label: string
   min?: number | null
   max?: number | null
   count: number
 }
 
-export interface DatasetPrecheckPercentiles {
+export type DatasetPrecheckPercentiles = {
   p25: number
   p50: number
   p75: number
@@ -473,13 +493,13 @@ export interface DatasetPrecheckPercentiles {
   p99: number
 }
 
-export interface DatasetPrecheckPdfScanStats {
+export type DatasetPrecheckPdfScanStats = {
   scanned: number
   not_scanned: number
   unknown: number
 }
 
-export interface DatasetPrecheckPdfPageBreakdown {
+export type DatasetPrecheckPdfPageBreakdown = {
   page_count: number
   sampled_pages: number
   scanned_pages: number
@@ -490,7 +510,7 @@ export interface DatasetPrecheckPdfPageBreakdown {
   low_density_ratio: number
 }
 
-export interface DatasetPrecheckSpreadsheetStats {
+export type DatasetPrecheckSpreadsheetStats = {
   row_count: number
   col_count: number
   sheet_count: number
@@ -499,7 +519,7 @@ export interface DatasetPrecheckSpreadsheetStats {
   estimated_cols: boolean
 }
 
-export interface DatasetPrecheckMatchSample {
+export type DatasetPrecheckMatchSample = {
   kind: string
   masked: string
   context: string
@@ -507,7 +527,7 @@ export interface DatasetPrecheckMatchSample {
   end?: number | null
 }
 
-export interface DatasetPrecheckFindingSummary {
+export type DatasetPrecheckFindingSummary = {
   key: string
   label: string
   severity: DatasetPrecheckFindingSeverity
@@ -515,7 +535,7 @@ export interface DatasetPrecheckFindingSummary {
   description?: string | null
 }
 
-export interface DatasetPrecheckSummary {
+export type DatasetPrecheckSummary = {
   dataset_id: string
   scan_run_id: string
   generated_at: string
@@ -539,7 +559,7 @@ export interface DatasetPrecheckSummary {
   embedding_advisories?: DatasetPrecheckEmbeddingAdvisory[] | null
 }
 
-export interface DatasetPrecheckFileOut {
+export type DatasetPrecheckFileOut = {
   name: string
   file_type: string
   file_size: number
@@ -562,12 +582,12 @@ export interface DatasetPrecheckFileOut {
   reviewed_by?: string | null
 }
 
-export interface DatasetPrecheckFindingListResponse {
+export type DatasetPrecheckFindingListResponse = {
   total: number
   items: DatasetPrecheckFileOut[]
 }
 
-export interface DatasetPrecheckScanRunCreateRequest {
+export type DatasetPrecheckScanRunCreateRequest = {
   root_path: string
   max_files?: number | null
   enable_pdf_quality?: boolean
@@ -602,7 +622,7 @@ export interface DatasetPrecheckScanRunCreateRequest {
   reuse_from_scan_run_id?: string | null
 }
 
-export interface DatasetPrecheckScanRunOut {
+export type DatasetPrecheckScanRunOut = {
   id: string
   tenant_id: string
   dataset_id: string
@@ -620,12 +640,12 @@ export interface DatasetPrecheckScanRunOut {
   updated_at?: string | null
 }
 
-export interface DatasetPrecheckScanRunListResponse {
+export type DatasetPrecheckScanRunListResponse = {
   total: number
   items: DatasetPrecheckScanRunOut[]
 }
 
-export interface DatasetPrecheckSamplesResponse {
+export type DatasetPrecheckSamplesResponse = {
   requested: number
   strata_count: number
   representative: DatasetPrecheckFileOut[]
@@ -634,30 +654,30 @@ export interface DatasetPrecheckSamplesResponse {
   top_long_text: DatasetPrecheckFileOut[]
 }
 
-export interface DatasetPrecheckSampleReviewPatchRequest {
+export type DatasetPrecheckSampleReviewPatchRequest = {
   file_name: string
   disposition: 'approved' | 'manual'
 }
 
-export interface DatasetPrecheckSampleReviewOut {
+export type DatasetPrecheckSampleReviewOut = {
   file_name: string
   review_disposition: 'approved' | 'manual'
   reviewed_at: string
   reviewed_by?: string | null
 }
 
-export interface DatasetPrecheckNearDupCluster {
+export type DatasetPrecheckNearDupCluster = {
   id: string
   members: string[]
 }
 
-export interface DatasetPrecheckNearDupPair {
+export type DatasetPrecheckNearDupPair = {
   a: string
   b: string
   distance: number
 }
 
-export interface DatasetPrecheckNearDupResponse {
+export type DatasetPrecheckNearDupResponse = {
   threshold: number
   max_pairs: number
   pairs_returned: number
@@ -666,14 +686,14 @@ export interface DatasetPrecheckNearDupResponse {
   pairs: DatasetPrecheckNearDupPair[]
 }
 
-export interface DatasetPrecheckDiffItem {
+export type DatasetPrecheckDiffItem = {
   key: string
   before: number
   after: number
   delta: number
 }
 
-export interface DatasetPrecheckDiffResponse {
+export type DatasetPrecheckDiffResponse = {
   base_scan_run_id: string
   target_scan_run_id: string
   generated_at: string
@@ -685,19 +705,19 @@ export interface DatasetPrecheckDiffResponse {
   findings: DatasetPrecheckDiffItem[]
 }
 
-export interface DatasetPrecheckManualReviewBucket {
+export type DatasetPrecheckManualReviewBucket = {
   key: string
   total: number
   sample_names: string[]
 }
 
-export interface DatasetPrecheckEmbeddingAdvisory {
+export type DatasetPrecheckEmbeddingAdvisory = {
   code: string
   effective_embedding?: string | null
   recommended_action?: string | null
   recommended_model_ids?: string[] | null
 }
-export interface DatasetPrecheckIngestionSuggestionResponse {
+export type DatasetPrecheckIngestionSuggestionResponse = {
   generated_at: string
   policy: IngestionPolicy
   notes: string[]
@@ -706,12 +726,12 @@ export interface DatasetPrecheckIngestionSuggestionResponse {
 
 // ==================== Dataset Tables (TAG) ====================
 
-export interface DatasetTableColumn {
+export type DatasetTableColumn = {
   name: string
   dtype?: string | null
 }
 
-export interface DatasetTableAsset {
+export type DatasetTableAsset = {
   table_id: string
   document_id: string
   document_filename?: string | null
@@ -724,36 +744,36 @@ export interface DatasetTableAsset {
   sample_rows: JsonObject[]
 }
 
-export interface DatasetTablesListResponse {
+export type DatasetTablesListResponse = {
   total: number
   items: DatasetTableAsset[]
 }
 
-export interface TableQueryRequest {
+export type TableQueryRequest = {
   sql: string
   max_rows?: number | null
   max_cols?: number | null
 }
 
-export interface TableQueryResponse {
+export type TableQueryResponse = {
   sql: string
   columns: string[]
   rows: unknown[][]
   truncated: boolean
 }
 
-export interface TableAskRequest {
+export type TableAskRequest = {
   question: string
   max_rows?: number | null
 }
 
-export interface TableAskResponse {
+export type TableAskResponse = {
   answer: string
   sql?: string | null
   data?: TableQueryResponse | null
 }
 
-export interface LotusSemFilterRequest {
+export type LotusSemFilterRequest = {
   user_instruction: string
   strategy?: string
   max_rows?: number | null
@@ -761,7 +781,7 @@ export interface LotusSemFilterRequest {
 
 // ==================== DB Catalog (SQL) ====================
 
-export interface DbCatalogColumn {
+export type DbCatalogColumn = {
   id: string
   table_id: string
   ordinal: number
@@ -772,7 +792,7 @@ export interface DbCatalogColumn {
   created_at: string
 }
 
-export interface DbCatalogTableSummary {
+export type DbCatalogTableSummary = {
   id: string
   connector_config_id?: string | null
   engine: string
@@ -787,16 +807,16 @@ export interface DbCatalogTableSummary {
   updated_at?: string | null
 }
 
-export interface DbCatalogTableDetail extends DbCatalogTableSummary {
+export type DbCatalogTableDetail = {
   columns: DbCatalogColumn[]
-}
+} & DbCatalogTableSummary
 
-export interface DbCatalogTablesListResponse {
+export type DbCatalogTablesListResponse = {
   total: number
   items: DbCatalogTableSummary[]
 }
 
-export interface DbProfileSnapshot {
+export type DbProfileSnapshot = {
   id: string
   table_id: string
   entitlement_hash: string
@@ -805,7 +825,7 @@ export interface DbProfileSnapshot {
   created_at: string
 }
 
-export interface DbProfileSnapshotListResponse {
+export type DbProfileSnapshotListResponse = {
   total: number
   items: DbProfileSnapshot[]
 }

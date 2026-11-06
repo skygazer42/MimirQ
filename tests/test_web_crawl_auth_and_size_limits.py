@@ -6,8 +6,8 @@ from uuid import uuid4
 import pytest
 from fastapi import HTTPException
 
+import app.services.connector_execution.web_crawl as connectors_web_crawl
 from app.api.utils import url_ingest
-from app.api.v1 import connectors_web_crawl
 from app.services import web_crawler
 
 
@@ -52,36 +52,45 @@ async def test_execute_web_crawl_run_passes_auth_headers_to_crawl_site(monkeypat
     monkeypatch.setattr(connectors_web_crawl, "_web_crawl_run_cancelled", lambda *args, **kwargs: False)
     monkeypatch.setattr(connectors_web_crawl, "_finalize_web_crawl_run_success", lambda *args, **kwargs: None)
     monkeypatch.setattr(connectors_web_crawl, "_mark_web_crawl_run_failed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(connectors_web_crawl, "SessionLocal", lambda: fake_db, raising=True)
+    monkeypatch.setattr(connectors_web_crawl, "decrypt_connector_config_secrets", lambda cfg: cfg, raising=True)
+    monkeypatch.setattr(
+        connectors_web_crawl, "_normalize_connector_string_list", lambda value: list(value or []), raising=True
+    )
+    monkeypatch.setattr(
+        connectors_web_crawl, "_normalize_connector_principal_list", lambda value: list(value or []), raising=True
+    )
     monkeypatch.setattr(
         connectors_web_crawl,
-        "_leader_module",
-        SimpleNamespace(
-            SessionLocal=lambda: fake_db,
-            decrypt_connector_config_secrets=lambda cfg: cfg,
-            _normalize_connector_string_list=lambda value: list(value or []),
-            _normalize_connector_principal_list=lambda value: list(value or []),
-            _build_auth_headers=lambda cfg: {"Authorization": f"Bearer {cfg['auth']['token']}"},
-            crawl_site=fake_crawl_site,
-            _build_web_crawl_execution_plan=lambda **kwargs: {
-                "crawl_urls": [],
-                "discovered_urls": [],
-                "delta_urls": [],
-                "cursor_in": 0,
-                "skipped_unchanged": 0,
-                "removed_urls": [],
-                "source_manifest_state": {},
-                "discovered_manifest": {},
-            },
-            _initialize_web_crawl_run_stats=lambda **kwargs: {},
-            _finalize_connector_stats=lambda stats: stats,
-            _connector_run_completion_status=lambda **kwargs: "completed",
-            _sync_connector_config_from_run=lambda **kwargs: None,
-            _now=lambda: datetime.now(timezone.utc),
-        ),
-        raising=False,
+        "_build_auth_headers",
+        lambda cfg: {"Authorization": f"Bearer {cfg['auth']['token']}"},
+        raising=True,
     )
+    monkeypatch.setattr(connectors_web_crawl, "crawl_site", fake_crawl_site, raising=True)
+    monkeypatch.setattr(
+        connectors_web_crawl,
+        "_build_web_crawl_execution_plan",
+        lambda **kwargs: {
+            "crawl_urls": [],
+            "discovered_urls": [],
+            "delta_urls": [],
+            "cursor_in": 0,
+            "skipped_unchanged": 0,
+            "removed_urls": [],
+            "source_manifest_state": {},
+            "discovered_manifest": {},
+        },
+        raising=True,
+    )
+    monkeypatch.setattr(connectors_web_crawl, "_initialize_web_crawl_run_stats", lambda **kwargs: {}, raising=True)
+    monkeypatch.setattr(connectors_web_crawl, "_finalize_connector_stats", lambda stats: stats, raising=True)
+    monkeypatch.setattr(
+        connectors_web_crawl, "_connector_run_completion_status", lambda **kwargs: "completed", raising=True
+    )
+    monkeypatch.setattr(connectors_web_crawl, "_sync_connector_config_from_run", lambda **kwargs: None, raising=True)
+    monkeypatch.setattr(connectors_web_crawl, "_now", lambda: datetime.now(timezone.utc), raising=True)
 
-    await connectors_web_crawl._execute_web_crawl_run(
+    await connectors_web_crawl.execute(
         run_id=run.id,
         tenant_id=run.tenant_id,
         requested_by="member-1",

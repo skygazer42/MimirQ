@@ -12,11 +12,11 @@ Security posture:
 - Payloads are bounded to prevent metadata bloat.
 """
 
-
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
+from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
 
 ACL_PROVENANCE_SCHEMA = "mimirq.document_acl_provenance.v1"
@@ -160,14 +160,14 @@ def build_document_acl_provenance(
     return record
 
 
-def apply_document_acl_provenance(doc, *, provenance: dict[str, Any]) -> None:  # noqa: ANN001
+def apply_document_acl_provenance(doc: DBDocument, *, provenance: dict[str, Any]) -> None:
     """
     Best-effort: patch `documents.metadata.acl_provenance` on an ORM document.
 
     Caller is responsible for committing.
     """
     try:
-        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+        meta0 = dict(doc.doc_metadata or {})
         meta0["acl_provenance"] = dict(provenance or {})
         doc.doc_metadata = meta0
     except Exception:
@@ -176,4 +176,3 @@ def apply_document_acl_provenance(doc, *, provenance: dict[str, Any]) -> None:  
 
 
 __all__ = ["ACL_PROVENANCE_SCHEMA", "apply_document_acl_provenance", "build_document_acl_provenance"]
-

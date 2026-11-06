@@ -19,8 +19,7 @@ class BaseLLMClient(ABC):
         temperature: float | None = None,
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> LLMResponse:
-        ...
+    ) -> LLMResponse: ...
 
     @abstractmethod
     def chat_stream(
@@ -30,8 +29,7 @@ class BaseLLMClient(ABC):
         max_tokens: int | None = None,
         include_reasoning: bool = False,
         **kwargs: Any,
-    ) -> AsyncIterator[tuple[str, str | None]]:
-        ...
+    ) -> AsyncIterator[tuple[str, str | None]]: ...
 
     async def chat_with_schema(
         self,
@@ -56,9 +54,7 @@ class BaseLLMClient(ABC):
             enhanced_messages.append(LLMMessage(role=LLMRole.SYSTEM, content=schema_prompt))
         enhanced_messages.extend(messages)
 
-        response = await self.chat(
-            enhanced_messages, temperature=temperature, max_tokens=max_tokens, **kwargs
-        )
+        response = await self.chat(enhanced_messages, temperature=temperature, max_tokens=max_tokens, **kwargs)
 
         content = response.content.strip()
         fenced = extract_first_code_fence(content, allowed_info_strings={"", "json"})

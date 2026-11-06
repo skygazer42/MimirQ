@@ -3,15 +3,17 @@ DashScope (Alibaba Cloud) embedding model implementation.
 
 Provides Alibaba Cloud DashScope embedding API support.
 """
+
 import contextlib
 import json
+from typing import Any, Unpack
 
 import httpx
 
 from app.core.config import settings
 from app.core.http_client import get_http_client_pool
-from app.rag.embedding.base import BaseEmbeddingModel
-from app.rag.embedding.utils import logger
+from app.rag.embedding.base import BaseEmbeddingModel, EmbeddingModelOptions
+from app.rag.embedding.utils import logger, normalize_embedding_vectors
 
 
 class DashScopeEmbedding(BaseEmbeddingModel):
@@ -25,7 +27,7 @@ class DashScopeEmbedding(BaseEmbeddingModel):
     - text-embedding-v2 (768 dimensions)
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Unpack[EmbeddingModelOptions]) -> None:
         """Initialize DashScope embedding model.
 
         Args:
@@ -49,31 +51,22 @@ class DashScopeEmbedding(BaseEmbeddingModel):
         self.http_client = pool.get_external_sync_client()
         self.http_async_client = pool.get_external_async_client()
 
-    def _build_payload(self, message: str | list[str]) -> dict:
+    def _build_payload(self, message: str | list[str]) -> dict[str, object]:
         """Build API request payload."""
         if isinstance(message, str):
             message = [message]
         return {"model": self.model, "input": {"texts": message}}
 
-    def _normalize_embeddings(self, vectors: list[list[float]]) -> list[list[float]]:
-        """Normalize embeddings to unit length."""
-        import numpy as np
-
-        array = np.array(vectors, dtype=float)
-        norms = np.linalg.norm(array, axis=1, keepdims=True)
-        norms[norms == 0] = 1.0
-        return (array / norms).tolist()
-
-    def _extract_embeddings(self, result: dict) -> list[list[float]]:
+    def _extract_embeddings(self, result: dict[str, Any]) -> list[list[float]]:
         if result.get("code") != "Success":
             raise ValueError(f"DashScope API error: {result.get('message', 'Unknown error')}")
         vectors = [item["embedding"] for item in result["output"]["embeddings"]]
-        return self._normalize_embeddings(vectors)
+        return normalize_embedding_vectors(vectors)
 
     def encode(self, message: str | list[str]) -> list[list[float]]:
         """Synchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
-        timeout = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
+        timeout = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
         response: httpx.Response | None = None
         try:
             response = self.http_client.post(
@@ -100,7 +93,7 @@ class DashScopeEmbedding(BaseEmbeddingModel):
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
         """Asynchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
-        timeout = float(getattr(settings, "EMBEDDING_API_TIMEOUT_SEC", 60.0) or 60.0)
+        timeout = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
         response: httpx.Response | None = None
         try:
             response = await self.http_async_client.post(

@@ -4,7 +4,7 @@
 
 import type { ChunkPreviewResponse, JsonObject } from '@/types'
 
-export interface ChunkOverride {
+export type ChunkOverride = {
   content?: string
   metadata?: JsonObject
   disabled?: boolean
@@ -14,7 +14,7 @@ export interface ChunkOverride {
 export type ChunkOverrides = Record<number, ChunkOverride>
 export type ChunkPreviewProcessedStatus = 'pending' | 'processing' | 'success' | 'error'
 
-export interface ChunkPreviewProps {
+export type ChunkPreviewProps = {
   onConfirm?: (params: { chunk_size: number; chunk_overlap: number }) => void
   onClose?: () => void
 }
@@ -32,7 +32,7 @@ export type ChunkPreviewFileItem = {
   documentId?: string | null
 }
 
-export interface ChunkPreviewState {
+export type ChunkPreviewState = {
   // 文件状态
   fileList: ChunkPreviewFileItem[]
   currentFileIndex: number
@@ -50,6 +50,7 @@ export interface ChunkPreviewState {
   isSubmitting: boolean
   showOriginalPanel: boolean
   showSettingsPanel: boolean
+  gapReviewRequest: number
   submitSuccess: boolean
   error: string | null
   processedStatus: Record<string, ChunkPreviewProcessedStatus>
@@ -103,7 +104,11 @@ export interface ChunkPreviewState {
   onClose?: () => void
 }
 
-export interface ChunkPreviewActions {
+export type ChunkPreviewRunSettings = Partial<
+  Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy' | 'parserBackend'>
+>
+
+export type ChunkPreviewActions = {
   // 文件操作
   addFiles: (files: File[]) => void
   removeFile: (index: number) => void
@@ -126,14 +131,15 @@ export interface ChunkPreviewActions {
   toggleOriginalPanel: () => void
   setOriginalPanelVisible: (visible: boolean) => void
   toggleSettingsPanel: () => void
+  focusGapReview: () => void
 
   // 拖放处理
   handleDragOver: (e: React.DragEvent) => void
   handleDragLeave: (e: React.DragEvent) => void
-  handleDrop: (e: React.DragEvent) => void
+  handleDrop: (e: React.DragEvent) => Promise<void>
 
   // 数据操作
-  runPreview: (options?: { force?: boolean }) => Promise<void>
+  runPreview: (options?: { force?: boolean; settings?: ChunkPreviewRunSettings }) => Promise<void>
   cancelPreview: () => void
   submitChunks: () => Promise<void>
   submitSelectedFiles: () => Promise<void>
@@ -146,13 +152,17 @@ export interface ChunkPreviewActions {
   // 配置操作
   updateSettings: (settings: Partial<Pick<ChunkPreviewState, 'chunkSize' | 'chunkOverlap' | 'strategy'>>) => void
   updatePerfSettings: (
-    settings: Partial<Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks' | 'useParseCache'>>
+    settings: Partial<
+      Pick<ChunkPreviewState, 'includeOriginalText' | 'originalTextMaxChars' | 'maxChunks' | 'useParseCache'>
+    >,
   ) => void
   updateSeparatorSettings: (
-    settings: Partial<Pick<ChunkPreviewState, 'separatorPreset' | 'separatorCustom' | 'keepSeparator' | 'separatorMaxChunkSize'>>
+    settings: Partial<
+      Pick<ChunkPreviewState, 'separatorPreset' | 'separatorCustom' | 'keepSeparator' | 'separatorMaxChunkSize'>
+    >,
   ) => void
   updateParentChildSettings: (
-    settings: Partial<Pick<ChunkPreviewState, 'parentChildRatio' | 'parentChildMinChildSize'>>
+    settings: Partial<Pick<ChunkPreviewState, 'parentChildRatio' | 'parentChildMinChildSize'>>,
   ) => void
   setParserBackend: (backend: string) => void
   setChunkStrategy: (strategy: string) => void

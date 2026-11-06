@@ -5,7 +5,7 @@ import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/components/ui/dialog', () => ({
-  Dialog: ({ children, open }: React.PropsWithChildren<{ open: boolean }>) => open ? <div>{children}</div> : null,
+  Dialog: ({ children, open }: React.PropsWithChildren<{ open: boolean }>) => (open ? <div>{children}</div> : null),
   DialogContent: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
   DialogDescription: ({ children }: React.PropsWithChildren) => <p>{children}</p>,
   DialogFooter: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
@@ -14,7 +14,7 @@ vi.mock('@/components/ui/dialog', () => ({
 vi.mock('@/components/provider-icon', () => ({
   ProviderIcon: () => null,
 }))
-vi.mock('@/lib/api', () => ({
+vi.mock('@/lib/api/settings', () => ({
   settingsApi: { testLLM: vi.fn() },
 }))
 
@@ -31,7 +31,7 @@ function setInputValue(input: HTMLInputElement, value: string) {
 
 function clickButtonByText(container: HTMLElement, text: string) {
   const button = Array.from(container.querySelectorAll('button')).find((candidate) =>
-    candidate.textContent?.includes(text)
+    candidate.textContent?.includes(text),
   )
   expect(button).toBeDefined()
   act(() => button!.dispatchEvent(new MouseEvent('click', { bubbles: true })))
@@ -63,7 +63,7 @@ describe('ModelConfigDialog custom model IDs', () => {
           open
           onClose={vi.fn()}
           onSave={onSave}
-        />
+        />,
       )
     })
 
@@ -75,24 +75,19 @@ describe('ModelConfigDialog custom model IDs', () => {
 
     clickButtonByText(container, '保存配置')
 
-    expect(onSave).toHaveBeenCalledWith(
-      'ark',
-      expect.objectContaining({ model: 'doubao-seed-2-0-lite-260428-custom' })
-    )
+    expect(onSave).toHaveBeenCalledWith('ark', expect.objectContaining({ model: 'doubao-seed-2-0-lite-260428-custom' }))
     act(() => root.unmount())
   })
 
   it('offers the dated Doubao model ID as a preset value', () => {
     const provider = MODEL_PROVIDERS.find((item) => item.id === 'ark')
-    expect(provider?.models).toContainEqual(
-      expect.objectContaining({ name: 'doubao-seed-2-0-lite-260428' })
-    )
+    expect(provider?.models).toContainEqual(expect.objectContaining({ name: 'doubao-seed-2-0-lite-260428' }))
   })
 
   it('offers the current GPT-5.6 model family as presets', () => {
     const provider = MODEL_PROVIDERS.find((item) => item.id === 'openai')
     expect(provider?.models.map((model) => model.name)).toEqual(
-      expect.arrayContaining(['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'])
+      expect.arrayContaining(['gpt-5.6', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']),
     )
   })
 
@@ -111,16 +106,17 @@ describe('ModelConfigDialog custom model IDs', () => {
           open
           onClose={vi.fn()}
           onSave={vi.fn()}
-        />
+        />,
       )
     })
 
     const customTab = Array.from(container.querySelectorAll('[role="tab"]')).find((tab) =>
-      tab.textContent?.includes('自定义模型 ID')
+      tab.textContent?.includes('自定义模型 ID'),
     )
     expect(customTab?.getAttribute('aria-selected')).toBe('true')
-    expect((container.querySelector('input[id$="-model-custom"]') as HTMLInputElement | null)?.value)
-      .toBe('ep-account-specific')
+    expect((container.querySelector('input[id$="-model-custom"]') as HTMLInputElement | null)?.value).toBe(
+      'ep-account-specific',
+    )
     act(() => root.unmount())
   })
 })

@@ -1,4 +1,3 @@
-
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -45,36 +44,36 @@ def content_hash_multiset_diff(
     a = Counter(_normalize_hashes(from_hashes))
     b = Counter(_normalize_hashes(to_hashes))
 
-    from_total = int(sum(a.values()))
-    to_total = int(sum(b.values()))
+    from_total = sum(a.values())
+    to_total = sum(b.values())
 
     unchanged = 0
-    for key in (a.keys() & b.keys()):
-        unchanged += min(int(a.get(key, 0) or 0), int(b.get(key, 0) or 0))
+    for key in a.keys() & b.keys():
+        unchanged += min(a[key], b[key])
 
-    added = max(0, to_total - int(unchanged))
-    removed = max(0, from_total - int(unchanged))
+    added = max(0, to_total - unchanged)
+    removed = max(0, from_total - unchanged)
 
     added_hashes: list[tuple[int, str]] = []
     removed_hashes: list[tuple[int, str]] = []
-    for key in (a.keys() | b.keys()):
-        da = int(a.get(key, 0) or 0)
-        db = int(b.get(key, 0) or 0)
+    for key in a.keys() | b.keys():
+        da = a[key]
+        db = b[key]
         if db > da:
             added_hashes.append((db - da, key))
         elif da > db:
             removed_hashes.append((da - db, key))
 
-    added_hashes.sort(key=lambda item: (-int(item[0]), item[1]))
-    removed_hashes.sort(key=lambda item: (-int(item[0]), item[1]))
+    added_hashes.sort(key=lambda item: (-item[0], item[1]))
+    removed_hashes.sort(key=lambda item: (-item[0], item[1]))
 
-    lim = max(0, int(sample_limit or 0))
+    lim = max(0, sample_limit)
     return ContentHashMultisetDiff(
         from_chunk_count=from_total,
         to_chunk_count=to_total,
-        unchanged_chunks=int(unchanged),
-        added_chunks=int(added),
-        removed_chunks=int(removed),
-        added_hashes=tuple(h for _n, h in (added_hashes[:lim] if lim else [])),
-        removed_hashes=tuple(h for _n, h in (removed_hashes[:lim] if lim else [])),
+        unchanged_chunks=unchanged,
+        added_chunks=added,
+        removed_chunks=removed,
+        added_hashes=tuple(h for _n, h in added_hashes[:lim]),
+        removed_hashes=tuple(h for _n, h in removed_hashes[:lim]),
     )

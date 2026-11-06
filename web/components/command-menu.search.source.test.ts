@@ -48,8 +48,7 @@ describe('command menu remote search', () => {
 
     expect(source).toContain('data-command-menu-header="true"')
     expect(source).toContain('data-command-workflow-group="true"')
-    expect(source).toContain('border-b border-foreground/10 bg-background')
-    expect(source).toContain('border border-foreground/10 bg-background text-foreground')
+    expect(source).toContain('data-command-execution-bar')
     expect(source).not.toContain('aria-selected:bg-info/8')
   })
 })

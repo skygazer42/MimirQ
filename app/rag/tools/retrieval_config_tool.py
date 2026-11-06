@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.retrieval_profiles import apply_retrieval_profile_overrides

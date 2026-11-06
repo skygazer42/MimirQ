@@ -12,6 +12,16 @@ from app.rag.core.logging import get_logger
 logger = get_logger("rag.embedding")
 
 
+def normalize_embedding_vectors(vectors: list[list[float]]) -> list[list[float]]:
+    """Normalize embedding vectors to unit length, preserving zero vectors."""
+    import numpy as np
+
+    array = np.array(vectors, dtype=float)
+    norms = np.linalg.norm(array, axis=1, keepdims=True)
+    norms[norms == 0] = 1.0
+    return (array / norms).tolist()
+
+
 def hashstr(input_string: str, length: int | None = None) -> str:
     """Generate a stable hash of a string.
 
@@ -90,22 +100,12 @@ def current_embedding_space_hash(*, length: int | None = 16) -> str:
     # Lazy import to avoid import cycles at module import time.
     from app.core.config import settings
 
-    provider_raw = (settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower()
-    provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, provider_raw)
-    model = (settings.EMBEDDING_MODEL or "").strip()
-    base_url = (settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "").strip()
-
-    # Normalize base_url: keep scheme/host/path, drop query/fragment.
-    norm_base = ""
-    if base_url:
-        try:
-            u = urlsplit(base_url)
-            norm_base = f"{u.scheme}://{u.netloc}{u.path}".rstrip("/")
-        except Exception:
-            norm_base = base_url.rstrip("/")
-
-    key = f"provider={provider}|model={model}|base_url={norm_base}"
-    return hashstr(key, length=length)
+    return embedding_space_hash_for_config(
+        provider=settings.EMBEDDING_PROVIDER,
+        model=settings.EMBEDDING_MODEL,
+        base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE,
+        length=length,
+    )
 
 
 def embedding_space_hash_for_config(
@@ -144,4 +144,5 @@ __all__ = [
     "embedding_space_hash_for_config",
     "get_docker_safe_url",
     "hashstr",
+    "normalize_embedding_vectors",
 ]

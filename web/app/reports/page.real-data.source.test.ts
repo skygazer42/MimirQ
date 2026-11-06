@@ -53,13 +53,7 @@ describe('reports page real data wiring', () => {
     }
 
     act(() => {
-      root.render(
-        React.createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          React.createElement(Probe)
-        )
-      )
+      root.render(React.createElement(QueryClientProvider, { client: queryClient }, React.createElement(Probe)))
     })
 
     await act(async () => {

@@ -5,7 +5,6 @@ Targets HTTP request/response transcripts such as curl -v output or raw
 HTTP dumps. The chunker splits by request blocks and preserves offsets.
 """
 
-
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -42,7 +41,7 @@ def _build_request_blocks(text: str) -> list[_RequestBlock]:
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         method = (m.group("method") or "").upper()
         path = (m.group("path") or "").strip()
-        blocks.append(_RequestBlock(start=start, end=end, index=int(idx), method=method, path=path))
+        blocks.append(_RequestBlock(start=start, end=end, index=idx, method=method, path=path))
     return blocks
 
 
@@ -99,7 +98,7 @@ def _build_split_documents(
 
 
 class HTTPTraceChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -159,11 +158,11 @@ class HTTPTraceChunker(BaseChunker):
                 extra_meta: dict[str, Any] = {
                     "http_method": blk.method,
                     "http_path": blk.path,
-                    "http_request_index": int(blk.index),
-                    "http_request_count": int(len(blocks)),
+                    "http_request_index": blk.index,
+                    "http_request_count": len(blocks),
                 }
                 if status is not None:
-                    extra_meta["http_status"] = int(status)
+                    extra_meta["http_status"] = status
                 out.extend(
                     _build_split_documents(
                         split_docs=split_docs,

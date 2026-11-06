@@ -1,39 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 import { API_V1_BASE_URL } from '@/lib/env'
-import {
-  SAML_CALLBACK_ERROR_FALLBACK,
-  SAML_BRIDGE_COOKIE_NAME,
-  SAML_BRIDGE_COOKIE_PATH,
-} from '@/lib/saml-session'
+import { SAML_CALLBACK_ERROR_FALLBACK, SAML_BRIDGE_COOKIE_NAME, SAML_BRIDGE_COOKIE_PATH } from '@/lib/saml-session'
+import type { SAML_CALLBACK_ERROR_MESSAGES } from '@/lib/saml-session'
+import { isFalsey, jsonNoStore, readEnv } from '@/lib/server-auth-route'
+import type { OpenApiSchema } from '@/types/backend'
 
 export const runtime = 'nodejs'
 
-type SamlExchangeResult = {
-  bridge_code?: string
-  return_to?: string
-  user?: { id?: string }
-  token?: { access_token?: string }
-  detail?: string
-  error?: string
-}
-type SamlCallbackErrorCode =
-  | 'saml_access_denied'
-  | 'saml_backend_unreachable'
-  | 'saml_invalid_request'
-  | 'saml_invalid_response'
-  | 'saml_invalid_session'
-  | 'saml_missing_response'
-  | typeof SAML_CALLBACK_ERROR_FALLBACK
-
-function readEnv(name: string): string {
-  return String(process.env[name] || '').trim()
-}
-
-function isFalsey(value: string): boolean {
-  const v = String(value || '').trim().toLowerCase()
-  return v === '0' || v === 'false' || v === 'no' || v === 'off' || v === 'disabled'
-}
+type SamlExchangeResult = Partial<Pick<OpenApiSchema<'SamlExchangeResponse'>, 'bridge_code' | 'user' | 'token'>>
+type SamlCallbackErrorCode = keyof typeof SAML_CALLBACK_ERROR_MESSAGES
 
 function isSamlEnabled(): boolean {
   const enabled = readEnv('SAML_ENABLED')
@@ -45,10 +21,6 @@ function applyNoStore(resp: NextResponse) {
   resp.headers.set('Cache-Control', 'no-store')
   resp.headers.set('Pragma', 'no-cache')
   return resp
-}
-
-function jsonNoStore(data: unknown, init?: { status?: number }) {
-  return applyNoStore(NextResponse.json(data, init))
 }
 
 function clearBridgeCookie(resp: NextResponse) {
@@ -103,7 +75,8 @@ export async function POST(req: NextRequest) {
 
   const relayState = getFormString(form, 'RelayState') || undefined
   const requestUrl = new URL(req.url)
-  const providerId = getFormString(form, 'provider_id') || requestUrl.searchParams.get('provider_id')?.trim() || undefined
+  const providerId =
+    getFormString(form, 'provider_id') || requestUrl.searchParams.get('provider_id')?.trim() || undefined
 
   const backendRes = await fetch(`${API_V1_BASE_URL}/auth/saml/exchange`, {
     method: 'POST',

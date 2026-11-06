@@ -6,7 +6,6 @@ These tables store:
 - safe (digest-only) profiling snapshots; no raw rows are stored here
 """
 
-
 import uuid
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, ForeignKeyConstraint, Integer, String, Text

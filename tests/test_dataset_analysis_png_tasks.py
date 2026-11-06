@@ -589,15 +589,15 @@ def test_png_export_endpoint_returns_non_202_when_shared_state_unavailable(monke
     app.dependency_overrides[get_current_account_id] = lambda: "reader-1"
     app.dependency_overrides[get_db] = lambda: object()
 
-    monkeypatch.setattr(dataset_analysis_api.DatasetService, "ensure_member", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(dataset_analysis_api.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService,
+        dataset_analysis_api.dataset_service,
         "get_dataset",
         lambda *_a, **_k: SimpleNamespace(id=dataset_id, name="Dataset A"),
         raising=True,
     )
     monkeypatch.setattr(
-        dataset_analysis_api.DatasetService, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
+        dataset_analysis_api.dataset_service, "assert_dataset_readable", lambda *_a, **_k: None, raising=True
     )
     monkeypatch.setattr(
         dataset_analysis_api,

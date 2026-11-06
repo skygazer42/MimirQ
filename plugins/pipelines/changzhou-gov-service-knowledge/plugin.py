@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from gov_service_items import _source_name as _source
 from gov_service_items import chunk_documents as _chunk_service_items
 from gov_service_items import govern_documents as _govern_service_items
 from langchain_core.documents import Document
@@ -129,18 +130,6 @@ _REAL_ESTATE_REGULATION_SOURCE_HINTS = (
 )
 
 
-def _source(meta: dict[str, Any]) -> str:
-    user_meta = meta.get("user") if isinstance(meta.get("user"), dict) else {}
-    for key in ("source", "source_path", "filename", "file_name", "source_file"):
-        value = str(meta.get(key) or "").strip()
-        if value:
-            return value
-    value = str(user_meta.get("source_rel_path") or "").strip() if isinstance(user_meta, dict) else ""
-    if value:
-        return value
-    return ""
-
-
 def _source_parts(source: str) -> list[str]:
     return [part for part in Path(source).parts if part not in {"/", ""}]
 
@@ -186,11 +175,10 @@ def _department_domain(source: str) -> str:
 
 
 def _is_real_estate_regulation_source(source: str) -> bool:
-    value = str(source or "")
-    suffix = Path(value).suffix.lower()
+    suffix = Path(source).suffix.lower()
     if suffix and suffix not in {".doc", ".docx", ".txt", ".md"}:
         return False
-    return any(hint in value for hint in _REAL_ESTATE_REGULATION_SOURCE_HINTS)
+    return any(hint in source for hint in _REAL_ESTATE_REGULATION_SOURCE_HINTS)
 
 
 def _district_from_source(source: str, section: str) -> str:
@@ -210,7 +198,7 @@ def _source_topic(source: str, section: str) -> str:
 
 
 def _split_field_line(line: str, labels: tuple[str, ...]) -> tuple[str, str] | None:
-    text = str(line or "").strip().lstrip('"“”').strip()
+    text = line.strip().lstrip('"“”').strip()
     for label in labels:
         for separator in ("：", ":"):
             prefixes = (
@@ -227,7 +215,7 @@ def _split_field_line(line: str, labels: tuple[str, ...]) -> tuple[str, str] | N
 
 def _iter_inline_marker_values(text: str) -> list[str]:
     values: list[str] = []
-    source = str(text or "")
+    source = text
     cursor = 0
     while True:
         start = source.find(_MARKER_START, cursor)
@@ -244,7 +232,7 @@ def _iter_inline_marker_values(text: str) -> list[str]:
 
 def _extract_labeled_field_values(text: str, labels: tuple[str, ...]) -> list[str]:
     values: list[str] = []
-    lines = str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines()
+    lines = text.replace("\r\n", "\n").replace("\r", "\n").splitlines()
     index = 0
     while index < len(lines):
         field = _split_field_line(lines[index], labels)
@@ -271,7 +259,7 @@ def _first_labeled_field_value(text: str, labels: tuple[str, ...]) -> str:
 
 
 def _is_inline_marker_line(line: str) -> bool:
-    text = str(line or "").strip()
+    text = line.strip()
     return (
         text.startswith(_MARKER_START)
         and text.endswith(_MARKER_END)
@@ -280,7 +268,7 @@ def _is_inline_marker_line(line: str) -> bool:
 
 
 def _structured_qa_title_value(text: str) -> str:
-    for line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
         value = _first_labeled_field_value(line, ("事项名称",))
         if value:
             return value.strip().strip("[]").rstrip("]").strip()
@@ -292,7 +280,7 @@ def _is_structured_qa_title_line(line: str) -> bool:
 
 
 def _sheet_heading_value(line: str) -> str:
-    text = str(line or "").strip()
+    text = line.strip()
     hashes = len(text) - len(text.lstrip("#"))
     if hashes < 1 or hashes > 6:
         return ""
@@ -307,7 +295,7 @@ def _sheet_heading_value(line: str) -> str:
 
 
 def _operation_title_value(line: str) -> str:
-    text = str(line or "").strip()
+    text = line.strip()
     suffix = "操作指引"
     if not text.endswith(suffix):
         return ""
@@ -316,7 +304,7 @@ def _operation_title_value(line: str) -> str:
 
 
 def _clean_marker_value(text: str) -> str:
-    value = str(text or "").strip()
+    value = text.strip()
     if value.startswith(_MARKER_START) and value.endswith(_MARKER_END):
         value = value[len(_MARKER_START) : -len(_MARKER_END)].strip()
     labeled = _split_field_line(value, ("关键字", "关键词", "相似问法", "相似问"))
@@ -328,7 +316,7 @@ def _clean_marker_value(text: str) -> str:
 def _split_list_marker(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", str(text or "").replace("\r\n", "\n").replace("\r", "\n"))
+    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", text.replace("\r\n", "\n").replace("\r", "\n"))
     for part in re.split(r"[\n、；;]+", _clean_marker_value(cleaned)):
         for item in re.split(r"(?<=[？?。！!])\s+", part.strip()):
             value = _clean_marker_value(item)
@@ -340,7 +328,7 @@ def _split_list_marker(text: str) -> list[str]:
 
 
 def _split_alias_marker(text: str) -> list[str]:
-    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", str(text or "").replace("\r\n", "\n").replace("\r", "\n"))
+    cleaned = re.sub(r"(?i)<br\s*/?>", "\n", text.replace("\r\n", "\n").replace("\r", "\n"))
     cleaned = _COLLAPSED_CHINESE_ALIAS_SEPARATOR_RE.sub("\n", cleaned)
     return _split_list_marker(cleaned)
 
@@ -389,7 +377,7 @@ def _extract_keywords_marker(text: str) -> list[str]:
 def _split_category_path(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for part in str(text or "").split("/"):
+    for part in text.split("/"):
         value = _clean_marker_value(part)
         if not value or value in seen:
             continue
@@ -399,13 +387,13 @@ def _split_category_path(text: str) -> list[str]:
 
 
 def _case_key(title: str) -> str:
-    value = str(title or "").strip()
+    value = title.strip()
     value = re.sub(r"[“”\"'‘’\s·\-_/（）()【】\[\]]+", "", value)
-    return value or str(title or "").strip()
+    return value or title.strip()
 
 
 def _canonical_one_thing_title(title: str) -> tuple[str, str]:
-    raw = str(title or "").strip()
+    raw = title.strip()
     cleaned = _strip_bracket_title(raw)
     cleaned = cleaned.replace("操作指引", "").strip()
     key = _case_key(cleaned)
@@ -418,7 +406,7 @@ def _canonical_one_thing_title(title: str) -> tuple[str, str]:
 def _extract_urls(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for match in _URL_RE.finditer(text or ""):
+    for match in _URL_RE.finditer(text):
         url = match.group(0).strip().rstrip("。；;，,")
         if not url or url in seen:
             continue
@@ -428,7 +416,7 @@ def _extract_urls(text: str) -> list[str]:
 
 
 def _section_heading_type(line: str, labels: dict[str, str]) -> tuple[str, str] | None:
-    text = str(line or "").strip()
+    text = line.strip()
     if not text:
         return None
     cleaned = re.sub(r"^[一二三四五六七八九十百0-9]+[、.．]\s*", "", text).strip()
@@ -439,8 +427,8 @@ def _section_heading_type(line: str, labels: dict[str, str]) -> tuple[str, str] 
     return None
 
 
-def _split_named_sections(text: str, labels: dict[str, str]) -> list[dict[str, Any]]:
-    sections: list[dict[str, Any]] = []
+def _split_named_sections(text: str, labels: dict[str, str]) -> list[dict[str, str]]:
+    sections: list[dict[str, str]] = []
     current_type = "overview"
     current_label = "概览"
     current_lines: list[str] = []
@@ -450,7 +438,7 @@ def _split_named_sections(text: str, labels: dict[str, str]) -> list[dict[str, A
         if content:
             sections.append({"section_type": current_type, "label": current_label, "content": content})
 
-    for raw in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -471,7 +459,7 @@ def _material_items(text: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     material_terms = ("材料", "身份证", "户口", "申请表", "承诺书", "证明", "照片", "证照", "凭证", "学生证", "驾驶证")
-    for raw in str(text or "").splitlines():
+    for raw in text.splitlines():
         line = _BULLET_RE.sub("", raw.strip()).strip()
         if not line or line in {"通用材料", "专项材料", "申请材料", "办理材料"}:
             continue
@@ -491,7 +479,7 @@ def _material_items(text: str) -> list[str]:
 def _numbered_steps(text: str) -> list[str]:
     steps: list[str] = []
     seen: set[str] = set()
-    for raw in str(text or "").splitlines():
+    for raw in text.splitlines():
         line = raw.strip()
         if not re.match(r"^\d{1,3}[.．、]\s*", line):
             continue
@@ -505,7 +493,7 @@ def _numbered_steps(text: str) -> list[str]:
 
 def _non_step_url_lines(text: str) -> list[str]:
     lines: list[str] = []
-    for raw in str(text or "").splitlines():
+    for raw in text.splitlines():
         line = raw.strip()
         if not line or not _extract_urls(line):
             continue
@@ -517,7 +505,7 @@ def _non_step_url_lines(text: str) -> list[str]:
 
 def _clean_text(text: str) -> str:
     lines: list[str] = []
-    for raw in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -528,7 +516,7 @@ def _clean_text(text: str) -> str:
 
 
 def _excel_parser_record_fields(record: str) -> list[str]:
-    value = str(record or "")
+    value = record
     sheet = ""
     if " ——" in value:
         value, sheet = value.rsplit(" ——", 1)
@@ -542,7 +530,7 @@ def _excel_parser_record_fields(record: str) -> list[str]:
 
 
 def _normalize_excel_parser_rows(text: str) -> str:
-    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
     if ";" in normalized and "答案" in normalized and "问题" in normalized:
         records = [part.strip() for part in re.split(r"\n(?=\[?问题[：:])", normalized) if part.strip()]
         converted: list[str] = []
@@ -566,19 +554,19 @@ def _normalize_excel_parser_rows(text: str) -> str:
 
 
 def _clamp_meta_text(text: str, max_chars: int) -> str:
-    value = str(text or "").strip()
+    value = text.strip()
     if len(value) <= max_chars:
         return value
     return value[:max_chars].rstrip()
 
 
 def _split_blocks(text: str) -> list[str]:
-    blocks = [part.strip() for part in _BLOCK_SEPARATOR_RE.split(text or "") if part.strip()]
-    return blocks or ([str(text or "").strip()] if str(text or "").strip() else [])
+    blocks = [part.strip() for part in _BLOCK_SEPARATOR_RE.split(text) if part.strip()]
+    return blocks or ([text.strip()] if text.strip() else [])
 
 
 def _first_line(text: str) -> str:
-    for line in str(text or "").splitlines():
+    for line in text.splitlines():
         value = line.strip()
         if value:
             return value
@@ -592,7 +580,7 @@ def _strip_bracket_title(line: str) -> str:
 
 def _long_text_title(text: str) -> str:
     title_lines: list[str] = []
-    for raw in str(text or "").splitlines():
+    for raw in text.splitlines():
         line = raw.strip()
         if not line:
             if title_lines:
@@ -626,10 +614,10 @@ def _semantic_terms(*values: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for value in values:
-        text = _clean_question(str(value or "")).strip()
+        text = _clean_question(value).strip()
         candidates = [text, *[match.group("value").strip() for match in _PAREN_TERM_RE.finditer(text)]]
         for candidate in candidates:
-            term = str(candidate or "").strip().strip("？?。；;，,")
+            term = candidate.strip().strip("？?。；;，,")
             if not term or term in seen:
                 continue
             seen.add(term)
@@ -648,14 +636,14 @@ def _semantic_keys_for_record(
     seen: set[str] = set()
 
     def add(key: str) -> None:
-        value = str(key or "").strip()
+        value = key.strip()
         if not value or value in seen:
             return
         seen.add(value)
         keys.append(value)
 
-    title = str(title or "").strip()
-    kind = str(kind or "").strip() or "gov_text"
+    title = title.strip()
+    kind = kind.strip() or "gov_text"
     if title:
         add(f"{kind}:{title}")
     for term in _semantic_terms(title, *(aliases or []), *(keywords or [])):
@@ -721,8 +709,10 @@ def _govern_one_thing_guide(source_doc: Document) -> list[Document]:
         meta["case_key"] = _case_key(title)
         meta["keywords"] = keywords
         sections = _split_named_sections(text, _GUIDE_SECTION_LABELS)
-        related = next((s["content"] for s in sections if s.get("section_type") == "related_services"), "")
-        materials = "\n".join(str(s.get("content") or "") for s in sections if s.get("section_type") == "materials")
+        related = next(
+            (section["content"] for section in sections if section["section_type"] == "related_services"), ""
+        )
+        materials = "\n".join(section["content"] for section in sections if section["section_type"] == "materials")
         meta["related_services"] = _split_list_marker(related)
         meta["materials"] = _material_items(materials)
         meta["urls"] = _extract_urls(text)
@@ -735,7 +725,7 @@ def _split_operation_blocks(text: str) -> list[str]:
     if len(blocks) > 1:
         return blocks
     indices: list[int] = []
-    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
     cursor = 0
     for line in normalized.splitlines(keepends=True):
         if _operation_title_value(line):
@@ -765,8 +755,8 @@ def _govern_one_thing_operation(source_doc: Document) -> list[Document]:
         meta["operation_steps"] = [
             step
             for section in sections
-            if section.get("section_type") in {"operation_steps", "operation_material_upload", "operation_query"}
-            for step in _numbered_steps(str(section.get("content") or ""))
+            if section["section_type"] in {"operation_steps", "operation_material_upload", "operation_query"}
+            for step in _numbered_steps(section["content"])
         ]
         meta["urls"] = _extract_urls(text)
         out.append(Document(page_content=f"一件事操作指引：{title}\n{text}".strip(), metadata=meta))
@@ -774,7 +764,7 @@ def _govern_one_thing_operation(source_doc: Document) -> list[Document]:
 
 
 def _clean_question(value: str) -> str:
-    cleaned = str(value or "").strip().strip("[]").rstrip("]").strip()
+    cleaned = value.strip().strip("[]").rstrip("]").strip()
     cleaned = _BULLET_RE.sub("", cleaned).strip()
     cleaned = re.sub(r"\*\*(?P<value>.+?)\*\*", r"\g<value>", cleaned)
     cleaned = re.sub(r"__(?P<value>.+?)__", r"\g<value>", cleaned)
@@ -879,12 +869,12 @@ def _build_qa_document(
         return None
     aliases = list(aliases or [])
     keywords = list(keywords or [])
-    category_path = [item for item in list(category_path or []) if str(item).strip()]
+    category_path = [item for item in category_path or [] if item.strip()]
     category_leaf = category_path[-1] if category_path else ""
     source_department = _clamp_meta_text(source_department, _SOURCE_DEPARTMENT_MAX)
     applicable_area = _clamp_meta_text(applicable_area, 200)
     extracted_service_urls = _extract_urls(service_url)
-    service_url = extracted_service_urls[0] if extracted_service_urls else str(service_url or "").strip()
+    service_url = extracted_service_urls[0] if extracted_service_urls else service_url.strip()
     valid_from = _clamp_meta_text(valid_from, 120)
     valid_to = _clamp_meta_text(valid_to, 120)
     lines = _qa_document_lines(
@@ -929,12 +919,12 @@ def _build_qa_document(
 
 
 def _alias_key(value: str) -> str:
-    return re.sub(r"[\s\[\]（）()【】「」『』:：,，;；、。.!！?？]+", "", str(value or "").strip()).lower()
+    return re.sub(r"[\s\[\]（）()【】「」『』:：,，;；、。.!！?？]+", "", value.strip()).lower()
 
 
 def _with_qa_aliases(doc: Document, aliases: list[str]) -> Document:
     meta = dict(doc.metadata or {})
-    clean_aliases = [str(item).strip() for item in aliases if str(item).strip()]
+    clean_aliases = [item.strip() for item in aliases if item.strip()]
     meta["aliases"] = clean_aliases
     if clean_aliases:
         meta["primary_alias"] = clean_aliases[0]
@@ -943,8 +933,7 @@ def _with_qa_aliases(doc: Document, aliases: list[str]) -> Document:
 
     lines: list[str] = []
     replaced = False
-    for raw in str(doc.page_content or "").splitlines():
-        line = str(raw)
+    for line in str(doc.page_content or "").splitlines():
         if line.startswith("相似问法："):
             replaced = True
             if clean_aliases:
@@ -1015,7 +1004,7 @@ def _govern_qa(source_doc: Document) -> list[Document]:
 
 def _structured_qa_answer(block: str) -> str:
     lines: list[str] = []
-    for raw in str(block or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+    for raw in block.replace("\r\n", "\n").replace("\r", "\n").splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -1046,7 +1035,7 @@ def _govern_structured_item_qa(source_doc: Document) -> list[Document]:
 
 
 def _markdown_cells(line: str) -> list[str]:
-    stripped = str(line or "").strip()
+    stripped = line.strip()
     if not stripped.startswith("|"):
         return []
     if stripped.endswith("|"):
@@ -1093,8 +1082,6 @@ def _parse_markdown_qa_table(source_doc: Document, lines: list[str], sheet: str,
             keys = candidate_keys
             break
     if header_index < 0:
-        return []
-    if "question" not in keys or "answer" not in keys:
         return []
     data_lines = lines[header_index + 1 :]
     if data_lines and _is_markdown_separator(_markdown_cells(data_lines[0])):
@@ -1152,13 +1139,13 @@ def _govern_markdown_table_qa(source_doc: Document) -> list[Document]:
 
 
 def _is_answer_marker(line: str) -> bool:
-    text = str(line or "").strip()
+    text = line.strip()
     rest = text[1:].lstrip() if text.startswith("答") else ""
     return rest.startswith(("：", ":"))
 
 
 def _strip_answer_marker(line: str) -> str:
-    text = str(line or "").strip()
+    text = line.strip()
     if text.startswith("答"):
         rest = text[1:].lstrip()
         if rest.startswith(("：", ":")):
@@ -1167,7 +1154,7 @@ def _strip_answer_marker(line: str) -> str:
 
 
 def _is_loose_qa_heading(line: str) -> bool:
-    text = str(line or "").strip()
+    text = line.strip()
     if not text or _is_answer_marker(text) or len(text) > 40:
         return False
     if text.startswith(("Excel:", "Sheets:", "##", "|", "==")):
@@ -1181,7 +1168,7 @@ def _is_loose_qa_heading(line: str) -> bool:
 
 def _previous_non_empty_index(lines: list[str], start: int) -> int:
     for index in range(start, -1, -1):
-        if str(lines[index] or "").strip():
+        if lines[index].strip():
             return index
     return -1
 
@@ -1280,7 +1267,7 @@ def govern_documents(
 
 
 def _split_long_chunk_line(line: str, *, max_chars: int) -> list[str]:
-    value = str(line or "").strip()
+    value = line.strip()
     if len(value) <= max_chars:
         return [value] if value else []
     pieces: list[str] = []
@@ -1307,7 +1294,7 @@ def _split_long_chunk_line(line: str, *, max_chars: int) -> list[str]:
 
 
 def _split_for_chunk(text: str, max_chars: int) -> list[str]:
-    cleaned = str(text or "").strip()
+    cleaned = text.strip()
     if not cleaned:
         return []
     if len(cleaned) <= max_chars:
@@ -1391,7 +1378,7 @@ def _qa_answer_key_points(meta: dict[str, Any]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for point in [*points, *urls]:
-        value = _clamp_meta_text(str(point or "").strip(), 260)
+        value = _clamp_meta_text(point.strip(), 260)
         if not value or value in seen:
             continue
         seen.add(value)
@@ -1450,9 +1437,9 @@ _ONE_THING_SECTION_QUERY_HINTS = {
 
 
 def _one_thing_search_anchor(*, case_title: str, section_type: str, label: str) -> str:
-    title = str(case_title or "").strip()
+    title = case_title.strip()
     case_key = _case_key(title)
-    hints = [str(label or "").strip(), *_ONE_THING_SECTION_QUERY_HINTS.get(section_type, [])]
+    hints = [label.strip(), *_ONE_THING_SECTION_QUERY_HINTS.get(section_type, [])]
     deduped_hints = [item for item in dict.fromkeys(hints) if item]
     parts = [item for item in [title, case_key] if item]
     if deduped_hints:
@@ -1467,14 +1454,14 @@ def _one_thing_chunk_content(*, case_title: str, section_type: str, label: str, 
         lines.append(anchor)
     if label:
         lines.append(f"章节：{label}")
-    lines.append(str(content or "").strip())
+    lines.append(content.strip())
     return "\n".join(line for line in lines if line).strip()
 
 
 def _compact_answer_lines(text: str, *, limit: int = 12) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-    for raw in str(text or "").splitlines():
+    for raw in text.splitlines():
         line = _BULLET_RE.sub("", raw.strip()).strip()
         if not line or line in seen:
             continue
@@ -1499,7 +1486,7 @@ def _one_thing_answer_key_points(*, section_type: str, content: str, urls: list[
     out: list[str] = []
     seen: set[str] = set()
     for point in points:
-        value = _clamp_meta_text(str(point or "").strip(), 260)
+        value = _clamp_meta_text(point.strip(), 260)
         if not value or value in seen:
             continue
         seen.add(value)
@@ -1557,15 +1544,15 @@ def _emit_one_thing_section_chunks(
     *,
     source_meta: dict[str, Any],
     case_title: str,
-    sections: list[dict[str, Any]],
+    sections: list[dict[str, str]],
     max_chars: int,
     start_index: int,
 ) -> list[Document]:
     chunks: list[Document] = []
     for section in sections:
-        section_type = str(section.get("section_type") or "").strip()
-        label = str(section.get("label") or "").strip()
-        content = str(section.get("content") or "").strip()
+        section_type = section["section_type"].strip()
+        label = section["label"].strip()
+        content = section["content"].strip()
         if not section_type or not content:
             continue
         rendered = _one_thing_chunk_content(
@@ -1593,7 +1580,7 @@ def _chunk_one_thing_guide(doc: Document, *, max_chars: int, start_index: int) -
     meta = dict(doc.metadata or {})
     case_title = str(meta.get("case_title") or "").strip() or _first_line(doc.page_content or "")
     sections = _split_named_sections(doc.page_content or "", _GUIDE_SECTION_LABELS)
-    sections = [s for s in sections if s.get("section_type") != "overview"] or sections
+    sections = [section for section in sections if section["section_type"] != "overview"] or sections
     return _emit_one_thing_section_chunks(
         source_meta=meta,
         case_title=case_title,
@@ -1609,7 +1596,7 @@ def _chunk_one_thing_operation(doc: Document, *, max_chars: int, start_index: in
     sections = _split_named_sections(doc.page_content or "", _OPERATION_SECTION_LABELS)
     url_lines: list[str] = []
     for section in sections:
-        url_lines.extend(_non_step_url_lines(str(section.get("content") or "")))
+        url_lines.extend(_non_step_url_lines(section["content"]))
     if url_lines:
         sections.append(
             {
@@ -1618,7 +1605,7 @@ def _chunk_one_thing_operation(doc: Document, *, max_chars: int, start_index: in
                 "content": "\n".join(dict.fromkeys(url_lines)),
             }
         )
-    sections = [s for s in sections if s.get("section_type") != "overview"] or sections
+    sections = [section for section in sections if section["section_type"] != "overview"] or sections
     return _emit_one_thing_section_chunks(
         source_meta=meta,
         case_title=case_title,

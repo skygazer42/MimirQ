@@ -18,28 +18,26 @@ import {
   Settings2,
   Sparkles,
   Table2,
-} from 'lucide-react'
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Pie,
-  PieChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+} from '@/components/icons'
+import { Bar, BarChart, CartesianGrid, Pie, PieChart, Tooltip, XAxis, YAxis } from 'recharts'
 
 import { AppFrame } from '@/components/app-frame'
-import { PageScaffold } from '@/components/ui/page-scaffold'
+import {
+  OperationalWorkspace,
+  WorkspaceMetrics,
+  WorkspaceNotice,
+  workspaceStyles as ws,
+} from '@/components/ui/operational-workspace'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { MoreHorizontal } from '@/components/icons'
 import { Panel } from '@/components/ui/panel'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
-import { StatCard, StatsGrid } from '@/components/ui/stats-card'
 import { DocumentDetailDialog } from '@/components/document-detail-dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { SafeResponsiveChart } from '@/components/ui/safe-responsive-chart'
@@ -71,16 +69,11 @@ const PIE_COLORS = [
 const EMPTY_SCAN_RUNS: DatasetProfileScanRunOut[] = []
 const PROFILE_DOCUMENT_PAGE_SIZE = 50
 const PROFILE_BUCKET_PREVIEW_MAX_CHARS = 360
-const profileHeroCard = 'relative overflow-hidden border-b border-border/60 bg-transparent px-1 py-2 shadow-none dark:border-border/70'
-const profilePanelClass = 'overflow-hidden border border-border/60 bg-card p-3 shadow-none dark:border-border/70 dark:bg-card'
-const profileChartProps = { className: 'h-[176px]', minHeight: 176 } as const
-const profileEmptyChartClass = 'h-[176px] flex items-center justify-center text-[11px] text-muted-foreground/60'
-const profileSectionTitleClass = 'text-[13px] font-semibold leading-none text-foreground/85'
-const profileSectionCaptionClass = 'mt-1 text-[11px] leading-4 text-muted-foreground/62'
-const profileToolbarGroupClass = 'inline-flex flex-wrap items-center gap-1 rounded-lg border border-border/60 bg-card p-1 shadow-none dark:border-border/70 dark:bg-card'
-const profileToolbarButtonClass = 'h-8 gap-1.5 rounded-xl px-2.5 text-[12px] font-medium text-muted-foreground shadow-none hover:bg-card/95 hover:text-foreground hover:shadow-sm dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const profileToolbarExportButtonClass = 'h-8 gap-1.5 rounded-md border border-border/60 bg-card px-2.5 text-[12px] font-medium text-foreground/85 shadow-none hover:bg-muted/40 hover:text-foreground dark:border-border/70 dark:bg-card dark:text-muted-foreground dark:hover:bg-muted/60 dark:hover:text-foreground [&_svg]:size-3.5'
-const profileToolbarPrimaryButtonClass = 'h-8 gap-1.5 rounded-md border border-primary/20 bg-primary px-3 text-[12px] font-semibold text-primary-foreground shadow-none hover:bg-primary/90 dark:border-primary/30 [&_svg]:size-3.5'
+const profilePanelClass = ws.section
+const profileChartProps = { className: 'h-[220px]', minHeight: 220 } as const
+const profileEmptyChartClass = 'flex h-[220px] items-center justify-center text-sm text-muted-foreground'
+const profileSectionTitleClass = ws.sectionTitle
+const profileSectionCaptionClass = ws.sectionDescription
 
 function ProfileCardHeader({
   title,
@@ -133,70 +126,6 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-const PROFILE_SECTIONS = [
-  { id: 'prof-overview', label: '概览' },
-  { id: 'prof-distribution', label: '分布图表' },
-  { id: 'prof-findings', label: '问题清单' },
-  { id: 'prof-scan', label: '深度扫描' },
-  { id: 'prof-history', label: '扫描历史' },
-] as const
-
-function ProfileAnchorNav() {
-  const [activeId, setActiveId] = useState<string>(PROFILE_SECTIONS[0].id)
-
-  useEffect(() => {
-    const visibleMap = new Map<string, number>()
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          visibleMap.set(entry.target.id, entry.intersectionRatio)
-        }
-        let best: string = PROFILE_SECTIONS[0].id
-        let bestRatio = -1
-        for (const sec of PROFILE_SECTIONS) {
-          const ratio = visibleMap.get(sec.id) ?? 0
-          if (ratio > bestRatio) {
-            bestRatio = ratio
-            best = sec.id
-          }
-        }
-        if (bestRatio > 0) setActiveId(best)
-      },
-      {
-        root: document.querySelector('[data-profile-scroll-container="true"]') ?? document.querySelector('[data-page-scroll-container]'),
-        threshold: [0, 0.1, 0.25, 0.5],
-      },
-    )
-
-    for (const sec of PROFILE_SECTIONS) {
-      const el = document.getElementById(sec.id)
-      if (el) observer.observe(el)
-    }
-
-    return () => observer.disconnect()
-  }, [])
-
-  return (
-    <div className="mb-3 flex items-center gap-1 overflow-x-auto rounded-lg border border-border/60 bg-card p-1.5 shadow-none no-scrollbar dark:border-border/70 dark:bg-card">
-      {PROFILE_SECTIONS.map((sec) => (
-        <button
-          key={sec.id}
-          type="button"
-          onClick={() => document.getElementById(sec.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-          className={cn(
-            'shrink-0 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap',
-            activeId === sec.id
-              ? 'bg-info/10 text-info shadow-none'
-              : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground dark:text-muted-foreground dark:hover:bg-muted/50 dark:hover:text-foreground',
-          )}
-        >
-          {sec.label}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 function findingBadgeVariant(sev: string): 'secondary' | 'outline' | 'soft' | 'destructive' {
   const s = String(sev || '').toLowerCase()
   if (s === 'error') return 'destructive'
@@ -217,6 +146,24 @@ function formatChunkTargetLabel(value: unknown): string {
     .replace('Chunk tokens', '切片 token')
     .replace('Coverage', '正文覆盖')
     .replace('Overlap waste', '重叠成本')
+}
+
+function qualityBucketLabel(key: string): string {
+  switch (String(key || '').toLowerCase()) {
+    case 'high_density':
+      return '高密度'
+    case 'mid_density':
+      return '中密度'
+    case 'low_density':
+      return '低密度'
+    case 'outline_heavy':
+      return '目录/标题占比高'
+    case 'tiny':
+      return '内容过短'
+    case 'unknown':
+    default:
+      return '未知'
+  }
 }
 
 function asDocumentStatus(status: string | null | undefined): Document['status'] {
@@ -248,6 +195,7 @@ export default function DatasetProfilePage() {
   const params = useParams()
   const datasetId = asDatasetId(params?.id)
 
+  const [scanConfigOpen, setScanConfigOpen] = useState(false)
   const [isExportingJson, setIsExportingJson] = useState(false)
   const [isExportingHtml, setIsExportingHtml] = useState(false)
 
@@ -295,13 +243,7 @@ export default function DatasetProfilePage() {
       ? queryKeys.datasets.profileScanRuns(datasetId, { skip: 0, limit: 20 })
       : queryKeys.datasets.profileScanRuns('', { skip: 0, limit: 20 }),
     enabled: Boolean(datasetId),
-    queryFn: async () => {
-      try {
-        return await datasetApi.listProfileScanRuns(datasetId!, { skip: 0, limit: 20 })
-      } catch {
-        return { total: 0, items: [] }
-      }
-    },
+    queryFn: () => datasetApi.listProfileScanRuns(datasetId!, { skip: 0, limit: 20 }),
   })
 
   const dataset = datasetQuery.data ?? null
@@ -378,11 +320,7 @@ export default function DatasetProfilePage() {
   const { fetchNextPage: fetchNextBucketPage, hasNextPage: hasNextBucketPage } = bucketDocumentsQuery
 
   const refreshProfileOverview = useCallback(async () => {
-    await Promise.all([
-      datasetQuery.refetch(),
-      summaryQuery.refetch(),
-      scanRunsQuery.refetch(),
-    ])
+    await Promise.all([datasetQuery.refetch(), summaryQuery.refetch(), scanRunsQuery.refetch()])
   }, [datasetQuery, summaryQuery, scanRunsQuery])
 
   useEffect(() => {
@@ -399,7 +337,6 @@ export default function DatasetProfilePage() {
     const firstError = datasetQuery.error || summaryQuery.error
     if (!firstError) return
     reportClientError('Failed to load dataset profile', firstError)
-    toast.error(formatApiError(firstError, '加载数据画像失败'))
   }, [datasetQuery.error, summaryQuery.error])
 
   useEffect(() => {
@@ -486,24 +423,6 @@ export default function DatasetProfilePage() {
     if (other > 0) top.push({ key: '__other__', name: '其他', value: other })
     return top
   }, [summary])
-
-  function qualityBucketLabel(key: string): string {
-    switch (String(key || '').toLowerCase()) {
-      case 'high_density':
-        return '高密度'
-      case 'mid_density':
-        return '中密度'
-      case 'low_density':
-        return '低密度'
-      case 'outline_heavy':
-        return '目录/标题占比高'
-      case 'tiny':
-        return '内容过短'
-      case 'unknown':
-      default:
-        return '未知'
-    }
-  }
 
   const qualityBucketChartData = useMemo(() => {
     const m = summary?.by_quality_bucket || {}
@@ -594,7 +513,7 @@ export default function DatasetProfilePage() {
       setSelectedFinding(finding)
       setFindingOpen(true)
     },
-    [datasetId]
+    [datasetId],
   )
 
   const openBucket = useCallback(
@@ -605,7 +524,7 @@ export default function DatasetProfilePage() {
       setBucketKey(key)
       setBucketOpen(true)
     },
-    [datasetId]
+    [datasetId],
   )
 
   const loadMoreFindingPage = useCallback(async () => {
@@ -637,7 +556,7 @@ export default function DatasetProfilePage() {
         }
       }
     },
-    [refreshProfileOverview]
+    [refreshProfileOverview],
   )
 
   const loadMoreBucketPage = useCallback(async () => {
@@ -647,24 +566,30 @@ export default function DatasetProfilePage() {
 
   const pollScanRun = useCallback(
     async (datasetIdValue: string, runId: string) => {
+      const timer = pollTimerRef.current
       try {
         const next = await datasetApi.getProfileScanRun(datasetIdValue, runId)
+        if (pollTimerRef.current !== timer) return
         setScanRun(next)
         const st = String(next.status || '').toLowerCase()
         if (st === 'pending' || st === 'running') {
-          pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRunRef.current(datasetIdValue, runId)), 2000)
+          pollTimerRef.current = globalThis.window.setTimeout(
+            () => detachPromise(pollScanRunRef.current(datasetIdValue, runId)),
+            2000,
+          )
           return
         }
         setScanRunning(false)
         stopPolling()
         detachPromise(refreshProfileOverview())
       } catch (e) {
+        if (pollTimerRef.current !== timer) return
         reportClientError('Failed to poll dataset profile scan run', e)
         setScanRunning(false)
         stopPolling()
       }
     },
-    [refreshProfileOverview, stopPolling]
+    [refreshProfileOverview, stopPolling],
   )
 
   useEffect(() => {
@@ -680,7 +605,10 @@ export default function DatasetProfilePage() {
     if (st !== 'pending' && st !== 'running') return
     if (pollTimerRef.current) return
     setScanRunning(true)
-    pollTimerRef.current = globalThis.window.setTimeout(() => detachPromise(pollScanRun(datasetId, String(run.id))), 500)
+    pollTimerRef.current = globalThis.window.setTimeout(
+      () => detachPromise(pollScanRun(datasetId, String(run.id))),
+      500,
+    )
   }, [datasetId, pollScanRun, summary?.latest_scan_run])
 
   const startDeepScan = useCallback(async () => {
@@ -709,7 +637,9 @@ export default function DatasetProfilePage() {
     setIsExportingJson(true)
     try {
       const blob = await datasetApi.exportProfileSummary(datasetId)
-      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset')
+        .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+        .slice(0, 64)
       downloadBlob(blob, `${safe}.profile.json`)
       toast.success('已导出 JSON 报告')
     } catch (e) {
@@ -725,7 +655,9 @@ export default function DatasetProfilePage() {
     setIsExportingHtml(true)
     try {
       const blob = await datasetApi.exportProfileHtml(datasetId, { redact: true })
-      const safe = String(dataset?.name || 'dataset').replaceAll(/[^a-zA-Z0-9_.-]+/g, '_').slice(0, 64)
+      const safe = String(dataset?.name || 'dataset')
+        .replaceAll(/[^a-zA-Z0-9_.-]+/g, '_')
+        .slice(0, 64)
       downloadBlob(blob, `${safe}.profile.html`)
       toast.success('已导出 HTML 报告')
     } catch (e) {
@@ -748,31 +680,34 @@ export default function DatasetProfilePage() {
         error_message: summary.latest_scan_run.error_message,
       }
     }
-    if (scanRun) return { status: scanRun.status, progress: scanRun.progress ?? 0, error_message: scanRun.error_message }
+    if (scanRun)
+      return { status: scanRun.status, progress: scanRun.progress ?? 0, error_message: scanRun.error_message }
     return { status: undefined, progress: 0, error_message: undefined }
   }, [scanRun, summary?.latest_scan_run])
 
   const latestRunStatus = effectiveScanRun.status
   const latestRunProgress = effectiveScanRun.progress
-  const totalSizeLabel = summary ? formatFileSize(summary.total_size_bytes || 0) : (isLoading ? '…' : '-')
+  const totalSizeLabel = summary ? formatFileSize(summary.total_size_bytes || 0) : isLoading ? '…' : '-'
   const scannedPdfCount = summary
     ? `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`
-    : (isLoading ? '…' : '-')
+    : isLoading
+      ? '…'
+      : '-'
   const totalFindingCount = (summary?.findings || []).reduce((acc, finding) => acc + Number(finding.count || 0), 0)
   const generatedAtLabel = summary?.generated_at ? formatDate(summary.generated_at) : '--'
   const latestRunLabel = formatProfileRunStatus(latestRunStatus)
   const activeFindings = useMemo(
     () => (summary?.findings || []).filter((finding) => Number(finding.count || 0) > 0),
-    [summary?.findings]
+    [summary?.findings],
   )
   const clearFindings = useMemo(
     () => (summary?.findings || []).filter((finding) => Number(finding.count || 0) <= 0),
-    [summary?.findings]
+    [summary?.findings],
   )
 
   const completedRuns = useMemo(
     () => (scanRuns || []).filter((r) => String(r.status || '').toLowerCase() === 'completed'),
-    [scanRuns]
+    [scanRuns],
   )
 
   const compareDelta = useMemo(() => {
@@ -807,907 +742,1079 @@ export default function DatasetProfilePage() {
 
   return (
     <AppFrame>
-      <PageScaffold
+      <OperationalWorkspace
         title="数据画像"
-        showHeader={false}
-        size="full"
-        density="system-dense"
-        bodyGutter="dense"
-        bodyClassName="h-full overflow-hidden bg-[radial-gradient(circle_at_12%_0%,hsl(var(--info)/0.10),transparent_28%),linear-gradient(180deg,hsl(var(--background))_0%,hsl(var(--surface-2)/0.76)_44%,hsl(var(--background))_100%)] pb-3"
-        bodyContainerClassName="h-full min-h-0 overflow-hidden"
-        top={
-          <div className={profileHeroCard}>
-            <div className="relative flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-info/10 text-info shadow-none">
-                  <BarChart3 className="size-3.5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="truncate text-[19px] font-semibold leading-6 tracking-[-0.02em] text-foreground dark:text-foreground">
-                      数据画像
-                    </h1>
-                    <Badge variant="soft" className="h-5 border-info/30 bg-info/10 px-2 text-[10px] font-medium leading-none text-info">
-                      PROFILE
-                    </Badge>
-                  </div>
-                  <p className="max-w-4xl text-[12px] leading-5 text-muted-foreground">
-                    数据集：<span className="font-semibold text-foreground dark:text-foreground">{dataset?.name || datasetId || '未选择'}</span>
-                    <span className="mx-2 text-muted-foreground/60">·</span>
-                    格式、长度、扫描件、PII、重复与切片指标的质量画像
-                  </p>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] leading-none text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Database className="size-3.5 text-info" />
-                      文档 <strong className="font-mono text-foreground dark:text-foreground">{summary?.total_documents ?? (isLoading ? '…' : 0)}</strong>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Cloud className="size-3.5 text-info" />
-                      总大小 <strong className="font-mono text-foreground dark:text-foreground">{totalSizeLabel}</strong>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <FileSearch className="size-3.5 text-warning" />
-                      扫描 PDF <strong className="font-mono text-foreground dark:text-foreground">{scannedPdfCount}</strong>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <BarChart3 className="size-3.5 text-destructive" />
-                      问题 <strong className="font-mono text-foreground dark:text-foreground">{summary ? totalFindingCount : (isLoading ? '…' : 0)}</strong>
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Sparkles className="size-3.5 text-success" />
-                      更新时间 <strong className="font-mono text-foreground dark:text-foreground">{generatedAtLabel}</strong>
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border border-success/30 bg-success/5 px-3 text-[13px] font-medium text-success shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]">
-                <span className={cn('size-2 rounded-full', scanRunning ? 'animate-pulse bg-info' : 'bg-success')} />
-                {latestRunLabel}
-              </div>
-            </div>
-          </div>
-        }
-        toolbar={
-          <div className="flex w-full flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div className={profileToolbarGroupClass}>
-              <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push('/datasets')}>
-                <ArrowLeft className="w-4 h-4" />
-                返回
-              </Button>
-              {datasetId ? (
-                <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/health`)}>
-                  <Activity className="w-4 h-4" />
-                  健康
+        icon="profile-discovery"
+        context={dataset?.name ?? (datasetQuery.isPending ? '正在读取数据集…' : '数据集未取得')}
+        back={() => router.push('/datasets')}
+        actions={
+          <>
+            <Button disabled={scanRunning} onClick={() => setScanConfigOpen(true)}>
+              <Sparkles />
+              {scanRunning ? '正在扫描…' : '深度扫描'}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  aria-label="导出画像"
+                  disabled={!summary || isExportingJson || isExportingHtml}
+                >
+                  <Download />
+                  导出
                 </Button>
-              ) : null}
-              {datasetId ? (
-                <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/ingestion`)}>
-                  <Settings2 className="w-4 h-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void exportJson()
+                  }}
+                >
+                  JSON 报告
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void exportHtml()
+                  }}
+                >
+                  HTML 报告
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="数据集操作">
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => router.push(`/datasets/${datasetId}/health`)}>
+                  健康概览
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/datasets/${datasetId}/precheck`)}>
+                  文档预检
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/datasets/${datasetId}/ingestion`)}>
                   入库策略
-                </Button>
-              ) : null}
-              {datasetId ? (
-                <Button size="sm" variant="ghost" className={profileToolbarButtonClass} onClick={() => router.push(`/datasets/${datasetId}/tables`)}>
-                  <Table2 className="w-4 h-4" />
-                  表格 / TAG
-                </Button>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className={profileToolbarExportButtonClass}
-                onClick={() => detachPromise(exportJson())}
-                disabled={isExportingJson || !summary}
-              >
-                {isExportingJson ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
-                导出 JSON
-              </Button>
-              <Button
-                size="sm"
-                className={profileToolbarPrimaryButtonClass}
-                onClick={() => detachPromise(exportHtml())}
-                disabled={isExportingHtml || !summary}
-              >
-                {isExportingHtml ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Download className="w-4 h-4" />}
-                导出 HTML
-              </Button>
-            </div>
-          </div>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => router.push(`/datasets/${datasetId}/tables`)}>
+                  表格资产
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
         }
       >
-        <div data-profile-scroll-container="true" className="h-full min-h-0 overflow-y-auto pr-1 no-scrollbar">
-        <ProfileAnchorNav />
-        <div className="space-y-3 pb-3">
-          <div id="prof-overview">
-          <Panel className={profilePanelClass}>
-            <StatsGrid dense className="xl:grid-cols-5">
-              <StatCard dense icon={FileSearch} label="文档总数" value={summary?.total_documents ?? (isLoading ? '…' : 0)} color="cyan" />
-              <StatCard icon={BarChart3} label="总大小" value={(() => {
-    if (summary) {
-        return formatFileSize(summary.total_size_bytes || 0);
-    }
-    else if (isLoading) {
-            return '…';
-        }
-        else {
-            return '-';
-        }
-})()} color="teal" dense />
-              <StatCard dense icon={Sparkles} label="P50 长度" value={summary?.length_percentiles?.p50 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
-              <StatCard dense icon={Sparkles} label="P90 长度" value={summary?.length_percentiles?.p90 ?? (isLoading ? '…' : 0)} subValue="chars" color="blue" />
-              <StatCard icon={Sparkles} label="扫描 PDF" value={(() => {
-    if (summary) {
-        return `${summary.pdf_scan.scanned}/${summary.pdf_scan.scanned + summary.pdf_scan.not_scanned + summary.pdf_scan.unknown}`;
-    }
-    else if (isLoading) {
-            return '…';
-        }
-        else {
-            return '-';
-        }
-})()} color="orange" dense />
-            </StatsGrid>
-          </Panel>
+        {datasetQuery.isError || summaryQuery.isError ? (
+          <WorkspaceNotice
+            retry={() => {
+              void datasetQuery.refetch()
+              void summaryQuery.refetch()
+            }}
+            retryLabel="重新读取画像"
+            pending={datasetQuery.isFetching || summaryQuery.isFetching}
+          >
+            {formatApiError(datasetQuery.error || summaryQuery.error, '画像读取失败')}
+          </WorkspaceNotice>
+        ) : null}
+        {!summary ? (
+          <div className={ws.empty} role="status">
+            {summaryQuery.isPending ? '正在读取数据画像…' : '当前画像暂不可用。'}
           </div>
-
-          <div id="prof-distribution" className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader
-                title="格式分布"
-                caption="文件类型占比"
-                meta={summary?.generated_at ? formatDate(summary.generated_at) : ''}
+        ) : (
+          <Tabs defaultValue="overview">
+            <TabsList className={ws.tabList} aria-label="数据画像视图">
+              <TabsTrigger value="overview">问题与概览</TabsTrigger>
+              <TabsTrigger value="distribution">分布分析</TabsTrigger>
+              <TabsTrigger value="history">扫描历史</TabsTrigger>
+            </TabsList>
+            <TabsContent value="overview" className={ws.tabContent}>
+              <WorkspaceMetrics
+                items={[
+                  { label: '文档总数', value: summary.total_documents },
+                  { label: '总大小', value: totalSizeLabel },
+                  { label: '正文长度中位数', value: summary.length_percentiles.p50, detail: '字符' },
+                  { label: '正文长度 P90', value: summary.length_percentiles.p90, detail: '字符' },
+                  { label: '扫描版 PDF', value: scannedPdfCount },
+                ]}
               />
-              <SafeResponsiveChart {...profileChartProps}>
-                  <PieChart>
-                    <Tooltip />
-                    <Pie
-                      data={fileTypeChartData}
-                      dataKey="value"
-                      nameKey="name"
-                      innerRadius={42}
-                      outerRadius={72}
-                      paddingAngle={2}
-                    />
-                  </PieChart>
-                </SafeResponsiveChart>
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="状态分布" caption="按文档处理状态聚合" />
-              <SafeResponsiveChart {...profileChartProps}>
-                  <BarChart data={statusChartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" fontSize={12} />
-                    <YAxis allowDecimals={false} fontSize={12} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </SafeResponsiveChart>
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="长度分布" caption="按字符长度区间统计" />
-              <SafeResponsiveChart {...profileChartProps}>
-                  <BarChart data={lengthHistogramData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" fontSize={12} />
-                    <YAxis allowDecimals={false} fontSize={12} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </SafeResponsiveChart>
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="PDF 扫描占比" caption="扫描件、文本型与未知类型" />
-              <SafeResponsiveChart {...profileChartProps}>
-                  <PieChart>
-                    <Tooltip />
-                    <Pie data={pdfScanData} dataKey="value" nameKey="name" innerRadius={42} outerRadius={72} paddingAngle={2} />
-                  </PieChart>
-                </SafeResponsiveChart>
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="文件大小分布" caption="用于发现异常大文件或碎片文件" />
-              <SafeResponsiveChart {...profileChartProps}>
-                  <BarChart data={fileSizeHistogramData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" fontSize={12} />
-                    <YAxis allowDecimals={false} fontSize={12} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="hsl(var(--chart-3))" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </SafeResponsiveChart>
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="页数分布" caption="PDF / Office 页数画像" />
-              {pageCountHistogramData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={pageCountHistogramData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-7))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="切片数量分布" caption="每个文档生成的切片数量" />
-              {chunkCountHistogramData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={chunkCountHistogramData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="平均切片长度" caption="按文档聚合的平均切片长度" />
-              {avgChunkCharsHistogramData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={avgChunkCharsHistogramData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-2))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="切片长度分布" caption="按切片粒度统计字符长度" />
-              {chunkLengthHistogramData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={chunkLengthHistogramData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={cn(profilePanelClass, 'lg:col-span-2 p-3')}>
-              <div className="mb-3 flex items-start justify-between gap-4">
-                <div>
-                  <div className={profileSectionTitleClass}>切块目标检查</div>
-                  <div className={profileSectionCaptionClass}>
-                    检查 token 分布、正文覆盖和重叠成本；缺统计只提示补采集，不代表入库失败。
-                  </div>
+              <section className={ws.section}>
+                <div className={ws.sectionHeading}>
+                  <h2 className={ws.sectionTitle}>问题清单</h2>
+                  <span className={ws.muted}>{activeFindings.length} 类问题</span>
                 </div>
-                <Badge variant="outline" className="shrink-0 border-border bg-card/70 px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
-                  可选门禁
-                </Badge>
-              </div>
-
-              {chunkTargets.length ? (
-                <div className="grid gap-2 md:grid-cols-3">
-                  {chunkTargets.map((t, idx) => (
-                    <div
-                      key={String(t.key || t.label || idx)}
-                      className={cn(
-                        'relative overflow-hidden rounded-xl border bg-card/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:bg-muted/20',
-                        String(t.status || '').toLowerCase() === 'fail'
-                          ? 'border-destructive/30'
-                          : String(t.status || '').toLowerCase() === 'warn'
-                            ? 'border-warning/30'
-                            : 'border-border/60 dark:border-border/60',
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          'absolute inset-y-2 left-0 w-1 rounded-r-full',
-                          String(t.status || '').toLowerCase() === 'fail'
-                            ? 'bg-destructive'
-                            : String(t.status || '').toLowerCase() === 'warn'
-                              ? 'bg-warning'
-                              : 'bg-info/30',
-                        )}
-                      />
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-1.5 pl-2">
-                          <div className="truncate text-[12px] font-semibold text-foreground/85">{formatChunkTargetLabel(t.label || t.key)}</div>
-                          <Badge variant={targetBadgeVariant(String(t.status || ''))} className="h-5 shrink-0 px-1.5 text-[10px] font-mono uppercase">
-                            {String(t.status || '')}
-                          </Badge>
-                        </div>
-                        {t.message ? (
-                          <div className="mt-1 line-clamp-2 pl-2 text-[11px] leading-4 text-muted-foreground/65 text-pretty">
-                            {String(t.message)}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {t.suggestions.length ? (
-                        <div className="mt-2 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px] leading-4 text-muted-foreground/70 dark:bg-muted/30">
-                          {String(t.suggestions[0])}
-                          {t.suggestions.length > 1 ? (
-                            <span className="ml-1 text-muted-foreground/45">+{t.suggestions.length - 1}</span>
-                          ) : null}
-                        </div>
-                      ) : null}
+                {activeFindings.length ? (
+                  <div className={ws.tableScroll}>
+                    <table className={ws.table} aria-label="画像问题清单">
+                      <thead>
+                        <tr>
+                          <th>问题与说明</th>
+                          <th>级别</th>
+                          <th>命中文件</th>
+                          <th>
+                            <span className="sr-only">操作</span>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeFindings.map((finding) => (
+                          <tr key={finding.key}>
+                            <td>
+                              <strong className="font-medium">{finding.label}</strong>
+                              {finding.description ? <p>{finding.description}</p> : null}
+                            </td>
+                            <td>
+                              <span
+                                className={
+                                  finding.severity === 'error'
+                                    ? 'text-destructive'
+                                    : finding.severity === 'warning'
+                                      ? ws.warning
+                                      : ws.muted
+                                }
+                              >
+                                {finding.severity === 'error'
+                                  ? '错误'
+                                  : finding.severity === 'warning'
+                                    ? '注意'
+                                    : '提示'}
+                              </span>
+                            </td>
+                            <td className="tabular-nums">{finding.count}</td>
+                            <td className="text-right">
+                              <Button
+                                variant="ghost"
+                                aria-label={`查看${finding.label}文件`}
+                                onClick={() => openFinding(finding)}
+                              >
+                                查看文件
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className={ws.muted}>当前报告没有命中的问题条目。</p>
+                )}
+                {clearFindings.length ? (
+                  <details className="mt-4 text-sm">
+                    <summary className="cursor-pointer text-muted-foreground">
+                      已检查但未命中 · {clearFindings.length} 项
+                    </summary>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      {clearFindings.map((finding) => (
+                        <span key={finding.key}>{finding.label}</span>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-8 text-center text-[11px] text-muted-foreground/60">
-                  暂无数据（可运行深度扫描补齐 chunk token/coverage 等指标）
-                </div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader
-                title="解析质量分布"
-                caption="解析文本质量评分区间"
-                action={parseLowQualityFinding ? (
-                  <Button
-                    variant="outline"
-                    className="h-8 px-2 gap-1 text-xs"
-                    onClick={() => detachPromise(openFinding(parseLowQualityFinding))}
-                  >
-                    <FileSearch className="w-3.5 h-3.5" />
-                    低质量
-                  </Button>
+                  </details>
                 ) : null}
-              />
-              {parseQualityHistogramData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={parseQualityHistogramData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="解析路由" caption="解析后端、耗时和后备路径概览" />
-
-              {parsingBackendChartData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={parsingBackendChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
-                  <div className="text-[10px] text-muted-foreground">覆盖文档</div>
-                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                    {Number(summary?.parsing_provenance?.docs_with_provenance || 0)}
-                  </div>
+              </section>
+              <section className={ws.section}>
+                <h2 className={ws.sectionTitle}>最近扫描</h2>
+                <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                  <span>{latestRunLabel}</span>
+                  <span className="text-muted-foreground">画像更新于 {generatedAtLabel}</span>
+                  {scanRunning ? <span>{latestRunProgress}%</span> : null}
                 </div>
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
-                  <div className="text-[10px] text-muted-foreground">后备解析</div>
-                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                    {Number(summary?.parsing_provenance?.fallback_docs || 0)}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
-                  <div className="text-[10px] text-muted-foreground">P50 耗时 ms</div>
-                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                    {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p50 || 0)}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
-                  <div className="text-[10px] text-muted-foreground">P90 耗时 ms</div>
-                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                    {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p90 || 0)}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
-                  <div className="text-[10px] text-muted-foreground">平均解析分</div>
-                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                    {averageParseQuality == null ? '-' : averageParseQuality.toFixed(3)}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
-                  <div className="text-[10px] text-muted-foreground">后备率</div>
-                  <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
-                    {fallbackRate == null ? '-' : `${(fallbackRate * 100).toFixed(1)}%`}
-                  </div>
-                </div>
-              </div>
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="语言分布" caption="中文、英文、混合和未知语言占比" />
-              {languageMixChartData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <PieChart>
-                      <Tooltip />
-                      <Pie
-                        data={languageMixChartData}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={42}
-                        outerRadius={72}
-                        paddingAngle={2}
+                {effectiveScanRun.error_message ? (
+                  <p className="mt-3 text-sm text-destructive">{effectiveScanRun.error_message}</p>
+                ) : null}
+              </section>
+            </TabsContent>
+            <TabsContent value="distribution" className={ws.tabContent}>
+              <Tabs defaultValue="documents">
+                <TabsList className={ws.tabList} aria-label="分布分析分类">
+                  <TabsTrigger value="documents">文档分布</TabsTrigger>
+                  <TabsTrigger value="chunks">切片质量</TabsTrigger>
+                  <TabsTrigger value="risk">解析与风险</TabsTrigger>
+                </TabsList>
+                <TabsContent value="documents" className={ws.tabContent}>
+                  <div className={ws.charts}>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader
+                        title="格式分布"
+                        caption="文件类型占比"
+                        meta={summary?.generated_at ? formatDate(summary.generated_at) : ''}
                       />
-                    </PieChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="目录分布" caption="点击柱子查看对应文件" />
-              {directoryChartData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={directoryChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} interval={0} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar
-                        dataKey="value"
-                        fill="hsl(var(--chart-5))"
-                        radius={[6, 6, 0, 0]}
-                        cursor="pointer"
-                        onClick={(entry) => {
-                          const key = String(entry?.key || 'root')
-                          if (key !== '__other__') detachPromise(openBucket('directory', key))
-                        }}
-                      />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="质量桶分布" caption="点击柱子查看对应文件" />
-              {qualityBucketChartData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={qualityBucketChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} interval={0} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar
-                        dataKey="value"
-                        fill="hsl(var(--chart-2))"
-                        radius={[6, 6, 0, 0]}
-                        cursor="pointer"
-                        onClick={(entry) => detachPromise(openBucket('quality_bucket', String(entry?.key || 'unknown')))}
-                      />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="PII 命中" caption="手机号、邮箱、身份证等敏感信息次数" />
-              {piiChartData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={piiChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-4))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-
-            <Panel className={profilePanelClass}>
-              <ProfileCardHeader title="密钥 / Token 命中" caption="疑似密钥、Token 和凭证命中次数" />
-              {secretsChartData.length ? (
-                <SafeResponsiveChart {...profileChartProps}>
-                    <BarChart data={secretsChartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" fontSize={12} />
-                      <YAxis allowDecimals={false} fontSize={12} />
-                      <Tooltip />
-                      <Bar dataKey="value" fill="hsl(var(--chart-6))" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </SafeResponsiveChart>
-              ) : (
-                <div className={profileEmptyChartClass}>暂无数据</div>
-              )}
-            </Panel>
-          </div>
-
-          <div id="prof-findings">
-          <Panel className={cn(profilePanelClass, 'p-3')}>
-            <div className="mb-3 flex items-start justify-between gap-4">
-              <div>
-                <div className={profileSectionTitleClass}>问题清单</div>
-                <div className={profileSectionCaptionClass}>
-                  只突出有命中的可操作项；点击问题行查看文件列表。
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={totalFindingCount > 0 ? 'soft' : 'outline'} className="h-5 px-1.5 text-[10px] font-mono">
-                  命中 {totalFindingCount}
-                </Badge>
-                <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono text-muted-foreground">
-                  已检查 {clearFindings.length}
-                </Badge>
-              </div>
-            </div>
-
-            {activeFindings.length ? (
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {activeFindings.map((f) => (
-                  <button
-                    key={f.key}
-                    type="button"
-                    className={cn(
-                      'relative overflow-hidden rounded-xl border bg-card/60 px-2.5 py-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] transition-colors hover:bg-card/90 dark:bg-muted/20 md:grid-cols-[minmax(0,1fr)_auto]',
-                      String(f.severity || '').toLowerCase() === 'error'
-                        ? 'border-destructive/30'
-                        : String(f.severity || '').toLowerCase() === 'warning'
-                          ? 'border-warning/30'
-                          : 'border-border/60 dark:border-border/60',
-                      'focus:outline-none focus:ring-2 focus:ring-primary/30'
-                    )}
-                    onClick={() => detachPromise(openFinding(f))}
-                  >
-                    <div
-                      className={cn(
-                        'absolute inset-y-2 left-0 w-1 rounded-r-full',
-                        String(f.severity || '').toLowerCase() === 'error'
-                          ? 'bg-destructive'
-                          : String(f.severity || '').toLowerCase() === 'warning'
-                            ? 'bg-warning'
-                            : 'bg-info/30',
+                      <SafeResponsiveChart {...profileChartProps}>
+                        <PieChart>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--popover))',
+                              color: 'hsl(var(--popover-foreground))',
+                              borderColor: 'hsl(var(--border))',
+                            }}
+                            itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                          />
+                          <Pie
+                            data={fileTypeChartData}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={42}
+                            outerRadius={72}
+                            paddingAngle={2}
+                          />
+                        </PieChart>
+                      </SafeResponsiveChart>
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="状态分布" caption="按文档处理状态聚合" />
+                      <SafeResponsiveChart {...profileChartProps}>
+                        <BarChart data={statusChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" fontSize={12} />
+                          <YAxis allowDecimals={false} fontSize={12} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--popover))',
+                              color: 'hsl(var(--popover-foreground))',
+                              borderColor: 'hsl(var(--border))',
+                            }}
+                            itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                          />
+                          <Bar
+                            isAnimationActive={false}
+                            dataKey="value"
+                            fill="hsl(var(--chart-1))"
+                            radius={[6, 6, 0, 0]}
+                          />
+                        </BarChart>
+                      </SafeResponsiveChart>
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="长度分布" caption="按字符长度区间统计" />
+                      <SafeResponsiveChart {...profileChartProps}>
+                        <BarChart data={lengthHistogramData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" fontSize={12} />
+                          <YAxis allowDecimals={false} fontSize={12} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--popover))',
+                              color: 'hsl(var(--popover-foreground))',
+                              borderColor: 'hsl(var(--border))',
+                            }}
+                            itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                          />
+                          <Bar
+                            isAnimationActive={false}
+                            dataKey="value"
+                            fill="hsl(var(--chart-2))"
+                            radius={[6, 6, 0, 0]}
+                          />
+                        </BarChart>
+                      </SafeResponsiveChart>
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="PDF 扫描占比" caption="扫描件、文本型与未知类型" />
+                      <SafeResponsiveChart {...profileChartProps}>
+                        <PieChart>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--popover))',
+                              color: 'hsl(var(--popover-foreground))',
+                              borderColor: 'hsl(var(--border))',
+                            }}
+                            itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                          />
+                          <Pie
+                            isAnimationActive={false}
+                            data={pdfScanData}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={42}
+                            outerRadius={72}
+                            paddingAngle={2}
+                          />
+                        </PieChart>
+                      </SafeResponsiveChart>
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="文件大小分布" caption="用于发现异常大文件或碎片文件" />
+                      <SafeResponsiveChart {...profileChartProps}>
+                        <BarChart data={fileSizeHistogramData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" fontSize={12} />
+                          <YAxis allowDecimals={false} fontSize={12} />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--popover))',
+                              color: 'hsl(var(--popover-foreground))',
+                              borderColor: 'hsl(var(--border))',
+                            }}
+                            itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                          />
+                          <Bar
+                            isAnimationActive={false}
+                            dataKey="value"
+                            fill="hsl(var(--chart-3))"
+                            radius={[6, 6, 0, 0]}
+                          />
+                        </BarChart>
+                      </SafeResponsiveChart>
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="页数分布" caption="PDF / Office 页数画像" />
+                      {pageCountHistogramData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={pageCountHistogramData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-7))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
                       )}
-                    />
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-1.5 pl-2">
-                        <div className="truncate text-[12px] font-semibold text-foreground/85">{f.label}</div>
-                        <Badge variant={findingBadgeVariant(f.severity)} className="h-5 shrink-0 px-1.5 text-[10px] font-mono">
-                          ×{f.count}
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="语言分布" caption="中文、英文、混合和未知语言占比" />
+                      {languageMixChartData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <PieChart>
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Pie
+                              data={languageMixChartData}
+                              dataKey="value"
+                              nameKey="name"
+                              innerRadius={42}
+                              outerRadius={72}
+                              paddingAngle={2}
+                            />
+                          </PieChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="目录分布" caption="点击柱子查看对应文件" />
+                      {directoryChartData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={directoryChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} interval={0} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              dataKey="value"
+                              fill="hsl(var(--chart-5))"
+                              radius={[6, 6, 0, 0]}
+                              cursor="pointer"
+                              onClick={(entry) => {
+                                const key = String(entry?.key || 'root')
+                                if (key !== '__other__') detachPromise(openBucket('directory', key))
+                              }}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                  </div>
+                </TabsContent>
+                <TabsContent value="chunks" className={ws.tabContent}>
+                  <div className={ws.charts}>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="切片数量分布" caption="每个文档生成的切片数量" />
+                      {chunkCountHistogramData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={chunkCountHistogramData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-4))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="平均切片长度" caption="按文档聚合的平均切片长度" />
+                      {avgChunkCharsHistogramData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={avgChunkCharsHistogramData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-2))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="切片长度分布" caption="按切片粒度统计字符长度" />
+                      {chunkLengthHistogramData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={chunkLengthHistogramData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-6))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                    <Panel variant="seamless" className={cn(profilePanelClass, 'lg:col-span-2')}>
+                      <div className="mb-3 flex items-start justify-between gap-4">
+                        <div>
+                          <div className={profileSectionTitleClass}>切块目标检查</div>
+                          <div className={profileSectionCaptionClass}>
+                            检查 token 分布、正文覆盖和重叠成本；缺统计只提示补采集，不代表入库失败。
+                          </div>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 border-border bg-card/70 px-2 py-0.5 text-xs font-mono text-muted-foreground"
+                        >
+                          可选门禁
                         </Badge>
                       </div>
-                      {f.description ? (
-                        <div className="mt-1 line-clamp-2 pl-2 text-[11px] leading-4 text-muted-foreground/65">{f.description}</div>
-                      ) : null}
-                    </div>
-                    <div className="mt-2 pl-2 text-[11px] font-medium text-info">查看文件</div>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-success/20 bg-success/5 px-2 py-1.5 text-[11px] leading-4 text-success">
-                当前没有命中的可操作问题，下面仅保留已检查项摘要。
-              </div>
-            )}
 
-            {clearFindings.length ? (
-              <div className="mt-3 rounded-xl border border-border/40 bg-muted/40 px-2 py-1.5 dark:bg-muted/20">
-                <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/55">
-                  已检查未命中
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {clearFindings.slice(0, 10).map((f) => (
-                    <span
-                      key={f.key}
-                      className="rounded-full border border-border/45 bg-card/60 px-2 py-0.5 text-[10px] leading-4 text-muted-foreground/65 dark:bg-card/50"
-                    >
-                      {f.label}
-                    </span>
-                  ))}
-                  {clearFindings.length > 10 ? (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] leading-4 text-muted-foreground/45">
-                      +{clearFindings.length - 10}
-                    </span>
-                  ) : null}
-                  </div>
-              </div>
-            ) : null}
-          </Panel>
-          </div>
+                      {chunkTargets.length ? (
+                        <div className="grid gap-2 md:grid-cols-3">
+                          {chunkTargets.map((t, idx) => (
+                            <div
+                              key={String(t.key || t.label || idx)}
+                              className={cn(
+                                'relative overflow-hidden rounded-xl border bg-card/60 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:bg-muted/20',
+                                String(t.status || '').toLowerCase() === 'fail'
+                                  ? 'border-destructive/30'
+                                  : String(t.status || '').toLowerCase() === 'warn'
+                                    ? 'border-warning/30'
+                                    : 'border-border/60 dark:border-border/60',
+                              )}
+                            >
+                              <div
+                                className={cn(
+                                  'absolute inset-y-2 left-0 w-1 rounded-r-full',
+                                  String(t.status || '').toLowerCase() === 'fail'
+                                    ? 'bg-destructive'
+                                    : String(t.status || '').toLowerCase() === 'warn'
+                                      ? 'bg-warning'
+                                      : 'bg-info/30',
+                                )}
+                              />
+                              <div className="min-w-0">
+                                <div className="flex min-w-0 items-center gap-1.5 pl-2">
+                                  <div className="truncate text-[12px] font-semibold text-foreground/85">
+                                    {formatChunkTargetLabel(t.label || t.key)}
+                                  </div>
+                                  <Badge
+                                    variant={targetBadgeVariant(t.status)}
+                                    className="h-5 shrink-0 px-1.5 text-xs font-mono uppercase"
+                                  >
+                                    {String(t.status || '')}
+                                  </Badge>
+                                </div>
+                                {t.message ? (
+                                  <div className="mt-1 line-clamp-2 pl-2 text-xs leading-4 text-muted-foreground text-pretty">
+                                    {String(t.message)}
+                                  </div>
+                                ) : null}
+                              </div>
 
-          <div id="prof-scan">
-          <Panel className={cn(profilePanelClass, 'p-3')}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground/85">
-                  深度扫描
-                  {latestRunStatus ? (
-                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono">
-                      {String(latestRunStatus)}
-                    </Badge>
-                  ) : null}
-                </div>
-                <div className={profileSectionCaptionClass}>
-                  补齐 PDF、文本、切片和哈希指标，供画像、问题清单和对比使用。
-                </div>
-              </div>
-
-              <Button size="sm" className="gap-2" onClick={() => detachPromise(startDeepScan())} disabled={scanRunning}>
-                {scanRunning ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : <Sparkles className="w-4 h-4" />}
-                启动
-              </Button>
-            </div>
-
-            <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-5">
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
-                <Label className="text-xs text-foreground/80">PDF 指标</Label>
-                <Switch
-                  checked={!!scanConfig.backfill_pdf_quality}
-                  onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_pdf_quality: !!v }))}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
-                <Label className="text-xs text-foreground/80">文本质量</Label>
-                <Switch
-                  checked={!!scanConfig.backfill_text_quality}
-                  onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_text_quality: !!v }))}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
-                <Label className="text-xs text-foreground/80">切片分布</Label>
-                <Switch
-                  checked={!!scanConfig.backfill_chunk_stats}
-                  onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_chunk_stats: !!v }))}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
-                <Label className="text-xs text-foreground/80">文件哈希</Label>
-                <Switch
-                  checked={!!scanConfig.compute_file_hash}
-                  onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, compute_file_hash: !!v }))}
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 bg-card/55 px-2.5 py-2 dark:bg-card/40">
-                <Label className="text-xs text-foreground/80">最大文档数</Label>
-                <Input
-                  value={scanConfig.max_documents ?? ''}
-                  placeholder="不限"
-                  onChange={(e) => {
-                    const raw = e.target.value.trim()
-                    if (!raw) {
-                      setScanConfig((prev) => ({ ...prev, max_documents: null }))
-                      return
-                    }
-                    const n = Number(raw)
-                    setScanConfig((prev) => ({ ...prev, max_documents: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null }))
-                  }}
-                  className="h-7 w-20 font-mono text-xs"
-                />
-              </div>
-            </div>
-
-            <div className="mt-2 flex items-center justify-between gap-4 rounded-lg bg-muted/40 px-2.5 py-1.5 dark:bg-muted/20">
-              <div className="text-[11px] text-muted-foreground/65">
-                进度：{(() => {
-    if (scanRunning) {
-        return `${latestRunProgress || 0}%`;
-    }
-    else if (latestRunProgress) {
-            return `${latestRunProgress}%`;
-        }
-        else {
-            return '-';
-        }
-})()}
-                {effectiveScanRun.error_message ? <span className="ml-3 text-destructive">错误：{effectiveScanRun.error_message}</span> : null}
-              </div>
-            </div>
-          </Panel>
-          </div>
-
-          <div id="prof-history">
-          <Panel className={cn(profilePanelClass, 'p-3')}>
-            <div className="mb-3">
-              <div>
-                <div className={profileSectionTitleClass}>扫描历史 / 对比</div>
-                <div className={profileSectionCaptionClass}>
-                  保存深度扫描 summary 快照，用于回溯指标变化。
-                </div>
-              </div>
-            </div>
-
-            {scanRuns.length ? (
-              <div className="rounded-xl border border-border/60 overflow-hidden">
-                <table aria-label="数据集画像扫描运行记录" className="w-full text-left text-xs">
-                  <thead className="bg-muted/40 text-muted-foreground">
-                    <tr>
-                      <th className="px-2 py-1.5 font-medium">时间</th>
-                      <th className="px-2 py-1.5 font-medium">状态</th>
-                      <th className="px-2 py-1.5 font-medium">进度</th>
-                      <th className="px-2 py-1.5 font-medium">配置</th>
-                      <th className="px-2 py-1.5 font-medium">错误</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scanRuns.map((r) => (
-                      <tr key={r.id} className="border-t border-border/60">
-                        <td className="px-2 py-1.5 font-mono text-xs">{r.created_at ? formatDate(r.created_at) : '-'}</td>
-                        <td className="px-2 py-1.5">
-                          <Badge variant="outline" className="font-mono text-xs">
-                            {String(r.status || '')}
-                          </Badge>
-                        </td>
-                        <td className="px-2 py-1.5 font-mono text-xs">{typeof r.progress === 'number' ? `${r.progress}%` : '-'}</td>
-                        <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground">
-                          PDF:{r.config?.backfill_pdf_quality === false ? '0' : '1'} · 文本:{r.config?.backfill_text_quality === false ? '0' : '1'} · 切片:{r.config?.backfill_chunk_stats === false ? '0' : '1'} · 哈希:{r.config?.compute_file_hash ? '1' : '0'}
-                        </td>
-                        <td className="px-2 py-1.5 text-xs text-destructive">{r.error_message || ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border/45 bg-muted/40 px-2 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
-                暂无扫描记录。启动一次深度扫描后，这里会显示快照和可对比版本。
-              </div>
-            )}
-
-            <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
-              <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="text-[13px] font-semibold text-foreground/85">快照对比</div>
-                  <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-mono text-muted-foreground">
-                    已完成 {completedRuns.length}
-                  </Badge>
-                </div>
-
-                {completedRuns.length >= 2 ? (
-                  <>
-                    <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] text-muted-foreground">基准快照</Label>
-                        <Select value={compareA} onValueChange={setCompareA}>
-                          <SelectTrigger className="h-8 bg-card/70 text-xs dark:bg-card/60">
-                            <SelectValue placeholder="选择 run" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {completedRuns.map((r) => (
-                              <SelectItem key={r.id} value={r.id} className="text-xs">
-                                {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label className="text-[11px] text-muted-foreground">对比快照</Label>
-                        <Select value={compareB} onValueChange={setCompareB}>
-                          <SelectTrigger className="h-8 bg-card/70 text-xs dark:bg-card/60">
-                            <SelectValue placeholder="选择 run" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {completedRuns.map((r) => (
-                              <SelectItem key={r.id} value={r.id} className="text-xs">
-                                {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} · {r.id.slice(0, 8)}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {compareDelta ? (
-                      <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3">
-                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
-                          <div className="text-[10px] text-muted-foreground">文档数 Δ</div>
-                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.docs >= 0 ? `+${compareDelta.docs}` : String(compareDelta.docs)}</div>
+                              {t.suggestions.length ? (
+                                <div className="mt-2 rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs leading-4 text-muted-foreground/70 dark:bg-muted/30">
+                                  {String(t.suggestions[0])}
+                                  {t.suggestions.length > 1 ? (
+                                    <span className="ml-1 text-muted-foreground/45">+{t.suggestions.length - 1}</span>
+                                  ) : null}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
-                          <div className="text-[10px] text-muted-foreground">总大小 Δ</div>
-                          <div className="mt-0.5 font-mono text-xs font-semibold">
-                            {compareDelta.bytes >= 0 ? '+' : '-'}
-                            {formatFileSize(Math.abs(compareDelta.bytes))}
+                      ) : (
+                        <div className="py-8 text-center text-xs text-muted-foreground">
+                          暂无数据（可运行深度扫描补齐 chunk token/coverage 等指标）
+                        </div>
+                      )}
+                    </Panel>
+                  </div>
+                </TabsContent>
+                <TabsContent value="risk" className={ws.tabContent}>
+                  <div className={ws.charts}>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader
+                        title="解析质量分布"
+                        caption="解析文本质量评分区间"
+                        action={
+                          parseLowQualityFinding ? (
+                            <Button
+                              variant="outline"
+                              className="h-8 px-2 gap-1 text-xs"
+                              onClick={() => detachPromise(openFinding(parseLowQualityFinding))}
+                            >
+                              <FileSearch className="w-3.5 h-3.5" />
+                              低质量
+                            </Button>
+                          ) : null
+                        }
+                      />
+                      {parseQualityHistogramData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={parseQualityHistogramData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-1))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="解析路由" caption="解析后端、耗时和后备路径概览" />
+
+                      {parsingBackendChartData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={parsingBackendChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-1))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                          <div className="text-xs text-muted-foreground">覆盖文档</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
+                            {Number(summary?.parsing_provenance?.docs_with_provenance || 0)}
                           </div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
-                          <div className="text-[10px] text-muted-foreground">P90 长度 Δ</div>
-                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.p90 >= 0 ? `+${compareDelta.p90}` : String(compareDelta.p90)}</div>
+                        <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                          <div className="text-xs text-muted-foreground">后备解析</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
+                            {Number(summary?.parsing_provenance?.fallback_docs || 0)}
+                          </div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
-                          <div className="text-[10px] text-muted-foreground">扫描 PDF Δ</div>
-                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.scanned >= 0 ? `+${compareDelta.scanned}` : String(compareDelta.scanned)}</div>
+                        <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                          <div className="text-xs text-muted-foreground">P50 耗时 ms</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
+                            {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p50 || 0)}
+                          </div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
-                          <div className="text-[10px] text-muted-foreground">PII 命中 Δ</div>
-                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.pii >= 0 ? `+${compareDelta.pii}` : String(compareDelta.pii)}</div>
+                        <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                          <div className="text-xs text-muted-foreground">P90 耗时 ms</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
+                            {Number(summary?.parsing_provenance?.elapsed_ms_percentiles?.p90 || 0)}
+                          </div>
                         </div>
-                        <div className="rounded-lg border border-border/45 bg-muted/40 p-2 dark:bg-muted/20">
-                          <div className="text-[10px] text-muted-foreground">Secrets 命中 Δ</div>
-                          <div className="mt-0.5 font-mono text-xs font-semibold">{compareDelta.secrets >= 0 ? `+${compareDelta.secrets}` : String(compareDelta.secrets)}</div>
+                        <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                          <div className="text-xs text-muted-foreground">平均解析分</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
+                            {averageParseQuality == null ? '-' : averageParseQuality.toFixed(3)}
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-border/50 bg-muted/20 p-2">
+                          <div className="text-xs text-muted-foreground">后备率</div>
+                          <div className="mt-0.5 font-mono text-xs font-semibold tabular-nums">
+                            {fallbackRate == null ? '-' : `${(fallbackRate * 100).toFixed(1)}%`}
+                          </div>
                         </div>
                       </div>
-                    ) : (
-                    <div className="mt-3 rounded-lg bg-muted/40 px-2.5 py-1.5 text-[11px] text-muted-foreground/60 dark:bg-muted/20">
-                        请选择两个已完成扫描记录。
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="rounded-lg border border-dashed border-border/55 bg-muted/40 px-3 py-2 text-[11px] leading-4 text-muted-foreground/65 dark:bg-muted/20">
-                    <div className="font-medium text-foreground/75">暂无可对比快照</div>
-                    <div className="mt-0.5">
-                      至少需要 2 次已完成深度扫描；当前 {completedRuns.length} 次。完成后这里会出现基准/对比快照下拉。
-                    </div>
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="质量桶分布" caption="点击柱子查看对应文件" />
+                      {qualityBucketChartData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={qualityBucketChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} interval={0} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              dataKey="value"
+                              fill="hsl(var(--chart-2))"
+                              radius={[6, 6, 0, 0]}
+                              cursor="pointer"
+                              onClick={(entry) =>
+                                detachPromise(openBucket('quality_bucket', String(entry?.key || 'unknown')))
+                              }
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="PII 命中" caption="手机号、邮箱、身份证等敏感信息次数" />
+                      {piiChartData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={piiChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-4))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
+                    <Panel variant="seamless" className={profilePanelClass}>
+                      <ProfileCardHeader title="密钥 / Token 命中" caption="疑似密钥、Token 和凭证命中次数" />
+                      {secretsChartData.length ? (
+                        <SafeResponsiveChart {...profileChartProps}>
+                          <BarChart data={secretsChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="name" fontSize={12} />
+                            <YAxis allowDecimals={false} fontSize={12} />
+                            <Tooltip
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--popover))',
+                                color: 'hsl(var(--popover-foreground))',
+                                borderColor: 'hsl(var(--border))',
+                              }}
+                              itemStyle={{ color: 'hsl(var(--popover-foreground))' }}
+                            />
+                            <Bar
+                              isAnimationActive={false}
+                              dataKey="value"
+                              fill="hsl(var(--chart-6))"
+                              radius={[6, 6, 0, 0]}
+                            />
+                          </BarChart>
+                        </SafeResponsiveChart>
+                      ) : (
+                        <div className={profileEmptyChartClass}>暂无数据</div>
+                      )}
+                    </Panel>
                   </div>
-                )}
+                </TabsContent>
+              </Tabs>
+            </TabsContent>
+            <TabsContent value="history" className={ws.tabContent}>
+              <div className={ws.sectionHeading}>
+                <h2 className={ws.sectionTitle}>扫描历史</h2>
+                <Button
+                  variant="ghost"
+                  disabled={scanRunsQuery.isFetching}
+                  onClick={() => {
+                    void scanRunsQuery.refetch()
+                  }}
+                >
+                  重新读取扫描历史
+                </Button>
               </div>
+              {scanRunsQuery.isError ? (
+                <WorkspaceNotice
+                  retry={() => {
+                    void scanRunsQuery.refetch()
+                  }}
+                  pending={scanRunsQuery.isFetching}
+                >
+                  {formatApiError(scanRunsQuery.error, '扫描历史读取失败')}
+                </WorkspaceNotice>
+              ) : (
+                <div id="prof-history">
+                  <Panel variant="seamless" className={cn(profilePanelClass, 'p-3')}>
+                    <div className="mb-3">
+                      <div>
+                        <div className={profileSectionTitleClass}>扫描历史 / 对比</div>
+                        <div className={profileSectionCaptionClass}>保存深度扫描 summary 快照，用于回溯指标变化。</div>
+                      </div>
+                    </div>
 
-              <div className="rounded-xl border border-border/50 bg-card/45 p-3 dark:bg-card/40">
-                <div className="text-[13px] font-semibold text-foreground/85">离线报告</div>
-                <div className="text-[11px] leading-4 text-muted-foreground/65">
-                  导出单文件 HTML，默认脱敏，适合离线分享。
-                </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => detachPromise(exportHtml())}
-                    disabled={!summary || isExportingHtml}
-                  >
-                    {isExportingHtml ? (
-                      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                    {scanRuns.length ? (
+                      <div className="rounded-xl border border-border/60 overflow-hidden">
+                        <table aria-label="数据集画像扫描运行记录" className="w-full text-left text-xs">
+                          <thead className="bg-muted/40 text-muted-foreground">
+                            <tr>
+                              <th className="px-2 py-1.5 font-medium">时间</th>
+                              <th className="px-2 py-1.5 font-medium">状态</th>
+                              <th className="px-2 py-1.5 font-medium">进度</th>
+                              <th className="px-2 py-1.5 font-medium">配置</th>
+                              <th className="px-2 py-1.5 font-medium">错误</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {scanRuns.map((r) => (
+                              <tr key={r.id} className="border-t border-border/60">
+                                <td className="px-2 py-1.5 font-mono text-xs">
+                                  {r.created_at ? formatDate(r.created_at) : '-'}
+                                </td>
+                                <td className="px-2 py-1.5">
+                                  <Badge variant="outline" className="font-mono text-xs">
+                                    {String(r.status || '')}
+                                  </Badge>
+                                </td>
+                                <td className="px-2 py-1.5 font-mono text-xs">
+                                  {typeof r.progress === 'number' ? `${r.progress}%` : '-'}
+                                </td>
+                                <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                                  PDF:{r.config?.backfill_pdf_quality === false ? '0' : '1'} · 文本:
+                                  {r.config?.backfill_text_quality === false ? '0' : '1'} · 切片:
+                                  {r.config?.backfill_chunk_stats === false ? '0' : '1'} · 哈希:
+                                  {r.config?.compute_file_hash ? '1' : '0'}
+                                </td>
+                                <td className="px-2 py-1.5 text-xs text-destructive">{r.error_message || ''}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     ) : (
-                      <Download className="w-4 h-4" />
+                      <div className="rounded-xl border border-border/45 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground dark:bg-muted/20">
+                        暂无扫描记录。启动一次深度扫描后，这里会显示快照和可对比版本。
+                      </div>
                     )}
-                    导出 HTML
-                  </Button>
+
+                    <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+                      <div className={ws.section}>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="text-[13px] font-semibold text-foreground/85">快照对比</div>
+                          <Badge variant="outline" className="h-5 px-1.5 text-xs font-mono text-muted-foreground">
+                            已完成 {completedRuns.length}
+                          </Badge>
+                        </div>
+
+                        {completedRuns.length >= 2 ? (
+                          <>
+                            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">基准快照</Label>
+                                <Select value={compareA} onValueChange={setCompareA}>
+                                  <SelectTrigger className="h-8 bg-card/70 text-xs dark:bg-card/60">
+                                    <SelectValue placeholder="选择 run" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {completedRuns.map((r) => (
+                                      <SelectItem key={r.id} value={r.id} className="text-xs">
+                                        {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} ·{' '}
+                                        {r.id.slice(0, 8)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label className="text-xs text-muted-foreground">对比快照</Label>
+                                <Select value={compareB} onValueChange={setCompareB}>
+                                  <SelectTrigger className="h-8 bg-card/70 text-xs dark:bg-card/60">
+                                    <SelectValue placeholder="选择 run" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {completedRuns.map((r) => (
+                                      <SelectItem key={r.id} value={r.id} className="text-xs">
+                                        {r.created_at ? formatDate(r.created_at) : r.id.slice(0, 8)} ·{' '}
+                                        {r.id.slice(0, 8)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            {compareDelta ? (
+                              <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3">
+                                <div className="border-b border-border py-3">
+                                  <div className="text-xs text-muted-foreground">文档数 Δ</div>
+                                  <div className="mt-0.5 font-mono text-xs font-semibold">
+                                    {compareDelta.docs >= 0 ? `+${compareDelta.docs}` : String(compareDelta.docs)}
+                                  </div>
+                                </div>
+                                <div className="border-b border-border py-3">
+                                  <div className="text-xs text-muted-foreground">总大小 Δ</div>
+                                  <div className="mt-0.5 font-mono text-xs font-semibold">
+                                    {compareDelta.bytes >= 0 ? '+' : '-'}
+                                    {formatFileSize(Math.abs(compareDelta.bytes))}
+                                  </div>
+                                </div>
+                                <div className="border-b border-border py-3">
+                                  <div className="text-xs text-muted-foreground">P90 长度 Δ</div>
+                                  <div className="mt-0.5 font-mono text-xs font-semibold">
+                                    {compareDelta.p90 >= 0 ? `+${compareDelta.p90}` : String(compareDelta.p90)}
+                                  </div>
+                                </div>
+                                <div className="border-b border-border py-3">
+                                  <div className="text-xs text-muted-foreground">扫描 PDF Δ</div>
+                                  <div className="mt-0.5 font-mono text-xs font-semibold">
+                                    {compareDelta.scanned >= 0
+                                      ? `+${compareDelta.scanned}`
+                                      : String(compareDelta.scanned)}
+                                  </div>
+                                </div>
+                                <div className="border-b border-border py-3">
+                                  <div className="text-xs text-muted-foreground">PII 命中 Δ</div>
+                                  <div className="mt-0.5 font-mono text-xs font-semibold">
+                                    {compareDelta.pii >= 0 ? `+${compareDelta.pii}` : String(compareDelta.pii)}
+                                  </div>
+                                </div>
+                                <div className="border-b border-border py-3">
+                                  <div className="text-xs text-muted-foreground">Secrets 命中 Δ</div>
+                                  <div className="mt-0.5 font-mono text-xs font-semibold">
+                                    {compareDelta.secrets >= 0
+                                      ? `+${compareDelta.secrets}`
+                                      : String(compareDelta.secrets)}
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="mt-3 rounded-lg bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground dark:bg-muted/20">
+                                请选择两个已完成扫描记录。
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-border/55 bg-muted/40 px-3 py-2 text-xs leading-4 text-muted-foreground dark:bg-muted/20">
+                            <div className="font-medium text-foreground/75">暂无可对比快照</div>
+                            <div className="mt-0.5">
+                              至少需要 2 次已完成深度扫描；当前 {completedRuns.length}{' '}
+                              次。完成后这里会出现基准/对比快照下拉。
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className={ws.section}>
+                        <div className="text-[13px] font-semibold text-foreground/85">离线报告</div>
+                        <div className="text-xs leading-4 text-muted-foreground">
+                          导出单文件 HTML，默认脱敏，适合离线分享。
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-2"
+                            onClick={() => detachPromise(exportHtml())}
+                            disabled={!summary || isExportingHtml}
+                          >
+                            {isExportingHtml ? (
+                              <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                            ) : (
+                              <Download className="w-4 h-4" />
+                            )}
+                            导出 HTML
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </Panel>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        )}
+        <Dialog open={scanConfigOpen} onOpenChange={setScanConfigOpen}>
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
+              <DialogTitle>深度扫描</DialogTitle>
+              <DialogDescription>补齐现有文档的质量指标，不执行重新入库。</DialogDescription>
+            </DialogHeader>
+            <div className={ws.dialogBody}>
+              {' '}
+              <div className={ws.formRows}>
+                <div className={ws.formRow}>
+                  <Label className="text-xs text-foreground/80">PDF 指标</Label>
+                  <Switch
+                    aria-label="PDF 指标"
+                    checked={!!scanConfig.backfill_pdf_quality}
+                    onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_pdf_quality: !!v }))}
+                  />
+                </div>
+                <div className={ws.formRow}>
+                  <Label className="text-xs text-foreground/80">文本质量</Label>
+                  <Switch
+                    aria-label="文本质量"
+                    checked={!!scanConfig.backfill_text_quality}
+                    onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_text_quality: !!v }))}
+                  />
+                </div>
+                <div className={ws.formRow}>
+                  <Label className="text-xs text-foreground/80">切片分布</Label>
+                  <Switch
+                    aria-label="切片分布"
+                    checked={!!scanConfig.backfill_chunk_stats}
+                    onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, backfill_chunk_stats: !!v }))}
+                  />
+                </div>
+                <div className={ws.formRow}>
+                  <Label className="text-xs text-foreground/80">文件哈希</Label>
+                  <Switch
+                    aria-label="文件哈希"
+                    checked={!!scanConfig.compute_file_hash}
+                    onCheckedChange={(v) => setScanConfig((prev) => ({ ...prev, compute_file_hash: !!v }))}
+                  />
+                </div>
+                <div className={ws.formRow}>
+                  <Label className="text-xs text-foreground/80">最大文档数</Label>
+                  <Input
+                    aria-label="最大文档数"
+                    value={scanConfig.max_documents ?? ''}
+                    placeholder="不限"
+                    onChange={(e) => {
+                      const raw = e.target.value.trim()
+                      if (!raw) {
+                        setScanConfig((prev) => ({ ...prev, max_documents: null }))
+                        return
+                      }
+                      const n = Number(raw)
+                      setScanConfig((prev) => ({
+                        ...prev,
+                        max_documents: Number.isFinite(n) ? Math.max(0, Math.floor(n)) : null,
+                      }))
+                    }}
+                    className="h-7 w-20 font-mono text-xs"
+                  />
                 </div>
               </div>
             </div>
-          </Panel>
-          </div>
-        </div>
-        </div>
-
-        <Dialog open={findingOpen} onOpenChange={(open) => {
-           setFindingOpen(open)
-           if (!open) {
-             setSelectedFinding(null)
-           }
-         }}>
-          <DialogContent className="max-w-4xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
-            <DialogHeader>
+            <div className={ws.dialogFooter}>
+              <Button variant="ghost" onClick={() => setScanConfigOpen(false)}>
+                关闭
+              </Button>
+              <Button
+                disabled={scanRunning}
+                onClick={() => {
+                  void startDeepScan()
+                }}
+              >
+                {scanRunning ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : <Sparkles />}
+                {scanRunning ? '正在扫描…' : '开始扫描'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+        <Dialog
+          open={findingOpen}
+          onOpenChange={(open) => {
+            setFindingOpen(open)
+            if (!open) {
+              setSelectedFinding(null)
+            }
+          }}
+        >
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
               <DialogTitle className="text-xl font-bold text-foreground flex items-center justify-between gap-3">
                 <span className="flex items-center gap-2">
                   {selectedFinding?.label || '清单'}
@@ -1723,7 +1830,12 @@ export default function DatasetProfilePage() {
                     size="sm"
                     className="gap-2"
                     disabled={findingRetrying || findingLoading}
-                    onClick={() => retryDocuments(findingRes.items.map((d) => String(d.id)), 'batch')}
+                    onClick={() =>
+                      retryDocuments(
+                        findingRes.items.map((d) => String(d.id)),
+                        'batch',
+                      )
+                    }
                     title="对当前清单触发重新处理（best-effort）"
                   >
                     {findingRetrying ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" /> : null}
@@ -1733,139 +1845,155 @@ export default function DatasetProfilePage() {
                 ) : null}
               </DialogTitle>
               <DialogDescription className="text-muted-foreground">
-                {selectedFinding?.description || '点击文件名可在知识库页查看详情（后续可做联动）'}
+                {selectedFinding?.description || '点击文件名可在知识库页查看详情（按文件查看详情）'}
               </DialogDescription>
             </DialogHeader>
 
-            <div className="mt-2">
+            <div className={ws.dialogBody}>
               {(() => {
-    if (findingLoading && !findingRes) {
-        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
-                  加载中…
-                </div>);
-    }
-    else if (findingRes) {
-            return (<div className="space-y-3">
-                  <div className="text-xs text-muted-foreground font-mono">
-                    showing {findingRes.items.length}/{findingRes.total}
-                  </div>
-                  <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table aria-label="数据集画像 PII 命中明细" className="w-full text-left text-xs">
-                      <thead className="bg-muted/40 text-muted-foreground">
-                        <tr>
-                          <th className="px-2 py-1.5 font-medium">文件名</th>
-                          <th className="px-2 py-1.5 font-medium">类型</th>
-                          <th className="px-2 py-1.5 font-medium">大小</th>
-                          <th className="px-2 py-1.5 font-medium">状态</th>
-                          <th className="px-2 py-1.5 font-medium">长度</th>
-                          {selectedFinding?.key === 'parse_low_quality' ? (
-                            <th className="px-2 py-1.5 font-medium text-right">操作</th>
-                          ) : null}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {findingRes.items.map((d) => (<tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
-                            <td className="px-2 py-1.5">
-                              <DocumentDetailDialog document={{
-                        id: d.id,
-                        filename: d.filename,
-                        file_type: d.file_type,
-                        file_size: d.file_size,
-                        status: asDocumentStatus(d.status),
-                        processing_progress: 0,
-                        chunk_count: d.chunk_count || 0,
-                        total_characters: d.total_characters || 0,
-                        created_at: d.created_at || new Date().toISOString(),
-                        updated_at: d.updated_at || new Date().toISOString(),
-                        error_message: d.error_message || undefined,
-                        metadata: d.metadata || {},
-                        dataset_id: datasetId || undefined,
-                    } as Document} trigger={<button type="button" className="text-primary hover:underline">
-                                    {d.filename}
-                                  </button>}/>
-                            </td>
-                            <td className="px-2 py-1.5 font-mono text-xs">{d.file_type}</td>
-                            <td className="px-2 py-1.5 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
-                            <td className="px-2 py-1.5">
-                              <Badge variant="outline" className="font-mono text-xs">
-                                {d.status}
-                              </Badge>
-                            </td>
-                            <td className="px-2 py-1.5 font-mono text-xs">{d.total_characters}</td>
-                            {selectedFinding?.key === 'parse_low_quality' ? (
-                              <td className="px-2 py-1.5 text-right">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 px-2 gap-2 text-xs"
-                                  disabled={findingRetrying || findingLoading || Boolean(findingRetryingIds[String(d.id)])}
-                                  onClick={() => retryDocuments([String(d.id)], 'single')}
-                                >
-                                  {findingRetryingIds[String(d.id)] ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
-                                  ) : (
-                                    <RotateCcw className="w-3.5 h-3.5" />
-                                  )}
-                                  重试
-                                </Button>
-                              </td>
-                            ) : null}
-                          </tr>))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs text-muted-foreground">
-                      {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
+                if (findingLoading && !findingRes) {
+                  return (
+                    <div className="py-10 flex items-center justify-center text-muted-foreground">
+                      <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+                      加载中…
                     </div>
-                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreFindingPage())} disabled={findingLoading || !hasNextFindingPage}>
-                      {findingLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
-                      加载更多
-                    </Button>
-                  </div>
-                </div>);
-        }
-        else {
-            return (<div className="py-10 text-center text-[11px] text-muted-foreground/60">
-                  暂无数据
-                </div>);
-        }
-})()}
+                  )
+                } else if (findingRes) {
+                  return (
+                    <div className="space-y-3">
+                      <div className="text-xs text-muted-foreground font-mono">
+                        showing {findingRes.items.length}/{findingRes.total}
+                      </div>
+                      <div className={ws.tableScroll}>
+                        <table aria-label="数据集画像 PII 命中明细" className="w-full text-left text-xs">
+                          <thead className="bg-muted/40 text-muted-foreground">
+                            <tr>
+                              <th className="px-2 py-1.5 font-medium">文件名</th>
+                              <th className="px-2 py-1.5 font-medium">类型</th>
+                              <th className="px-2 py-1.5 font-medium">大小</th>
+                              <th className="px-2 py-1.5 font-medium">状态</th>
+                              <th className="px-2 py-1.5 font-medium">长度</th>
+                              {selectedFinding?.key === 'parse_low_quality' ? (
+                                <th className="px-2 py-1.5 font-medium text-right">操作</th>
+                              ) : null}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {findingRes.items.map((d) => (
+                              <tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
+                                <td className="px-2 py-1.5">
+                                  <DocumentDetailDialog
+                                    document={
+                                      {
+                                        id: d.id,
+                                        filename: d.filename,
+                                        file_type: d.file_type,
+                                        file_size: d.file_size,
+                                        status: asDocumentStatus(d.status),
+                                        processing_progress: 0,
+                                        chunk_count: d.chunk_count || 0,
+                                        total_characters: d.total_characters || 0,
+                                        created_at: d.created_at || new Date().toISOString(),
+                                        updated_at: d.updated_at || new Date().toISOString(),
+                                        error_message: d.error_message || undefined,
+                                        metadata: d.metadata || {},
+                                        dataset_id: datasetId || undefined,
+                                      } as Document
+                                    }
+                                    trigger={
+                                      <button type="button" className="text-primary hover:underline">
+                                        {d.filename}
+                                      </button>
+                                    }
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 font-mono text-xs">{d.file_type}</td>
+                                <td className="px-2 py-1.5 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
+                                <td className="px-2 py-1.5">
+                                  <Badge variant="outline" className="font-mono text-xs">
+                                    {d.status}
+                                  </Badge>
+                                </td>
+                                <td className="px-2 py-1.5 font-mono text-xs">{d.total_characters}</td>
+                                {selectedFinding?.key === 'parse_low_quality' ? (
+                                  <td className="px-2 py-1.5 text-right">
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 px-2 gap-2 text-xs"
+                                      disabled={
+                                        findingRetrying || findingLoading || Boolean(findingRetryingIds[String(d.id)])
+                                      }
+                                      onClick={() => retryDocuments([String(d.id)], 'single')}
+                                    >
+                                      {findingRetryingIds[String(d.id)] ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin motion-reduce:animate-none" />
+                                      ) : (
+                                        <RotateCcw className="w-3.5 h-3.5" />
+                                      )}
+                                      重试
+                                    </Button>
+                                  </td>
+                                ) : null}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-muted-foreground">
+                          {findingRes.items.length >= findingRes.total ? '已加载全部' : ''}
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => detachPromise(loadMoreFindingPage())}
+                          disabled={findingLoading || !hasNextFindingPage}
+                        >
+                          {findingLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                          ) : null}
+                          加载更多
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                } else {
+                  return <div className="py-10 text-center text-[11px] text-muted-foreground/60">暂无数据</div>
+                }
+              })()}
             </div>
           </DialogContent>
         </Dialog>
 
-        <Dialog open={bucketOpen} onOpenChange={(open) => {
-          setBucketOpen(open)
-           if (!open) {
-             setBucketDim(null)
-             setBucketKey('')
-           }
-         }}>
-          <DialogContent className="max-w-5xl border-border bg-background/95 shadow-strong sm:rounded-2xl">
-            <DialogHeader>
+        <Dialog
+          open={bucketOpen}
+          onOpenChange={(open) => {
+            setBucketOpen(open)
+            if (!open) {
+              setBucketDim(null)
+              setBucketKey('')
+            }
+          }}
+        >
+          <DialogContent className={ws.dialog}>
+            <DialogHeader className={ws.dialogHeader}>
               <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                 {(() => {
-                  const label =
-                    (() => {
-    if (bucketDim === 'file_type') {
-        return '格式';
-    }
-    else if (bucketDim === 'language') {
-            return '语言';
-        }
-        else if (bucketDim === 'directory') {
-                return '目录';
-            }
-            else if (bucketDim === 'quality_bucket') {
-                    return '质量桶';
-                }
-                else {
-                    return '清单';
-                }
-})()
+                  const label = (() => {
+                    if (bucketDim === 'file_type') {
+                      return '格式'
+                    } else if (bucketDim === 'language') {
+                      return '语言'
+                    } else if (bucketDim === 'directory') {
+                      return '目录'
+                    } else if (bucketDim === 'quality_bucket') {
+                      return '质量桶'
+                    } else {
+                      return '清单'
+                    }
+                  })()
                   return bucketDim ? `${label}: ${bucketKey || ''}` : '清单'
                 })()}
                 {bucketRes ? (
@@ -1879,92 +2007,115 @@ export default function DatasetProfilePage() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="mt-2">
+            <div className={ws.dialogBody}>
               {(() => {
-    if (bucketLoading && !bucketRes) {
-        return (<div className="py-10 flex items-center justify-center text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2"/>
-                  加载中…
-                </div>);
-    }
-    else if (bucketRes) {
-            return (<div className="space-y-3">
-                  <div className="text-xs text-muted-foreground font-mono">
-                    showing {bucketRes.items.length}/{bucketRes.total}
-                  </div>
-                  <div className="rounded-xl border border-border/60 overflow-hidden">
-                    <table aria-label="数据集画像 Secrets 命中明细" className="w-full text-left text-xs">
-                      <thead className="bg-muted/40 text-muted-foreground">
-                        <tr>
-                          <th className="px-2 py-1.5 font-medium">文件名</th>
-                          <th className="px-2 py-1.5 font-medium">类型</th>
-                          <th className="px-2 py-1.5 font-medium">大小</th>
-                          <th className="px-2 py-1.5 font-medium">状态</th>
-                          <th className="px-2 py-1.5 font-medium">长度</th>
-                          <th className="px-2 py-1.5 font-medium">样例（脱敏）</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {bucketRes.items.map((d) => (<tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
-                            <td className="px-2 py-1.5">
-                              <DocumentDetailDialog document={{
-                        id: d.id,
-                        filename: d.filename,
-                        file_type: d.file_type,
-                        file_size: d.file_size,
-                        status: asDocumentStatus(d.status),
-                        processing_progress: 0,
-                        chunk_count: d.chunk_count || 0,
-                        total_characters: d.total_characters || 0,
-                        created_at: d.created_at || new Date().toISOString(),
-                        updated_at: d.updated_at || new Date().toISOString(),
-                        error_message: d.error_message || undefined,
-                        metadata: d.metadata || {},
-                        dataset_id: datasetId || undefined,
-                    } as Document} trigger={<button type="button" className="text-primary hover:underline">
-                                    {d.filename}
-                                  </button>}/>
-                            </td>
-                            <td className="px-2 py-1.5 font-mono text-xs">{d.file_type}</td>
-                            <td className="px-2 py-1.5 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
-                            <td className="px-2 py-1.5">
-                              <Badge variant="outline" className="font-mono text-xs">
-                                {d.status}
-                              </Badge>
-                            </td>
-                            <td className="px-2 py-1.5 font-mono text-xs">{d.total_characters}</td>
-                            <td className="px-2 py-1.5 max-w-[520px]">
-                              {d.preview ? (<div className="text-xs text-muted-foreground line-clamp-2" title={String(d.preview || '')}>
-                                  {String(d.preview)}
-                                  {d.preview_truncated ? '…' : ''}
-                                </div>) : (<span className="text-xs text-muted-foreground">-</span>)}
-                            </td>
-                          </tr>))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="text-xs text-muted-foreground">
-                      {bucketRes.items.length >= bucketRes.total ? '已加载全部' : ''}
+                if (bucketLoading && !bucketRes) {
+                  return (
+                    <div className="py-10 flex items-center justify-center text-muted-foreground">
+                      <Loader2 className="w-5 h-5 animate-spin motion-reduce:animate-none mr-2" />
+                      加载中…
                     </div>
-                    <Button variant="outline" className="gap-2" onClick={() => detachPromise(loadMoreBucketPage())} disabled={bucketLoading || !hasNextBucketPage}>
-                      {bucketLoading ? <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none"/> : null}
-                      加载更多
-                    </Button>
-                  </div>
-                </div>);
-        }
-        else {
-            return (<div className="py-10 text-center text-[11px] text-muted-foreground/60">
-                  暂无数据
-                </div>);
-        }
-})()}
+                  )
+                } else if (bucketRes) {
+                  return (
+                    <div className="space-y-3">
+                      <div className="text-xs text-muted-foreground font-mono">
+                        showing {bucketRes.items.length}/{bucketRes.total}
+                      </div>
+                      <div className={ws.tableScroll}>
+                        <table aria-label="数据集画像 Secrets 命中明细" className="w-full text-left text-xs">
+                          <thead className="bg-muted/40 text-muted-foreground">
+                            <tr>
+                              <th className="px-2 py-1.5 font-medium">文件名</th>
+                              <th className="px-2 py-1.5 font-medium">类型</th>
+                              <th className="px-2 py-1.5 font-medium">大小</th>
+                              <th className="px-2 py-1.5 font-medium">状态</th>
+                              <th className="px-2 py-1.5 font-medium">长度</th>
+                              <th className="px-2 py-1.5 font-medium">样例（脱敏）</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {bucketRes.items.map((d) => (
+                              <tr key={d.id} className="border-t border-border/60 hover:bg-muted/20 transition-colors">
+                                <td className="px-2 py-1.5">
+                                  <DocumentDetailDialog
+                                    document={
+                                      {
+                                        id: d.id,
+                                        filename: d.filename,
+                                        file_type: d.file_type,
+                                        file_size: d.file_size,
+                                        status: asDocumentStatus(d.status),
+                                        processing_progress: 0,
+                                        chunk_count: d.chunk_count || 0,
+                                        total_characters: d.total_characters || 0,
+                                        created_at: d.created_at || new Date().toISOString(),
+                                        updated_at: d.updated_at || new Date().toISOString(),
+                                        error_message: d.error_message || undefined,
+                                        metadata: d.metadata || {},
+                                        dataset_id: datasetId || undefined,
+                                      } as Document
+                                    }
+                                    trigger={
+                                      <button type="button" className="text-primary hover:underline">
+                                        {d.filename}
+                                      </button>
+                                    }
+                                  />
+                                </td>
+                                <td className="px-2 py-1.5 font-mono text-xs">{d.file_type}</td>
+                                <td className="px-2 py-1.5 font-mono text-xs">{formatFileSize(d.file_size || 0)}</td>
+                                <td className="px-2 py-1.5">
+                                  <Badge variant="outline" className="font-mono text-xs">
+                                    {d.status}
+                                  </Badge>
+                                </td>
+                                <td className="px-2 py-1.5 font-mono text-xs">{d.total_characters}</td>
+                                <td className="px-2 py-1.5 max-w-[520px]">
+                                  {d.preview ? (
+                                    <div
+                                      className="text-xs text-muted-foreground line-clamp-2"
+                                      title={String(d.preview || '')}
+                                    >
+                                      {String(d.preview)}
+                                      {d.preview_truncated ? '…' : ''}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-muted-foreground">
+                          {bucketRes.items.length >= bucketRes.total ? '已加载全部' : ''}
+                        </div>
+                        <Button
+                          variant="outline"
+                          className="gap-2"
+                          onClick={() => detachPromise(loadMoreBucketPage())}
+                          disabled={bucketLoading || !hasNextBucketPage}
+                        >
+                          {bucketLoading ? (
+                            <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                          ) : null}
+                          加载更多
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                } else {
+                  return <div className="py-10 text-center text-[11px] text-muted-foreground/60">暂无数据</div>
+                }
+              })()}
             </div>
           </DialogContent>
         </Dialog>
-      </PageScaffold>
+      </OperationalWorkspace>
     </AppFrame>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { Activity } from 'lucide-react'
+import { Activity } from '@/components/icons'
 
 import { readClientStorage, writeClientStorage } from '@/lib/client-storage'
 import { cn } from '@/lib/utils'
@@ -25,17 +25,14 @@ function formatValue(value: number | null, unit: VelocityUnit): string {
   return unit === 'docs' ? `${value.toFixed(1)} docs/min` : `${value.toFixed(2)} MB/s`
 }
 
-export function LiveVelocity({
-  unit,
-  docsPerMinute,
-  megabytesPerSecond,
-  onToggle,
-}: Readonly<{
+type LiveVelocityProps = {
   unit: VelocityUnit
   docsPerMinute: number | null
   megabytesPerSecond: number | null
   onToggle: () => void
-}>) {
+}
+
+export function LiveVelocity({ unit, docsPerMinute, megabytesPerSecond, onToggle }: Readonly<LiveVelocityProps>) {
   const displayValue = unit === 'docs' ? docsPerMinute : megabytesPerSecond
 
   return (
@@ -45,7 +42,7 @@ export function LiveVelocity({
       onClick={onToggle}
       className={cn(
         'inline-flex items-center gap-2 rounded-lg border border-info/20 bg-info/5 px-2 py-1 text-[11px] font-bold uppercase  text-info transition-colors hover:bg-info/10 motion-reduce:transition-none',
-        'dark:text-info'
+        'dark:text-info',
       )}
       title="点击切换 docs/min 与 MB/s"
     >

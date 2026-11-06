@@ -5,7 +5,7 @@ sidebar_position: 4
 
 # 分页模式
 
-MimirQ 列表接口采用 offset/limit 分页模式，部分接口可能支持 cursor 分页。
+Ragvia 列表接口采用 offset/limit 分页模式，部分接口可能支持 cursor 分页。
 
 ## 基本参数
 

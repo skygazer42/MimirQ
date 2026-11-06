@@ -8,81 +8,29 @@ Centralized settings management including:
 - Storage backend config
 """
 
-import ipaddress
-import json
 import os
 import sys
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core import config_validation as _settings_validation
+from app.core.config_validation import (
+    _DEFAULT_RAG_EVAL_SUMMARY_PATH,
+    DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS,
+)
+from app.core.config_validation import (
+    normalize_object_storage_provider_name as normalize_object_storage_provider_name,
+)
+from app.core.config_validation import (
+    parse_object_storage_region_profiles as parse_object_storage_region_profiles,
+)
+from app.core.config_validation import (
+    validate_jwt_remote_url as validate_jwt_remote_url,
+)
 from app.core.constants import DEFAULT_OPENAI_API_BASE
-from app.core.env import is_production_env
-from app.rag.retrieval.contract import (
-    VALID_RETRIEVAL_CONTRACT_MODES,
-    normalize_retrieval_contract_mode,
-)
-from app.rag.retrieval.sparse import (
-    VALID_SPARSE_PROVIDERS,
-    normalize_sparse_provider_name,
-)
-
-_DEFAULT_RAG_EVAL_SUMMARY_PATH = "tests/rag/evaluation/fixtures/rag_eval_summary.sample.json"
-_COMMA_OR_WHITESPACE_RE = r"[,\\s]+"
-_LEGACY_DEV_SECRET_KEY = "".join(("your-secret-key", "-change-in-production"))
-_LOCAL_MINIO_DEFAULT_CREDENTIAL = "".join(("minio", "admin"))
-_ALL_INTERFACES_HOST = str(ipaddress.IPv4Address(0))
-_JWT_LOCAL_HOSTS = frozenset({"localhost", "localhost.localdomain", "127.0.0.1", "::1"})
-_OBJECT_STORAGE_PROVIDER_ALIASES = {
-    "": "minio",
-    "minio": "minio",
-    "s3": "s3",
-    "aws_s3": "s3",
-    "s3_compatible": "s3_compatible",
-    "s3compat": "s3_compatible",
-    "oss": "oss",
-    "aliyun_oss": "oss",
-    "cos": "cos",
-    "tencent_cos": "cos",
-}
-
-DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = "high,medium"
-
-
-def normalize_object_storage_provider_name(raw: object) -> str:
-    requested = str(raw or "minio").strip().lower()
-    try:
-        return _OBJECT_STORAGE_PROVIDER_ALIASES[requested]
-    except KeyError as exc:
-        raise ValueError(f"unsupported object storage provider: {requested}") from exc
-
-
-def parse_object_storage_region_profiles(raw: object) -> dict[str, dict[str, object]]:
-    if isinstance(raw, Mapping):
-        source = dict(raw)
-    else:
-        text = str(raw or "").strip()
-        if not text:
-            return {}
-        try:
-            source = json.loads(text)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("OBJECT_STORAGE_REGION_PROFILES must be a valid JSON object") from exc
-        if not isinstance(source, dict):
-            raise ValueError("OBJECT_STORAGE_REGION_PROFILES must be a valid JSON object")
-
-    profiles: dict[str, dict[str, object]] = {}
-    for raw_region, raw_profile in source.items():
-        region = str(raw_region or "").strip().lower()
-        if not region or not isinstance(raw_profile, Mapping):
-            raise ValueError("OBJECT_STORAGE_REGION_PROFILES entries must map a non-empty region to an object")
-        profiles[region] = dict(raw_profile)
-    return profiles
 
 
 def _should_disable_repo_env_file() -> bool:
@@ -102,58 +50,6 @@ def _should_disable_repo_env_file() -> bool:
         return True
     argv0 = Path(str(sys.argv[0] or "")).name.lower()
     return "pytest" in argv0
-
-
-def _is_local_jwt_http_host(host: str) -> bool:
-    normalized = str(host or "").strip().lower()
-    if not normalized:
-        return False
-    if normalized in _JWT_LOCAL_HOSTS or normalized.endswith(".localhost"):
-        return True
-    try:
-        ip = ipaddress.ip_address(normalized)
-    except ValueError:
-        return False
-    return bool(ip.is_loopback)
-
-
-def validate_jwt_remote_url(raw_url: str, *, field_name: str) -> None:
-    url = str(raw_url or "").strip()
-    if not url:
-        return
-
-    parsed = urlparse(url)
-    scheme = str(parsed.scheme or "").strip().lower()
-    host = str(parsed.hostname or "").strip().lower()
-    if scheme not in {"http", "https"} or not host:
-        raise ValueError(f"{field_name} must be a http(s) URL")
-    if parsed.username or parsed.password:
-        raise ValueError(f"{field_name} must not include userinfo")
-    if scheme == "https":
-        return
-    if not is_production_env() and _is_local_jwt_http_host(host):
-        return
-    raise ValueError(f"{field_name} must use https")
-
-
-# Bind shared helpers/constants onto the validation module. ``config_validation``
-# holds the split-out sections of ``Settings.validate_settings`` and must not
-# import any app-internal module (this module stays the dependency-tree leaf),
-# so the names those sections need are injected here instead.
-_settings_validation.is_production_env = is_production_env
-_settings_validation.validate_jwt_remote_url = validate_jwt_remote_url
-_settings_validation.normalize_object_storage_provider_name = normalize_object_storage_provider_name
-_settings_validation.parse_object_storage_region_profiles = parse_object_storage_region_profiles
-_settings_validation.normalize_retrieval_contract_mode = normalize_retrieval_contract_mode
-_settings_validation.VALID_RETRIEVAL_CONTRACT_MODES = VALID_RETRIEVAL_CONTRACT_MODES
-_settings_validation.normalize_sparse_provider_name = normalize_sparse_provider_name
-_settings_validation.VALID_SPARSE_PROVIDERS = VALID_SPARSE_PROVIDERS
-_settings_validation.DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS = DEFAULT_RETRIEVAL_PARSE_RISK_AUTO_ENQUEUE_LEVELS
-_settings_validation._ALL_INTERFACES_HOST = _ALL_INTERFACES_HOST
-_settings_validation._COMMA_OR_WHITESPACE_RE = _COMMA_OR_WHITESPACE_RE
-_settings_validation._LEGACY_DEV_SECRET_KEY = _LEGACY_DEV_SECRET_KEY
-_settings_validation._LOCAL_MINIO_DEFAULT_CREDENTIAL = _LOCAL_MINIO_DEFAULT_CREDENTIAL
-_settings_validation._DEFAULT_RAG_EVAL_SUMMARY_PATH = _DEFAULT_RAG_EVAL_SUMMARY_PATH
 
 
 class Settings(BaseSettings):
@@ -188,6 +84,9 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     MILVUS_COLLECTION_NAME: str = "documents"
+    MILVUS_BM25_COLLECTION_NAME: str = "document_bm25"
+    MILVUS_BM25_TIMEOUT_SEC: float = Field(default=10.0, gt=0)
+    MILVUS_BM25_MAX_CANDIDATES: int = Field(default=2048, ge=1, le=16384)
     # Optional "shadow" Milvus collection for embedding blue-green migrations (Gap5).
     # When configured alongside EMBEDDING_SHADOW_* and enabled, ingestion can dual-write
     # vectors into both the primary and shadow collections.
@@ -681,10 +580,6 @@ class Settings(BaseSettings):
     # Multi-modal retrieval (optional): CLIP embeddings for image chunks.
     # Disabled by default to avoid pulling heavyweight ML deps in minimal deployments.
     IMAGE_EMBEDDING_ENABLED: bool = False
-    IMAGE_EMBEDDING_MODEL_NAME: str = "clip-ViT-B-32"
-    IMAGE_EMBEDDING_DEVICE: str = "cpu"
-    IMAGE_EMBEDDING_BATCH_SIZE: int = 8
-    IMAGE_EMBEDDING_COLLECTION_NAME: str = "image_chunks"
     # Keep this aligned with parser_factory supported non-PDF formats.
     ALLOWED_EXTENSIONS: str = (
         ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,"
@@ -867,12 +762,18 @@ class Settings(BaseSettings):
     # One-time bootstrap gate for the very first local owner registration in production.
     # Provide either a raw token or `sha256:<hex>` and send it via `X-Bootstrap-Token`.
     INITIAL_REGISTRATION_TOKEN: str = ""
+    # Ordinary local signup is opt-in; every new member receives viewer access.
+    # This does not affect first-owner bootstrap or external identity provisioning.
+    LOCAL_ACCOUNT_REGISTRATION_ENABLED: bool = False
     # Optional unattended bootstrap for the very first local owner account.
     # Configure email + username + exactly one password source, then remove after first successful startup.
     INITIAL_ADMIN_EMAIL: str = ""
     INITIAL_ADMIN_USERNAME: str = ""
     INITIAL_ADMIN_PASSWORD: str = ""
     INITIAL_ADMIN_PASSWORD_FILE: str = ""
+    # When INITIAL_ADMIN_* credentials are blank, bootstrap admin with a generated
+    # password saved here. Existing workspace members are never replaced or elevated.
+    INITIAL_ADMIN_CREDENTIALS_FILE: str = "./data/initial-admin.json"
     # Optional previous keys for decrypting already-encrypted secrets (comma-separated).
     # This enables key rotation for connector configs without breaking existing entries.
     SECRET_KEY_FALLBACKS: str = ""
@@ -1331,9 +1232,9 @@ class Settings(BaseSettings):
     # Notes:
     # - Disabled by default (no behavior change).
     # - The default provider is deterministic and intended for tests/offline use.
-    # - Production SPLADE models (HF/transformers) must be loaded lazily and are optional.
+    # - Neural SPLADE execution has been retired from the API.
     SPARSE_RETRIEVAL_ENABLED: bool = False
-    SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | splade
+    SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     # Optional Milvus native dense+sparse retrieval path.
     # Safe-off by default: callers must opt in and the retriever auto-falls back
     # unless the request is dataset-scoped on Milvus with sparse retrieval enabled.
@@ -1345,28 +1246,17 @@ class Settings(BaseSettings):
     # Comma-separated synonym pairs like: "kubernetes:k8s,postgresql:postgres"
     # Used only by deterministic provider (test scaffold).
     SPARSE_RETRIEVAL_SYNONYMS: str = ""
-    # SPLADE provider (optional, opt-in): requires transformers + a local or HF model.
-    SPARSE_SPLADE_MODEL_NAME: str = ""
-    SPARSE_SPLADE_DEVICE: str = "cpu"  # cpu | cuda | auto
-    SPARSE_SPLADE_BATCH_SIZE: int = 8
-    SPARSE_SPLADE_MAX_LENGTH: int = 256
-    SPARSE_SPLADE_TOP_K: int = 128
-    SPARSE_SPLADE_MIN_WEIGHT: float = 0.0
 
     # Optional ColBERT-style retrieval (ANN) channel.
     #
     # Notes:
     # - Disabled by default (no behavior change).
     # - The deterministic provider is intended for tests/offline gating.
-    # - The HF provider is opt-in and requires a local/HF model.
+    # - Only the deterministic test implementation remains.
     COLBERT_RETRIEVAL_ENABLED: bool = False
-    COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | hf
+    COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED: bool = True
     COLBERT_RETRIEVAL_INDEX_DIR: str = "./data/colbert_indexes"
-    COLBERT_RETRIEVAL_MODEL_NAME: str = ""
-    COLBERT_RETRIEVAL_DEVICE: str = "cpu"  # cpu | cuda | auto
-    COLBERT_RETRIEVAL_BATCH_SIZE: int = 16
-    COLBERT_RETRIEVAL_MAX_LENGTH: int = 256
     # Safety cap: avoid building huge in-memory ANN matrices by accident.
     # 0 disables the cap (not recommended for production).
     COLBERT_RETRIEVAL_MAX_DOCS: int = 10_000
@@ -1378,20 +1268,14 @@ class Settings(BaseSettings):
     #
     # Notes:
     # - Disabled by default via provider=deterministic to preserve existing behavior.
-    # - The HF provider is opt-in and requires a local/HF transformer model.
-    COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic | hf
-    COLBERT_RERANK_MODEL_NAME: str = ""
-    COLBERT_RERANK_DEVICE: str = "cpu"  # cpu | cuda | auto
-    COLBERT_RERANK_BATCH_SIZE: int = 16
-    COLBERT_RERANK_MAX_LENGTH: int = 256
+    # - Only the deterministic test implementation remains.
+    COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     # Used only by deterministic provider.
     COLBERT_RERANK_EMBED_DIM: int = 64
     # Provider readiness guard for ColBERT reranker.
     # strict=false: fallback to deterministic provider on readiness/warmup failure.
     # strict=true: raise an error when requested provider is not ready.
-    COLBERT_RERANK_HEALTHCHECK_STRICT: bool = False
     # Optional one-time warmup probe for model-backed providers.
-    COLBERT_RERANK_WARMUP_ENABLED: bool = False
     # Optional: load fusion channel budget policy (generated from offline ablations).
     # When configured, orchestrator can auto-apply budgeted_rrf channel quotas.
     RAG_CHANNEL_BUDGET_POLICY_PATH: str = ""
@@ -1635,26 +1519,11 @@ class Settings(BaseSettings):
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
-    # BM25 cold-start mitigation (build on first query when index missing).
-    BM25_LAZY_BUILD_ENABLED: bool = True
-    # When true and document_ids not provided, build BM25 for the whole tenant (can be expensive).
-    BM25_LAZY_BUILD_FULL_TENANT: bool = False
-    # Upper bound for lazy-built chunks (0 disables the cap).
-    BM25_LAZY_BUILD_MAX_CHUNKS: int = 8000
-    # Above this scope size, ingestion defers BM25 retriever rebuild to first query (0 disables the cap).
-    BM25_EAGER_UPSERT_MAX_CHUNKS: int = 8000
-    # Startup BM25 bootstrap (can be expensive; prefer lazy-build for large deployments).
-    BM25_STARTUP_BUILD_ENABLED: bool = False
-    # Upper bound for startup-built chunks across the whole instance (0 disables the cap).
-    BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
     # Hard cap for operator-triggered retrieval rebuilds across BM25/sparse/ColBERT.
     # 0 disables the cap (not recommended in production).
     RETRIEVAL_REBUILD_MAX_CHUNKS: int = 8000
-    # Max cached BM25 indices kept in memory (0 = unlimited). Useful for multi-tenant deployments.
-    BM25_CACHE_MAX_TENANTS: int = 32
-    # BM25 tokenization knobs (recall tuning).
-    # These defaults are intentionally "recall-friendly" but still avoid full CJK char-ngram indexing
-    # (which can explode index size in pure-Python BM25 implementations).
+    # Lightweight tokenization for query matching, fusion and conversation memory.
+    # Native Milvus BM25 uses its collection-owned analyzer.
     BM25_TOKENIZE_ASCII_EXPAND_ENABLED: bool = True
     BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED: bool = True
     BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED: bool = True
@@ -1980,7 +1849,7 @@ class Settings(BaseSettings):
     NEAR_DEDUP_MAX_BUCKET_SIZE: int = 256
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
-    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | cross_encoder | long_context | mmr | none
+    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | long_context | mmr | none
     # Local Learning-to-Rank model path (xgboost JSON/UBJ).
     # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
     LTR_MODEL_PATH: str = ""
@@ -2175,21 +2044,13 @@ class Settings(BaseSettings):
     KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
     # KG extraction backend routing.
     # - llm: existing extraction path (default)
-    # - gliner: lightweight entity-first extraction (optional dependency)
-    # - hybrid: GLiNER pre-extract + LLM fallback
     KG_EXTRACTION_BACKEND: str = "llm"
     # Optional: override the default backend for very large documents when no
     # explicit extraction_backend is requested.
     KG_EXTRACT_LONG_DOC_BACKEND: str = "heuristic"
     KG_EXTRACT_LONG_DOC_MIN_CHUNKS: int = 300
-    # Safe default-off switch for GLiNER/hybrid routing.
+    # Retained only to reject an explicitly enabled legacy local model configuration.
     KG_GLINER_ENABLED: bool = False
-    KG_GLINER_MODEL_NAME: str = "urchade/gliner_multi_pii-v1"
-    KG_GLINER_DEVICE: str = "cpu"
-    KG_GLINER_ENTITY_THRESHOLD: float = 0.5
-    KG_GLINER_DEFAULT_ENTITY_TYPES: str = "person,organization,location,event,date,concept"
-    KG_HYBRID_LLM_THRESHOLD: float = 0.7
-    KG_HYBRID_REFINE_RELATIONS: bool = False
     # Evidence-first skill extraction (optional; improves precision for Skill/SOP nodes + taxonomy edges).
     # When enabled, the extractor will only persist Skill nodes/edges that can be grounded to a chunk-local
     # evidence quote/span (verbatim substring).
@@ -2398,7 +2259,7 @@ class Settings(BaseSettings):
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
-    LONG_TERM_MEMORY_MAX_MESSAGES: int = 200
+    LONG_TERM_MEMORY_MAX_MESSAGES: int = Field(default=200, ge=1)
     MEMORY_STORE_TYPE: str = "memory"  # memory | sqlite
     MEMORY_SQLITE_PATH: str = "./data/memory.db"
     # Structured memory (entity memory + lightweight fact memory), stored per assistant turn in

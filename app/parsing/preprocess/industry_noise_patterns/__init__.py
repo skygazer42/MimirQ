@@ -1,4 +1,3 @@
-
 from app.parsing.preprocess.industry_noise_patterns.finance import RULES as FINANCE_RULES
 from app.parsing.preprocess.industry_noise_patterns.industrial_control import RULES as INDUSTRIAL_CONTROL_RULES
 from app.parsing.preprocess.industry_noise_patterns.legal import RULES as LEGAL_RULES

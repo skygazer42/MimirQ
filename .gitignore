@@ -109,6 +109,9 @@ docker/.env.*
 # Retrieval index caches (generated artifacts; keep out of git)
 data/sparse_indexes/
 data/colbert_indexes/
+# Generated bootstrap credentials are local secrets.
+/data/initial-admin.json
+/data/.initial-admin.json.*.tmp
 web/.next_3101/
 
 # Local generated analysis/training artifacts

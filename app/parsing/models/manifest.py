@@ -1,4 +1,3 @@
-
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,15 +67,15 @@ class SmallModelManifest:
     defaults: Mapping[str, str]
 
     def get_default(self, task: str) -> SmallModelSpec:
-        task_key = str(task or "").strip()
+        task_key = task.strip()
         model_id = self.defaults.get(task_key)
         if not model_id:
             raise KeyError(f"missing default model for task '{task_key}'")
         return self.get(task_key, model_id=model_id)
 
     def get(self, task: str, *, model_id: str) -> SmallModelSpec:
-        task_key = str(task or "").strip()
-        model_key = str(model_id or "").strip()
+        task_key = task.strip()
+        model_key = model_id.strip()
         models = self.tasks.get(task_key)
         if not models:
             raise KeyError(f"unknown small-model task '{task_key}'")
@@ -86,7 +85,7 @@ class SmallModelManifest:
         return spec
 
     def list_task_models(self, task: str) -> list[SmallModelSpec]:
-        return list((self.tasks.get(str(task or "").strip()) or {}).values())
+        return list((self.tasks.get(task.strip()) or {}).values())
 
 
 def _coerce_bool(value: Any, *, default: bool = False) -> bool:

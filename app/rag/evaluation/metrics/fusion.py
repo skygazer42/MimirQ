@@ -1,4 +1,3 @@
-
 from typing import Any
 
 from app.rag.core.logging import get_logger

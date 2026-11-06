@@ -91,6 +91,7 @@ def _mk_doc() -> Document:
 def _disable_optional_features(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.core.config import settings
 
+    monkeypatch.setattr(settings, "LLM_API_KEY", "test-only-client-construction-key")
     monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
     monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)

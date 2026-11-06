@@ -146,7 +146,7 @@ def _next_record_start(
 
 
 class MavenPOMChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 
@@ -203,9 +203,9 @@ class MavenPOMChunker(BaseChunker):
                 "chunk_strategy": "maven_pom",
                 "start_char": first.start,
                 "end_char": last.end,
-                "maven_record_count": int(end_idx - start_idx),
-                "maven_first_index": int(first.index),
-                "maven_last_index": int(last.index),
+                "maven_record_count": end_idx - start_idx,
+                "maven_first_index": first.index,
+                "maven_last_index": last.index,
             }
         )
         meta.setdefault("doc_type_kwd", "maven")

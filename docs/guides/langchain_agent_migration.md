@@ -1,10 +1,10 @@
 # LangChain / LangGraph Architecture Notes
 
-This document explains how MimirQ's chat/RAG pipeline is structured today and how it relates to the earlier "agent-style" approach.
+This document explains how Ragvia's chat/RAG pipeline is structured today and how it relates to the earlier "agent-style" approach.
 
 ## Current State (Recommended)
 
-MimirQ keeps the RAG pipeline explicit and debuggable:
+Ragvia keeps the RAG pipeline explicit and debuggable:
 
 - **LangChain (chain-style) pipeline**
   - Primary implementation: `app/rag/engine.py`
@@ -15,7 +15,7 @@ MimirQ keeps the RAG pipeline explicit and debuggable:
   - Related modules: `app/rag/pipelines/langgraph.py`, `app/rag/checkpointer/*`
   - API integration: `app/api/v1/chat.py` (streaming events include optional `graph` events)
 
-In addition, MimirQ exposes a **workflow mode** concept for advanced orchestration features (see `WORKFLOW_MODE` in `app/core/config.py`).
+In addition, Ragvia exposes a **workflow mode** concept for advanced orchestration features (see `WORKFLOW_MODE` in `app/core/config.py`).
 
 ## Why Not a Classic “Tool-Calling Agent” Everywhere?
 

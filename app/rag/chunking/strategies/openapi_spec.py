@@ -135,8 +135,8 @@ def _build_openapi_chunk_metadata(
         meta["openapi_version"] = version
     if block is not None:
         meta["openapi_path"] = block.path
-        meta["openapi_path_index"] = int(block.index)
-        meta["openapi_path_count"] = int(block_count)
+        meta["openapi_path_index"] = block.index
+        meta["openapi_path_count"] = block_count
         if block.methods:
             meta["openapi_methods"] = block.methods[:10]
     return meta
@@ -196,7 +196,7 @@ def _build_path_blocks(text: str) -> list[_PathBlock]:
                 start=start,
                 end=end,
                 path=path,
-                index=int(idx),
+                index=idx,
                 methods=_extract_methods(blk_text),
             )
         )
@@ -217,7 +217,7 @@ def looks_like_openapi_spec(text: str) -> bool:
 
 
 class OpenAPISpecChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

@@ -6,7 +6,6 @@ so that unit tests that `sys.modules.pop("app.core.database", None)` do not
 accidentally re-initialize a new SQLAlchemy Base/engine on re-import.
 """
 
-
 from app.core.database_singleton import (
     Base,
     SessionLocal,

@@ -2,7 +2,6 @@
 Document folder tree schemas (derived from document.metadata.source_path).
 """
 
-
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -24,4 +23,3 @@ class DocumentFolderTreeResponse(BaseModel):
 
 
 DocumentFolderNode.model_rebuild()
-

@@ -2,8 +2,8 @@
 API v1 routes.
 """
 
-
 from importlib import import_module
+from types import ModuleType
 
 from fastapi import APIRouter
 
@@ -37,7 +37,6 @@ def _build_router() -> APIRouter:
     integrations_dify = import_module("app.api.v1.integrations_dify")
     industry_rules = import_module("app.api.v1.industry_rules")
     lineage = import_module("app.api.v1.lineage")
-    ltr = import_module("app.api.v1.ltr")
     meta = import_module("app.api.v1.meta")
     network_analysis = import_module("app.api.v1.network_analysis")
     observability = import_module("app.api.v1.observability")
@@ -76,7 +75,6 @@ def _build_router() -> APIRouter:
     router.include_router(network_analysis.router, prefix="/kg/network", tags=["Knowledge Graph (KG)"])
     router.include_router(evidence.router, prefix="/evidence", tags=["Evidence Workbench"])
     router.include_router(evidence_capsules.router, prefix="/evidence", tags=["Evidence Capsules"])
-    router.include_router(ltr.router, prefix="/ltr", tags=["LTR"])
     router.include_router(settings.router, prefix="/settings", tags=["Settings"])
     router.include_router(governance.router, prefix="/governance", tags=["Governance"])
     router.include_router(evaluations.router, prefix="/evaluations", tags=["Evaluations"])
@@ -117,7 +115,7 @@ def get_router() -> APIRouter:
     return _ROUTER
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> APIRouter | ModuleType:
     if name == "router":
         router = get_router()
         globals()["router"] = router
@@ -130,7 +128,7 @@ def __getattr__(name: str):
         mod = import_module(f"{__name__}.{name}")
     except ModuleNotFoundError as exc:
         # Only translate to AttributeError when the *submodule itself* is missing.
-        if str(getattr(exc, "name", "") or "") in {f"{__name__}.{name}", name}:
+        if (exc.name or "") in {f"{__name__}.{name}", name}:
             raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
         raise
 

@@ -1,6 +1,6 @@
 # 企业知识流水线设计准则
 
-本文定义 MimirQ 从数据评估到生产发布的长期设计边界：平台是通用 RAG 内核与质量闭环，业务差异通过插件包进入系统。目标不是让某个业务“跑通一次”，而是让每个业务都能用同一套平台合约完成解析、治理、切块、索引、检索、评测和发布。
+本文定义 Ragvia 从数据评估到生产发布的长期设计边界：平台是通用 RAG 内核与质量闭环，业务差异通过插件包进入系统。目标不是让某个业务“跑通一次”，而是让每个业务都能用同一套平台合约完成解析、治理、切块、索引、检索、评测和发布。
 
 ## 交付起点：先评估数据，再选择技术
 
@@ -101,14 +101,14 @@ KG 事件必须保留 evidence provenance。没有 chunk 证据的实体关系�
 
 ## 7. 集成边界
 
-Dify 是兼容适配层，不承载业务排序或业务回答逻辑。Dify、Chat、Evidence API 和其他外部调用方都应该只传入 query、dataset scope、top_k、metadata filters 和必要上下文；MimirQ 返回 evidence chunks、score、source、metadata 和 trace。
+Dify 是兼容适配层，不承载业务排序或业务回答逻辑。Dify、Chat、Evidence API 和其他外部调用方都应该只传入 query、dataset scope、top_k、metadata filters 和必要上下文；Ragvia 返回 evidence chunks、score、source、metadata 和 trace。
 
-如果外部系统需要多个知识库，应该传入 MimirQ dataset id 列表或由 external knowledge map 映射到 dataset scope。业务插件仍然通过 dataset 绑定和 plugin refs 发挥作用，而不是在 adapter 内写特殊处理。
+如果外部系统需要多个知识库，应该传入 Ragvia dataset id 列表或由 external knowledge map 映射到 dataset scope。业务插件仍然通过 dataset 绑定和 plugin refs 发挥作用，而不是在 adapter 内写特殊处理。
 
 集成质量用两类证据衡量：
 
-- Boundary evidence：外部系统确实调用到 MimirQ，并且 dataset scope、knowledge map、trace、鉴权和网络路径正确。
-- Retrieval evidence：MimirQ direct gate 与外部 workflow gate 看到的证据一致，且通过同一套 Golden threshold。
+- Boundary evidence：外部系统确实调用到 Ragvia，并且 dataset scope、knowledge map、trace、鉴权和网络路径正确。
+- Retrieval evidence：Ragvia direct gate 与外部 workflow gate 看到的证据一致，且通过同一套 Golden threshold。
 
 ## 8. 变更守护
 

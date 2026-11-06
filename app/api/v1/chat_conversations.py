@@ -27,6 +27,7 @@ from app.api.utils.response_headers import download_response_headers
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation, Message
+from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.chat_conversation_access import (
     ensure_conversation_access,
@@ -39,7 +40,6 @@ from app.services.chat_conversation_titles import (
     get_latest_user_message_content,
 )
 from app.services.chat_scope import enforce_non_empty_chat_scope
-from app.services.dataset_service import DatasetService
 from app.services.document_access import filter_allowed_document_ids, get_allowed_document_id_sets
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -89,11 +89,11 @@ def _get_latest_messages_by_conversation_id(
 
 
 def _apply_conversation_search(
-    query: ORMQuery,
+    query: ORMQuery[Conversation],
     *,
     tenant_id: UUID,
     search_term: str,
-) -> ORMQuery:
+) -> ORMQuery[Conversation]:
     latest_message_content = (
         select(Message.content)
         .where(
@@ -125,7 +125,7 @@ def _conversation_doc_ids_index(batch: list[Conversation]) -> tuple[dict[UUID, l
     doc_ids_by_conversation_id: dict[UUID, list[UUID]] = {}
     all_doc_ids: set[UUID] = set()
     for conv in batch:
-        doc_ids = list(getattr(conv, "document_ids", None) or [])
+        doc_ids = list(conv.document_ids or [])
         doc_ids_by_conversation_id[conv.id] = doc_ids
         all_doc_ids.update(doc_ids)
     return doc_ids_by_conversation_id, all_doc_ids
@@ -157,7 +157,7 @@ def _dataset_scope_accessible(
     conv: Conversation,
     dataset_access: dict[UUID, bool],
 ) -> bool:
-    dataset_id = getattr(conv, "dataset_id", None)
+    dataset_id = conv.dataset_id
     if dataset_id is None:
         return True
     if dataset_id not in dataset_access:
@@ -208,7 +208,7 @@ def _build_conversation_list_item(
 
 
 def _collect_accessible_conversations(
-    ordered_query: ORMQuery,
+    ordered_query: ORMQuery[Conversation],
     *,
     db: Session,
     tenant_id: UUID,
@@ -278,7 +278,7 @@ def create_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Create a new conversation."""
-    allow_empty_docs = bool(getattr(settings, "CHAT_ALLOW_EMPTY_DOCUMENTS", True))
+    allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
     requested_title = str(request.title or "").strip()
 
     scope_dataset_id: UUID | None = None
@@ -286,9 +286,9 @@ def create_conversation(
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, request.document_ids)
         scope_dataset_id = None
     elif request.dataset_id is not None:
-        DatasetService.ensure_member(db, tenant_id, account_id)
-        ds = DatasetService.get_dataset(db, tenant_id, request.dataset_id)
-        DatasetService.assert_dataset_readable(db, ds, account_id)
+        dataset_service.ensure_member(db, tenant_id, account_id)
+        ds = dataset_service.get_dataset(db, tenant_id, request.dataset_id)
+        dataset_service.assert_dataset_readable(db, ds, account_id)
         scope_dataset_id = request.dataset_id
         allowed_doc_ids = []
     else:
@@ -335,7 +335,7 @@ def update_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Update conversation metadata (currently: title)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
@@ -346,7 +346,7 @@ def update_conversation(
     ensure_conversation_access(db, tenant_id, account_id, conversation)
 
     changed = False
-    if "title" in getattr(payload, "model_fields_set", set()):
+    if "title" in payload.model_fields_set:
         title = (payload.title or "").strip()
         if title:
             conversation.title = title
@@ -389,7 +389,7 @@ def list_conversations(
     db: Annotated[Session, Depends(get_db)],
 ):
     """List conversations."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     normalized_account_id = str(account_id or "").strip()
     search_term = str(q or "").strip()
     query = db.query(Conversation).filter(
@@ -465,7 +465,7 @@ def export_conversation(
     - fmt=markdown (default): text/markdown
     - fmt=json: application/json
     """
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
 
     conversation = (
         db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
@@ -518,7 +518,7 @@ def export_conversation(
             parts.append(str(m.content or ""))
             parts.append("")
 
-            if include_citations and role == "assistant" and isinstance(getattr(m, "citations", None), list):
+            if include_citations and role == "assistant" and isinstance(m.citations, list):
                 cites = m.citations or []
                 if cites:
                     parts.append("### citations")
@@ -576,7 +576,7 @@ def get_conversation_messages(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Fetch conversation history (paged)."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     conversation = (
         db.query(Conversation)
         .filter(
@@ -658,7 +658,7 @@ def delete_conversation(
     db: Annotated[Session, Depends(get_db)],
 ):
     """Delete a conversation."""
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     conversation = (
         db.query(Conversation)
         .filter(

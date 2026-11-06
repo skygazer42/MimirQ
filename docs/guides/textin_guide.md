@@ -1,6 +1,6 @@
 # TextIn xParse（外部 API）解析器集成
 
-MimirQ 支持把 **TextIn xParse** 作为可选文档解析后端，通过官方 API 直接把
+Ragvia 支持把 **TextIn xParse** 作为可选文档解析后端，通过官方 API 直接把
 PDF / Office / 图片等文件转成 Markdown 或结构化结果。
 
 > 这是**外部 API parser**，不是本地模型推理服务；本地容器本身不承担模型显存压力。

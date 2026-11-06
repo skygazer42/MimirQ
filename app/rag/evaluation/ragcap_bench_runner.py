@@ -1,4 +1,3 @@
-
 from typing import Any
 
 
@@ -152,8 +151,8 @@ def run_ragcap_bench(cases: list[dict[str, Any]]) -> dict[str, Any]:
     pass_rate = round(float(passed_cases) / float(total_cases), 4) if total_cases > 0 else None
     return {
         "schema": "mimirq.ragcap_bench_summary.v1",
-        "total_cases": int(total_cases),
-        "passed_cases": int(passed_cases),
+        "total_cases": total_cases,
+        "passed_cases": passed_cases,
         "pass_rate": pass_rate,
         "metrics": metrics,
         "results": rows,

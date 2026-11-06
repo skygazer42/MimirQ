@@ -1,8 +1,30 @@
-
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.rag.chunking.roles import build_chunk_type_subindex_payload
+
+
+class BgeM3TripletPayload(TypedDict):
+    schema: Literal["mimirq.bge_m3_triplet.v1"]
+    dense: list[float]
+    sparse: dict[str, float]
+    colbert: list[list[float]]
+
+
+class BgeM3IndexView(TypedDict):
+    view: Literal["dense", "sparse", "colbert"]
+    view_id: str
+    subindex_key: str
+    payload: list[float] | dict[str, float] | list[list[float]]
+    metadata: dict[str, str]
+
+
+class BgeM3TriIndexPayload(TypedDict):
+    schema: Literal["mimirq.bge_m3_tri_index.v1"]
+    chunk_id: str
+    chunk_type: str
+    subindex_key: str
+    views: list[BgeM3IndexView]
 
 
 def build_bge_m3_triplet_payload(
@@ -11,7 +33,7 @@ def build_bge_m3_triplet_payload(
     dense_fn: Callable[[str], list[float]],
     sparse_fn: Callable[[str], dict[str, float]] | None = None,
     colbert_fn: Callable[[str], list[list[float]]] | None = None,
-) -> dict[str, Any]:
+) -> BgeM3TripletPayload:
     raw = str(text or "")
     dense = [float(v) for v in dense_fn(raw) or []]
     sparse_raw = sparse_fn(raw) if sparse_fn is not None else {}
@@ -34,7 +56,7 @@ def build_bge_m3_tri_index_payload(
     dense_fn: Callable[[str], list[float]],
     sparse_fn: Callable[[str], dict[str, float]] | None = None,
     colbert_fn: Callable[[str], list[list[float]]] | None = None,
-) -> dict[str, Any]:
+) -> BgeM3TriIndexPayload:
     resolved_chunk_id = str(chunk_id or "").strip()
     subindex = build_chunk_type_subindex_payload(
         chunk_id=resolved_chunk_id,
@@ -50,8 +72,8 @@ def build_bge_m3_tri_index_payload(
         colbert_fn=colbert_fn,
     )
 
-    views: list[dict[str, Any]] = []
-    dense = list(payload.get("dense") or [])
+    views: list[BgeM3IndexView] = []
+    dense = payload["dense"]
     if dense:
         views.append(
             {
@@ -63,7 +85,7 @@ def build_bge_m3_tri_index_payload(
             }
         )
 
-    sparse = dict(payload.get("sparse") or {})
+    sparse = payload["sparse"]
     if sparse:
         views.append(
             {
@@ -75,7 +97,7 @@ def build_bge_m3_tri_index_payload(
             }
         )
 
-    colbert = list(payload.get("colbert") or [])
+    colbert = payload["colbert"]
     if colbert:
         views.append(
             {

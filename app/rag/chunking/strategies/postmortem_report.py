@@ -95,10 +95,10 @@ def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
     parsed = parse_markdown_hash_heading(s)
     if parsed is not None:
         level, title = parsed
-        title = str(title).rstrip(":：").strip()
+        title = title.rstrip(":：").strip()
         key = _TITLE_TO_KEY.get(normalize_spaces_lower(title))
         if key:
-            return title, key, int(level)
+            return title, key, level
         return None
 
     s2 = strip_numbered_heading_prefix(s).strip()
@@ -158,7 +158,7 @@ def looks_like_postmortem_report(text: str) -> bool:
 
 
 class PostmortemReportChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

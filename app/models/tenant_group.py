@@ -1,16 +1,4 @@
-"""
-Tenant groups (enterprise directory primitive).
-
-Motivation:
-- MimirQ currently supports dataset/doc ACL allowlists by member id only.
-- Top-tier enterprise deployments typically need group-based access control and
-  IdP-driven provisioning (OIDC group claims / SCIM).
-
-This module introduces the storage primitives for tenant-scoped groups and
-their memberships. Group-based permissions are implemented via separate
-permission tables (see follow-up migrations/models).
-"""
-
+"""Tenant-scoped groups and memberships for directory provisioning and ACLs."""
 
 import uuid
 from datetime import UTC, datetime

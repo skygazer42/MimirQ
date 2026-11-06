@@ -17,13 +17,13 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.models.chat import Conversation
 from app.rag.trace_schema import RagTraceListResponse
+from app.services import dataset_service
 from app.services.chat_conversation_access import ensure_conversation_access
 from app.services.conversation_summary_service import (
     clear_conversation_summary,
     get_conversation_summary,
     update_conversation_summary,
 )
-from app.services.dataset_service import DatasetService
 from app.services.rag_trace_service import list_rag_traces
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -45,11 +45,9 @@ def _load_accessible_conversation(
     account_id: str,
     conversation_id: UUID,
 ) -> Conversation:
-    DatasetService.ensure_member(db, tenant_id, account_id)
+    dataset_service.ensure_member(db, tenant_id, account_id)
     conversation = (
-        db.query(Conversation)
-        .filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id)
-        .first()
+        db.query(Conversation).filter(Conversation.id == conversation_id, Conversation.tenant_id == tenant_id).first()
     )
     if not conversation:
         raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND_DETAIL)
@@ -103,7 +101,7 @@ async def update_conversation_summary_endpoint(
     account_id: Annotated[str, Depends(get_current_account_id)],
     db: Annotated[Session, Depends(get_db)],
 ):
-    if not bool(getattr(settings, "PERSISTENT_SUMMARY_MEMORY_ENABLED", False)):
+    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED):
         raise HTTPException(status_code=400, detail="Persistent summary memory is disabled")
 
     _load_accessible_conversation(
@@ -214,12 +212,12 @@ def list_conversation_checkpoints(
         item = {
             "checkpoint_id": cfg.get("checkpoint_id"),
             "checkpoint_ns": cfg.get("checkpoint_ns", ""),
-            "created_at": getattr(snap, "created_at", None),
-            "next": getattr(snap, "next", None),
-            "metadata": getattr(snap, "metadata", None),
+            "created_at": snap.created_at,
+            "next": snap.next,
+            "metadata": snap.metadata,
         }
         if include_values:
-            item["values"] = _checkpoint_values_to_json(getattr(snap, "values", None))
+            item["values"] = _checkpoint_values_to_json(snap.values)
         items.append(jsonable_encoder(item))
 
     return {"thread_id": thread_id, "items": items}
@@ -253,7 +251,7 @@ def get_conversation_checkpoint(
     thread_id = str(conversation_id)
     config = {"configurable": {"thread_id": thread_id, "checkpoint_ns": "", "checkpoint_id": checkpoint_id}}
     snap = graph.get_state(config)
-    if not snap or getattr(snap, "created_at", None) is None:
+    if not snap or snap.created_at is None:
         raise HTTPException(status_code=404, detail="Checkpoint not found")
 
     cfg = (snap.config or {}).get("configurable") or {}
@@ -261,12 +259,12 @@ def get_conversation_checkpoint(
         "thread_id": thread_id,
         "checkpoint_id": cfg.get("checkpoint_id"),
         "checkpoint_ns": cfg.get("checkpoint_ns", ""),
-        "created_at": getattr(snap, "created_at", None),
-        "next": getattr(snap, "next", None),
-        "metadata": getattr(snap, "metadata", None),
+        "created_at": snap.created_at,
+        "next": snap.next,
+        "metadata": snap.metadata,
     }
     if include_values:
-        payload["values"] = _checkpoint_values_to_json(getattr(snap, "values", None))
+        payload["values"] = _checkpoint_values_to_json(snap.values)
     return jsonable_encoder(payload)
 
 

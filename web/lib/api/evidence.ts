@@ -15,7 +15,7 @@ import type {
   EvidenceSuiteList,
   EvidenceSuitePatch,
   EvidenceSuiteSyncRegressionResponse,
-} from '@/types'
+} from '@/types/backend'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
@@ -44,7 +44,7 @@ export const evidenceApi = {
 
   async getSuiteDashboard(
     suiteId: string,
-    params?: { include_archived_items?: boolean; top_n?: number; heatmap_top_n?: number }
+    params?: { include_archived_items?: boolean; top_n?: number; heatmap_top_n?: number },
   ): Promise<EvidenceSuiteDashboard> {
     return openapiRequest({
       path: '/api/v1/evidence/suites/{suite_id}/dashboard',
@@ -63,7 +63,7 @@ export const evidenceApi = {
       max_candidates?: number
       max_rating?: number
       include_existing?: boolean
-    }
+    },
   ): Promise<EvidenceHardcaseDiscovery> {
     return openapiRequest({
       path: '/api/v1/evidence/suites/{suite_id}/hardcase-candidates',
@@ -80,7 +80,7 @@ export const evidenceApi = {
       include_details?: boolean
       details_limit?: number
       slice_top_n?: number
-    }
+    },
   ): Promise<EvidenceReferenceDriftAudit> {
     return openapiRequest({
       path: '/api/v1/evidence/suites/{suite_id}/drift-audit',
@@ -97,7 +97,7 @@ export const evidenceApi = {
       include_details?: boolean
       details_limit?: number
       slice_top_n?: number
-    }
+    },
   ): Promise<EvidenceReferenceDriftAudit> {
     return openapiRequest({
       path: '/api/v1/evidence/datasets/{dataset_id}/drift-audit',
@@ -109,7 +109,7 @@ export const evidenceApi = {
 
   async repairSuiteReferenceSources(
     suiteId: string,
-    payload: EvidenceReferenceRepairRequest
+    payload: EvidenceReferenceRepairRequest,
   ): Promise<EvidenceReferenceRepairResponse> {
     return openapiRequest({
       path: '/api/v1/evidence/suites/{suite_id}/repair-reference-sources',
@@ -140,7 +140,7 @@ export const evidenceApi = {
 
   async listItems(
     suiteId: string,
-    params?: { skip?: number; limit?: number; status?: string }
+    params?: { skip?: number; limit?: number; status?: string },
   ): Promise<EvidenceItemList> {
     return openapiRequest({
       path: '/api/v1/evidence/suites/{suite_id}/items',
@@ -202,7 +202,7 @@ export const evidenceApi = {
 
   async exportSuiteLtrTrainingBundleZip(
     suiteId: string,
-    params?: { include_archived_items?: boolean; max_items?: number }
+    params?: { include_archived_items?: boolean; max_items?: number },
   ): Promise<Blob> {
     const { data } = await apiClient.get(`/evidence/suites/${suiteId}/export-ltr-training`, {
       params,
@@ -228,11 +228,7 @@ export const evidenceApi = {
     return data as Blob
   },
 
-  async importItems(
-    suiteId: string,
-    file: File,
-    params?: { max_items?: number }
-  ): Promise<EvidenceItemImportResponse> {
+  async importItems(suiteId: string, file: File, params?: { max_items?: number }): Promise<EvidenceItemImportResponse> {
     const formData = new FormData()
     formData.append('file', file)
     const { data } = await apiClient.post(`/evidence/suites/${suiteId}/items/import`, formData, {
@@ -251,7 +247,9 @@ export const evidenceApi = {
     return data
   },
 
-  async getCapsule(capsuleId: string): Promise<{ capsule_id: string; capsule_hash: string; capsule: Record<string, unknown> }> {
+  async getCapsule(
+    capsuleId: string,
+  ): Promise<{ capsule_id: string; capsule_hash: string; capsule: Record<string, unknown> }> {
     const { data } = await apiClient.get(`/evidence/capsules/${encodeURIComponent(capsuleId)}`)
     return data
   },

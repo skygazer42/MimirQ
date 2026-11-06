@@ -1,7 +1,34 @@
 import math
-from typing import Any
+from typing import Any, TypedDict
 
 EMBEDDING_BENCHMARK_SCHEMA = "mimirq.embedding_benchmark.v1"
+
+
+class _EmbeddingCase(TypedDict):
+    query_id: str
+    query: str
+    expected_document_ids: list[str]
+
+
+class _EmbeddingRow(TypedDict):
+    query_id: str
+    query: str
+    expected_document_ids: list[str]
+    retrieved_document_ids: list[str]
+    hit_at_k: float
+    recall_at_k: float
+    mrr: float
+    latency_ms: float
+    cost_usd: float
+
+
+class _EmbeddingSummary(TypedDict):
+    query_count: int
+    hit_at_k_mean: float
+    recall_at_k_mean: float
+    mrr_mean: float
+    avg_latency_ms: float
+    total_cost_usd: float | int
 
 
 def _normalize_ids(values: Any) -> list[str]:
@@ -61,7 +88,7 @@ def _cosine(left: list[float], right: list[float]) -> float:
     denom = math.sqrt(left_sq) * math.sqrt(right_sq)
     if denom <= 0.0:
         return 0.0
-    return float(dot / denom)
+    return dot / denom
 
 
 def rank_corpus_by_cosine(
@@ -112,7 +139,7 @@ def run_embedding_benchmark(
     top_k: int = 10,
 ) -> dict[str, Any]:
     top_k_eff = max(1, int(top_k or 1))
-    normalized_cases = [
+    normalized_cases: list[_EmbeddingCase] = [
         {
             "query_id": str((case or {}).get("query_id") or "").strip(),
             "query": str((case or {}).get("query") or ""),
@@ -125,7 +152,7 @@ def run_embedding_benchmark(
     model_rows: list[dict[str, Any]] = []
     for model_id in sorted((model_runs or {}).keys()):
         run = model_runs.get(model_id) if isinstance(model_runs.get(model_id), dict) else {}
-        rows: list[dict[str, Any]] = []
+        rows: list[_EmbeddingRow] = []
         for case in normalized_cases:
             query_id = case["query_id"]
             expected_ids = list(case["expected_document_ids"])
@@ -148,13 +175,13 @@ def run_embedding_benchmark(
                 }
             )
 
-        summary = {
+        summary: _EmbeddingSummary = {
             "query_count": len(rows),
-            "hit_at_k_mean": _mean([float(row["hit_at_k"]) for row in rows]),
-            "recall_at_k_mean": _mean([float(row["recall_at_k"]) for row in rows]),
-            "mrr_mean": _mean([float(row["mrr"]) for row in rows]),
-            "avg_latency_ms": _mean([float(row["latency_ms"]) for row in rows], digits=3),
-            "total_cost_usd": round(sum(float(row["cost_usd"]) for row in rows), 6),
+            "hit_at_k_mean": _mean([row["hit_at_k"] for row in rows]),
+            "recall_at_k_mean": _mean([row["recall_at_k"] for row in rows]),
+            "mrr_mean": _mean([row["mrr"] for row in rows]),
+            "avg_latency_ms": _mean([row["latency_ms"] for row in rows], digits=3),
+            "total_cost_usd": round(sum(row["cost_usd"] for row in rows), 6),
         }
         model_rows.append(
             {
@@ -169,10 +196,10 @@ def run_embedding_benchmark(
     for index, row in enumerate(model_rows):
         summary = row["summary"]
         key = (
-            float(summary["recall_at_k_mean"]),
-            float(summary["mrr_mean"]),
-            float(summary["hit_at_k_mean"]),
-            -float(summary["avg_latency_ms"]),
+            summary["recall_at_k_mean"],
+            summary["mrr_mean"],
+            summary["hit_at_k_mean"],
+            -summary["avg_latency_ms"],
             -index,
         )
         if best_key is None or key > best_key:

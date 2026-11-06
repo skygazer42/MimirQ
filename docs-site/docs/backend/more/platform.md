@@ -5,7 +5,7 @@ sidebar_position: 1
 
 # 平台与账号
 
-MimirQ 提供完整的多租户平台能力，包括租户管理、用户角色权限（RBAC）、SCIM 自动同步和用量审计。
+Ragvia 提供完整的多租户平台能力，包括租户管理、用户角色权限（RBAC）、SCIM 自动同步和用量审计。
 
 ## 平台功能概览
 
@@ -28,7 +28,7 @@ flowchart TB
 
 ## 租户管理模型
 
-MimirQ 采用单库多租户架构，所有数据表通过 `tenant_id` 列实现逻辑隔离：
+Ragvia 采用单库多租户架构，所有数据表通过 `tenant_id` 列实现逻辑隔离：
 
 | 概念 | 说明 |
 |------|------|
@@ -71,7 +71,7 @@ MimirQ 采用单库多租户架构，所有数据表通过 `tenant_id` 列实现
 
 ## SCIM 同步
 
-MimirQ 实现 SCIM 2.0 协议端点，支持与企业 IdP（如 Azure AD、Okta）自动同步用户和组：
+Ragvia 实现 SCIM 2.0 协议端点，支持与企业 IdP（如 Azure AD、Okta）自动同步用户和组：
 
 | 端点 | 说明 |
 |------|------|

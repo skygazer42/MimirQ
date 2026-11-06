@@ -21,7 +21,7 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*|[\u4e00-\u9fff]{1,4}")
 
 
 def _token_set(text: str) -> set[str]:
-    return {str(tok or "").strip().casefold() for tok in _TOKEN_RE.findall(text or "") if str(tok or "").strip()}
+    return {tok.strip().casefold() for tok in _TOKEN_RE.findall(text or "") if tok.strip()}
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -29,8 +29,6 @@ def _jaccard(a: set[str], b: set[str]) -> float:
         return 0.0
     inter = len(a & b)
     union = len(a | b)
-    if union <= 0:
-        return 0.0
     return float(inter) / float(union)
 
 
@@ -99,7 +97,7 @@ class RaptorChunker(BaseChunker):
     def _summarize_cluster(self, cluster: list[Document]) -> str:
         parts: list[str] = []
         for doc in cluster:
-            text = str(doc.page_content or "").strip()
+            text = (doc.page_content or "").strip()
             if text:
                 parts.append(text)
         merged = " ".join(parts).strip()
@@ -110,7 +108,7 @@ class RaptorChunker(BaseChunker):
     def _cluster_leafs(self, leafs: list[Document]) -> list[list[Document]]:
         if self.cluster_strategy == "leiden_proxy":
             groups = build_semantic_leiden_proxy_clusters(
-                [str(doc.page_content or "") for doc in leafs],
+                [doc.page_content or "" for doc in leafs],
                 similarity_threshold=self.similarity_threshold,
             )
             out = [[leafs[idx] for idx in group] for group in groups if group]
@@ -159,7 +157,7 @@ class RaptorChunker(BaseChunker):
                     Document(
                         page_content=leaf.page_content,
                         metadata=meta,
-                        id=getattr(leaf, "id", None),
+                        id=leaf.id,
                     )
                 )
 
@@ -201,12 +199,8 @@ class RaptorChunker(BaseChunker):
                 )
                 summaries.append(Document(page_content=self._summarize_cluster(cluster), metadata=summary_meta))
 
-            apply_sibling_hierarchy_links(
-                [d.metadata for d in normalized_leafs if isinstance(d.metadata, dict)], overwrite=True
-            )
-            apply_sibling_hierarchy_links(
-                [d.metadata for d in summaries if isinstance(d.metadata, dict)], overwrite=True
-            )
+            apply_sibling_hierarchy_links([d.metadata for d in normalized_leafs], overwrite=True)
+            apply_sibling_hierarchy_links([d.metadata for d in summaries], overwrite=True)
             out.extend(normalized_leafs)
             out.extend(summaries)
         return out

@@ -3,7 +3,7 @@
  * Parses .graphml XML content into { nodes, links } format for react-force-graph
  */
 
-export interface GraphNode {
+export type GraphNode = {
   id: string
   label: string
   val?: number // size
@@ -24,7 +24,7 @@ export interface GraphNode {
   vz?: number | null
 }
 
-export interface GraphLink {
+export type GraphLink = {
   source: string
   target: string
   id?: string | number | null
@@ -41,7 +41,7 @@ export interface GraphLink {
   meta?: Record<string, unknown>
 }
 
-export interface GraphData {
+export type GraphData = {
   nodes: GraphNode[]
   links: GraphLink[]
 }
@@ -54,7 +54,7 @@ export const parseGraphML = (xmlContent: string): GraphData => {
   const links: GraphLink[] = []
 
   // Get all keys to map IDs to attribute names (e.g., d0 -> label, d1 -> weight)
-  const keys: { [id: string]: { name: string, type: string } } = {}
+  const keys: { [id: string]: { name: string; type: string } } = {}
   xmlDoc.querySelectorAll('key').forEach((key) => {
     const id = key.getAttribute('id')
     const name = key.getAttribute('attr.name')
@@ -87,11 +87,6 @@ export const parseGraphML = (xmlContent: string): GraphData => {
 
     // Default label if missing
     if (!nodeData.label) nodeData.label = id
-
-    // Random color assignment if not present (can be improved)
-    if (!nodeData.color) {
-      // nodeData.color = ... 
-    }
 
     nodes.push(nodeData)
   })

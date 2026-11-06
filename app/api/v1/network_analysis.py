@@ -1,5 +1,5 @@
 from collections import defaultdict, deque
-from typing import Literal
+from typing import Literal, TypedDict
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -114,15 +114,22 @@ def _all_paths_between(
     return out
 
 
-def _degree_centrality(graph: dict[str, dict[str, float]]) -> list[dict[str, float | str]]:
-    rows = [{"node_id": node, "score": float(len(neighbors))} for node, neighbors in graph.items()]
-    rows.sort(key=lambda row: (-float(row["score"]), str(row["node_id"])))
+class _CentralityScore(TypedDict):
+    node_id: str
+    score: float
+
+
+def _degree_centrality(graph: dict[str, dict[str, float]]) -> list[_CentralityScore]:
+    rows: list[_CentralityScore] = [
+        {"node_id": node, "score": float(len(neighbors))} for node, neighbors in graph.items()
+    ]
+    rows.sort(key=lambda row: (-row["score"], row["node_id"]))
     return rows
 
 
 def _pagerank(
     graph: dict[str, dict[str, float]], *, damping: float = 0.85, max_iter: int = 40
-) -> list[dict[str, float | str]]:
+) -> list[_CentralityScore]:
     nodes = sorted(graph.keys())
     if not nodes:
         return []
@@ -135,8 +142,8 @@ def _pagerank(
             for dst, weight in edges.items():
                 next_scores[dst] += damping * scores[src] * (float(weight) / float(denom))
         scores = next_scores
-    rows = [{"node_id": node, "score": round(float(scores[node]), 4)} for node in nodes]
-    rows.sort(key=lambda row: (-float(row["score"]), str(row["node_id"])))
+    rows: list[_CentralityScore] = [{"node_id": node, "score": round(float(scores[node]), 4)} for node in nodes]
+    rows.sort(key=lambda row: (-row["score"], row["node_id"]))
     return rows
 
 

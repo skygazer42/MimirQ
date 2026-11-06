@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import UTC, datetime
 from difflib import SequenceMatcher as SequenceMatcher
-from functools import lru_cache
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -34,219 +33,6 @@ from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Session
 
 from app.api.schemas.chat import ChatRAGConfig
-from app.api.v1.dify_support.anchor_strength import (
-    _composite_section_text as _composite_section_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _composite_stitched_section_text as _composite_stitched_section_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_bool as _dify_kg_bool,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_float as _dify_kg_float,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _dify_kg_int as _dify_kg_int,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _ordered_section_sibling_records as _ordered_section_sibling_records,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _query_intent_terms as _query_intent_terms,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _question_anchor_intent_groups as _question_anchor_intent_groups,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _question_anchor_subject_text as _question_anchor_subject_text,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_has_any_requested_slot_field as _record_has_any_requested_slot_field,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_is_composite_exact_anchor_answer as _record_is_composite_exact_anchor_answer,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_is_full_answer_chunk as _record_is_full_answer_chunk,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_matches_requested_slot as _record_matches_requested_slot,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_question_anchor_has_intent_conflict as _record_question_anchor_has_intent_conflict,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_section_type_values as _record_section_type_values,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _record_slot_field_values as _record_slot_field_values,
-)
-from app.api.v1.dify_support.anchor_strength import (
-    _safe_int as _safe_int,
-)
-from app.api.v1.dify_support.common import (
-    _CJK_RE as _CJK_RE,
-)
-from app.api.v1.dify_support.common import (
-    _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
-)
-from app.api.v1.dify_support.common import (
-    _EXACT_PRIMARY_ALIAS_MATCH_BONUS as _EXACT_PRIMARY_ALIAS_MATCH_BONUS,
-)
-from app.api.v1.dify_support.common import (
-    _EXPLICIT_QUESTION_FORM_MARKERS as _EXPLICIT_QUESTION_FORM_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _FAST_ANSWER_QUERY_STOP_TERMS as _FAST_ANSWER_QUERY_STOP_TERMS,
-)
-from app.api.v1.dify_support.common import (
-    _FUZZY_METADATA_ANCHOR_KEYS as _FUZZY_METADATA_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _MAX_HINT_VALUE_CHARS as _MAX_HINT_VALUE_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MAX_QA_HINT_VALUE_CHARS as _MAX_QA_HINT_VALUE_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _METADATA_ANCHOR_KEYS as _METADATA_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _METADATA_SCORE_KEYS as _METADATA_SCORE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_REGION_ANCHOR_OVERLAP_CHARS as _MIN_REGION_ANCHOR_OVERLAP_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_REGIONAL_QUESTION_OVERLAP_CHARS as _MIN_REGIONAL_QUESTION_OVERLAP_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIN_SPECIFIC_INTENT_CHARS as _MIN_SPECIFIC_INTENT_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_LIST_SPLIT_RE as _MIXED_INTENT_LIST_SPLIT_RE,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_QUERY_MARKERS as _MIXED_INTENT_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE as _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE,
-)
-from app.api.v1.dify_support.common import (
-    _PUBLIC_METADATA_VIEW_KEYS as _PUBLIC_METADATA_VIEW_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_INTENT_GROUPS as _QUESTION_ANCHOR_INTENT_GROUPS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS as _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO as _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_QUERY_MARKERS as _QUESTION_ANCHOR_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS as _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS,
-)
-from app.api.v1.dify_support.common import (
-    _QUOTED_ANCHOR_RE as _QUOTED_ANCHOR_RE,
-)
-from app.api.v1.dify_support.common import (
-    _REGION_ANCHOR_KEYS as _REGION_ANCHOR_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _RETRIEVAL_METADATA_VIEW_KEYS as _RETRIEVAL_METADATA_VIEW_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SCORE_KEYS as _SCORE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SERVICE_ANCHOR_ADMIN_MARKERS as _SERVICE_ANCHOR_ADMIN_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _SERVICE_ANCHOR_QUERY_TRAILING_CHARS as _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
-)
-from app.api.v1.dify_support.common import (
-    _SOURCE_RECORD_ID_KEYS as _SOURCE_RECORD_ID_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _SOURCE_RECORD_SCOPE_KEYS as _SOURCE_RECORD_SCOPE_KEYS,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_BONUS as _URL_EVIDENCE_BONUS,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_BONUS_MAX as _URL_EVIDENCE_BONUS_MAX,
-)
-from app.api.v1.dify_support.common import (
-    _URL_EVIDENCE_QUERY_MARKERS as _URL_EVIDENCE_QUERY_MARKERS,
-)
-from app.api.v1.dify_support.common import (
-    _citation_chunk_id as _citation_chunk_id,
-)
-from app.api.v1.dify_support.common import (
-    _citation_dataset_id as _citation_dataset_id,
-)
-from app.api.v1.dify_support.common import (
-    _citation_score as _citation_score,
-)
-from app.api.v1.dify_support.common import (
-    _clamp_score as _clamp_score,
-)
-from app.api.v1.dify_support.common import (
-    _first_non_empty as _first_non_empty,
-)
-from app.api.v1.dify_support.common import (
-    _iter_record_metadata_layers as _iter_record_metadata_layers,
-)
-from app.api.v1.dify_support.common import (
-    _metadata_terms as _metadata_terms,
-)
-from app.api.v1.dify_support.common import (
-    _normalize_match_term as _normalize_match_term,
-)
-from app.api.v1.dify_support.common import (
-    _response_hint_metadata_conditions_match as _response_hint_metadata_conditions_match,
-)
-from app.api.v1.dify_support.compaction import (
-    _compact_fast_answer_value as _compact_fast_answer_value,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_candidate_top_k as _dify_fast_candidate_top_k,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_content_max_chars as _dify_fast_content_max_chars,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_response_top_k as _dify_fast_response_top_k,
-)
-from app.api.v1.dify_support.compaction import (
-    _dify_fast_total_content_max_chars as _dify_fast_total_content_max_chars,
-)
-from app.api.v1.dify_support.compaction import (
-    _fast_answer_query_terms as _fast_answer_query_terms,
-)
-from app.api.v1.dify_support.compaction import (
-    _fast_answer_snippet_segments as _fast_answer_snippet_segments,
-)
-from app.api.v1.dify_support.compaction import (
-    _query_requests_url_evidence as _query_requests_url_evidence,
-)
-from app.api.v1.dify_support.compaction import (
-    _record_url_evidence_bonus as _record_url_evidence_bonus,
-)
-from app.api.v1.dify_support.compaction import (
-    _structured_label_values_from_content as _structured_label_values_from_content,
-)
 from app.api.v1.dify_support.external_api import (
     DifyConversationTurnRequest,
     DifyConversationTurnResponse,
@@ -296,176 +82,8 @@ from app.api.v1.dify_support.external_api import (
     _token_matches,
     _uuid_or_none,
 )
-from app.api.v1.dify_support.records import (
-    _coerce_uuid_text as _coerce_uuid_text,
-)
-from app.api.v1.dify_support.records import (
-    _record_dedupe_key as _record_dedupe_key,
-)
-from app.api.v1.dify_support.records import (
-    _row_value as _row_value,
-)
-from app.api.v1.dify_support.records import (
-    _tag_mixed_intent_records as _tag_mixed_intent_records,
-)
-from app.api.v1.dify_support.scoring import (
-    _answer_hints_from_fields as _answer_hints_from_fields,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigram_overlap_count as _cjk_bigram_overlap_count,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigram_overlap_ratio as _cjk_bigram_overlap_ratio,
-)
-from app.api.v1.dify_support.scoring import (
-    _cjk_bigrams as _cjk_bigrams,
-)
-from app.api.v1.dify_support.scoring import (
-    _clamp_hint_value as _clamp_hint_value,
-)
-from app.api.v1.dify_support.scoring import (
-    _contains_cjk as _contains_cjk,
-)
-from app.api.v1.dify_support.scoring import (
-    _content_starts_with_response_hint as _content_starts_with_response_hint,
-)
-from app.api.v1.dify_support.scoring import (
-    _diagnostic_query_hash as _diagnostic_query_hash,
-)
-from app.api.v1.dify_support.scoring import (
-    _diagnostic_value_hash as _diagnostic_value_hash,
-)
-from app.api.v1.dify_support.scoring import (
-    _dify_external_reranker_enabled as _dify_external_reranker_enabled,
-)
-from app.api.v1.dify_support.scoring import (
-    _enumerated_answer_hints as _enumerated_answer_hints,
-)
-from app.api.v1.dify_support.scoring import (
-    _extract_numbered_option_terms as _extract_numbered_option_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _field_line_parts as _field_line_parts,
-)
-from app.api.v1.dify_support.scoring import (
-    _find_numbered_marker as _find_numbered_marker,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_anchor_word_char as _is_anchor_word_char,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_cjk_char as _is_cjk_char,
-)
-from app.api.v1.dify_support.scoring import (
-    _is_specific_intent_term as _is_specific_intent_term,
-)
-from app.api.v1.dify_support.scoring import (
-    _iter_anchor_word_segments as _iter_anchor_word_segments,
-)
-from app.api.v1.dify_support.scoring import (
-    _longest_common_substring_length as _longest_common_substring_length,
-)
-from app.api.v1.dify_support.scoring import (
-    _matching_response_hint_group as _matching_response_hint_group,
-)
-from app.api.v1.dify_support.scoring import (
-    _mixed_intent_segment_parts as _mixed_intent_segment_parts,
-)
-from app.api.v1.dify_support.scoring import (
-    _near_question_anchor_match as _near_question_anchor_match,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_explicit_question_form as _query_has_explicit_question_form,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_mixed_intent as _query_has_mixed_intent,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_has_quoted_anchor_candidate as _query_has_quoted_anchor_candidate,
-)
-from app.api.v1.dify_support.scoring import (
-    _query_is_short_question_anchor_candidate as _query_is_short_question_anchor_candidate,
-)
-from app.api.v1.dify_support.scoring import (
-    _question_marker_overlap_bonus as _question_marker_overlap_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_anchor_match_text as _quoted_anchor_match_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_query_anchor_display_terms as _quoted_query_anchor_display_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _quoted_query_anchor_terms as _quoted_query_anchor_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_exact_primary_alias_bonus as _record_exact_primary_alias_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_final_rerank_candidate_id as _record_final_rerank_candidate_id,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_has_query_region_anchor as _record_has_query_region_anchor,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_metadata_anchor_bonus as _record_metadata_anchor_bonus,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_needs_final_rerank as _record_needs_final_rerank,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_plugin_ref as _record_plugin_ref,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_policy_slot_coverage_text as _record_policy_slot_coverage_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_region_terms as _record_region_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _record_source_identity_key as _record_source_identity_key,
-)
-from app.api.v1.dify_support.scoring import (
+from app.api.v1.dify_support.external_api import (
     _request_client_ip as _request_client_ip,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_candidate_terms as _response_hint_candidate_terms,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_dict as _response_hint_dict,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_dict_list as _response_hint_dict_list,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_group_has_required_fields as _response_hint_group_has_required_fields,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_group_matches_query as _response_hint_group_matches_query,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_groups as _response_hint_groups,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_string_list as _response_hint_string_list,
-)
-from app.api.v1.dify_support.scoring import (
-    _response_hint_text as _response_hint_text,
-)
-from app.api.v1.dify_support.scoring import (
-    _rstrip_service_anchor_query_noise as _rstrip_service_anchor_query_noise,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_mixed_intent_noise as _strip_mixed_intent_noise,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_mixed_intent_subject_instruction_tail as _strip_mixed_intent_subject_instruction_tail,
-)
-from app.api.v1.dify_support.scoring import (
-    _strip_trailing_service_anchor_admin as _strip_trailing_service_anchor_admin,
-)
-from app.api.v1.dify_support.scoring import (
-    _structured_fields_from_content as _structured_fields_from_content,
 )
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
@@ -483,7 +101,7 @@ from app.rag.pipeline_plugins.contracts import (
     INDEXED_METADATA_KEY as INDEXED_METADATA_KEY,
 )
 from app.rag.reranker.factory import get_reranker
-from app.rag.reranker.types import RerankCandidate
+from app.rag.reranker.types import RerankCandidate, RerankResult
 from app.rag.retrieval.planner import (
     DatasetRouteHint,
     DatasetScopePlan,
@@ -492,7 +110,6 @@ from app.rag.retrieval.planner import (
     plan_dataset_scope,
     resolve_internal_candidate_top_k,
     retrieval_policy_fallback_multiplier,
-    retrieval_policy_mixed_intent_leading_noise_terms,
     retrieval_policy_mixed_intent_subject_terms,
     retrieval_policy_query_terms,
     retrieval_policy_response_compaction,
@@ -523,6 +140,238 @@ from app.services.chat_response_cache import (
 from app.services.chat_response_cache import (
     resolve_inflight_chat_response as resolve_inflight_response,
 )
+from app.services.dify_integration.anchor_strength import (
+    _composite_section_text as _composite_section_text,
+)
+from app.services.dify_integration.anchor_strength import (
+    _composite_stitched_section_text as _composite_stitched_section_text,
+)
+from app.services.dify_integration.anchor_strength import (
+    _dify_kg_bool as _dify_kg_bool,
+)
+from app.services.dify_integration.anchor_strength import (
+    _dify_kg_float as _dify_kg_float,
+)
+from app.services.dify_integration.anchor_strength import (
+    _dify_kg_int as _dify_kg_int,
+)
+from app.services.dify_integration.anchor_strength import (
+    _ordered_section_sibling_records as _ordered_section_sibling_records,
+)
+from app.services.dify_integration.anchor_strength import (
+    _query_intent_terms as _query_intent_terms,
+)
+from app.services.dify_integration.anchor_strength import (
+    _question_anchor_intent_groups as _question_anchor_intent_groups,
+)
+from app.services.dify_integration.anchor_strength import (
+    _question_anchor_subject_text as _question_anchor_subject_text,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_has_any_requested_slot_field as _record_has_any_requested_slot_field,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_is_composite_exact_anchor_answer as _record_is_composite_exact_anchor_answer,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_is_full_answer_chunk as _record_is_full_answer_chunk,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_matches_requested_slot as _record_matches_requested_slot,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_question_anchor_has_intent_conflict as _record_question_anchor_has_intent_conflict,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_section_type_values as _record_section_type_values,
+)
+from app.services.dify_integration.anchor_strength import (
+    _record_slot_field_values as _record_slot_field_values,
+)
+from app.services.dify_integration.anchor_strength import (
+    _safe_int as _safe_int,
+)
+from app.services.dify_integration.common import (
+    _ANCHOR_ONLY_QA_RECORD_PENALTY,
+    _ANSWERFUL_RECORD_BONUS,
+    _CONTENT_KEYS,
+    _DEFAULT_RESPONSE_HINT_SOURCE_PREFIX,
+    _EXACT_QUERY_ANCHOR_FIELDS,
+    _INTENT_MATCH_BONUS,
+    _INTENT_MATCH_BONUS_MAX,
+    _METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS,
+    _METADATA_KEYS,
+    _MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS,
+    _MIXED_INTENT_SPLIT_RE,
+    _QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP,
+    _QUESTION_ANCHOR_BIGRAM_MIN_RATIO,
+    _QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH,
+    _QUESTION_INTENT_MATCH_BONUS,
+    _RETRIEVAL_INTENT_KEYS,
+    _TITLE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _CJK_RE as _CJK_RE,
+)
+from app.services.dify_integration.common import (
+    _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
+)
+from app.services.dify_integration.common import (
+    _EXACT_PRIMARY_ALIAS_MATCH_BONUS as _EXACT_PRIMARY_ALIAS_MATCH_BONUS,
+)
+from app.services.dify_integration.common import (
+    _EXPLICIT_QUESTION_FORM_MARKERS as _EXPLICIT_QUESTION_FORM_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _FAST_ANSWER_QUERY_STOP_TERMS as _FAST_ANSWER_QUERY_STOP_TERMS,
+)
+from app.services.dify_integration.common import (
+    _FUZZY_METADATA_ANCHOR_KEYS as _FUZZY_METADATA_ANCHOR_KEYS,
+)
+from app.services.dify_integration.common import (
+    _MAX_HINT_VALUE_CHARS as _MAX_HINT_VALUE_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MAX_QA_HINT_VALUE_CHARS as _MAX_QA_HINT_VALUE_CHARS,
+)
+from app.services.dify_integration.common import (
+    _METADATA_ANCHOR_KEYS as _METADATA_ANCHOR_KEYS,
+)
+from app.services.dify_integration.common import (
+    _METADATA_SCORE_KEYS as _METADATA_SCORE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _MIN_REGION_ANCHOR_OVERLAP_CHARS as _MIN_REGION_ANCHOR_OVERLAP_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MIN_REGIONAL_QUESTION_OVERLAP_CHARS as _MIN_REGIONAL_QUESTION_OVERLAP_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MIN_SPECIFIC_INTENT_CHARS as _MIN_SPECIFIC_INTENT_CHARS,
+)
+from app.services.dify_integration.common import (
+    _MIXED_INTENT_LIST_SPLIT_RE as _MIXED_INTENT_LIST_SPLIT_RE,
+)
+from app.services.dify_integration.common import (
+    _MIXED_INTENT_QUERY_MARKERS as _MIXED_INTENT_QUERY_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE as _MIXED_INTENT_SUBJECT_TRAILING_INSTRUCTION_RE,
+)
+from app.services.dify_integration.common import (
+    _PUBLIC_METADATA_VIEW_KEYS as _PUBLIC_METADATA_VIEW_KEYS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_INTENT_GROUPS as _QUESTION_ANCHOR_INTENT_GROUPS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS as _QUESTION_ANCHOR_NEAR_MATCH_MIN_CHARS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO as _QUESTION_ANCHOR_NEAR_MATCH_MIN_RATIO,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_QUERY_MARKERS as _QUESTION_ANCHOR_QUERY_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MAX_CHARS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS as _QUESTION_ANCHOR_SHORT_QUERY_MIN_CHARS,
+)
+from app.services.dify_integration.common import (
+    _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS as _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS,
+)
+from app.services.dify_integration.common import (
+    _QUOTED_ANCHOR_RE as _QUOTED_ANCHOR_RE,
+)
+from app.services.dify_integration.common import (
+    _REGION_ANCHOR_KEYS as _REGION_ANCHOR_KEYS,
+)
+from app.services.dify_integration.common import (
+    _RETRIEVAL_METADATA_VIEW_KEYS as _RETRIEVAL_METADATA_VIEW_KEYS,
+)
+from app.services.dify_integration.common import (
+    _SCORE_KEYS as _SCORE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _SERVICE_ANCHOR_ADMIN_MARKERS as _SERVICE_ANCHOR_ADMIN_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _SERVICE_ANCHOR_QUERY_TRAILING_CHARS as _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
+)
+from app.services.dify_integration.common import (
+    _SOURCE_RECORD_ID_KEYS as _SOURCE_RECORD_ID_KEYS,
+)
+from app.services.dify_integration.common import (
+    _SOURCE_RECORD_SCOPE_KEYS as _SOURCE_RECORD_SCOPE_KEYS,
+)
+from app.services.dify_integration.common import (
+    _URL_EVIDENCE_BONUS as _URL_EVIDENCE_BONUS,
+)
+from app.services.dify_integration.common import (
+    _URL_EVIDENCE_BONUS_MAX as _URL_EVIDENCE_BONUS_MAX,
+)
+from app.services.dify_integration.common import (
+    _URL_EVIDENCE_QUERY_MARKERS as _URL_EVIDENCE_QUERY_MARKERS,
+)
+from app.services.dify_integration.common import (
+    _citation_chunk_id as _citation_chunk_id,
+)
+from app.services.dify_integration.common import (
+    _citation_dataset_id as _citation_dataset_id,
+)
+from app.services.dify_integration.common import (
+    _citation_score as _citation_score,
+)
+from app.services.dify_integration.common import (
+    _clamp_score as _clamp_score,
+)
+from app.services.dify_integration.common import (
+    _first_non_empty as _first_non_empty,
+)
+from app.services.dify_integration.common import (
+    _iter_record_metadata_layers as _iter_record_metadata_layers,
+)
+from app.services.dify_integration.common import (
+    _metadata_terms as _metadata_terms,
+)
+from app.services.dify_integration.common import (
+    _normalize_match_term as _normalize_match_term,
+)
+from app.services.dify_integration.common import (
+    _response_hint_metadata_conditions_match as _response_hint_metadata_conditions_match,
+)
+from app.services.dify_integration.compaction import (
+    _compact_fast_answer_value as _compact_fast_answer_value,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_candidate_top_k as _dify_fast_candidate_top_k,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_content_max_chars as _dify_fast_content_max_chars,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_response_top_k as _dify_fast_response_top_k,
+)
+from app.services.dify_integration.compaction import (
+    _dify_fast_total_content_max_chars as _dify_fast_total_content_max_chars,
+)
+from app.services.dify_integration.compaction import (
+    _fast_answer_query_terms as _fast_answer_query_terms,
+)
+from app.services.dify_integration.compaction import (
+    _fast_answer_snippet_segments as _fast_answer_snippet_segments,
+)
+from app.services.dify_integration.compaction import (
+    _query_requests_url_evidence as _query_requests_url_evidence,
+)
+from app.services.dify_integration.compaction import (
+    _record_url_evidence_bonus as _record_url_evidence_bonus,
+)
+from app.services.dify_integration.compaction import (
+    _structured_label_values_from_content as _structured_label_values_from_content,
+)
 from app.services.dify_integration.metadata_condition_helpers import (
     MetadataConditionValidationError as _MetadataConditionValidationError,
 )
@@ -537,6 +386,9 @@ from app.services.dify_integration.metadata_condition_helpers import (
 )
 from app.services.dify_integration.policy_helpers import (
     apply_policy_fallback_candidate_multiplier as _service_apply_policy_fallback_candidate_multiplier,
+)
+from app.services.dify_integration.policy_helpers import (
+    fast_response_always_labels_for_policy_refs as _service_fast_response_always_labels_for_policy_refs,
 )
 from app.services.dify_integration.policy_helpers import (
     fast_response_field_rules_for_policy_refs as _service_fast_response_field_rules_for_policy_refs,
@@ -578,6 +430,9 @@ from app.services.dify_integration.policy_helpers import (
     retrieval_policy_filter_fields_for_plugin_refs as _service_retrieval_policy_filter_fields_for_plugin_refs,
 )
 from app.services.dify_integration.policy_helpers import (
+    retrieval_policy_for_plugin_ref as _retrieval_policy_for_plugin_ref,
+)
+from app.services.dify_integration.policy_helpers import (
     service_anchor_admin_aliases_for_policy_refs as _service_service_anchor_admin_aliases_for_policy_refs,
 )
 from app.services.dify_integration.record_helpers import (
@@ -609,6 +464,174 @@ from app.services.dify_integration.record_helpers import (
 )
 from app.services.dify_integration.record_helpers import (
     strong_question_anchor_records as _service_strong_question_anchor_records,
+)
+from app.services.dify_integration.records import (
+    _coerce_uuid_text as _coerce_uuid_text,
+)
+from app.services.dify_integration.records import (
+    _record_dedupe_key as _record_dedupe_key,
+)
+from app.services.dify_integration.records import (
+    _row_value as _row_value,
+)
+from app.services.dify_integration.records import (
+    _tag_mixed_intent_records as _tag_mixed_intent_records,
+)
+from app.services.dify_integration.scoring import (
+    _answer_hints_from_fields as _answer_hints_from_fields,
+)
+from app.services.dify_integration.scoring import (
+    _cjk_bigram_overlap_count as _cjk_bigram_overlap_count,
+)
+from app.services.dify_integration.scoring import (
+    _cjk_bigram_overlap_ratio as _cjk_bigram_overlap_ratio,
+)
+from app.services.dify_integration.scoring import (
+    _cjk_bigrams as _cjk_bigrams,
+)
+from app.services.dify_integration.scoring import (
+    _clamp_hint_value as _clamp_hint_value,
+)
+from app.services.dify_integration.scoring import (
+    _contains_cjk as _contains_cjk,
+)
+from app.services.dify_integration.scoring import (
+    _content_starts_with_response_hint as _content_starts_with_response_hint,
+)
+from app.services.dify_integration.scoring import (
+    _diagnostic_query_hash as _diagnostic_query_hash,
+)
+from app.services.dify_integration.scoring import (
+    _diagnostic_value_hash as _diagnostic_value_hash,
+)
+from app.services.dify_integration.scoring import (
+    _dify_external_reranker_enabled as _dify_external_reranker_enabled,
+)
+from app.services.dify_integration.scoring import (
+    _enumerated_answer_hints as _enumerated_answer_hints,
+)
+from app.services.dify_integration.scoring import (
+    _extract_numbered_option_terms as _extract_numbered_option_terms,
+)
+from app.services.dify_integration.scoring import (
+    _field_line_parts as _field_line_parts,
+)
+from app.services.dify_integration.scoring import (
+    _find_numbered_marker as _find_numbered_marker,
+)
+from app.services.dify_integration.scoring import (
+    _is_anchor_word_char as _is_anchor_word_char,
+)
+from app.services.dify_integration.scoring import (
+    _is_cjk_char as _is_cjk_char,
+)
+from app.services.dify_integration.scoring import (
+    _is_specific_intent_term as _is_specific_intent_term,
+)
+from app.services.dify_integration.scoring import (
+    _iter_anchor_word_segments as _iter_anchor_word_segments,
+)
+from app.services.dify_integration.scoring import (
+    _longest_common_substring_length as _longest_common_substring_length,
+)
+from app.services.dify_integration.scoring import (
+    _matching_response_hint_group as _matching_response_hint_group,
+)
+from app.services.dify_integration.scoring import (
+    _mixed_intent_segment_parts as _mixed_intent_segment_parts,
+)
+from app.services.dify_integration.scoring import (
+    _near_question_anchor_match as _near_question_anchor_match,
+)
+from app.services.dify_integration.scoring import (
+    _query_has_explicit_question_form as _query_has_explicit_question_form,
+)
+from app.services.dify_integration.scoring import (
+    _query_has_mixed_intent as _query_has_mixed_intent,
+)
+from app.services.dify_integration.scoring import (
+    _query_has_quoted_anchor_candidate as _query_has_quoted_anchor_candidate,
+)
+from app.services.dify_integration.scoring import (
+    _query_is_short_question_anchor_candidate as _query_is_short_question_anchor_candidate,
+)
+from app.services.dify_integration.scoring import (
+    _question_marker_overlap_bonus as _question_marker_overlap_bonus,
+)
+from app.services.dify_integration.scoring import (
+    _quoted_anchor_match_text as _quoted_anchor_match_text,
+)
+from app.services.dify_integration.scoring import (
+    _quoted_query_anchor_display_terms as _quoted_query_anchor_display_terms,
+)
+from app.services.dify_integration.scoring import (
+    _quoted_query_anchor_terms as _quoted_query_anchor_terms,
+)
+from app.services.dify_integration.scoring import (
+    _record_exact_primary_alias_bonus as _record_exact_primary_alias_bonus,
+)
+from app.services.dify_integration.scoring import (
+    _record_final_rerank_candidate_id as _record_final_rerank_candidate_id,
+)
+from app.services.dify_integration.scoring import (
+    _record_has_query_region_anchor as _record_has_query_region_anchor,
+)
+from app.services.dify_integration.scoring import (
+    _record_metadata_anchor_bonus as _record_metadata_anchor_bonus,
+)
+from app.services.dify_integration.scoring import (
+    _record_needs_final_rerank as _record_needs_final_rerank,
+)
+from app.services.dify_integration.scoring import (
+    _record_plugin_ref as _record_plugin_ref,
+)
+from app.services.dify_integration.scoring import (
+    _record_policy_slot_coverage_text as _record_policy_slot_coverage_text,
+)
+from app.services.dify_integration.scoring import (
+    _record_region_terms as _record_region_terms,
+)
+from app.services.dify_integration.scoring import (
+    _record_source_identity_key as _record_source_identity_key,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_candidate_terms as _response_hint_candidate_terms,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_dict as _response_hint_dict,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_dict_list as _response_hint_dict_list,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_group_has_required_fields as _response_hint_group_has_required_fields,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_group_matches_query as _response_hint_group_matches_query,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_groups as _response_hint_groups,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_string_list as _response_hint_string_list,
+)
+from app.services.dify_integration.scoring import (
+    _response_hint_text as _response_hint_text,
+)
+from app.services.dify_integration.scoring import (
+    _rstrip_service_anchor_query_noise as _rstrip_service_anchor_query_noise,
+)
+from app.services.dify_integration.scoring import (
+    _strip_mixed_intent_noise as _strip_mixed_intent_noise,
+)
+from app.services.dify_integration.scoring import (
+    _strip_mixed_intent_subject_instruction_tail as _strip_mixed_intent_subject_instruction_tail,
+)
+from app.services.dify_integration.scoring import (
+    _strip_trailing_service_anchor_admin as _strip_trailing_service_anchor_admin,
+)
+from app.services.dify_integration.scoring import (
+    _structured_fields_from_content as _structured_fields_from_content,
 )
 from app.services.metrics_logger import log_metrics
 from app.services.rag_runtime_limiter import (
@@ -679,72 +702,9 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 _TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
-_CONTENT_KEYS = ("content", "chunk_content", "text", "quote", "snippet", "page_content")
-_TITLE_KEYS = ("title", "document_name", "filename", "source", "document_id", "chunk_id")
-_METADATA_KEYS = (
-    "document_id",
-    "chunk_id",
-    "chunk_index",
-    "page_number",
-    "header_path",
-    "source_path",
-    "retrieval_role",
-    "hit_type",
-    "rerank_score",
-    "rerank_score_final",
-    "reranker_provider",
-    "rerank_elapsed_sec",
-    "rerank_model_used",
-    "kg_pagerank",
-    "kg_path_length",
-    "kg_shared_events",
-    "kg_evidence_anchored",
-    "kg_path",
-    "kg_path_provenance",
-    "kg_duplicate_candidate",
-    "kg_edge_conf_low",
-    "kg_edge_conf_mid",
-    "kg_edge_conf_high",
-)
-_RETRIEVAL_INTENT_KEYS = ("retrieval_intents", "query_intents", "intent_terms")
-_EXACT_QUERY_ANCHOR_FIELDS = (
-    "question",
-    "primary_alias",
-    "aliases",
-    "source_topic",
-    "title",
-)
-_MIN_QUERY_INTENT_SUBJECT_OVERLAP_CHARS = 3
-_INTENT_MATCH_BONUS = 0.06
-_INTENT_MATCH_BONUS_MAX = 0.18
-_QUESTION_INTENT_MATCH_BONUS = 0.2
-_DEFAULT_RESPONSE_HINT_SOURCE_PREFIX = "Source evidence"
-_ANSWERFUL_RECORD_BONUS = 0.08
-_ANCHOR_ONLY_QA_RECORD_PENALTY = 0.28
-_QUESTION_ANCHOR_COMPACTION_MIN_STRENGTH = 0.8
-_QUESTION_ANCHOR_BIGRAM_MIN_OVERLAP = 3
-_QUESTION_ANCHOR_BIGRAM_MIN_RATIO = 0.5
-_MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS = (
-    "关于",
-    "回答",
-    "告诉我",
-    "先帮我看下",
-    "帮我看下",
-    "看下",
-    "请同时说明",
-    "请说明",
-    "说明",
-    "请",
-)
-_MIXED_INTENT_SPLIT_RE = re.compile(
-    r"(?:[，,。；;、：:]\s*)?"
-    r"(?:另外|同时|以及|并且|还想|还要|一次知道|分别|顺便|请合并回答|请分别回答|合并回答|一并回答|一起回答|分别回答|分开回答|请合并|请分别)\s*"
-    r"|[；;]"
-)
 _METADATA_ANCHOR_DB_FALLBACK_MIN_SCORE = 0.72
 _METADATA_ANCHOR_DB_FALLBACK_DEFAULT_SCORE = 0.74
 _METADATA_ANCHOR_DB_FALLBACK_MAX_QUERY_TERMS = 12
-_METADATA_ANCHOR_DB_FALLBACK_SERVICE_NAME_MAX_TERMS = 8
 _METADATA_ANCHOR_DB_FALLBACK_ARRAY_FIELDS = (
     "retrieval_intents",
     "query_intents",
@@ -771,17 +731,15 @@ _DIFY_TRACE_QUERY_PATH_MAX_CHARS = 120
 def _resolve_internal_candidate_top_k(requested_top_k: int) -> int:
     return resolve_internal_candidate_top_k(
         requested_top_k,
-        minimum=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20),
-        multiplier=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4),
-        maximum=getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50),
+        minimum=settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN,
+        multiplier=settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER,
+        maximum=settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX,
     )
 
 
 def _resolve_mixed_intent_subquery_top_k(*, response_top_k: int, candidate_top_k: int) -> int:
     try:
-        configured = int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", response_top_k) or response_top_k
-        )
+        configured = int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K or response_top_k)
     except (TypeError, ValueError):
         configured = int(response_top_k or 1)
     return max(1, min(max(1, int(candidate_top_k or 1)), max(1, configured)))
@@ -898,7 +856,7 @@ _dify_external_warmup_state: dict[str, Any] = {
 def _dify_singleflight_wait_timeout_sec() -> float:
     return max(
         1e-3,
-        float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC", 60.0) or 0.0),
+        float(settings.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 0.0),
     )
 
 
@@ -952,7 +910,7 @@ async def _set_dify_response_cache_redis_payload(
     *,
     ttl_sec: int,
 ) -> bool:
-    max_value_bytes = max(0, int(getattr(settings, "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES", 200_000) or 0))
+    max_value_bytes = max(0, int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0))
     return await set_best_effort_json_cache_value(
         key,
         {
@@ -1081,7 +1039,7 @@ def _dify_warmup_lease_ttl_sec(*, knowledge_count: int, timeout_sec: float) -> i
 
 def _dify_warmup_can_use_retrieval_slot() -> bool:
     try:
-        limit = int(getattr(settings, "RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY", 1) or 0)
+        limit = int(settings.RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY or 0)
     except (TypeError, ValueError):
         limit = 1
     return limit <= 0 or limit > 1
@@ -1121,9 +1079,9 @@ def get_dify_external_knowledge_warmup_status() -> dict[str, Any]:
 
 
 def dify_external_knowledge_warmup_ready() -> bool:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED):
         return True
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED):
         return True
     return str(get_dify_external_knowledge_warmup_status().get("status") or "idle") == "completed"
 
@@ -1193,80 +1151,50 @@ def _resolve_dify_response_cache_corpus_token(
 
 def _dify_response_cache_settings_signature() -> dict[str, Any]:
     return {
-        "internal_top_k_min": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN", 20) or 20),
-        "internal_top_k_multiplier": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER", 4) or 4
-        ),
-        "internal_top_k_max": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50) or 50),
-        "primary_scope_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True)),
-        "primary_min_records": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 1),
-        "primary_min_top_score": float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE", 0.45) or 0.0),
-        "compact_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True)),
-        "compact_min_top_score": float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.0),
-        "compact_relative_score_floor": float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.0
-        ),
-        "compact_min_records": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
-        "fast_candidate_top_k_max": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX", 3) or 3),
-        "fast_response_top_k_max": int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX", 2) or 2),
-        "fast_content_max_chars": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS", 1400) or 1400
-        ),
-        "fast_total_content_max_chars": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS", 2200) or 2200
-        ),
-        "enable_reranker": bool(getattr(settings, "ENABLE_RERANKER", False)),
-        "dify_reranker_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED", True)),
-        "reranker_provider": str(getattr(settings, "RERANKER_PROVIDER", "") or ""),
-        "reranker_model": str(getattr(settings, "RERANKER_MODEL", "") or ""),
-        "reranker_top_n": int(getattr(settings, "RERANKER_TOP_N", 20) or 20),
-        "metadata_anchor_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
-        ),
-        "metadata_anchor_preflight_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False)
-        ),
-        "metadata_anchor_max_scan": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80
-        ),
-        "metadata_anchor_total_budget_ms": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0
-        ),
+        "internal_top_k_min": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN or 20),
+        "internal_top_k_multiplier": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER or 4),
+        "internal_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX or 50),
+        "primary_scope_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED),
+        "primary_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS or 1),
+        "primary_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE or 0.0),
+        "compact_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED),
+        "compact_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE or 0.0),
+        "compact_relative_score_floor": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR or 0.0),
+        "compact_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS or 1),
+        "fast_candidate_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX or 3),
+        "fast_response_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX or 2),
+        "fast_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS or 1400),
+        "fast_total_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS or 2200),
+        "enable_reranker": bool(settings.ENABLE_RERANKER),
+        "dify_reranker_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED),
+        "reranker_provider": str(settings.RERANKER_PROVIDER or ""),
+        "reranker_model": str(settings.RERANKER_MODEL or ""),
+        "reranker_top_n": int(settings.RERANKER_TOP_N or 20),
+        "metadata_anchor_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED),
+        "metadata_anchor_preflight_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED),
+        "metadata_anchor_max_scan": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN or 80),
+        "metadata_anchor_total_budget_ms": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS or 0),
         "metadata_anchor_text_scan_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)
+            settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED
         ),
         "metadata_anchor_extend_sibling_policy_scope_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", False)
+            settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED
         ),
         "metadata_anchor_extended_scope_max_datasets": int(
             settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS
         ),
-        "mixed_intent_supplement_enabled": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True)
-        ),
-        "mixed_intent_max_subqueries": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES", 4) or 4
-        ),
-        "mixed_intent_subquery_top_k": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K", 0) or 0
-        ),
-        "kg_on_demand_enabled": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True)),
-        "kg_query_expansion_default": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED", False)
-        ),
-        "kg_chunk_injection_default": bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED", False)
-        ),
+        "mixed_intent_supplement_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED),
+        "mixed_intent_max_subqueries": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES or 4),
+        "mixed_intent_subquery_top_k": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K or 0),
+        "kg_on_demand_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED),
+        "kg_query_expansion_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED),
+        "kg_chunk_injection_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED),
         "kg_chunk_injection_max_chunks_default": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS", 3) or 3
+            settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS or 3
         ),
-        "kg_chunk_boost_default": bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED", False)),
-        "kg_chunk_boost_weight_default": float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT", 0.25) or 0.0
-        ),
-        "kg_chunk_boost_max_promoted_default": int(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED", 2) or 2
-        ),
+        "kg_chunk_boost_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED),
+        "kg_chunk_boost_weight_default": float(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT or 0.0),
+        "kg_chunk_boost_max_promoted_default": int(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED or 2),
     }
 
 
@@ -1488,7 +1416,7 @@ def _resolve_knowledge_policy_plugin_refs(knowledge_id: str) -> tuple[str, ...]:
 
 def _apply_policy_fallback_candidate_multiplier(candidate_top_k: int, *, multiplier: int) -> int:
     try:
-        configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX", 50) or 50)
+        configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX or 50)
     except (TypeError, ValueError):
         configured_max = 50
     return _service_apply_policy_fallback_candidate_multiplier(
@@ -1552,7 +1480,7 @@ def _metadata_anchor_scope_extension_enabled(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     return bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED", False)
+        settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTEND_SIBLING_POLICY_SCOPE_ENABLED
     ) and _query_has_specific_service_anchor_candidate(query, policy_plugin_refs=policy_plugin_refs)
 
 
@@ -1611,15 +1539,13 @@ def _plan_query_dataset_scope(
         route_hints=route_hints,
         query=query,
         strict_routes=strict_routes,
-        include_unmatched_hint_datasets=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_INCLUDE_UNMATCHED_ROUTE_HINTS", False)
-        ),
+        include_unmatched_hint_datasets=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_INCLUDE_UNMATCHED_ROUTE_HINTS),
         matched_replace_routes_as_primary_scope=strict_routes,
     )
 
 
 def _load_knowledge_map() -> dict[str, Any]:
-    raw = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", "") or "").strip()
+    raw = str(settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON or "").strip()
     if not raw:
         return {}
     try:
@@ -1632,10 +1558,10 @@ def _load_knowledge_map() -> dict[str, Any]:
 
 
 def _resolve_dify_warmup_knowledge_ids(knowledge_map: dict[str, Any] | None = None) -> tuple[str, ...]:
-    raw_ids = _split_items(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS", ""))
+    raw_ids = _split_items(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS)
     candidates = raw_ids if raw_ids else [str(key).strip() for key in (knowledge_map or _load_knowledge_map()).keys()]
     try:
-        max_ids = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS", 8) or 0)
+        max_ids = int(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS or 0)
     except (TypeError, ValueError):
         max_ids = 8
     if max_ids <= 0:
@@ -1659,7 +1585,7 @@ def _resolve_knowledge_dataset_ids(knowledge_id: str, *, query: str = "") -> lis
 
 
 def _dify_knowledge_resolution_mode() -> str:
-    mode = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE", "mapped_only") or "mapped_only")
+    mode = str(settings.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE or "mapped_only")
     return mode.strip().lower() or "mapped_only"
 
 
@@ -1812,8 +1738,6 @@ def _response_hints_for_record(
     return _service_response_hints_for_record(
         record,
         policy_plugin_refs=policy_plugin_refs,
-        record_plugin_ref=lambda item, refs: _record_plugin_ref(item, fallback_plugin_refs=refs),
-        policy_resolver=_retrieval_policy_for_plugin_ref,
     )
 
 
@@ -1825,10 +1749,6 @@ def _response_hints_for_metadata(
     return _service_response_hints_for_metadata(
         metadata,
         policy_plugin_refs=policy_plugin_refs,
-        response_hints_for_record=lambda record, refs: _response_hints_for_record(
-            record,
-            policy_plugin_refs=refs,
-        ),
     )
 
 
@@ -2323,7 +2243,7 @@ def _mixed_intent_retrieval_queries(
         1,
         min(
             5,
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES", 4) or 4),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES or 4),
         ),
     )
     out: list[str] = []
@@ -2849,23 +2769,6 @@ def _record_mixed_intent_subquery_bonus(
     return min(best, 1.4)
 
 
-@lru_cache(maxsize=128)
-def _retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
-    ref = str(plugin_ref or "").strip()
-    if not ref.startswith("plugin:"):
-        return {}
-    try:
-        from app.rag.pipeline_plugins.registry import resolve_registered_plugin_descriptor
-
-        descriptor = resolve_registered_plugin_descriptor(ref)
-    except Exception:  # noqa: BLE001
-        return {}
-    policy = getattr(descriptor, "retrieval_policy", None)
-    if isinstance(policy, dict) and policy.get("schema") == "mimirq.retrieval_policy.v1":
-        return dict(policy)
-    return {}
-
-
 def _policy_string_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...], key: str) -> tuple[str, ...]:
     return _service_policy_string_terms_for_policy_refs(
         policy_plugin_refs,
@@ -2889,12 +2792,7 @@ def _service_anchor_cutoff_terms_for_policy_refs(policy_plugin_refs: tuple[str, 
 
 
 def _service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_service_anchor_admin_aliases_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        metadata_terms=_metadata_terms,
-        normalize_term=_normalize_match_term,
-    )
+    return _service_service_anchor_admin_aliases_for_policy_refs(policy_plugin_refs)
 
 
 def _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
@@ -2902,25 +2800,17 @@ def _question_anchor_generic_subject_terms_for_policy_refs(policy_plugin_refs: t
 
 
 def _fast_response_always_labels_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _policy_string_terms_for_policy_refs(policy_plugin_refs, "fast_response_always_labels")
+    return _service_fast_response_always_labels_for_policy_refs(policy_plugin_refs)
 
 
 def _fast_response_field_rules_for_policy_refs(
     policy_plugin_refs: tuple[str, ...],
 ) -> tuple[tuple[str, tuple[str, ...]], ...]:
-    return _service_fast_response_field_rules_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        metadata_terms=_metadata_terms,
-    )
+    return _service_fast_response_field_rules_for_policy_refs(policy_plugin_refs)
 
 
 def _requested_label_prefixes_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_requested_label_prefixes_for_policy_refs(
-        policy_plugin_refs,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        response_hint_dict_list=_response_hint_dict_list,
-    )
+    return _service_requested_label_prefixes_for_policy_refs(policy_plugin_refs)
 
 
 def _service_anchor_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
@@ -2951,13 +2841,7 @@ def _service_anchor_query_rewrite_terms_for_policy_refs(
 
 
 def _mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
-    return _service_mixed_intent_leading_noise_terms_for_policy_refs(
-        policy_plugin_refs,
-        default_terms=_MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS,
-        policy_resolver=_retrieval_policy_for_plugin_ref,
-        terms_resolver=retrieval_policy_mixed_intent_leading_noise_terms,
-        normalize_term=_normalize_match_term,
-    )
+    return _service_mixed_intent_leading_noise_terms_for_policy_refs(policy_plugin_refs)
 
 
 def _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...]) -> tuple[str, ...]:
@@ -3164,7 +3048,7 @@ def _compact_records_for_response(
             query=raw_query,
             policy_plugin_refs=refs,
         ),
-        compaction_enabled=bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED", True)),
+        compaction_enabled=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED),
         response_compaction_for_records=lambda items, refs: _response_compaction_for_records(
             items,
             policy_plugin_refs=refs,
@@ -3194,11 +3078,9 @@ def _compact_records_for_response(
             policy_plugin_refs=refs,
         ),
         compact_high_confidence_items=_compact_high_confidence_for_response,
-        default_min_top_score=float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE", 0.7) or 0.7),
-        default_relative_score_floor=float(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR", 0.65) or 0.65
-        ),
-        default_min_items=int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS", 1) or 1),
+        default_min_top_score=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE or 0.7),
+        default_relative_score_floor=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR or 0.65),
+        default_min_items=int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS or 1),
     )
 
 
@@ -3443,13 +3325,13 @@ def _final_rerank_provider(records: list[dict[str, Any]]) -> str | None:
         return None
     if not _dify_external_reranker_enabled():
         return None
-    provider = str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm").strip().lower()
+    provider = str(settings.RERANKER_PROVIDER or "llm").strip().lower()
     return None if provider in {"none", "off", "false", "0"} else provider
 
 
 def _final_rerank_candidate_count(record_count: int, top_k: int) -> int:
     try:
-        configured_top_n = int(getattr(settings, "RERANKER_TOP_N", top_k) or top_k)
+        configured_top_n = int(settings.RERANKER_TOP_N or top_k)
     except (TypeError, ValueError):
         configured_top_n = int(top_k or 1)
     return min(record_count, max(1, int(top_k or 1), configured_top_n))
@@ -3483,7 +3365,7 @@ def _ordered_final_rerank_records(
     *,
     id_to_record: dict[str, dict[str, Any]],
     provider: str,
-    result: Any,
+    result: RerankResult,
     elapsed_sec: float,
 ) -> list[dict[str, Any]]:
     ordered: list[dict[str, Any]] = []
@@ -3517,7 +3399,7 @@ def _final_rerank_record_with_metadata(
     *,
     candidate_id: str,
     rerank_provider: str,
-    result: Any,
+    result: RerankResult,
     elapsed_sec: float,
 ) -> dict[str, Any]:
     next_record = dict(record)
@@ -4386,7 +4268,7 @@ def _dify_kg_on_demand_dataset_ids(
 ) -> list[UUID]:
     if not requested_kg_flags.enabled:
         return []
-    if not (bool(getattr(settings, "KG_ENABLED", False)) and bool(getattr(settings, "KG_CHAT_ENABLED", False))):
+    if not (bool(settings.KG_ENABLED) and bool(settings.KG_CHAT_ENABLED)):
         return []
     return _dedupe_dataset_ids(list(dataset_ids or []))
 
@@ -4488,10 +4370,10 @@ def _records_meet_primary_scope(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
-    min_records = max(1, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS", 1) or 1))
+    min_records = max(1, int(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS or 1))
     if len(records) < min_records:
         return False
-    min_top_score = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE", 0.45) or 0.0)
+    min_top_score = float(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE or 0.0)
     if min_top_score <= 0:
         return True
     top_score = max(
@@ -5107,7 +4989,7 @@ def _metadata_anchor_fallback_records_from_rows(
         1,
         min(
             max(1, int(top_k or 1)),
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS", 4) or 4),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS or 4),
         ),
     )
     return merged[:limit]
@@ -5288,7 +5170,7 @@ def _metadata_anchor_statement_timeout_ms(statement_timeout_ms_override: int | N
     configured_statement_timeout = (
         statement_timeout_ms_override
         if statement_timeout_ms_override is not None
-        else getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS", 2500)
+        else settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_STATEMENT_TIMEOUT_MS
     )
     return max(0, min(30000, int(configured_statement_timeout or 0)))
 
@@ -5869,7 +5751,7 @@ def _metadata_anchor_text_scan_matches(
     *,
     terms: list[str],
 ) -> list[dict[str, Any]] | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED):
         return None
     metadata_text = sql_cast(DocumentChunk.doc_metadata, SQLText)
     for term in terms[:3]:
@@ -5933,7 +5815,7 @@ def _prepare_metadata_anchor_db_fallback(
     prefer_question_anchor_first: bool = False,
     max_elapsed_ms: int | None = None,
 ) -> tuple[_MetadataAnchorDBFallbackContext, _MetadataAnchorDBFallbackPlan] | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED):
         return None
     if metadata_filter:
         return None
@@ -5953,7 +5835,7 @@ def _prepare_metadata_anchor_db_fallback(
         1,
         min(
             500,
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN", 80) or 80),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN or 80),
         ),
     )
     started = time.perf_counter()
@@ -6146,11 +6028,11 @@ async def _retrieve_dataset_citations(
     )
     overfetch_multiplier = max(
         1,
-        int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER", 1) or 1),
+        int(settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER or 1),
     )
     overfetch_max_k = max(
         0,
-        int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K", 0) or 0),
+        int(settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K or 0),
     )
     if overfetch_max_k <= 0:
         overfetch_max_k = evidence_top_k
@@ -6158,7 +6040,7 @@ async def _retrieve_dataset_citations(
     reranker_enabled = _dify_external_reranker_enabled() if enable_reranker is None else bool(enable_reranker)
     reranker_top_n = max(
         1,
-        int(getattr(settings, "RERANKER_TOP_N", evidence_top_k) or evidence_top_k),
+        int(settings.RERANKER_TOP_N or evidence_top_k),
         int(evidence_top_k or 1),
     )
     rag_config = ChatRAGConfig(
@@ -6168,17 +6050,13 @@ async def _retrieve_dataset_citations(
         visible_evidence_only=True,
         metadata_filter=metadata_filter,
         enable_reranker=reranker_enabled,
-        reranker_provider=str(getattr(settings, "RERANKER_PROVIDER", "llm") or "llm") if reranker_enabled else "none",
+        reranker_provider=str(settings.RERANKER_PROVIDER or "llm") if reranker_enabled else "none",
         reranker_top_n=reranker_top_n,
-        lexical_db_hybrid_fallback_only=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_DB_HYBRID_FALLBACK_ONLY", False)
-        ),
+        lexical_db_hybrid_fallback_only=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_DB_HYBRID_FALLBACK_ONLY),
         lexical_db_hybrid_metadata_exact_fallback_enabled=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_METADATA_EXACT_FALLBACK_ENABLED", False)
+            settings.DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_METADATA_EXACT_FALLBACK_ENABLED
         ),
-        metadata_exact_db_fallback_enabled=bool(
-            getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_EXACT_DB_FALLBACK_ENABLED", False)
-        ),
+        metadata_exact_db_fallback_enabled=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_EXACT_DB_FALLBACK_ENABLED),
         retrieval_overfetch_multiplier=overfetch_multiplier,
         retrieval_overfetch_max_k=overfetch_max_k,
         enable_kg_query_expansion=kg_query_expansion_enabled,
@@ -6202,18 +6080,15 @@ async def _retrieve_dataset_citations(
     )
 
     scoped_dataset_ids = _dedupe_dataset_ids(list(dataset_ids or []))
-    evidence_request_kwargs: dict[str, Any] = {"query": query, "rag_config": rag_config}
-    evidence_request_kwargs["dataset_ids"] = scoped_dataset_ids
-
     response = await retrieve_evidence(
-        body=EvidenceRetrieveRequest(**evidence_request_kwargs),
+        body=EvidenceRetrieveRequest(query=query, rag_config=rag_config, dataset_ids=scoped_dataset_ids),
         tenant_id=tenant_id,
         account_id=account_id,
         db=db,
     )
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-    response_metrics = getattr(response, "metrics", None)
-    response_trace = getattr(response, "retrieval_trace", None)
+    response_metrics = response.metrics
+    response_trace = response.retrieval_trace
     metrics = response_metrics if isinstance(response_metrics, dict) else {}
     trace = response_trace if isinstance(response_trace, dict) else {}
     logger.info(
@@ -6224,7 +6099,7 @@ async def _retrieve_dataset_citations(
         len(scoped_dataset_ids),
         evidence_top_k,
         requested_top_k,
-        len(getattr(response, "citations", None) or []),
+        len(response.citations or []),
         elapsed_ms,
         metrics.get("retrieval_elapsed_sec"),
         metrics.get("vector_backend"),
@@ -6233,13 +6108,11 @@ async def _retrieve_dataset_citations(
         metrics.get("hard_fallback_elapsed_sec"),
         len(trace.get("passes") or []) if isinstance(trace, dict) else 0,
     )
-    return list(getattr(response, "citations", None) or [])
+    return list(response.citations or [])
 
 
 def _resolve_dify_warmup_tenant_id() -> UUID | None:
-    raw_tenant = str(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID", "") or getattr(settings, "DEFAULT_TENANT_ID", "")
-    ).strip()
+    raw_tenant = str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID or settings.DEFAULT_TENANT_ID).strip()
     if not raw_tenant:
         return None
     try:
@@ -6250,17 +6123,17 @@ def _resolve_dify_warmup_tenant_id() -> UUID | None:
 
 
 def _resolve_dify_warmup_query() -> str:
-    query = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY", "") or "").strip()
+    query = str(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY or "").strip()
     return query or _DIFY_WARMUP_DEFAULT_QUERY
 
 
 def _resolve_dify_warmup_top_k() -> int:
     try:
-        configured_top_k = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K", 1) or 1)
+        configured_top_k = int(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K or 1)
     except (TypeError, ValueError):
         configured_top_k = 1
     try:
-        configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
+        configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5)
     except (TypeError, ValueError):
         configured_max = 5
     return max(1, min(configured_top_k, max(1, configured_max)))
@@ -6268,7 +6141,7 @@ def _resolve_dify_warmup_top_k() -> int:
 
 def _resolve_dify_warmup_timeout_sec() -> float:
     try:
-        timeout_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC", 60.0) or 60.0)
+        timeout_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC or 60.0)
     except (TypeError, ValueError):
         timeout_sec = 60.0
     return max(1.0, timeout_sec)
@@ -6276,7 +6149,7 @@ def _resolve_dify_warmup_timeout_sec() -> float:
 
 def _resolve_dify_warmup_start_delay_sec() -> float:
     try:
-        delay_sec = float(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC", 1.0) or 0.0)
+        delay_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC or 0.0)
     except (TypeError, ValueError):
         delay_sec = 1.0
     return max(0.0, min(60.0, delay_sec))
@@ -6334,7 +6207,7 @@ async def warmup_dify_external_knowledge(
     _set_dify_external_warmup_status(enabled=True, status="running", attempted=len(knowledge_ids))
 
     factory = db_factory or SessionLocal
-    account_id = str(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID", "") or "system:dify").strip()
+    account_id = str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or "system:dify").strip()
     query = _resolve_dify_warmup_query()
     top_k = _resolve_dify_warmup_top_k()
     score_threshold = 0.0
@@ -6402,7 +6275,7 @@ async def warmup_dify_external_knowledge(
 
 
 def _dify_external_warmup_disabled_result() -> dict[str, Any] | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED):
         _set_dify_external_warmup_status(
             enabled=False,
             status="disabled",
@@ -6418,7 +6291,7 @@ def _dify_external_warmup_disabled_result() -> dict[str, Any] | None:
             "completed": 0,
             "failed": 0,
         }
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED):
         _set_dify_external_warmup_status(
             enabled=True,
             status="disabled",
@@ -6565,7 +6438,7 @@ async def _run_dify_external_warmup_iteration(
 
 
 def _warmup_scope_dataset_ids(scope_plan: DatasetScopePlan) -> list[UUID]:
-    primary_scope_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True))
+    primary_scope_enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED)
     dataset_ids = list(scope_plan.primary_dataset_ids if primary_scope_enabled else scope_plan.dataset_ids)
     return dataset_ids or list(scope_plan.dataset_ids)
 
@@ -6637,10 +6510,10 @@ def start_dify_external_knowledge_warmup(
     *,
     create_task: Callable[[Any], Any] | None = None,
 ) -> Any | None:
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_ENABLED", False)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED):
         _set_dify_external_warmup_status(enabled=False, status="disabled")
         return None
-    if not bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED", True)):
+    if not bool(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_ENABLED):
         _set_dify_external_warmup_status(enabled=True, status="disabled")
         return None
 
@@ -6768,14 +6641,10 @@ def _primary_scope_dataset_ids(scope_plan: DatasetScopePlan, *, primary_scope_en
 
 
 def _dify_response_cache_settings() -> tuple[int, int, bool, bool]:
-    ttl_sec = max(0, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC", 30) or 0))
-    max_entries = max(0, int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES", 512) or 0))
-    enabled = (
-        bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED", True))
-        and ttl_sec > 0
-        and max_entries > 0
-    )
-    singleflight_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED", True))
+    ttl_sec = max(0, int(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC or 0))
+    max_entries = max(0, int(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES or 0))
+    enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED) and ttl_sec > 0 and max_entries > 0
+    singleflight_enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED)
     return ttl_sec, max_entries, enabled, singleflight_enabled
 
 
@@ -6789,10 +6658,10 @@ def _build_dify_external_retrieval_context(
     started = time.perf_counter()
     scope_plan = _resolve_knowledge_dataset_scope(body.knowledge_id, query=body.query)
     dataset_ids = list(scope_plan.dataset_ids)
-    primary_scope_enabled = bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED", True))
+    primary_scope_enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED)
     primary_dataset_ids = _primary_scope_dataset_ids(scope_plan, primary_scope_enabled=primary_scope_enabled)
     expansion_dataset_ids = list(scope_plan.expansion_dataset_ids if primary_scope_enabled else ())
-    configured_max = int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX", 5) or 5)
+    configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5)
     top_k = max(1, min(int(body.retrieval_setting.top_k), configured_max))
     latency_profile = _resolve_dify_latency_profile(body.retrieval_setting)
     fast_latency_profile = latency_profile == "fast"
@@ -6821,7 +6690,7 @@ def _build_dify_external_retrieval_context(
     )
     requested_kg_flags = _resolve_dify_kg_flags(body.retrieval_setting)
     kg_on_demand_enabled = (
-        False if fast_latency_profile else bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED", True))
+        False if fast_latency_profile else bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED)
     )
     primary_kg_flags = (
         _disabled_dify_kg_flags()
@@ -7237,7 +7106,7 @@ async def _run_dify_metadata_anchor_fallback_call(
 
 def _dify_metadata_anchor_preflight_enabled(ctx: _DifyExternalRetrievalContext) -> bool:
     return bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED", False)
+        settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED
         and ctx.metadata_anchor_db_fallback_enabled
         and (
             not ctx.fast_latency_profile
@@ -7270,12 +7139,12 @@ async def _apply_metadata_anchor_preflight(ctx: _DifyExternalRetrievalContext) -
         existing_records=[],
         metadata_filter=ctx.metadata_filter,
         statement_timeout_ms_override=(
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS", 600) or 0)
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS or 0)
             if ctx.fast_latency_profile
             else None
         ),
         max_elapsed_ms=(
-            int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS", 900) or 0)
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS or 0)
             if ctx.fast_latency_profile
             else None
         ),
@@ -7339,7 +7208,7 @@ def _dify_mixed_intent_preflight_enabled(ctx: _DifyExternalRetrievalContext) -> 
     return bool(
         not ctx.records
         and not ctx.fast_latency_profile
-        and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
+        and bool(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED)
         and ctx.metadata_anchor_db_fallback_enabled
         and _query_has_mixed_intent_for_policy(ctx.body.query, policy_plugin_refs=ctx.policy_plugin_refs)
         and not _query_has_quoted_anchor_candidate(ctx.body.query)
@@ -7445,10 +7314,7 @@ async def _retrieve_primary_records(ctx: _DifyExternalRetrievalContext) -> None:
 
 
 def _dify_mixed_intent_supplement_enabled(ctx: _DifyExternalRetrievalContext) -> bool:
-    return bool(
-        not ctx.fast_latency_profile
-        and bool(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED", True))
-    )
+    return bool(not ctx.fast_latency_profile and bool(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED))
 
 
 async def _apply_mixed_intent_supplement(ctx: _DifyExternalRetrievalContext) -> None:
@@ -7637,12 +7503,10 @@ async def _execute_dify_external_retrieval(ctx: _DifyExternalRetrievalContext) -
     ctx.query_prefers_service_anchor = _query_prefers_service_anchor(
         ctx.body.query, policy_plugin_refs=ctx.policy_plugin_refs
     )
-    ctx.metadata_anchor_db_fallback_enabled = bool(
-        getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED", False)
-    )
+    ctx.metadata_anchor_db_fallback_enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED)
     ctx.metadata_anchor_total_budget_ms = max(
         0,
-        int(getattr(settings, "DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS", 1500) or 0),
+        int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS or 0),
     )
     await _apply_metadata_anchor_preflight(ctx)
     await _apply_mixed_intent_preflight(ctx)

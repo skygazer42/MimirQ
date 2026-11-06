@@ -111,7 +111,7 @@ def _build_job_blocks(text: str) -> list[_JobBlock]:
         start = lines[i].start
         end = lines[job_keys[idx + 1][0]].start if idx + 1 < len(job_keys) else jobs_end
         end = max(start, min(end, len(text)))
-        blocks.append(_JobBlock(start=start, end=end, name=key, index=int(idx)))
+        blocks.append(_JobBlock(start=start, end=end, name=key, index=idx))
 
     return blocks
 
@@ -235,14 +235,14 @@ def _split_job_chunk_docs(
         )
         meta.update(split_meta)
         meta["github_job"] = block.name
-        meta["github_job_index"] = int(block.index)
-        meta["github_job_count"] = int(job_count)
+        meta["github_job_index"] = block.index
+        meta["github_job_count"] = job_count
         chunks.append(Document(page_content=split_doc.page_content, metadata=meta))
     return chunks
 
 
 class GitHubActionsChunker(BaseChunker):
-    def __init__(self, chunk_size: int, chunk_overlap: int):
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = int(chunk_size)
         self.chunk_overlap = int(chunk_overlap)
 

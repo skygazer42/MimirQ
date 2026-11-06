@@ -178,7 +178,7 @@ def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
 
 def _rules_row(row: dict[str, Any]) -> dict[str, Any]:
     trace = _retrieval_trace(row)
-    citations = trace.get("citations") if isinstance(trace, dict) else []
+    citations = trace.get("citations")
     filenames: list[str] = []
     if isinstance(citations, list):
         for item in citations:
@@ -204,7 +204,7 @@ def build_feedback_loop_candidates(
 ) -> dict[str, Any]:
     normalized_rows = [_as_mapping(row) for row in (rows or [])]
     negative_rows = [
-        row for row in normalized_rows if (_rating(row) is not None and int(_rating(row) or 0) <= int(max_rating))
+        row for row in normalized_rows if (_rating(row) is not None and (_rating(row) or 0) <= int(max_rating))
     ]
 
     hard_negative_records: list[dict[str, Any]] = []
@@ -252,14 +252,14 @@ def build_feedback_loop_candidates(
     return {
         "schema": FEEDBACK_LOOP_CANDIDATES_SCHEMA_V1,
         "summary": {
-            "feedback_total": int(len(normalized_rows)),
-            "negative_feedback_total": int(len(negative_rows)),
-            "hard_negative_records": int(len(hard_negative_records)),
-            "training_triples": int(len(training_triples)),
-            "eval_case_candidates": int(len(eval_case_candidates)),
-            "rules_glossary_candidates": int(len(rules_suggestions.get("glossary_suggestions") or [])),
-            "rules_pattern_candidates": int(len(rules_suggestions.get("pattern_suggestions") or [])),
-            "rules_intent_candidates": int(len(rules_suggestions.get("intent_suggestions") or [])),
+            "feedback_total": len(normalized_rows),
+            "negative_feedback_total": len(negative_rows),
+            "hard_negative_records": len(hard_negative_records),
+            "training_triples": len(training_triples),
+            "eval_case_candidates": len(eval_case_candidates),
+            "rules_glossary_candidates": len(rules_suggestions.get("glossary_suggestions") or []),
+            "rules_pattern_candidates": len(rules_suggestions.get("pattern_suggestions") or []),
+            "rules_intent_candidates": len(rules_suggestions.get("intent_suggestions") or []),
         },
         "hard_negative_records": hard_negative_records,
         "training_triples": training_triples,

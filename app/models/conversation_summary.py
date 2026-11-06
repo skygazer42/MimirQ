@@ -4,7 +4,6 @@ Conversation summaries (persistent summary memory).
 Used to keep long conversations usable without stuffing the entire history into prompts.
 """
 
-
 import uuid
 
 from sqlalchemy import Column, DateTime, Integer, Text, UniqueConstraint
@@ -16,9 +15,7 @@ from app.core.database import Base
 
 class ConversationSummary(Base):
     __tablename__ = "conversation_summaries"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "conversation_id", name="uq_conversation_summary_once"),
-    )
+    __table_args__ = (UniqueConstraint("tenant_id", "conversation_id", name="uq_conversation_summary_once"),)
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
@@ -32,4 +29,3 @@ class ConversationSummary(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-

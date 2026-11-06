@@ -5,8 +5,25 @@ Base embedding model abstract class.
 import asyncio
 import os
 from abc import ABC, abstractmethod
+from typing import TypedDict
 
 from app.rag.embedding.utils import get_docker_safe_url, hashstr, logger
+
+
+class EmbeddingModelOptions(TypedDict, total=False):
+    model: str | None
+    name: str | None
+    dimension: int | None
+    url: str | None
+    base_url: str | None
+    api_key: str | None
+    model_id: str | None
+
+
+class EmbeddingBatchProgress(TypedDict):
+    status: str
+    total: int
+    progress: int
 
 
 class BaseEmbeddingModel(ABC):
@@ -32,7 +49,7 @@ class BaseEmbeddingModel(ABC):
         base_url: str | None = None,
         api_key: str | None = None,
         model_id: str | None = None,
-    ):
+    ) -> None:
         """Initialize embedding model.
 
         Args:
@@ -49,7 +66,7 @@ class BaseEmbeddingModel(ABC):
         self.dimension = dimension
         self.base_url = get_docker_safe_url(base_url)
         self.api_key = os.getenv(api_key, api_key) if api_key else None
-        self.embed_state: dict = {}
+        self.embed_state: dict[str, EmbeddingBatchProgress] = {}
 
     @abstractmethod
     def encode(self, message: str | list[str]) -> list[list[float]]:
@@ -178,7 +195,7 @@ class BaseEmbeddingModel(ABC):
         # Process with concurrent control using semaphore
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def encode_batch_with_limit(batch_info):
+        async def encode_batch_with_limit(batch_info: tuple[int, list[str]]) -> list[list[float]]:
             idx, group_msg = batch_info
             async with semaphore:
                 logger.info(

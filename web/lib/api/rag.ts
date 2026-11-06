@@ -1,49 +1,24 @@
 import type {
-  Citation,
   EvidenceRetrieveRequest,
   EvidenceRetrieveResponse,
-  JsonObject,
   PromptPreviewRequest,
   PromptPreviewResponse,
+  RetrievePreviewRequest,
+  RetrievePreviewResponse,
+} from '@/types/backend'
+import type { JsonObject } from '@/types/common'
+import type {
   RagvizSimilarityCalculateResponse,
   RagvizSimilarityCollectionsResponse,
   RagvizSimilarityRequest,
-  RetrievePreviewRequest,
-  RetrievePreviewResponse,
-} from '@/types'
+} from '@/types/evaluation'
+import type { Citation } from '@/types/processing'
 import { z } from 'zod'
 
 import { API_LONG_TIMEOUT_MS } from '@/lib/env'
 import { apiClient, openapiRequest } from '@/lib/api/core'
 
-export interface ClipImageIndexRequest {
-  dataset_id: string
-  top_k?: number
-  max_chunks?: number
-  upsert?: boolean
-}
-
-export interface ClipImageIndexResponse {
-  indexed: number
-  skipped: number
-  failed: number
-  dim: number
-  errors: string[]
-}
-
-export interface ClipImageSearchRequest {
-  dataset_id: string
-  query: string
-  top_k?: number
-  auto_index?: boolean
-}
-
-export interface ClipImageSearchResponse {
-  citations: Citation[]
-  metrics: JsonObject
-}
-
-export interface DocumentStructureRequest {
+export type DocumentStructureRequest = {
   dataset_id: string
   document_id: string
   max_nodes?: number
@@ -51,7 +26,7 @@ export interface DocumentStructureRequest {
 
 export type DocumentStructureResponse = Record<string, unknown>
 
-export interface TreeSearchPreviewRequest {
+export type TreeSearchPreviewRequest = {
   query: string
   dataset_id?: string | null
   document_ids?: string[]
@@ -60,7 +35,7 @@ export interface TreeSearchPreviewRequest {
   max_nodes_per_doc?: number
 }
 
-export interface TreeSearchPreviewResponse {
+export type TreeSearchPreviewResponse = {
   schema: 'mimirq.tree_search_preview.v1'
   query: string
   query_for_retrieval: string
@@ -70,7 +45,7 @@ export interface TreeSearchPreviewResponse {
   metrics: Record<string, unknown>
 }
 
-export interface RagConfigTemplate {
+export type RagConfigTemplate = {
   id: string
   tenant_id: string
   template_key?: string | null
@@ -88,7 +63,7 @@ export interface RagConfigTemplate {
   updated_at: string
 }
 
-export interface RagConfigTemplateCreate {
+export type RagConfigTemplateCreate = {
   template_key?: string
   name: string
   description?: string
@@ -100,7 +75,7 @@ export interface RagConfigTemplateCreate {
   ab_weight?: number
 }
 
-export interface RagConfigTemplateUpdate {
+export type RagConfigTemplateUpdate = {
   template_key?: string | null
   name?: string
   description?: string | null
@@ -113,7 +88,7 @@ export interface RagConfigTemplateUpdate {
   ab_weight?: number
 }
 
-export interface RagConfigTemplateNewVersion {
+export type RagConfigTemplateNewVersion = {
   name?: string
   description?: string | null
   config_patch?: JsonObject
@@ -125,17 +100,23 @@ export interface RagConfigTemplateNewVersion {
 }
 
 const evidenceRetrieveResponseSchema = z.looseObject({
-    query_for_retrieval: z.string(),
-    citations: z.array(z.record(z.string(), z.unknown())),
-    schema: z.string().default('mimirq.evidence.v1'),
-    metrics: z.record(z.string(), z.unknown()).optional(),
-    has_evidence: z.boolean().default(false),
-    abstain_triggered: z.boolean().default(false),
-    abstain_reason: z.string().nullable().optional(),
-    retrieval_trace: z.record(z.string(), z.unknown()).nullable().optional(),
-    evidence_capsule: z.record(z.string(), z.unknown()).nullable().optional(),
-    query_debug: z.record(z.string(), z.unknown()).nullable().optional(),
-  })
+  query_for_retrieval: z.string(),
+  citations: z.array(z.record(z.string(), z.unknown())),
+  schema: z.string().default('mimirq.evidence.v1'),
+  metrics: z.record(z.string(), z.unknown()).optional(),
+  has_evidence: z.boolean().default(false),
+  abstain_triggered: z.boolean().default(false),
+  abstain_reason: z.string().nullable().optional(),
+  retrieval_trace: z.record(z.string(), z.unknown()).nullable().optional(),
+  evidence_capsule: z.record(z.string(), z.unknown()).nullable().optional(),
+  query_debug: z.record(z.string(), z.unknown()).nullable().optional(),
+})
+
+// ChatRAGConfig's server-side defaults also apply to explicitly empty/partial
+// request configs. The generated schema marks several defaulted fields required.
+export type EvidenceRetrieveInput = Omit<EvidenceRetrieveRequest, 'rag_config'> & {
+  rag_config?: Partial<NonNullable<EvidenceRetrieveRequest['rag_config']>>
+}
 
 export const ragApi = {
   async retrievePreview(params: RetrievePreviewRequest): Promise<RetrievePreviewResponse> {
@@ -153,21 +134,11 @@ export const ragApi = {
     return data
   },
 
-  async indexClipImages(params: ClipImageIndexRequest): Promise<ClipImageIndexResponse> {
-    const { data } = await apiClient.post('/rag/image-index', params)
-    return data
-  },
-
-  async searchClipImages(params: ClipImageSearchRequest): Promise<ClipImageSearchResponse> {
-    const { data } = await apiClient.post('/rag/image-search-preview', params)
-    return data
-  },
-
-  async retrieveEvidence(params: EvidenceRetrieveRequest): Promise<EvidenceRetrieveResponse> {
+  async retrieveEvidence(params: EvidenceRetrieveInput): Promise<EvidenceRetrieveResponse> {
     const data = await openapiRequest({
       path: '/api/v1/rag/retrieve',
       method: 'post',
-      body: params,
+      body: params as EvidenceRetrieveRequest,
       responseSchema: evidenceRetrieveResponseSchema,
       responseSchemaName: 'EvidenceRetrieveResponse',
     })

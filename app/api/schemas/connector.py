@@ -19,6 +19,20 @@ ConnectorId = str
 ConnectorRunStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
 
 
+def _normalize_connector_urls(urls: list[str], *, limit: int) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw in urls:
+        url = raw.strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        normalized.append(url)
+        if len(normalized) >= limit:
+            break
+    return normalized
+
+
 class ConnectorInfo(BaseModel):
     id: ConnectorId
     name: str
@@ -46,29 +60,27 @@ class WebCrawlAuthConfig(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "WebCrawlAuthConfig":
-        t = str(self.type or "none").strip().lower()
-        self.type = t  # type: ignore[assignment]
-        if t == "none":
+        if self.type == "none":
             self.cookie = None
             self.token = None
             self.username = None
             self.password = None
             return self
-        if t == "cookie":
+        if self.type == "cookie":
             if not (self.cookie or "").strip():
                 raise ValueError("auth.cookie is required for type=cookie")
             self.token = None
             self.username = None
             self.password = None
             return self
-        if t == "bearer":
+        if self.type == "bearer":
             if not (self.token or "").strip():
                 raise ValueError("auth.token is required for type=bearer")
             self.cookie = None
             self.username = None
             self.password = None
             return self
-        if t == "basic":
+        if self.type == "basic":
             if not (self.username or "").strip() or not (self.password or "").strip():
                 raise ValueError("auth.username/password are required for type=basic")
             self.cookie = None
@@ -98,18 +110,7 @@ class UrlBatchConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "UrlBatchConnectorConfig":
-        # Trim and dedupe URLs.
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in self.urls or []:
-            url = str(raw or "").strip()
-            if not url or url in seen:
-                continue
-            seen.add(url)
-            normalized.append(url)
-            if len(normalized) >= 50:
-                break
-        self.urls = normalized
+        self.urls = _normalize_connector_urls(self.urls, limit=50)
         return self
 
 
@@ -154,39 +155,14 @@ class WebCrawlConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "WebCrawlConnectorConfig":
-        # Trim and dedupe start_urls.
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in self.start_urls or []:
-            url = str(raw or "").strip()
-            if not url or url in seen:
-                continue
-            seen.add(url)
-            normalized.append(url)
-            if len(normalized) >= 5:
-                break
-        self.start_urls = normalized
+        self.start_urls = _normalize_connector_urls(self.start_urls, limit=5)
 
         # Deduplicate sitemap URLs (keep it bounded; sitemap discovery is optional).
-        sitemap_seen: set[str] = set()
-        sitemap_norm: list[str] = []
-        for raw in self.sitemap_urls or []:
-            url = str(raw or "").strip()
-            if not url or url in sitemap_seen:
-                continue
-            sitemap_seen.add(url)
-            sitemap_norm.append(url)
-            if len(sitemap_norm) >= 10:
-                break
-        self.sitemap_urls = sitemap_norm
+        self.sitemap_urls = _normalize_connector_urls(self.sitemap_urls, limit=10)
 
         # Cap regex patterns to reduce ReDoS risk (compiled server-side).
-        self.include_patterns = [
-            str(p or "").strip()[:500] for p in (self.include_patterns or []) if str(p or "").strip()
-        ][:30]
-        self.exclude_patterns = [
-            str(p or "").strip()[:500] for p in (self.exclude_patterns or []) if str(p or "").strip()
-        ][:60]
+        self.include_patterns = [pattern.strip()[:500] for pattern in self.include_patterns if pattern.strip()][:30]
+        self.exclude_patterns = [pattern.strip()[:500] for pattern in self.exclude_patterns if pattern.strip()][:60]
         return self
 
 
@@ -212,7 +188,7 @@ class GitHubRepoConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "GitHubRepoConnectorConfig":
-        repo = str(self.repo or "").strip()
+        repo = self.repo.strip()
         if "/" not in repo:
             raise ValueError("repo must be in owner/repo format")
         owner, name = repo.split("/", 1)
@@ -222,13 +198,12 @@ class GitHubRepoConnectorConfig(BaseModel):
             raise ValueError("repo must be in owner/repo format")
         self.repo = f"{owner}/{name}"
 
-        branch = str(self.branch or "").strip() or "main"
-        self.branch = branch
+        self.branch = self.branch.strip() or "main"
 
         exts: list[str] = []
         seen: set[str] = set()
-        for raw in self.include_extensions or []:
-            ext = str(raw or "").strip().lower()
+        for raw in self.include_extensions:
+            ext = raw.strip().lower()
             if not ext:
                 continue
             if not ext.startswith("."):
@@ -267,17 +242,7 @@ class DriveFilesConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "DriveFilesConnectorConfig":
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for raw in self.urls or []:
-            url = str(raw or "").strip()
-            if not url or url in seen:
-                continue
-            seen.add(url)
-            normalized.append(url)
-            if len(normalized) >= 50:
-                break
-        self.urls = normalized
+        self.urls = _normalize_connector_urls(self.urls, limit=50)
         return self
 
 
@@ -302,8 +267,8 @@ class MinioBucketConnectorConfig(BaseModel):
     def _normalize(self) -> "MinioBucketConnectorConfig":
         exts: list[str] = []
         seen: set[str] = set()
-        for raw in self.include_extensions or []:
-            ext = str(raw or "").strip().lower()
+        for raw in self.include_extensions:
+            ext = raw.strip().lower()
             if not ext:
                 continue
             if not ext.startswith("."):
@@ -370,8 +335,8 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "ConfluenceSpaceConnectorConfig":
-        self.base_url = str(self.base_url or "").strip().rstrip("/")
-        self.space_key = str(self.space_key or "").strip()
+        self.base_url = self.base_url.strip().rstrip("/")
+        self.space_key = self.space_key.strip()
 
         if not self.base_url:
             raise ValueError("base_url is required")
@@ -384,10 +349,8 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
         return self
 
 
-def _normalized_jira_custom_field(raw: object) -> str | None:
-    if raw is None:
-        return None
-    key = str(raw or "").strip().lower()
+def _normalized_jira_custom_field(raw: str) -> str | None:
+    key = raw.strip().lower()
     if not key or len(key) > 80:
         return None
     if not re.fullmatch(r"customfield_\d+", key):
@@ -395,10 +358,10 @@ def _normalized_jira_custom_field(raw: object) -> str | None:
     return key
 
 
-def _normalize_jira_custom_fields(raw_fields: list[str] | None) -> list[str]:
+def _normalize_jira_custom_fields(raw_fields: list[str]) -> list[str]:
     seen: set[str] = set()
     normalized: list[str] = []
-    for raw in raw_fields or []:
+    for raw in raw_fields:
         key = _normalized_jira_custom_field(raw)
         if key is None or key in seen:
             continue
@@ -467,10 +430,10 @@ class JiraProjectConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "JiraProjectConnectorConfig":
-        self.base_url = str(self.base_url or "").strip().rstrip("/")
-        self.project_key = str(self.project_key or "").strip().upper()
+        self.base_url = self.base_url.strip().rstrip("/")
+        self.project_key = self.project_key.strip().upper()
         if self.jql is not None:
-            jql = str(self.jql or "").strip()
+            jql = self.jql.strip()
             self.jql = jql or None
         self.custom_fields = _normalize_jira_custom_fields(self.custom_fields)
 
@@ -516,10 +479,9 @@ class MySQLCatalogConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "MySQLCatalogConnectorConfig":
-        self.host = str(self.host or "").strip()
-        self.database = str(self.database or "").strip()
-        self.username = str(self.username or "").strip()
-        self.password = str(self.password or "")
+        self.host = self.host.strip()
+        self.database = self.database.strip()
+        self.username = self.username.strip()
         if not self.host:
             raise ValueError("host is required")
         if not self.database:
@@ -560,10 +522,9 @@ class SQLServerCatalogConnectorConfig(BaseModel):
 
     @model_validator(mode="after")
     def _normalize(self) -> "SQLServerCatalogConnectorConfig":
-        self.host = str(self.host or "").strip()
-        self.database = str(self.database or "").strip()
-        self.username = str(self.username or "").strip()
-        self.password = str(self.password or "")
+        self.host = self.host.strip()
+        self.database = self.database.strip()
+        self.username = self.username.strip()
         if not self.host:
             raise ValueError("host is required")
         if not self.database:
@@ -571,6 +532,31 @@ class SQLServerCatalogConnectorConfig(BaseModel):
         if not self.username:
             raise ValueError("username is required")
         return self
+
+
+ConnectorRunConfig = (
+    UrlBatchConnectorConfig
+    | WebCrawlConnectorConfig
+    | GitHubRepoConnectorConfig
+    | DriveFilesConnectorConfig
+    | MinioBucketConnectorConfig
+    | ConfluenceSpaceConnectorConfig
+    | JiraProjectConnectorConfig
+    | MySQLCatalogConnectorConfig
+    | SQLServerCatalogConnectorConfig
+)
+
+CONNECTOR_CONFIG_MODELS: dict[str, type[ConnectorRunConfig]] = {
+    "url_batch": UrlBatchConnectorConfig,
+    "web_crawl": WebCrawlConnectorConfig,
+    "github_repo": GitHubRepoConnectorConfig,
+    "drive_files": DriveFilesConnectorConfig,
+    "minio_bucket": MinioBucketConnectorConfig,
+    "confluence_space": ConfluenceSpaceConnectorConfig,
+    "jira_project": JiraProjectConnectorConfig,
+    "mysql_catalog": MySQLCatalogConnectorConfig,
+    "sqlserver_catalog": SQLServerCatalogConnectorConfig,
+}
 
 
 class ConnectorRunCreateRequest(BaseModel):

@@ -25,7 +25,7 @@ class MemorySaver:
     Thread-safe implementation.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the memory saver."""
         self._storage: dict[str, dict[str, Any]] = {}
         self._by_thread: dict[str, list[str]] = defaultdict(list)
