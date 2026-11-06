@@ -290,6 +290,14 @@ class KeywordExtractRequest(BaseModel):
     provider: str = Field(default="jieba")
     top_k: int = Field(default=10, ge=1, le=50)
 
+    @field_validator("provider")
+    @classmethod
+    def _validate_keyword_provider(cls, value: str) -> str:
+        from app.core.model_execution import reject_retired_model_provider
+
+        reject_retired_model_provider(value, capability="keyword")
+        return value
+
 
 class KeywordExtractResponse(BaseModel):
     provider: str
@@ -302,9 +310,7 @@ class AutoAnnotationRequest(BaseModel):
         default="document_focus",
         description="document_focus extracts important document spans; compliance exposes PII/secret/entity detectors.",
     )
-    providers: (
-        list[Literal["cpu", "llm", "gliner", "keyword", "entity", "regex", "pii", "secret", "sensitive"]] | None
-    ) = Field(
+    providers: list[Literal["cpu", "llm", "keyword", "entity", "regex", "pii", "secret", "sensitive"]] | None = Field(
         default=None,
         description="Optional explicit provider list. When omitted, legacy enable_* switches decide providers.",
         max_length=20,
@@ -318,6 +324,15 @@ class AutoAnnotationRequest(BaseModel):
     enable_entities: bool = True
     enable_sensitive: bool = False
     keyword_provider: str = Field(default="simple", max_length=32)
+
+    @field_validator("keyword_provider")
+    @classmethod
+    def _validate_keyword_execution(cls, value: str) -> str:
+        from app.core.model_execution import reject_retired_model_provider
+
+        reject_retired_model_provider(value, capability="keyword")
+        return value
+
     keyword_top_k: int = Field(default=12, ge=1, le=50)
     max_chars: int = Field(default=20000, ge=1, le=200_000)
     max_annotations: int = Field(default=80, ge=1, le=500)

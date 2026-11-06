@@ -17,6 +17,7 @@ from starlette.status import (
     HTTP_503_SERVICE_UNAVAILABLE,
 )
 
+from app.core.model_execution import RetiredModelProviderError
 from app.rag.core.logging import get_logger
 
 logger = get_logger("core.exceptions")
@@ -377,7 +378,12 @@ def unhandled_exception_handler(request: Request, exc: Exception) -> JSONRespons
     )
 
 
+def retired_model_provider_exception_handler(request: Request, exc: RetiredModelProviderError) -> JSONResponse:
+    return http_exception_handler(request, HTTPException(status_code=422, detail=str(exc)))
+
+
 def register_exception_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(RetiredModelProviderError, retired_model_provider_exception_handler)
     app.add_exception_handler(MimirQError, mimirq_exception_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, request_validation_exception_handler)

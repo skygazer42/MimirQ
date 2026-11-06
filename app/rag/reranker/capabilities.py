@@ -3,6 +3,7 @@
 from typing import Any, NotRequired, TypedDict
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_model_provider
 from app.rag.reranker.registry import (
     get_reranker_provider_family,
     iter_reranker_provider_families,
@@ -36,13 +37,14 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> RerankerD
     if family.canonical_name == "none":
         return {"provider": "none", "tier": "disabled"}
 
-    if family.canonical_name in {"cross_encoder", "ltr", "local_bge_v2_m3", "long_context", "mmr"}:
+    if family.canonical_name in {"ltr", "long_context", "mmr"}:
         return {"provider": family.canonical_name, "tier": family.tier}
     if family.canonical_name == "colbert":
         mode = provider_name or (settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower()
+        reject_retired_model_provider(mode, capability="colbert")
         if mode == "deterministic":
             return {"provider": "colbert", "tier": "offline_only", "mode": "deterministic"}
-        return {"provider": "colbert", "tier": family.tier, "mode": mode}
+        raise ValueError(f"Unsupported ColBERT provider: {mode}")
 
     return {"provider": normalized, "tier": family.tier}
 

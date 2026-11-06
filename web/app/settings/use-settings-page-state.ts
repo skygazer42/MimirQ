@@ -357,15 +357,14 @@ function resolveEmbeddingProviderId(
   const provider = trimmedPrimitiveString(embedding.provider).toLowerCase()
   const model = trimmedPrimitiveString(embedding.model)
 
+  if (provider === 'local') return null
+  if (provider === 'ollama') return 'ollama-embedding'
   if (provider === 'dashscope' || base.includes('dashscope.aliyuncs.com')) {
     return 'qwen-embedding'
   }
-  if (provider === 'local' || /bge|text2vec|nomic|mxbai/i.test(model)) {
-    return 'local-embedding'
-  }
   if (base.includes('api.openai.com')) return 'openai-embedding'
 
-  return findProviderIdByModel(providers, 'embedding', model)
+  return findProviderIdByModel(providers, 'embedding', model) || 'openai-embedding'
 }
 
 function hydrateProvidersFromSettings(providers: ModelProvider[], settings: SystemSettings | null): ModelProvider[] {
@@ -415,7 +414,8 @@ function resolveEmbeddingProvider(providerId: string): string {
     .trim()
     .toLowerCase()
   if (pid === 'qwen-embedding') return 'dashscope'
-  if (pid === 'local-embedding') return 'local'
+  if (pid === 'ollama-embedding') return 'ollama'
+  if (pid === 'local-embedding') throw new Error('本地模型推理已停用，请选择向量模型服务')
   return 'openai_compatible'
 }
 
@@ -1027,6 +1027,8 @@ export function useSettingsPageState() {
     getFeatureValue,
     governanceMerged,
     groupedProviders,
+    retiredEmbeddingModel:
+      settings?.embedding.provider.trim().toLowerCase() === 'local' ? settings.embedding.model || '未指定模型' : null,
     handleConfigure,
     handleSaveConfig,
     hasChanges,

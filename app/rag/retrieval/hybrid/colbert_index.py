@@ -71,12 +71,7 @@ class ColbertIndexMixin:
     @staticmethod
     def _build_colbert_provider_config(build_colbert_provider_config: Any, *, provider: str) -> dict[str, Any]:
         return build_colbert_provider_config(
-            provider=provider,
-            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
-            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
-            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
-            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
-            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
+            provider=provider, deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
         )
 
     @staticmethod
@@ -147,12 +142,7 @@ class ColbertIndexMixin:
         provider = self._colbert_provider_name()
         provider_config = self._build_colbert_provider_config(build_colbert_provider_config, provider=provider)
         embedder = get_dense_embedder(
-            provider=provider,
-            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
-            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
-            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
-            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
-            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
+            provider=provider, deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
         )
 
         doc_ids, texts = self._collect_colbert_doc_text_pairs(docs)
@@ -286,12 +276,7 @@ class ColbertIndexMixin:
             return
 
         embedder = get_dense_embedder(
-            provider=provider,
-            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
-            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
-            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
-            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
-            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
+            provider=provider, deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
         )
         packed = self._colbert_incremental_vectors(
             cache_key=cache_key,
@@ -411,8 +396,6 @@ class ColbertIndexMixin:
         readiness = resolve_provider_capability(
             colbert_enabled=bool(settings.COLBERT_RETRIEVAL_ENABLED),
             requested_provider=self._colbert_provider_name(),
-            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
-            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
             docs_count=int(len(docs or [])),
             max_docs=int(max_docs),
         )
@@ -510,12 +493,7 @@ class ColbertIndexMixin:
     @staticmethod
     def _colbert_query_vector(get_dense_embedder: Any, *, provider: str, raw_query: str) -> Any | None:
         embedder = get_dense_embedder(
-            provider=provider,
-            model_name=str(settings.COLBERT_RETRIEVAL_MODEL_NAME or ""),
-            device=str(settings.COLBERT_RETRIEVAL_DEVICE or "cpu"),
-            batch_size=int(settings.COLBERT_RETRIEVAL_BATCH_SIZE or 16),
-            max_length=int(settings.COLBERT_RETRIEVAL_MAX_LENGTH or 256),
-            deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64),
+            provider=provider, deterministic_dim=int(settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
         )
         q_mat = embedder.encode_batch([raw_query])
         try:

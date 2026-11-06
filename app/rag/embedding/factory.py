@@ -22,7 +22,6 @@ from app.rag.embedding.providers import (
     DeterministicTestEmbedding,
     OllamaEmbedding,
     OpenAICompatibleEmbedding,
-    SentenceTransformerEmbedding,
 )
 from app.rag.embedding.utils import logger
 from app.rag.preprocessing.language import detect_language
@@ -61,6 +60,9 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
         >>> async_model = select_embedding_model("siliconflow/BAAI/bge-m3")
         >>> embeddings = await async_model.aencode(["Hello world"])
     """
+    from app.core.model_execution import reject_retired_model_provider
+
+    reject_retired_model_provider(model_id.split("/", 1)[0], capability="embedding")
     supported_models = get_supported_model_ids()
 
     if model_id not in supported_models:
@@ -82,8 +84,6 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
         return OllamaEmbedding(**config_dict)
     elif provider == "deterministic_test":
         return DeterministicTestEmbedding(**config_dict)
-    elif provider == "local":
-        return SentenceTransformerEmbedding(**config_dict)
     elif provider == "dashscope":
         return DashScopeEmbedding(**config_dict)
     else:

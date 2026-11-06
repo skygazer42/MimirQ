@@ -67,6 +67,9 @@ def resolve_dataset_embedding_runtime(
         )
         model = _clean(raw.get("model")) or model
         api_base = _clean(raw.get("api_base")) or api_base
+    from app.core.model_execution import reject_retired_model_provider
+
+    reject_retired_model_provider(provider, capability="embedding")
     if dataset_scoped and _vector_backend() != "milvus":
         raise ValueError("dataset-scoped embedding_defaults require VECTOR_BACKEND=milvus")
 

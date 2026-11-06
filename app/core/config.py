@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     MILVUS_USER: str = ""
     MILVUS_PASSWORD: str = ""
     MILVUS_COLLECTION_NAME: str = "documents"
+    MILVUS_BM25_COLLECTION_NAME: str = "document_bm25"
+    MILVUS_BM25_TIMEOUT_SEC: float = Field(default=10.0, gt=0)
+    MILVUS_BM25_MAX_CANDIDATES: int = Field(default=2048, ge=1, le=16384)
     # Optional "shadow" Milvus collection for embedding blue-green migrations (Gap5).
     # When configured alongside EMBEDDING_SHADOW_* and enabled, ingestion can dual-write
     # vectors into both the primary and shadow collections.
@@ -577,10 +580,6 @@ class Settings(BaseSettings):
     # Multi-modal retrieval (optional): CLIP embeddings for image chunks.
     # Disabled by default to avoid pulling heavyweight ML deps in minimal deployments.
     IMAGE_EMBEDDING_ENABLED: bool = False
-    IMAGE_EMBEDDING_MODEL_NAME: str = "clip-ViT-B-32"
-    IMAGE_EMBEDDING_DEVICE: str = "cpu"
-    IMAGE_EMBEDDING_BATCH_SIZE: int = 8
-    IMAGE_EMBEDDING_COLLECTION_NAME: str = "image_chunks"
     # Keep this aligned with parser_factory supported non-PDF formats.
     ALLOWED_EXTENSIONS: str = (
         ".pdf,.txt,.md,.rst,.adoc,.asciidoc,.tex,.yaml,.yml,.toml,.sql,.log,.conf,.ini,.cfg,.env,.properties,"
@@ -1227,9 +1226,9 @@ class Settings(BaseSettings):
     # Notes:
     # - Disabled by default (no behavior change).
     # - The default provider is deterministic and intended for tests/offline use.
-    # - Production SPLADE models (HF/transformers) must be loaded lazily and are optional.
+    # - Neural SPLADE execution has been retired from the API.
     SPARSE_RETRIEVAL_ENABLED: bool = False
-    SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | splade
+    SPARSE_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     # Optional Milvus native dense+sparse retrieval path.
     # Safe-off by default: callers must opt in and the retriever auto-falls back
     # unless the request is dataset-scoped on Milvus with sparse retrieval enabled.
@@ -1241,28 +1240,17 @@ class Settings(BaseSettings):
     # Comma-separated synonym pairs like: "kubernetes:k8s,postgresql:postgres"
     # Used only by deterministic provider (test scaffold).
     SPARSE_RETRIEVAL_SYNONYMS: str = ""
-    # SPLADE provider (optional, opt-in): requires transformers + a local or HF model.
-    SPARSE_SPLADE_MODEL_NAME: str = ""
-    SPARSE_SPLADE_DEVICE: str = "cpu"  # cpu | cuda | auto
-    SPARSE_SPLADE_BATCH_SIZE: int = 8
-    SPARSE_SPLADE_MAX_LENGTH: int = 256
-    SPARSE_SPLADE_TOP_K: int = 128
-    SPARSE_SPLADE_MIN_WEIGHT: float = 0.0
 
     # Optional ColBERT-style retrieval (ANN) channel.
     #
     # Notes:
     # - Disabled by default (no behavior change).
     # - The deterministic provider is intended for tests/offline gating.
-    # - The HF provider is opt-in and requires a local/HF model.
+    # - Only the deterministic test implementation remains.
     COLBERT_RETRIEVAL_ENABLED: bool = False
-    COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic | hf
+    COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED: bool = True
     COLBERT_RETRIEVAL_INDEX_DIR: str = "./data/colbert_indexes"
-    COLBERT_RETRIEVAL_MODEL_NAME: str = ""
-    COLBERT_RETRIEVAL_DEVICE: str = "cpu"  # cpu | cuda | auto
-    COLBERT_RETRIEVAL_BATCH_SIZE: int = 16
-    COLBERT_RETRIEVAL_MAX_LENGTH: int = 256
     # Safety cap: avoid building huge in-memory ANN matrices by accident.
     # 0 disables the cap (not recommended for production).
     COLBERT_RETRIEVAL_MAX_DOCS: int = 10_000
@@ -1274,20 +1262,14 @@ class Settings(BaseSettings):
     #
     # Notes:
     # - Disabled by default via provider=deterministic to preserve existing behavior.
-    # - The HF provider is opt-in and requires a local/HF transformer model.
-    COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic | hf
-    COLBERT_RERANK_MODEL_NAME: str = ""
-    COLBERT_RERANK_DEVICE: str = "cpu"  # cpu | cuda | auto
-    COLBERT_RERANK_BATCH_SIZE: int = 16
-    COLBERT_RERANK_MAX_LENGTH: int = 256
+    # - Only the deterministic test implementation remains.
+    COLBERT_RERANK_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     # Used only by deterministic provider.
     COLBERT_RERANK_EMBED_DIM: int = 64
     # Provider readiness guard for ColBERT reranker.
     # strict=false: fallback to deterministic provider on readiness/warmup failure.
     # strict=true: raise an error when requested provider is not ready.
-    COLBERT_RERANK_HEALTHCHECK_STRICT: bool = False
     # Optional one-time warmup probe for model-backed providers.
-    COLBERT_RERANK_WARMUP_ENABLED: bool = False
     # Optional: load fusion channel budget policy (generated from offline ablations).
     # When configured, orchestrator can auto-apply budgeted_rrf channel quotas.
     RAG_CHANNEL_BUDGET_POLICY_PATH: str = ""
@@ -1531,26 +1513,11 @@ class Settings(BaseSettings):
     EVENT_VECTOR_ENABLED: bool = True
     ENTITY_VECTOR_ENABLED: bool = True
     BM25_INDEX_ENABLED: bool = True
-    # BM25 cold-start mitigation (build on first query when index missing).
-    BM25_LAZY_BUILD_ENABLED: bool = True
-    # When true and document_ids not provided, build BM25 for the whole tenant (can be expensive).
-    BM25_LAZY_BUILD_FULL_TENANT: bool = False
-    # Upper bound for lazy-built chunks (0 disables the cap).
-    BM25_LAZY_BUILD_MAX_CHUNKS: int = 8000
-    # Above this scope size, ingestion defers BM25 retriever rebuild to first query (0 disables the cap).
-    BM25_EAGER_UPSERT_MAX_CHUNKS: int = 8000
-    # Startup BM25 bootstrap (can be expensive; prefer lazy-build for large deployments).
-    BM25_STARTUP_BUILD_ENABLED: bool = False
-    # Upper bound for startup-built chunks across the whole instance (0 disables the cap).
-    BM25_STARTUP_BUILD_MAX_CHUNKS: int = 8000
     # Hard cap for operator-triggered retrieval rebuilds across BM25/sparse/ColBERT.
     # 0 disables the cap (not recommended in production).
     RETRIEVAL_REBUILD_MAX_CHUNKS: int = 8000
-    # Max cached BM25 indices kept in memory (0 = unlimited). Useful for multi-tenant deployments.
-    BM25_CACHE_MAX_TENANTS: int = 32
-    # BM25 tokenization knobs (recall tuning).
-    # These defaults are intentionally "recall-friendly" but still avoid full CJK char-ngram indexing
-    # (which can explode index size in pure-Python BM25 implementations).
+    # Lightweight tokenization for query matching, fusion and conversation memory.
+    # Native Milvus BM25 uses its collection-owned analyzer.
     BM25_TOKENIZE_ASCII_EXPAND_ENABLED: bool = True
     BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED: bool = True
     BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED: bool = True
@@ -1876,7 +1843,7 @@ class Settings(BaseSettings):
     NEAR_DEDUP_MAX_BUCKET_SIZE: int = 256
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
-    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | cross_encoder | long_context | mmr | none
+    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | long_context | mmr | none
     # Local Learning-to-Rank model path (xgboost JSON/UBJ).
     # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
     LTR_MODEL_PATH: str = ""
@@ -2071,21 +2038,13 @@ class Settings(BaseSettings):
     KG_SKILL_MAX_SKILLS_PER_CHUNK: int = 3
     # KG extraction backend routing.
     # - llm: existing extraction path (default)
-    # - gliner: lightweight entity-first extraction (optional dependency)
-    # - hybrid: GLiNER pre-extract + LLM fallback
     KG_EXTRACTION_BACKEND: str = "llm"
     # Optional: override the default backend for very large documents when no
     # explicit extraction_backend is requested.
     KG_EXTRACT_LONG_DOC_BACKEND: str = "heuristic"
     KG_EXTRACT_LONG_DOC_MIN_CHUNKS: int = 300
-    # Safe default-off switch for GLiNER/hybrid routing.
+    # Retained only to reject an explicitly enabled legacy local model configuration.
     KG_GLINER_ENABLED: bool = False
-    KG_GLINER_MODEL_NAME: str = "urchade/gliner_multi_pii-v1"
-    KG_GLINER_DEVICE: str = "cpu"
-    KG_GLINER_ENTITY_THRESHOLD: float = 0.5
-    KG_GLINER_DEFAULT_ENTITY_TYPES: str = "person,organization,location,event,date,concept"
-    KG_HYBRID_LLM_THRESHOLD: float = 0.7
-    KG_HYBRID_REFINE_RELATIONS: bool = False
     # Evidence-first skill extraction (optional; improves precision for Skill/SOP nodes + taxonomy edges).
     # When enabled, the extractor will only persist Skill nodes/edges that can be grounded to a chunk-local
     # evidence quote/span (verbatim substring).
@@ -2294,7 +2253,7 @@ class Settings(BaseSettings):
     LONG_TERM_MEMORY_ENABLED: bool = False
     LONG_TERM_MEMORY_TOP_K: int = 3
     LONG_TERM_MEMORY_MIN_LEN: int = 20
-    LONG_TERM_MEMORY_MAX_MESSAGES: int = 200
+    LONG_TERM_MEMORY_MAX_MESSAGES: int = Field(default=200, ge=1)
     MEMORY_STORE_TYPE: str = "memory"  # memory | sqlite
     MEMORY_SQLITE_PATH: str = "./data/memory.db"
     # Structured memory (entity memory + lightweight fact memory), stored per assistant turn in

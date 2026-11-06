@@ -1880,3 +1880,15 @@
 - 一次性构建禁用遥测／Sentry上传，不验证外部监控；原附加OpenAPI导出／Handbook依赖限制保留。
 
 证据位于 `consolidated-reviewed-20261106/final-acceptance/`：`frontend-checks.json`、`production-build.json`、`build-source-manifest.json`、`python-source-continuity.json`，以及 `before-governance/root-full-python-static-20261106.json`。较早的源树／110项／123项检查仍是历史记录，不改写为最终重复运行。源码／笔记与原工作区保护信息见 `final-source-inputs.json`、`held114-map.json` 及各类别独立报告。
+
+## 2026-11-06：依赖／本地模型退出／Milvus BM25 分支合并
+
+将既有044e96b12功能分支（13个独立提交）合到c627f773c最终重构版。三个内容冲突涉及ragas图片上下文、rerank缓存的已退出模型字段、retriever的已退出SPLADE参数与BM25可用性；根据当前真实所有者移除退出路径，保留重构后的Session签名、直接Settings读取和缓存资源生命周期。全部1,288个Settings字段／属性与生产代码直接读取静态核对，没有未声明字段。功能分支的原Python测试和文档随Git合并保留，不新增或运行Python测试，不把旧报告的370项当成本次运行。
+
+合并后的174个Vitest文件／1,195项全部通过，0失败／跳过；完整非增量TypeScript、ESLint、Prettier与八项UI/API检查通过。首轮1,193通过／2失败分别是已变更ColBERT文案的旧期望，以及缓存成功后尚未渲染的空成员DOM断言；仅同步原期望并使用已有等待helper，受影响18项、两文件lint／格式及最终全量重跑通过。没有为测试改变生产状态或增加fallback。
+
+全部1,882个Python路径中，1,807自研AST3.11及八批显式Ruff／格式检查通过；75个第三方和历史路径保持登记的排除。118条笔记门禁通过。生产Webpack、内置TypeScript和包体预算在同盘Git原字节快照473eaecddeafa64423c8950edfc4a539aad1cf9f通过；快照只更新生成next-env.d.ts，原工作区未改变。初次跨C/E盘构建因Next把依赖解析为“./E:/...”退出1，未改配置或掩盖错误；同盘复验记录单列。
+
+新增24个路径、正式移除10个退出路径，清单与当前3,900个跟踪路径一致、0 pending。六条旧复核分支仅移除名称，原未提交文件和工作区原字节保留；不重新合并旧候选或创建恢复归档。原E工作区及API工作区的未跟踪前端文件不带入正式提交。
+
+未连接真实Milvus、模型或数据库，未执行回填、数据迁移、依赖安装、镜像部署、浏览器或Python业务／测试。BM25已有数据的显式回填和已退出模型选择政策仍见docs/guides/milvus_bm25.md与原功能分支验证记录。本轮证据：本地api-branch-integration-20261106目录的final-validation.json、merge-resolution.json、full-python-static.json、vitest-final.json、build-retry-checks.json和source-continuity.json；初次失败报告保留。

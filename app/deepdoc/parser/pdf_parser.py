@@ -239,14 +239,6 @@ class IntegratedPipelinePdfParser:
 
         self.updown_cnt_mdl = xgb.Booster()  # Initialize xgboost model for paragraph concatenation prediction
         self._updown_cnt_model_error = ""
-        if not LIGHTEN:
-            try:
-                import torch
-
-                if torch.cuda.is_available():
-                    self.updown_cnt_mdl.set_param({"device": "cuda"})  # Use GPU acceleration if CUDA is available
-            except Exception:
-                logging.exception("IntegratedPipelinePdfParser __init__")
         try:
             # Prefer repo-bundled UBJ/JSON artifacts so newer xgboost versions can
             # still load the paragraph-concatenation model without deprecated

@@ -43,8 +43,6 @@ def test_pc_reranker_is_local_parent_child_implementation() -> None:
 @pytest.mark.parametrize(
     ("provider", "kwargs", "expected"),
     [
-        ("cross-encoder", {}, {"provider": "cross_encoder", "tier": "prod"}),
-        ("sentence-transformers", {}, {"provider": "cross_encoder", "tier": "prod"}),
         ("pc", {}, {"provider": "pc", "tier": "prod"}),
         ("aliyun", {}, {"provider": "aliyun", "tier": "experimental"}),
         ("off", {}, {"provider": "none", "tier": "disabled"}),
@@ -242,11 +240,9 @@ import sys
 provider_modules = [
     "app.rag.reranker.openai",
     "app.rag.reranker.dashscope",
-    "app.rag.reranker.cross_encoder",
     "app.rag.reranker.colbert",
     "app.rag.reranker.ltr",
     "app.rag.reranker.long_context_rerank",
-    "app.rag.reranker.local_bge_v2_m3",
     "app.rag.reranker.parent_child",
     "app.rag.reranker.hybrid",
     "app.rag.reranker.kg",

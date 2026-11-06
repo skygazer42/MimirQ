@@ -389,7 +389,7 @@ const RAG_TRACE_FALLBACK_MESSAGES: Record<string, string> = {
   'panel.channels.options.lexicalDb.label': 'Lexical DB',
   'panel.channels.options.lexicalDb.summary': '查看数据库级词法通道在最终证据里的存在感。',
   'panel.channels.options.sparse.label': 'Sparse',
-  'panel.channels.options.sparse.summary': '检查 learned sparse / SPLADE 风格通道是否带来额外证据。',
+  'panel.channels.options.sparse.summary': '检查 稀疏检索通道是否带来额外证据。',
   'panel.channels.options.colbert.label': 'ColBERT',
   'panel.channels.options.colbert.summary': '聚焦 late-interaction / ColBERT 通道影响到的证据。',
   'panel.inspector.retrieveSummary': '检索层决定候选面宽度，可以直接看 query 扩散、top_k 和融合策略是否异常。',

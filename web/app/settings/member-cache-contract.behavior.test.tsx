@@ -402,7 +402,9 @@ describe('one canonical members DTO for RTBF and RBAC', () => {
     await readReady(view)
     await waitForAssertion(() => expect(view.errors.map(String), diagnostic(view)).toEqual([]))
     canonicalCache(view)
-    expect(view.container.querySelector('[data-member-view="rbac"]')?.textContent).toContain('暂无成员')
+    await waitForAssertion(() =>
+      expect(view.container.querySelector('[data-member-view="rbac"]')?.textContent).toContain('暂无成员'),
+    )
     expect(api.members).toHaveBeenCalledTimes(1)
   })
 })

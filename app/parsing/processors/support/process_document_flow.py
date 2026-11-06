@@ -290,6 +290,9 @@ def _initialize_prepared_process_document_state(
         document_metadata=(db_document.doc_metadata or {}),
         request_overrides=None,
     )
+    from app.services.pipeline_config import validate_pipeline_execution
+
+    validate_pipeline_execution(pipeline_effective)
     index_options = build_indexing_options(pipeline_effective)
     service._record_pipeline_effective(db, tenant_id, document_id, pipeline_effective)
     return PreparedProcessDocumentState(

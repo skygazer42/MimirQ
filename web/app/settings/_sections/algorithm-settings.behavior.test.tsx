@@ -132,7 +132,7 @@ afterEach(() => {
 describe('persisted RAG settings', () => {
   it.each([
     ['aliyun', 'dashscope', '通义千问重排'],
-    ['late_interaction', 'colbert', 'ColBERT 后交互'],
+    ['late_interaction', 'colbert', 'ColBERT（离线验证）'],
   ])('represents the actual persisted %s backend alias', (alias, canonical, label) => {
     const view = mountRag({ reranker_provider: alias })
     expect(normalizeRerankerProvider(alias)).toBe(canonical)

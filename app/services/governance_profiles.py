@@ -75,6 +75,9 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
         cleaned_formats = ["markdown"]
 
     cleaned_patch = _normalize_pipeline_patch(payload.pipeline_patch)
+    from app.core.model_execution import reject_retired_model_provider
+
+    reject_retired_model_provider(cleaned_patch.get("governance_keywords_provider"), capability="keyword")
     cleaned_rules = _normalize_regex_rules(payload.regex_rules)
     scripts = list(payload.processing_scripts or [])
     if len(scripts) > 10:

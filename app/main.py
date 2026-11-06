@@ -13,7 +13,6 @@ from ipaddress import IPv4Address
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
-from uuid import UUID
 
 from app.core.local_proxy import ensure_local_no_proxy
 
@@ -44,7 +43,6 @@ warnings.filterwarnings(
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
-from sqlalchemy.orm import Session
 
 import app.models._all  # noqa: F401
 from app import __version__
@@ -62,8 +60,6 @@ from app.core.migrations import apply_runtime_migrations
 from app.core.otel import init_otel, instrument_fastapi, instrument_httpx, shutdown_otel
 from app.core.sentry import init_sentry
 from app.core.utils import parse_csv
-from app.models.document import Document as DBDocument
-from app.models.document import DocumentChunk
 from app.services.initial_admin_service import (
     InitialAdminBootstrapError,
     bootstrap_initial_admin_if_configured,
@@ -314,78 +310,6 @@ def _start_task_queue_observability_poller() -> None:
         logger.warning("Failed to start task queue observability poller: %s", str(exc)[:200])
 
 
-def _bm25_startup_skip_message() -> str | None:
-    if not settings.BM25_INDEX_ENABLED:
-        return "BM25 indexing disabled; skipping startup build"
-    if not settings.BM25_STARTUP_BUILD_ENABLED:
-        return "BM25 startup build disabled (BM25_STARTUP_BUILD_ENABLED=false)"
-    return None
-
-
-def _load_bm25_startup_tenant_ids(db: Session) -> list[UUID]:
-    tenant_ids: list[UUID] = []
-    tenant_q = (
-        db.query(DocumentChunk.tenant_id)
-        .join(DBDocument)
-        .filter(DBDocument.status == "completed")
-        .filter(DBDocument.publication_status == "published")
-        .distinct()
-        .execution_options(stream_results=True)
-        .enable_eagerloads(False)
-    )
-    for row in tenant_q.yield_per(2000):
-        if row and row[0]:
-            tenant_ids.append(row[0])
-    return tenant_ids
-
-
-def _build_bm25_startup_indexes() -> None:
-    skip_message = _bm25_startup_skip_message()
-    if skip_message is not None:
-        logger.info(skip_message)
-        return
-
-    logger.info("Initializing BM25 index (startup build)...")
-    from sqlalchemy import func
-
-    from app.rag.retriever import hybrid_retriever
-
-    db = SessionLocal()
-    try:
-        max_chunks = settings.BM25_STARTUP_BUILD_MAX_CHUNKS or 0
-        total_chunks = (
-            db.query(func.count(DocumentChunk.id))
-            .join(DBDocument)
-            .filter(DBDocument.status == "completed")
-            .filter(DBDocument.publication_status == "published")
-            .scalar()
-        ) or 0
-        if max_chunks > 0 and int(total_chunks) > max_chunks:
-            logger.warning(
-                "Skipping BM25 startup build: %s chunks exceeds cap %s; "
-                "enable BM25_LAZY_BUILD_ENABLED for on-demand builds",
-                int(total_chunks),
-                max_chunks,
-            )
-            return
-
-        tenant_ids = _load_bm25_startup_tenant_ids(db)
-        if not tenant_ids:
-            logger.warning("No documents found, BM25 index will be built on first upload")
-            return
-
-        built_total = 0
-        for tid in tenant_ids:
-            built_total += hybrid_retriever.build_bm25_index_from_db(db, tenant_id=tid, batch_size=2000)
-        logger.info(
-            "BM25 index loaded with %s chunks across %s tenants",
-            built_total,
-            len(tenant_ids),
-        )
-    finally:
-        db.close()
-
-
 def _schedule_dify_external_knowledge_warmup() -> None:
     try:
         from app.api.v1.integrations_dify import start_dify_external_knowledge_warmup
@@ -432,7 +356,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # newly added API replica does not serialize its first concurrent requests.
     _warmup_retrieval_tokenizer()
     _start_runtime_warmup()
-    _build_bm25_startup_indexes()
     _schedule_dify_external_knowledge_warmup()
 
     yield

@@ -629,7 +629,7 @@ export type KeywordExtractResponse = {
 export type AutoAnnotationRequest = {
   text: string
   mode?: 'document_focus' | 'compliance'
-  providers?: Array<'cpu' | 'llm' | 'gliner' | 'keyword' | 'entity' | 'regex' | 'pii' | 'secret' | 'sensitive'>
+  providers?: Array<'cpu' | 'llm' | 'keyword' | 'entity' | 'regex' | 'pii' | 'secret' | 'sensitive'>
   enable_llm?: boolean
   enable_llm_topics?: boolean
   llm_model?: string | null

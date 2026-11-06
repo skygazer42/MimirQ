@@ -28,11 +28,21 @@ const CATEGORY_INFO: Record<ProviderCategory, { title: string; description: stri
 type ModelProvidersSectionProps = {
   groupedProviders: Record<ProviderCategory, ModelProvider[]>
   onConfigure: (provider: ModelProvider) => void
+  retiredEmbeddingModel?: string | null
 }
 
-export function ModelProvidersSection({ groupedProviders, onConfigure }: Readonly<ModelProvidersSectionProps>) {
+export function ModelProvidersSection({
+  groupedProviders,
+  onConfigure,
+  retiredEmbeddingModel,
+}: Readonly<ModelProvidersSectionProps>) {
   return (
     <section>
+      {retiredEmbeddingModel ? (
+        <p role="alert" className="mb-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm">
+          当前嵌入模型 {retiredEmbeddingModel} 使用已停用的本地推理。请配置向量模型服务后保存；已有索引不会自动迁移。
+        </p>
+      ) : null}
       <div className="space-y-4">
         {(['model', 'embedding', 'reranker'] as ProviderCategory[]).map((category) => {
           const info = CATEGORY_INFO[category]

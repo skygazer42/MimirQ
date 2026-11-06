@@ -789,38 +789,6 @@ def _graph_tag_context_docs(
         return [], {"enabled": False, "used": False, "reason": f"tag_exception:{str(exc)[:120]}"}
 
 
-def _graph_image_context_docs(
-    *,
-    db: Session,
-    tenant_id: UUID,
-    account_id: str,
-    request: ChatRequest,
-    modality: str,
-    dataset_id_used: UUID | None,
-    scope_dataset_id: UUID | None,
-) -> tuple[list[Any], dict[str, Any]]:
-    try:
-        if str(modality or "text").lower().strip() != "image":
-            return [], {"enabled": False, "used": False, "reason": "not_run"}
-
-        from app.services.chat_image_service import build_chat_image_context_docs
-
-        ds_for_images = dataset_id_used or scope_dataset_id
-        if ds_for_images is None:
-            return [], {"enabled": False, "used": False, "reason": "missing_dataset_id"}
-        image_docs, image_meta = build_chat_image_context_docs(
-            db,
-            tenant_id=tenant_id,
-            account_id=account_id,
-            dataset_id=ds_for_images,
-            question=request.message,
-            top_k=6,
-        )
-        return list(image_docs or []), image_meta
-    except Exception as exc:  # noqa: BLE001
-        return [], {"enabled": False, "used": False, "reason": f"image_exception:{str(exc)[:120]}"}
-
-
 def _graph_multimodal_enrichment(
     *,
     db: Session,
@@ -840,16 +808,8 @@ def _graph_multimodal_enrichment(
         request=request,
         effective_rag_config=effective_rag_config,
     )
-    image_docs, image_meta = _graph_image_context_docs(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        request=request,
-        modality=modality,
-        dataset_id_used=dataset_id_used,
-        scope_dataset_id=scope_dataset_id,
-    )
-    return [*tag_docs, *image_docs], multimodal_meta, tag_meta, image_meta
+    image_meta = {"enabled": False, "used": False, "reason": "image_vector_retrieval_retired"}
+    return tag_docs, multimodal_meta, tag_meta, image_meta
 
 
 def _apply_source_identification_override(

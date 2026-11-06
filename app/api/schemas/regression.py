@@ -290,7 +290,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     query_rewrite_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     query_rewrite_max_chars: int | None = Field(default=None, ge=0, le=2000)
     sparse_retrieval_enabled: bool | None = Field(default=None, description="Enable sparse retrieval channel")
-    sparse_retrieval_provider: str | None = Field(default=None, description="Sparse provider: deterministic | splade")
+    sparse_retrieval_provider: str | None = Field(
+        default=None, description="Sparse provider: deterministic (test implementation)"
+    )
     # NOTE: default to 20 so retrieval-only gates can enforce Recall@20/Hit@20 without
     # requiring callers (CI scripts) to pass explicit rag_params.
     top_k: int = Field(default=20, ge=1, le=50)
@@ -315,7 +317,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     )
     reranker_provider: str = Field(
         default_factory=lambda: settings.RERANKER_PROVIDER,
-        description="Reranker provider: llm | pc | ltr | colbert | cross_encoder | none",
+        description="Reranker provider: llm | pc | ltr | colbert | openai | dashscope | none",
     )
     reranker_top_n: int = Field(
         default_factory=lambda: settings.RERANKER_TOP_N,
@@ -383,9 +385,20 @@ class RagasRegressionRunCreateRequest(BaseModel):
         raw = str(v or "").strip().lower()
         if not raw:
             return None
-        if raw not in {"deterministic", "splade"}:
-            raise ValueError("sparse_retrieval_provider must be one of: deterministic, splade")
+        from app.core.model_execution import reject_retired_model_provider
+
+        reject_retired_model_provider(raw, capability="sparse")
+        if raw != "deterministic":
+            raise ValueError("sparse_retrieval_provider must be deterministic")
         return raw
+
+    @field_validator("reranker_provider")
+    @classmethod
+    def _validate_reranker_execution(cls, value: str | None) -> str | None:
+        from app.core.model_execution import reject_retired_model_provider
+
+        reject_retired_model_provider(value, capability="reranker")
+        return value
 
     @model_validator(mode="after")
     def _validate_fusion_overrides(self):
@@ -395,6 +408,14 @@ class RagasRegressionRunCreateRequest(BaseModel):
         )
         _validate_numeric_fusion_override(self.fusion_weights, field_name="fusion_weights", caster=float, max_value=10)
         return self
+
+    @field_validator("retrieval_profile")
+    @classmethod
+    def _validate_profile_execution(cls, value: str | None) -> str | None:
+        from app.core.model_execution import reject_retired_retrieval_profile
+
+        reject_retired_retrieval_profile(value)
+        return value
 
 
 class RagasRegressionAblationBatchRequest(RagasRegressionRunCreateRequest):

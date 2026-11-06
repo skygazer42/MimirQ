@@ -4,7 +4,8 @@ from uuid import UUID
 from app.rag.core.logging import get_logger
 from app.rag.evaluation.poc_runner.out_of_scope_verifier import verify_out_of_scope_query
 from app.rag.industry_rules.loaders import load_ruleset
-from app.rag.retriever import get_vector_store, hybrid_retriever
+from app.rag.retriever import hybrid_retriever
+from app.storage.vector.factory import get_vector_store
 
 _SCHEMA = "mimirq.out_of_scope_live_guard.v1"
 

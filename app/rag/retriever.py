@@ -12,7 +12,6 @@ from dataclasses import replace
 from typing import Any, ClassVar, cast
 from uuid import UUID
 
-from langchain_community.retrievers.bm25 import BM25Retriever
 from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
@@ -26,7 +25,7 @@ from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
-from app.rag.retrieval.corpus_index import get_corpus_index
+from app.rag.retrieval.corpus_index import bm25_available, get_corpus_index
 from app.rag.retrieval.hybrid import candidate_ranking, candidate_retrieval, channel_collection, corpus_channels
 from app.rag.retrieval.hybrid.bm25_index import Bm25IndexMixin
 from app.rag.retrieval.hybrid.channel_diagnostics import empty_channel_metrics
@@ -162,17 +161,7 @@ class HybridRetriever(
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    _bm25_retrievers: dict[str, BM25Retriever] = PrivateAttr(default_factory=dict)
-    _bm25_docs: dict[str, list[Document]] = PrivateAttr(default_factory=dict)
-    _bm25_doc_ids: dict[str, set[str]] = PrivateAttr(default_factory=dict)
-    _chunk_id_lookup: dict[str, dict[str, str]] = PrivateAttr(default_factory=dict)
-    _bm25_deferred_scopes: set[str] = PrivateAttr(default_factory=set)
-    _bm25_build_locks: dict[str, threading.Lock] = PrivateAttr(default_factory=dict)
-    # LRU order for per-tenant BM25 caches (prevents unbounded growth in multi-tenant deployments).
-    _bm25_cache_order: "OrderedDict[str, None]" = PrivateAttr(default_factory=OrderedDict)
     _bm25_cache_lock: threading.Lock = PrivateAttr(default_factory=threading.RLock)
-    # Cache versions per BM25 scope key (used to invalidate dataset-scoped indices after ingest).
-    _bm25_cache_versions: dict[str, str] = PrivateAttr(default_factory=dict)
     _corpus_token_cache: "OrderedDict[tuple[str, str, tuple[str, ...], tuple[str, ...]], tuple[float, str]]" = (
         PrivateAttr(default_factory=OrderedDict)
     )
@@ -217,7 +206,6 @@ class HybridRetriever(
         return resolve_sparse_provider_capability(
             requested_provider=str(self.sparse_provider or ""),
             sparse_enabled=bool(sparse_enabled),
-            splade_model_name=str(settings.SPARSE_SPLADE_MODEL_NAME or ""),
             default_provider="deterministic",
         )
 
@@ -785,12 +773,6 @@ class HybridRetriever(
                     provider=sparse_provider,
                     synonyms=synonyms,
                     synonyms_raw=str(settings.SPARSE_RETRIEVAL_SYNONYMS or ""),
-                    model_name=str(settings.SPARSE_SPLADE_MODEL_NAME or ""),
-                    device=str(settings.SPARSE_SPLADE_DEVICE or "cpu"),
-                    batch_size=int(settings.SPARSE_SPLADE_BATCH_SIZE or 8),
-                    max_length=int(settings.SPARSE_SPLADE_MAX_LENGTH or 256),
-                    top_k=int(settings.SPARSE_SPLADE_TOP_K or 128),
-                    min_weight=float(settings.SPARSE_SPLADE_MIN_WEIGHT or 0.0),
                 )
                 sparse_query_vector = self._sparse_query_vector(encoder, query)
                 if not getattr(sparse_query_vector, "weights", None):
@@ -1112,7 +1094,7 @@ class HybridRetriever(
             native_hybrid_enabled=bool(settings.MILVUS_NATIVE_HYBRID),
             colbert_enabled=bool(settings.COLBERT_RETRIEVAL_ENABLED),
             colpali_enabled=bool(settings.COLPALI_RETRIEVAL_ENABLED),
-            bm25_enabled=bool(settings.BM25_INDEX_ENABLED),
+            bm25_enabled=bm25_available(),
             lexical_enabled=bool(settings.LEXICAL_DB_ENABLED),
             keyword_bm25_secondary_enabled=bool(settings.RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED),
             lexical_hybrid_fallback_only=lexical_hybrid_fallback_only,

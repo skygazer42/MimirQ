@@ -673,6 +673,24 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
     ],
   },
   {
+    id: 'ollama-embedding',
+    name: 'Ollama 向量服务',
+    description: '通过 HTTP 接入本机或内网向量服务',
+    icon: 'ollama',
+    color: 'green',
+    category: 'embedding',
+    isConfigured: false,
+    models: [
+      {
+        id: 'nomic-embed-text',
+        name: 'nomic-embed-text',
+        displayName: 'Nomic Embed Text',
+        type: 'embedding',
+        contextWindow: 8192,
+      },
+    ],
+  },
+  {
     id: 'qwen-embedding',
     name: 'Qwen Embedding',
     description: '阿里云百炼文本向量模型',
@@ -697,72 +715,9 @@ export const MODEL_PROVIDERS: ModelProvider[] = [
       },
     ],
   },
-  {
-    id: 'local-embedding',
-    name: '本地 Embedding',
-    description: 'BGE 中文向量模型',
-    icon: 'local-embedding',
-    color: 'green',
-    category: 'embedding',
-    isConfigured: true,
-    models: [
-      {
-        id: 'bge-large-zh-v1.5',
-        name: 'BAAI/bge-large-zh-v1.5',
-        displayName: 'BGE Large ZH v1.5',
-        type: 'embedding',
-        contextWindow: 512,
-      },
-      {
-        id: 'bge-base-zh-v1.5',
-        name: 'BAAI/bge-base-zh-v1.5',
-        displayName: 'BGE Base ZH v1.5',
-        type: 'embedding',
-        contextWindow: 512,
-      },
-      {
-        id: 'bge-m3',
-        name: 'BAAI/bge-m3',
-        displayName: 'BGE M3 (多语言)',
-        type: 'embedding',
-        contextWindow: 8192,
-      },
-    ],
-  },
 
   // ==================== Reranker 重排序模型 ====================
-  {
-    id: 'local-reranker',
-    name: '本地 Reranker',
-    description: 'BGE 重排序模型',
-    icon: 'reranker',
-    color: 'amber',
-    category: 'reranker',
-    isConfigured: true,
-    models: [
-      {
-        id: 'bge-reranker-v2-m3',
-        name: 'BAAI/bge-reranker-v2-m3',
-        displayName: 'BGE Reranker v2 M3',
-        type: 'reranker',
-        contextWindow: 8192,
-      },
-      {
-        id: 'bge-reranker-large',
-        name: 'BAAI/bge-reranker-large',
-        displayName: 'BGE Reranker Large',
-        type: 'reranker',
-        contextWindow: 512,
-      },
-      {
-        id: 'bge-reranker-base',
-        name: 'BAAI/bge-reranker-base',
-        displayName: 'BGE Reranker Base',
-        type: 'reranker',
-        contextWindow: 512,
-      },
-    ],
-  },
+
   {
     id: 'cohere-reranker',
     name: 'Cohere Reranker',

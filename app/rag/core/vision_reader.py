@@ -30,9 +30,16 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.logging import get_logger
+from app.rag.core.metadata import _looks_like_local_image_id
 from app.storage.object.minio import MinIOService
 
 logger = get_logger("rag.multimodal.vision_reader")
+
+
+def select_image_evidence(docs: Iterable[Document]) -> list[Document]:
+    """Keep image references already returned by authorized document retrieval."""
+    return [doc for doc in docs if doc.metadata.get("img_id") or doc.metadata.get("image_id")]
+
 
 _NIL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 _DEFAULT_IMAGE_MIME_TYPE = "image/jpeg"
@@ -186,6 +193,18 @@ async def _load_image_bytes(
     """
     img_id = str(meta.get("img_id") or "").strip() or None
     image_id = str(meta.get("image_id") or "").strip() or None
+
+    if img_id and _looks_like_local_image_id(img_id):
+        image_id = img_id
+        img_id = None
+
+    if img_id and ":" in img_id:
+        try:
+            image_tenant_id = UUID(img_id.split(":", 1)[0])
+        except ValueError:
+            return None, "invalid_image_tenant"
+        if image_tenant_id != tenant_id:
+            return None, "image_tenant_mismatch"
 
     if img_id:
         data = await asyncio.to_thread(_load_image_bytes_from_minio_sync, img_id=img_id, max_bytes=max_bytes)

@@ -132,6 +132,12 @@ def query_contract_defaults() -> QueryContractDefaults:
 def resolve_query_preparation_request(
     question: str, history_text: str, overrides: QueryPreparationOverrides, *, temporal_enabled: bool
 ) -> QueryPreparationRequest:
+    from app.core.model_execution import reject_retired_model_provider
+
+    reject_retired_model_provider(
+        settings.SPARSE_RETRIEVAL_PROVIDER if overrides.sparse_provider is None else overrides.sparse_provider,
+        capability="sparse",
+    )
     return QueryPreparationRequest(
         question,
         history_text,

@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.rag.retrieval.hybrid import channel_collection
+
 if not hasattr(_datetime, "UTC"):
     _datetime.UTC = _datetime.timezone.utc
 
@@ -12,7 +14,7 @@ def _runtime(*, dataset_scoped: bool, space: str = "space-a", collection: str = 
     from app.services.dataset_embedding_config import DatasetEmbeddingRuntimeConfig
 
     return DatasetEmbeddingRuntimeConfig(
-        provider="local",
+        provider="openai_compatible",
         model="embed-model",
         api_base="",
         api_key="",
@@ -122,7 +124,7 @@ def test_retriever_dataset_scope_raises_when_runtime_lookup_fails(
             return None
 
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
-    monkeypatch.setattr(retriever_module, "get_vector_store", lambda: SimpleNamespace(search=lambda **kwargs: []))
+    monkeypatch.setattr(channel_collection, "get_vector_store", lambda: SimpleNamespace(search=lambda **kwargs: []))
 
     retriever = HybridRetriever(
         tenant_id=tenant_id,

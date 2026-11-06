@@ -585,7 +585,11 @@ function SettingsContent({
         </SettingsSectionFrame>
 
         <SettingsSectionFrame section={SETTINGS_SECTION_BY_ID['sec-models']} index={visibleSectionIndex['sec-models']}>
-          <ModelProvidersSection groupedProviders={state.groupedProviders} onConfigure={state.handleConfigure} />
+          <ModelProvidersSection
+            groupedProviders={state.groupedProviders}
+            onConfigure={state.handleConfigure}
+            retiredEmbeddingModel={state.retiredEmbeddingModel}
+          />
         </SettingsSectionFrame>
 
         <SettingsSectionFrame

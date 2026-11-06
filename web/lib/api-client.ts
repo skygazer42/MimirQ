@@ -117,10 +117,6 @@ export type {
   PromptTemplateUpdate,
 } from '@/lib/api/prompts'
 export type {
-  ClipImageIndexRequest,
-  ClipImageIndexResponse,
-  ClipImageSearchRequest,
-  ClipImageSearchResponse,
   RagConfigTemplate,
   RagConfigTemplateCreate,
   RagConfigTemplateNewVersion,
