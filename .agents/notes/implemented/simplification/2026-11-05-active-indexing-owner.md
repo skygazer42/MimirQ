@@ -14,6 +14,10 @@ Status: implemented
 
 原始元数据、UUID、查询行形状、位置、可选证据和 provider 内容继续使用原校验。IndexingOptions 等 dataclass 不执行运行时校验，因此可空选项的布尔转换和原有证据数字解析保留。缺失、零和负值的既有默认与分支保持，不新增 Context 或协调器。
 
+事件流水线哈希由本模块的 _normalize_event_pipeline_hash 统一去空白、将空字符串归空并截断到 200 字符，退出两个旧私有入口。事件物化直接传入原始引用值，仍拒绝非字符串；向量 metadata 仍先按原事件字段／引用优先级转为字符串，再调用共同规则，两类输入边界不合并。
+
+事件实体的四个证据字段来自实际 EventEntityInput 数据类，提取器与插件适配器都构造完整记录，因此直接读取字段，继续接受真实 None、截断引用到 240 字符并按原策略解析坐标／记录错误。基础来源字典由 build_event_entity_provenance 构造，每个关联继续复制；关联 metadata 只计算一次，空字典仍以 None 落盘。事件实体缓存、role、权重、Session 写入与向量／通道失败政策保持。
+
 2026-11-07 初始化状态增量：真实 Indexer 构造器无条件保存 Session 到 _db，生产调用方使用该实例，清理路径直接执行原 scope 触达与 flush。异常仍在原 try／except 中记录并按 strict 收集；两个批量删除函数仅在 commit=True 时回滚，实际 Session 的 rollback 方法按 SDK 契约调用。查询已取得 Document 且非空后直接读取声明的 dataset_id，原 UUID 处理和空数据集返回保持。
 
 Embedding 标题别名按两组明确的有序键选择原始真值，由当前模块的 _first_header_metadata_value 在四处复用。保留选择时的逐键读取和布尔判断，不提前渲染或遍历列表。轻量前缀与 field-aware 入口仍采用各自原有列表显示、section 回退和长度限制，原 content、前缀、向量输入与其版本含义保持；十个单次条件表达式绑定退出。
@@ -24,6 +28,7 @@ Embedding 标题别名按两组明确的有序键选择原始真值，由当前�
 
 接入已有并行类能缩短 `Indexer`，但这些类采用不同的清理和运行配置政策，直接迁移会改变活动调用方的行为。保留两套实现可以避免删除文件，但没有实际入口的副本持续分叉，也会让后续修改选错所有者；因此保留现行入口并清理未使用副本。
 
+- 将事件列与原始引用统一当作任意值转字符串，可以只留一条入口，但它会让先前被拒绝的非字符串引用成为哈希，因此保留原始引用的类型边界，只共享内部文本规则。
 ## Consequences
 
 项目中的写入调用和现有 private hook 继续使用同一 `Indexer`，客户端与会话归属明确；已构造记录不再重复解析。五个退出模块和类的完整源码已读，Git 跟踪源码、配置、测试与包导出检索没有发现岛外使用或注册。未引入未跟踪文件、依赖或新框架。
@@ -35,3 +40,5 @@ Embedding 标题别名按两组明确的有序键选择原始真值，由当前�
 标题别名记录位于 embedding-header-alias-owner-20261107。完整当前／提交源码 AST 对照限定两组有序键、同义原始真值选择器和四个调用替换；五个生产者／元数据契约文件的哈希保持，列表转换和输出代码原文保持。Ruff、格式、Python 3.11 与记录门禁通过，未执行正则、抽取、embedding、Python 测试、SDK 或模型函数。
 
 历史笔记中，[向量 writer 所有者](2026-11-03-indexer-vector-writer-owner.md) 与 shadow 函数职责部分重叠，原位同步已退出调用者的事实，缓存决定不变。[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md) 的原始值边界原则沿用，索引的 `_safe_int` 继续返回 None。[语料缓存事务](../bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md) 的事务与失效规则保持；前端索引状态相关笔记属于其他调用链，不被替代。
+
+事件索引来源契约的源码证据位于 `E:/MimirQ/.superpowers/event-index-provenance-contracts-20261107/`。完整 Indexer 源码与 AST 限于共同哈希规则、实际证据字段和关联 metadata 顺序组装；原数据类、两条真实输入工厂、来源 allowlist、ORM 与已有测试文件保存哈希。Ruff、格式、Python 3.11 与笔记门禁提供静态证据；未运行或修改 Python 测试，也未执行索引、SDK、模型、向量或数据库运行时。

@@ -853,13 +853,15 @@ def _event_references(event: KgSourceEvent) -> dict[str, Any]:
     return refs if isinstance(refs, dict) else {}
 
 
-def _event_pipeline_hash(event: KgSourceEvent, refs: dict[str, Any]) -> str | None:
-    pipeline_hash = str(event.pipeline_hash or refs.get("pipeline_hash") or "").strip() or None
-    return pipeline_hash[:200] if pipeline_hash and len(pipeline_hash) > 200 else pipeline_hash
+def _normalize_event_pipeline_hash(value):
+    if not isinstance(value, str):
+        return None
+    pipeline_hash = value.strip()
+    return pipeline_hash[:200] if pipeline_hash else None
 
 
 def _event_vector_metadata(event: KgSourceEvent, refs: dict[str, Any]) -> dict[str, Any]:
-    pipeline_hash = _event_pipeline_hash(event, refs)
+    pipeline_hash = _normalize_event_pipeline_hash(str(event.pipeline_hash or refs.get("pipeline_hash") or ""))
     meta: dict[str, Any] = {
         "tenant_id": str(event.tenant_id),
         "document_id": str(event.document_id) if event.document_id else "",
@@ -1747,25 +1749,18 @@ class Indexer:
             return None
         return self._load_document_for_channel_tracking(tenant_id=tenant_id, document_id=next(iter(document_ids)))
 
-    def _normalized_event_pipeline_hash(self, refs: dict[str, Any]) -> str | None:
-        raw_pipeline_hash = refs.get("pipeline_hash")
-        if not isinstance(raw_pipeline_hash, str):
-            return None
-        pipeline_hash = raw_pipeline_hash.strip() or None
-        if pipeline_hash and len(pipeline_hash) > 200:
-            return pipeline_hash[:200]
-        return pipeline_hash
-
     def _event_link_extra(self, *, ent: EventEntityInput, link_extra_data: dict[str, Any]) -> dict[str, Any]:
-        link_extra = dict(link_extra_data or {})
-        evidence_quote = (ent.evidence_quote or "").strip() if hasattr(ent, "evidence_quote") else ""
+        link_extra = dict(link_extra_data)
+        evidence_quote = (ent.evidence_quote or "").strip()
         if evidence_quote:
             link_extra["evidence_quote"] = evidence_quote[:240]
-        evidence_source = (ent.evidence_source or "").strip() if hasattr(ent, "evidence_source") else ""
+        evidence_source = (ent.evidence_source or "").strip()
         if evidence_source:
             link_extra["evidence_source"] = evidence_source
-        for field_name in ("evidence_start_char", "evidence_end_char"):
-            value = getattr(ent, field_name, None) if hasattr(ent, field_name) else None
+        for field_name, value in (
+            ("evidence_start_char", ent.evidence_start_char),
+            ("evidence_end_char", ent.evidence_end_char),
+        ):
             if value is None:
                 continue
             try:
@@ -1813,7 +1808,7 @@ class Indexer:
             refs = item.references if isinstance(item.references, dict) else {}
             event_obj = KgSourceEvent(
                 tenant_id=tenant_id,
-                pipeline_hash=self._normalized_event_pipeline_hash(refs),
+                pipeline_hash=_normalize_event_pipeline_hash(refs.get("pipeline_hash")),
                 document_id=item.document_id,
                 chunk_id=item.chunk_id,
                 title=item.title,
@@ -1834,13 +1829,16 @@ class Indexer:
                 entity_obj = self._entity_for_event(tenant_id=tenant_id, ent=ent, entity_cache=entity_cache)
                 if entity_obj is None:
                     continue
+                link_extra = self._event_link_extra(ent=ent, link_extra_data=link_extra_data)
+                if not link_extra:
+                    link_extra = None
                 self._db.add(
                     KgEventEntity(
                         event=event_obj,
                         entity=entity_obj,
                         weight=1.0,
                         role=ent.role,
-                        extra_data=(self._event_link_extra(ent=ent, link_extra_data=link_extra_data) or None),
+                        extra_data=link_extra,
                     )
                 )
         return db_events, entity_cache
