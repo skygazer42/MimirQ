@@ -18,7 +18,7 @@ Status: implemented
 
 2026-11-07 索引规则增量：旧通道状态由 document_index_channel_service 的 legacy_document_index_channel_status 持有，索引审计退出整份重复实现。审计取得新构造的状态字典后移除 attempt_count，保持原六字段投影和默认值仍逐通道计算的时点；通道摘要继续保留原计数字段。两个写入分支使用同一个私有错误文本规则，仍先 strip、截断 2000 字符，再把空文本归空，不把历史行读取一并截断。
 
-两个文档适配器复制 ORM 元数据后，直接使用既有 get_active_pipeline_hash，保留 active/current 字段优先级和空白规则。显式空白 override 仍直接返回空，不合并为 get_selected_pipeline_hash 的另一种空白回退。core 按[显式缺省记录](2026-11-07-explicit-null-fallback.md)只在参数为 None 时选择默认映射或字符串，保留非空但布尔值为假的映射。复杂条件中的单次求值改成有业务含义的局部语句，没有恢复 or-None 写法。
+两个文档适配器复制 ORM 元数据后，直接使用既有 get_active_pipeline_hash，保留 active/current 字段优先级和空白规则。显式空白 override 仍直接返回空，不合并为 get_selected_pipeline_hash 的另一种空白回退。core 使用显式缺省判断，只在参数为 None 时选择默认映射或字符串，保留非空但布尔值为假的映射。复杂条件中的单次求值改成有业务含义的局部语句，没有恢复 or-None 写法。
 
 ## Alternatives considered
 
