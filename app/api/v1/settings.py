@@ -1495,19 +1495,23 @@ def update_settings(
             # Best-effort, PII-minimal audit record (no secret values).
             from app.services.audit_log_service import audit_log_event
 
-            request_id = (
-                (http_request.headers.get("X-Request-ID") or "").strip()
-                or str(getattr(http_request.state, "request_id", "") or "").strip()
-                or None
-            )
+            request_id = (http_request.headers.get("X-Request-ID") or "").strip()
+            if not request_id:
+                request_id = str(getattr(http_request.state, "request_id", "") or "").strip()
+            if not request_id:
+                request_id = None
 
             ip = None
             with contextlib.suppress(Exception):
                 client = http_request.client
                 if client is not None:
-                    ip = client.host.strip() or None
+                    ip = client.host.strip()
+                    if not ip:
+                        ip = None
 
-            user_agent = (http_request.headers.get("User-Agent") or "").strip() or None
+            user_agent = (http_request.headers.get("User-Agent") or "").strip()
+            if not user_agent:
+                user_agent = None
 
             audit_log_event(
                 db,
@@ -1818,12 +1822,18 @@ def _get_milvus_status() -> dict[str, object]:
         return {"connected": False, "message": "Milvus 客户端未安装"}
 
     try:
+        milvus_user = settings.MILVUS_USER
+        if not milvus_user:
+            milvus_user = None
+        milvus_password = settings.MILVUS_PASSWORD
+        if not milvus_password:
+            milvus_password = None
         connections.connect(
             alias="status_check",
             host=settings.MILVUS_HOST,
             port=settings.MILVUS_PORT,
-            user=settings.MILVUS_USER or None,
-            password=settings.MILVUS_PASSWORD or None,
+            user=milvus_user,
+            password=milvus_password,
             timeout=1.0,
         )
         connections.disconnect("status_check")
