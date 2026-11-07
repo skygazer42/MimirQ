@@ -16,8 +16,9 @@ def _as_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
-def _normalize_tenant_id(value: Any) -> str:
-    return str(value or "").strip()
+def _normalize_tenant_id(value: Any) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized if normalized else None
 
 
 def _extract_trace_payload(row: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str]:
@@ -34,15 +35,14 @@ def _iter_filtered_traces(
     rows: Sequence[Mapping[str, Any]], *, tenant_id: str | None
 ) -> list[tuple[dict[str, Any], Mapping[str, Any], str]]:
     out: list[tuple[dict[str, Any], Mapping[str, Any], str]] = []
-    tenant_norm = _normalize_tenant_id(tenant_id)
-    for row in rows or []:
+    for row in rows:
         if not isinstance(row, Mapping):
             continue
         trace, source = _extract_trace_payload(row)
         if not isinstance(trace, dict):
             continue
         trace_tenant = _normalize_tenant_id(trace.get("tenant_id") or row.get("tenant_id"))
-        if tenant_norm and trace_tenant and trace_tenant != tenant_norm:
+        if tenant_id and trace_tenant and trace_tenant != tenant_id:
             continue
         out.append((trace, row, source))
     return out
@@ -109,7 +109,8 @@ def summarize_fusion_weight_observability(
     *,
     tenant_id: str | None = None,
 ) -> dict[str, Any]:
-    filtered = _iter_filtered_traces(rows, tenant_id=tenant_id)
+    tenant_norm = _normalize_tenant_id(tenant_id)
+    filtered = _iter_filtered_traces(rows, tenant_id=tenant_norm)
 
     strategy_hist: Counter[str] = Counter()
     rrf_hist: Counter[str] = Counter()
@@ -140,13 +141,13 @@ def summarize_fusion_weight_observability(
 
     return {
         "schema": FUSION_WEIGHT_OBSERVABILITY_SCHEMA,
-        "tenant_id": _normalize_tenant_id(tenant_id) or None,
+        "tenant_id": tenant_norm,
         "summary": {
             "observed_rows": len(filtered),
             "ltr_training_ready_rows": ltr_training_ready_rows,
             "fusion_strategy_histogram": dict(sorted(strategy_hist.items())),
             "rrf_k_histogram": dict(sorted(rrf_hist.items(), key=lambda item: int(item[0]))),
-            "channel_signal_coverage": {key: channel_signal_coverage.get(key, 0) for key in _CHANNELS},
+            "channel_signal_coverage": {key: channel_signal_coverage[key] for key in _CHANNELS},
             "observed_weight_profiles": dict(sorted(weight_profiles.items())),
         },
     }
@@ -193,15 +194,11 @@ def _average(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def _normalized_weights_from_separation(separation: dict[str, float]) -> dict[str, float]:
-    total_sep = sum(separation.values())
-    if total_sep <= 0.0:
-        return {"vector": 0.4, "bm25": 0.2, "lexical": 0.2, "sparse": 0.2}
-
-    weights = {channel: round(separation[channel] / total_sep, 6) for channel in _CHANNELS}
+def _normalized_weights_from_separation(separation: dict[str, float], *, total_separation: float) -> dict[str, float]:
+    weights = {channel: round(separation[channel] / total_separation, 6) for channel in _CHANNELS}
     total = sum(weights.values())
     if total > 0.0:
-        weights = {channel: round(weights.get(channel, 0.0) / total, 6) for channel in _CHANNELS}
+        weights = {channel: round(weights[channel] / total, 6) for channel in _CHANNELS}
         total = sum(weights.values())
         if total > 0.0:
             weights = {channel: round(value / total, 6) for channel, value in weights.items()}
@@ -214,7 +211,8 @@ def suggest_tenant_fusion_weights(
     tenant_id: str | None = None,
     min_rows: int = 5,
 ) -> dict[str, Any]:
-    filtered = _iter_filtered_traces(rows, tenant_id=tenant_id)
+    tenant_norm = _normalize_tenant_id(tenant_id)
+    filtered = _iter_filtered_traces(rows, tenant_id=tenant_norm)
 
     positives: defaultdict[str, list[float]] = defaultdict(list)
     negatives: defaultdict[str, list[float]] = defaultdict(list)
@@ -242,16 +240,17 @@ def suggest_tenant_fusion_weights(
         neg_avg = _average(negatives[channel])
         separation[channel] = max(0.0, pos_avg - neg_avg)
 
-    if used_rows < max(1, int(min_rows or 0)) or sum(separation.values()) <= 0.0:
+    total_separation = sum(separation.values())
+    if used_rows < max(1, int(min_rows or 0)) or total_separation <= 0.0:
         weights = {"vector": 0.4, "bm25": 0.2, "lexical": 0.2, "sparse": 0.2}
         weight_source = "fallback_default"
     else:
-        weights = _normalized_weights_from_separation(separation)
+        weights = _normalized_weights_from_separation(separation, total_separation=total_separation)
         weight_source = "feedback_trace_snapshot"
 
     return {
         "schema": TENANT_FUSION_WEIGHTS_SCHEMA,
-        "tenant_id": _normalize_tenant_id(tenant_id) or None,
+        "tenant_id": tenant_norm,
         "fusion_weights": weights,
         "summary": {
             "training_rows": used_rows,
