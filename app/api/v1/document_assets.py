@@ -292,7 +292,7 @@ def _stream_object_storage_document(
             dataset_id=document.dataset_id,
             document_id=document.id,
             file_type=document.file_type,
-            document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+            document_metadata=dict(document.doc_metadata or {}),
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Object storage is disabled") from exc

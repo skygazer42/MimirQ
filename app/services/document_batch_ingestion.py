@@ -697,7 +697,7 @@ async def _process_saved_batch_upload(
 
 
 def _refresh_batch_policy(dataset: Dataset) -> IngestionPolicy | None:
-    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    dataset_meta = (dataset.dataset_metadata or {}) if dataset is not None else {}
     return parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})
 
 

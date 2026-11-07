@@ -142,7 +142,7 @@ def _regression_run_params_from_request(request: RagasRegressionRunCreateRequest
         "dataset_id": str(request.dataset_id),
         "skip_empty_contexts": request.skip_empty_contexts,
         "max_cases": request.max_cases,
-        "use_llm_judge": bool(getattr(request, "use_llm_judge", False)),
+        "use_llm_judge": bool(request.use_llm_judge),
         "rag_params": _jsonable_regression_rag_params(_regression_rag_params_from_request(request)),
     }
 
@@ -243,7 +243,7 @@ def _create_regression_run_and_enqueue(
         case_ids=list(request.case_ids or []),
         dataset_id=request.dataset_id,
         metric_names=request.metrics,
-        use_llm_judge=bool(getattr(request, "use_llm_judge", False)),
+        use_llm_judge=bool(request.use_llm_judge),
         skip_empty_contexts=request.skip_empty_contexts,
         max_cases=request.max_cases,
         rag_params=rag_params,
@@ -2372,7 +2372,7 @@ async def run_kg_search_diagnostics(
     resp = await run_impl(db=db, tenant_id=tenant_id, account_id=account_id, req=payload)
 
     # Optional: persist a compact run snapshot for diffing over time.
-    if bool(getattr(payload, "persist_run", False)):
+    if bool(payload.persist_run):
         try:
             # JSONB persistence needs JSON-serializable primitives.
             # Pydantic's default `model_dump()` returns UUID objects; use mode="json" to coerce to strings.

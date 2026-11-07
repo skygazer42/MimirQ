@@ -127,10 +127,10 @@ def _normalize_meta_value(value: Any) -> Any:
 def _fingerprint_candidate_entry(candidate: RerankCandidate) -> dict[str, Any] | None:
     if candidate is None:
         return None
-    cid = str(getattr(candidate, "id", "") or "").strip()
+    cid = str(candidate.id or "").strip()
     if not cid:
         return None
-    meta = getattr(candidate, "metadata", None)
+    meta = candidate.metadata
     meta = meta if isinstance(meta, dict) else {}
 
     entry: dict[str, Any] = {"id": cid}

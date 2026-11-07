@@ -504,7 +504,7 @@ async def _resolve_object_storage_document_path(
             dataset_id=doc.dataset_id,
             document_id=did,
             file_type=doc.file_type,
-            document_metadata=dict(getattr(doc, "doc_metadata", None) or {}),
+            document_metadata=dict(doc.doc_metadata or {}),
         )
     except RuntimeError:
         return (
@@ -584,7 +584,7 @@ async def _resolve_document_job_file_path(
     started_at: float,
     pipeline_hash: str | None,
 ) -> tuple[Path | None, Path | None, dict[str, Any] | None]:
-    raw_path = str(getattr(doc, "file_path", "") or "").strip()
+    raw_path = str(doc.file_path or "").strip()
     if not raw_path or raw_path.startswith("manual://"):
         return (
             None,

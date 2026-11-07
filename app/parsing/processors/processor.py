@@ -668,7 +668,7 @@ class DocumentProcessorService:
                 document=db_doc,
                 failed_stage=str(failed_stage_hint or prev_stage or stage or "").strip() or None,
                 error_code=(str(error_code_hint).strip() if error_code_hint else None),
-                error_message=getattr(db_doc, "error_message", None),
+                error_message=db_doc.error_message,
                 original_payload={
                     "status": status_norm,
                     "stage": str(stage or ""),
@@ -711,13 +711,13 @@ class DocumentProcessorService:
         try:
             from app.services import ingestion_run_service
 
-            doc_meta = getattr(db_doc, "doc_metadata", None)
+            doc_meta = db_doc.doc_metadata
             ingestion_run_service.on_document_status_update(
                 db,
                 tenant_id=tenant_id,
                 document_id=document_id,
                 new_status=str(status or ""),
-                error_message=getattr(db_doc, "error_message", None),
+                error_message=db_doc.error_message,
                 doc_meta=(dict(doc_meta or {}) if isinstance(doc_meta, dict) else None),
                 criticality=criticality,
             )
@@ -1012,7 +1012,7 @@ class DocumentProcessorService:
 
     @staticmethod
     def _parsed_table_store_source_ext(db_document: DBDocument) -> str | None:
-        source_ext = getattr(db_document, "file_type", None)
+        source_ext = db_document.file_type
         return f".{str(source_ext).lower().lstrip('.')}" if source_ext else None
 
     @classmethod
@@ -1094,8 +1094,8 @@ class DocumentProcessorService:
         if not bool(pipeline_effective.table_store_enabled):
             return 0
 
-        dataset_id = getattr(db_document, "dataset_id", None)
-        document_id = getattr(db_document, "id", None)
+        dataset_id = db_document.dataset_id
+        document_id = db_document.id
         if dataset_id is None or document_id is None:
             return 0
 

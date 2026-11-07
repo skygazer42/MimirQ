@@ -533,7 +533,7 @@ def _normalize_jira_full_sync_scope(
 
 
 def _jira_project_connector_metadata(doc: DBDocument) -> tuple[dict[str, Any], dict[str, Any]]:
-    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
     conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
     return meta, conn
 
@@ -1412,7 +1412,7 @@ def _patch_jira_linked_artifact_document_metadata(
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
 ) -> None:
-    meta_link = dict(getattr(link_doc, "doc_metadata", None) or {})
+    meta_link = dict(link_doc.doc_metadata or {})
     updated = str(issue_info.get("updated") or "").strip()
     issue_id = str(issue_info.get("issue_id") or "").strip() or None
     issue_key = str(issue_info.get("issue_key") or "").strip() or None
@@ -1656,7 +1656,7 @@ def _patch_jira_attachment_document_metadata(
     attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
     filename = str(attachment_ref.get("filename") or "").strip()
     download_url = str(attachment_ref.get("download_url") or "").strip()
-    meta_att = dict(getattr(att_doc, "doc_metadata", None) or {})
+    meta_att = dict(att_doc.doc_metadata or {})
     updated = str(issue_info.get("updated") or "").strip()
     issue_id = str(issue_info.get("issue_id") or "").strip() or None
     issue_key = str(issue_info.get("issue_key") or "").strip() or None

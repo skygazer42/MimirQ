@@ -611,7 +611,7 @@ class PostProcessMixin:
         if dataset_filters and doc_ctx.doc_dataset_by_id.get(doc_id_str) not in dataset_filters:
             self._increment_enrichment_stat(stats0, "filtered_dataset")
             return False
-        if getattr(chunk, "disabled_at", None) is not None:
+        if chunk.disabled_at is not None:
             self._increment_enrichment_stat(stats0, "filtered_not_ready")
             return False
         if doc_ctx.doc_ready_by_id and not doc_ctx.doc_ready_by_id.get(doc_id_str, False):
@@ -738,7 +738,7 @@ class PostProcessMixin:
             meta["end_char"] = int(chunk.end_char)
         if meta.get("chunk_index") is None:
             try:
-                meta["chunk_index"] = int(getattr(chunk, "chunk_index", None))
+                meta["chunk_index"] = int(chunk.chunk_index)
             except Exception as exc:
                 logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
 
@@ -1049,7 +1049,7 @@ class PostProcessMixin:
         desired = desired_pipeline_by_doc.get(str(chunk.document_id))
         if not desired:
             return True
-        stored_meta = dict(getattr(chunk, "doc_metadata", None) or {})
+        stored_meta = dict(chunk.doc_metadata or {})
         ck_key = self._doc_pipeline_key(stored_meta, document_id=str(chunk.document_id))
         return bool(ck_key and ck_key == desired)
 

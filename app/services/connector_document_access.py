@@ -116,7 +116,7 @@ def _apply_document_access_from_config(
 
     try:
         doc.access_mode = None if access_mode == "inherit" else access_mode
-        if not (getattr(doc, "owner_id", None) or "").strip():
+        if not (doc.owner_id or "").strip():
             doc.owner_id = requested_by
 
         if access_mode == "partial_members":

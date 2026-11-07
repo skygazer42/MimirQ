@@ -333,7 +333,7 @@ def generate_and_index_document_qa(
     Generate/extract Q&A pairs and store them as additional chunks under the active pipeline version.
     """
     document_id = UUID(str(document.id))
-    doc_meta = dict(getattr(document, "doc_metadata", None) or {})
+    doc_meta = dict(document.doc_metadata or {})
     active_hash = _active_pipeline_hash(doc_meta)
     active_key = _active_doc_pipeline_key(document_id, doc_meta)
 
@@ -362,14 +362,14 @@ def generate_and_index_document_qa(
     records, chunk_ids, chunk_metas = _build_qa_chunk_payloads(
         tenant_id=tenant_id,
         document_id=document_id,
-        filename=getattr(document, "filename", ""),
+        filename=document.filename,
         pairs=pairs,
         mode=mode,
         active_hash=active_hash,
         active_key=active_key,
         next_index=next_index,
     )
-    source_label = str(getattr(document, "filename", "") or "document").strip()[:500] or "document"
+    source_label = str(document.filename or "document").strip()[:500] or "document"
     vector_ids = _index_qa_records(records, tenant_id=tenant_id, document_id=document_id)
     db_chunks = _persist_qa_chunks(
         db,

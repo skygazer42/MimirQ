@@ -490,7 +490,7 @@ def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
 
 
 def _touch_dataset_updated_after_delete(db: Session, *, tenant_id: UUID, document: DBDocument) -> None:
-    if getattr(document, "dataset_id", None) is None:
+    if document.dataset_id is None:
         return
     try:
         from app.models.dataset import Dataset as DBDataset  # noqa: WPS433

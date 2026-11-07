@@ -62,7 +62,7 @@ def _load_confluence_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> Conne
 
 
 def _confluence_doc_connector_metadata(doc: DBDocument) -> dict[str, Any]:
-    meta = doc.doc_metadata if isinstance(getattr(doc, "doc_metadata", None), dict) else {}
+    meta = doc.doc_metadata if isinstance(doc.doc_metadata, dict) else {}
     conn = meta.get("connector") if isinstance(meta.get("connector"), dict) else {}
     return conn
 
@@ -783,7 +783,7 @@ def _patch_confluence_page_document_metadata(
     settings_map: dict[str, Any],
 ) -> None:
     try:
-        meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+        meta0 = dict(doc.doc_metadata or {})
         if last_modified:
             lm_iso = _normalize_datetime_utc_iso(last_modified) or last_modified
             meta0["source_last_modified_at"] = lm_iso
@@ -1042,7 +1042,7 @@ def _patch_confluence_attachment_document_metadata(
     settings_map: dict[str, Any],
 ) -> None:
     try:
-        meta_att = dict(getattr(att_doc, "doc_metadata", None) or {})
+        meta_att = dict(att_doc.doc_metadata or {})
         if isinstance(acl_provenance, dict):
             meta_att["acl_provenance"] = dict(acl_provenance)
         meta_att["connector"] = _confluence_attachment_connector_metadata(

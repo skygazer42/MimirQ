@@ -208,9 +208,9 @@ def apply_pending_retry_cleanup(
     parsed_content_model: type[DocumentParsedContent] = DocumentParsedContent,
     chunk_model: type[DocumentChunk] = DocumentChunk,
 ) -> str:
-    original_meta = dict(getattr(db_document, "doc_metadata", None) or {})
-    original_chunk_count = getattr(db_document, "chunk_count", None)
-    original_total_characters = getattr(db_document, "total_characters", None)
+    original_meta = dict(db_document.doc_metadata or {})
+    original_chunk_count = db_document.chunk_count
+    original_total_characters = db_document.total_characters
     meta = dict(original_meta)
     request_status, request = _load_retry_cleanup_request(meta, document_id=document_id)
     if request_status == "missing":
@@ -408,10 +408,10 @@ def audit_ingest_gate(
     audit_log_event(
         db,
         tenant_id=tenant_id,
-        actor_id=(getattr(db_document, "owner_id", None) or None),
+        actor_id=(db_document.owner_id or None),
         action=AUDIT_ACTION_DOCUMENT_INGEST_GATE,
         resource_type="document",
-        resource_id=str(getattr(db_document, "id", "")),
+        resource_id=str(db_document.id),
         details={
             "gate": str(gate or "").strip() or "unknown",
             "outcome": str(outcome or "").strip() or "degraded",
@@ -430,7 +430,7 @@ def maybe_enrich_document_questions(
 ) -> None:
     if not documents:
         return
-    metadata = dict(getattr(db_document, "doc_metadata", None) or {})
+    metadata = dict(db_document.doc_metadata or {})
     if not _document_questions_enabled(metadata):
         return
     if metadata.get("document_questions"):
@@ -669,7 +669,7 @@ def resolve_ingestion_run_update_criticality(
     *,
     status_norm: str,
 ) -> str:
-    meta = dict(getattr(db_doc, "doc_metadata", None) or {})
+    meta = dict(db_doc.doc_metadata or {})
     for key in ("ingestion_run_update_criticality", "ingestion_run_status_criticality"):
         raw = str(meta.get(key) or "").strip().lower()
         if raw in {"best_effort", "required"}:

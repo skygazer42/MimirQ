@@ -111,7 +111,7 @@ def _legacy_channel_status(document: DBDocument, *, channel: str, enabled: bool)
 
     error = None
     if status == "error":
-        error = str(getattr(document, "error_message", "") or meta.get("error_message") or "").strip() or None
+        error = str(document.error_message or meta.get("error_message") or "").strip() or None
 
     return {
         "channel": channel,
@@ -264,8 +264,8 @@ def _log_document_index_channel_transition_failure(
     logger.warning(
         "Failed to persist document index channel transition%s tenant=%s document=%s channel=%s status=%s: %s",
         "" if used_savepoint else " without savepoint",
-        getattr(document, "tenant_id", None),
-        getattr(document, "id", None),
+        document.tenant_id,
+        document.id,
         normalized_channel,
         normalized_status,
         str(exc)[:200],

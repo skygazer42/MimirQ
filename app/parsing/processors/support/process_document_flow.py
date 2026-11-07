@@ -1728,7 +1728,7 @@ async def _maybe_apply_parse_quality_gate(
             audit_log_event(
                 db,
                 tenant_id=tenant_id,
-                actor_id=(getattr(db_document, "owner_id", None) or None),
+                actor_id=(db_document.owner_id or None),
                 action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.parse_drop"),
                 resource_type="document",
                 resource_id=str(document_id),
@@ -2227,7 +2227,7 @@ async def _maybe_return_governance_drop_result(
         audit_log_event(
             db,
             tenant_id=tenant_id,
-            actor_id=(getattr(db_document, "owner_id", None) or None),
+            actor_id=(db_document.owner_id or None),
             action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.governance_drop"),
             resource_type="document",
             resource_id=str(document_id),
@@ -3099,8 +3099,7 @@ def _apply_chunk_asset_stage_and_metadata(
     chunked_items = chunk_asset.chunks
     pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
     file_type = (
-        str(getattr(db_document, "file_type", "") or "").strip().lower()
-        or str(prepared_state.file_path.suffix.lstrip(".")).lower()
+        str(db_document.file_type or "").strip().lower() or str(prepared_state.file_path.suffix.lstrip(".")).lower()
     )
     governance_version = (
         str(getattr(governance_stats, "version", "") or "").strip() if governance_stats is not None else ""
@@ -3166,8 +3165,7 @@ def _run_index_stage(
             tenant_id=tenant_id,
             document_id=document_id,
             file_path=prepared_state.file_path,
-            default_source=str(getattr(db_document, "filename", "") or "").strip()
-            or str(prepared_state.file_path.name),
+            default_source=str(db_document.filename or "").strip() or str(prepared_state.file_path.name),
             chunks=chunks,
             options=prepared_state.index_options,
         )

@@ -1263,7 +1263,7 @@ def _log_kg_graph_export(
     flags: KGGraphExportFlags,
     content: str | bytes,
 ) -> None:
-    export_stats = dict(getattr(graph, "stats", {}) or {})
+    export_stats = dict(graph.stats or {})
     _log_kg_api_metric(
         "kg.api.graph_export",
         tenant_id=str(tenant_id),
