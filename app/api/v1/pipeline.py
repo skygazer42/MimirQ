@@ -997,7 +997,7 @@ def export_governance_profile_ingestion_policy(
         enabled=True,
         match={"extensions": []},
         preprocess={"enabled": False, "steps": []},
-        governance_profile_ref=str(profile.key or "").strip() or None,
+        governance_profile_ref=profile.key,
         pipeline_patch={},
     )
 
@@ -1164,7 +1164,7 @@ async def ingestion_preview(
         await save_upload_file(file, temp_path, max_bytes=settings.MAX_FILE_SIZE)
 
         dataset_meta = _dataset_metadata_dict(dataset)
-        policy = parse_ingestion_policy_from_metadata(dataset_meta) or None
+        policy = parse_ingestion_policy_from_metadata(dataset_meta)
         matched_rule = match_ingestion_rule(policy, filename=file.filename, file_ext=file_ext)
         config = _resolve_ingestion_preview_config(
             matched_rule=matched_rule,
