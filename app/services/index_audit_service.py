@@ -104,6 +104,10 @@ def record_index_drift_item(
     if not isinstance(marker, dict):
         raise ValueError("marker must be an object")
 
+    reconcile_task_id = str(reconcile_task_id or "").strip()
+    if not reconcile_task_id:
+        reconcile_task_id = None
+
     item = IndexDriftItem(
         tenant_id=_uuid_or_none(marker.get("tenant_id")),
         dataset_id=_uuid_or_none(dataset_id),
@@ -116,7 +120,7 @@ def record_index_drift_item(
         reason=str(marker.get("reason") or "").strip()[:240] or "index_operation_failed",
         details=dict(marker.get("details") or {}) if isinstance(marker.get("details"), dict) else {},
         marker=dict(marker),
-        reconcile_task_id=str(reconcile_task_id or "").strip() or None,
+        reconcile_task_id=reconcile_task_id,
         replay_count=0,
     )
     if item.tenant_id is None:
@@ -186,8 +190,14 @@ def resolve_index_drift_item(
 
     item.status = "resolved"
     item.resolved_at = datetime.now(UTC)
-    item.resolved_by = str(resolved_by or "").strip()[:255] or None
-    item.resolution_note = str(resolution_note or "").strip()[:2000] or None
+    resolved_by = str(resolved_by or "").strip()[:255]
+    if not resolved_by:
+        resolved_by = None
+    item.resolved_by = resolved_by
+    resolution_note = str(resolution_note or "").strip()[:2000]
+    if not resolution_note:
+        resolution_note = None
+    item.resolution_note = resolution_note
     db.commit()
     db.refresh(item)
     return item
@@ -599,7 +609,9 @@ def _index_channel_rows_by_document(
         document_key = str(row.document_id or "")
         if not document_key:
             continue
-        pipeline_hash = str(row.pipeline_hash or "").strip() or None
+        pipeline_hash = str(row.pipeline_hash or "").strip()
+        if not pipeline_hash:
+            pipeline_hash = None
         if pipeline_hash != pipeline_hash_by_document.get(document_key):
             continue
         rows_seen_by_document.add(document_key)
@@ -766,7 +778,7 @@ def get_index_audit_reconcile_document_state(
     return {
         "document": document,
         "current_index_readiness": summary,
-        "already_ready": bool(summary.get("ready")),
+        "already_ready": summary["ready"],
     }
 
 
@@ -842,10 +854,9 @@ def _classify_index_audit_reconcile_status(
     current_index_readiness: dict[str, Any],
     channel_rows_present: int,
 ) -> _ReconcileStatus:
-    summary = dict(current_index_readiness or {})
-    pending_channels = list(summary.get("pending_channels") or [])
-    error_channels = list(summary.get("error_channels") or [])
-    ready = bool(summary.get("ready"))
+    pending_channels = current_index_readiness["pending_channels"]
+    error_channels = current_index_readiness["error_channels"]
+    ready = current_index_readiness["ready"]
     rows_present = max(0, int(channel_rows_present or 0))
 
     if rows_present <= 0:
@@ -888,9 +899,7 @@ def get_index_audit_reconcile_document_status(
     )
     if state is None:
         return None
-    document = state.get("document")
-    if document is None:
-        return None
+    document = state["document"]
     return _build_index_audit_reconcile_document_status_payload(
         db=db,
         tenant_id=tenant_id,
@@ -945,8 +954,8 @@ def plan_index_audit_reconcile(
             dataset_id=dataset_id,
             document=document,
         )
-        status = str(status_payload.get("status") or "unknown")
-        counts[status] = counts.get(status, 0) + 1
+        status = status_payload["status"]
+        counts[status] += 1
         action = "enqueue_rebuild" if status in {"pending", "error"} else "report_only"
         if action == "enqueue_rebuild":
             counts["candidate_documents"] += 1
@@ -956,12 +965,12 @@ def plan_index_audit_reconcile(
             {
                 "document_id": str(document.id),
                 "status": status,
-                "reason": status_payload.get("reason"),
+                "reason": status_payload["reason"],
                 "legacy": status_payload["legacy"],
                 "ready": status_payload["ready"],
                 "channel_rows_present": status_payload["channel_rows_present"],
                 "action": action,
-                "current_index_readiness": dict(status_payload.get("current_index_readiness") or {}),
+                "current_index_readiness": dict(status_payload["current_index_readiness"]),
             }
         )
 

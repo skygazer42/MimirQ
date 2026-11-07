@@ -88,14 +88,13 @@ def record_ingest_dead_letter(
     now = _now_utc()
     stage = infer_failed_stage(failed_stage=failed_stage, current_stage=document.current_stage)
     code = normalize_ingest_error_code(error_code or error_message)
-    message = _safe_str(error_message, max_len=4000) or None
+    message = _safe_str(error_message, max_len=4000)
+    if not message:
+        message = None
 
     document.failed_stage = stage
     document.error_code = code
-    try:
-        document.processing_attempts = max(0, int(document.processing_attempts or 0)) + 1
-    except Exception:
-        document.processing_attempts = 1
+    document.processing_attempts = max(0, int(document.processing_attempts or 0)) + 1
     document.next_retry_at = None
 
     tenant_id = document.tenant_id
@@ -124,6 +123,10 @@ def record_ingest_dead_letter(
         (document.doc_metadata or {}).get("pipeline_hash") if isinstance(document.doc_metadata, dict) else None,
     )
 
+    source_ref = _safe_str(document.filename or document.file_path, max_len=1000)
+    if not source_ref:
+        source_ref = None
+
     if existing is None:
         letter = IngestDeadLetter(
             tenant_id=tenant_id,
@@ -133,7 +136,7 @@ def record_ingest_dead_letter(
             failed_stage=stage,
             error_code=code,
             error_message=message,
-            source_ref=_safe_str(document.filename or document.file_path, max_len=1000) or None,
+            source_ref=source_ref,
             original_payload=payload,
             retry_count=0,
             producer_service=_safe_str(producer_service, max_len=80) or "document_processor",
@@ -148,7 +151,7 @@ def record_ingest_dead_letter(
         letter.failed_stage = stage
         letter.error_code = code
         letter.error_message = message
-        letter.source_ref = _safe_str(document.filename or document.file_path, max_len=1000) or None
+        letter.source_ref = source_ref
         letter.original_payload = payload
         letter.retry_count = max(0, int(letter.retry_count or 0)) + 1
         letter.last_attempt_at = now
