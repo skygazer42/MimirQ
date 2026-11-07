@@ -12,6 +12,10 @@ Status: implemented
 
 单文件、URL 和 HTML 入库复用相同的完整 `DBDocument` 查询结果；重复持久化异常也携带实际模型。重复文档 helper 直接读取 `status`、`id`、`doc_metadata` 并写入模型已声明的 `dedup_key`。查无记录、可选入库运行和可空元数据仍按原分支处理，字段存在性不再作为兼容边界。
 
+文件保存函数实际返回整数计数与 `hashlib.hexdigest()` 字符串，直接上传和预检暂存保留这些值，不在消费者重复转型、清空或变换大小写。预检成功字典仅由 `_stage_upload_for_precheck` 完整构造，后续组装、配额统计、清理和重名后缀直接读取其必需字段。失败字典仍经过原有分组，路径安全校验、文件消失处理、逐项会话、取消与清理保持。
+
+捕获 `HTTPException` 的分支直接使用已初始化的 `status_code` 与 `detail`。完整 ORM 查询后的字段不再探测是否存在；已经通过 `dict(...)` 构造的元数据直接传递。数据集缺失分支、预检的原 400 响应和真实空元数据处理保留，不将字段存在性与记录缺失混为一谈。
+
 去重键由 `document_identity.build_document_dedup_key` 统一持有，单文件和批量调用直接传入 `content_sha256` 与 `pipeline_hash`，不再经过只改参数名的私有转发。来源元数据和流水线哈希按顺序归一化、显式将空字符串映射为 `None`；日期解析、ETag 长度上限、URL 优先级和 `setdefault` 的求值时机保持。
 
 ## Alternatives considered
@@ -27,3 +31,5 @@ Status: implemented
 Ruff、格式、语法、调用关系与 diff 检查通过；按用户要求未运行 Python tests，运行时行为未验证。
 
 来源与重复记录这批的静态证据保存在 `E:/MimirQ/.superpowers/document-source-record-contracts-20261107/`，包含实际模型／工厂来源、完整 AST 对照以及单独的暂存区补丁。原有无关修改与测试源码保留，未执行应用、SDK、数据库或 Python 测试；静态检查不证明运行时等价。
+
+上传结果契约的源码证据位于 `E:/MimirQ/.superpowers/upload-producer-contracts-20261107/`，记录保存函数、暂存生产者、消费者、ORM 与已安装异常类型来源。完整源码对照和部分暂存区补丁仅覆盖批准的读取与转换；按用户要求不运行或修改 Python 测试，也不执行应用、SDK、模型或数据库。

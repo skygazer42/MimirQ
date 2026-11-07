@@ -1136,7 +1136,7 @@ def _attach_document_to_ingestion_run(
             document_id=document.id,
             source_ref=(identity.source_path or document.filename),
             initial_status=str(document.status or "created"),
-            doc_meta=meta0 if isinstance(meta0, dict) else None,
+            doc_meta=meta0,
         )
 
 
@@ -1217,7 +1217,7 @@ async def _ingest_file_impl(
     parser_backend = form.parser_backend
     chunk_strategy = form.chunk_strategy
     dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
-    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    dataset_meta = (dataset.dataset_metadata or {}) if dataset is not None else {}
     policy = parse_ingestion_policy_from_metadata(dataset_meta if isinstance(dataset_meta, dict) else {})  # type: ignore[arg-type]
     pipeline_parsed = parse_pipeline_json(form.pipeline)
     pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
@@ -1251,7 +1251,7 @@ async def _ingest_file_impl(
         db,
         tenant_id=tenant_id,
         additional_docs=1,
-        additional_bytes=int(file_size or 0),
+        additional_bytes=file_size,
     )
     user_patch = _parse_single_user_metadata(form.user_metadata)
     prepared_metadata = _build_document_metadata(
@@ -1259,7 +1259,7 @@ async def _ingest_file_impl(
         request_parser_backend=parser_backend,
         request_chunk_strategy=chunk_strategy,
         resolved_pipeline=resolved_pipeline,
-        file_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+        file_sha256=file_sha256,
         user_patch=user_patch,
         upload_only=False,
     )
@@ -1268,8 +1268,8 @@ async def _ingest_file_impl(
 
     await _maybe_acquire_ingest_lock(
         tenant_id=tenant_id,
-        dataset_id=getattr(dataset, "id", None),
-        file_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+        dataset_id=dataset.id if dataset is not None else None,
+        file_sha256=file_sha256,
         pipeline_hash=pipeline_hash,
         account_id=account_id,
         doc_metadata=doc_metadata,
@@ -1280,7 +1280,7 @@ async def _ingest_file_impl(
         ingestion_run = _create_single_ingestion_run(
             db=db,
             tenant_id=tenant_id,
-            dataset_id=getattr(dataset, "id", None),
+            dataset_id=dataset.id if dataset is not None else None,
             account_id=account_id,
             identity=identity,
             parser_backend=parser_backend,
@@ -1294,13 +1294,13 @@ async def _ingest_file_impl(
             background_tasks=background_tasks,
             tenant_id=tenant_id,
             account_id=account_id,
-            dataset_id=getattr(dataset, "id", None),
+            dataset_id=dataset.id if dataset is not None else None,
             identity=identity,
             request_parser_backend=parser_backend,
             request_chunk_strategy=chunk_strategy,
             resolved_pipeline=resolved_pipeline,
             pipeline_hash=pipeline_hash,
-            file_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+            file_sha256=file_sha256,
             user_patch=user_patch,
             ingest_lock=ingest_lock,
         )

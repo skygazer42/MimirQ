@@ -92,10 +92,10 @@ def _apply_precheck_policy_suggestion(
             replace=False,
         )
     except HTTPException as exc:
-        if int(getattr(exc, "status_code", 0) or 0) != 409:
+        if exc.status_code != 409:
             logger.warning(
                 "Precheck-first policy apply failed: %s",
-                str(getattr(exc, "detail", exc))[:200],
+                str(exc.detail)[:200],
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
@@ -176,7 +176,7 @@ async def _cancel_gather_tasks(in_flight: dict[asyncio.Task[Any], int]) -> None:
 
 def _cleanup_uploaded_batch_files(results: list[dict[str, Any]]) -> None:
     for result in results:
-        source_persistence.unlink_source(Path(str(result.get("file_path") or "")))
+        source_persistence.unlink_source(Path(result["file_path"]))
 
 
 def _coerce_batch_result(result: Any) -> dict[str, Any]:
@@ -300,31 +300,31 @@ def _finalize_batch_ingestion_run(
         if doc is None:
             continue
         try:
-            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+            meta0 = dict(doc.doc_metadata or {})
             meta0["last_ingestion_run_id"] = str(ingestion_run.id)
             meta0["last_ingestion_kind"] = "upload_batch"
             doc.doc_metadata = meta0
             db.commit()
             db.refresh(doc)
         except Exception:
-            meta0 = dict(getattr(doc, "doc_metadata", None) or {})
+            meta0 = dict(doc.doc_metadata or {})
         with contextlib.suppress(Exception):
             ingestion_run_service.add_document(
                 db,
                 tenant_id=tenant_id,
                 run_id=ingestion_run.id,
                 document_id=doc.id,
-                source_ref=(result.get("source_path") or getattr(doc, "filename", None)),
-                initial_status=str(result.get("status") or getattr(doc, "status", "") or "created"),
-                doc_meta=meta0 if isinstance(meta0, dict) else None,
+                source_ref=(result.get("source_path") or doc.filename),
+                initial_status=str(result.get("status") or doc.status or "created"),
+                doc_meta=meta0,
             )
     with contextlib.suppress(Exception):
         ingestion_run_service.close_intake(
             db,
             tenant_id=tenant_id,
             run_id=ingestion_run.id,
-            attempted_inputs=int(len(files or [])),
-            rejected_inputs=int(len(failed)),
+            attempted_inputs=len(files),
+            rejected_inputs=len(failed),
             rejection_reasons=[result.get("error") for result in failed],
         )
 
@@ -372,7 +372,7 @@ def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, stag
             )
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists():
-            suffix = getattr(item.get("file_id"), "hex", None) or uuid.uuid4().hex
+            suffix = item["file_id"].hex
             dst = dst.with_name(f"{dst.stem}.{suffix}{dst.suffix}")
         try:
             os.link(src, dst)
@@ -516,14 +516,14 @@ async def _process_live_batch_upload(
                 db,
                 tenant_id=tenant_id,
                 additional_docs=1,
-                additional_bytes=int(file_size or 0),
+                additional_bytes=file_size,
             )
         except HTTPException as exc:
             source_persistence.unlink_source(file_path)
             return _failure_result(
                 filename=identity.filename,
                 source_path=identity.source_path,
-                error=str(getattr(exc, "detail", "") or "tenant_quota_exceeded"),
+                error=str(exc.detail or "tenant_quota_exceeded"),
             )
         return await _process_saved_batch_upload(
             background_tasks=background_tasks,
@@ -539,8 +539,8 @@ async def _process_live_batch_upload(
             identity=identity,
             file_id=file_id,
             file_path=file_path,
-            file_size=int(file_size or 0),
-            file_sha256=str(file_sha256 or "").strip().lower() or None,
+            file_size=file_size,
+            file_sha256=file_sha256,
             content_type=file.content_type or "application/octet-stream",
             request_parser_backend=request_parser_backend,
             request_chunk_strategy=request_chunk_strategy,
@@ -609,8 +609,8 @@ async def _process_saved_batch_upload(
         )
         await _maybe_acquire_ingest_lock(
             tenant_id=tenant_id,
-            dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
-            file_sha256=file_sha256 if isinstance(file_sha256, str) else None,
+            dataset_id=dataset.id if dataset is not None else None,
+            file_sha256=file_sha256,
             pipeline_hash=prepared_metadata.pipeline_hash,
             account_id=account_id,
             doc_metadata=prepared_metadata.doc_metadata,
@@ -621,7 +621,7 @@ async def _process_saved_batch_upload(
             background_tasks=background_tasks,
             tenant_id=tenant_id,
             account_id=account_id,
-            dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+            dataset_id=dataset.id if dataset is not None else None,
             identity=identity,
             request_parser_backend=request_parser_backend,
             request_chunk_strategy=request_chunk_strategy,
@@ -648,7 +648,7 @@ async def _process_saved_batch_upload(
         db_document = _build_batch_document(
             file_id=file_id,
             tenant_id=tenant_id,
-            dataset_id=getattr(dataset, "id", None) if dataset is not None else None,
+            dataset_id=dataset.id if dataset is not None else None,
             identity=identity,
             file_size=file_size,
             stored_path=stored_path,
@@ -726,7 +726,7 @@ async def _run_precheck_scan(
             progress=0,
             config={
                 "root_path": str(staging_root),
-                "max_files": int(len(staged_successful)),
+                "max_files": len(staged_successful),
                 "enable_pdf_quality": True,
                 "enable_text_extract": True,
                 "enable_pii": False,
@@ -884,7 +884,7 @@ async def _stage_upload_for_precheck(
         return _failure_result(
             filename=identity.filename,
             source_path=identity.source_path,
-            error=str(getattr(exc, "detail", "") or str(exc) or "upload_failed"),
+            error=str(exc.detail or str(exc) or "upload_failed"),
         )
     except asyncio.CancelledError:
         source_persistence.unlink_source(file_path)
@@ -900,13 +900,13 @@ async def _stage_upload_for_precheck(
         "file_ext": identity.file_ext,
         "file_id": file_id,
         "file_path": str(file_path),
-        "file_size": int(file_size or 0),
-        "file_sha256": str(file_sha256 or "").strip().lower() or None,
+        "file_size": file_size,
+        "file_sha256": file_sha256,
         "content_type": file.content_type or "application/octet-stream",
     }
 
 
-def _success_result(*, filename: str, source_path: str | None, document: Any) -> dict[str, Any]:
+def _success_result(*, filename: str, source_path: str | None, document: DBDocument) -> dict[str, Any]:
     return {"success": True, "filename": filename, **_document_result_snapshot(document, source_path=source_path)}
 
 
@@ -944,7 +944,7 @@ async def ingest_batch(
     enforce_tenant_upload_quotas(
         db,
         tenant_id=tenant_id,
-        additional_docs=int(len(files or [])),
+        additional_docs=len(files),
         additional_bytes=0,
     )
     pipeline_overrides = PipelineOptionOverrides(**asdict(overrides_form))
@@ -956,7 +956,7 @@ async def ingest_batch(
     pipeline_parsed = parse_pipeline_json(form.pipeline)
     user_meta_by_key = _parse_batch_user_metadata_map(form.user_metadata_map)
     dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, form.dataset_id)
-    dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+    dataset_meta = (dataset.dataset_metadata or {}) if dataset is not None else {}
     policy = _refresh_batch_policy(dataset)
     dataset_default_pb, dataset_default_cs = ingestion_plan.dataset_upload_defaults(dataset_meta)
     defaults = ingestion_plan.select_upload_defaults(
@@ -971,18 +971,18 @@ async def ingest_batch(
             ingestion_run = ingestion_run_service.create_run(
                 db,
                 tenant_id=tenant_id,
-                dataset_id=getattr(dataset, "id", None),
+                dataset_id=dataset.id if dataset is not None else None,
                 requested_by=account_id,
                 kind="upload_batch",
                 config={
-                    "files": int(len(files or [])),
+                    "files": len(files),
                     "parser_backend_requested": str(parser_backend or "")[:80],
                     "chunk_strategy_requested": str(chunk_strategy or "")[:80],
                     "pipeline": (
                         pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None
                     ),
                 },
-                expected_documents=int(len(files or [])),
+                expected_documents=len(files),
             )
         except Exception:
             ingestion_run = None
@@ -995,12 +995,12 @@ async def ingest_batch(
         )
         staged_successful, staged_failed = _partition_batch_results(save_results)
         try:
-            total_bytes = sum(int(result.get("file_size") or 0) for result in staged_successful)
+            total_bytes = sum(result["file_size"] for result in staged_successful)
             enforce_tenant_upload_quotas(
                 db,
                 tenant_id=tenant_id,
-                additional_docs=int(len(staged_successful)),
-                additional_bytes=int(total_bytes),
+                additional_docs=len(staged_successful),
+                additional_bytes=total_bytes,
             )
         except HTTPException:
             _cleanup_uploaded_batch_files(staged_successful)
@@ -1018,7 +1018,7 @@ async def ingest_batch(
         if not precheck_only and dataset is not None:
             with contextlib.suppress(Exception):
                 db.refresh(dataset)
-            dataset_meta = (getattr(dataset, "dataset_metadata", None) or {}) if dataset is not None else {}
+            dataset_meta = (dataset.dataset_metadata or {}) if dataset is not None else {}
             policy = _refresh_batch_policy(dataset)
             dataset_default_pb, dataset_default_cs = ingestion_plan.dataset_upload_defaults(dataset_meta)
             defaults = ingestion_plan.select_upload_defaults(
@@ -1050,23 +1050,22 @@ async def ingest_batch(
                     pipeline_overrides=pipeline_overrides,
                     defaults=defaults,
                     identity=UploadIdentity(
-                        filename=str(staged.get("filename") or "unknown"),
-                        file_ext=str(staged.get("file_ext") or "").strip().lower()
-                        or Path(str(staged.get("filename") or "unknown")).suffix.lower(),
-                        upload_key=str(staged.get("upload_key") or ""),
-                        source_path=staged.get("source_path"),
+                        filename=staged["filename"],
+                        file_ext=staged["file_ext"],
+                        upload_key=staged["upload_key"],
+                        source_path=staged["source_path"],
                     ),
-                    file_id=staged.get("file_id"),
-                    file_path=Path(str(staged.get("file_path") or "")),
-                    file_size=int(staged.get("file_size") or 0),
-                    file_sha256=staged.get("file_sha256"),
-                    content_type=str(staged.get("content_type") or "application/octet-stream"),
+                    file_id=staged["file_id"],
+                    file_path=Path(staged["file_path"]),
+                    file_size=staged["file_size"],
+                    file_sha256=staged["file_sha256"],
+                    content_type=staged["content_type"],
                     request_parser_backend=parser_backend,
                     request_chunk_strategy=chunk_strategy,
                     user_patch=_select_upload_user_patch(
                         user_meta_by_key=user_meta_by_key,
-                        upload_key=str(staged.get("upload_key") or ""),
-                        filename=str(staged.get("filename") or "unknown"),
+                        upload_key=staged["upload_key"],
+                        filename=staged["filename"],
                     ),
                     upload_only=upload_only,
                     governance_profile_cache=governance_profile_cache,
