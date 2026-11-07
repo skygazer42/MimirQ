@@ -494,11 +494,11 @@ def _kg_optional_setting(name: str) -> str | None:
 
 
 def _kg_python_plugin_ref(pipeline_effective: PipelineEffective) -> str:
-    plugin_ref = str(getattr(pipeline_effective, "kg_python_plugin", "") or "").strip()
+    plugin_ref = str(pipeline_effective.kg_python_plugin or "").strip()
     if plugin_ref:
         return plugin_ref
     return derive_registered_stage_plugin_ref(
-        str(getattr(pipeline_effective, "chunk_python_plugin", "") or "").strip(),
+        str(pipeline_effective.chunk_python_plugin or "").strip(),
         "kg",
     )
 
@@ -549,7 +549,7 @@ async def _enqueue_post_completion_kg(
         prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
         extraction_backend=_kg_optional_setting("KG_EXTRACTION_BACKEND"),
         kg_python_plugin=_kg_python_plugin_ref(pipeline_effective),
-        kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
+        kg_python_params=dict(pipeline_effective.kg_python_params or {}),
         replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
         prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
         extract_relations=bool(getattr(settings, "KG_RELATION_ENABLED", False)),
@@ -593,7 +593,7 @@ async def _extract_post_completion_kg_events(
         prompt_template_key=_kg_optional_setting("KG_EXTRACT_PROMPT_TEMPLATE_KEY"),
         prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
         kg_python_plugin=kg_python_plugin_ref,
-        kg_python_params=dict(getattr(pipeline_effective, "kg_python_params", {}) or {}),
+        kg_python_params=dict(pipeline_effective.kg_python_params or {}),
     )
     return events, kg_python_plugin_ref
 
@@ -609,7 +609,7 @@ async def run_post_completion_kg(
     index_options: Any,
     pipeline_effective: PipelineEffective,
 ) -> None:
-    if not getattr(pipeline_effective, "kg_enabled", False):
+    if not pipeline_effective.kg_enabled:
         return
 
     transition_document_index_channel(

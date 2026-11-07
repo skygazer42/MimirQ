@@ -346,8 +346,8 @@ def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
 
     When no extra rules are enabled, return None so GovernanceProcessor can reuse its internal defaults.
     """
-    extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
-    rule_packs = list(getattr(pipeline_effective, "governance_rule_packs", None) or [])
+    extra_rules = list(pipeline_effective.governance_regex_rules or [])
+    rule_packs = list(pipeline_effective.governance_rule_packs or [])
     return build_governance_rules(extra_rules, rule_packs=rule_packs) if (extra_rules or rule_packs) else None
 
 
@@ -963,9 +963,9 @@ class DocumentProcessorService:
                 dataset_id=dataset_id,
                 document_id=document_id,
                 tables=table_inputs,
-                max_rows=int(getattr(pipeline_effective, "table_store_max_rows", 0) or 0),
-                max_cols=int(getattr(pipeline_effective, "table_store_max_cols", 0) or 0),
-                sample_rows=int(getattr(pipeline_effective, "table_store_sample_rows", 0) or 0),
+                max_rows=int(pipeline_effective.table_store_max_rows or 0),
+                max_cols=int(pipeline_effective.table_store_max_cols or 0),
+                sample_rows=int(pipeline_effective.table_store_sample_rows or 0),
             )
         except Exception as exc:  # noqa: BLE001
             logger.info("Parsed table import failed (ignored): %s document_id=%s", str(exc)[:200], document_id)
@@ -1031,7 +1031,7 @@ class DocumentProcessorService:
                 metadata.pop("table_store", None)
             return metadata
 
-        exclusive_enabled = bool(getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False))
+        exclusive_enabled = bool(pipeline_effective.table_store_sidecar_exclusive_routing)
         metadata["table_store"] = {
             "version": "1",
             "source_ext": cls._parsed_table_store_source_ext(db_document),
@@ -1091,7 +1091,7 @@ class DocumentProcessorService:
         - Some parsers (e.g. PDF backends) emit tables as separate Documents with metadata markers.
         - We store those tables as a TAG sidecar so dataset table endpoints + chat TAG can use them.
         """
-        if not bool(getattr(pipeline_effective, "table_store_enabled", False)):
+        if not bool(pipeline_effective.table_store_enabled):
             return 0
 
         dataset_id = getattr(db_document, "dataset_id", None)
@@ -1294,13 +1294,13 @@ class DocumentProcessorService:
         if not db_doc:
             return
 
-        kg_python_plugin = str(getattr(effective, "kg_python_plugin", "") or "").strip()
+        kg_python_plugin = str(effective.kg_python_plugin or "").strip()
         if not kg_python_plugin:
             kg_python_plugin = derive_registered_stage_plugin_ref(
-                str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
+                str(effective.chunk_python_plugin or "").strip(),
                 "kg",
             )
-        kg_python_params = dict(getattr(effective, "kg_python_params", {}) or {})
+        kg_python_params = dict(effective.kg_python_params or {})
         metadata = dict(db_doc.doc_metadata or {})
         metadata["pipeline_effective"] = {
             "governance_enabled": bool(effective.governance_enabled),
@@ -1313,27 +1313,19 @@ class DocumentProcessorService:
             "governance_noise_ratio_threshold": float(effective.governance_noise_ratio_threshold),
             "governance_common_lines_min_docs": int(effective.governance_common_lines_min_docs),
             "governance_common_lines_min_ratio": float(effective.governance_common_lines_min_ratio),
-            "governance_python_plugin": str(getattr(effective, "governance_python_plugin", "") or ""),
-            "governance_python_params": dict(getattr(effective, "governance_python_params", {}) or {}),
-            "governance_llm_auto_tagging_enabled": bool(
-                getattr(effective, "governance_llm_auto_tagging_enabled", False)
-            ),
-            "governance_llm_auto_tagging_max_chars": int(
-                getattr(effective, "governance_llm_auto_tagging_max_chars", 3000) or 3000
-            ),
-            "governance_llm_auto_tagging_max_items": int(
-                getattr(effective, "governance_llm_auto_tagging_max_items", 16) or 16
-            ),
-            "ingest_pre_poc_scanner_enabled": bool(getattr(effective, "ingest_pre_poc_scanner_enabled", False)),
-            "ingest_pre_poc_quality_gate_mode": str(
-                getattr(effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"
-            ),
+            "governance_python_plugin": str(effective.governance_python_plugin or ""),
+            "governance_python_params": dict(effective.governance_python_params or {}),
+            "governance_llm_auto_tagging_enabled": bool(effective.governance_llm_auto_tagging_enabled),
+            "governance_llm_auto_tagging_max_chars": int(effective.governance_llm_auto_tagging_max_chars or 3000),
+            "governance_llm_auto_tagging_max_items": int(effective.governance_llm_auto_tagging_max_items or 16),
+            "ingest_pre_poc_scanner_enabled": bool(effective.ingest_pre_poc_scanner_enabled),
+            "ingest_pre_poc_quality_gate_mode": str(effective.ingest_pre_poc_quality_gate_mode or "warn"),
             "chunk_size": int(effective.chunk_size),
             "chunk_overlap": int(effective.chunk_overlap),
-            "chunk_merge_small_min_chars": int(getattr(effective, "chunk_merge_small_min_chars", 0) or 0),
-            "chunk_strategy_params": dict(getattr(effective, "chunk_strategy_params", {}) or {}),
-            "chunk_python_plugin": str(getattr(effective, "chunk_python_plugin", "") or ""),
-            "chunk_python_params": dict(getattr(effective, "chunk_python_params", {}) or {}),
+            "chunk_merge_small_min_chars": int(effective.chunk_merge_small_min_chars or 0),
+            "chunk_strategy_params": dict(effective.chunk_strategy_params or {}),
+            "chunk_python_plugin": str(effective.chunk_python_plugin or ""),
+            "chunk_python_params": dict(effective.chunk_python_params or {}),
             "kg_python_plugin": kg_python_plugin,
             "kg_python_params": kg_python_params,
             "chunk_vector_enabled": bool(effective.chunk_vector_enabled),
@@ -1485,28 +1477,26 @@ class DocumentProcessorService:
 
         metadata = dict(db_doc.doc_metadata or {})
         metadata["governance_enabled"] = True
-        metadata["governance_version"] = str(
-            getattr(stats, "version", None) or metadata.get("governance_version") or "1"
-        )
+        metadata["governance_version"] = str(stats.version or metadata.get("governance_version") or "1")
         metadata["governance_documents"] = int(stats.documents)
         metadata["governance_changed_documents"] = int(stats.changed)
         metadata["governance_rules_applied"] = int(stats.applied_rules)
-        metadata["governance_dropped_documents"] = int(getattr(stats, "dropped", 0) or 0)
+        metadata["governance_dropped_documents"] = int(stats.dropped or 0)
 
-        drop_reasons = _string_count_map(getattr(stats, "drop_reasons", None))
+        drop_reasons = _string_count_map(stats.drop_reasons)
         if drop_reasons:
             metadata["governance_drop_reasons"] = drop_reasons
-        pii_hits = _string_count_map(getattr(stats, "pii_hits", None))
+        pii_hits = _string_count_map(stats.pii_hits)
         if pii_hits:
             metadata["governance_pii_hits"] = pii_hits
-        secrets_hits = _string_count_map(getattr(stats, "secrets_hits", None))
+        secrets_hits = _string_count_map(stats.secrets_hits)
         if secrets_hits:
             metadata["governance_secrets_hits"] = secrets_hits
 
         # Persist richer "effects" counters for dataset-level governance audit (best-effort).
         metadata.update(_positive_governance_counts(stats))
 
-        languages = _positive_string_count_map(getattr(stats, "languages", None))
+        languages = _positive_string_count_map(stats.languages)
         if languages:
             # Keep small; caller can still use governance_enrichment.language for a canonical single value.
             metadata["governance_languages"] = languages
@@ -1688,10 +1678,10 @@ class DocumentProcessorService:
         *,
         pipeline_effective: PipelineEffective,
     ) -> dict[str, Any] | None:
-        if not items or not bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False)):
+        if not items or not bool(pipeline_effective.governance_llm_auto_tagging_enabled):
             return None
-        max_chars = max(200, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_chars", 3000) or 3000))
-        max_items = max(1, int(getattr(pipeline_effective, "governance_llm_auto_tagging_max_items", 16) or 16))
+        max_chars = max(200, int(pipeline_effective.governance_llm_auto_tagging_max_chars or 3000))
+        max_items = max(1, int(pipeline_effective.governance_llm_auto_tagging_max_items or 16))
         source_text = self._llm_auto_tagging_source_text(items, max_chars=max_chars)
         if not source_text:
             return {"enabled": True, "used": False, "reason": "empty_text"}

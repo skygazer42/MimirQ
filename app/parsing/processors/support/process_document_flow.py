@@ -184,8 +184,8 @@ class ParseExecutionState:
 
 
 def _build_combined_governance_rules(pipeline_effective: PipelineEffective):
-    extra_rules = list(getattr(pipeline_effective, "governance_regex_rules", None) or [])
-    rule_packs = list(getattr(pipeline_effective, "governance_rule_packs", None) or [])
+    extra_rules = list(pipeline_effective.governance_regex_rules or [])
+    rule_packs = list(pipeline_effective.governance_rule_packs or [])
     from app.rag.preprocessing.rules import build_governance_rules
 
     return build_governance_rules(extra_rules, rule_packs=rule_packs) if (extra_rules or rule_packs) else None
@@ -896,7 +896,7 @@ def _resume_parse_result_from_cache(
         file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
         pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
         parser_backend_key = str(parser_backend or "").strip().lower() or "auto"
-        if not (bool(getattr(pipeline_effective, "parse_cache_enabled", False)) and file_sha0 and pipeline_hash0):
+        if not (bool(pipeline_effective.parse_cache_enabled) and file_sha0 and pipeline_hash0):
             return None, None, None
         parse_cache_store = LocalParseCacheStore(
             root=Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_parse_cache"
@@ -908,7 +908,7 @@ def _resume_parse_result_from_cache(
         )
         cached_entry, cached_age_ms = parse_cache_store.get(
             parse_cache_key,
-            ttl_sec=int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+            ttl_sec=int(pipeline_effective.parse_cache_ttl_sec or 0),
         )
         if cached_entry is None or (cached_entry.documents is None and cached_entry.chunks is None):
             return None, parse_cache_store, parse_cache_key
@@ -925,7 +925,7 @@ def _resume_parse_result_from_cache(
             "enabled": True,
             "hit": True,
             "age_ms": int(cached_age_ms or 0),
-            "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+            "ttl_sec": int(pipeline_effective.parse_cache_ttl_sec or 0),
         }
         _commit_document_metadata(db, db_document, meta_hit)
         return parsed, parse_cache_store, parse_cache_key
@@ -1501,7 +1501,7 @@ async def _maybe_apply_parse_fallback(
     pdf_quality: dict[str, Any] | None,
 ) -> ParseResult:
     if not (
-        bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
+        bool(pipeline_effective.parse_fallback_enabled)
         and file_path.suffix.lower() == ".pdf"
         and (str(parser_backend or "").strip().lower() in {"", "auto"})
         and (not resumed_from_checkpoint)
@@ -1510,9 +1510,9 @@ async def _maybe_apply_parse_fallback(
     ):
         return parsed
     try:
-        min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-        min_parse_score = max(0.0, float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0))
-        max_retries = max(0, int(getattr(pipeline_effective, "parse_fallback_max_retries", 0) or 0))
+        min_chars = max(0, int(pipeline_effective.parse_fallback_min_content_chars or 0))
+        min_parse_score = max(0.0, float(pipeline_effective.parse_fallback_min_parse_score or 0.0))
+        max_retries = max(0, int(pipeline_effective.parse_fallback_max_retries or 0))
         if (min_chars <= 0 and min_parse_score <= 0.0) or max_retries <= 0:
             return parsed
         joined = _parsed_joined_text(parsed.documents)
@@ -1621,7 +1621,7 @@ def _persist_parse_cache_entry(
         meta_cached["parse_cache"] = {
             "enabled": True,
             "hit": False,
-            "ttl_sec": int(getattr(pipeline_effective, "parse_cache_ttl_sec", 0) or 0),
+            "ttl_sec": int(pipeline_effective.parse_cache_ttl_sec or 0),
         }
         _commit_document_metadata(db, db_document, meta_cached)
     except Exception as exc:  # noqa: BLE001
@@ -1646,7 +1646,7 @@ async def _maybe_apply_parse_quality_gate(
     pdf_quality: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     if not (
-        bool(getattr(pipeline_effective, "parse_fallback_enabled", False))
+        bool(pipeline_effective.parse_fallback_enabled)
         and db_document.file_type == "pdf"
         and (str(parser_backend or "").strip().lower() in {"", "auto"})
         and (not resumed_from_checkpoint)
@@ -1655,8 +1655,8 @@ async def _maybe_apply_parse_quality_gate(
     ):
         return None
     try:
-        min_chars = max(0, int(getattr(pipeline_effective, "parse_fallback_min_content_chars", 0) or 0))
-        min_parse_score = max(0.0, float(getattr(pipeline_effective, "parse_fallback_min_parse_score", 0.0) or 0.0))
+        min_chars = max(0, int(pipeline_effective.parse_fallback_min_content_chars or 0))
+        min_parse_score = max(0.0, float(pipeline_effective.parse_fallback_min_parse_score or 0.0))
         if min_chars <= 0 and min_parse_score <= 0.0:
             return None
         joined_final = _parsed_joined_text(parsed.documents)
@@ -1694,7 +1694,7 @@ async def _maybe_apply_parse_quality_gate(
             min_parse_score=min_parse_score,
         ):
             return None
-        quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
+        quarantined = bool(pipeline_effective.governance_quarantine_on_drop)
         status = "quarantined" if quarantined else "failed"
         reason = "quarantined_by_parse_quality" if quarantined else "dropped_by_parse_quality"
         msg = (
@@ -1914,13 +1914,13 @@ def _maybe_merge_cross_page_parsed_documents(
     pipeline_effective: PipelineEffective,
     add_stage_duration: Any,
 ) -> list[Document] | None:
-    if not parsed_documents or not bool(getattr(pipeline_effective, "cross_page_merge_enabled", False)):
+    if not parsed_documents or not bool(pipeline_effective.cross_page_merge_enabled):
         return parsed_documents
     t0 = time.perf_counter()
     with metrics_span("ingest.cross_page_merge"):
         merged_documents = merge_cross_page_documents(
             parsed_documents,
-            max_page_gap=int(getattr(pipeline_effective, "cross_page_merge_max_page_gap", 1) or 1),
+            max_page_gap=int(pipeline_effective.cross_page_merge_max_page_gap or 1),
         )
     add_stage_duration("cross_page_merge", (time.perf_counter() - t0) * 1000)
     return merged_documents
@@ -1957,9 +1957,9 @@ async def _maybe_apply_vlm_correction_to_documents(
     if not parsed_documents or not _is_pdf_document(prepared_state.file_path):
         return parsed_documents
     if not should_apply_vlm_correction(
-        enabled=bool(getattr(pipeline_effective, "vlm_correction_enabled", False)),
+        enabled=bool(pipeline_effective.vlm_correction_enabled),
         pdf_quality=prepared_state.pdf_quality,
-        min_table_score=float(getattr(pipeline_effective, "vlm_correction_min_table_score", 0.6) or 0.6),
+        min_table_score=float(pipeline_effective.vlm_correction_min_table_score or 0.6),
     ):
         return parsed_documents
     t0 = time.perf_counter()
@@ -1967,7 +1967,7 @@ async def _maybe_apply_vlm_correction_to_documents(
         corrected_docs, correction_meta = await apply_vlm_correction_async(
             documents=parsed_documents,
             file_path=prepared_state.file_path,
-            max_pages=int(getattr(pipeline_effective, "vlm_correction_max_pages", 2) or 2),
+            max_pages=int(pipeline_effective.vlm_correction_max_pages or 2),
         )
     add_stage_duration("vlm_correction", (time.perf_counter() - t0) * 1000)
     if bool(correction_meta.get("applied")):
@@ -2072,7 +2072,7 @@ async def _prepare_parsed_documents_for_continuation(
 
 
 def _governance_plugin_ref(pipeline_effective: PipelineEffective) -> str:
-    return str(getattr(pipeline_effective, "governance_python_plugin", "") or "").strip()
+    return str(pipeline_effective.governance_python_plugin or "").strip()
 
 
 def _run_governance_stage(
@@ -2121,7 +2121,7 @@ def _apply_governance_python_plugin_if_needed(
         processed_items = apply_governance_python_plugin(
             items,
             plugin_ref=governance_plugin_ref,
-            params=dict(getattr(pipeline_effective, "governance_python_params", {}) or {}),
+            params=dict(pipeline_effective.governance_python_params or {}),
             context={
                 "document_id": str(document_id),
                 "tenant_id": str(tenant_id),
@@ -2194,10 +2194,10 @@ async def _maybe_return_governance_drop_result(
         tenant_id,
         document_id,
         governance_stats,
-        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+        rule_packs=list(pipeline_effective.governance_rule_packs or []),
         audit_patch=governance_audit_patch,
     )
-    quarantined = bool(getattr(pipeline_effective, "governance_quarantine_on_drop", False))
+    quarantined = bool(pipeline_effective.governance_quarantine_on_drop)
     reasons = getattr(governance_stats, "drop_reasons", {}) or {}
     reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
     hint = "You can disable outline/low-density filters or relax thresholds."
@@ -2258,7 +2258,7 @@ def _should_record_governance_enrichment(
     return (
         bool(pipeline_effective.governance_enabled)
         or bool(governance_plugin_ref)
-        or bool(getattr(pipeline_effective, "governance_llm_auto_tagging_enabled", False))
+        or bool(pipeline_effective.governance_llm_auto_tagging_enabled)
     )
 
 
@@ -2300,7 +2300,7 @@ def _maybe_persist_parsed_content(
     parsed_documents: list[Document],
     pipeline_effective: PipelineEffective,
 ) -> None:
-    if not bool(getattr(pipeline_effective, "persist_parsed_content", False)):
+    if not bool(pipeline_effective.persist_parsed_content):
         return
     try:
         original_md = _join_original_markdown_for_persistence(parsed_documents_before_governance)
@@ -2311,7 +2311,7 @@ def _maybe_persist_parsed_content(
             document_id=document_id,
             original_markdown=original_md,
             cleaned_markdown=cleaned_md,
-            max_chars=int(getattr(pipeline_effective, "persist_parsed_content_max_chars", 0) or 0),
+            max_chars=int(pipeline_effective.persist_parsed_content_max_chars or 0),
         )
         meta = dict(db_document.doc_metadata or {})
         meta["parsed_content_persisted"] = persist_meta
@@ -2739,8 +2739,8 @@ def _run_near_dedup_stage(
     t0 = time.perf_counter()
     updated_chunks = chunks
     try:
-        threshold = max(0, int(getattr(pipeline_effective, "near_dedup_hamming_threshold", 0) or 0))
-        max_bucket_size = max(0, int(getattr(pipeline_effective, "near_dedup_max_bucket_size", 0) or 0))
+        threshold = max(0, int(pipeline_effective.near_dedup_hamming_threshold or 0))
+        max_bucket_size = max(0, int(pipeline_effective.near_dedup_max_bucket_size or 0))
         safe_dataset = re.sub(r"[^A-Za-z0-9._-]+", "_", str(prepared_state.dataset_id or tenant_id))
         index_path = Path(settings.UPLOAD_DIR) / str(tenant_id) / ".mimirq_dedup" / f"{safe_dataset}.json"
         state = _compute_near_dedup_state(
@@ -2891,7 +2891,7 @@ def _apply_common_chunk_postprocess(
             document_id=document_id,
             add_stage_duration=add_stage_duration,
         )
-    if bool(getattr(pipeline_effective, "near_dedup_enabled", False)) and filtered_chunks:
+    if bool(pipeline_effective.near_dedup_enabled) and filtered_chunks:
         filtered_chunks = _run_near_dedup_stage(
             db=db,
             db_document=db_document,
@@ -2905,7 +2905,7 @@ def _apply_common_chunk_postprocess(
     if filtered_chunks and table_sidecar_tables_imported >= 0:
         filtered_chunks, table_sidecar_routing_audit = service._apply_table_sidecar_exclusive_routing(
             chunks=filtered_chunks,
-            enabled=bool(getattr(pipeline_effective, "table_store_sidecar_exclusive_routing", False)),
+            enabled=bool(pipeline_effective.table_store_sidecar_exclusive_routing),
             sidecar_tables_imported=table_sidecar_tables_imported,
         )
     max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
@@ -2954,7 +2954,7 @@ def _maybe_record_governance_metadata(
         tenant_id,
         document_id,
         governance_stats,
-        rule_packs=list(getattr(pipeline_effective, "governance_rule_packs", None) or []),
+        rule_packs=list(pipeline_effective.governance_rule_packs or []),
         audit_patch=governance_audit_patch,
     )
 
@@ -3083,16 +3083,16 @@ def _apply_chunk_asset_stage_and_metadata(
                 dataset_id=prepared_state.dataset_id,
                 resolved_backend=resolved_backend,
                 resolved_chunk_strategy=resolved_chunk_strategy,
-                image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
-                image_ocr_enabled=bool(getattr(pipeline_effective, "image_ocr_enabled", False)),
-                image_ocr_max_chars=int(getattr(pipeline_effective, "image_ocr_max_chars", 0) or 0),
-                image_ocr_max_images=int(getattr(pipeline_effective, "image_ocr_max_images", 0) or 0),
-                pii_anonymize=bool(getattr(pipeline_effective, "governance_pii_anonymize", False)),
-                pii_mode=str(getattr(pipeline_effective, "governance_pii_mode", "mask") or "mask"),
-                pii_mask=str(getattr(pipeline_effective, "governance_pii_mask", REDACTED_MASK) or REDACTED_MASK),
-                secrets_redact=bool(getattr(pipeline_effective, "governance_secrets_redact", False)),
-                secrets_mode=str(getattr(pipeline_effective, "governance_secrets_mode", "mask") or "mask"),
-                secrets_mask=str(getattr(pipeline_effective, "governance_secrets_mask", SECRET_MASK) or SECRET_MASK),
+                image_caption_enabled=bool(pipeline_effective.image_caption_enabled),
+                image_ocr_enabled=bool(pipeline_effective.image_ocr_enabled),
+                image_ocr_max_chars=int(pipeline_effective.image_ocr_max_chars or 0),
+                image_ocr_max_images=int(pipeline_effective.image_ocr_max_images or 0),
+                pii_anonymize=bool(pipeline_effective.governance_pii_anonymize),
+                pii_mode=str(pipeline_effective.governance_pii_mode or "mask"),
+                pii_mask=str(pipeline_effective.governance_pii_mask or REDACTED_MASK),
+                secrets_redact=bool(pipeline_effective.governance_secrets_redact),
+                secrets_mode=str(pipeline_effective.governance_secrets_mode or "mask"),
+                secrets_mask=str(pipeline_effective.governance_secrets_mask or SECRET_MASK),
             ),
         )
     add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
@@ -3198,12 +3198,12 @@ async def _finalize_indexed_document(
         "ingest.finalize",
         chunk_count=len(chunks),
         total_characters=total_chars,
-        kg_enabled=bool(getattr(pipeline_effective, "kg_enabled", False)),
+        kg_enabled=bool(pipeline_effective.kg_enabled),
         otel_span_name="ingest.finalize",
         otel_attributes={
             "ingest.stage": "finalize",
             "document.file_type": str(prepared_state.file_path.suffix.lstrip(".") or "unknown").lower(),
-            "pipeline.kg_enabled": bool(getattr(pipeline_effective, "kg_enabled", False)),
+            "pipeline.kg_enabled": bool(pipeline_effective.kg_enabled),
         },
     ):
         checkpoint_meta = with_stage_durations(dict(db_document.doc_metadata or {}))
