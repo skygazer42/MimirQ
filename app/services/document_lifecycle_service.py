@@ -38,7 +38,7 @@ def _lifecycle_metadata_response(document: DBDocument) -> DocumentLifecycleMetad
         review_due_at=document.review_due_at,
         authority_level=document.authority_level,
         supersedes_document_id=document.supersedes_document_id,
-        publication_status=str(document.publication_status or "published"),
+        publication_status=document.publication_status,
     )
 
 
@@ -59,7 +59,7 @@ def _apply_lifecycle_metadata_updates(
     fields_set: set[str],
 ) -> None:
     if "lifecycle_owner" in fields_set:
-        document.lifecycle_owner = payload.lifecycle_owner.strip() or None if payload.lifecycle_owner else None
+        document.lifecycle_owner = payload.lifecycle_owner
     if "review_due_at" in fields_set:
         document.review_due_at = payload.review_due_at
     if "authority_level" in fields_set:
@@ -69,7 +69,7 @@ def _apply_lifecycle_metadata_updates(
             raise HTTPException(status_code=400, detail="supersedes_document_id cannot equal document_id")
         document.supersedes_document_id = payload.supersedes_document_id
     if "publication_status" in fields_set:
-        document.publication_status = str(payload.publication_status or "published")
+        document.publication_status = payload.publication_status
 
 
 def _build_lifecycle_audit_details(
@@ -351,39 +351,12 @@ def _add_document_metadata_img_ids(img_ids: set[str], document: DBDocument) -> N
             img_ids.add(value)
 
 
-def _iter_query_rows(query: Any, *, batch_size: int) -> Iterable[Any]:
-    if hasattr(query, "yield_per"):
-        query = query.yield_per(batch_size)
-    if hasattr(query, "__iter__"):
-        return query
-    if hasattr(query, "all"):
-        return query.all()
-    return ()
-
-
-def _row_named_value(row: Any, key: str) -> Any:
-    mapping = getattr(row, "_mapping", None)
-    if mapping is not None and key in mapping:
-        return mapping[key]
-    if isinstance(row, dict):
-        return row.get(key)
-    if hasattr(row, key):
-        return getattr(row, key)
-    if isinstance(row, (tuple, list)):
-        return row[0] if row else None
-    try:
-        return row[0]
-    except (IndexError, KeyError, TypeError):
-        return row
-
-
 def _add_chunk_metadata_img_ids(db: Session, *, tenant_id: UUID, document_id: UUID, img_ids: set[str]) -> None:
     img_id_column = DocumentChunk.doc_metadata["img_id"].astext.label("img_id")
     chunks = db.query(img_id_column).filter(
         DocumentChunk.document_id == document_id, DocumentChunk.tenant_id == tenant_id
     )
-    for chunk in _iter_query_rows(chunks, batch_size=_CHUNK_METADATA_SCAN_BATCH_SIZE):
-        img_id = _row_named_value(chunk, "img_id")
+    for (img_id,) in chunks.yield_per(_CHUNK_METADATA_SCAN_BATCH_SIZE):
         if isinstance(img_id, str) and img_id.strip():
             img_ids.add(img_id)
 

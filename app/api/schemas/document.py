@@ -632,6 +632,14 @@ class DocumentLifecycleMetadataUpdateRequest(BaseModel):
         default="published", description=DOCUMENT_PUBLICATION_STATUS_DESCRIPTION
     )
 
+    @field_validator("lifecycle_owner", mode="after")
+    @classmethod
+    def _normalize_lifecycle_owner(cls, value):
+        if value is None:
+            return None
+        owner = value.strip()
+        return owner if owner else None
+
 
 class DocumentBatchLifecycleRequest(BaseModel):
     """Batch document lifecycle update (enable/disable/archive/unarchive)."""
