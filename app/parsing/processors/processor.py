@@ -663,10 +663,13 @@ class DocumentProcessorService:
         try:
             from app.services.ingest_dead_letter_service import record_ingest_dead_letter
 
+            failed_stage = str(failed_stage_hint or prev_stage or stage or "").strip()
+            if not failed_stage:
+                failed_stage = None
             record_ingest_dead_letter(
                 db,
                 document=db_doc,
-                failed_stage=str(failed_stage_hint or prev_stage or stage or "").strip() or None,
+                failed_stage=failed_stage,
                 error_code=(str(error_code_hint).strip() if error_code_hint else None),
                 error_message=db_doc.error_message,
                 original_payload={
@@ -2041,8 +2044,8 @@ class DocumentProcessorService:
         m = pattern.search(content)
         if not m:
             return None
-        img_id = m.group(1)
-        return img_id.strip() or None
+        img_id = m.group(1).strip()
+        return img_id if img_id else None
 
     @staticmethod
     def _inline_image_patterns() -> tuple[re.Pattern[str], re.Pattern[str]]:

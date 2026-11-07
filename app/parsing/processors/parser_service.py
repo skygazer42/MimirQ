@@ -403,15 +403,18 @@ class DocumentParserService:
             # Non-PDF: route by backend (auto prefers Pandoc/Excel when enabled).
             parser_backend = parser_backend or "auto"
 
+        owner_account_id = str(account_id if account_id is not None else "").strip()
+        parser_account_id = owner_account_id
+        if not parser_account_id:
+            parser_account_id = None
         documents, resolved_backend = parser_factory.parse(
             file_path,
             parser_backend=parser_backend,
             tenant_id=str(tenant_id),
-            account_id=str(account_id or "").strip() or None,
+            account_id=parser_account_id,
             pdf_quality=pdf_quality,
             allow_fallback=not explicit_pdf_backend,
         )
-        owner_account_id = str(account_id or "").strip()
         owner_binding = {"tenant_id": str(tenant_id), "account_id": owner_account_id} if owner_account_id else None
         local_images = self._materialize_local_images_for_preview(
             documents,
