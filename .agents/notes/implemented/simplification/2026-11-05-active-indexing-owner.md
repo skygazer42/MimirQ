@@ -14,6 +14,8 @@ Status: implemented
 
 原始元数据、UUID、查询行形状、位置、可选证据和 provider 内容继续使用原校验。IndexingOptions 等 dataclass 不执行运行时校验，因此可空选项的布尔转换和原有证据数字解析保留。缺失、零和负值的既有默认与分支保持，不新增 Context 或协调器。
 
+2026-11-07 初始化状态增量：真实 Indexer 构造器无条件保存 Session 到 _db，生产调用方使用该实例，清理路径直接执行原 scope 触达与 flush。异常仍在原 try／except 中记录并按 strict 收集；两个批量删除函数仅在 commit=True 时回滚，实际 Session 的 rollback 方法按 SDK 契约调用。查询已取得 Document 且非空后直接读取声明的 dataset_id，原 UUID 处理和空数据集返回保持。
+
 [文档变更入口](../bug-fix/2026-11-05-document-mutation-contracts.md)直接使用保留的 `_update_bm25_for_chunks`，不为旧调用名重建包装；该调用迁移不改变本处的 BM25 和缓存所有权。
 
 ## Alternatives considered
@@ -25,5 +27,7 @@ Status: implemented
 项目中的写入调用和现有 private hook 继续使用同一 `Indexer`，客户端与会话归属明确；已构造记录不再重复解析。五个退出模块和类的完整源码已读，Git 跟踪源码、配置、测试与包导出检索没有发现岛外使用或注册。未引入未跟踪文件、依赖或新框架。
 
 验证限于固定 Git 源码、实际 DTO／ORM／Settings／SDK 声明、调用约定、AST 与 Ruff。Python 测试、索引、数据库、向量、模型、网络、workbook 和服务运行时均未执行。
+
+增量记录位于 initialized-indexer-reranker-state-20261107，保存当前共享工作区开始快照、构造器和真实 Session.rollback 契约。完整模块 AST 只允许两个必有属性 guard 退出、两个回滚方法探测退出及一个声明字段读取；strict／commit、删除顺序、缓存失效、日志、回滚和重新抛出策略保持。Ruff、格式与 Python 3.11 验证通过，未执行 Python 测试或业务／SDK 函数；本轮对已有部分初始化测试对象不新增兼容路径。
 
 历史笔记中，[向量 writer 所有者](2026-11-03-indexer-vector-writer-owner.md) 与 shadow 函数职责部分重叠，原位同步已退出调用者的事实，缓存决定不变。[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md) 的原始值边界原则沿用，索引的 `_safe_int` 继续返回 None。[语料缓存事务](../bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md) 的事务与失效规则保持；前端索引状态相关笔记属于其他调用链，不被替代。

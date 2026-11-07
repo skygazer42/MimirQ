@@ -2014,13 +2014,12 @@ class Indexer:
             logger.warning("Failed to update BM25 index after deletion: %s", exc)
             failures.append(exc)
 
-        if hasattr(self, "_db"):
-            try:
-                self._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
-                self._db.flush()
-            except Exception as exc:
-                logger.warning("Failed to touch retrieval scope after deletion: %s", exc)
-                failures.append(exc)
+        try:
+            self._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
+            self._db.flush()
+        except Exception as exc:
+            logger.warning("Failed to touch retrieval scope after deletion: %s", exc)
+            failures.append(exc)
 
         if strict and failures:
             raise RuntimeError("Document index cleanup failed") from failures[0]
@@ -2067,12 +2066,11 @@ class Indexer:
         except Exception as exc:
             logger.warning("Failed to update BM25 index after scoped deletion: %s", str(exc)[:200])
 
-        if hasattr(self, "_db"):
-            try:
-                self._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
-                self._db.flush()
-            except Exception as exc:
-                logger.warning("Failed to touch retrieval scope after scoped deletion: %s", str(exc)[:200])
+        try:
+            self._touch_chunk_retrieval_scope(tenant_id=tenant_id, document_id=document_id)
+            self._db.flush()
+        except Exception as exc:
+            logger.warning("Failed to touch retrieval scope after scoped deletion: %s", str(exc)[:200])
 
     def delete_event_indexes(
         self,
@@ -2162,7 +2160,7 @@ class Indexer:
             else:
                 self._db.flush()
         except Exception:
-            if commit and hasattr(self._db, "rollback"):
+            if commit:
                 self._db.rollback()
             raise
 
@@ -2266,7 +2264,7 @@ class Indexer:
                 self._db.flush()
             return batch_deleted, batch_pruned
         except Exception:
-            if commit and hasattr(self._db, "rollback"):
+            if commit:
                 self._db.rollback()
             raise
 
@@ -2371,7 +2369,7 @@ class Indexer:
         if document is not None:
             document.updated_at = now
             if resolved_dataset_id is None:
-                resolved_dataset_id = _safe_uuid(getattr(document, "dataset_id", None))
+                resolved_dataset_id = _safe_uuid(document.dataset_id)
         if resolved_dataset_id is None:
             return
         dataset = (

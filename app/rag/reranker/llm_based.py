@@ -447,7 +447,7 @@ candidates(JSON): {candidates}
         effective_fallback = (
             _clamp_score(fallback_score, default=0.5)
             if fallback_score is not None
-            else _clamp_score(getattr(self, "fallback_score", settings.RERANKER_LLM_FALLBACK_SCORE), default=0.5)
+            else _clamp_score(self.fallback_score, default=0.5)
         )
         max_chars = int(settings.RERANKER_MAX_CHARS or 800)
         for c in candidates:

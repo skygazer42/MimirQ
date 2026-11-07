@@ -14,6 +14,8 @@ Status: implemented
 
 `HybridSearchOptions` 的旧参数入口允许直接使用 overrides 构造 dataclass，因此相关输入转换继续保留。原始 provider 分数、插件策略、元数据、ID 和预算字典仍在原边界校验；类型注解不替代这些校验。重排工厂的调用位置、禁用别名、失败降级、异常记录和事件顺序保持。
 
+2026-11-07 实例配置增量：LLMReranker 构造器在建立模型链前固定设置 fallback_score，单例工厂只发布完整构造的实例。rerank_raw 没有显式得分覆盖时直接读取该实例字段，再按原逻辑 clamp；退出属性缺失兼容查找及其始终求值、但在真实实例上未使用的当前全局缺省值。显式覆盖、JSON／元数据解析、LLM 请求、融合公式、阈值和结果顺序保持。
+
 ## Alternatives considered
 
 把运行配置和返回结果全部换成 dataclass 可以通过属性访问表达字段，但需要迁移当前字典协议。本改动选择 TypedDict，在表达固定字段的同时保留对象形状。把两条元数据入口整体合并可以删掉更多代码，但会改变元数据视图和异常处理；只收敛构造完成后的重复聚合。把聚合留在 hybrid common 可以少一个模块，但会让 orchestration 新进入 preprocessing 的初始化链，因此采用只依赖标准库的叶子模块。统一删除数值转换可以进一步缩短代码，但旧参数、provider 和元数据仍有实际解析职责，所以仅移除生产者已经保证的内部转换。
@@ -21,6 +23,8 @@ Status: implemented
 ## Consequences
 
 内部数据来源和排序依据更直接，调用者继续使用原参数、字典、顺序与失败策略。验证使用源码、生产者和调用约定、完整限定的 AST 对照与 Ruff；Python 测试、检索、模型、数据库、网络和服务运行时未执行。
+
+实例配置增量与索引必需状态记录共用 initialized-indexer-reranker-state-20261107。完整 AST 对照仅允许上述实例属性读取，实际构造器、单例工厂、调用方及模型／测试哈希保持；按用户要求未运行 Python 测试或模型，自动模型审查仍受缺少 TruffleHog 限制。
 
 本次笔记检索中，[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md) 与原始数值边界部分重叠，沿用其边界原则；本模块 `_float_or_default` 仅捕获 TypeError/ValueError 的既有区别保留。[重排 provider 回退](../bug-fix/2026-11-03-reranker-provider-fallback-boundary.md) 与工厂错误政策部分重叠，沿用其结论。KG 查询扩展所有者属于另一条查询构造链，与本次内部排名记录无关；这些决定均未被替代。
 
