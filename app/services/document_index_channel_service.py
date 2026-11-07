@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document_index_channel import DocumentIndexChannel
 from app.services.pipeline_config import resolve_pipeline_effective
@@ -76,9 +77,10 @@ def normalize_document_index_channel(channel: str) -> str:
 
 def _pipeline_hash_from_document(document: DBDocument, pipeline_hash: str | None = None) -> str | None:
     if pipeline_hash:
-        return str(pipeline_hash).strip() or None
+        normalized_hash = str(pipeline_hash).strip()
+        return normalized_hash if normalized_hash else None
     meta = dict(document.doc_metadata or {})
-    return str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip() or None
+    return get_active_pipeline_hash(meta)
 
 
 def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
@@ -93,7 +95,7 @@ def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
     }
 
 
-def _legacy_channel_status(document: DBDocument, *, channel: str, enabled: bool) -> dict[str, Any]:
+def legacy_document_index_channel_status(document: DBDocument, *, channel: str, enabled: bool) -> dict[str, Any]:
     status_raw = str(document.status or "").strip().lower()
     meta = dict(document.doc_metadata or {})
     active_ready = bool(meta.get("active_pipeline_ready")) or status_raw == "completed"
@@ -111,7 +113,8 @@ def _legacy_channel_status(document: DBDocument, *, channel: str, enabled: bool)
 
     error = None
     if status == "error":
-        error = str(document.error_message or meta.get("error_message") or "").strip() or None
+        error_message = str(document.error_message or meta.get("error_message") or "").strip()
+        error = error_message if error_message else None
 
     return {
         "channel": channel,
@@ -166,6 +169,11 @@ def _transition_error_value(status: str, error: str | None) -> str | None:
         if status in {DOCUMENT_INDEX_CHANNEL_READY, DOCUMENT_INDEX_CHANNEL_SKIPPED, DOCUMENT_INDEX_CHANNEL_DISABLED}
         else error
     )
+
+
+def _normalize_channel_error(error):
+    error_message = str(error if error is not None else "").strip()[:2000]
+    return error_message if error_message else None
 
 
 def _existing_document_index_channel(
@@ -526,7 +534,7 @@ def _document_index_channel_insert_values(
         "required": bool(required),
         "enabled": bool(enabled),
         "status": normalized_status,
-        "error": str(error or "").strip()[:2000] or None,
+        "error": _normalize_channel_error(error),
         "attempt_count": normalized_attempt_count
         if normalized_attempt_count is not None
         else normalized_attempt_increment,
@@ -590,7 +598,7 @@ def _apply_document_index_channel_values(
     row.required = bool(required)
     row.enabled = bool(enabled)
     row.status = normalized_status
-    row.error = str(error or "").strip()[:2000] or None
+    row.error = _normalize_channel_error(error)
     if normalized_attempt_count is not None:
         row.attempt_count = normalized_attempt_count
     if last_attempted_at is not None:
@@ -696,7 +704,7 @@ def summarize_document_index_channels(
         statuses[str(row.channel)] = _row_to_dict(row)
     for channel in DOCUMENT_INDEX_CHANNELS:
         if channel not in statuses:
-            statuses[channel] = _legacy_channel_status(document, channel=channel, enabled=flags[channel])
+            statuses[channel] = legacy_document_index_channel_status(document, channel=channel, enabled=flags[channel])
 
     required_channels = [channel for channel, payload in statuses.items() if bool(payload.get("required"))]
     enabled_channels = [channel for channel, payload in statuses.items() if bool(payload.get("enabled"))]

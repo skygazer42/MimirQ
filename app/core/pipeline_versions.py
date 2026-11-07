@@ -19,9 +19,9 @@ def get_active_pipeline_hash(doc_metadata: Mapping[str, Any] | None) -> str | No
     1) metadata.active_pipeline_hash
     2) metadata.pipeline_hash (legacy/current pipeline hash)
     """
-    meta = doc_metadata or {}
+    meta = {} if doc_metadata is None else doc_metadata
     value = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
-    return value or None
+    return value if value else None
 
 
 def get_selected_pipeline_hash(doc_metadata: Mapping[str, Any] | None, pipeline_hash: str | None) -> str | None:
@@ -30,7 +30,7 @@ def get_selected_pipeline_hash(doc_metadata: Mapping[str, Any] | None, pipeline_
     - explicit pipeline_hash param wins
     - otherwise fallback to active pipeline hash
     """
-    explicit = (pipeline_hash or "").strip()
+    explicit = (pipeline_hash if pipeline_hash is not None else "").strip()
     if explicit:
         return explicit
     return get_active_pipeline_hash(doc_metadata)
@@ -43,7 +43,7 @@ def should_preserve_existing_versions(doc_metadata: Mapping[str, Any] | None) ->
 
     This is used to avoid clobbering active-version stats/indexes during retries.
     """
-    meta = doc_metadata or {}
+    meta = {} if doc_metadata is None else doc_metadata
     if not meta.get("active_pipeline_ready"):
         return False
     active_hash = str(meta.get("active_pipeline_hash") or "").strip()
