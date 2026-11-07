@@ -12,8 +12,13 @@ _RERANK_PROFILES = {
 }
 
 
-def get_rerank_profile(name: str | None) -> RerankProfile | None:
+def normalize_rerank_profile(name):
     key = (name or "").strip().lower()
+    return key if key else None
+
+
+def get_rerank_profile(name: str | None) -> RerankProfile | None:
+    key = normalize_rerank_profile(name)
     if not key:
         return None
     return _RERANK_PROFILES.get(key)

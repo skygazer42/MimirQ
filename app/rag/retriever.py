@@ -9,7 +9,7 @@ import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from uuid import UUID
 
 from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
@@ -18,7 +18,7 @@ from langchain_core.retrievers import BaseRetriever
 from pydantic import ConfigDict, Field, PrivateAttr
 from sqlalchemy.orm import Session
 
-from app.config.rerank_profile import resolve_rerank_search_k
+from app.config.rerank_profile import normalize_rerank_profile, resolve_rerank_search_k
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.dataset import Dataset as DBDataset
@@ -74,6 +74,9 @@ from app.services.rag_runtime_limiter import (
     run_with_retrieval_backend_budget_sync,
 )
 from app.storage.vector.milvus import get_milvus_adapter, resolve_collection_name
+
+if TYPE_CHECKING:
+    from app.query.normalize import NormalizedQuery
 
 logger = get_logger("rag.retriever")
 
@@ -474,16 +477,29 @@ class HybridRetriever(
         if existing is None:
             merged["partition_keys"] = {"$in": list(keys)}
         elif isinstance(existing, dict) and isinstance(existing.get("$in"), (list, tuple, set)):
-            allowed = {str(v or "").strip() for v in existing.get("$in") or [] if str(v or "").strip()}
+            allowed = set()
+            for value in existing["$in"]:
+                text = str(value or "").strip()
+                if text:
+                    allowed.add(text)
             merged["partition_keys"] = {"$in": [k for k in keys if k in allowed]}
         else:
             existing_text = str(existing or "").strip()
             merged["partition_keys"] = {"$in": [k for k in keys if k == existing_text]}
 
+        routing_entity_key = entity_key
+        if not routing_entity_key:
+            routing_entity_key = self.entity_key
+        routing_entity_key = str(routing_entity_key or "").strip()
+        if not routing_entity_key:
+            routing_entity_key = None
+        routing_candidates = entity_candidates
+        if not routing_candidates:
+            routing_candidates = self.entity_candidates
         meta = {
-            "entity_key": (str(entity_key or self.entity_key or "").strip() or None),
+            "entity_key": routing_entity_key,
             "partition_keys": list(keys),
-            "candidates_count": len(entity_candidates or self.entity_candidates or []),
+            "candidates_count": len(routing_candidates) if routing_candidates else 0,
         }
         return merged, meta
 
@@ -1174,7 +1190,7 @@ class HybridRetriever(
         self._last_debug_metrics = debug
         return docs
 
-    def _normalize_retrieval_query(self, query: str) -> tuple[str, str, Any]:
+    def _normalize_retrieval_query(self, query: str) -> tuple[str, str, "NormalizedQuery"]:
         max_query_chars = int(settings.RETRIEVAL_QUERY_MAX_CHARS or 8_000)
         if len(str(query or "")) > max_query_chars:
             raise ValueError(f"retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
@@ -1204,7 +1220,7 @@ class HybridRetriever(
         if self.enable_reranker:
             search_k = resolve_rerank_search_k(
                 requested_k=search_k,
-                profile=str(settings.RERANK_PROFILE or "").strip().lower() or None,
+                profile=str(settings.RERANK_PROFILE or ""),
             )
         hierarchy_family_collapse_enabled = self._should_apply_hierarchy_family_collapse()
         hierarchy_overfetch_factor = max(1, int(self.hierarchy_overfetch_factor or 1))
@@ -1213,9 +1229,9 @@ class HybridRetriever(
         overfetch_reasons = self._retrieval_overfetch_reasons(dataset_scope_ids=dataset_scope_ids)
         if overfetch_reasons:
             search_k = self._apply_retrieval_overfetch_bounds(requested_k=requested_k, search_k=search_k)
-        fetch_k = int(search_k) * 2
+        fetch_k = search_k * 2
         if str(self.retrieval_mode or "").strip().lower() == "mmr":
-            fetch_k = int(search_k) * max(1, int(self.mmr_fetch_k_multiplier or 0))
+            fetch_k = search_k * max(1, int(self.mmr_fetch_k_multiplier or 0))
         return requested_k, search_k, fetch_k, overfetch_reasons
 
     def _retrieval_overfetch_reasons(self, *, dataset_scope_ids: tuple[UUID, ...]) -> list[str]:
@@ -1257,7 +1273,7 @@ class HybridRetriever(
         *,
         original_query: str,
         normalized_query: str,
-        query_norm: Any,
+        query_norm: "NormalizedQuery",
         dataset_scope_ids: tuple[UUID, ...],
         metadata_filter_dataset_scoped: bool,
         requested_k: int,
@@ -1265,15 +1281,18 @@ class HybridRetriever(
         fetch_k: int,
         overfetch_reasons: list[str],
     ) -> dict[str, Any]:
+        retrieval_profile = str(self.retrieval_profile or "").strip().lower()
+        if not retrieval_profile:
+            retrieval_profile = None
         return {
-            "requested_k": int(requested_k),
-            "search_k": int(search_k),
-            "fetch_k": int(fetch_k),
+            "requested_k": requested_k,
+            "search_k": search_k,
+            "fetch_k": fetch_k,
             "overfetch_enabled": search_k > requested_k,
             "overfetch_reasons": overfetch_reasons,
-            "retrieval_profile": str(self.retrieval_profile or "").strip().lower() or None,
-            "rerank_profile": str(settings.RERANK_PROFILE or "").strip().lower() or None,
-            "hierarchy_family_collapse_enabled": bool(self._should_apply_hierarchy_family_collapse()),
+            "retrieval_profile": retrieval_profile,
+            "rerank_profile": normalize_rerank_profile(str(settings.RERANK_PROFILE or "")),
+            "hierarchy_family_collapse_enabled": self._should_apply_hierarchy_family_collapse(),
             "hierarchy_overfetch_factor": max(1, int(self.hierarchy_overfetch_factor or 1)),
             "overfetch_multiplier": int(
                 self.retrieval_overfetch_multiplier
@@ -1288,7 +1307,7 @@ class HybridRetriever(
             "query_normalization": {
                 "original": original_query,
                 "normalized": normalized_query,
-                "applied_rules": list(query_norm.applied_rules or []),
+                "applied_rules": list(query_norm.applied_rules),
             },
             "scope": {
                 "tenant_id": str(self.tenant_id or ""),
