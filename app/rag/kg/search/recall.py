@@ -13,14 +13,14 @@ from app.rag.kg.repository import AliasRepository, EntityRepository, EventReposi
 from app.rag.kg.search import graph_embeddings as graph_embeddings_mod
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.query_mode import build_mode_aware_recall_overrides, normalize_kg_query_mode
-from app.rag.kg.search.relation_scoring import relation_direction, relation_multiplier
+from app.rag.kg.search.relation_scoring import relation_direction, relation_evidence, relation_multiplier
 from app.rag.kg.search.tracker import Tracker, build_entity_node, build_event_node, build_query_node
 from app.rag.kg.search.utils import confidence_bucket, cosine_similarity
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
 
-    from app.rag.kg.models import KgRelation
+    from app.rag.kg.models import KgEventEntity, KgRelation
 
 logger = get_logger(__name__)
 
@@ -443,14 +443,14 @@ def _graph_seed_maps(
 
 def _graph_kept_entity_ids(
     seed_entity_ids: list[str],
-    assoc_map: dict[Any, list[Any]],
+    assoc_map: dict[str, list["KgEventEntity"]],
     *,
     max_entities: int,
 ) -> set[str]:
     entity_counts: dict[str, int] = {}
     for links in (assoc_map or {}).values():
         for link in links or []:
-            entity_id = str(getattr(link, "entity_id", "") or "").strip()
+            entity_id = str(link.entity_id or "").strip()
             if not entity_id:
                 continue
             entity_counts[entity_id] = int(entity_counts.get(entity_id, 0) or 0) + 1
@@ -501,15 +501,15 @@ def _graph_relation_edges(
     ordered_rows = sorted(
         rel_rows or [],
         key=lambda row: (
-            str(getattr(row, "subject_entity_id", "") or ""),
-            str(getattr(row, "predicate", "") or ""),
-            str(getattr(row, "object_entity_id", "") or ""),
-            str(getattr(row, "id", "") or ""),
+            str(row.subject_entity_id or ""),
+            str(row.predicate or ""),
+            str(row.object_entity_id or ""),
+            str(row.id or ""),
         ),
     )
     for rel in ordered_rows:
-        subject_id = str(getattr(rel, "subject_entity_id", "") or "").strip()
-        object_id = str(getattr(rel, "object_entity_id", "") or "").strip()
+        subject_id = str(rel.subject_entity_id or "").strip()
+        object_id = str(rel.object_entity_id or "").strip()
         if not subject_id or not object_id:
             continue
         if subject_id not in kept_entity_ids or object_id not in kept_entity_ids:
@@ -560,7 +560,7 @@ def _append_graph_entities(
     if not candidate_entity_ids:
         return
     ents = entity_repo.get_entities_by_ids(candidate_entity_ids, tenant_id=tenant_uuid)
-    ent_by_id = {str(getattr(entity, "id", "") or ""): entity for entity in (ents or [])}
+    ent_by_id = {str(entity.id or ""): entity for entity in (ents or [])}
     for entity_id in candidate_entity_ids:
         if entity_id in existing_ids:
             continue
@@ -570,8 +570,8 @@ def _append_graph_entities(
         similarity = float(hit_sim_by_entity.get(entity_id, 0.0) or 0.0)
         ent_dict = {
             "entity_id": str(entity_id),
-            "name": str(getattr(obj, "name", "") or ""),
-            "type": str(getattr(obj, "type", "") or "unknown"),
+            "name": str(obj.name or ""),
+            "type": str(obj.type or "unknown"),
             "similarity": similarity,
             "tenant_id": str(tenant_id),
             "method": "graph_embedding",
@@ -790,18 +790,6 @@ def _alias_relation_allowed(rel: "KgRelation", *, from_id: str, alias_key_ids: s
     return bool(evidence_quote)
 
 
-def _relation_evidence(rel: "KgRelation") -> tuple[float, str]:
-    try:
-        refs = rel.references
-        evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
-        if evidence_source != "mention":
-            return 1.0, evidence_source
-        mention_mult = float(settings.KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER or 0.7)
-        return max(0.0, min(1.0, float(mention_mult))), evidence_source
-    except Exception:
-        return 1.0, ""
-
-
 def _relation_candidate(
     rel: "KgRelation",
     *,
@@ -823,7 +811,7 @@ def _relation_candidate(
     )
     if pred_mult <= 0:
         return None
-    evidence_mult, evidence_source = _relation_evidence(rel)
+    evidence_mult, evidence_source = relation_evidence(rel, settings=settings)
     weight = float(key_weights.get(from_id, 0.0) or 0.0) * confidence * float(weight_factor) * pred_mult * evidence_mult
     if weight <= 0:
         return None

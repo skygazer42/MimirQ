@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from app.core.config import Settings
     from app.rag.kg.models import KgRelation
 
 
@@ -108,4 +109,16 @@ def relation_direction(rel: "KgRelation", entity_ids: set[str]) -> tuple[str | N
     return None, None, None
 
 
-__all__ = ["PredicatePrior", "relation_multiplier", "relation_direction"]
+def relation_evidence(rel: "KgRelation", *, settings: "Settings") -> tuple[float, str]:
+    try:
+        refs = rel.references
+        evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
+        if evidence_source != "mention":
+            return 1.0, evidence_source
+        mention_mult = float(settings.KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER or 0.7)
+        return max(0.0, min(1.0, float(mention_mult))), evidence_source
+    except Exception:
+        return 1.0, ""
+
+
+__all__ = ["PredicatePrior", "relation_multiplier", "relation_direction", "relation_evidence"]

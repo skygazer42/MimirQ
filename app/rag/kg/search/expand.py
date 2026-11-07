@@ -12,7 +12,7 @@ from app.rag.core.logging import get_logger
 from app.rag.kg.repository import EntityRepository, EventRepository, RelationRepository, get_session
 from app.rag.kg.search.config import SearchConfig
 from app.rag.kg.search.recall import RecallResult
-from app.rag.kg.search.relation_scoring import relation_direction, relation_multiplier
+from app.rag.kg.search.relation_scoring import relation_direction, relation_evidence, relation_multiplier
 from app.rag.kg.search.tracker import Tracker, build_entity_node, build_event_node
 from app.rag.kg.search.utils import confidence_bucket
 
@@ -119,18 +119,6 @@ def _tenant_uuid(value: object) -> UUID | None:
         return None
 
 
-def _relation_evidence(rel: "KgRelation") -> tuple[float, str]:
-    try:
-        refs = rel.references
-        evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
-        if evidence_source != "mention":
-            return 1.0, evidence_source
-        mention_mult = float(settings.KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER or 0.7)
-        return max(0.0, min(1.0, float(mention_mult))), evidence_source
-    except Exception:
-        return 1.0, ""
-
-
 def _relation_neighbor_candidate(
     rel: "KgRelation",
     *,
@@ -150,7 +138,7 @@ def _relation_neighbor_candidate(
     )
     if pred_mult <= 0:
         return None
-    evidence_mult, evidence_source = _relation_evidence(rel)
+    evidence_mult, evidence_source = relation_evidence(rel, settings=settings)
     weight = (
         float(entity_weights.get(from_id, 0.0) or 0.0) * confidence * float(weight_factor) * pred_mult * evidence_mult
     )
@@ -209,7 +197,7 @@ def _filter_skill_neighbors(
     try:
         neighbor_ids = [entity_id for entity_id, _weight in neighbors]
         objs = entity_repo.get_entities_by_ids(neighbor_ids, tenant_id=tenant_id)
-        allowed_ids = {str(obj.id) for obj in (objs or []) if not _is_skill_type(getattr(obj, "type", ""))}
+        allowed_ids = {str(obj.id) for obj in (objs or []) if not _is_skill_type(obj.type)}
         return [(entity_id, weight) for entity_id, weight in neighbors if entity_id in allowed_ids]
     except Exception as exc:
         logger.debug("Failed to filter KG expansion skill-like neighbors: %s", exc)
@@ -341,7 +329,7 @@ def _collect_new_entities(
             entity_id = str(entity.id)
             if entity_id in known_entities:
                 continue
-            if not include_skills and _is_skill_type(getattr(entity, "type", "")):
+            if not include_skills and _is_skill_type(entity.type):
                 continue
             new_entities[entity_id] = new_entities.get(entity_id, 0.0) + event_scores.get(event_id, 0.0)
             tracker.add_clue(
@@ -373,7 +361,7 @@ def _build_key_final(
     key_final: list[dict[str, Any]] = []
     ent_objects = entity_repo.get_entities_by_ids(list(known_entities), tenant_id=tenant_id)
     for entity in ent_objects:
-        if not include_skills and _is_skill_type(getattr(entity, "type", "")):
+        if not include_skills and _is_skill_type(entity.type):
             continue
         key_final.append(
             {
