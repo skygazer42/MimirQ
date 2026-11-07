@@ -498,8 +498,7 @@ async def _reuse_duplicate_document_for_ingest(
         parser_backend_resolved=str(meta.get("parser_backend_resolved") or "").strip() or None,
     )
     duplicate.doc_metadata = meta
-    if hasattr(duplicate, "dedup_key"):
-        duplicate.dedup_key = build_document_dedup_key(content_sha256=content_sha256, pipeline_hash=pipeline_hash)
+    duplicate.dedup_key = build_document_dedup_key(content_sha256=content_sha256, pipeline_hash=pipeline_hash)
     db.commit()
     db.refresh(duplicate)
 
@@ -806,12 +805,8 @@ def _retain_ingest_lock_if_task_handed_off(document: DBDocument, *, ingest_lock:
         ingest_lock.retain()
 
 
-def _build_document_dedup_key(*, file_sha256: str | None, pipeline_hash: str | None) -> str | None:
-    return build_document_dedup_key(content_sha256=file_sha256, pipeline_hash=pipeline_hash)
-
-
 def _sync_duplicate_document_pipeline_identity(
-    duplicate_document: Any,
+    duplicate_document: DBDocument,
     *,
     doc_metadata: dict[str, Any],
     file_sha256: str,
@@ -823,20 +818,22 @@ def _sync_duplicate_document_pipeline_identity(
         pipeline_hash=pipeline_hash,
         parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
     )
-    doc_metadata["pipeline_hash"] = str(pipeline_hash or "").strip() or None
-    if hasattr(duplicate_document, "dedup_key"):
-        duplicate_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
+    normalized_pipeline_hash = str(pipeline_hash or "").strip()
+    if not normalized_pipeline_hash:
+        normalized_pipeline_hash = None
+    doc_metadata["pipeline_hash"] = normalized_pipeline_hash
+    duplicate_document.dedup_key = build_document_dedup_key(content_sha256=file_sha256, pipeline_hash=pipeline_hash)
 
 
 async def _retry_failed_persisted_duplicate(
-    document: Any,
+    document: DBDocument,
     *,
     background_tasks: BackgroundTasks,
     tenant_id: UUID,
     account_id: str,
     db: Session,
 ) -> None:
-    if str(getattr(document, "status", "") or "").lower() != "failed":
+    if str(document.status or "").lower() != "failed":
         return
 
     await retry_document(
@@ -956,7 +953,7 @@ def _build_document_metadata(
 
 
 def _merge_duplicate_document_metadata(
-    duplicate_document: Any,
+    duplicate_document: DBDocument,
     *,
     identity: _UploadIdentity,
     request_parser_backend: str,
@@ -968,7 +965,7 @@ def _merge_duplicate_document_metadata(
     ingest_lock: _IngestLockLease,
 ) -> dict[str, Any]:
 
-    meta_any = dict(getattr(duplicate_document, "doc_metadata", None) or {})
+    meta_any = dict(duplicate_document.doc_metadata or {})
     requested_parser_backend = (request_parser_backend or "").strip().lower()
     meta_any["parser_backend"] = resolved_pipeline.resolved_parser_backend
     meta_any["parser_backend_requested"] = requested_parser_backend
@@ -997,10 +994,11 @@ def _merge_duplicate_document_metadata(
             patch=user_patch,
             replace=False,
         )
-    meta_any.setdefault("active_pipeline_hash", str(meta_any.get("pipeline_hash") or "").strip() or None)
-    meta_any.setdefault(
-        "active_pipeline_ready", bool(str(getattr(duplicate_document, "status", "") or "").lower() == "completed")
-    )
+    active_pipeline_hash = str(meta_any.get("pipeline_hash") or "").strip()
+    if not active_pipeline_hash:
+        active_pipeline_hash = None
+    meta_any.setdefault("active_pipeline_hash", active_pipeline_hash)
+    meta_any.setdefault("active_pipeline_ready", bool(str(duplicate_document.status or "").lower() == "completed"))
     sync_pipeline_execution_identity(
         meta_any,
         content_sha256=file_sha256,
@@ -1014,7 +1012,7 @@ def _merge_duplicate_document_metadata(
 
 
 async def _reuse_duplicate_document(
-    duplicate_document: Any,
+    duplicate_document: DBDocument,
     *,
     db: Session,
     identity: _UploadIdentity,
@@ -1029,8 +1027,8 @@ async def _reuse_duplicate_document(
     tenant_id: UUID,
     account_id: str,
     ingest_lock: _IngestLockLease,
-) -> Any:
-    status0 = str(getattr(duplicate_document, "status", "") or "").lower()
+) -> DBDocument:
+    status0 = str(duplicate_document.status or "").lower()
     if status0 in {"pending", "processing"}:
         if source_persistence.document_matches_dedup_identity(
             duplicate_document,
@@ -1120,7 +1118,7 @@ def _attach_document_to_ingestion_run(
     if ingestion_run is None or document is None:
         return
     try:
-        meta0 = dict(getattr(document, "doc_metadata", None) or {})
+        meta0 = dict(document.doc_metadata or {})
         if created and not meta0.get("created_by_run_id"):
             meta0["created_by_run_id"] = str(ingestion_run.id)
         meta0["last_ingestion_run_id"] = str(ingestion_run.id)
@@ -1129,7 +1127,7 @@ def _attach_document_to_ingestion_run(
         db.commit()
         db.refresh(document)
     except Exception:
-        meta0 = dict(getattr(document, "doc_metadata", None) or {})
+        meta0 = dict(document.doc_metadata or {})
     with contextlib.suppress(Exception):
         ingestion_run_service.add_document(
             db,
@@ -1137,7 +1135,7 @@ def _attach_document_to_ingestion_run(
             run_id=ingestion_run.id,
             document_id=document.id,
             source_ref=(identity.source_path or document.filename),
-            initial_status=str(getattr(document, "status", "") or "created"),
+            initial_status=str(document.status or "created"),
             doc_meta=meta0 if isinstance(meta0, dict) else None,
         )
 
@@ -1167,12 +1165,12 @@ async def _maybe_resolve_single_upload_duplicate(
         file_sha256=file_sha256,
         pipeline_hash=pipeline_hash,
     )
-    if duplicate is not None and str(getattr(duplicate, "status", "") or "").lower() not in {"failed"}:
+    if duplicate is not None and str(duplicate.status or "").lower() not in {"failed"}:
         logger.info(
             "Upload dedup hit tenant_id=%s dataset_id=%s document_id=%s",
             str(tenant_id),
             str(dataset_id),
-            str(getattr(duplicate, "id", "")),
+            str(duplicate.id),
         )
         return duplicate
     duplicate_by_sha = source_persistence.find_duplicate_document_by_sha(
@@ -1347,7 +1345,9 @@ async def _ingest_file_impl(
                 doc_metadata=doc_metadata,
             )
             if settings.UPLOAD_DEDUP_ENABLED:
-                db_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
+                db_document.dedup_key = build_document_dedup_key(
+                    content_sha256=file_sha256, pipeline_hash=pipeline_hash
+                )
             persistence_started = True
             file_lease.transfer()
             await source_persistence.persist_uploaded_document(db, db_document, file_path=file_path)
@@ -1470,7 +1470,9 @@ async def _ingest_local_html_request_with_source(
     source_lease: source_persistence.SourceFileLease,
 ) -> DBDocument:
     content_type = "text/html"
-    source_url = str(body.source_url or "").strip() or None
+    source_url = str(body.source_url or "").strip()
+    if not source_url:
+        source_url = None
     url_normalized = normalize_url_for_dedup(source_url) if source_url else None
 
     prepared = _prepare_document_ingestion(

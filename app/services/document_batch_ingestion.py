@@ -36,9 +36,9 @@ from app.services import document_ingestion_policy as ingestion_plan
 from app.services import document_source_persistence as source_persistence
 from app.services.dataset_precheck_ingestion_suggestion import apply_ingestion_policy_suggestion
 from app.services.dataset_precheck_scan_runner import run_dataset_precheck_scan
+from app.services.document_identity import build_document_dedup_key
 from app.services.document_index_channel_service import reconcile_document_index_channels
 from app.services.document_ingestion import (
-    _build_document_dedup_key,
     _build_document_metadata,
     _document_upload_path,
     _maybe_acquire_ingest_lock,
@@ -129,7 +129,7 @@ def _build_batch_document(
         doc_metadata=doc_metadata,
     )
     if settings.UPLOAD_DEDUP_ENABLED:
-        db_document.dedup_key = _build_document_dedup_key(file_sha256=file_sha256, pipeline_hash=pipeline_hash)
+        db_document.dedup_key = build_document_dedup_key(content_sha256=file_sha256, pipeline_hash=pipeline_hash)
     return db_document
 
 

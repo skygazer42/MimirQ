@@ -261,9 +261,13 @@ def write_local_html_ingest_file(*, body: LocalHtmlIngestRequest, tenant_id: UUI
 
 async def url_source_metadata(*, url: str, ingest_file: UrlIngestFile) -> UrlSourceMetadata:
     downloaded = ingest_file.downloaded
-    last_modified_raw = (downloaded.last_modified or "").strip() or None
+    last_modified_raw = (downloaded.last_modified or "").strip()
+    if not last_modified_raw:
+        last_modified_raw = None
     last_modified_norm = _normalize_datetime_utc_iso(last_modified_raw) if last_modified_raw else None
-    etag_raw = (downloaded.etag or "").strip() or None
+    etag_raw = (downloaded.etag or "").strip()
+    if not etag_raw:
+        etag_raw = None
     if etag_raw and len(etag_raw) > 500:
         etag_raw = etag_raw[:500]
 
