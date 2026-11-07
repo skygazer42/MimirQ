@@ -4,6 +4,7 @@ Creation propagates database failures to the caller. Attachment and intake
 updates are best effort; status updates use the caller's criticality.
 """
 
+from collections import Counter
 from datetime import UTC, datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -28,8 +29,8 @@ def create_run(
     dataset_id: UUID | None,
     requested_by: str | None,
     kind: str,
-    config: dict[str, Any] | None = None,
-    expected_documents: int | None = None,
+    config: dict[str, Any],
+    expected_documents: int,
 ) -> IngestionRun:
     run = IngestionRun(
         tenant_id=tenant_id,
@@ -37,13 +38,12 @@ def create_run(
         kind=(kind or "unknown")[:80],
         requested_by=(requested_by[:255] if requested_by else None),
         status="running",
-        config=dict(config or {}),
+        config=dict(config),
         stats=_init_run_stats({}),
         error_message=None,
         started_at=_now_utc(),
     )
-    if expected_documents is not None:
-        run.config["expected_documents"] = max(0, expected_documents)
+    run.config["expected_documents"] = max(0, expected_documents)
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -429,6 +429,15 @@ def _observe_finished_ingestion_run(
         logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
 
 
+def _finished_run_metrics(run: IngestionRun, *, finished_at: datetime) -> tuple[str | None, str | None, float | None]:
+    """Omit the optional duration when the start time is absent or incompatible."""
+    try:
+        duration = (finished_at - run.started_at).total_seconds() if run.started_at is not None else None
+        return run.kind, run.status, duration
+    except Exception:
+        return run.kind, run.status, None
+
+
 def _update_progress_and_finalize_run(
     run: IngestionRun,
     *,
@@ -458,13 +467,7 @@ def _update_progress_and_finalize_run(
     if run.finished_at is not None:
         return None
     run.finished_at = finished_at
-    try:
-        dur = None
-        if run.started_at is not None and run.finished_at is not None:
-            dur = float((run.finished_at - run.started_at).total_seconds())
-        return run.kind, run.status, dur
-    except Exception:
-        return run.kind, run.status, None
+    return _finished_run_metrics(run, finished_at=finished_at)
 
 
 def _bounded_reason_counts(reasons: list[object] | tuple[object, ...] | None) -> dict[str, int]:
@@ -475,13 +478,6 @@ def _bounded_reason_counts(reasons: list[object] | tuple[object, ...] | None) ->
     if len(counts) > 25:
         ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         counts = dict(ranked[:20])
-    return counts
-
-
-def _counts_by_normalized_status(statuses: list[object] | tuple[object, ...] | None) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for status in statuses or []:
-        _bump_counter(counts, _normalize_status(status), +1)
     return counts
 
 
@@ -784,13 +780,7 @@ def _finished_meta_for_empty_run(
     if run.finished_at is not None:
         return None
     run.finished_at = now
-    try:
-        dur = None
-        if run.started_at is not None and run.finished_at is not None:
-            dur = float((run.finished_at - run.started_at).total_seconds())
-        return run.kind, run.status, dur
-    except Exception:
-        return run.kind, run.status, None
+    return _finished_run_metrics(run, finished_at=now)
 
 
 def _reconcile_close_intake_stats(
@@ -808,7 +798,7 @@ def _reconcile_close_intake_stats(
         statuses = {str(row.document_id): _normalize_status(row.status) for row in rows}
         actual_total = len(statuses)
         stats["total_documents"] = actual_total
-        stats["status_counts"] = _counts_by_normalized_status(list(statuses.values()))
+        stats["status_counts"] = dict(Counter(statuses.values()))
         if attempted_inputs is not None:
             stats["attempted_inputs"] = max(0, attempted_inputs)
         stats["rejected_inputs"] = max(0, rejected_inputs)
