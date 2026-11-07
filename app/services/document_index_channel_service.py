@@ -654,9 +654,15 @@ def reconcile_document_index_channels(
     for channel in DOCUMENT_INDEX_CHANNELS:
         enabled = flags[channel]
         row = existing.get(channel)
-        status = str(row.status or "").strip().lower() if row is not None else ""
-        error = str(row.error or "").strip() or None if row is not None else None
-        attempt_count = int(row.attempt_count or 0) if row is not None else 0
+        if row is None:
+            status = ""
+            error = None
+            attempt_count = 0
+        else:
+            status = str(row.status or "").strip().lower()
+            error_message = str(row.error or "").strip()
+            error = error_message if error_message else None
+            attempt_count = int(row.attempt_count or 0)
         if not enabled:
             status = "disabled"
             error = None
