@@ -33,7 +33,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _wants_async_ingest(value: str | None) -> bool:
-    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on", "async"}
+    return (value or "").strip().lower() in {"1", "true", "yes", "y", "on", "async"}
 
 
 def _run_external_conversation_ingest_background(
@@ -102,7 +102,7 @@ def ingest_conversation_history(
     db: Annotated[Session, Depends(get_db)],
 ) -> ExternalConversationIngestResponse | ExternalConversationAsyncIngestResponse:
     """Import externally generated chat turns into the standard MimirQ history."""
-    request_id = getattr(http_request.state, "request_id", None) or uuid.uuid4().hex
+    request_id = str(getattr(http_request.state, "request_id", None) or uuid.uuid4().hex)
     client = http_request.client
     ip = client.host if client else None
     user_agent = http_request.headers.get("user-agent")
@@ -111,12 +111,12 @@ def ingest_conversation_history(
             tenant_id=tenant_id,
             account_id=account_id,
             request_body=request_body,
-            request_id=str(request_id),
+            request_id=request_id,
             ip=ip,
             user_agent=user_agent,
         )
         return ExternalConversationAsyncIngestResponse(
-            request_id=str(request_id),
+            request_id=request_id,
             source=request_body.source,
             source_conversation_id=request_body.source_conversation_id,
         )
@@ -125,7 +125,7 @@ def ingest_conversation_history(
         tenant_id=tenant_id,
         account_id=account_id,
         request=request_body,
-        request_id=str(request_id),
+        request_id=request_id,
         ip=ip,
         user_agent=user_agent,
     )

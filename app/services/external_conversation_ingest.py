@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas.external_conversation import (
     ExternalConversationIngestRequest,
     ExternalConversationIngestResponse,
+    ExternalConversationMessageIn,
 )
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
@@ -30,11 +31,6 @@ def _metadata_text_field(field: str):
     return Message.message_metadata[EXTERNAL_CONVERSATION_METADATA_KEY][field].astext  # type: ignore[index]
 
 
-def _request_title(request: ExternalConversationIngestRequest) -> str | None:
-    title = str(request.title or "").strip()
-    return title or None
-
-
 def _dedupe_uuid_list(values: list[UUID]) -> list[UUID]:
     seen: set[UUID] = set()
     out: list[UUID] = []
@@ -53,8 +49,8 @@ def _resolve_document_scope(
     account_id: str,
     request: ExternalConversationIngestRequest,
 ) -> tuple[UUID | None, list[UUID]]:
-    requested_doc_ids = _dedupe_uuid_list(list(request.document_ids))
-    if len(requested_doc_ids) > 0:
+    requested_doc_ids = _dedupe_uuid_list(request.document_ids)
+    if requested_doc_ids:
         allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, requested_doc_ids)
         if len(allowed_doc_ids) != len(requested_doc_ids):
             raise HTTPException(status_code=403, detail="Some external conversation documents are not accessible")
@@ -88,14 +84,14 @@ def _find_conversation_by_external_id(
         .order_by(Message.created_at.asc(), Message.id.asc())
         .all()
     )
-    conversation_ids = list(dict.fromkeys(row[0] for row in rows if row and row[0] is not None))
+    conversation_ids = list(dict.fromkeys(conversation_id for (conversation_id,) in rows))
     if not conversation_ids:
         return None
     conversations = (
         db.query(Conversation)
         .filter(
             Conversation.tenant_id == tenant_id,
-            Conversation.owner_account_id == str(account_id or "").strip(),
+            Conversation.owner_account_id == account_id.strip(),
             Conversation.id.in_(conversation_ids),
         )
         .all()
@@ -110,7 +106,7 @@ def _load_existing_conversation(
     tenant_id: UUID,
     account_id: str,
     request: ExternalConversationIngestRequest,
-) -> tuple[Conversation | None, bool]:
+) -> Conversation | None:
     explicit: Conversation | None = None
     if request.conversation_id is not None:
         explicit = (
@@ -132,11 +128,11 @@ def _load_existing_conversation(
     if explicit is not None and mapped is not None and explicit.id != mapped.id:
         raise HTTPException(status_code=409, detail="External conversation is already mapped to another conversation")
     if explicit is not None:
-        return explicit, False
+        return explicit
     if mapped is not None:
         ensure_conversation_access(db, tenant_id, account_id, mapped)
-        return mapped, False
-    return None, True
+        return mapped
+    return None
 
 
 def _create_external_conversation(
@@ -148,10 +144,10 @@ def _create_external_conversation(
     dataset_id: UUID | None,
     document_ids: list[UUID],
 ) -> Conversation:
-    title = _request_title(request)
+    title = request.title
     conversation = Conversation(
         tenant_id=tenant_id,
-        owner_account_id=str(account_id or "").strip() or None,
+        owner_account_id=account_id.strip() or None,
         title=title,
         title_source=CONVERSATION_TITLE_SOURCE_MANUAL if title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=dataset_id,
@@ -174,7 +170,7 @@ def _existing_source_message_ids(
     source_conversation_id: str,
     source_message_ids: list[str],
 ) -> set[str]:
-    ids = [str(item).strip() for item in source_message_ids if str(item or "").strip()]
+    ids = [item.strip() for item in source_message_ids if item.strip()]
     if not ids:
         return set()
     rows = (
@@ -188,21 +184,22 @@ def _existing_source_message_ids(
         )
         .all()
     )
-    return {str(row[0]).strip() for row in rows if row and str(row[0] or "").strip()}
+    return {str(source_id).strip() for (source_id,) in rows if str(source_id or "").strip()}
 
 
 def _external_message_metadata(
     *,
     request: ExternalConversationIngestRequest,
-    message_metadata: dict[str, Any],
+    message: ExternalConversationMessageIn,
+    citation_candidates: list[dict[str, Any]],
     account_id: str,
     imported_at: datetime,
 ) -> dict[str, Any]:
-    source_run_id = message_metadata.get("source_run_id") or request.source_run_id
+    source_run_id = message.source_run_id or request.source_run_id
     external_meta = {
         "source": request.source,
         "source_conversation_id": request.source_conversation_id,
-        "source_message_id": message_metadata.get("source_message_id"),
+        "source_message_id": message.source_message_id,
         "source_run_id": source_run_id,
         "source_user_id": request.source_user_id,
         "imported_by": account_id,
@@ -211,9 +208,9 @@ def _external_message_metadata(
     return {
         EXTERNAL_CONVERSATION_METADATA_KEY: external_meta,
         "external_metadata": {
-            "conversation": dict(request.metadata or {}),
-            "message": dict(message_metadata.get("metadata") or {}),
-            "citations": list(message_metadata.get("citations") or []),
+            "conversation": dict(request.metadata),
+            "message": dict(message.metadata),
+            "citations": list(citation_candidates),
         },
     }
 
@@ -382,9 +379,8 @@ def _external_message_citation_candidates(
     citations: list[dict[str, Any]],
     metadata: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    candidates = [item for item in citations if isinstance(item, dict)]
-    if isinstance(metadata, dict):
-        candidates.extend(_citation_candidates_from_metadata(metadata))
+    candidates = list(citations)
+    candidates.extend(_citation_candidates_from_metadata(metadata))
     return candidates
 
 
@@ -431,7 +427,7 @@ def ingest_external_conversation(
         account_id=account_id,
         request=request,
     )
-    conversation, should_create = _load_existing_conversation(
+    conversation = _load_existing_conversation(
         db,
         tenant_id=tenant_id,
         account_id=account_id,
@@ -448,8 +444,8 @@ def ingest_external_conversation(
             document_ids=document_ids,
         )
         created_conversation = True
-    elif request.update_title and _request_title(request):
-        conversation.title = _request_title(request)
+    elif request.update_title and request.title:
+        conversation.title = request.title
         conversation.title_source = CONVERSATION_TITLE_SOURCE_MANUAL
 
     source_message_ids = [msg.source_message_id for msg in request.messages if msg.source_message_id]
@@ -459,7 +455,7 @@ def ingest_external_conversation(
         conversation_id=conversation.id,
         source=request.source,
         source_conversation_id=request.source_conversation_id,
-        source_message_ids=[str(item) for item in source_message_ids],
+        source_message_ids=source_message_ids,
     )
 
     inserted_ids: list[UUID] = []
@@ -469,7 +465,7 @@ def ingest_external_conversation(
     inserted_user_messages = 0
 
     for incoming in request.messages:
-        source_message_id = str(incoming.source_message_id or "").strip()
+        source_message_id = incoming.source_message_id
         if source_message_id and source_message_id in existing_ids:
             skipped_source_ids.append(source_message_id)
             continue
@@ -478,12 +474,8 @@ def ingest_external_conversation(
         stored_citations = _mimirq_citations_for_storage(citation_candidates)
         metadata = _external_message_metadata(
             request=request,
-            message_metadata={
-                "source_message_id": source_message_id or None,
-                "source_run_id": incoming.source_run_id,
-                "metadata": incoming.metadata,
-                "citations": citation_candidates,
-            },
+            message=incoming,
+            citation_candidates=citation_candidates,
             account_id=account_id,
             imported_at=imported_at,
         )
@@ -494,20 +486,19 @@ def ingest_external_conversation(
             previous_at=latest_message_time,
         )
         latest_message_time = message_created_at
-        message_kwargs: dict[str, Any] = {
-            "id": message_id,
-            "tenant_id": tenant_id,
-            "conversation_id": conversation.id,
-            "role": incoming.role,
-            "content": incoming.content,
-            "citations": stored_citations if incoming.role == "assistant" else [],
-            "token_count": incoming.token_count
+        message = Message(
+            id=message_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            role=incoming.role,
+            content=incoming.content,
+            citations=stored_citations if incoming.role == "assistant" else [],
+            token_count=incoming.token_count
             if incoming.token_count is not None
-            else num_tokens_from_string(incoming.content or ""),
-            "message_metadata": metadata,
-        }
-        message_kwargs["created_at"] = message_created_at
-        message = Message(**message_kwargs)
+            else num_tokens_from_string(incoming.content),
+            message_metadata=metadata,
+            created_at=message_created_at,
+        )
         db.add(message)
         inserted_ids.append(message_id)
         if incoming.role == "user":
@@ -517,7 +508,7 @@ def ingest_external_conversation(
 
     if inserted_ids:
         conversation.message_count = int(conversation.message_count or 0) + inserted_user_messages
-        conversation.updated_at = latest_message_time or imported_at
+        conversation.updated_at = latest_message_time
 
     audit_log_event(
         db,
@@ -541,7 +532,7 @@ def ingest_external_conversation(
 
     return ExternalConversationIngestResponse(
         conversation_id=conversation.id,
-        created_conversation=created_conversation if should_create else False,
+        created_conversation=created_conversation,
         source=request.source,
         source_conversation_id=request.source_conversation_id,
         inserted_messages=len(inserted_ids),
