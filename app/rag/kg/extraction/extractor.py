@@ -5,6 +5,7 @@ Event extractor coordinating LLM + embeddings + persistence.
 import asyncio
 import hashlib
 import time
+from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -142,27 +143,21 @@ def _apply_document_chunk_budget(
     if strategy_norm not in {"head", "uniform"}:
         strategy_norm = "uniform"
 
-    grouped: dict[object, list[DocumentChunk]] = {}
-    doc_order: list[object] = []
+    grouped: defaultdict[object, list[DocumentChunk]] = defaultdict(list)
     for chunk in chunks:
-        doc_id = chunk.document_id
-        if doc_id not in grouped:
-            grouped[doc_id] = []
-            doc_order.append(doc_id)
-        grouped[doc_id].append(chunk)
+        grouped[chunk.document_id].append(chunk)
 
     keep_ids: set[object] = set()
     budget_stats: dict[object, dict[str, int | str]] = {}
-    for doc_id in doc_order:
-        doc_chunks = grouped.get(doc_id) or []
+    for doc_id, doc_chunks in grouped.items():
         total = len(doc_chunks)
         if total <= max_chunks_per_document:
             for chunk in doc_chunks:
                 keep_ids.add(chunk.id)
             budget_stats[doc_id] = {
                 "strategy": strategy_norm,
-                "total": int(total),
-                "kept": int(total),
+                "total": total,
+                "kept": total,
                 "skipped": 0,
             }
             continue
@@ -177,9 +172,9 @@ def _apply_document_chunk_budget(
             keep_ids.add(chunk.id)
         budget_stats[doc_id] = {
             "strategy": strategy_norm,
-            "total": int(total),
+            "total": total,
             "kept": len(selected),
-            "skipped": int(total - len(selected)),
+            "skipped": total - len(selected),
         }
 
     kept_chunks = [chunk for chunk in chunks if chunk.id in keep_ids]
