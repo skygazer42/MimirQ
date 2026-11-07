@@ -12,6 +12,10 @@ Status: implemented
 
 五个无状态阶段在原模块内使用普通函数：govern_documents、normalize_documents、chunk_documents、deduplicate_chunks 与 index_chunks。切块和去重的辅助函数仍与其入口同处 stages.py；不新增模块、统一 stage context 或一次性转发对象。函数入口先于各自细节，原参数、结果及内部执行顺序保持。
 
+文件和图像预处理的真实返回路径均构造完整结果，changed 为布尔值、output_path 由实际 Path 转字符串；消费端直接读取，不再缺省为空路径。索引开关来自 build_indexing_options 的完整 IndexingOptions，记录真实类型并直接读取字段，既有开关转换保留。checkpoint 查询得到完整 DocumentChunk／DocumentParsedContent，查无记录时明确退出，空正文、原文和原总字符规则继续处理。
+
+两种 checkpoint 恢复共用 _checkpoint_option，在当前保存值、请求保存值、调用参数和 auto 之间按原真值顺序惰性选择，再去空白。已选中的空白字符串仍变成 auto，不继续回退到后面的字段。LangChain Document 的实际 SDK 声明了可空 id 与 metadata；来源映射和缓存写入直接读取这些成员，缓存反序列化仍验证原始载荷、真实 None 与空集合的差别保持。
+
 DocumentProcessorService 继续持有处理入口和现有依赖接口。ParsingStage、InlineAssetStage 与 ChunkAssetStage 仍接收 service，保留解析取消、产物目录、图像上传与 SDK 清理行为。它们通过 type-only 引用声明实际 processor 依赖，避免循环导入；图像后端在原位置加载，外部图像对象继续保留实际协议处理。
 
 真实 flow 调用方直接接收和调用五个函数，不再构造对应阶段。这个已独立审查的模块只迁移必要的参数、类型与调用点，不作为本批完整 owner 再计完成。旧 test import、已有调用与 monkeypatch 目标同步到新符号；没有增加、扩写或执行测试用例、断言或 helper。
@@ -43,3 +47,5 @@ DocumentProcessorService 继续持有处理入口和现有依赖接口。Parsing
 活跃笔记检索命中相邻的[文档批次 ORM 契约](2026-11-03-document-batch-orm-contract.md)、[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md)和[预览结果所有权](2026-11-05-preview-owned-values.md)。本记录沿用实际 ORM 与内部结果的边界原则，但保留本管线各自既有的原始转换和失败策略，没有替代或修改这些决定。两处已完成的 package initializer 与 flow owner 不再次计入完整审查。
 
 解析结果消费端的增量证据位于 `E:/MimirQ/.superpowers/parsing-record-consumers-20261107/`。两个完整模块仅接受逐表达式字段读取和已证明局部值的变更；实际表格导入、路由、评分、治理统计、配置构造器与调用者源码保存哈希。配置数字转换、表格列表副本、质量门禁严格／降级、重试、隔离、事务、取消和清理保持。Python 3.11、Ruff、格式及笔记校验是静态证据，未运行或修改 Python 测试，也未执行应用、SDK、模型、数据库或服务。
+
+预处理与 checkpoint 记录增量的源码证据位于 `E:/MimirQ/.superpowers/preprocess-checkpoint-records-20261107/`，保存两个预处理结果的全部返回路径、实际索引选项工厂、完整 ORM 查询、已安装 Document SDK 声明、解析生产者与既有测试源码。完整当前／提交源码只包含批准的规则复用、真实字段和已归一化字典读取。Ruff、格式、Python 3.11 与笔记门禁提供静态证据；未运行或修改 Python 测试，未执行预处理、解析、SDK、业务文件操作、模型或数据库。

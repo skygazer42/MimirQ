@@ -17,7 +17,7 @@ def _logical_source_from_db_document(db_document: "DBDocument", *, file_path: Pa
     user_meta = meta.get("user") if isinstance(meta.get("user"), dict) else {}
     for value in (
         meta.get("source_path"),
-        user_meta.get("source_rel_path") if isinstance(user_meta, dict) else None,
+        user_meta.get("source_rel_path"),
         db_document.filename,
         file_path.name,
     ):
@@ -48,12 +48,12 @@ def _attach_logical_source_metadata(
         if filename:
             meta.setdefault("filename", filename)
             meta.setdefault("file_name", filename)
-        out.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
+        out.append(Document(page_content=doc.page_content or "", metadata=meta, id=doc.id))
     return out
 
 
 def _get_position_tagged_markdown(doc: Document) -> str:
-    metadata = getattr(doc, "metadata", None)
+    metadata = doc.metadata
     if not isinstance(metadata, dict):
         return ""
     tagged = metadata.get("position_tagged_markdown")
@@ -81,7 +81,7 @@ def _serialize_documents_for_parse_cache(items: list[Document] | None) -> list[d
             {
                 "page_content": str(item.page_content or ""),
                 "metadata": dict(item.metadata or {}),
-                "id": getattr(item, "id", None),
+                "id": item.id,
             }
         )
     return out

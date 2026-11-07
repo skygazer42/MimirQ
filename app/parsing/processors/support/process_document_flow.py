@@ -26,6 +26,7 @@ from app.models.document import DocumentChunk, DocumentParsedContent
 if TYPE_CHECKING:
     from app.parsing.processors.processor import DocumentProcessorService
     from app.services.table_store_service import TableAsset
+    from app.types.indexing import IndexingOptions
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.processors.cross_page_merge import merge_cross_page_documents
@@ -168,7 +169,7 @@ class PreparedProcessDocumentState:
     document_img_ids: set[str]
     artifact_dirs: set[str]
     pipeline_effective: PipelineEffective
-    index_options: Any
+    index_options: "IndexingOptions"
     governance_kwargs: dict[str, Any]
     table_sidecar_tables_imported: int = 0
     table_sidecar_routing_audit: dict[str, Any] | None = None
@@ -308,6 +309,16 @@ def _initialize_prepared_process_document_state(
     )
 
 
+def _checkpoint_option(metadata, key, requested):
+    value = metadata.get(key)
+    if not value:
+        value = metadata.get(f"{key}_requested")
+    if not value:
+        value = requested
+    normalized = str(value if value else "auto").strip()
+    return normalized if normalized else "auto"
+
+
 async def _resume_from_indexed_checkpoint(
     service: "DocumentProcessorService",
     *,
@@ -345,18 +356,12 @@ async def _resume_from_indexed_checkpoint(
         document_id,
         doc_pipeline_key or "document",
     )
-    resolved_backend = (
-        str(meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto").strip()
-        or "auto"
-    )
-    resolved_chunk_strategy = (
-        str(meta0.get("chunk_strategy") or meta0.get("chunk_strategy_requested") or chunk_strategy or "auto").strip()
-        or "auto"
-    )
+    resolved_backend = _checkpoint_option(meta0, "parser_backend", parser_backend)
+    resolved_chunk_strategy = _checkpoint_option(meta0, "chunk_strategy", chunk_strategy)
     total_chars = int(
         checkpoint.get("total_characters")
         or meta0.get("indexed_total_characters")
-        or sum(len(str(getattr(chunk, "content", "") or "")) for chunk in indexed_chunks)
+        or sum(len(str(chunk.content or "")) for chunk in indexed_chunks)
     )
     meta_patch = dict(db_document.doc_metadata or {})
     meta_patch.pop("ingest_resume_required", None)
@@ -477,9 +482,9 @@ def _apply_document_preprocess(
             _commit_document_metadata(db, db_document, next_meta)
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-        if not bool(getattr(result, "changed", False)):
+        if not result.changed:
             return file_path, preprocessed_temp_path
-        out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
+        out_path = Path(result.output_path).resolve(strict=False)
         return out_path, out_path
     except Exception as exc:  # noqa: BLE001
         _log_processor_fallback("process_document", exc)
@@ -496,7 +501,7 @@ def _apply_image_preprocess(
     add_stage_duration: Any,
 ) -> tuple[Path, Path | None, dict[str, Any] | None]:
     try:
-        if not bool(getattr(settings, "IMAGE_PREPROCESS_ENABLED", False)):
+        if not bool(settings.IMAGE_PREPROCESS_ENABLED):
             return file_path, preprocessed_temp_path, None
         ext = file_path.suffix.lower()
         if ext != ".pdf" and ext not in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
@@ -510,7 +515,7 @@ def _apply_image_preprocess(
 
                     pdf_quality = score_pdf_quality(
                         file_path,
-                        sample_pages=int(getattr(settings, "PREPROCESS_SAMPLE_PAGES", 3) or 3),
+                        sample_pages=int(settings.PREPROCESS_SAMPLE_PAGES or 3),
                         use_ocr_validation=False,
                     )
                     try:
@@ -535,8 +540,8 @@ def _apply_image_preprocess(
             _commit_document_metadata(db, db_document, next_meta)
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-        if bool(getattr(result, "changed", False)):
-            out_path = Path(str(getattr(result, "output_path", "") or "")).resolve(strict=False)
+        if result.changed:
+            out_path = Path(result.output_path).resolve(strict=False)
             return out_path, out_path, pdf_quality if isinstance(pdf_quality, dict) else None
         return file_path, preprocessed_temp_path, pdf_quality if isinstance(pdf_quality, dict) else None
     except Exception as exc:  # noqa: BLE001
@@ -830,7 +835,7 @@ def _resume_parse_result_from_checkpoint(
 ) -> ParseResult | None:
     try:
         meta0 = dict(db_document.doc_metadata or {})
-        checkpoint = meta0.get("ingest_checkpoint") if isinstance(meta0, dict) else None
+        checkpoint = meta0.get("ingest_checkpoint")
         if not parsed_checkpoint_is_reusable(meta0):
             return None
         pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
@@ -846,10 +851,12 @@ def _resume_parse_result_from_checkpoint(
             .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
             .first()
         )
-        cleaned_md = str(getattr(rec, "markdown_content", "") or "").strip() if rec is not None else ""
+        if rec is None:
+            return None
+        cleaned_md = str(rec.markdown_content or "").strip()
         if not cleaned_md:
             return None
-        original_md = str(getattr(rec, "original_markdown_content", "") or "").strip() if rec is not None else ""
+        original_md = str(rec.original_markdown_content or "").strip()
         logger.info(
             "Resuming ingest from parsed checkpoint: tenant=%s document=%s pipeline_hash=%s",
             tenant_id,
@@ -860,12 +867,7 @@ def _resume_parse_result_from_checkpoint(
         if original_md and original_md != cleaned_md:
             resume_meta["position_tagged_markdown"] = original_md
         return ParseResult(
-            resolved_backend=(
-                str(
-                    meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto"
-                ).strip()
-                or "auto"
-            ),
+            resolved_backend=_checkpoint_option(meta0, "parser_backend", parser_backend),
             resolved_chunk_strategy=chunker_factory.resolve_strategy(chunk_strategy),
             documents=[Document(page_content=cleaned_md, metadata=resume_meta)],
         )
@@ -3140,14 +3142,14 @@ def _run_index_stage(
     with metrics_span(
         "ingest.index",
         chunk_count=len(chunks),
-        chunk_vector_enabled=bool(getattr(prepared_state.index_options, "chunk_vector_enabled", True)),
-        bm25_index_enabled=bool(getattr(prepared_state.index_options, "bm25_index_enabled", True)),
+        chunk_vector_enabled=bool(prepared_state.index_options.chunk_vector_enabled),
+        bm25_index_enabled=bool(prepared_state.index_options.bm25_index_enabled),
         otel_span_name="ingest.index",
         otel_attributes={
             "ingest.stage": "index",
             "document.file_type": str(prepared_state.file_path.suffix.lstrip(".") or "unknown").lower(),
-            "index.chunk_vector_enabled": bool(getattr(prepared_state.index_options, "chunk_vector_enabled", True)),
-            "index.bm25_index_enabled": bool(getattr(prepared_state.index_options, "bm25_index_enabled", True)),
+            "index.chunk_vector_enabled": bool(prepared_state.index_options.chunk_vector_enabled),
+            "index.bm25_index_enabled": bool(prepared_state.index_options.bm25_index_enabled),
         },
     ):
         indexed = index_stage(
