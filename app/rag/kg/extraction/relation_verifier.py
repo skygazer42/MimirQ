@@ -149,7 +149,7 @@ class RelationVerifier:
         if not clean_text:
             return {"kept": []}
 
-        cand_list = [c for c in (candidates or []) if str(getattr(c, "rid", "") or "").strip()]
+        cand_list = [c for c in (candidates or []) if str(c.rid or "").strip()]
         if not cand_list:
             return {"kept": []}
 

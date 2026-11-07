@@ -27,11 +27,7 @@ def _empty_verify_result() -> dict[str, list[dict[str, Any]]]:
 
 
 def _verified_candidate_ids(candidates: Sequence["EntityCandidate"]) -> set[str]:
-    return {
-        str(candidate.cid).strip()
-        for candidate in (candidates or [])
-        if str(getattr(candidate, "cid", "") or "").strip()
-    }
+    return {str(candidate.cid).strip() for candidate in (candidates or []) if str(candidate.cid or "").strip()}
 
 
 def _build_candidate_lines(candidates: Sequence["EntityCandidate"]) -> list[str]:
@@ -213,7 +209,7 @@ class EntityVerifier:
         if not clean_text:
             return _empty_verify_result()
 
-        cand_list = [c for c in (candidates or []) if str(getattr(c, "cid", "") or "").strip()]
+        cand_list = [c for c in (candidates or []) if str(c.cid or "").strip()]
         if not cand_list:
             return _empty_verify_result()
 

@@ -20,6 +20,8 @@ KG 正常化和 embedding 门面没有使用实例状态，却要求调用链构
 
 2026-11-07 字段读取增量：核对实际 ExtractConfig 构造、数据库 DocumentChunk 查询、后端分派和 AliasCandidate 生产者后，提取器与 heuristic 后端直接读取 31 处已声明字段。常规 sections 保持数据库 chunk，只有插件输入经 _document_from_chunk 转成 LangChain 文档；不把两个协议混用。真实可空位置、插件参数与别名引文仍按原值处理，JSON 检查、超时、重试、清理和事务策略保持。
 
+集合记录增量：抽取器循环中的 DocumentChunk、KgSourceEvent、KgEntity 以及三种候选、别名和 EvidenceSpan 均由实际 ORM 查询、Indexer 持久化结果或明确构造器提供。抽取器及三个候选处理／校验模块直接读取另外 62 处声明字段；属性的实际空值、字符串／数值转换、原始 JSON 判断和证据存在性检查仍保留。技能事件映射的本地类型与已有 _SkillPassData.events_by_chunk 的 KgSourceEvent 列表一致。
+
 ## Alternatives considered
 
 保留全部空对象可以减少本次 diff，但会让没有实例状态的规则继续依赖构造器和参数传递，真实资源的寿命也更难辨认。
@@ -37,3 +39,5 @@ KG 正常化和 embedding 门面没有使用实例状态，却要求调用链构
 验证限于源码、实际生产者／调用者／SDK、Ruff、格式与隔离 stdlib AST311／哈希／静态绑定。没有执行应用、SDK、模型、服务、数据库、真实正则或 Python 测试，不把静态投影写成运行时回归。
 
 本次字段增量与 KG 搜索一起记录在 kg-declared-fields-20261107 源码核对材料中：四模块 AST 只允许 46 处已批准字段读取变化，声明所有者、真实调用者和既有测试的字节哈希保持。另有两处 heuristic target 读取来自已核实的 sections[0]。预提交 autoreview 的已知限制仍是缺少 TruffleHog，未运行模型审查，也未安装额外工具。
+
+后续集合字段记录位于 kg-complete-record-fields-20261107，保存四个干净 owner 的开始快照及逐表达式清单。完整模块 AST 仅允许 62 处字段读取和一个本地注解调整；实际模型、Indexer／证据／候选构造器、调用入口与既有测试哈希保持，提示词和响应 schema 原文保持。Ruff、格式及 Python 3.11 源码验证通过；未执行 Python 测试、模型、SDK、数据库或业务函数，自动模型审查仍受 TruffleHog 缺失限制。

@@ -106,13 +106,13 @@ class CandidateEntity:
 def _candidate_prompt_lines(candidates: Sequence[CandidateEntity]) -> list[str]:
     lines: list[str] = []
     for candidate in candidates:
-        cid = str(getattr(candidate, "cid", "") or "").strip()
+        cid = str(candidate.cid or "").strip()
         if not cid:
             continue
-        name = str(getattr(candidate, "name", "") or "").strip()
+        name = str(candidate.name or "").strip()
         if not name:
             continue
-        etype = str(getattr(candidate, "type", "") or "unknown").strip() or "unknown"
+        etype = str(candidate.type or "unknown").strip() or "unknown"
         lines.append(f"{cid}: {name} ({etype})")
     return lines
 
@@ -249,7 +249,7 @@ class RelationProcessor:
         if not isinstance(rels_raw, list):
             return []
 
-        valid_ids = {c.cid for c in cand_list if str(getattr(c, "cid", "") or "").strip()}
+        valid_ids = {c.cid for c in cand_list if str(c.cid or "").strip()}
 
         out: list[dict[str, Any]] = []
         for raw in rels_raw:

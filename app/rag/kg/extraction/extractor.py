@@ -145,7 +145,7 @@ def _apply_document_chunk_budget(
     grouped: dict[object, list[DocumentChunk]] = {}
     doc_order: list[object] = []
     for chunk in chunks:
-        doc_id = getattr(chunk, "document_id", None)
+        doc_id = chunk.document_id
         if doc_id not in grouped:
             grouped[doc_id] = []
             doc_order.append(doc_id)
@@ -158,7 +158,7 @@ def _apply_document_chunk_budget(
         total = len(doc_chunks)
         if total <= max_chunks_per_document:
             for chunk in doc_chunks:
-                keep_ids.add(getattr(chunk, "id", None))
+                keep_ids.add(chunk.id)
             budget_stats[doc_id] = {
                 "strategy": strategy_norm,
                 "total": int(total),
@@ -174,7 +174,7 @@ def _apply_document_chunk_budget(
             selected = [chunk for idx, chunk in enumerate(doc_chunks) if idx in sampled_positions]
 
         for chunk in selected:
-            keep_ids.add(getattr(chunk, "id", None))
+            keep_ids.add(chunk.id)
         budget_stats[doc_id] = {
             "strategy": strategy_norm,
             "total": int(total),
@@ -182,7 +182,7 @@ def _apply_document_chunk_budget(
             "skipped": int(total - len(selected)),
         }
 
-    kept_chunks = [chunk for chunk in chunks if getattr(chunk, "id", None) in keep_ids]
+    kept_chunks = [chunk for chunk in chunks if chunk.id in keep_ids]
     return kept_chunks, budget_stats
 
 
@@ -243,12 +243,12 @@ def _is_chunk_unchanged(
         return False
 
     for ev in prior_events:
-        refs = ev.references if isinstance(getattr(ev, "references", None), dict) else {}
+        refs = ev.references if isinstance(ev.references, dict) else {}
         prior_hash = (refs.get("content_hash") or "").strip() if isinstance(refs, dict) else ""
         if not prior_hash or prior_hash != content_hash:
             return False
 
-        extra = getattr(ev, "extra_data", None)
+        extra = ev.extra_data
         if not isinstance(extra, dict):
             return False
         for key in _PROMPT_SELECTOR_KEYS:
@@ -572,7 +572,7 @@ class _RelationPassData:
 def _chunk_id_to_document_id(chunks: Sequence[DocumentChunk]) -> dict[object, object]:
     mapping: dict[object, object] = {}
     for chunk in chunks:
-        if getattr(chunk, "id", None) and getattr(chunk, "document_id", None):
+        if chunk.id and chunk.document_id:
             mapping[chunk.id] = chunk.document_id
     return mapping
 
@@ -582,8 +582,8 @@ def _count_events_by_document(
 ) -> dict[object, int]:
     counts: dict[object, int] = dict.fromkeys(doc_ids, 0)
     for ev in kept_events:
-        chunk_id = getattr(ev, "chunk_id", None)
-        doc_id = chunk_id_to_doc_id.get(chunk_id) if chunk_id is not None else getattr(ev, "document_id", None)
+        chunk_id = ev.chunk_id
+        doc_id = chunk_id_to_doc_id.get(chunk_id) if chunk_id is not None else ev.document_id
         if doc_id in counts:
             counts[doc_id] += 1
     return counts
@@ -727,7 +727,7 @@ async def _verify_relations_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG relation verify failed for chunk %s: %s",
-            str(getattr(chunk, "id", "") or ""),
+            str(chunk.id or ""),
             str(exc)[:200],
         )
         return chunk_id, None, False
@@ -1008,10 +1008,8 @@ def _prepare_chunk_budget(
         max_chunks_per_document=max_chunks_per_document,
         strategy=chunk_budget_strategy,
     )
-    kept_budget_ids = {getattr(chunk, "id", None) for chunk in budgeted_chunks}
-    budget_skipped_chunk_ids = {
-        getattr(chunk, "id", None) for chunk in resolved_chunks if getattr(chunk, "id", None) not in kept_budget_ids
-    }
+    kept_budget_ids = {chunk.id for chunk in budgeted_chunks}
+    budget_skipped_chunk_ids = {chunk.id for chunk in resolved_chunks if chunk.id not in kept_budget_ids}
     return (
         max_chunks_per_document,
         chunk_budget_strategy,
@@ -1122,7 +1120,7 @@ def _maybe_run_python_plugin(
         params=dict(config.kg_python_params or {}),
         context={"tenant_id": str(tenant_id)},
     )
-    chunk_ids_for_replace = [chunk.id for chunk in resolved_chunks if getattr(chunk, "id", None) is not None]
+    chunk_ids_for_replace = [chunk.id for chunk in resolved_chunks if chunk.id is not None]
     _cleanup_plugin_extract(
         session=session,
         config=config,
@@ -1221,7 +1219,7 @@ def _resolve_prompt_template_content(
 
 def _populate_chunk_content_maps(state: _ExtractState) -> None:
     for chunk in state.resolved_chunks:
-        meta = getattr(chunk, "doc_metadata", None)
+        meta = chunk.doc_metadata
         meta_dict = meta if isinstance(meta, dict) else {}
         raw_hash = meta_dict.get("content_hash")
         content_hash = raw_hash.strip() if isinstance(raw_hash, str) and raw_hash.strip() else ""
@@ -1234,7 +1232,7 @@ def _populate_chunk_content_maps(state: _ExtractState) -> None:
         computed_digest = ""
         computed_len = 0
         if not content_hash or content_len is None:
-            computed_digest, computed_len = _compute_content_stats(getattr(chunk, "content", "") or "")
+            computed_digest, computed_len = _compute_content_stats(chunk.content or "")
         if not content_hash:
             content_hash = computed_digest
         if content_len is None:
@@ -1246,7 +1244,7 @@ def _populate_chunk_content_maps(state: _ExtractState) -> None:
         raw_key = meta_dict.get("chunk_key")
         chunk_key = raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else ""
         if not chunk_key:
-            chunk_key = str(getattr(chunk, "chunk_index", "") or "")
+            chunk_key = str(chunk.chunk_index or "")
         state.chunk_key_by_id[chunk.id] = chunk_key
 
 
@@ -1265,7 +1263,7 @@ def _load_skip_unchanged_events(session: "Session", state: _ExtractState, progre
         .all()
     )
     for event in existing:
-        if not getattr(event, "chunk_id", None):
+        if not event.chunk_id:
             continue
         state.existing_events_by_chunk.setdefault(event.chunk_id, []).append(event)
 
@@ -1416,7 +1414,7 @@ async def _verify_entities_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG entity verify failed for chunk %s: %s",
-            str(getattr(chunk, "id", "") or ""),
+            str(chunk.id or ""),
             str(exc)[:200],
         )
         return chunk_id, {"kept": [], "aliases": []}, False
@@ -1498,7 +1496,7 @@ async def _run_entity_verification(
     if not candidates_by_chunk or llm_client is None:
         return {}
     verifier = EntityVerifier(llm_client=llm_client)
-    chunk_by_id = {chunk.id: chunk for chunk in state.resolved_chunks if getattr(chunk, "id", None) is not None}
+    chunk_by_id = {chunk.id: chunk for chunk in state.resolved_chunks if chunk.id is not None}
     verify_results = await asyncio.gather(
         *[
             _verify_entities_for_chunk(
@@ -1562,7 +1560,7 @@ def _apply_entity_evidence(ent: dict, *, chunk: DocumentChunk, name: str, eviden
     ent["evidence_quote"] = evidence.quote
     ent["evidence_start_char"] = evidence.start_char
     ent["evidence_end_char"] = evidence.end_char
-    ent["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
+    ent["evidence_source"] = str(evidence.source or "").strip() or "quote"
     return ent
 
 
@@ -1702,11 +1700,11 @@ def _build_event_index_records(
             )
         entity_total += len(entity_inputs)
         refs: dict[str, object] = {"chunk_index": chunk.chunk_index, "page": chunk.page_number}
-        if getattr(chunk, "start_char", None) is not None:
+        if chunk.start_char is not None:
             refs["start_char"] = int(chunk.start_char)
-        if getattr(chunk, "end_char", None) is not None:
+        if chunk.end_char is not None:
             refs["end_char"] = int(chunk.end_char)
-        meta = getattr(chunk, "doc_metadata", None)
+        meta = chunk.doc_metadata
         meta_dict = meta if isinstance(meta, dict) else {}
         source_val = meta_dict.get("source")
         if isinstance(source_val, str) and source_val.strip():
@@ -1808,7 +1806,7 @@ def _collect_kept_events_on_failure(
         )
         .all()
     )
-    return [event for event in existing if getattr(event, "chunk_id", None) in failed_chunk_ids]
+    return [event for event in existing if event.chunk_id in failed_chunk_ids]
 
 
 def _replace_cleanup_chunk_ids(
@@ -2083,9 +2081,9 @@ def _build_relation_candidates(
 def _build_relation_entity_lookup(result: PersistEventsResult | None) -> dict[tuple[str, str], object]:
     entity_id_by_key: dict[tuple[str, str], object] = {}
     for ent in list(result.entities) if result else []:
-        normalized = str(getattr(ent, "normalized_name", "") or "").strip()
-        ent_type = str(getattr(ent, "type", "") or "unknown").strip() or "unknown"
-        ent_id = getattr(ent, "id", None)
+        normalized = str(ent.normalized_name or "").strip()
+        ent_type = str(ent.type or "unknown").strip() or "unknown"
+        ent_id = ent.id
         if normalized and ent_id is not None:
             entity_id_by_key[(ent_type, normalized)] = ent_id
     return entity_id_by_key
@@ -2098,9 +2096,7 @@ def _build_relation_pass_data(context: _RelationPostIndexContext) -> _RelationPa
             cleanup_chunk_ids=context.cleanup_chunk_ids,
         ),
         entity_id_by_key=_build_relation_entity_lookup(context.result),
-        chunk_by_id={
-            chunk.id: chunk for chunk in context.state.resolved_chunks if getattr(chunk, "id", None) is not None
-        },
+        chunk_by_id={chunk.id: chunk for chunk in context.state.resolved_chunks if chunk.id is not None},
     )
 
 
@@ -2123,7 +2119,7 @@ def _record_alias_candidate_methods(
     alias_diag["chunks_considered"] = int(alias_diag.get("chunks_considered", 0) or 0) + 1
     alias_diag["candidates_total"] = int(alias_diag.get("candidates_total", 0) or 0) + len(alias_candidates)
     for cand in alias_candidates:
-        method = str(getattr(cand, "method", "") or "").strip() or "unknown"
+        method = str(cand.method or "").strip() or "unknown"
         by_method = alias_diag.get("candidates_by_method")
         if isinstance(by_method, dict):
             by_method[method] = int(by_method.get(method, 0) or 0) + 1
@@ -2144,11 +2140,9 @@ def _record_alias_candidate_methods(
 def _relation_candidate_norm_map(candidates: list[CandidateEntity]) -> dict[str, tuple[str, str]]:
     by_norm: dict[str, tuple[str, str]] = {}
     for candidate in candidates:
-        normalized = str(getattr(candidate, "normalized_name", "") or "").strip() or normalize_entity_name(
-            str(getattr(candidate, "name", "") or "")
-        )
-        ent_type = str(getattr(candidate, "type", "") or "unknown").strip() or "unknown"
-        name = str(getattr(candidate, "name", "") or "").strip()
+        normalized = str(candidate.normalized_name or "").strip() or normalize_entity_name(str(candidate.name or ""))
+        ent_type = str(candidate.type or "unknown").strip() or "unknown"
+        name = str(candidate.name or "").strip()
         if normalized and name:
             by_norm.setdefault(normalized, (ent_type, name))
     return by_norm
@@ -2346,9 +2340,9 @@ def _merge_upserted_alias_entities(
 ) -> None:
     context.alias_diag["entities_upserted"] = len(upserted or [])
     for ent in upserted or []:
-        normalized = str(getattr(ent, "normalized_name", "") or "").strip()
-        ent_type = str(getattr(ent, "type", "") or "unknown").strip() or "unknown"
-        ent_id = getattr(ent, "id", None)
+        normalized = str(ent.normalized_name or "").strip()
+        ent_type = str(ent.type or "unknown").strip() or "unknown"
+        ent_id = ent.id
         if normalized and ent_id is not None:
             data.entity_id_by_key[(ent_type, normalized)] = ent_id
 
@@ -2454,7 +2448,7 @@ async def _extract_relations_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG relation extract failed for chunk %s: %s",
-            str(getattr(chunk, "id", "") or ""),
+            str(chunk.id or ""),
             str(exc)[:200],
         )
         return chunk_id, [], False
@@ -2758,7 +2752,7 @@ def _append_extracted_relation_row(
         rel_refs["evidence_quote"] = evidence.quote
         rel_refs["evidence_start_char"] = evidence.start_char
         rel_refs["evidence_end_char"] = evidence.end_char
-        rel_refs["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
+        rel_refs["evidence_source"] = str(evidence.source or "").strip() or "quote"
     relation_evidence_stats["kept"] += 1
     rel_rows.append(
         KgRelation(
@@ -2835,7 +2829,7 @@ def _append_heuristic_alias_relation_rows(
             alias_refs["evidence_quote"] = evidence.quote
             alias_refs["evidence_start_char"] = evidence.start_char
             alias_refs["evidence_end_char"] = evidence.end_char
-            alias_refs["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
+            alias_refs["evidence_source"] = str(evidence.source or "").strip() or "quote"
         rel_rows.append(
             KgRelation(
                 tenant_id=context.state.tenant_id,
@@ -2912,7 +2906,7 @@ def _append_llm_alias_relation_rows(
             llm_refs["evidence_quote"] = evidence.quote
             llm_refs["evidence_start_char"] = evidence.start_char
             llm_refs["evidence_end_char"] = evidence.end_char
-            llm_refs["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or "quote"
+            llm_refs["evidence_source"] = str(evidence.source or "").strip() or "quote"
         try:
             conf = float(item.get("confidence") or 0.9)
         except Exception:
@@ -3112,10 +3106,10 @@ async def _run_relation_post_index_pass(context: _RelationPostIndexContext) -> d
 
 
 def _build_skill_pass_data(context: _SkillPostIndexContext) -> _SkillPassData:
-    chunk_by_id = {chunk.id: chunk for chunk in context.state.resolved_chunks if getattr(chunk, "id", None) is not None}
-    events_by_chunk: dict[object, list[object]] = {}
+    chunk_by_id = {chunk.id: chunk for chunk in context.state.resolved_chunks if chunk.id is not None}
+    events_by_chunk: dict[object, list[KgSourceEvent]] = {}
     for event in context.new_events:
-        chunk_id = getattr(event, "chunk_id", None)
+        chunk_id = event.chunk_id
         if chunk_id is None or chunk_id not in context.cleanup_chunk_ids:
             continue
         events_by_chunk.setdefault(chunk_id, []).append(event)
@@ -3178,7 +3172,7 @@ async def _extract_skills_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG skill extract failed for chunk %s: %s",
-            str(getattr(chunk, "id", "") or ""),
+            str(chunk.id or ""),
             str(exc)[:200],
         )
         return chunk_id, [], False
@@ -3238,7 +3232,7 @@ def _normalize_skill_item(
         "_evidence_quote": evidence.quote if evidence is not None else None,
         "_evidence_start_char": evidence.start_char if evidence is not None else None,
         "_evidence_end_char": evidence.end_char if evidence is not None else None,
-        "_evidence_source": (str(getattr(evidence, "source", "") or "").strip() if evidence is not None else None),
+        "_evidence_source": (str(evidence.source or "").strip() if evidence is not None else None),
     }
 
 
@@ -3355,11 +3349,11 @@ def _upsert_skill_entities(context: _SkillPostIndexContext, data: _SkillPassData
         commit=True,
     )
     for ent in upserted or []:
-        if str(getattr(ent, "type", "") or "") != "Skill":
+        if str(ent.type or "") != "Skill":
             continue
-        normalized = str(getattr(ent, "normalized_name", "") or "").strip()
+        normalized = str(ent.normalized_name or "").strip()
         if normalized:
-            data.skill_id_by_norm[normalized] = getattr(ent, "id", None)
+            data.skill_id_by_norm[normalized] = ent.id
 
 
 def _collect_taxonomy_surfaces(skills_by_chunk: dict[object, list[dict]]) -> tuple[dict[str, str], dict[str, str]]:
@@ -3433,11 +3427,11 @@ def _merge_taxonomy_entities(
     upserted: Sequence[KgEntity] | None, *, expected_type: str, target: dict[str, object]
 ) -> None:
     for ent in upserted or []:
-        if str(getattr(ent, "type", "") or "") != expected_type:
+        if str(ent.type or "") != expected_type:
             continue
-        normalized = str(getattr(ent, "normalized_name", "") or "").strip()
+        normalized = str(ent.normalized_name or "").strip()
         if normalized:
-            target[normalized] = getattr(ent, "id", None)
+            target[normalized] = ent.id
 
 
 async def _upsert_skill_taxonomy(context: _SkillPostIndexContext, data: _SkillPassData) -> None:
@@ -3550,7 +3544,7 @@ def _edge_refs_from_evidence(
     edge_refs["evidence_quote"] = evidence.quote
     edge_refs["evidence_start_char"] = evidence.start_char
     edge_refs["evidence_end_char"] = evidence.end_char
-    edge_refs["evidence_source"] = str(getattr(evidence, "source", "") or "").strip() or default_source
+    edge_refs["evidence_source"] = str(evidence.source or "").strip() or default_source
     return edge_refs
 
 
@@ -3708,7 +3702,7 @@ def _append_skill_links(
     links: list[KgEventEntity],
 ) -> None:
     for event in events or []:
-        event_id = getattr(event, "id", None)
+        event_id = event.id
         if event_id is None:
             continue
         for item in items:
@@ -3931,7 +3925,7 @@ def _writeback_document_metadata(
             .all()
         )
         for doc in docs:
-            meta = dict(getattr(doc, "doc_metadata", None) or {})
+            meta = dict(doc.doc_metadata or {})
             meta["kg_event_count"] = int(counts["events"].get(doc.id, 0))
             meta["kg_skipped_chunks"] = int(counts["skipped"].get(doc.id, 0))
             meta["kg_budget_skipped_chunks"] = int(counts["budget_skipped"].get(doc.id, 0))
