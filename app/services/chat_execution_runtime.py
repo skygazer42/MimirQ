@@ -595,10 +595,10 @@ def execute_extractive_fallback_once(
     from app.rag.retrieval.orchestrator import run_retrieval
 
     explicit_mode = reason == "explicit_extractive_answer_mode"
-    requested_top_k = max(1, min(int(getattr(effective_rag_config, "top_k", 6) or 6), 100))
+    requested_top_k = max(1, min(int(effective_rag_config.top_k or 6), 100))
     top_k = requested_top_k if explicit_mode else max(1, min(requested_top_k, 6))
     answer_evidence_max_items = max(4, min(top_k, 20)) if explicit_mode else 4
-    retrieval_mode = str(getattr(effective_rag_config, "retrieval_mode", "hybrid") or "hybrid")
+    retrieval_mode = str(effective_rag_config.retrieval_mode or "hybrid")
     state = build_rag_state(
         question=request.message,
         history=history_for_llm,
@@ -607,94 +607,60 @@ def execute_extractive_fallback_once(
         account_id=account_id,
         dataset_id=dataset_id_used or scope_dataset_id,
         top_k=top_k,
-        score_threshold=getattr(effective_rag_config, "score_threshold", 0.0),
+        score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=retrieval_mode,
-        retrieval_profile=(getattr(effective_rag_config, "retrieval_profile", None) if explicit_mode else None),
-        retrieval_contract_mode=(
-            getattr(effective_rag_config, "retrieval_contract_mode", None) if explicit_mode else None
-        ),
-        must_recall=(getattr(effective_rag_config, "must_recall", None) if explicit_mode else None),
+        retrieval_profile=(effective_rag_config.retrieval_profile if explicit_mode else None),
+        retrieval_contract_mode=(effective_rag_config.retrieval_contract_mode if explicit_mode else None),
+        must_recall=(effective_rag_config.must_recall if explicit_mode else None),
         must_recall_expected_source_keys=(
-            getattr(effective_rag_config, "must_recall_expected_source_keys", None) if explicit_mode else None
+            effective_rag_config.must_recall_expected_source_keys if explicit_mode else None
         ),
         must_recall_required_anchor_fields=(
-            getattr(effective_rag_config, "must_recall_required_anchor_fields", None) if explicit_mode else None
+            effective_rag_config.must_recall_required_anchor_fields if explicit_mode else None
         ),
-        intent_router=(getattr(effective_rag_config, "intent_router", None) if explicit_mode else None),
-        intent_router_policy=(getattr(effective_rag_config, "intent_router_policy", None) if explicit_mode else None),
-        industry_rules_enabled=(
-            getattr(effective_rag_config, "industry_rules_enabled", None) if explicit_mode else None
-        ),
-        industry_rules_rulesets=(
-            getattr(effective_rag_config, "industry_rules_rulesets", None) if explicit_mode else None
-        ),
-        enable_query_alias_expansion=(
-            getattr(effective_rag_config, "enable_query_alias_expansion", None) if explicit_mode else None
-        ),
-        query_aliases=(getattr(effective_rag_config, "query_aliases", None) if explicit_mode else None),
-        query_alias_max_queries=(
-            getattr(effective_rag_config, "query_alias_max_queries", None) if explicit_mode else None
-        ),
-        enable_multi_query=(getattr(effective_rag_config, "enable_multi_query", None) if explicit_mode else False),
-        multi_query_count=(getattr(effective_rag_config, "multi_query_count", None) if explicit_mode else None),
-        multi_query_temperature=(
-            getattr(effective_rag_config, "multi_query_temperature", None) if explicit_mode else None
-        ),
-        multi_query_max_chars=(getattr(effective_rag_config, "multi_query_max_chars", None) if explicit_mode else None),
-        enable_hyde=(getattr(effective_rag_config, "enable_hyde", None) if explicit_mode else False),
-        enable_query_decomposition=(
-            getattr(effective_rag_config, "enable_query_decomposition", None) if explicit_mode else None
-        ),
-        enable_hierarchy_recall=(
-            getattr(effective_rag_config, "enable_hierarchy_recall", None) if explicit_mode else None
-        ),
-        hierarchy_family_collapse=(
-            getattr(effective_rag_config, "hierarchy_family_collapse", None) if explicit_mode else None
-        ),
-        hierarchy_family_aggregation=(
-            getattr(effective_rag_config, "hierarchy_family_aggregation", None) if explicit_mode else None
-        ),
-        hierarchy_tree_dedup=(getattr(effective_rag_config, "hierarchy_tree_dedup", None) if explicit_mode else None),
-        hierarchy_parent_depth=(
-            getattr(effective_rag_config, "hierarchy_parent_depth", None) if explicit_mode else None
-        ),
-        hierarchy_sibling_window=(
-            getattr(effective_rag_config, "hierarchy_sibling_window", None) if explicit_mode else None
-        ),
-        hierarchy_overfetch_factor=(
-            getattr(effective_rag_config, "hierarchy_overfetch_factor", None) if explicit_mode else None
-        ),
-        enable_kg_query_expansion=(
-            getattr(effective_rag_config, "enable_kg_query_expansion", None) if explicit_mode else None
-        ),
-        enable_kg_chunk_injection=(
-            getattr(effective_rag_config, "enable_kg_chunk_injection", None) if explicit_mode else None
-        ),
-        kg_chunk_injection_max_chunks=(
-            getattr(effective_rag_config, "kg_chunk_injection_max_chunks", None) if explicit_mode else None
-        ),
-        enable_kg_chunk_boost=(getattr(effective_rag_config, "enable_kg_chunk_boost", None) if explicit_mode else None),
-        kg_chunk_boost_weight=(getattr(effective_rag_config, "kg_chunk_boost_weight", None) if explicit_mode else None),
-        kg_chunk_boost_max_promoted=(
-            getattr(effective_rag_config, "kg_chunk_boost_max_promoted", None) if explicit_mode else None
-        ),
+        intent_router=(effective_rag_config.intent_router if explicit_mode else None),
+        intent_router_policy=(effective_rag_config.intent_router_policy if explicit_mode else None),
+        industry_rules_enabled=(effective_rag_config.industry_rules_enabled if explicit_mode else None),
+        industry_rules_rulesets=(effective_rag_config.industry_rules_rulesets if explicit_mode else None),
+        enable_query_alias_expansion=(effective_rag_config.enable_query_alias_expansion if explicit_mode else None),
+        query_aliases=(effective_rag_config.query_aliases if explicit_mode else None),
+        query_alias_max_queries=(effective_rag_config.query_alias_max_queries if explicit_mode else None),
+        enable_multi_query=(effective_rag_config.enable_multi_query if explicit_mode else False),
+        multi_query_count=(effective_rag_config.multi_query_count if explicit_mode else None),
+        multi_query_temperature=(effective_rag_config.multi_query_temperature if explicit_mode else None),
+        multi_query_max_chars=(effective_rag_config.multi_query_max_chars if explicit_mode else None),
+        enable_hyde=(effective_rag_config.enable_hyde if explicit_mode else False),
+        enable_query_decomposition=(effective_rag_config.enable_query_decomposition if explicit_mode else None),
+        enable_hierarchy_recall=(effective_rag_config.enable_hierarchy_recall if explicit_mode else None),
+        hierarchy_family_collapse=(effective_rag_config.hierarchy_family_collapse if explicit_mode else None),
+        hierarchy_family_aggregation=(effective_rag_config.hierarchy_family_aggregation if explicit_mode else None),
+        hierarchy_tree_dedup=(effective_rag_config.hierarchy_tree_dedup if explicit_mode else None),
+        hierarchy_parent_depth=(effective_rag_config.hierarchy_parent_depth if explicit_mode else None),
+        hierarchy_sibling_window=(effective_rag_config.hierarchy_sibling_window if explicit_mode else None),
+        hierarchy_overfetch_factor=(effective_rag_config.hierarchy_overfetch_factor if explicit_mode else None),
+        enable_kg_query_expansion=(effective_rag_config.enable_kg_query_expansion if explicit_mode else None),
+        enable_kg_chunk_injection=(effective_rag_config.enable_kg_chunk_injection if explicit_mode else None),
+        kg_chunk_injection_max_chunks=(effective_rag_config.kg_chunk_injection_max_chunks if explicit_mode else None),
+        enable_kg_chunk_boost=(effective_rag_config.enable_kg_chunk_boost if explicit_mode else None),
+        kg_chunk_boost_weight=(effective_rag_config.kg_chunk_boost_weight if explicit_mode else None),
+        kg_chunk_boost_max_promoted=(effective_rag_config.kg_chunk_boost_max_promoted if explicit_mode else None),
         enable_query_rewrite=False,
-        alpha=getattr(effective_rag_config, "alpha", None),
-        fusion_strategy=getattr(effective_rag_config, "fusion_strategy", None),
-        fusion_budgets=getattr(effective_rag_config, "fusion_budgets", None),
-        fusion_min_scores=getattr(effective_rag_config, "fusion_min_scores", None),
-        fusion_weights=getattr(effective_rag_config, "fusion_weights", None),
-        enable_weight_rerank=getattr(effective_rag_config, "enable_weight_rerank", None),
-        vector_weight=getattr(effective_rag_config, "vector_weight", None),
-        keyword_weight=getattr(effective_rag_config, "keyword_weight", None),
-        mmr_lambda=getattr(effective_rag_config, "mmr_lambda", None),
-        enable_reranker=(getattr(effective_rag_config, "enable_reranker", None) if explicit_mode else False),
-        reranker_provider=(getattr(effective_rag_config, "reranker_provider", None) if explicit_mode else None),
-        reranker_top_n=(getattr(effective_rag_config, "reranker_top_n", None) if explicit_mode else None),
-        sparse_retrieval_enabled=getattr(effective_rag_config, "sparse_retrieval_enabled", None),
-        sparse_retrieval_provider=getattr(effective_rag_config, "sparse_retrieval_provider", None),
-        visible_evidence_only=getattr(effective_rag_config, "visible_evidence_only", None),
-        metadata_filter=getattr(effective_rag_config, "metadata_filter", None),
+        alpha=effective_rag_config.alpha,
+        fusion_strategy=effective_rag_config.fusion_strategy,
+        fusion_budgets=effective_rag_config.fusion_budgets,
+        fusion_min_scores=effective_rag_config.fusion_min_scores,
+        fusion_weights=effective_rag_config.fusion_weights,
+        enable_weight_rerank=effective_rag_config.enable_weight_rerank,
+        vector_weight=effective_rag_config.vector_weight,
+        keyword_weight=effective_rag_config.keyword_weight,
+        mmr_lambda=effective_rag_config.mmr_lambda,
+        enable_reranker=(effective_rag_config.enable_reranker if explicit_mode else False),
+        reranker_provider=(effective_rag_config.reranker_provider if explicit_mode else None),
+        reranker_top_n=(effective_rag_config.reranker_top_n if explicit_mode else None),
+        sparse_retrieval_enabled=effective_rag_config.sparse_retrieval_enabled,
+        sparse_retrieval_provider=effective_rag_config.sparse_retrieval_provider,
+        visible_evidence_only=effective_rag_config.visible_evidence_only,
+        metadata_filter=effective_rag_config.metadata_filter,
         db=db,
     )
     result = run_retrieval(state) or {}
