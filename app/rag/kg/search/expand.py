@@ -121,7 +121,7 @@ def _tenant_uuid(value: object) -> UUID | None:
 
 def _relation_evidence(rel: "KgRelation") -> tuple[float, str]:
     try:
-        refs = getattr(rel, "references", None)
+        refs = rel.references
         evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
         if evidence_source != "mention":
             return 1.0, evidence_source
@@ -141,12 +141,12 @@ def _relation_neighbor_candidate(
     from_id, to_id, predicate = relation_direction(rel, seed_set)
     if not from_id or not to_id or not predicate or to_id == from_id:
         return None
-    confidence = float(getattr(rel, "confidence", 0.0) or 0.0)
+    confidence = float(rel.confidence or 0.0)
     if confidence <= 0:
         return None
     pred_mult = relation_multiplier(
         predicate,
-        from_is_subject=bool(from_id == str(getattr(rel, "subject_entity_id", ""))),
+        from_is_subject=bool(from_id == str(rel.subject_entity_id)),
     )
     if pred_mult <= 0:
         return None
@@ -188,10 +188,10 @@ def _add_relation_clue(
             "evidence_multiplier": float(evidence_mult),
             "evidence_source": evidence_source,
             "confidence_bucket": bucket,
-            "relation_id": str(getattr(rel, "id", "") or "") or None,
-            "relation_document_id": str(getattr(rel, "document_id", "") or "") or None,
-            "relation_chunk_id": str(getattr(rel, "chunk_id", "") or "") or None,
-            "relation_event_id": str(getattr(rel, "event_id", "") or "") or None,
+            "relation_id": str(rel.id or "") or None,
+            "relation_document_id": str(rel.document_id or "") or None,
+            "relation_chunk_id": str(rel.chunk_id or "") or None,
+            "relation_event_id": str(rel.event_id or "") or None,
             "step": f"hop-{hop + 1}",
         },
     )

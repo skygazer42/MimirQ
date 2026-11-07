@@ -209,12 +209,12 @@ def _event_title(text: str, *, chunk: DocumentChunk) -> str:
     heading = _extract_heading(clean)
     if heading:
         return heading[:120]
-    meta = getattr(chunk, "doc_metadata", None)
+    meta = chunk.doc_metadata
     meta_dict = meta if isinstance(meta, dict) else {}
     doc_title = str(meta_dict.get("document_title") or "").strip()
     if doc_title:
         return doc_title[:120]
-    return f"Chunk {getattr(chunk, 'chunk_index', 0)} key concepts"
+    return f"Chunk {chunk.chunk_index} key concepts"
 
 
 def _event_summary(text: str, *, title: str) -> str:
@@ -299,7 +299,7 @@ class HeuristicExtractor:
         if not sections:
             return []
         target = sections[0]
-        text = str(getattr(target, "content", "") or "").strip()
+        text = str(target.content or "").strip()
         if not text:
             return []
 
@@ -326,7 +326,7 @@ class HeuristicExtractor:
                     "summary": summary,
                     "content": summary,
                     "entities": entities,
-                    "chunk_id": str(getattr(target, "id", "") or ""),
+                    "chunk_id": str(target.id or ""),
                 }
             )
 

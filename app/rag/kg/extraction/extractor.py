@@ -211,23 +211,23 @@ def _compute_content_stats(text: str) -> tuple[str, int]:
 
 
 def _document_from_chunk(chunk: DocumentChunk) -> LCDocument:
-    meta = dict(getattr(chunk, "doc_metadata", None) or {})
-    if getattr(chunk, "document_id", None) is not None:
+    meta = dict(chunk.doc_metadata or {})
+    if chunk.document_id is not None:
         meta.setdefault("document_id", str(chunk.document_id))
-    if getattr(chunk, "id", None) is not None:
+    if chunk.id is not None:
         meta.setdefault("chunk_id", str(chunk.id))
-    if getattr(chunk, "chunk_index", None) is not None:
+    if chunk.chunk_index is not None:
         meta.setdefault("chunk_index", int(chunk.chunk_index))
-    if getattr(chunk, "page_number", None) is not None:
+    if chunk.page_number is not None:
         meta.setdefault("page_number", int(chunk.page_number))
-    if getattr(chunk, "start_char", None) is not None:
+    if chunk.start_char is not None:
         meta.setdefault("start_char", int(chunk.start_char))
-    if getattr(chunk, "end_char", None) is not None:
+    if chunk.end_char is not None:
         meta.setdefault("end_char", int(chunk.end_char))
     return LCDocument(
-        page_content=str(getattr(chunk, "content", "") or ""),
+        page_content=str(chunk.content or ""),
         metadata=meta,
-        id=str(getattr(chunk, "id", "") or ""),
+        id=str(chunk.id or ""),
     )
 
 
@@ -769,7 +769,7 @@ def _build_chunk_sections(
 
 
 def _chunk_has_asset(chunk: DocumentChunk) -> bool:
-    meta = getattr(chunk, "doc_metadata", None)
+    meta = chunk.doc_metadata
     meta_dict = meta if isinstance(meta, dict) else {}
     doc_type = str(meta_dict.get("doc_type_kwd") or "").lower()
     if doc_type in {"image", "table"}:
@@ -824,7 +824,7 @@ def _record_chunk_failure(
     progress.failure_messages.append(str(last_exc)[:300] if last_exc else "unknown_error")
     logger.warning(
         "KG extract failed for chunk %s after %s attempts: %s",
-        getattr(chunk, "id", ""),
+        chunk.id,
         attempt + 1,
         str(last_exc)[:200] if last_exc else "unknown_error",
     )
@@ -1048,7 +1048,7 @@ def _plugin_writeback(
 def _cleanup_plugin_extract(
     *, session: "Session", config: ExtractConfig, tenant_id: object, chunk_ids_for_replace: list[object]
 ) -> None:
-    if not bool(getattr(config, "replace_existing", False)) or not chunk_ids_for_replace:
+    if not bool(config.replace_existing) or not chunk_ids_for_replace:
         return
     try:
         RelationRepository(session).delete_relations_for_chunks(
@@ -1061,7 +1061,7 @@ def _cleanup_plugin_extract(
             chunk_ids=chunk_ids_for_replace,
             commit=False,
             exclude_event_ids=[],
-            prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
+            prune_orphan_entities=bool(config.prune_orphan_entities),
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to cleanup previous plugin KG events for chunks: %s", str(exc)[:200])
@@ -1111,7 +1111,7 @@ def _maybe_run_python_plugin(
     chunk_budget_strategy: str,
     t0: float,
 ) -> list[KgSourceEvent] | None:
-    kg_plugin_ref = str(getattr(config, "kg_python_plugin", "") or "").strip()
+    kg_plugin_ref = str(config.kg_python_plugin or "").strip()
     if not kg_plugin_ref:
         return None
 
@@ -1119,7 +1119,7 @@ def _maybe_run_python_plugin(
     events_to_index = apply_kg_python_plugin(
         plugin_docs,
         plugin_ref=kg_plugin_ref,
-        params=dict(getattr(config, "kg_python_params", None) or {}),
+        params=dict(config.kg_python_params or {}),
         context={"tenant_id": str(tenant_id)},
     )
     chunk_ids_for_replace = [chunk.id for chunk in resolved_chunks if getattr(chunk, "id", None) is not None]
@@ -1130,7 +1130,7 @@ def _maybe_run_python_plugin(
         chunk_ids_for_replace=chunk_ids_for_replace,
     )
     if not events_to_index:
-        if bool(getattr(config, "replace_existing", False)) and chunk_ids_for_replace:
+        if bool(config.replace_existing) and chunk_ids_for_replace:
             session.commit()
         elapsed = time.perf_counter() - t0
         log_metrics(
@@ -1934,7 +1934,7 @@ def _handle_empty_extract_result(
                 tenant_id=state.tenant_id,
                 chunk_ids=list(replace_cleanup_chunk_ids),
                 exclude_event_ids=[],
-                prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
+                prune_orphan_entities=bool(config.prune_orphan_entities),
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to cleanup previous KG events for chunks: %s", str(exc)[:200])
@@ -2270,7 +2270,7 @@ def _build_alias_spec(
         alias_norm,
         canonical_norm,
         str(cand.method or ""),
-        str(getattr(cand, "quote", "") or "").strip(),
+        str(cand.quote or "").strip(),
     )
 
 
@@ -2532,11 +2532,11 @@ def _relation_refs_for_chunk(
     chunk_len_by_id: dict[object, int],
 ) -> tuple[dict[str, object], str | None]:
     refs: dict[str, object] = {"chunk_index": chunk.chunk_index, "page": chunk.page_number}
-    if getattr(chunk, "start_char", None) is not None:
+    if chunk.start_char is not None:
         refs["start_char"] = int(chunk.start_char)
-    if getattr(chunk, "end_char", None) is not None:
+    if chunk.end_char is not None:
         refs["end_char"] = int(chunk.end_char)
-    meta = getattr(chunk, "doc_metadata", None)
+    meta = chunk.doc_metadata
     meta_dict = meta if isinstance(meta, dict) else {}
     source_val = meta_dict.get("source")
     if isinstance(source_val, str) and source_val.strip():
@@ -3497,7 +3497,7 @@ def _skill_refs_base(
         chunk_id=chunk.id,
         references=refs_base,
     )
-    return refs_base, pipeline_hash, link_extra_base, str(getattr(chunk, "content", "") or "")
+    return refs_base, pipeline_hash, link_extra_base, str(chunk.content or "")
 
 
 def _existing_skill_relation_keys(
@@ -4111,7 +4111,7 @@ class EventExtractor:
                         tenant_id=tenant_id,
                         chunk_ids=list(replace_cleanup_chunk_ids),
                         exclude_event_ids=[ev.id for ev in new_events],
-                        prune_orphan_entities=bool(getattr(config, "prune_orphan_entities", False)),
+                        prune_orphan_entities=bool(config.prune_orphan_entities),
                     )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("Failed to cleanup previous KG events for chunks: %s", str(exc)[:200])
@@ -4143,7 +4143,7 @@ class EventExtractor:
         resolved_chunks: list[DocumentChunk],
         prompt_template_content: str | None,
     ) -> "tuple[ExtractionBackendSelection, BaseLLMClient | None]":
-        requested_backend = str(getattr(config, "extraction_backend", "") or "").strip().lower() or None
+        requested_backend = str(config.extraction_backend or "").strip().lower() or None
         auto_backend_reason: str | None = None
         if requested_backend is None:
             long_doc_backend = str(settings.KG_EXTRACT_LONG_DOC_BACKEND or "").strip().lower() or None
@@ -4193,7 +4193,7 @@ class EventExtractor:
         )
         max_concurrency = max(
             1,
-            int(settings.KG_EXTRACT_MAX_CONCURRENCY or 0) or int(getattr(config, "max_concurrency", 3) or 3),
+            int(settings.KG_EXTRACT_MAX_CONCURRENCY or 0) or int(config.max_concurrency or 3),
         )
         chunk_timeout_sec = float(settings.KG_EXTRACT_CHUNK_TIMEOUT_SEC or 0)
         chunk_timeout_sec = max(0.0, chunk_timeout_sec)
@@ -4227,9 +4227,8 @@ class EventExtractor:
             min_chars=max(0, int(settings.KG_EXTRACT_MIN_CHARS or 0)),
             chunk_max_retries=max(0, int(settings.KG_EXTRACT_CHUNK_MAX_RETRIES or 0)),
             retry_backoff_sec=retry_backoff_sec,
-            replace_existing=bool(getattr(config, "replace_existing", False)),
-            skip_unchanged=bool(settings.KG_EXTRACT_SKIP_UNCHANGED_CHUNKS)
-            and bool(getattr(config, "replace_existing", False)),
+            replace_existing=bool(config.replace_existing),
+            skip_unchanged=bool(settings.KG_EXTRACT_SKIP_UNCHANGED_CHUNKS) and bool(config.replace_existing),
             extract_relations_enabled=extract_relations_enabled,
             extract_skills_enabled=extract_skills_enabled,
             prompt_selector_expected={

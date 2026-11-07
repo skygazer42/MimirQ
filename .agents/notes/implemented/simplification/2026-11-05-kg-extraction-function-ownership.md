@@ -18,6 +18,8 @@ KG 正常化和 embedding 门面没有使用实例状态，却要求调用链构
 
 引用迁移只改真实 import、调用、旧参数、导出和 patch 绑定。既有测试仅适配退休符号与隐式 self 绑定，不增加用例、helper、fixture、断言或执行测试。已完成的 repository 仅迁移 _normalize_alias_surfaces 的延迟正常化调用，原参数、默认、查询与异常保持，不重复计完整 owner。
 
+2026-11-07 字段读取增量：核对实际 ExtractConfig 构造、数据库 DocumentChunk 查询、后端分派和 AliasCandidate 生产者后，提取器与 heuristic 后端直接读取 31 处已声明字段。常规 sections 保持数据库 chunk，只有插件输入经 _document_from_chunk 转成 LangChain 文档；不把两个协议混用。真实可空位置、插件参数与别名引文仍按原值处理，JSON 检查、超时、重试、清理和事务策略保持。
+
 ## Alternatives considered
 
 保留全部空对象可以减少本次 diff，但会让没有实例状态的规则继续依赖构造器和参数传递，真实资源的寿命也更难辨认。
@@ -33,3 +35,5 @@ KG 正常化和 embedding 门面没有使用实例状态，却要求调用链构
 [KG 基础归属](2026-11-05-kg-foundation-owned-values.md)与正常化调用局部重叠，保留其已接受的仓储、ACL、分桶和事务决定；[KG 查询扩展所有者](../architecture/2026-11-03-kg-query-expansion-owner.md)仍持有检索编排边界，不迁移其策略。
 
 验证限于源码、实际生产者／调用者／SDK、Ruff、格式与隔离 stdlib AST311／哈希／静态绑定。没有执行应用、SDK、模型、服务、数据库、真实正则或 Python 测试，不把静态投影写成运行时回归。
+
+本次字段增量与 KG 搜索一起记录在 kg-declared-fields-20261107 源码核对材料中：四模块 AST 只允许 46 处已批准字段读取变化，声明所有者、真实调用者和既有测试的字节哈希保持。另有两处 heuristic target 读取来自已核实的 sections[0]。预提交 autoreview 的已知限制仍是缺少 TruffleHog，未运行模型审查，也未安装额外工具。

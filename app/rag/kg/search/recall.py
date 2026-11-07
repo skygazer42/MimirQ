@@ -785,14 +785,14 @@ def _relation_expansion_enabled(config: SearchConfig) -> bool:
 def _alias_relation_allowed(rel: "KgRelation", *, from_id: str, alias_key_ids: set[str]) -> bool:
     if from_id not in alias_key_ids:
         return True
-    refs = getattr(rel, "references", None)
+    refs = rel.references
     evidence_quote = str(refs.get("evidence_quote") or "").strip() if isinstance(refs, dict) else ""
     return bool(evidence_quote)
 
 
 def _relation_evidence(rel: "KgRelation") -> tuple[float, str]:
     try:
-        refs = getattr(rel, "references", None)
+        refs = rel.references
         evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
         if evidence_source != "mention":
             return 1.0, evidence_source
@@ -814,12 +814,12 @@ def _relation_candidate(
         return None
     if not _alias_relation_allowed(rel, from_id=from_id, alias_key_ids=alias_key_ids):
         return None
-    confidence = float(getattr(rel, "confidence", 0.0) or 0.0)
+    confidence = float(rel.confidence or 0.0)
     if confidence <= 0:
         return None
     pred_mult = relation_multiplier(
         predicate,
-        from_is_subject=bool(from_id == str(getattr(rel, "subject_entity_id", ""))),
+        from_is_subject=bool(from_id == str(rel.subject_entity_id)),
     )
     if pred_mult <= 0:
         return None
@@ -861,10 +861,10 @@ def _record_relation_clue(
             "evidence_multiplier": float(evidence_mult),
             "evidence_source": evidence_source,
             "confidence_bucket": bucket,
-            "relation_id": str(getattr(rel, "id", "") or "") or None,
-            "relation_document_id": str(getattr(rel, "document_id", "") or "") or None,
-            "relation_chunk_id": str(getattr(rel, "chunk_id", "") or "") or None,
-            "relation_event_id": str(getattr(rel, "event_id", "") or "") or None,
+            "relation_id": str(rel.id or "") or None,
+            "relation_document_id": str(rel.document_id or "") or None,
+            "relation_chunk_id": str(rel.chunk_id or "") or None,
+            "relation_event_id": str(rel.event_id or "") or None,
             "step": "step1.5",
         },
     )

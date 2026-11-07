@@ -16,6 +16,8 @@ Tracker 继续保存 clues、丢弃计数和预算，五个节点构造操作归
 
 既有测试只迁移 import、构造调用和 patch 绑定；诊断 stub 仍是同一注入点，fake 对象继续提供原绑定方法。没有新增或扩写测试、helper、fixture 或断言，也没有运行 Python 测试。Tracker 事件 ID 的已确认缺陷单列在[对应记录](../bug-fix/2026-11-05-kg-tracker-event-id-precedence.md)，不作为等价整理证明。
 
+2026-11-07 字段读取增量：RelationRepository 的查询明确选择完整 KgRelation，recall 和 expand 的消费链直接读取 15 处已声明字段。references 仍按原 JSON 字典边界处理，confidence 的 Decimal 转换、关系证据降级、方向、分数、溯源可空值、排序及 tenant／ACL 范围保持；不把空引用替换成伪造的 ID。
+
 ## Alternatives considered
 
 保留无状态门面能减少调用点 diff，但会继续掩盖真正状态和资源的归属。增加兼容 wrapper 或传入整个模块可以减少引用迁移，却保留第二入口或 Any 依赖，因此调用者直接绑定函数。
@@ -27,3 +29,5 @@ Tracker 继续保存 clues、丢弃计数和预算，五个节点构造操作归
 检索调用路径少了空实例，配置与资源寿命更清楚；必要消费者和旧测试引用需要同步迁移。原会话关闭、timeout/cancellation、时钟调用次数、缓存复制与失效、tenant/ACL、预算、排序、分数和错误策略保持。静态检查覆盖完整操作 AST、实际生产者和调用绑定；它不替代运行时回归。
 
 笔记检索中，[查询扩展](../architecture/2026-11-03-kg-query-expansion-owner.md)、语料缓存失效和 standard stream plan 的决定属于其他链，保持原归属；[混合排名](2026-11-05-hybrid-ranking-owned-values.md)与[检索编排](2026-11-05-retrieval-orchestration-owned-values.md)的原始输入边界原则部分重叠，沿用其结论。[KG 基础](2026-11-05-kg-foundation-owned-values.md)只追加 engine 的必要搜索绑定增量，不重复关闭 owner；[KG 提取](2026-11-05-kg-extraction-function-ownership.md)的 embedding 取得时点保持。这些既有决定均未被替代。
+
+本次与 KG 提取增量共用 kg-declared-fields-20261107 源码核对材料，完整模块 AST 对照仅允许已批准字段读取变化，生产者、调用者和测试哈希保持；Ruff 与格式检查作为静态验证。按用户要求未运行 Python 测试或服务。autoreview 缺少 TruffleHog 的限制沿用既有记录，未运行模型审查。
