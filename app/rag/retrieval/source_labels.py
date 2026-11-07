@@ -71,8 +71,8 @@ def _title_from_first_chunk(first_chunk_content: Any) -> str | None:
 
     if not title_lines:
         return None
-    title = " ".join(title_lines)
-    return _clean_line(title)[:200] or None
+    title = _clean_line(" ".join(title_lines))[:200]
+    return title if title else None
 
 
 def _title_from_filename(filename: Any) -> str | None:
@@ -86,8 +86,8 @@ def _title_from_filename(filename: Any) -> str | None:
         stem = raw.rsplit("/", 1)[-1].rsplit(".", 1)[0]
     stem = _ARXIV_SUFFIX_RE.sub("", stem)
     stem = re.sub(r"[-_]+", " ", stem)
-    stem = _clean_line(stem)
-    return stem[:200] or None
+    stem = _clean_line(stem)[:200]
+    return stem if stem else None
 
 
 def derive_document_title(
@@ -131,8 +131,12 @@ def _source_answer_title_and_filename(doc: Any) -> tuple[str | None, str | None]
     if not isinstance(meta, dict):
         return None, None
 
-    title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip() or None
-    filename = str(meta.get("filename") or meta.get("source") or "").strip() or None
+    title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip()
+    if not title:
+        title = None
+    filename = str(meta.get("filename") or meta.get("source") or "").strip()
+    if not filename:
+        filename = None
     return title, filename
 
 

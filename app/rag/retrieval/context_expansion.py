@@ -12,7 +12,8 @@ def _chunk_id_from_item(item: dict[str, Any]) -> str:
 
 
 def _header_path_from_meta(meta: dict[str, Any]) -> str | None:
-    return str(meta.get("header_path") or meta.get("header_context") or "").strip() or None
+    header_path = str(meta.get("header_path") or meta.get("header_context") or "").strip()
+    return header_path if header_path else None
 
 
 def _coerce_non_negative_int(value: Any) -> int:
