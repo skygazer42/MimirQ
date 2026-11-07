@@ -34,10 +34,16 @@ Status: implemented
 
 契约与排序记录的来源更清楚，原始数据仍由原边界负责。回调字典与动态运行状态继续需要现有兼容处理；如果以后改变记录生产者或引入另一种 ORM 行实现，需要重新检查字段保证。
 
-本次历史审计中，[查询准备所有者](../architecture/2026-11-03-query-preparation-owner.md)与计划和阶段时序部分重叠，[混合检索排名](2026-11-05-hybrid-ranking-owned-values.md)与内部记录原则部分重叠，[重排 provider 回退](../bug-fix/2026-11-03-reranker-provider-fallback-boundary.md)与工厂和回调错误归属部分重叠，[语料与索引内部值](2026-11-05-retrieval-corpus-owned-values.md)与可变 Settings 边界部分重叠；这些决定均保留并互链。KG 查询扩展、结构化 chunk 和运维 Settings 的命中属于其他链路，没有被替代。
+本次历史审计中，[查询准备所有者](../architecture/2026-11-03-query-preparation-owner.md)与计划和阶段时序部分重叠，[混合检索排名](2026-11-05-hybrid-ranking-owned-values.md)与内部记录原则部分重叠，[重排 provider 回退](../bug-fix/2026-11-03-reranker-provider-fallback-boundary.md)与工厂和回调错误归属部分重叠，[语料与索引内部值](2026-11-05-retrieval-corpus-owned-values.md)与可变 Settings 边界部分重叠；这些决定均保留并互链。
+
+后重排、层级扩展、多查询分配和分解链的运行状态在各自入口通过显式 bool／int／float／list／dict、len 计数与本地累计生成。指标、query debug 和 trace 输入直接传递这些原生值，退出重复标量转换；列表／字典仍创建原副本，round 精度、切片与条件零输出保持。仅清理固定生产者覆盖的字段，不把动态运行状态整体当作已验证模型。
+
+后重排／层级阶段的原始结果转换及外部回调边界保持，所有生产阶段仍先于三个输出阶段执行。真正可空的维修动作、原始 state、metadata 和模型输出继续按原边界解析；重排、缓存计数、扩展／分配／分解的执行、检索排序、预算和失败政策不变。KG 查询扩展、结构化 chunk 和运维 Settings 的命中属于其他链路，没有被替代。
 
 ## Verification
 
 14 个编排、路由和证据所有者的 7,434 行基线完整审阅。Python 3.11 AST 对照保留 224 个函数的参数名、默认值、装饰器、数据库调用、with 上下文、异常类型、导出、原有导入绑定和运行阶段顺序。静态生产者与调用方证据覆盖插件配置、校准行和 ORM 查询；Ruff、格式、diff 与笔记门禁覆盖本批。按任务限制不添加、修改或运行 Python 测试，不导入或执行应用、SDK、检索、模型、数据库、网络或服务运行时。
 
 结果增量记录位于 rag-result-sequential-normalization-20261107。五模块的完整当前源码与选定提交 AST 只允许四处顺序归一化和两个本地字典构造简化；真实收集器／signals／_safe_int 返回及七个生产者、调用入口和既有测试文件有源码／哈希核对。Ruff、格式、Python 3.11 与记录门禁通过，未执行 Python 测试、SDK、模型或业务函数；自动模型审查仍受 TruffleHog 缺失限制。
+
+原生运行状态输出的证据位于 `E:/MimirQ/.superpowers/retrieval-native-output-fields-20261107/`，保存每个选定字段的全部显式写入、完整当前／提交源码、批准表达式与 23 阶段顺序。三个输出函数之外的原始入口转换、SQL、回调及异常控制流保持；实际 runtime、后重排入口、trace 输入和既有测试源码保存哈希。Ruff、格式、Python 3.11 与笔记门禁提供静态证据；未运行或修改 Python 测试，未执行检索、应用、SDK、模型、数据库或服务，不声称完成运行时验收。

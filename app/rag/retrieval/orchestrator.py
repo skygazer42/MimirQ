@@ -3028,27 +3028,25 @@ def _run_retrieval_channel_health_phase(ctx: RetrievalRuntimeState) -> dict[str,
 
 
 def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[str, Any] | None:
-    ctx.metrics["evidence_post_rerank_enabled"] = bool(ctx.post_rerank_enabled)
-    ctx.metrics["evidence_post_rerank_used"] = bool(ctx.post_rerank_used)
+    ctx.metrics["evidence_post_rerank_enabled"] = ctx.post_rerank_enabled
+    ctx.metrics["evidence_post_rerank_used"] = ctx.post_rerank_used
     ctx.metrics["evidence_post_rerank_provider"] = ctx.post_rerank_provider
-    ctx.metrics["evidence_post_rerank_candidates_n"] = int(ctx.post_rerank_candidates_n or 0)
-    ctx.metrics["evidence_post_rerank_elapsed_sec"] = round(float(ctx.post_rerank_elapsed or 0.0), 3)
+    ctx.metrics["evidence_post_rerank_candidates_n"] = ctx.post_rerank_candidates_n
+    ctx.metrics["evidence_post_rerank_elapsed_sec"] = round(ctx.post_rerank_elapsed, 3)
     ctx.metrics["evidence_post_rerank_model_used"] = ctx.post_rerank_model_used
     ctx.metrics["evidence_post_rerank_error"] = ctx.post_rerank_error
     ctx.metrics["evidence_post_rerank_skip_reason"] = ctx.post_rerank_skip_reason
-    ctx.metrics["evidence_post_rerank_cache_enabled"] = bool(ctx.post_rerank_cache_enabled)
+    ctx.metrics["evidence_post_rerank_cache_enabled"] = ctx.post_rerank_cache_enabled
     ctx.metrics["evidence_post_rerank_cache_backend"] = ctx.post_rerank_cache_backend
-    ctx.metrics["evidence_post_rerank_cache_hits"] = int(ctx.post_rerank_cache_hits or 0)
-    ctx.metrics["evidence_post_rerank_cache_misses"] = int(ctx.post_rerank_cache_misses or 0)
-    ctx.metrics["evidence_post_rerank_pipeline_enabled"] = bool(ctx.post_rerank_pipeline_enabled)
-    ctx.metrics["evidence_post_rerank_pipeline_used"] = bool(ctx.post_rerank_pipeline_used)
+    ctx.metrics["evidence_post_rerank_cache_hits"] = ctx.post_rerank_cache_hits
+    ctx.metrics["evidence_post_rerank_cache_misses"] = ctx.post_rerank_cache_misses
+    ctx.metrics["evidence_post_rerank_pipeline_enabled"] = ctx.post_rerank_pipeline_enabled
+    ctx.metrics["evidence_post_rerank_pipeline_used"] = ctx.post_rerank_pipeline_used
     ctx.metrics["evidence_post_rerank_pipeline_stages"] = ctx.post_rerank_pipeline_stages[:4]
-    ctx.metrics["evidence_post_rerank_score_calibration_enabled"] = bool(ctx.post_rerank_score_calibration_enabled)
-    ctx.metrics["evidence_post_rerank_score_calibration_alpha"] = round(
-        float(ctx.post_rerank_score_calibration_alpha), 4
-    )
-    ctx.metrics["evidence_post_rerank_score_calibration_used"] = bool(ctx.post_rerank_score_calibration_used)
-    ctx.metrics["evidence_post_rerank_score_calibration"] = dict(ctx.post_rerank_score_calibration_stats or {})
+    ctx.metrics["evidence_post_rerank_score_calibration_enabled"] = ctx.post_rerank_score_calibration_enabled
+    ctx.metrics["evidence_post_rerank_score_calibration_alpha"] = round(ctx.post_rerank_score_calibration_alpha, 4)
+    ctx.metrics["evidence_post_rerank_score_calibration_used"] = ctx.post_rerank_score_calibration_used
+    ctx.metrics["evidence_post_rerank_score_calibration"] = dict(ctx.post_rerank_score_calibration_stats)
 
     ctx.metrics["query_rewrite_enabled"] = bool(ctx.rewrite_enabled)
     ctx.metrics["query_rewrite_strategy_id"] = ctx.rewrite_strategy_id
@@ -3058,7 +3056,7 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["rewrite_model_used"] = ctx.rewrite_model_used
 
     ctx.metrics["alias_enabled"] = bool(ctx.alias_enabled)
-    ctx.metrics["alias_used"] = bool(ctx.alias_used)
+    ctx.metrics["alias_used"] = ctx.alias_used
     ctx.metrics["alias_count"] = len(ctx.alias_queries)
     ctx.metrics["alias_elapsed_sec"] = round(ctx.alias_elapsed, 3)
     ctx.metrics["alias_meta"] = ctx.alias_meta
@@ -3078,7 +3076,7 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["kg_query_expansion_error"] = ctx.kg_query_expansion_error
     ctx.metrics["kg_chunk_injection_enabled"] = bool(ctx.kg_chunk_injection_enabled)
     ctx.metrics["kg_chunk_injection_max_chunks"] = int(ctx.kg_chunk_injection_max_chunks)
-    ctx.metrics["kg_chunks_injected"] = int(ctx.kg_chunks_injected or 0)
+    ctx.metrics["kg_chunks_injected"] = ctx.kg_chunks_injected
     ctx.metrics["kg_chunk_injection_error"] = ctx.kg_chunk_injection_error
     ctx.metrics["kg_chunk_boost_enabled"] = bool(ctx.kg_chunk_boost_meta.get("enabled"))
     ctx.metrics["kg_chunk_boost_weight"] = float(ctx.kg_chunk_boost_meta.get("weight") or 0.0)
@@ -3097,12 +3095,12 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["multi_query_parse_ok"] = bool(ctx.multi_query_parse_meta.get("ok"))
     ctx.metrics["multi_query_parse_method"] = ctx.multi_query_parse_meta.get("method")
     ctx.metrics["multi_query_parse_error"] = ctx.multi_query_parse_meta.get("error")
-    ctx.metrics["multi_query_diversify_enabled"] = bool(ctx.mq_diversify_enabled)
-    ctx.metrics["multi_query_diversify_budget"] = int(ctx.mq_diversify_budget or 0) if ctx.mq_diversify_enabled else 0
-    ctx.metrics["multi_query_diversify_used"] = bool(ctx.mq_diversify_used)
-    ctx.metrics["multi_query_diversify_selected_mq"] = int(ctx.mq_diversify_selected_mq or 0)
-    ctx.metrics["multi_query_diversify_selected_non_mq"] = int(ctx.mq_diversify_selected_non_mq or 0)
-    ctx.metrics["multi_query_diversify_fill_from_fused"] = int(ctx.mq_diversify_fill_from_fused or 0)
+    ctx.metrics["multi_query_diversify_enabled"] = ctx.mq_diversify_enabled
+    ctx.metrics["multi_query_diversify_budget"] = ctx.mq_diversify_budget if ctx.mq_diversify_enabled else 0
+    ctx.metrics["multi_query_diversify_used"] = ctx.mq_diversify_used
+    ctx.metrics["multi_query_diversify_selected_mq"] = ctx.mq_diversify_selected_mq
+    ctx.metrics["multi_query_diversify_selected_non_mq"] = ctx.mq_diversify_selected_non_mq
+    ctx.metrics["multi_query_diversify_fill_from_fused"] = ctx.mq_diversify_fill_from_fused
     ctx.metrics["step_back_enabled"] = bool(ctx.step_back_enabled)
     ctx.metrics["step_back_used"] = bool(ctx.step_back_used)
     ctx.metrics["step_back_elapsed_sec"] = round(ctx.step_back_elapsed, 3)
@@ -3124,13 +3122,11 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["hierarchy_parent_depth"] = int(ctx.hierarchy_parent_depth)
     ctx.metrics["hierarchy_sibling_window"] = int(ctx.hierarchy_sibling_window)
     ctx.metrics["hierarchy_overfetch_factor"] = int(ctx.hierarchy_overfetch_factor)
-    ctx.metrics["hierarchy_context_expansion_attempted"] = bool(ctx.hierarchy_expand_attempted)
-    ctx.metrics["hierarchy_context_expansion_used"] = bool(ctx.hierarchy_expand_used)
-    ctx.metrics["hierarchy_context_expansion_elapsed_sec"] = round(float(ctx.hierarchy_expand_elapsed or 0.0), 3)
+    ctx.metrics["hierarchy_context_expansion_attempted"] = ctx.hierarchy_expand_attempted
+    ctx.metrics["hierarchy_context_expansion_used"] = ctx.hierarchy_expand_used
+    ctx.metrics["hierarchy_context_expansion_elapsed_sec"] = round(ctx.hierarchy_expand_elapsed, 3)
     ctx.metrics["hierarchy_context_expansion_error"] = ctx.hierarchy_expand_error
-    ctx.metrics["hierarchy_context_expansion_meta"] = (
-        dict(ctx.hierarchy_expand_meta) if isinstance(ctx.hierarchy_expand_meta, dict) else None
-    )
+    ctx.metrics["hierarchy_context_expansion_meta"] = dict(ctx.hierarchy_expand_meta)
 
     ctx.metrics["hyde_enabled"] = bool(ctx.hyde_enabled)
     ctx.metrics["hyde_used"] = bool(ctx.hyde_used)
@@ -3147,8 +3143,8 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["decompose_parse_error"] = ctx.decompose_parse_meta.get("error")
     ctx.metrics["decompose_chain_enabled"] = bool(ctx.decompose_chain_enabled)
     ctx.metrics["decompose_chain_used"] = bool(ctx.decompose_chain_used)
-    ctx.metrics["decompose_chain_steps"] = int(ctx.decompose_chain_steps or 0)
-    ctx.metrics["decompose_chain_elapsed_sec"] = round(float(ctx.decompose_chain_elapsed or 0.0), 3)
+    ctx.metrics["decompose_chain_steps"] = ctx.decompose_chain_steps
+    ctx.metrics["decompose_chain_elapsed_sec"] = round(ctx.decompose_chain_elapsed, 3)
     ctx.metrics["parse_quality"] = dict(ctx.parse_quality_summary or {})
     ctx.metrics["parse_quality_low_threshold"] = float(ctx.parse_quality_low_threshold)
     ctx.metrics["parse_quality_alert_ratio"] = float(ctx.parse_quality_alert_ratio)
@@ -3451,9 +3447,9 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
     ctx.query_debug["decompose_chain"] = {
         "enabled": bool(ctx.decompose_chain_enabled),
         "used": bool(ctx.decompose_chain_used),
-        "steps": int(ctx.decompose_chain_steps or 0),
+        "steps": ctx.decompose_chain_steps,
         "queries": ctx.decompose_chain_queries[:5],
-        "elapsed_sec": round(float(ctx.decompose_chain_elapsed or 0.0), 3),
+        "elapsed_sec": round(ctx.decompose_chain_elapsed, 3),
     }
     if ctx.kg_query_expansion_entity_names:
         ctx.query_debug["kg_entities"] = ctx.kg_query_expansion_entity_names[:10]
@@ -3502,13 +3498,11 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
         "sibling_window": int(ctx.hierarchy_sibling_window),
         "overfetch_factor": int(ctx.hierarchy_overfetch_factor),
         "tree_dedup_meta": (dict(ctx.tree_dedup_meta) if isinstance(ctx.tree_dedup_meta, dict) else None),
-        "context_expansion_attempted": bool(ctx.hierarchy_expand_attempted),
-        "context_expansion_used": bool(ctx.hierarchy_expand_used),
-        "context_expansion_elapsed_sec": round(float(ctx.hierarchy_expand_elapsed or 0.0), 3),
+        "context_expansion_attempted": ctx.hierarchy_expand_attempted,
+        "context_expansion_used": ctx.hierarchy_expand_used,
+        "context_expansion_elapsed_sec": round(ctx.hierarchy_expand_elapsed, 3),
         "context_expansion_error": ctx.hierarchy_expand_error,
-        "context_expansion_meta": (
-            dict(ctx.hierarchy_expand_meta) if isinstance(ctx.hierarchy_expand_meta, dict) else None
-        ),
+        "context_expansion_meta": dict(ctx.hierarchy_expand_meta),
     }
     ctx.query_debug["contextual_followup"] = {
         "enabled": bool(ctx.contextual_followup_enabled),
@@ -3684,7 +3678,7 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             rewrite_model_used=ctx.rewrite_model_used,
             query_expansion_budget_meta=dict(ctx.query_expansion_budget_meta),
             alias_enabled=bool(ctx.alias_enabled),
-            alias_used=bool(ctx.alias_used),
+            alias_used=ctx.alias_used,
             alias_queries=list(ctx.alias_queries or []),
             alias_elapsed=float(ctx.alias_elapsed or 0.0),
             dict_meta=dict(ctx.dict_meta or {}),
@@ -3734,12 +3728,12 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             retrieval_degraded_reason_codes=list(ctx.retrieval_degraded_reason_codes or []),
             retrieval_channel_health=dict(ctx.retrieval_channel_health),
             docs_by_query=ctx.docs_by_query,
-            mq_diversify_enabled=bool(ctx.mq_diversify_enabled),
-            mq_diversify_budget=int(ctx.mq_diversify_budget or 0),
-            mq_diversify_used=bool(ctx.mq_diversify_used),
-            mq_diversify_selected_mq=int(ctx.mq_diversify_selected_mq or 0),
-            mq_diversify_selected_non_mq=int(ctx.mq_diversify_selected_non_mq or 0),
-            mq_diversify_fill_from_fused=int(ctx.mq_diversify_fill_from_fused or 0),
+            mq_diversify_enabled=ctx.mq_diversify_enabled,
+            mq_diversify_budget=ctx.mq_diversify_budget,
+            mq_diversify_used=ctx.mq_diversify_used,
+            mq_diversify_selected_mq=ctx.mq_diversify_selected_mq,
+            mq_diversify_selected_non_mq=ctx.mq_diversify_selected_non_mq,
+            mq_diversify_fill_from_fused=ctx.mq_diversify_fill_from_fused,
             hierarchy_recall_enabled=bool(ctx.hierarchy_recall_enabled),
             hierarchy_family_collapse=bool(ctx.hierarchy_family_collapse),
             hierarchy_family_aggregation=str(ctx.hierarchy_family_aggregation),
@@ -3749,25 +3743,25 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             hierarchy_overfetch_factor=int(ctx.hierarchy_overfetch_factor),
             kg_chunk_injection_enabled=bool(ctx.kg_chunk_injection_enabled),
             kg_chunk_injection_max_chunks=int(ctx.kg_chunk_injection_max_chunks),
-            kg_chunks_injected=int(ctx.kg_chunks_injected or 0),
+            kg_chunks_injected=ctx.kg_chunks_injected,
             kg_chunk_boost_meta=dict(ctx.kg_chunk_boost_meta or {}),
             kg_chunk_injection_error=ctx.kg_chunk_injection_error,
-            post_rerank_enabled=bool(ctx.post_rerank_enabled),
-            post_rerank_used=bool(ctx.post_rerank_used),
+            post_rerank_enabled=ctx.post_rerank_enabled,
+            post_rerank_used=ctx.post_rerank_used,
             post_rerank_provider=ctx.post_rerank_provider,
             post_rerank_skip_reason=ctx.post_rerank_skip_reason,
-            post_rerank_cache_enabled=bool(ctx.post_rerank_cache_enabled),
+            post_rerank_cache_enabled=ctx.post_rerank_cache_enabled,
             post_rerank_cache_backend=ctx.post_rerank_cache_backend,
-            post_rerank_cache_hits=int(ctx.post_rerank_cache_hits or 0),
-            post_rerank_cache_misses=int(ctx.post_rerank_cache_misses or 0),
-            post_rerank_pipeline_enabled=bool(ctx.post_rerank_pipeline_enabled),
-            post_rerank_pipeline_used=bool(ctx.post_rerank_pipeline_used),
-            post_rerank_pipeline=list(ctx.post_rerank_pipeline or []),
-            post_rerank_pipeline_stages=list(ctx.post_rerank_pipeline_stages or []),
-            post_rerank_candidates_n=int(ctx.post_rerank_candidates_n or 0),
-            post_rerank_elapsed=float(ctx.post_rerank_elapsed or 0.0),
+            post_rerank_cache_hits=ctx.post_rerank_cache_hits,
+            post_rerank_cache_misses=ctx.post_rerank_cache_misses,
+            post_rerank_pipeline_enabled=ctx.post_rerank_pipeline_enabled,
+            post_rerank_pipeline_used=ctx.post_rerank_pipeline_used,
+            post_rerank_pipeline=list(ctx.post_rerank_pipeline),
+            post_rerank_pipeline_stages=list(ctx.post_rerank_pipeline_stages),
+            post_rerank_candidates_n=ctx.post_rerank_candidates_n,
+            post_rerank_elapsed=ctx.post_rerank_elapsed,
             post_rerank_model_used=ctx.post_rerank_model_used,
-            post_rerank_score_calibration_stats=dict(ctx.post_rerank_score_calibration_stats or {}),
+            post_rerank_score_calibration_stats=dict(ctx.post_rerank_score_calibration_stats),
             post_rerank_error=ctx.post_rerank_error,
             abstain_enabled=bool(ctx.abstain_enabled),
             abstain_triggered=bool(ctx.abstain_triggered),
