@@ -473,7 +473,7 @@ class LexicalDBMixin:
             return []
 
         bind = db.get_bind()
-        if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+        if bind.dialect.name != "postgresql":
             return []
 
         results_by_id: dict[str, dict[str, Any]] = {}
@@ -772,7 +772,7 @@ class LexicalDBMixin:
         db = self._open_session()
         try:
             bind = db.get_bind()
-            if not bind or getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+            if bind.dialect.name != "postgresql":
                 return []
             return self._search_metadata_exact_anchor_db_with_session(
                 db=db,

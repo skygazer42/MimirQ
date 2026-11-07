@@ -60,15 +60,8 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _session_dialect_name(db: Session) -> str:
-    get_bind = getattr(db, "get_bind", None)
-    bind = get_bind() if callable(get_bind) else getattr(db, "bind", None)
-    dialect = getattr(bind, "dialect", None)
-    return str(getattr(dialect, "name", "") or "").strip().lower()
-
-
 def _supports_atomic_postgresql_upsert(db: Session) -> bool:
-    return _session_dialect_name(db) == "postgresql"
+    return db.get_bind().dialect.name.strip().lower() == "postgresql"
 
 
 def normalize_document_index_channel(channel: str) -> str:
@@ -278,25 +271,6 @@ def _finish_document_index_channel_write(
     return row
 
 
-def _log_document_index_channel_transition_failure(
-    *,
-    document: DBDocument,
-    normalized_channel: str,
-    normalized_status: str,
-    exc: Exception,
-    used_savepoint: bool,
-) -> None:
-    logger.warning(
-        "Failed to persist document index channel transition%s tenant=%s document=%s channel=%s status=%s: %s",
-        "" if used_savepoint else " without savepoint",
-        document.tenant_id,
-        document.id,
-        normalized_channel,
-        normalized_status,
-        str(exc)[:200],
-    )
-
-
 def transition_document_index_channel(
     db: Session,
     *,
@@ -321,70 +295,48 @@ def transition_document_index_channel(
     normalized_channel, normalized_hash, enabled, normalized_status, error, increment_attempt = normalized
     occurred_at = _utcnow()
 
-    def _persist() -> DocumentIndexChannel:
-        if _supports_atomic_postgresql_upsert(db):
-            kwargs = _transition_upsert_kwargs(
-                document=document,
-                normalized_hash=normalized_hash,
-                normalized_channel=normalized_channel,
-                enabled=enabled,
-                normalized_status=normalized_status,
-                error=error,
-                increment_attempt=increment_attempt,
-                occurred_at=occurred_at,
-                atomic=True,
-            )
-            return upsert_document_index_channel(db, **kwargs)
-        existing = _existing_document_index_channel(
-            db,
-            document=document,
-            normalized_hash=normalized_hash,
-            normalized_channel=normalized_channel,
-        )
-        kwargs = _transition_upsert_kwargs(
-            document=document,
-            normalized_hash=normalized_hash,
-            normalized_channel=normalized_channel,
-            enabled=enabled,
-            normalized_status=normalized_status,
-            error=error,
-            increment_attempt=increment_attempt,
-            occurred_at=occurred_at,
-            existing=existing,
-        )
-        return upsert_document_index_channel(db, **kwargs)
-
-    begin_nested = getattr(db, "begin_nested", None)
-    if callable(begin_nested):
-        try:
-            with begin_nested():
-                row = _persist()
-            return _finish_document_index_channel_write(db, row, commit=commit)
-        except Exception as exc:  # noqa: BLE001
-            _log_document_index_channel_transition_failure(
-                document=document,
-                normalized_channel=normalized_channel,
-                normalized_status=normalized_status,
-                exc=exc,
-                used_savepoint=True,
-            )
-            return None
-
     try:
-        row = _persist()
+        with db.begin_nested():
+            if _supports_atomic_postgresql_upsert(db):
+                kwargs = _transition_upsert_kwargs(
+                    document=document,
+                    normalized_hash=normalized_hash,
+                    normalized_channel=normalized_channel,
+                    enabled=enabled,
+                    normalized_status=normalized_status,
+                    error=error,
+                    increment_attempt=increment_attempt,
+                    occurred_at=occurred_at,
+                    atomic=True,
+                )
+            else:
+                existing = _existing_document_index_channel(
+                    db,
+                    document=document,
+                    normalized_hash=normalized_hash,
+                    normalized_channel=normalized_channel,
+                )
+                kwargs = _transition_upsert_kwargs(
+                    document=document,
+                    normalized_hash=normalized_hash,
+                    normalized_channel=normalized_channel,
+                    enabled=enabled,
+                    normalized_status=normalized_status,
+                    error=error,
+                    increment_attempt=increment_attempt,
+                    occurred_at=occurred_at,
+                    existing=existing,
+                )
+            row = upsert_document_index_channel(db, **kwargs)
         return _finish_document_index_channel_write(db, row, commit=commit)
     except Exception as exc:  # noqa: BLE001
-        if hasattr(db, "rollback"):
-            try:
-                db.rollback()
-            except Exception:  # noqa: BLE001
-                logger.debug("Rollback after direct channel transition failure also failed", exc_info=True)
-        _log_document_index_channel_transition_failure(
-            document=document,
-            normalized_channel=normalized_channel,
-            normalized_status=normalized_status,
-            exc=exc,
-            used_savepoint=False,
+        logger.warning(
+            "Failed to persist document index channel transition tenant=%s document=%s channel=%s status=%s: %s",
+            document.tenant_id,
+            document.id,
+            normalized_channel,
+            normalized_status,
+            str(exc)[:200],
         )
         return None
 

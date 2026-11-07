@@ -559,11 +559,7 @@ def _lock_dify_conversation_turn_scope(
     tenant_id: UUID,
     conversation_scope: str,
 ) -> None:
-    get_bind = getattr(db, "get_bind", None)
-    if not callable(get_bind):
-        return
-    bind = get_bind()
-    if getattr(getattr(bind, "dialect", None), "name", "") != "postgresql":
+    if db.get_bind().dialect.name != "postgresql":
         return
     digest = hashlib.sha256(f"dify-turn:{tenant_id}:{conversation_scope}".encode()).digest()
     lock_key = int.from_bytes(digest[:8], byteorder="big", signed=True)

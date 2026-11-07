@@ -24,6 +24,10 @@ Status: implemented
 
 五个开关由 document_index_channel_flags 映射实际 PipelineEffective。真实构造器的 _resolve_flag 和 BM25 条件已经产生原生 bool，审计退出第二份映射和重复 bool 包装。各模块仍在原位置通过各自 resolve_pipeline_effective 绑定解析配置，再传入已构造结果；没有移动解析依赖、缓存或已有注入入口。只在类型检查时引用 PipelineEffective，不增加运行时初始化。
 
+会话契约增量：SessionLocal 通过绑定 engine 的 sessionmaker 构造真实 SQLAlchemy Session，get_db 和检索会话工厂沿用该资源。安装版本的 get_bind 返回 Engine／Connection 或抛错，begin_nested 提供事务上下文，dialect.name 是字符串。索引通道写入直接打开保存点、选择原 PostgreSQL／通用 SQL 分支、统一执行 upsert，再按原位置提交和刷新。退出单次转发的 _persist、dialect 与错误日志辅助函数，保留异常级别、格式化日志消息和真实 Session 的失败处理；缺少框架方法的对象不再走另一条直接写入路径。
+
+Dify HTTP 锁适配器和两处检索数据库判断直接读取相同的 SDK 属性，保留原调用绑定、PostgreSQL advisory 锁键及 SQL、非 PostgreSQL 提前返回、检索过滤／排序和 finally 关闭。API 适配器仍持有原回调入口，未引入新的服务导入时点或通用数据库包装层。
+
 ## Alternatives considered
 
 - 统一删除反射和转型能得到更整齐的代码，但 SQL Row、raw JSON、SDK 数值和混合异常确实有不同来源；仅收窄已经证明的完整实体与内部记录。
@@ -41,3 +45,5 @@ Status: implemented
 本次有界增量的源码记录位于 channel-error-normalization-20261107。三个模块相对开始快照共减少 49 行，完整 AST 对照限定规则内联、局部绑定、明确的四处缺省表达式、重复函数退出和真实调用迁移；未触及的函数、SQL、事务、测试与模型保持。Python 3.11、Ruff 和格式检查通过，未运行 Python 测试或业务函数；缺少 TruffleHog 的自动模型审查限制沿用既有记录。
 
 后续状态投影记录位于 index-channel-state-projection-20261107。两模块完整 AST 对照核对共用字段、详情追加字段及键序、原生 bool 的实际生产者、解析调用绑定、逐列读取顺序与赋值顺序；八个模型、生产者、API 和既有测试文件的哈希保持。Ruff、格式、Python 3.11 与记录门禁提供静态证据，未运行 Python 测试、业务函数或外部服务。
+
+会话契约记录位于 bound-session-contracts-20261107，保存三个 owner、十二个实际调用／工厂／测试来源及安装 SDK 的源码哈希和方法契约。完整 AST 投影限定直接 SDK 读取、真实 Session 保存点分支内联、相同 kwargs／upsert／finish 顺序及日志消息归约；另外代码、签名、SQL 和调用者保持。共退出 12 处字段存在性 getattr。验证仅使用源码、Python 3.11、Ruff、格式与记录门禁；未执行测试、SDK、业务函数、数据库或服务，未启动缺少 TruffleHog 的模型审查。
