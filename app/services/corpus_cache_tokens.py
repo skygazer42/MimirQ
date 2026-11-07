@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.rag.core.hashing import stable_hash
@@ -29,27 +30,23 @@ def _as_iso(value: Any) -> str | None:
     return text or None
 
 
-def _active_pipeline_hash(meta: Any) -> str | None:
-    payload = meta if isinstance(meta, dict) else {}
-    out = str(payload.get("active_pipeline_hash") or payload.get("pipeline_hash") or "").strip()
-    return out or None
-
-
 def _dataset_embedding_binding(dataset_meta: Any) -> dict[str, Any]:
     metadata = dict(dataset_meta or {}) if isinstance(dataset_meta, dict) else {}
     runtime = resolve_dataset_embedding_runtime(metadata)
-    raw_defaults = metadata.get("embedding_defaults") if isinstance(metadata.get("embedding_defaults"), dict) else {}
+    raw_defaults = metadata.get("embedding_defaults")
+    if not isinstance(raw_defaults, dict):
+        raw_defaults = {}
+    embedding_defaults = {}
+    for key in ("provider", "model", "api_base"):
+        value = str(raw_defaults.get(key) or "").strip()
+        embedding_defaults[key] = value if value else None
     return {
-        "dataset_scoped": bool(runtime.dataset_scoped),
+        "dataset_scoped": runtime.dataset_scoped,
         "provider": runtime.provider,
         "model": runtime.model,
         "api_base": runtime.api_base,
         "embedding_space_hash": runtime.embedding_space_hash,
-        "embedding_defaults": {
-            "provider": str(raw_defaults.get("provider") or "").strip() or None,
-            "model": str(raw_defaults.get("model") or "").strip() or None,
-            "api_base": str(raw_defaults.get("api_base") or "").strip() or None,
-        },
+        "embedding_defaults": embedding_defaults,
     }
 
 
@@ -76,12 +73,15 @@ def build_document_scope_corpus_cache_token(rows: Sequence[Any]) -> str | None:
         doc_id = str(payload.get("id") or "").strip()
         if not doc_id:
             continue
+        dataset_id = str(payload.get("dataset_id") or "").strip()
+        if not dataset_id:
+            dataset_id = None
         items.append(
             {
                 "id": doc_id,
-                "dataset_id": str(payload.get("dataset_id") or "").strip() or None,
+                "dataset_id": dataset_id,
                 "updated_at": _as_iso(payload.get("updated_at")),
-                "active_pipeline_hash": _active_pipeline_hash(payload),
+                "active_pipeline_hash": get_active_pipeline_hash(payload),
                 "dataset_embedding_binding": payload.get("dataset_embedding_binding"),
             }
         )
@@ -171,7 +171,7 @@ def resolve_corpus_cache_token(
                     "id": str(doc_id),
                     "dataset_id": str(scope_dataset_id) if scope_dataset_id is not None else None,
                     "updated_at": updated_at,
-                    "active_pipeline_hash": _active_pipeline_hash(doc_meta),
+                    "active_pipeline_hash": get_active_pipeline_hash(doc_meta if isinstance(doc_meta, dict) else {}),
                     "dataset_embedding_binding": _dataset_embedding_binding(
                         dataset_meta_by_id.get(str(scope_dataset_id))
                     )

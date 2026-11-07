@@ -175,14 +175,17 @@ def _coerce_rule(rule: IngestionRule | dict[str, Any] | object, *, idx: int) -> 
 def _normalize_optional_override(value: Any) -> str | None:
     if value is None:
         return None
-    return str(value).strip().lower() or None
+    normalized = str(value).strip().lower()
+    return normalized if normalized else None
 
 
 def _normalize_governance_profile_ref(value: Any) -> str | None:
     if value is None:
         return None
-    normalized = str(value).strip() or None
-    if normalized and ("\x7f" in normalized or any(ord(ch) < 32 for ch in normalized)):
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    if "\x7f" in normalized or any(ord(ch) < 32 for ch in normalized):
         raise ValueError("invalid governance_profile_ref")
     return normalized
 

@@ -231,6 +231,11 @@ def resolve_model_query_settings(overrides: ModelQueryOverrides) -> ModelQuerySe
     return ModelQuerySettings(multi, hyde, step_back, decomposition)
 
 
+def _normalize_multi_query_label(value):
+    normalized = str(value or "").strip()
+    return normalized if normalized else None
+
+
 def parse_model_query_overrides(options: Mapping[str, Any]) -> ModelQueryOverrides:
     return ModelQueryOverrides(
         enable_multi_query=None if options.get("enable_multi_query") is None else bool(options["enable_multi_query"]),
@@ -245,8 +250,8 @@ def parse_model_query_overrides(options: Mapping[str, Any]) -> ModelQueryOverrid
         enable_query_decomposition=None
         if options.get("enable_query_decomposition") is None
         else bool(options["enable_query_decomposition"]),
-        multi_query_ab_test_key=str(options.get("multi_query_ab_test_key") or "").strip() or None,
-        multi_query_ab_variant=str(options.get("multi_query_ab_variant") or "").strip() or None,
+        multi_query_ab_test_key=_normalize_multi_query_label(options.get("multi_query_ab_test_key")),
+        multi_query_ab_variant=_normalize_multi_query_label(options.get("multi_query_ab_variant")),
         multi_query_ab_seed=options.get("multi_query_ab_seed"),
     )
 

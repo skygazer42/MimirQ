@@ -71,7 +71,10 @@ def _global_defaults() -> tuple[str, str]:
 def _normalized_dataset_default(value: object) -> str | None:
     # Dataset metadata is JSON; unlike an IngestionRule its values have no
     # per-key schema until this boundary reads them.
-    return value.strip().lower() or None if isinstance(value, str) else None
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    return normalized if normalized else None
 
 
 def dataset_upload_defaults(dataset_meta: dict[str, Any] | None) -> tuple[str | None, str | None]:

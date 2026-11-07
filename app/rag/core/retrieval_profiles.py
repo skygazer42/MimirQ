@@ -112,6 +112,11 @@ def _configured_reranker_provider(out: _ProfileOptions) -> str:
     raise ValueError("This retrieval profile requires an explicitly configured reranker provider")
 
 
+def _normalize_profile_option(value):
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized else None
+
+
 def _initial_profile_options(
     *,
     normalized: str | None,
@@ -129,12 +134,12 @@ def _initial_profile_options(
         "retrieval_profile": normalized,
         "top_k": int(top_k or 0),
         "score_threshold": float(score_threshold or 0.0),
-        "retrieval_mode": str(retrieval_mode or "").strip().lower() or None,
+        "retrieval_mode": _normalize_profile_option(retrieval_mode),
         "enable_reranker": None if enable_reranker is None else bool(enable_reranker),
-        "reranker_provider": str(reranker_provider or "").strip().lower() or None,
+        "reranker_provider": _normalize_profile_option(reranker_provider),
         "reranker_top_n": None if reranker_top_n is None else int(reranker_top_n or 0),
         "enable_weight_rerank": None if enable_weight_rerank is None else bool(enable_weight_rerank),
-        "retrieval_contract_mode": str(retrieval_contract_mode or "").strip().lower() or None,
+        "retrieval_contract_mode": _normalize_profile_option(retrieval_contract_mode),
         "visible_evidence_only": None if visible_evidence_only is None else bool(visible_evidence_only),
     }
 
