@@ -153,7 +153,9 @@ class PostProcessMixin:
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None,
     ) -> tuple[UUID | None, str | None, set[str], str]:
         tenant_filter = self.tenant_id
-        account_id = (self.account_id or "").strip() or None
+        account_id = (self.account_id or "").strip()
+        if not account_id:
+            account_id = None
         dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
         runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_filter)
         return tenant_filter, account_id, dataset_filters, str(runtime.embedding_space_hash or "").strip()

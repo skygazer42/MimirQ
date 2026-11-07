@@ -59,13 +59,15 @@ def _coverage_proxy_from_citations(citations: Any) -> dict[str, Any] | None:
         return None
 
     out: dict[str, Any] = {
-        "citations_total": int(total),
-        "distinct_documents": int(len(set(doc_ids)) if doc_ids else 0),
-        "distinct_pipeline_keys": int(len(set(pipeline_keys)) if pipeline_keys else 0),
-        "distinct_roles": int(len(set(roles)) if roles else 0),
-        "top_doc_share": _top_doc_share(doc_ids),
+        "citations_total": total,
+        "distinct_documents": len(set(doc_ids)),
+        "distinct_pipeline_keys": len(set(pipeline_keys)),
+        "distinct_roles": len(set(roles)),
     }
-    return {k: v for k, v in out.items() if v is not None} or None
+    top_doc_share = _top_doc_share(doc_ids)
+    if top_doc_share is not None:
+        out["top_doc_share"] = top_doc_share
+    return out
 
 
 def _main_retrieval_per_query_item(retrieval_per_query: Any) -> dict[str, Any] | None:
@@ -118,7 +120,7 @@ def _build_empty_retrieval_diagnosis(
     for key in ("input_results", "output_results"):
         if enrich.get(key) is not None:
             diag[key] = _safe_int(enrich.get(key))
-    return {key: value for key, value in diag.items() if value is not None} or None
+    return diag
 
 
 def _diagnose_empty_retrieval(retrieval_per_query: Any) -> dict[str, Any] | None:

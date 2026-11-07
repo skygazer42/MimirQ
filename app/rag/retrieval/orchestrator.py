@@ -577,7 +577,9 @@ def _build_no_retrieval_response(
     requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
     requested_retrieval_profile = state.get("retrieval_profile")
     retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
-    profile_norm = str(requested_retrieval_profile or "").strip().lower() or None
+    profile_norm = str(requested_retrieval_profile or "").strip().lower()
+    if not profile_norm:
+        profile_norm = None
     metrics = dict(state.get("metrics") or {})
     metrics["retrieval_elapsed_sec"] = 0.0
     metrics["retrieval_mode"] = retrieval_mode

@@ -189,7 +189,9 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
             bool(state.get("visible_evidence_only")) if state.get("visible_evidence_only") is not None else None
         ),
     )
-    profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower() or None
+    profile_norm = str(profile_applied.get("retrieval_profile") or "").strip().lower()
+    if not profile_norm:
+        profile_norm = None
 
     hierarchy = _apply_hierarchy_profile_overrides(payload.hierarchy, profile_applied)
     sparse_enabled, sparse_provider = _resolve_sparse_settings(
