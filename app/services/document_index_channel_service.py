@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import case, literal
@@ -15,6 +15,9 @@ from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document_index_channel import DocumentIndexChannel
 from app.services.pipeline_config import resolve_pipeline_effective
+
+if TYPE_CHECKING:
+    from app.types.pipeline import PipelineEffective
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +86,7 @@ def _pipeline_hash_from_document(document: DBDocument, pipeline_hash: str | None
     return get_active_pipeline_hash(meta)
 
 
-def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
-    meta = dict(document.doc_metadata or {})
-    effective = resolve_pipeline_effective(document_metadata=meta)
+def document_index_channel_flags(effective: "PipelineEffective") -> dict[str, bool]:
     return {
         "vector": effective.chunk_vector_enabled,
         "bm25": effective.bm25_index_enabled,
@@ -93,6 +94,12 @@ def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
         "event_vector": effective.event_vector_enabled,
         "entity_vector": effective.entity_vector_enabled,
     }
+
+
+def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
+    meta = dict(document.doc_metadata or {})
+    effective = resolve_pipeline_effective(document_metadata=meta)
+    return document_index_channel_flags(effective)
 
 
 def legacy_document_index_channel_status(document: DBDocument, *, channel: str, enabled: bool) -> dict[str, Any]:
@@ -127,20 +134,30 @@ def legacy_document_index_channel_status(document: DBDocument, *, channel: str, 
     }
 
 
-def _row_to_dict(row: DocumentIndexChannel) -> dict[str, Any]:
-    return {
+def document_index_channel_status(row: DocumentIndexChannel) -> dict[str, Any]:
+    """Serialize the channel state shared by detail and audit responses."""
+    payload = {
         "channel": str(row.channel or ""),
         "required": bool(row.required),
         "enabled": bool(row.enabled),
         "status": str(row.status or "pending").strip().lower(),
-        "error": str(row.error or "").strip() or None,
-        "attempt_count": int(row.attempt_count or 0),
-        "last_attempted_at": row.last_attempted_at,
-        "last_succeeded_at": row.last_succeeded_at,
-        "last_failed_at": row.last_failed_at,
-        "last_status_changed_at": row.last_status_changed_at,
-        "legacy": False,
     }
+    error_message = str(row.error or "").strip()
+    payload["error"] = error_message if error_message else None
+    return payload
+
+
+def _row_to_dict(row: DocumentIndexChannel) -> dict[str, Any]:
+    payload = document_index_channel_status(row)
+    payload.update(
+        attempt_count=int(row.attempt_count or 0),
+        last_attempted_at=row.last_attempted_at,
+        last_succeeded_at=row.last_succeeded_at,
+        last_failed_at=row.last_failed_at,
+        last_status_changed_at=row.last_status_changed_at,
+        legacy=False,
+    )
+    return payload
 
 
 def _normalized_transition_state(

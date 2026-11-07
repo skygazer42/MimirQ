@@ -20,6 +20,10 @@ Status: implemented
 
 两个文档适配器复制 ORM 元数据后，直接使用既有 get_active_pipeline_hash，保留 active/current 字段优先级和空白规则。显式空白 override 仍直接返回空，不合并为 get_selected_pipeline_hash 的另一种空白回退。core 使用显式缺省判断，只在参数为 None 时选择默认映射或字符串，保留非空但布尔值为假的映射。复杂条件中的单次求值改成有业务含义的局部语句，没有恢复 or-None 写法。
 
+持久化通道状态的五个共同字段由 document_index_channel_status 构造新字典，按原顺序读取 channel、required、enabled、status 和 error。详情随后添加原计数、时间和 legacy 字段；审计只添加原 legacy 字段，不读取详情专属属性。历史错误文本的读取不套用写入的 2000 字符限制，空文本仍显式归空。退出审计里的 _row_index_channel_status 副本，保留完整 ORM 查询、版本匹配与赋值前的失败边界。
+
+五个开关由 document_index_channel_flags 映射实际 PipelineEffective。真实构造器的 _resolve_flag 和 BM25 条件已经产生原生 bool，审计退出第二份映射和重复 bool 包装。各模块仍在原位置通过各自 resolve_pipeline_effective 绑定解析配置，再传入已构造结果；没有移动解析依赖、缓存或已有注入入口。只在类型检查时引用 PipelineEffective，不增加运行时初始化。
+
 ## Alternatives considered
 
 - 统一删除反射和转型能得到更整齐的代码，但 SQL Row、raw JSON、SDK 数值和混合异常确实有不同来源；仅收窄已经证明的完整实体与内部记录。
@@ -35,3 +39,5 @@ Status: implemented
 全文读取整组 17 个 owner 及实际生产者和调用方，复核 15 份完整差异。Ruff、Python 3.11 AST、固定源码／签名绑定、SQL／资源／错误／字典形状和笔记校验提供有界证据；没有添加、扩展或执行 Python 测试，也没有运行应用、SDK、数据库、服务、回调或业务正则。静态结果不代表运行时回归。
 
 本次有界增量的源码记录位于 channel-error-normalization-20261107。三个模块相对开始快照共减少 49 行，完整 AST 对照限定规则内联、局部绑定、明确的四处缺省表达式、重复函数退出和真实调用迁移；未触及的函数、SQL、事务、测试与模型保持。Python 3.11、Ruff 和格式检查通过，未运行 Python 测试或业务函数；缺少 TruffleHog 的自动模型审查限制沿用既有记录。
+
+后续状态投影记录位于 index-channel-state-projection-20261107。两模块完整 AST 对照核对共用字段、详情追加字段及键序、原生 bool 的实际生产者、解析调用绑定、逐列读取顺序与赋值顺序；八个模型、生产者、API 和既有测试文件的哈希保持。Ruff、格式、Python 3.11 与记录门禁提供静态证据，未运行 Python 测试、业务函数或外部服务。

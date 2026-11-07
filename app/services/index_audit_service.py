@@ -18,6 +18,8 @@ from app.services.document_index_channel_service import (
     DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR,
     DOCUMENT_INDEX_CHANNEL_TERMINAL_READY,
     DOCUMENT_INDEX_CHANNELS,
+    document_index_channel_flags,
+    document_index_channel_status,
     legacy_document_index_channel_status,
     summarize_document_index_channels,
 )
@@ -583,28 +585,6 @@ def _document_pipeline_hash(document: DBDocument) -> str | None:
     return get_active_pipeline_hash(meta)
 
 
-def _document_channel_flags(document: DBDocument) -> dict[str, bool]:
-    effective = resolve_pipeline_effective(document_metadata=dict(document.doc_metadata or {}))
-    return {
-        "vector": bool(effective.chunk_vector_enabled),
-        "bm25": bool(effective.bm25_index_enabled),
-        "kg": bool(effective.kg_enabled),
-        "event_vector": bool(effective.event_vector_enabled),
-        "entity_vector": bool(effective.entity_vector_enabled),
-    }
-
-
-def _row_index_channel_status(row: DocumentIndexChannel) -> dict[str, Any]:
-    return {
-        "channel": str(row.channel or ""),
-        "required": bool(row.required),
-        "enabled": bool(row.enabled),
-        "status": str(row.status or "pending").strip().lower(),
-        "error": str(row.error or "").strip() or None,
-        "legacy": False,
-    }
-
-
 def _index_channel_rows_by_document(
     *,
     documents: list[DBDocument],
@@ -623,7 +603,9 @@ def _index_channel_rows_by_document(
         if pipeline_hash != pipeline_hash_by_document.get(document_key):
             continue
         rows_seen_by_document.add(document_key)
-        rows_by_document.setdefault(document_key, {})[str(row.channel or "")] = _row_index_channel_status(row)
+        channel_status = document_index_channel_status(row)
+        channel_status["legacy"] = False
+        rows_by_document.setdefault(document_key, {})[str(row.channel or "")] = channel_status
     return rows_by_document, rows_seen_by_document
 
 
@@ -651,7 +633,8 @@ def _document_index_channel_statuses(
     document: DBDocument,
     statuses: dict[str, dict[str, Any]] | None,
 ) -> dict[str, dict[str, Any]]:
-    flags = _document_channel_flags(document)
+    effective = resolve_pipeline_effective(document_metadata=dict(document.doc_metadata or {}))
+    flags = document_index_channel_flags(effective)
     resolved = dict((statuses if statuses is not None else {}))
     for channel in DOCUMENT_INDEX_CHANNELS:
         legacy_status = legacy_document_index_channel_status(
