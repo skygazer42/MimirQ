@@ -25,6 +25,7 @@ from app.models.document import DocumentChunk, DocumentParsedContent
 
 if TYPE_CHECKING:
     from app.parsing.processors.processor import DocumentProcessorService
+    from app.services.table_store_service import TableAsset
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.preprocess.image_preprocess import preprocess_image_document
 from app.parsing.processors.cross_page_merge import merge_cross_page_documents
@@ -197,19 +198,19 @@ def _commit_document_metadata(db: Session, db_document: DBDocument, metadata: di
     db.refresh(db_document)
 
 
-def _table_store_tables_payload(assets: Any) -> list[dict[str, Any]]:
+def _table_store_tables_payload(assets: list["TableAsset"]) -> list[dict[str, Any]]:
     tables_payload: list[dict[str, Any]] = []
-    for asset in assets or []:
+    for asset in assets:
         tables_payload.append(
             {
-                "table_id": str(getattr(asset, "table_id", "")),
-                "sheet_index": int(getattr(asset, "sheet_index", 0) or 0),
-                "sheet_name": getattr(asset, "sheet_name", None),
-                "row_count": int(getattr(asset, "row_count", 0) or 0),
-                "col_count": int(getattr(asset, "col_count", 0) or 0),
-                "truncated": bool(getattr(asset, "truncated", False)),
-                "columns": list(getattr(asset, "columns", None) or []),
-                "sample_rows": list(getattr(asset, "sample_rows", None) or []),
+                "table_id": str(asset.table_id),
+                "sheet_index": int(asset.sheet_index or 0),
+                "sheet_name": asset.sheet_name,
+                "row_count": int(asset.row_count or 0),
+                "col_count": int(asset.col_count or 0),
+                "truncated": bool(asset.truncated),
+                "columns": list(asset.columns),
+                "sample_rows": list(asset.sample_rows),
             }
         )
     return tables_payload
@@ -270,9 +271,9 @@ def _dataset_metadata(db: Session, *, db_document: DBDocument, tenant_id: UUID) 
     if not db_document.dataset_id:
         return {}
     ds = db.query(Dataset).filter(Dataset.id == db_document.dataset_id, Dataset.tenant_id == tenant_id).first()
-    if ds is None or not isinstance(getattr(ds, "dataset_metadata", None), dict):
+    if ds is None or not isinstance(ds.dataset_metadata, dict):
         return {}
-    return dict(ds.dataset_metadata or {})
+    return dict(ds.dataset_metadata)
 
 
 def _initialize_prepared_process_document_state(
@@ -404,7 +405,7 @@ async def _run_pre_poc_quality_gate(
     add_stage_duration: Any,
     with_stage_durations: Any,
 ) -> dict[str, Any] | None:
-    if not bool(getattr(prepared_state.pipeline_effective, "ingest_pre_poc_scanner_enabled", False)):
+    if not bool(prepared_state.pipeline_effective.ingest_pre_poc_scanner_enabled):
         return None
     try:
         from app.services.ingest_pre_poc_quality_gate import evaluate_ingest_pre_poc_quality_gate
@@ -414,9 +415,7 @@ async def _run_pre_poc_quality_gate(
             pre_poc_gate = evaluate_ingest_pre_poc_quality_gate(
                 prepared_state.file_path,
                 enabled=True,
-                mode=str(
-                    getattr(prepared_state.pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"
-                ),
+                mode=str(prepared_state.pipeline_effective.ingest_pre_poc_quality_gate_mode or "warn"),
             )
         add_stage_duration("pre_poc_quality_gate", (time.perf_counter() - t0) * 1000)
         next_meta = dict(db_document.doc_metadata or {})
@@ -448,12 +447,7 @@ async def _run_pre_poc_quality_gate(
         }
     except Exception as exc:  # noqa: BLE001
         _log_processor_fallback("process_document", exc)
-        if (
-            str(
-                getattr(prepared_state.pipeline_effective, "ingest_pre_poc_quality_gate_mode", "warn") or "warn"
-            ).lower()
-            == "strict"
-        ):
+        if str(prepared_state.pipeline_effective.ingest_pre_poc_quality_gate_mode or "warn").lower() == "strict":
             raise RuntimeError(f"pre_poc_quality_gate_failed: {str(exc)[:200]}") from exc
         return None
 
@@ -563,7 +557,7 @@ async def _maybe_import_tabular_document(
     add_stage_duration: Any,
 ) -> dict[str, Any] | None:
     if not (
-        bool(getattr(prepared_state.pipeline_effective, "table_store_enabled", False))
+        bool(prepared_state.pipeline_effective.table_store_enabled)
         and db_document.dataset_id is not None
         and prepared_state.file_path.suffix.lower() in {".csv", ".xls", ".xlsx"}
     ):
@@ -575,13 +569,11 @@ async def _maybe_import_tabular_document(
 
         table_decision = decide_table_route(
             file_path=prepared_state.file_path,
-            auto_route=bool(getattr(prepared_state.pipeline_effective, "table_store_auto_route", False)),
-            file_bytes_threshold=int(
-                getattr(prepared_state.pipeline_effective, "table_store_auto_file_bytes_threshold", 0) or 0
-            ),
-            row_threshold=int(getattr(prepared_state.pipeline_effective, "table_store_auto_row_threshold", 0) or 0),
-            col_threshold=int(getattr(prepared_state.pipeline_effective, "table_store_auto_col_threshold", 0) or 0),
-            sheet_threshold=int(getattr(prepared_state.pipeline_effective, "table_store_auto_sheet_threshold", 0) or 0),
+            auto_route=bool(prepared_state.pipeline_effective.table_store_auto_route),
+            file_bytes_threshold=int(prepared_state.pipeline_effective.table_store_auto_file_bytes_threshold or 0),
+            row_threshold=int(prepared_state.pipeline_effective.table_store_auto_row_threshold or 0),
+            col_threshold=int(prepared_state.pipeline_effective.table_store_auto_col_threshold or 0),
+            sheet_threshold=int(prepared_state.pipeline_effective.table_store_auto_sheet_threshold or 0),
         )
     except Exception as exc:
         _log_processor_fallback("process_document", exc)
@@ -591,15 +583,15 @@ async def _maybe_import_tabular_document(
             next_meta = dict(db_document.doc_metadata or {})
             next_meta["table_routing"] = {
                 "version": "1",
-                "route": getattr(table_decision, "route", None),
-                "reason": getattr(table_decision, "reason", None),
-                "stats": dict(getattr(table_decision, "stats", None) or {}),
+                "route": table_decision.route,
+                "reason": table_decision.reason,
+                "stats": dict(table_decision.stats),
             }
             _commit_document_metadata(db, db_document, next_meta)
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
-    if table_decision is not None and str(getattr(table_decision, "route", "") or "").lower() == "rag":
+    if table_decision is not None and str(table_decision.route or "").lower() == "rag":
         return None
 
     await raise_if_cancelled(force=True)
@@ -613,9 +605,9 @@ async def _maybe_import_tabular_document(
             dataset_id=db_document.dataset_id,
             document_id=document_id,
             file_path=prepared_state.file_path,
-            max_rows=int(getattr(prepared_state.pipeline_effective, "table_store_max_rows", 0) or 0),
-            max_cols=int(getattr(prepared_state.pipeline_effective, "table_store_max_cols", 0) or 0),
-            sample_rows=int(getattr(prepared_state.pipeline_effective, "table_store_sample_rows", 0) or 0),
+            max_rows=int(prepared_state.pipeline_effective.table_store_max_rows or 0),
+            max_cols=int(prepared_state.pipeline_effective.table_store_max_cols or 0),
+            sample_rows=int(prepared_state.pipeline_effective.table_store_sample_rows or 0),
         )
         add_stage_duration("table_import", (time.perf_counter() - t0) * 1000)
     except Exception as exc:  # noqa: BLE001
@@ -689,7 +681,7 @@ async def _maybe_import_docx_table_sidecar(
     raise_if_cancelled: Any,
 ) -> None:
     if not (
-        bool(getattr(prepared_state.pipeline_effective, "table_store_enabled", False))
+        bool(prepared_state.pipeline_effective.table_store_enabled)
         and db_document.dataset_id is not None
         and prepared_state.file_path.suffix.lower() == ".docx"
     ):
@@ -703,9 +695,9 @@ async def _maybe_import_docx_table_sidecar(
             dataset_id=db_document.dataset_id,
             document_id=document_id,
             file_path=prepared_state.file_path,
-            max_rows=int(getattr(prepared_state.pipeline_effective, "table_store_max_rows", 0) or 0),
-            max_cols=int(getattr(prepared_state.pipeline_effective, "table_store_max_cols", 0) or 0),
-            sample_rows=int(getattr(prepared_state.pipeline_effective, "table_store_sample_rows", 0) or 0),
+            max_rows=int(prepared_state.pipeline_effective.table_store_max_rows or 0),
+            max_cols=int(prepared_state.pipeline_effective.table_store_max_cols or 0),
+            sample_rows=int(prepared_state.pipeline_effective.table_store_sample_rows or 0),
         )
         await raise_if_cancelled(force=True)
         try:
@@ -1459,8 +1451,8 @@ async def _attempt_parse_fallback_candidates(
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
             parsed_text_quality=q1.to_dict(),
         )
-        q1_score = float(q1_quality.get("score") or 0.0)
-        q1_chars = int(getattr(q1, "content_chars", 0) or 0)
+        q1_score = q1_quality["score"]
+        q1_chars = q1.content_chars
         accepted = not should_attempt_pdf_fallback(
             grade="warn",
             parse_score=q1_score,
@@ -1521,8 +1513,8 @@ async def _maybe_apply_parse_fallback(
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
             parsed_text_quality=q0.to_dict(),
         )
-        q0_score = float(q0_quality.get("score") or 0.0)
-        q0_chars = int(getattr(q0, "content_chars", 0) or 0)
+        q0_score = q0_quality["score"]
+        q0_chars = q0.content_chars
         if not should_attempt_pdf_fallback(
             grade="fail" if q0_chars <= 0 else "warn",
             parse_score=q0_score,
@@ -1552,8 +1544,8 @@ async def _maybe_apply_parse_fallback(
             meta["parse_fallback"] = {
                 "enabled": True,
                 "attempts": attempts,
-                "min_content_chars": int(min_chars),
-                "max_retries": int(max_retries),
+                "min_content_chars": min_chars,
+                "max_retries": max_retries,
             }
             _commit_document_metadata(db, db_document, meta)
         return accepted_parse or parsed
@@ -1661,7 +1653,7 @@ async def _maybe_apply_parse_quality_gate(
             return None
         joined_final = _parsed_joined_text(parsed.documents)
         q_final = score_parsed_text_quality(joined_final)
-        final_chars = int(getattr(q_final, "content_chars", 0) or 0)
+        final_chars = q_final.content_chars
         meta = dict(db_document.doc_metadata or {})
         attempted = bool(meta.get("parse_fallback"))
         specialty_signals = _seal_summary_to_specialty_signals(
@@ -1685,7 +1677,7 @@ async def _maybe_apply_parse_quality_gate(
             parsed_text_quality=q_final.to_dict(),
             specialty_signals=specialty_signals,
         )
-        final_score = float(final_quality.get("score") or 0.0)
+        final_score = final_quality["score"]
         if not should_attempt_pdf_fallback(
             grade="warn",
             parse_score=final_score,
@@ -1710,8 +1702,8 @@ async def _maybe_apply_parse_quality_gate(
             reason=reason,
             details={
                 "parser_backend": str(resolved_backend or ""),
-                "parsed_content_chars": int(final_chars),
-                "parse_score": round(float(final_score), 3),
+                "parsed_content_chars": final_chars,
+                "parse_score": round(final_score, 3),
             },
         )
 
@@ -1734,8 +1726,8 @@ async def _maybe_apply_parse_quality_gate(
                 resource_id=str(document_id),
                 details={
                     "reason": reason,
-                    "parse_fallback_min_content_chars": int(min_chars),
-                    "parsed_content_chars": int(final_chars),
+                    "parse_fallback_min_content_chars": min_chars,
+                    "parsed_content_chars": final_chars,
                     "parser_backend": str(resolved_backend or ""),
                 },
             )
@@ -2028,7 +2020,7 @@ async def _prepare_parsed_documents_for_continuation(
                 document_id=document_id,
                 origin_path=prepared_state.file_path,
                 start_index=0,
-                image_caption_enabled=bool(getattr(pipeline_effective, "image_caption_enabled", False)),
+                image_caption_enabled=bool(pipeline_effective.image_caption_enabled),
             )
         add_stage_duration("inline_assets", (time.perf_counter() - t0) * 1000)
         parsed_documents = inline_result.documents
@@ -2187,7 +2179,7 @@ async def _maybe_return_governance_drop_result(
         return None
     if governance_stats is None or items:
         return None
-    if int(getattr(governance_stats, "dropped", 0) or 0) <= 0:
+    if governance_stats.dropped <= 0:
         return None
     service._record_governance_metadata(
         db,
@@ -2198,10 +2190,10 @@ async def _maybe_return_governance_drop_result(
         audit_patch=governance_audit_patch,
     )
     quarantined = bool(pipeline_effective.governance_quarantine_on_drop)
-    reasons = getattr(governance_stats, "drop_reasons", {}) or {}
-    reason_str = ", ".join([f"{k}:{v}" for k, v in sorted(reasons.items())]) if isinstance(reasons, dict) else ""
+    reasons = governance_stats.drop_reasons
+    reason_str = ", ".join(f"{k}:{v}" for k, v in sorted(reasons.items()))
     hint = "You can disable outline/low-density filters or relax thresholds."
-    if isinstance(reasons, dict) and any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
+    if any(k in reasons for k in ("pii_exceeded", "secrets_exceeded")):
         hint = "You can adjust PII/Secrets gates (pii_max_hits/secrets_max_hits) or disable them."
     msg = (
         ("Document quarantined by governance rules" if quarantined else "Document filtered by governance rules")
@@ -2222,8 +2214,8 @@ async def _maybe_return_governance_drop_result(
     with contextlib.suppress(Exception):
         from app.services.audit_log_service import audit_log_event
 
-        pii_hits = getattr(governance_stats, "pii_hits", None) or {}
-        secrets_hits = getattr(governance_stats, "secrets_hits", None) or {}
+        pii_hits = governance_stats.pii_hits
+        secrets_hits = governance_stats.secrets_hits
         audit_log_event(
             db,
             tenant_id=tenant_id,
@@ -2534,9 +2526,9 @@ async def _chunk_governed_documents(
             chunk_strategy=resolved_chunk_strategy,
             chunk_size=int(pipeline_effective.chunk_size),
             chunk_overlap=int(pipeline_effective.chunk_overlap),
-            chunk_strategy_params=dict(getattr(pipeline_effective, "chunk_strategy_params", {}) or {}),
-            chunk_python_plugin=str(getattr(pipeline_effective, "chunk_python_plugin", "") or ""),
-            chunk_python_params=dict(getattr(pipeline_effective, "chunk_python_params", {}) or {}),
+            chunk_strategy_params=dict(pipeline_effective.chunk_strategy_params or {}),
+            chunk_python_plugin=str(pipeline_effective.chunk_python_plugin or ""),
+            chunk_python_params=dict(pipeline_effective.chunk_python_params or {}),
         )
     chunks = _rebase_chunk_offsets_by_page_index(
         documents=parsed_documents,
@@ -2544,7 +2536,7 @@ async def _chunk_governed_documents(
         join_separator="\n\n",
     )
     add_stage_duration("chunking", (time.perf_counter() - t0) * 1000)
-    merge_min = max(0, int(getattr(pipeline_effective, "chunk_merge_small_min_chars", 0) or 0))
+    merge_min = max(0, int(pipeline_effective.chunk_merge_small_min_chars or 0))
     merge_small_after = len(chunks)
     merge_small_reduced = 0
     if merge_min > 0 and chunks:
@@ -3101,9 +3093,7 @@ def _apply_chunk_asset_stage_and_metadata(
     file_type = (
         str(db_document.file_type or "").strip().lower() or str(prepared_state.file_path.suffix.lstrip(".")).lower()
     )
-    governance_version = (
-        str(getattr(governance_stats, "version", "") or "").strip() if governance_stats is not None else ""
-    )
+    governance_version = str(governance_stats.version or "").strip() if governance_stats is not None else ""
     for chunk in chunked_items:
         meta = dict(chunk.metadata or {})
         if pipeline_hash:

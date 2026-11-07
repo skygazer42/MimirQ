@@ -28,6 +28,10 @@ DocumentProcessorService 继续持有处理入口和现有依赖接口。Parsing
 - 把所有阶段移到新模块或再建通用 manager，能统一接口，却增加维护位置并隐藏现有差异。因此函数留在实际业务 owner，并显式迁移真实调用方。
 - 保留所有 int／float／getattr 默认写法可以兼容任意不符合内部类型的替身，但会把已保证的字段和原始输入边界混在一起。因此只简化有生产者依据的内部结果；原始数据、可选字段和 SDK 保护继续存在。
 - 重写整个 process_document_flow 能进一步整理流程，但该 owner 已独立完成审查，当前只需要阶段接口迁移。因此不改其预算、fallback、事务、取消或元数据逻辑，也不重新归入完整范围。
+
+表格和质量结果的消费端直接读取实际 TableAsset、TableRouteDecision、TextQualityScore、GovernanceStats 与完整 PipelineEffective 的声明字段。两条导入路径都返回完整资产列表；保留表格数量的序列化转换以及列／样例的列表副本，退出字段存在性与列表缺失兜底。治理原因和命中统计由固定工厂构造为字典，按原顺序展示和记录，不再猜测容器类型。
+
+文本评分的 content_chars 来自 len，解析总分来自原评分器的浮点 round 结果，消费者直接保留这些值。门槛仍在原入口以 int／float 与 max 解析，不再在后续 metadata 记录中再次转换同一局部值。恢复模块直接读取已声明 Settings 字段和已通过查无记录检查的完整 Document；动态设置名称、原始 JSON、错误／取消时可能缺失的文档、可选统计及路由结果仍保留各自边界。
 - 把同类 JSON／标量转换全部收敛成一个 helper 可以减少重复，但各入口的布尔、NaN、异常、缺省与可选协议不同，会改变失败语义。因此不合并这些原始边界。
 
 ## Consequences
@@ -37,3 +41,5 @@ DocumentProcessorService 继续持有处理入口和现有依赖接口。Parsing
 源码验证使用 Python 3.11 AST、全部模块规范化比较、明确表达式清单、生产者字段／调用方核对、Ruff 和格式检查。AST 工具只导入标准库并读取源码，不导入或执行 app、解析器、SDK、模型、数据库、服务或 Python 测试。该证据不能替代运行时解析、真实子进程／文件／图像或事务验收，也不声称执行过这些路径。
 
 活跃笔记检索命中相邻的[文档批次 ORM 契约](2026-11-03-document-batch-orm-contract.md)、[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md)和[预览结果所有权](2026-11-05-preview-owned-values.md)。本记录沿用实际 ORM 与内部结果的边界原则，但保留本管线各自既有的原始转换和失败策略，没有替代或修改这些决定。两处已完成的 package initializer 与 flow owner 不再次计入完整审查。
+
+解析结果消费端的增量证据位于 `E:/MimirQ/.superpowers/parsing-record-consumers-20261107/`。两个完整模块仅接受逐表达式字段读取和已证明局部值的变更；实际表格导入、路由、评分、治理统计、配置构造器与调用者源码保存哈希。配置数字转换、表格列表副本、质量门禁严格／降级、重试、隔离、事务、取消和清理保持。Python 3.11、Ruff、格式及笔记校验是静态证据，未运行或修改 Python 测试，也未执行应用、SDK、模型、数据库或服务。

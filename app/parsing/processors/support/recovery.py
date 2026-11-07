@@ -378,14 +378,14 @@ def _document_questions_enabled(metadata: dict[str, Any] | None) -> bool:
                 return True
             if str(value or "").strip().lower() in {"0", "false", "no", "off"}:
                 return False
-    return bool(getattr(settings, "DOCUMENT_QUESTIONS_ENABLED", False))
+    return bool(settings.DOCUMENT_QUESTIONS_ENABLED)
 
 
 def _document_questions_count(metadata: dict[str, Any] | None) -> int:
     meta = dict(metadata or {})
     raw = meta.get("document_questions_count")
     if raw is None:
-        raw = getattr(settings, "DOCUMENT_QUESTIONS_COUNT", 3)
+        raw = settings.DOCUMENT_QUESTIONS_COUNT
     try:
         count = int(raw or 3)
     except Exception:
@@ -482,7 +482,7 @@ def maybe_enrich_document_questions(
 
 def _kg_prompt_template_id() -> UUID | None:
     try:
-        raw_template_id = (getattr(settings, "KG_EXTRACT_PROMPT_TEMPLATE_ID", "") or "").strip()
+        raw_template_id = (settings.KG_EXTRACT_PROMPT_TEMPLATE_ID or "").strip()
         return UUID(raw_template_id) if raw_template_id else None
     except Exception:
         return None
@@ -550,10 +550,10 @@ async def _enqueue_post_completion_kg(
         extraction_backend=_kg_optional_setting("KG_EXTRACTION_BACKEND"),
         kg_python_plugin=_kg_python_plugin_ref(pipeline_effective),
         kg_python_params=dict(pipeline_effective.kg_python_params or {}),
-        replace_existing=bool(getattr(settings, "KG_EXTRACT_REPLACE_EXISTING", True)),
-        prune_orphan_entities=bool(getattr(settings, "KG_EXTRACT_PRUNE_ORPHAN_ENTITIES", True)),
-        extract_relations=bool(getattr(settings, "KG_RELATION_ENABLED", False)),
-        extract_skills=bool(getattr(settings, "KG_SKILL_ENABLED", False)),
+        replace_existing=bool(settings.KG_EXTRACT_REPLACE_EXISTING),
+        prune_orphan_entities=bool(settings.KG_EXTRACT_PRUNE_ORPHAN_ENTITIES),
+        extract_relations=bool(settings.KG_RELATION_ENABLED),
+        extract_skills=bool(settings.KG_SKILL_ENABLED),
     )
     options_fingerprint = kg_extraction_job_options_fingerprint(effective_options)
     pipeline_job_label = pipeline_hash or "unversioned"
@@ -621,7 +621,7 @@ async def run_post_completion_kg(
         commit=False,
     )
 
-    if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+    if bool(settings.TASK_QUEUE_ENABLED):
         try:
             await _enqueue_post_completion_kg(
                 db=db,
@@ -701,7 +701,7 @@ def persist_retry_boundary_failure(
         raise CheckpointedRetryRequiredError(reason) from error
 
     meta = record_ingest_gate_outcome(
-        dict(getattr(db_doc, "doc_metadata", None) or {}),
+        dict(db_doc.doc_metadata or {}),
         gate="ingestion_run",
         outcome="closed",
         reason=reason,
