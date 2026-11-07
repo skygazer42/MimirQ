@@ -3068,11 +3068,11 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["dict_meta"] = ctx.dict_meta
 
     ctx.metrics["kg_query_expansion_enabled"] = bool(ctx.kg_query_expansion_enabled)
-    ctx.metrics["kg_query_expansion_used"] = bool(ctx.kg_query_expansion_used)
-    ctx.metrics["kg_query_expansion_entities_total"] = int(ctx.kg_query_expansion_entities_total)
-    ctx.metrics["kg_query_expansion_entities_selected"] = int(ctx.kg_query_expansion_entities_selected)
+    ctx.metrics["kg_query_expansion_used"] = ctx.kg_query_expansion_used
+    ctx.metrics["kg_query_expansion_entities_total"] = ctx.kg_query_expansion_entities_total
+    ctx.metrics["kg_query_expansion_entities_selected"] = ctx.kg_query_expansion_entities_selected
     ctx.metrics["kg_query_expansion_query_count"] = len(ctx.kg_query_expansion_queries)
-    ctx.metrics["kg_query_expansion_elapsed_sec"] = round(float(ctx.kg_query_expansion_elapsed), 3)
+    ctx.metrics["kg_query_expansion_elapsed_sec"] = round(ctx.kg_query_expansion_elapsed, 3)
     ctx.metrics["kg_query_expansion_error"] = ctx.kg_query_expansion_error
     ctx.metrics["kg_chunk_injection_enabled"] = bool(ctx.kg_chunk_injection_enabled)
     ctx.metrics["kg_chunk_injection_max_chunks"] = int(ctx.kg_chunk_injection_max_chunks)
@@ -3686,11 +3686,11 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             dict_expansions=list(ctx.dict_expansions or []),
             dict_elapsed=float(ctx.dict_elapsed or 0.0),
             kg_query_expansion_enabled=bool(ctx.kg_query_expansion_enabled),
-            kg_query_expansion_used=bool(ctx.kg_query_expansion_used),
-            kg_query_expansion_entities_total=int(ctx.kg_query_expansion_entities_total),
-            kg_query_expansion_entities_selected=int(ctx.kg_query_expansion_entities_selected),
-            kg_query_expansion_queries=list(ctx.kg_query_expansion_queries or []),
-            kg_query_expansion_elapsed=float(ctx.kg_query_expansion_elapsed or 0.0),
+            kg_query_expansion_used=ctx.kg_query_expansion_used,
+            kg_query_expansion_entities_total=ctx.kg_query_expansion_entities_total,
+            kg_query_expansion_entities_selected=ctx.kg_query_expansion_entities_selected,
+            kg_query_expansion_queries=list(ctx.kg_query_expansion_queries),
+            kg_query_expansion_elapsed=ctx.kg_query_expansion_elapsed,
             kg_query_expansion_error=ctx.kg_query_expansion_error,
             clause_fastlane_queries=list(ctx.clause_fastlane_queries or []),
             lightweight_subqueries=list(ctx.lightweight_subqueries or []),

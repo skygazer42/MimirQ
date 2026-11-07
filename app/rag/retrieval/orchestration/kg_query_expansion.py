@@ -26,9 +26,9 @@ async def search_kg_query_async(request: KGQueryRequest) -> dict[str, Any]:
         query=request.query,
         tenant_id=scope.tenant_id,
         account_id=scope.account_id,
-        document_ids=list(scope.document_ids) or None,
+        document_ids=list(scope.document_ids) if scope.document_ids else None,
         dataset_id=scope.dataset_id,
-        dataset_ids=list(scope.dataset_ids) or None,
+        dataset_ids=list(scope.dataset_ids) if scope.dataset_ids else None,
     )
     if not isinstance(result, dict):
         raise KGResponseContractError("KG search must return an object")
