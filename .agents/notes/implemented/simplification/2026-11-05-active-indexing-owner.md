@@ -16,6 +16,8 @@ Status: implemented
 
 2026-11-07 初始化状态增量：真实 Indexer 构造器无条件保存 Session 到 _db，生产调用方使用该实例，清理路径直接执行原 scope 触达与 flush。异常仍在原 try／except 中记录并按 strict 收集；两个批量删除函数仅在 commit=True 时回滚，实际 Session 的 rollback 方法按 SDK 契约调用。查询已取得 Document 且非空后直接读取声明的 dataset_id，原 UUID 处理和空数据集返回保持。
 
+Embedding 标题别名按两组明确的有序键选择原始真值，由当前模块的 _first_header_metadata_value 在四处复用。保留选择时的逐键读取和布尔判断，不提前渲染或遍历列表。轻量前缀与 field-aware 入口仍采用各自原有列表显示、section 回退和长度限制，原 content、前缀、向量输入与其版本含义保持；十个单次条件表达式绑定退出。
+
 [文档变更入口](../bug-fix/2026-11-05-document-mutation-contracts.md)直接使用保留的 `_update_bm25_for_chunks`，不为旧调用名重建包装；该调用迁移不改变本处的 BM25 和缓存所有权。
 
 ## Alternatives considered
@@ -29,5 +31,7 @@ Status: implemented
 验证限于固定 Git 源码、实际 DTO／ORM／Settings／SDK 声明、调用约定、AST 与 Ruff。Python 测试、索引、数据库、向量、模型、网络、workbook 和服务运行时均未执行。
 
 增量记录位于 initialized-indexer-reranker-state-20261107，保存当前共享工作区开始快照、构造器和真实 Session.rollback 契约。完整模块 AST 只允许两个必有属性 guard 退出、两个回滚方法探测退出及一个声明字段读取；strict／commit、删除顺序、缓存失效、日志、回滚和重新抛出策略保持。Ruff、格式与 Python 3.11 验证通过，未执行 Python 测试或业务／SDK 函数；本轮对已有部分初始化测试对象不新增兼容路径。
+
+标题别名记录位于 embedding-header-alias-owner-20261107。完整当前／提交源码 AST 对照限定两组有序键、同义原始真值选择器和四个调用替换；五个生产者／元数据契约文件的哈希保持，列表转换和输出代码原文保持。Ruff、格式、Python 3.11 与记录门禁通过，未执行正则、抽取、embedding、Python 测试、SDK 或模型函数。
 
 历史笔记中，[向量 writer 所有者](2026-11-03-indexer-vector-writer-owner.md) 与 shadow 函数职责部分重叠，原位同步已退出调用者的事实，缓存决定不变。[共享标量转换](2026-11-03-shared-scalar-coercion-owner.md) 的原始值边界原则沿用，索引的 `_safe_int` 继续返回 None。[语料缓存事务](../bug-fix/2026-11-03-corpus-cache-invalidation-transaction.md) 的事务与失效规则保持；前端索引状态相关笔记属于其他调用链，不被替代。

@@ -72,6 +72,8 @@ _CHUNK_METADATA_SCAN_BATCH_SIZE = 256
 
 _INGEST_GATE_ACTION = "document.ingest_gate"
 _VectorItem = TypeVar("_VectorItem", KgSourceEvent, KgEntity)
+_EMBEDDING_HEADER_KEYS = ("header_path", "outline_path_str", "header_context")
+_EMBEDDING_HEADER_LIST_KEYS = ("outline_path", "header_path_list")
 
 
 def _safe_int(value: Any) -> int | None:
@@ -419,6 +421,14 @@ def _should_prefix_embedding(meta: dict[str, Any]) -> bool:
     return True
 
 
+def _first_header_metadata_value(meta: dict[str, Any], keys: tuple[str, ...]) -> Any:
+    for key in keys:
+        value = meta.get(key)
+        if value:
+            return value
+    return None
+
+
 def _build_embedding_text(content: str, meta: dict[str, Any], *, max_prefix_chars: int = 180) -> str:
     """
     Build the text used for embedding (vector similarity).
@@ -431,10 +441,10 @@ def _build_embedding_text(content: str, meta: dict[str, Any], *, max_prefix_char
     if not _should_prefix_embedding(meta):
         return content
 
-    header = meta.get("header_path") or meta.get("outline_path_str") or meta.get("header_context") or None
+    header = _first_header_metadata_value(meta, _EMBEDDING_HEADER_KEYS)
     if header is None:
         # Some chunkers store outline/header as list.
-        header_list = meta.get("outline_path") or meta.get("header_path_list") or None
+        header_list = _first_header_metadata_value(meta, _EMBEDDING_HEADER_LIST_KEYS)
         if isinstance(header_list, list) and header_list:
             header = " / ".join([str(x).strip() for x in header_list if str(x).strip()][:10])
 
@@ -520,11 +530,11 @@ def _extract_heading_for_embedding(meta: dict[str, Any]) -> str | None:
     if not isinstance(meta, dict):
         return None
 
-    header = meta.get("header_path") or meta.get("outline_path_str") or meta.get("header_context") or None
+    header = _first_header_metadata_value(meta, _EMBEDDING_HEADER_KEYS)
     if isinstance(header, list):
         header = " / ".join([str(x).strip() for x in header if str(x).strip()][:10])
     elif header is None:
-        header_list = meta.get("outline_path") or meta.get("header_path_list") or None
+        header_list = _first_header_metadata_value(meta, _EMBEDDING_HEADER_LIST_KEYS)
         if isinstance(header_list, list) and header_list:
             header = " / ".join([str(x).strip() for x in header_list if str(x).strip()][:10])
         else:
