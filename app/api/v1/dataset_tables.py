@@ -486,12 +486,12 @@ def _generate_table_ask_sql_bundle(
     sample_rows: list[dict[str, Any]],
     sheet_name: str | None,
     max_rows: int,
-) -> tuple[str, str, dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]] | None, str | None]:
+) -> tuple[str, str, dict[str, Any] | None, dict[str, Any] | None, list[dict[str, Any]] | None, str]:
     sql_generation_mode = "llm"
     schema_link_diagnostics: dict[str, Any] | None = None
     planner_diagnostics: dict[str, Any] | None = None
     join_provenance: list[dict[str, Any]] | None = None
-    sql_fingerprint: str | None = None
+    sql_fingerprint = ""
     try:
         sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
             question=(body.question or ""),
@@ -514,16 +514,13 @@ def _generate_table_ask_sql_bundle(
         joins = sql_meta.get("join_provenance")
         if isinstance(joins, list):
             join_provenance = [join for join in joins if isinstance(join, dict)][:10]
-        sql_fingerprint = (
-            str(
-                sql_meta.get("sql_fingerprint")
-                or (planner_diagnostics.get("sql_fingerprint") if isinstance(planner_diagnostics, dict) else None)
-                or ""
-            ).strip()
-            or None
-        )
+        raw_sql_fingerprint = sql_meta.get("sql_fingerprint")
+        if not raw_sql_fingerprint and planner_diagnostics:
+            raw_sql_fingerprint = planner_diagnostics.get("sql_fingerprint")
+        if raw_sql_fingerprint:
+            sql_fingerprint = str(raw_sql_fingerprint).strip()
     if not sql_fingerprint:
-        sql_fingerprint = fingerprint_sql(sql, length=16) or None
+        sql_fingerprint = fingerprint_sql(sql, length=16)
     return (
         sql,
         sql_generation_mode,
