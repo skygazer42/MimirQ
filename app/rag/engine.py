@@ -190,27 +190,23 @@ class RAGEngine(LlmRoutingMixin, DocUtilsMixin):
     ) -> dict[str, Any] | None:
         if db is None or tenant_id is None or not document_ids:
             return metadata_filter
-        try:
-            from app.models.document import Document as DBDocument
+        from app.models.document import Document as DBDocument
 
-            rows = (
-                db.query(DBDocument.id, DBDocument.status, DBDocument.doc_metadata)
-                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(document_ids)))
-                .all()
-            )
-            active_keys = [
-                f"{did}:{active_hash}"
-                for did, status, meta in rows
-                if (active_hash := self._active_pipeline_hash(status=status, meta=meta))
-            ]
-            if not active_keys:
-                return metadata_filter
-            scoped_filter = dict(metadata_filter or {})
-            scoped_filter["doc_pipeline_key"] = {"$in": set(active_keys)}
-            return scoped_filter
-        except Exception as exc:
-            logger.debug("Failed to constrain retrieval by active document pipeline hash: %s", exc)
+        rows = (
+            db.query(DBDocument.id, DBDocument.status, DBDocument.doc_metadata)
+            .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(document_ids)))
+            .all()
+        )
+        active_keys = [
+            f"{did}:{active_hash}"
+            for did, status, meta in rows
+            if (active_hash := self._active_pipeline_hash(status=status, meta=meta))
+        ]
+        if not active_keys:
             return metadata_filter
+        scoped_filter = dict(metadata_filter or {})
+        scoped_filter["doc_pipeline_key"] = {"$in": set(active_keys)}
+        return scoped_filter
 
     async def _run_stream_retrieval_query(
         self,
