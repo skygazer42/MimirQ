@@ -87,18 +87,18 @@ class TextInParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "TEXTIN_ENABLED", False))
-        self._api_url = (getattr(settings, "TEXTIN_API_URL", "") or "").strip()
-        self._app_id = (getattr(settings, "TEXTIN_APP_ID", "") or "").strip()
-        self._secret_code = (getattr(settings, "TEXTIN_SECRET_CODE", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "TEXTIN_TIMEOUT_SEC", 180) or 180)
-        self._parse_mode = (getattr(settings, "TEXTIN_PARSE_MODE", "") or "auto").strip().lower() or "auto"
-        self._table_flavor = (getattr(settings, "TEXTIN_TABLE_FLAVOR", "") or "html").strip().lower() or "html"
-        self._apply_document_tree = bool(getattr(settings, "TEXTIN_APPLY_DOCUMENT_TREE", True))
-        self._markdown_details = bool(getattr(settings, "TEXTIN_MARKDOWN_DETAILS", True))
-        self._get_image = (getattr(settings, "TEXTIN_GET_IMAGE", "") or "none").strip().lower() or "none"
-        self._dpi = max(0, int(getattr(settings, "TEXTIN_DPI", 144) or 0))
-        self._page_count = max(0, int(getattr(settings, "TEXTIN_PAGE_COUNT", 0) or 0))
+        self._enabled = settings.TEXTIN_ENABLED
+        self._api_url = settings.TEXTIN_API_URL.strip()
+        self._app_id = settings.TEXTIN_APP_ID.strip()
+        self._secret_code = settings.TEXTIN_SECRET_CODE.strip()
+        self._timeout_sec = float(settings.TEXTIN_TIMEOUT_SEC or 180)
+        self._parse_mode = (settings.TEXTIN_PARSE_MODE or "auto").strip().lower() or "auto"
+        self._table_flavor = (settings.TEXTIN_TABLE_FLAVOR or "html").strip().lower() or "html"
+        self._apply_document_tree = settings.TEXTIN_APPLY_DOCUMENT_TREE
+        self._markdown_details = settings.TEXTIN_MARKDOWN_DETAILS
+        self._get_image = (settings.TEXTIN_GET_IMAGE or "none").strip().lower() or "none"
+        self._dpi = max(0, settings.TEXTIN_DPI)
+        self._page_count = max(0, settings.TEXTIN_PAGE_COUNT)
 
         if not self._enabled:
             raise RuntimeError("TextIn is disabled (TEXTIN_ENABLED=false).")
