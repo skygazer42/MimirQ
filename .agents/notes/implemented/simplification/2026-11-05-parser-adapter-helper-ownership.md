@@ -14,6 +14,8 @@ Stateless HTML, PDF, Excel and DeepDoc rendering and metadata helpers are ordina
 
 OCR response extractors and pure command, reference, partition and document builders follow the same ownership rule in their existing provider modules. Request sessions, DeepSeek thread-local connections and executor flow, ZIP/MinIO processing, MagicPDF CLI/model configuration, PDF/image lifetime and parser interfaces remain with their resource owners. Marker calls the existing Markdown response utility directly; the unused MagicPDF forwarding method is absent. Provider response shape/version guards and selection order remain explicit.
 
+GLM-OCR、olmOCR、PaddleOCR-VL 和 Qianfan-OCR 的 JSON 文本选择复用 `app.parsing.parsers.response_text.extract_markdown_from_json`，保留 `markdown`、`md`、`content`、`text`、`result` 的既有优先级与非空字符串规则。HTTP、ZIP、文件与 provider 错误政策继续由各适配器持有。
+
 Capability discovery shares the identical backend-family dictionary projection. Single lookup keeps requested_backend first; list discovery keeps family order. Unknown lookup, tuple-to-list copies and the conditional non_pdf_extensions field keep their existing behavior.
 
 Email body and parsed-message dictionaries declare their actual fields with TypedDict. HTML consumes DecodedText and HtmlXPathExtractResult directly. DeepDoc declares its actual seven-part section result, table result objects and media-analysis record. Only values traced to these producers, native lengths, local counters and already-normalized list levels lose repeated conversion or shape fallback. Raw SDK/HTTP data, version reflection, constructor coercion and optional provider guards retain their existing handling.

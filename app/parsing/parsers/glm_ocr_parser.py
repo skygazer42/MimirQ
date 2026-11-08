@@ -21,6 +21,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.parsing.parsers.response_text import extract_markdown_from_json as _extract_markdown_from_json
 from app.parsing.utils.artifact_normalizer import normalize_extracted_artifacts
 from app.parsing.utils.zip_processor import ZipImageProcessor
 from app.rag.core.logging import get_logger
@@ -40,15 +41,6 @@ def _looks_like_zip(resp: requests.Response) -> bool:
         return True
     body = getattr(resp, "content", b"") or b""
     return len(body) >= 4 and body[:2] == b"PK"
-
-
-def _extract_markdown_from_json(data: Any) -> str:
-    if isinstance(data, dict):
-        for key in ("markdown", "md", "content", "text", "result"):
-            val = data.get(key)
-            if isinstance(val, str) and val.strip():
-                return val
-    return ""
 
 
 class GlmOCRParser:

@@ -18,6 +18,7 @@ import requests
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.parsing.parsers.response_text import extract_markdown_from_json as _extract_markdown_from_json
 from app.rag.core.logging import get_logger
 
 from .service_url_fallback import build_docker_service_url_candidates
@@ -29,15 +30,6 @@ def _sanitize_run_id(value: str) -> str:
     text = (value or "").strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "olmocr"
     return text
-
-
-def _extract_markdown_from_json(data: Any) -> str:
-    if isinstance(data, dict):
-        for key in ("markdown", "md", "content", "text", "result"):
-            val = data.get(key)
-            if isinstance(val, str) and val.strip():
-                return val
-    return ""
 
 
 class OlmocrParser:
