@@ -657,9 +657,8 @@ def _abstain_answer_payload(state: RAGState, *, abstain_message: str) -> str:
 
 def _build_generation_chain(*, engine: Any, llm: Any, prompt_content: Any) -> Any:
     prompt_obj = engine.prompt_template
-    if prompt_content:
-        with contextlib.suppress(Exception):
-            prompt_obj = ChatPromptTemplate.from_template(str(prompt_content))
+    if prompt_content is not None:
+        prompt_obj = ChatPromptTemplate.from_template(prompt_content)
     return prompt_obj | llm | StrOutputParser()
 
 

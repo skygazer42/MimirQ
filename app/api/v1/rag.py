@@ -1582,11 +1582,6 @@ async def prompt_preview(
     engine = get_rag_engine()
     prompt_obj = engine.prompt_template
     prompt_content = state.get("prompt_template_content")
-    if prompt_content:
-        try:
-            prompt_obj = ChatPromptTemplate.from_template(str(prompt_content))
-        except Exception:
-            prompt_obj = engine.prompt_template
 
     variables: dict[str, Any] = {
         "context": ctx,
@@ -1596,6 +1591,8 @@ async def prompt_preview(
     }
 
     try:
+        if prompt_content is not None:
+            prompt_obj = ChatPromptTemplate.from_template(prompt_content)
         render_t0 = time.time()
         prompt_value = prompt_obj.format_prompt(**variables)
         prompt_messages = []
