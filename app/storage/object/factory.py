@@ -29,17 +29,15 @@ class _ObjectStoreConfig(TypedDict):
 
 
 def _normalize_region(region: str | None = None) -> str:
-    return str(region or getattr(settings, "DATA_REGION", "") or "").strip().lower()
+    return str(region or settings.DATA_REGION or "").strip().lower()
 
 
 def _load_region_profiles() -> dict[str, dict[str, object]]:
-    return parse_object_storage_region_profiles(getattr(settings, "OBJECT_STORAGE_REGION_PROFILES", "") or "")
+    return parse_object_storage_region_profiles(settings.OBJECT_STORAGE_REGION_PROFILES)
 
 
 def normalize_object_store_provider(provider: str | None = None) -> str:
-    return normalize_object_storage_provider_name(
-        provider or getattr(settings, "OBJECT_STORAGE_PROVIDER", "") or "minio"
-    )
+    return normalize_object_storage_provider_name(provider or settings.OBJECT_STORAGE_PROVIDER or "minio")
 
 
 def _resolve_object_store_config(provider: str | None = None, *, region: str | None = None) -> _ObjectStoreConfig:
@@ -49,35 +47,20 @@ def _resolve_object_store_config(provider: str | None = None, *, region: str | N
     return {
         "region": region_key or None,
         "provider": normalize_object_store_provider(
-            str(
-                region_profile.get("provider")
-                or provider
-                or getattr(settings, "OBJECT_STORAGE_PROVIDER", "")
-                or "minio"
-            )
+            str(region_profile.get("provider") or provider or settings.OBJECT_STORAGE_PROVIDER or "minio")
         ),
-        "enabled": bool(region_profile.get("enabled", getattr(settings, "OBJECT_STORAGE_ENABLED", False))),
-        "endpoint": str(
-            region_profile.get("endpoint") or getattr(settings, "OBJECT_STORAGE_ENDPOINT", "") or ""
-        ).strip(),
-        "access_key": str(
-            region_profile.get("access_key") or getattr(settings, "OBJECT_STORAGE_ACCESS_KEY", "") or ""
-        ).strip(),
-        "secret_key": str(
-            region_profile.get("secret_key") or getattr(settings, "OBJECT_STORAGE_SECRET_KEY", "") or ""
-        ).strip(),
-        "bucket_name": str(
-            region_profile.get("bucket_name") or getattr(settings, "OBJECT_STORAGE_BUCKET_NAME", "") or ""
-        ).strip(),
-        "use_ssl": bool(region_profile.get("use_ssl", getattr(settings, "OBJECT_STORAGE_USE_SSL", True))),
+        "enabled": bool(region_profile.get("enabled", settings.OBJECT_STORAGE_ENABLED)),
+        "endpoint": str(region_profile.get("endpoint") or settings.OBJECT_STORAGE_ENDPOINT).strip(),
+        "access_key": str(region_profile.get("access_key") or settings.OBJECT_STORAGE_ACCESS_KEY).strip(),
+        "secret_key": str(region_profile.get("secret_key") or settings.OBJECT_STORAGE_SECRET_KEY).strip(),
+        "bucket_name": str(region_profile.get("bucket_name") or settings.OBJECT_STORAGE_BUCKET_NAME).strip(),
+        "use_ssl": bool(region_profile.get("use_ssl", settings.OBJECT_STORAGE_USE_SSL)),
         "metrics_log_path": str(
             region_profile.get("metrics_log_path")
-            or getattr(settings, "OBJECT_STORAGE_METRICS_LOG_PATH", _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH)
+            or settings.OBJECT_STORAGE_METRICS_LOG_PATH
             or _DEFAULT_OBJECT_STORE_METRICS_LOG_PATH
         ),
-        "documents_enabled": bool(
-            region_profile.get("documents_enabled", getattr(settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", False))
-        ),
+        "documents_enabled": bool(region_profile.get("documents_enabled", settings.OBJECT_STORAGE_DOCUMENTS_ENABLED)),
     }
 
 
