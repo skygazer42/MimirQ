@@ -845,8 +845,8 @@ def _execute_post_rerank(
         query=query_for_retrieval,
         candidates=candidates,
         top_n=top_n,
-        tenant_id=str(state.get("tenant_id") or "").strip() or None,
-        query_type=str(state.get("query_type") or "").strip() or None,
+        tenant_id=state.get("tenant_id"),
+        query_type=state.get("query_type"),
     )
     if cache_enabled and cache_key:
         try:
@@ -3161,15 +3161,12 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["parse_risk_score"] = float(ctx.parse_risk.get("score") or 0.0)
     ctx.metrics["parse_risk_reason"] = str(ctx.parse_risk.get("reason") or "")
     ctx.metrics["parse_risk_hardcase_eligible"] = bool(ctx.parse_risk.get("hardcase_eligible"))
-    ctx.metrics["parse_repair_actions"] = (
-        dict(ctx.parse_repair_actions_meta) if isinstance(ctx.parse_repair_actions_meta, dict) else None
-    )
-    ctx.metrics["parse_repair_actions_enabled"] = isinstance(ctx.parse_repair_actions_meta, dict)
+    parse_repair_actions = ctx.parse_repair_actions_meta
+    ctx.metrics["parse_repair_actions"] = dict(parse_repair_actions) if parse_repair_actions is not None else None
+    ctx.metrics["parse_repair_actions_enabled"] = parse_repair_actions is not None
     ctx.metrics["parse_repair_actions_run_id"] = (
-        str(ctx.parse_repair_actions_meta.get("run_id") or "")
-        if isinstance(ctx.parse_repair_actions_meta, dict)
-        else ""
-    ) or None
+        parse_repair_actions.get("run_id") if parse_repair_actions is not None else None
+    )
     return None
 
 
@@ -3215,19 +3212,22 @@ def _apply_abstain_thresholds(ctx: RetrievalRuntimeState) -> None:
 
 
 def _apply_out_of_scope_guard(ctx: RetrievalRuntimeState) -> dict[str, Any]:
+    tenant_id = str(ctx.state.get("tenant_id") or "").strip()
+    dataset_id = str(ctx.state.get("dataset_id") or "").strip()
+    ruleset_name = settings.RAG_OUT_OF_SCOPE_RULESET.strip()
     result = maybe_apply_out_of_scope_live_guard(
         query=ctx.query_for_retrieval,
         enabled=bool(settings.RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED),
         candidate=bool(ctx.abstain_triggered or not ctx.citations),
         current_triggered=bool(ctx.abstain_triggered),
         current_reason=ctx.abstain_reason,
-        tenant_id=(str(ctx.state.get("tenant_id") or "").strip() or None),
-        dataset_id=(str(ctx.state.get("dataset_id") or "").strip() or None),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
         verifier=lambda: run_default_out_of_scope_live_guard(
             query=ctx.query_for_retrieval,
-            tenant_id=str(ctx.state.get("tenant_id") or ""),
-            dataset_id=str(ctx.state.get("dataset_id") or ""),
-            ruleset_name=(str(settings.RAG_OUT_OF_SCOPE_RULESET or "").strip() or None),
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            ruleset_name=ruleset_name,
             hyde_query=ctx.hyde_text if bool(ctx.hyde_used and ctx.hyde_text) else None,
             vector_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD or 0.35),
             hyde_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_HYDE_THRESHOLD or 0.4),
@@ -3463,7 +3463,7 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
     )
     ctx.router_layers = build_router_layers(
         query=ctx.query_for_retrieval,
-        entity_key=(str(ctx.state.get("entity_key") or "").strip() or None),
+        entity_key=ctx.state.get("entity_key"),
         partition_keys=(
             list(ctx.state.get("partition_keys") or []) if isinstance(ctx.state.get("partition_keys"), list) else None
         ),
