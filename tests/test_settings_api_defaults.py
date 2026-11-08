@@ -20,3 +20,10 @@ def test_zero_redirect_budget_disallows_all_redirect_hops(monkeypatch):
     monkeypatch.setattr(url_ingest.settings, "URL_INGEST_MAX_REDIRECTS", 0)
     options = url_ingest._download_options(None)
     assert options.max_redirects == 0
+
+
+def test_unresolved_scim_zero_cap_keeps_existing_page_limit(monkeypatch):
+    from app.api.v1 import scim
+
+    monkeypatch.setattr(scim.settings, "SCIM_PAGE_SIZE_MAX", 0)
+    assert scim._scim_page(start_index=1, count=500)[1] == 200

@@ -196,7 +196,7 @@
 | `app/api/v1/retrieval_config_hash.py:98` | `HIERARCHY_RECALL_SIBLING_WINDOW` | `int` | direct | declared non-Optional default owns the value |
 | `app/api/v1/retrieval_config_hash.py:103` | `HIERARCHY_RECALL_OVERFETCH_FACTOR` | `int` | direct | declared non-Optional default owns the value |
 | `app/api/v1/retrieval_config_hash.py:83` | `HIERARCHY_RECALL_FAMILY_AGGREGATION` | `str` | direct | declared non-Optional default owns the value |
-| `app/api/v1/scim.py:200` | `SCIM_PAGE_SIZE_MAX` | `int` | direct | declared non-Optional default owns the value |
+| `app/api/v1/scim.py:200` | `SCIM_PAGE_SIZE_MAX` | `int` | decision | 审查恢复：0会取消分页上限，原有200上限暂保留，等待总指挥裁决 |
 | `app/api/v1/scim.py:297` | `source chain` | `—` | retain | logical OR / configuration-source precedence, not a literal default |
 | `app/api/v1/settings.py:1703` | `MAGIC_PDF_CLI` | `str` | direct | declared non-Optional default owns the value |
 | `app/api/v1/settings.py:1733` | `PANDOC_CLI` | `str` | direct | declared non-Optional default owns the value |

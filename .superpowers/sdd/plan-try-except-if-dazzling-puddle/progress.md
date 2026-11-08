@@ -209,3 +209,9 @@ Phase1B所有实际复现命令已单列 phase1b-commands.txt；提交前再次�
 ## 后续批次 api
 
 候选 228；direct 175、Optional显式None 1、保留逻辑/来源链 21、安全裁决未改 31；源码 23 文件。声明与逐处裁决见 phase1b-remaining-classification.md，安全项见 phase1b-review-decisions.md。红：3 failed in 3.93s；绿：3 passed in 2.39s。原始输出/完整命令/源码前后hash/逐文件git log及AST证明位于仓库外 `C:/Users/jiahuanl/Documents/Codex/2026-11-08/opencode-omo-slim-orch-opus5-5/outputs/mimirq-evidence/api/`。Ruff check/format 与完整模块AST对照通过；不改变Settings声明或环境默认值。
+
+## API 安全审查修正
+
+API提交fabbdac6b（29 files +483/-182）之后，独立审查发现SCIM_PAGE_SIZE_MAX后缀_MAX漏筛：直读0会取消分页上限。立即恢复or200，新增回归先1failed/3passed（500!=200），恢复后4passed；2文件Ruff通过，修正后的API完整AST23/23重新通过。当前API有效裁决为direct174+Optional1、decision32、retain21；SCIM源文件与本批修改前一致。原API批相关测试16passed/1既有失败，test_response_cache_executes_without_api_imports 已临时旧源码证明同样失败（app.api导入边界）。
+
+安全筛选已扩充后缀_MAX、MAX_PAIRS/TABLES/SCAN/RESULTS等和SAML重放窗口；认证寿命不能仅凭max(1)认为安全，后续批次已重新预审，未修改未决项。

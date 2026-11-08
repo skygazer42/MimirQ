@@ -1,6 +1,8 @@
 # 待总指挥裁决的安全上限
 
 保留原兜底，未改变运行安全策略。配置声明未明确零语义且未确认既有正数校验/下限的资源限制，需裁决后再改。
+
+- `app/api/v1/scim.py:200` `SCIM_PAGE_SIZE_MAX`：0会使 `if max_page_size > 0` 跳过上限；已恢复 `or 200`，新回归固定未决前仍封顶200。独立审查发现并纠正后缀 `_MAX` 漏筛。
 - `app/api/utils/document_pipeline_input.py:21` `PIPELINE_FORM_JSON_MAX_CHARS`（config.py:481，默认 `200000`）：`settings.PIPELINE_FORM_JSON_MAX_CHARS or 200_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
 - `app/api/utils/pipeline_options.py:40` `PIPELINE_FORM_JSON_MAX_CHARS`（config.py:481，默认 `200000`）：`settings.PIPELINE_FORM_JSON_MAX_CHARS or 200_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
 - `app/api/utils/url_ingest.py:327` `MAX_FILE_SIZE`（config.py:412，默认 `50000000`）：`settings.MAX_FILE_SIZE or 50_000_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。

@@ -22,3 +22,5 @@
 - `tests/test_settings_api_defaults.py::test_dify_signature_preserves_zero_boost_budget_and_optional_model[None]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
 - `tests/test_settings_api_defaults.py::test_dify_signature_preserves_zero_boost_budget_and_optional_model[]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
 - `tests/test_settings_api_defaults.py::test_zero_redirect_budget_disallows_all_redirect_hops`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+
+SCIM安全补充：`test_unresolved_scim_zero_cap_keeps_existing_page_limit` 先失败（500!=200），恢复既有兜底后API新回归4passed。
