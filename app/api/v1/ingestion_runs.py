@@ -6,6 +6,7 @@ This exposes a unified run_id view for ingestion entrypoints (upload/batch/URL/c
 import contextlib
 import json
 import re
+from collections.abc import Mapping
 from typing import Annotated
 from uuid import UUID
 
@@ -41,6 +42,37 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 }
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
+logger = get_logger(__name__)
+
+
+def _commit_ingestion_run_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    action: str,
+    run_id: UUID,
+    details: Mapping[str, object],
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=action,
+            resource_type="ingestion_run",
+            resource_id=str(run_id),
+            details=dict(details),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Ingestion-run operation committed but audit logging failed: action=%s run_id=%s",
+            action,
+            run_id,
+            exc_info=True,
+        )
 
 
 def _writable_dataset_ids_subquery(*, tenant_id: UUID, account_id: str):
@@ -142,24 +174,18 @@ def _audit_replay_creation(
     base: DBIngestionRun,
     doc_ids: list[UUID],
 ) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.replay",
-            resource_type="ingestion_run",
-            resource_id=str(new_run.id),
-            details={
-                "base_run_id": str(base.id),
-                "dataset_id": str(base.dataset_id) if base.dataset_id else None,
-                "documents": len(doc_ids),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_ingestion_run_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="ingestion.run.replay",
+        run_id=new_run.id,
+        details={
+            "base_run_id": str(base.id),
+            "dataset_id": str(base.dataset_id) if base.dataset_id else None,
+            "documents": len(doc_ids),
+        },
+    )
 
 
 def _attach_replay_documents(*, db: Session, tenant_id: UUID, run_id: UUID, doc_ids: list[UUID]) -> None:
@@ -314,25 +340,19 @@ def export_ingestion_run_json(
     run = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
 
     # Best-effort audit log (PII-minimal): record export operation.
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.export_json",
-            resource_type="ingestion_run",
-            resource_id=str(run_id),
-            details={
-                "dataset_id": str(run.dataset_id) if run.dataset_id else None,
-                "kind": str(run.kind or ""),
-                "status": str(run.status or ""),
-                "documents": len(run.documents or []),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_ingestion_run_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="ingestion.run.export_json",
+        run_id=run_id,
+        details={
+            "dataset_id": str(run.dataset_id) if run.dataset_id else None,
+            "kind": str(run.kind or ""),
+            "status": str(run.status or ""),
+            "documents": len(run.documents or []),
+        },
+    )
 
     content = json.dumps(run.model_dump(mode="json"), ensure_ascii=False, separators=(",", ":"))
     safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(run.kind or "ingestion"))[:64]
@@ -359,25 +379,19 @@ def export_ingestion_run_html(
     run = get_ingestion_run(run_id=run_id, tenant_id=tenant_id, account_id=account_id, db=db)  # type: ignore[arg-type]
 
     # Best-effort audit log (PII-minimal): record export operation.
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.export_html",
-            resource_type="ingestion_run",
-            resource_id=str(run_id),
-            details={
-                "dataset_id": str(run.dataset_id) if run.dataset_id else None,
-                "kind": str(run.kind or ""),
-                "status": str(run.status or ""),
-                "documents": len(run.documents or []),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_ingestion_run_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="ingestion.run.export_html",
+        run_id=run_id,
+        details={
+            "dataset_id": str(run.dataset_id) if run.dataset_id else None,
+            "kind": str(run.kind or ""),
+            "status": str(run.status or ""),
+            "documents": len(run.documents or []),
+        },
+    )
 
     payload = run.model_dump(mode="json")
     title = "MimirQ · Ingestion Run Manifest"
@@ -427,23 +441,17 @@ def compare_ingestion_runs(
         diff = ingestion_run_service.compare_runs(run_a=row_a, run_b=row_b)
 
     # Best-effort audit log (PII-minimal): record compare operation.
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="ingestion.run.compare",
-            resource_type="ingestion_run",
-            resource_id=str(run_id),
-            details={
-                "other_run_id": str(other_run_id),
-                "dataset_id": str(a.dataset_id) if a.dataset_id else None,
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_ingestion_run_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="ingestion.run.compare",
+        run_id=run_id,
+        details={
+            "other_run_id": str(other_run_id),
+            "dataset_id": str(a.dataset_id) if a.dataset_id else None,
+        },
+    )
 
     return IngestionRunCompareResponse(run_a=a, run_b=b, diff=diff)
 
