@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 
 
 def record_rag_config_template_usage(db: Session, template: RagConfigTemplate) -> None:
+    template_id = template.id
     try:
         template.usage_count = int(template.usage_count or 0) + 1
         db.commit()
@@ -39,7 +40,7 @@ def record_rag_config_template_usage(db: Session, template: RagConfigTemplate) -
         db.rollback()
         logger.warning(
             "RAG config template selected but usage counter update failed: template_id=%s",
-            template.id,
+            template_id,
             exc_info=True,
         )
 
