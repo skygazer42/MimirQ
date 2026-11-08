@@ -32,8 +32,8 @@ logger = get_logger(__name__)
 # Configuration
 DOCLING_ENABLED = settings.DOCLING_ENABLED
 DOCLING_OCR_ENABLED = settings.DOCLING_OCR_ENABLED
-DOCLING_TABLE_MODE = getattr(settings, "DOCLING_TABLE_MODE", "markdown")
-DOCLING_EXTRACT_IMAGES = getattr(settings, "DOCLING_EXTRACT_IMAGES", False)
+_DEFAULT_TABLE_MODE = "markdown"
+_DEFAULT_EXTRACT_IMAGES = False
 
 
 def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
@@ -207,8 +207,8 @@ class DoclingParser(BaseAdvancedParser):
             max_pages: Maximum pages to process (None = all)
         """
         self.ocr_enabled = DOCLING_OCR_ENABLED if ocr_enabled is None else bool(ocr_enabled)
-        self.table_mode = (table_mode or DOCLING_TABLE_MODE or "markdown").strip().lower() or "markdown"
-        self.extract_images = DOCLING_EXTRACT_IMAGES if extract_images is None else bool(extract_images)
+        self.table_mode = (table_mode or _DEFAULT_TABLE_MODE).strip().lower() or _DEFAULT_TABLE_MODE
+        self.extract_images = _DEFAULT_EXTRACT_IMAGES if extract_images is None else bool(extract_images)
         self.max_pages = max_pages
         super().__init__()
 

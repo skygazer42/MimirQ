@@ -865,7 +865,8 @@ _EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory", "faiss", "chroma", "qdra
 
 
 def _normalize_region(region: str | None = None) -> str:
-    return str(region or getattr(settings, "DATA_REGION", "") or "").strip().lower()
+    selected_region = settings.DATA_REGION if region is None else region
+    return selected_region.strip().lower()
 
 
 def _load_vector_region_backends() -> dict[str, str]:
@@ -908,9 +909,8 @@ def _embedding_client_cache_token() -> str:
     model = str(settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
     api_base = str(settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "").strip()
     api_key = str(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or "").strip()
-    dimension = str(getattr(settings, "EMBEDDING_DIMENSION", "") or "").strip()
     api_key_hash = stable_hash(api_key, length=16) if api_key else ""
-    return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}|{dimension}", length=24)
+    return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}", length=24)
 
 
 def _vector_store_cache_key(*, backend_name: str, region_key: str | None) -> str:

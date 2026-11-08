@@ -90,7 +90,6 @@ _VECTOR_STORE_EMBEDDING_RESET_KEYS = frozenset(
         "EMBEDDING_MODEL",
         "EMBEDDING_API_KEY",
         "EMBEDDING_API_BASE",
-        "EMBEDDING_DIMENSION",
         "LLM_API_KEY",
         "LLM_API_BASE",
     }
