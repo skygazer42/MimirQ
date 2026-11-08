@@ -824,7 +824,7 @@ class DocumentProcessorService:
     async def _rebuild_bm25_index_for_tenant(self, db: Session, tenant_id: UUID):
         """Rebuild BM25 index for a specific tenant."""
         try:
-            if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+            if bool(settings.TASK_QUEUE_ENABLED):
                 try:
                     from app.tasks.queue import enqueue_rebuild_indexes
 
@@ -855,7 +855,7 @@ class DocumentProcessorService:
     async def _rebuild_bm25_index(self, db: Session):
         """Rebuild BM25 indexes for all tenants."""
         try:
-            if bool(getattr(settings, "TASK_QUEUE_ENABLED", False)):
+            if bool(settings.TASK_QUEUE_ENABLED):
                 try:
                     from app.tasks.queue import enqueue_rebuild_indexes
 
@@ -1240,7 +1240,7 @@ class DocumentProcessorService:
     def _cleanup_parser_artifacts(self, artifact_dirs: set[str], *, tenant_id: UUID) -> None:
         if not artifact_dirs:
             return
-        if bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False)):
+        if bool(settings.MAGIC_PDF_KEEP_ARTIFACTS):
             return
 
         upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
@@ -2264,7 +2264,7 @@ class DocumentProcessorService:
         found = cls._collect_inline_image_refs(markdown_text, patterns)
         if not found:
             return None
-        max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+        max_inline_images = max(0, int(settings.MAX_INLINE_IMAGES or 0))
         if max_inline_images and len(found) > max_inline_images:
             found = found[:max_inline_images]
         return patterns, found
@@ -2336,7 +2336,7 @@ class DocumentProcessorService:
         patterns, found = refs
 
         base_dir_resolved = self._resolve_inline_image_base_dir(origin_path)
-        max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+        max_image_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
         max_image_bytes = max(1_000_000, max_image_bytes)
         replacements, new_ids, idx = self._collect_inline_image_upload_replacements(
             found,
@@ -2432,7 +2432,7 @@ class DocumentProcessorService:
 
     @staticmethod
     def _metadata_image_path_within_limit(path: Path) -> bool:
-        max_bytes = int(getattr(settings, "MINIO_IMAGE_MAX_BYTES", 0) or 0)
+        max_bytes = int(settings.MINIO_IMAGE_MAX_BYTES or 0)
         if max_bytes <= 0:
             return True
         try:
