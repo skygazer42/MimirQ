@@ -15,7 +15,6 @@ from langchain_core.documents import Document
 from app.core.config import settings
 from app.rag.retrieval.hybrid.common import (
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
-    SPARSE_INDEX_DIR_FALLBACK,
     _log_retriever_fallback,
     logger,
 )
@@ -40,7 +39,7 @@ class SparseIndexMixin:
         get_sparse_encoder: Any,
         parse_synonyms: Any,
     ) -> tuple[dict[str, Any], Any]:
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS or "")
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
         provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
         encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
@@ -91,13 +90,11 @@ class SparseIndexMixin:
         version_token: str | None,
         context: str,
     ) -> str | None:
-        if not bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        if not bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED):
             return None
 
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -120,13 +117,11 @@ class SparseIndexMixin:
         version_token: str | None,
         context: str,
     ) -> tuple[dict[str, SparseVector], str]:
-        if not bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        if not bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED):
             return {}, "skipped"
 
         try:
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -424,7 +419,7 @@ class SparseIndexMixin:
         build_sparse_provider_config: Any,
         parse_synonyms: Any,
     ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-        synonyms_raw = str(getattr(settings, "SPARSE_RETRIEVAL_SYNONYMS", "") or "")
+        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS or "")
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
         provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
         return synonyms_raw, synonyms, provider_config
@@ -440,16 +435,14 @@ class SparseIndexMixin:
         store_cls: Any,
         observe_sparse_index_load: Any,
     ) -> tuple[dict[str, SparseVector], bool]:
-        if not bool(getattr(settings, "SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED", True)):
+        if not bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED):
             observe_sparse_index_load(provider=provider, outcome="skipped")
             return {}, False
 
         load_outcome = "miss"
         try:
             fp = self._sparse_corpus_fingerprint(docs)
-            store = store_cls(
-                base_dir=str(getattr(settings, "SPARSE_RETRIEVAL_INDEX_DIR", SPARSE_INDEX_DIR_FALLBACK) or "")
-            )
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
