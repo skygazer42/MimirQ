@@ -120,7 +120,7 @@ def _safe_metadata_filter(raw: Any) -> dict[str, Any] | None:
         "keys_sample": _bounded_safe_strings(raw.get("keys_sample"), max_items=10, max_len=120),
         "ops": _safe_sorted_int_map(raw.get("ops"), key_prefix="$", max_items=30),
     }
-    return _compact_dict(metadata_filter) or None
+    return _compact_dict(metadata_filter)
 
 
 def _safe_enrich_stats(raw: Any) -> dict[str, Any] | None:
@@ -141,7 +141,7 @@ def _safe_enrich_stats(raw: Any) -> dict[str, Any] | None:
             continue
         out[k] = _to_int(raw.get(k))
     out = {k: v for k, v in out.items() if v is not None}
-    return out or None
+    return out
 
 
 def _safe_str(v: Any, *, max_len: int = 120) -> str | None:
@@ -281,7 +281,7 @@ def _safe_channel_box(box_raw: Any, *, kind: str) -> dict[str, Any] | None:
     if kind == "colbert_ann":
         box.update(_safe_colbert_ann_box_fields(box_raw))
 
-    return box or None
+    return box
 
 
 def _safe_float_bucket(raw: Any, keys: Iterable[str], *, lo: float, hi: float, digits: int) -> dict[str, float]:
@@ -475,7 +475,7 @@ def _safe_retriever_channels(ch_raw: Any) -> dict[str, Any] | None:
         if cleaned:
             out_ch[bucket_key] = cleaned
 
-    return out_ch or None
+    return out_ch
 
 
 def _safe_router_layers(raw: Any) -> dict[str, Any] | None:
@@ -883,7 +883,7 @@ def _safe_dify_result(raw: Any) -> dict[str, Any] | None:
         value = _to_int(raw.get(key))
         if value is not None:
             out[key] = value
-    return out or None
+    return out
 
 
 def _retrieval_config_hash(raw: Any) -> str | None:
