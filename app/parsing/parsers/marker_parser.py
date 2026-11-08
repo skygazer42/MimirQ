@@ -57,9 +57,9 @@ class MarkerParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "MARKER_ENABLED", False))
-        self._api_url = (getattr(settings, "MARKER_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "MARKER_TIMEOUT_SEC", 600) or 600)
+        self._enabled = settings.MARKER_ENABLED
+        self._api_url = settings.MARKER_API_URL.strip()
+        self._timeout_sec = float(settings.MARKER_TIMEOUT_SEC or 600)
 
         if not self._enabled:
             raise RuntimeError("Marker is disabled (MARKER_ENABLED=false).")

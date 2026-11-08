@@ -112,9 +112,9 @@ class PaddleVLParser:
     STANDARD_JSON_NAME = "result.json"
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "PADDLE_VL_ENABLED", False))
-        self._api_url = (getattr(settings, "PADDLE_VL_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "PADDLE_VL_TIMEOUT_SEC", 600) or 600)
+        self._enabled = settings.PADDLE_VL_ENABLED
+        self._api_url = settings.PADDLE_VL_API_URL.strip()
+        self._timeout_sec = float(settings.PADDLE_VL_TIMEOUT_SEC or 600)
 
         if not self._enabled:
             raise RuntimeError("PaddleOCR-VL is disabled (PADDLE_VL_ENABLED=false).")
