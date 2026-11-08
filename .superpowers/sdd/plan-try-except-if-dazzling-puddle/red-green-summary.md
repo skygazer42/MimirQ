@@ -24,3 +24,11 @@
 - `tests/test_settings_api_defaults.py::test_zero_redirect_budget_disallows_all_redirect_hops`：声明值被旧消费端默认值替换，或必需值被静默伪造。
 
 SCIM安全补充：`test_unresolved_scim_zero_cap_keeps_existing_page_limit` 先失败（500!=200），恢复既有兜底后API新回归4passed。
+
+## config_validation
+
+红：3 failed, 3 passed in 1.44s；绿：16 passed in 1.43s。
+
+- `tests/test_settings_validation_defaults.py::test_invalid_zero_is_validated_instead_of_substituted[RETRIEVAL_OVERFETCH_MULTIPLIER]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+- `tests/test_settings_validation_defaults.py::test_invalid_zero_is_validated_instead_of_substituted[RETRIEVAL_COMPACT_MIN_RECORDS]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+- `tests/test_settings_validation_defaults.py::test_invalid_zero_is_validated_instead_of_substituted[HIERARCHY_RECALL_OVERFETCH_FACTOR]`：声明值被旧消费端默认值替换，或必需值被静默伪造。

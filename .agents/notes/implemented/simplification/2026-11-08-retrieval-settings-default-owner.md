@@ -24,6 +24,8 @@ The first global scan exceeded the agreed 60-location threshold. The follow-up d
 
 ## Consequences
 
+Positive-minimum validators now inspect the actual zero instead of substituting a positive literal first. `RETRIEVAL_COMPACT_MIN_RECORDS`, `RETRIEVAL_OVERFETCH_MULTIPLIER` and `HIERARCHY_RECALL_OVERFETCH_FACTOR` therefore reject zero under their existing >=1 contracts. The former legacy-default validation test is intentionally updated; deployments using zero as an undocumented placeholder must provide a valid positive value. Genuine >=0/zero-disabled settings and empty-string presence checks keep their own contracts. Password length zero remains unresolved and retains the existing safety floor.
+
 Explicit zero reaches existing domain constraints rather than selecting a second default. Zero KG boost/calibration/cap values retain their intended disabling or zero-budget meaning. A missing required evaluation value no longer creates a zero-valued snapshot; the existing optional snapshot failure handler owns that injected failure.
 
 Representative runtime tests fail before the change and pass afterward, including zero/False settings and the real KG boost phase. Evaluation `or 0` already preserved valid zero; that test remains a passing control, while fault injection of None detects its former fabricated snapshot. Whole-module AST comparison verifies all 21 source files differ only by the approved fallback removals, apart from formatting. Tests do not execute every consumer or invoke parser/model services. Full per-location declaration mappings and deferred candidates live in the plan ledger.

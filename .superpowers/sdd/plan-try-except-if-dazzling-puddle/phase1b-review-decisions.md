@@ -34,3 +34,4 @@
 - `app/api/v1/pipeline.py:1293` `GOVERNANCE_REGEX_TIMEOUT_MS`（config.py:1758，默认 `100`）：`settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
 - `app/api/v1/settings.py:483` `CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES`（config.py:199，默认 `200000`）：`settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 200_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
 - `app/api/v1/settings.py:588` `MAGIC_PDF_REQUEST_TIMEOUT_SEC`（config.py:1980，默认 `600`）：`settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/core/config_validation.py:268` `PASSWORD_MIN_LENGTH`（config.py:976，默认 `8`）：`settings.PASSWORD_MIN_LENGTH or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
