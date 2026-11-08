@@ -1,6 +1,8 @@
 import re
 from urllib.parse import unquote
 
+from app.parsing.enrich.image_references import HTML_IMAGE_TAG_RE as _HTML_IMG_TAG_RE
+from app.parsing.enrich.image_references import extract_html_images as _extract_html_imgs
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,9 +16,6 @@ _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _MD_IMAGE_REF_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]+)\]")
 
 # Match a single HTML <img ...> tag.
-_HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
-_HTML_IMG_ATTR_RE = re.compile(r"(src|alt)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
-
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 
 _CAPTION_PREFIXES = (
@@ -77,21 +76,6 @@ def _extract_md_images(line: str) -> list[tuple[str, str]]:
     for alt, _ref in _MD_IMAGE_REF_RE.findall(line):
         if alt:
             out.append((alt, ""))
-    return out
-
-
-def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line):
-        alt = ""
-        src = ""
-        for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = (key or "").strip().lower()
-            if k == "alt":
-                alt = val
-            elif k == "src":
-                src = val
-        out.append((alt, src))
     return out
 
 

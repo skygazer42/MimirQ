@@ -20,6 +20,7 @@ from app.parsing.enrich.image_code import (
     _extract_md_images,
     _safe_read_local_image_bytes,
 )
+from app.parsing.enrich.image_references import next_non_empty_line as _next_non_empty_line
 from app.parsing.enrich.image_understanding import ocr_image
 from app.rag.core.logging import get_logger
 
@@ -66,14 +67,6 @@ def _build_image_ocr_audit(
         backend="local_ocr",
         error=error,
     )
-
-
-def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
-    for index in range(start + 1, min(len(lines), start + limit)):
-        candidate = lines[index].strip()
-        if candidate:
-            return candidate
-    return ""
 
 
 def _iter_line_images(line: str) -> list[tuple[str, str]]:

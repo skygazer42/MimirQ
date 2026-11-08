@@ -18,6 +18,9 @@ import httpx
 
 from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
 from app.core.config import settings
+from app.parsing.enrich.image_references import HTML_IMAGE_TAG_RE as _HTML_IMG_TAG_RE
+from app.parsing.enrich.image_references import extract_html_images as _extract_html_imgs
+from app.parsing.enrich.image_references import normalize_local_image_ref as _normalize_local_image_ref
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.vlm_image_caption")
@@ -31,9 +34,6 @@ _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 _MD_IMAGE_REF_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]+)\]")
 
 # Match a single HTML <img ...> tag.
-_HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
-_HTML_IMG_ATTR_RE = re.compile(r"(src|alt)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
-
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 
 _CAPTION_PREFIXES = ("image caption:", "caption:")
@@ -71,39 +71,6 @@ def _extract_md_images(line: str) -> list[tuple[str, str]]:
         if alt:
             out.append((alt, ""))
     return out
-
-
-def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line):
-        alt = ""
-        src = ""
-        for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = (key or "").strip().lower()
-            if k == "alt":
-                alt = val
-            elif k == "src":
-                src = val
-        out.append((alt, src))
-    return out
-
-
-def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
-    resolved_ref = raw
-    if raw.lower().startswith("file://"):
-        parsed = urlparse(raw)
-        if str(parsed.scheme or "").lower() != "file":
-            return None, "unsupported_scheme"
-        netloc = str(parsed.netloc or "").strip().lower()
-        if netloc and netloc not in {"localhost", "127.0.0.1"}:
-            return None, "remote_file_url"
-        resolved_ref = unquote(str(parsed.path or ""))
-        if not resolved_ref:
-            return None, "empty_file_path"
-        if re.match(r"^/[a-zA-Z]:/", resolved_ref):
-            resolved_ref = resolved_ref[1:]
-        return resolved_ref, None
-    return unquote(resolved_ref), None
 
 
 def _resolve_origin_image_path(*, src: str, origin_path: Path) -> Path | None:

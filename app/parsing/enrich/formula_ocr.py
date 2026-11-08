@@ -13,19 +13,21 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
+from urllib.parse import urlparse
 
 import httpx
 
 from app.core.async_bridge import run_coroutine_sync as _run_coroutine_sync
+from app.parsing.enrich.image_references import extract_html_images as _extract_html_imgs
+from app.parsing.enrich.image_references import next_non_empty_line as _next_non_empty_line
+from app.parsing.enrich.image_references import normalize_local_image_ref as _normalize_local_image_ref
+from app.parsing.enrich.image_references import read_local_image_bytes as _read_local_image_bytes
 from app.rag.core.logging import get_logger
 
 logger = get_logger("parsing.formula_ocr")
 
 
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-_HTML_IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
-_HTML_IMG_ATTR_RE = re.compile(r"(src|alt)\s*=\s*([\"'])(.*?)\2", re.IGNORECASE)
 _FENCE_RE = re.compile(r"^\s*(```+|~~~+)")
 
 _FORMULA_HINT_RE = re.compile(r"\b(formula|equation|latex|math|eqn)\b", re.IGNORECASE)
@@ -57,21 +59,6 @@ def _extract_md_images(line: str) -> list[tuple[str, str]]:
     return out
 
 
-def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line):
-        alt = ""
-        src = ""
-        for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = (key or "").strip().lower()
-            if k == "alt":
-                alt = val
-            elif k == "src":
-                src = val
-        out.append((alt, src))
-    return out
-
-
 def _is_formula_candidate(*, alt: str, src: str) -> bool:
     hint = f"{alt} {src}".strip()
     if not hint:
@@ -80,24 +67,6 @@ def _is_formula_candidate(*, alt: str, src: str) -> bool:
         return True
     # Common filename patterns.
     return bool(re.search(r"(formula|equation|math|eqn)", src, flags=re.IGNORECASE))
-
-
-def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
-    resolved_ref = raw
-    if raw.lower().startswith("file://"):
-        parsed = urlparse(raw)
-        if str(parsed.scheme or "").lower() != "file":
-            return None, "unsupported_scheme"
-        netloc = str(parsed.netloc or "").strip().lower()
-        if netloc and netloc not in {"localhost", "127.0.0.1"}:
-            return None, "remote_file_url"
-        resolved_ref = unquote(str(parsed.path or ""))
-        if not resolved_ref:
-            return None, "empty_file_path"
-        if re.match(r"^/[a-zA-Z]:/", resolved_ref):
-            resolved_ref = resolved_ref[1:]
-        return resolved_ref, None
-    return unquote(resolved_ref), None
 
 
 def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | None, str | None]:
@@ -123,21 +92,6 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
     if not path_obj.exists() or not path_obj.is_file():
         return None, "missing_file"
     return path_obj, None
-
-
-def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> tuple[bytes | None, str]:
-    try:
-        if int(path_obj.stat().st_size) > int(max_bytes):
-            return None, "too_large"
-    except Exception:
-        return None, "stat_failed"
-    try:
-        data = path_obj.read_bytes()
-    except Exception:
-        return None, "read_failed"
-    if len(data) > int(max_bytes):
-        return None, "too_large"
-    return data, "ok"
 
 
 def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
@@ -242,14 +196,6 @@ class FormulaOcrAudit:
             "error": (self.error[:200] if self.error else None),
             "formula_elements": list(self.formula_elements or []),
         }
-
-
-def _next_non_empty_line(lines: list[str], start: int, *, limit: int = 4) -> str:
-    for index in range(start + 1, min(len(lines), start + limit)):
-        candidate = lines[index].strip()
-        if candidate:
-            return candidate
-    return ""
 
 
 def _iter_line_images(line: str) -> list[tuple[str, str]]:
