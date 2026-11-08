@@ -15,13 +15,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -39,19 +34,6 @@ _FRAME_RE = re.compile(r"^\s*(?:File \"|File '|at\s+|\tat\s+)")
 _CAUSED_BY_RE = re.compile(r"^\s*Caused by:\s+")
 _PY_EXCEPTION_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_.]*)(?:Error|Exception)\b.*")
 _JS_EXCEPTION_RE = re.compile(r"^\s*(Error|TypeError|ReferenceError|SyntaxError|RangeError|URIError)\b.*")
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
 
 
 def _has_frames(lines: list[_Line], i: int) -> bool:

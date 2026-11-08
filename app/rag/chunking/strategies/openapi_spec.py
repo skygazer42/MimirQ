@@ -13,13 +13,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -36,19 +31,6 @@ _SWAGGER_RE = re.compile(r"(?m)^\s*swagger\s*:\s*(?P<val>[^\s#]+)")
 _PATHS_RE = re.compile(r"(?m)^(?P<indent>\s*)paths\s*:\s*(?:#.*)?$")
 _PATH_KEY_RE = re.compile(r"^\s*/[^:]{1,200}:\s*(?:#.*)?$")
 _METHOD_RE = re.compile(r"^\s*(get|post|put|delete|patch|options|head|trace)\s*:\s*(?:#.*)?$", re.IGNORECASE)
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
 
 
 def _find_paths_anchor(text: str) -> tuple[int, int] | None:

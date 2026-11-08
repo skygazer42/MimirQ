@@ -17,13 +17,7 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -47,19 +41,6 @@ _INSTR_RE = re.compile(
     re.IGNORECASE,
 )
 _FROM_RE = re.compile(r"(?i)^\s*from\s+(?P<img>\S+)(?:\s+as\s+(?P<as>\S+))?\s*$")
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
 
 
 def _iter_instructions(text: str, *, start: int, end: int) -> list[_Instr]:

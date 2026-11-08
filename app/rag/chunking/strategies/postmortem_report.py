@@ -21,13 +21,7 @@ from app.rag.chunking.utils.heading_parsing import (
     parse_markdown_hash_heading,
     strip_numbered_heading_prefix,
 )
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -72,19 +66,6 @@ _TITLE_TO_KEY: dict[str, str] = {}
 for k, vals in _SECTION_SYNONYMS.items():
     for v in vals:
         _TITLE_TO_KEY[normalize_spaces_lower(v)] = k
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
 
 
 def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:

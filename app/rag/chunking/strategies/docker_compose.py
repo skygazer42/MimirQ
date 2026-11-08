@@ -14,13 +14,8 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
-
-
-@dataclass(frozen=True)
-class _Line:
-    start: int
-    end: int
-    plain: str
+from app.rag.chunking.utils.source_lines import SourceLine as _Line
+from app.rag.chunking.utils.source_lines import iter_source_lines as _iter_lines
 
 
 @dataclass(frozen=True)
@@ -35,19 +30,6 @@ _SERVICES_RE = re.compile(r"(?m)^(?P<indent>\s*)services\s*:\s*(?:#.*)?$")
 _KEY_RE = re.compile(r"^(?P<indent>\s*)(?P<key>[A-Za-z0-9][A-Za-z0-9_.-]{0,200})\s*:\s*(?:#.*)?$")
 _IMAGE_HINT_RE = re.compile(r"(?m)^\s*(image|build|container_name|ports|depends_on)\s*:\s*")
 _VERSION_RE = re.compile(r"(?m)^\s*version\s*:\s*(?P<val>[^\s#]+)")
-
-
-def _iter_lines(text: str) -> list[_Line]:
-    out: list[_Line] = []
-    offset = 0
-    for raw in (text or "").splitlines(keepends=True):
-        start = offset
-        end = start + len(raw)
-        offset = end
-        out.append(_Line(start=start, end=end, plain=raw.rstrip("\r\n")))
-    if not out and text:
-        out.append(_Line(start=0, end=len(text), plain=text))
-    return out
 
 
 def _find_services_anchor(text: str) -> tuple[int, int] | None:
