@@ -195,7 +195,7 @@ def _infer_table_structure(meta: dict[str, Any]) -> dict[str, str] | None:
         title = table.get("sheet_name")
     if title:
         table["title"] = title[:200]
-    return table or None
+    return table
 
 
 def infer_chunk_structure(meta: dict[str, Any], content: str) -> dict[str, Any]:

@@ -81,7 +81,7 @@ def _sanitize_list_structure(list_info: Any) -> dict[str, Any] | None:
         value = _clamp_int(list_info.get(key), min_value=0, max_value=maximum)
         if value is not None:
             list_out[key] = value
-    return list_out or None
+    return list_out
 
 
 def _sanitize_table_structure(table_info: Any) -> dict[str, Any] | None:
@@ -92,7 +92,7 @@ def _sanitize_table_structure(table_info: Any) -> dict[str, Any] | None:
         value = table_info.get(key)
         if isinstance(value, str) and value.strip():
             table_out[key] = value.strip()[:200]
-    return table_out or None
+    return table_out
 
 
 def _sanitize_structure(structure: Any) -> dict[str, Any] | None:
@@ -107,7 +107,7 @@ def _sanitize_structure(structure: Any) -> dict[str, Any] | None:
     if table_out:
         out["table"] = table_out
 
-    return out or None
+    return out
 
 
 def _prepare_llm_candidates(

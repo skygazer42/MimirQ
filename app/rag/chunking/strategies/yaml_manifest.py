@@ -115,10 +115,10 @@ def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None
 
     m = _API_VERSION_RE.search(doc_text[:4000])
     if m:
-        api = (m.group("val") or "").strip() or None
+        api = m.group("val").strip()
     m = _KIND_RE.search(doc_text[:4000])
     if m:
-        kind = (m.group("val") or "").strip() or None
+        kind = m.group("val").strip()
 
     lines = _iter_lines(doc_text[:8000])
     meta_indent: int | None = None
@@ -135,7 +135,7 @@ def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None
             break
         nm = _NAME_RE.match(ln.plain)
         if nm:
-            name = (nm.group("val") or "").strip() or None
+            name = nm.group("val").strip()
             break
 
     return kind, name, api

@@ -554,7 +554,7 @@ def _safe_kg_path_item(raw: Any, *, keys: tuple[str, ...]) -> dict[str, Any] | N
         value = _bounded_str(raw.get(key), limit=200)
         if value:
             item[key] = value
-    return item or None
+    return item
 
 
 def _safe_kg_path_items(raw: Any, *, keys: tuple[str, ...]) -> list[dict[str, Any]]:
@@ -614,7 +614,7 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     if edges:
         out["edges"] = edges
 
-    return out or None
+    return out
 
 
 @dataclass

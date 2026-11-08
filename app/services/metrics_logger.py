@@ -258,7 +258,7 @@ def _sanitize_kg_path_node(raw: Any) -> dict[str, Any] | None:
         value = _trimmed_metric_text(raw.get(key), max_len=200)
         if value:
             node[key] = value
-    return node or None
+    return node
 
 
 def _sanitize_kg_path_edge(raw: Any) -> dict[str, Any] | None:
@@ -281,7 +281,7 @@ def _sanitize_kg_path_edge(raw: Any) -> dict[str, Any] | None:
         value = _trimmed_metric_text(raw.get(key), max_len=200)
         if value:
             edge[key] = value
-    return edge or None
+    return edge
 
 
 def _sanitize_kg_path_items(
@@ -296,7 +296,7 @@ def _sanitize_kg_path_items(
             items.append(item)
         if len(items) >= 10:
             break
-    return items or None
+    return items
 
 
 def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
@@ -326,7 +326,7 @@ def _safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     if edges:
         out["edges"] = edges
 
-    return out or None
+    return out
 
 
 def _strip_metrics_text_field(out: dict[str, Any], *, source_key: str, hash_key: str, length_key: str) -> None:
