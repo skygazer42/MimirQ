@@ -123,3 +123,13 @@ datasets.py 原 226（现 _mark_dataset_profile_scan_run_failed）是 enqueue �
 datasets.py 原 2416 与 precheck 原 244 是后台顶层失败状态补偿：先记录原异常、rollback 恢复事务，再更新 failed 行；补偿失败独立 rollback/warning。precheck 原 179 已由 Desktop 处理且有 acceptance 测试。
 
 新增 test_api_commit_failure_boundaries.py：修复前 11 failed（均缺少目标异常观察/事务恢复），修复后与 Desktop/scan queue 现有测试 42 passed，9.35s；6 文件 Ruff check/format 均通过。新增分支为零，仅修正已有 catch 的责任；原始异常在补偿失败前已经日志记录。每文件 log -3 与 hash 记录在 api-hashes-before/after.json。新决定 note 记录审计与补偿边界，引用既有两篇 owner note。
+
+## 第三提交：服务 / 解析重试 / 抽取旁路
+
+第二提交 7d8de5bcf（12 files, +685/-28）。本组 Confluence 原 819 为必要 connector identity/来源 metadata，失败 rollback 后重抛，不能把 page 导入报成功。Ragas 原 317 只写进度投影，不是最终评估结果，保留降级但 direct rollback+warning traceback。extractor 原 1208 是已选 prompt 的旁路计数、3942 仅已生成事件的文档统计投影，保留降级，加 exc_info 并删除 rollback 吞错。recovery 原 259 已有显式 deferred 返回和 marker 恢复，非成功伪造；保留并增加 traceback。
+
+batch precheck 原 800 附近：precheck_only 是必需扫描，commit 失败 rollback+raise；optional precheck_first 是已有可选扫描策略，失败 rollback、warning+exc_info，返回 None 而不是未持久化的 pending scan_run。后台 scan job 在原异常之后先 rollback 再查询/补偿；补偿失败 rollback+带堆栈 warning，仍 raise 原始 scan 异常。
+
+新增 test_service_commit_failure_boundaries.py 8 例。最初发现 tmp_path 权限/Windows 路径长度及 prompt monkeypatch 目标问题，已修正测试装配；不把这些环境/装配错误当红证据。最终临时恢复本组 HEAD 旧源码：新用例 8 failed；另 3 个原有 retry_queue 测试同样失败，4 个通过；恢复全部源码后新测试+KG复杂度+Ragas契约 17 passed（8.20s）。三个既有失败分别为 test_retry_document_processing_fails_closed_when_queue_handoff_fails / test_retry_document_processing_hash_ignores_parser_backend_resolved_drift / test_retry_document_processing_local_fallback_preserves_then_consumes_retry_cleanup，均因 app.api.v1.document_processing 无 settings 属性；本切片不修无关别名。
+
+服务组 ruff 仅剩 baseline confluence I001，其他无新增；格式检查由 batch 新增长行触发，已仅格式化该文件新块。hash 与每文件 log -3 记录在 service-hashes-before/after.json。Note 三门禁以 Node 24 原生 TypeScript 执行，134 notes tree/format、0 archive 全通过（宿主 ESM 类型提示无关）。

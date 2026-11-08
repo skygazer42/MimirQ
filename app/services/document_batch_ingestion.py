@@ -330,8 +330,7 @@ def _finalize_batch_ingestion_run(
         except Exception:
             db.rollback()
             logger.warning(
-                "Batch document persisted but ingestion-run attachment failed: "
-                "tenant_id=%s document_id=%s run_id=%s",
+                "Batch document persisted but ingestion-run attachment failed: tenant_id=%s document_id=%s run_id=%s",
                 tenant_id,
                 doc.id,
                 ingestion_run.id,
@@ -788,8 +787,11 @@ async def _run_precheck_scan(
             )
         return scan_run
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Precheck-first ingest failed; continuing without precheck: %s", str(exc)[:200])
-        return scan_run
+        db.rollback()
+        if precheck_only:
+            raise
+        logger.warning("Precheck-first ingest failed; continuing without precheck: %s", str(exc)[:200], exc_info=True)
+        return None
     finally:
         with contextlib.suppress(Exception):
             shutil.rmtree(staging_root)
@@ -810,6 +812,7 @@ def _run_precheck_scan_job(
             scan_run_id=scan_run_id,
         )
     except Exception as exc:  # noqa: BLE001
+        db2.rollback()
         try:
             row = (
                 db2.query(DBDatasetPrecheckScanRun)
@@ -826,9 +829,11 @@ def _run_precheck_scan_job(
                 row.finished_at = datetime.now(UTC)
                 db2.commit()
         except Exception as mark_exc:  # noqa: BLE001
+            db2.rollback()
             logger.warning(
                 "Failed to mark precheck scan run as failed: %s",
                 str(mark_exc)[:200],
+                exc_info=True,
             )
         raise
     finally:

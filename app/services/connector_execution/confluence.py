@@ -817,8 +817,9 @@ def _patch_confluence_page_document_metadata(
             source_id=(page_id or page_url),
         )
         db.commit()
-    except Exception as exc:
-        logger.debug("Ignoring Confluence page connector metadata update failure: %s", exc)
+    except Exception:
+        db.rollback()
+        raise
 
 
 async def _ingest_confluence_page_webui(

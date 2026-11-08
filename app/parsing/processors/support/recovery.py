@@ -269,6 +269,7 @@ def apply_pending_retry_cleanup(
             "Failed to complete retry cleanup for document %s; keeping retry cleanup marker for a later retry: %s",
             document_id,
             str(exc)[:200],
+            exc_info=True,
         )
         return "deferred"
 

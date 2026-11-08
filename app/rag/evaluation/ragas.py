@@ -316,13 +316,8 @@ def _commit_regression_progress(
         run.summary = summary
         db.commit()
     except Exception as exc:  # noqa: BLE001
-        rollback = getattr(db, "rollback", None)
-        if callable(rollback):
-            try:
-                rollback()
-            except Exception:
-                get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
-        logger.debug("Failed to persist regression progress: %s", exc)
+        db.rollback()
+        logger.warning("Failed to persist regression progress: %s", exc, exc_info=True)
 
 
 def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:

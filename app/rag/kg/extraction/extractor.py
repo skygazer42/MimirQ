@@ -1208,7 +1208,9 @@ def _resolve_prompt_template_content(
         session.commit()
     except Exception:
         session.rollback()
-        logger.warning("Failed to update kg extract prompt usage_count for template %s", chosen_template_id)
+        logger.warning(
+            "Failed to update kg extract prompt usage_count for template %s", chosen_template_id, exc_info=True
+        )
     return prompt_template_content, chosen_template_id
 
 
@@ -3941,11 +3943,8 @@ def _writeback_document_metadata(
             doc.doc_metadata = meta
         session.commit()
     except Exception as exc:  # noqa: BLE001
-        try:
-            session.rollback()
-        except Exception as rollback_exc:
-            logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, rollback_exc)
-        logger.warning("Failed to write back kg metrics to document metadata: %s", str(exc)[:200])
+        session.rollback()
+        logger.warning("Failed to write back kg metrics to document metadata: %s", str(exc)[:200], exc_info=True)
 
 
 class EventExtractor:

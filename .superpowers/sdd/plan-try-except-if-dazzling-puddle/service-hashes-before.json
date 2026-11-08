@@ -1,0 +1,7 @@
+{
+  "app/services/connector_execution/confluence.py": "93990ab1fe90af89b162a8e0fcf51aeb954dc081",
+  "app/rag/evaluation/ragas.py": "21a1f356938f797a876063fd14c01ab54264dedb",
+  "app/rag/kg/extraction/extractor.py": "f565cff51bc8f57e165aae719cfb1d89e7459dbe",
+  "app/parsing/processors/support/recovery.py": "b501b7f475ab44bcc3bac61d6cd538d62edaa575",
+  "app/services/document_batch_ingestion.py": "1717a4a4d31546760b4531feab3f5da443cdac5b"
+}

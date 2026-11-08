@@ -12,6 +12,10 @@ The API audit branches retain the documented fail-open contract in `audit_log_se
 
 Profile and precheck background handlers log the original scan exception and roll back before querying the run for compensation. Failed compensation is separately rolled back and logged. Their existing background isolation policy remains; enqueue callers still return their explicit 503 when enqueue fails.
 
+Confluence page identity and connector metadata are required writes: commit failure rolls back and propagates to the connector's item failure boundary. Optional regression progress, extraction metrics and prompt usage retain their existing sidecar policy with traceback warnings and direct rollback. Retry cleanup explicitly returns `deferred`, retains its marker and logs the failed commit traceback.
+
+Batch precheck has two contracts. `precheck_only` requires a persisted scan and propagates failure. Optional precheck-first ingestion rolls back, logs the failure and returns no scan instead of returning an unpersisted pending object. The precheck worker rolls back before compensation and preserves the original exception if the compensating commit also fails.
+
 This complements [dataset audit degradation](2026-11-08-dataset-audit-degradation.md) and [document mutation contracts](2026-11-05-document-mutation-contracts.md): audit, QA statistics and optional usage counters are distinct from authoritative document/version writes. The acceptance tests also prove document version KG cleanup failure produces an HTTP 500.
 
 ## Alternatives considered
