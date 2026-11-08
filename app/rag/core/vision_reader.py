@@ -157,7 +157,7 @@ def _minio_object_name_for_img_id(img_id: str, *, extension: str = "jpg") -> str
 
 
 def _load_image_bytes_from_minio_sync(*, img_id: str, max_bytes: int) -> bytes | None:
-    if not bool(getattr(settings, "MINIO_ENABLED", False)):
+    if not settings.MINIO_ENABLED:
         return None
     obj = _minio_object_name_for_img_id(img_id, extension="jpg")
     if not obj:
@@ -253,31 +253,24 @@ def _build_prompt(*, question: str, meta: dict[str, Any]) -> str:
     )
 
 
-def _setting_with_fallback(primary: str, fallback: str) -> str:
-    primary_value = (getattr(settings, primary, "") or "").strip()
-    if primary_value:
-        return primary_value
-    return (getattr(settings, fallback, "") or "").strip()
-
-
 def _vision_llm_config() -> tuple[str, str, str]:
     return (
-        _setting_with_fallback("VISION_LLM_API_KEY", "LLM_API_KEY"),
-        _setting_with_fallback("VISION_LLM_API_BASE", "LLM_API_BASE"),
-        (getattr(settings, "VISION_LLM_MODEL", "") or "").strip(),
+        settings.VISION_LLM_API_KEY.strip() or settings.LLM_API_KEY.strip(),
+        settings.VISION_LLM_API_BASE.strip() or settings.LLM_API_BASE.strip(),
+        settings.VISION_LLM_MODEL.strip(),
     )
 
 
 def _resolve_max_tokens(max_tokens: int | None) -> int:
     if max_tokens is not None:
         return int(max_tokens)
-    return int(getattr(settings, "VISION_LLM_MAX_TOKENS", 4096) or 4096)
+    return settings.VISION_LLM_MAX_TOKENS or 4096
 
 
 def _resolve_temperature(temperature: float | None) -> float:
     if temperature is not None:
         return float(temperature)
-    return float(getattr(settings, "VISION_LLM_TEMPERATURE", 0.0) or 0.0)
+    return settings.VISION_LLM_TEMPERATURE
 
 
 def _vision_llm_payload(
@@ -357,7 +350,7 @@ async def _describe_with_vision_llm(
         stream=False,
     )
 
-    timeout = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
+    timeout = float(settings.VISION_LLM_TIMEOUT_SEC or 120)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     resp = await http_client.post(url, json=payload, headers=headers, timeout=timeout)
     if int(resp.status_code or 0) != 200:
@@ -461,7 +454,7 @@ async def stream_vision_chat_completions_tokens(
         stream=True,
     )
 
-    timeout = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
+    timeout = float(settings.VISION_LLM_TIMEOUT_SEC or 120)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     async with http_client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
@@ -480,9 +473,9 @@ async def stream_vision_chat_completions_tokens(
 
 def _vision_reader_limits() -> _VisionReaderLimits:
     return _VisionReaderLimits(
-        max(0, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGES", 2) or 2)),
-        max(1, int(getattr(settings, "VISION_RAG_READER_MAX_IMAGE_BYTES", 3_000_000) or 3_000_000)),
-        max(0, int(getattr(settings, "VISION_RAG_READER_MAX_OUTPUT_CHARS", 1500) or 1500)),
+        max(0, settings.VISION_RAG_READER_MAX_IMAGES or 2),
+        max(1, settings.VISION_RAG_READER_MAX_IMAGE_BYTES or 3_000_000),
+        max(0, settings.VISION_RAG_READER_MAX_OUTPUT_CHARS or 1500),
     )
 
 
@@ -517,12 +510,12 @@ def _vision_reader_preflight(
     *,
     image_docs: list[Document],
 ) -> tuple[dict[str, Any], _VisionReaderLimits | None]:
-    enabled = bool(getattr(settings, "VISION_RAG_READER_ENABLED", False))
+    enabled = settings.VISION_RAG_READER_ENABLED
     meta: dict[str, Any] = {"enabled": enabled, "used": False, "reason": "not_run"}
     if not enabled:
         meta["reason"] = "VISION_RAG_READER_ENABLED=false"
         return meta, None
-    if not bool(getattr(settings, "VISION_LLM_ENABLED", False)):
+    if not settings.VISION_LLM_ENABLED:
         meta["reason"] = "VISION_LLM_ENABLED=false"
         return meta, None
     if not image_docs:
@@ -656,7 +649,7 @@ async def build_vision_reader_context_docs(
             "max_image_bytes": max_image_bytes,
             "max_output_chars": max_output_chars,
             "errors": errors,
-            "model": str(getattr(settings, "VISION_LLM_MODEL", "") or "").strip() or None,
+            "model": settings.VISION_LLM_MODEL.strip() or None,
         }
     )
     return out, meta
