@@ -19,6 +19,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
 from app.rag.chunking.utils.heading_parsing import parse_cn_prefixed_heading
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
 
 
 @dataclass(frozen=True)
@@ -262,14 +263,6 @@ def _build_sections(text: str, headings: list[OutlineHeading]) -> list[_Section]
         sections.append(_Section(start=start, end=end, heading=heading))
 
     return sections
-
-
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, level)
-    # Ensure stack depth matches heading level.
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
 
 
 class OutlineChunker(BaseChunker):

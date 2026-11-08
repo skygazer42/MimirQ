@@ -167,6 +167,13 @@ def strip_numbered_heading_prefix(text: str) -> str:
     return s[i:]
 
 
+def update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
+    level = max(1, level)
+    while len(stack) >= level:
+        stack.pop()
+    stack.append(heading_text)
+
+
 __all__ = [
     "normalize_spaces",
     "normalize_spaces_lower",
@@ -174,4 +181,5 @@ __all__ = [
     "parse_cn_prefixed_heading",
     "parse_markdown_hash_heading",
     "strip_numbered_heading_prefix",
+    "update_heading_stack",
 ]

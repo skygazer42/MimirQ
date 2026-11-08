@@ -10,6 +10,8 @@ Status: implemented
 
 `app.rag.chunking.utils.source_lines` 持有无外部依赖的 `SourceLine` 和 `iter_source_lines`。Ansible、Dockerfile、Docker Compose、GitHub Actions、GitLab CI、Jira、JSONL、Makefile、Markdown frontmatter、OpenAPI、postmortem、PRD 和 stacktrace 策略将这两个公共符号别名为原私有名称，因此策略主体、类型使用和调用位置保持不变。
 
+`app.rag.chunking.utils.heading_parsing` 同时持有八个 section chunker 原本完全同体的 heading stack 更新规则。各策略仍用 `_update_heading_stack` 私有别名，标题识别、section 构造与 metadata 继续由各自模块负责。
+
 共享函数继续按原顺序计算每行的起止字符偏移，保留换行字符在 `end` 中的计数，并把 `plain` 限定为去除行尾 `CR/LF` 的文本。空字符串返回空列表；没有 splitlines 结果但文本非空时保留单行回退。
 
 ## Alternatives considered

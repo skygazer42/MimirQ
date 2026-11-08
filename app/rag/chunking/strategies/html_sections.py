@@ -17,6 +17,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from app.rag.chunking.base import BaseChunker
+from app.rag.chunking.utils.heading_parsing import update_heading_stack as _update_heading_stack
 from app.rag.core.logging import get_logger
 
 
@@ -89,13 +90,6 @@ def _build_sections(text: str, headings: list[HtmlHeading]) -> list[_Section]:
         end = headings[idx + 1].start if idx + 1 < len(headings) else len(text)
         sections.append(_Section(start=start, end=end, heading=h))
     return sections
-
-
-def _update_heading_stack(stack: list[str], *, level: int, heading_text: str) -> None:
-    level = max(1, level)
-    while len(stack) >= level:
-        stack.pop()
-    stack.append(heading_text)
 
 
 def looks_like_html_sections(text: str) -> bool:
