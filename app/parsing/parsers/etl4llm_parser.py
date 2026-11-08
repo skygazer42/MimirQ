@@ -167,14 +167,14 @@ class Etl4LlmParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "ETL4LLM_ENABLED", False))
-        self._api_url = (getattr(settings, "ETL4LLM_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "ETL4LLM_TIMEOUT_SEC", 120) or 120)
-        self._mode = (getattr(settings, "ETL4LLM_MODE", "") or "partition").strip().lower()
-        self._force_ocr = bool(getattr(settings, "ETL4LLM_FORCE_OCR", False))
-        self._enable_formula = bool(getattr(settings, "ETL4LLM_ENABLE_FORMULA", True))
-        self._extract_images = bool(getattr(settings, "ETL4LLM_EXTRACT_IMAGES", True))
-        self._filter_header_footer = bool(getattr(settings, "ETL4LLM_FILTER_PAGE_HEADER_FOOTER", False))
+        self._enabled = settings.ETL4LLM_ENABLED
+        self._api_url = settings.ETL4LLM_API_URL.strip()
+        self._timeout_sec = float(settings.ETL4LLM_TIMEOUT_SEC or 120)
+        self._mode = (settings.ETL4LLM_MODE or "partition").strip().lower()
+        self._force_ocr = settings.ETL4LLM_FORCE_OCR
+        self._enable_formula = settings.ETL4LLM_ENABLE_FORMULA
+        self._extract_images = settings.ETL4LLM_EXTRACT_IMAGES
+        self._filter_header_footer = settings.ETL4LLM_FILTER_PAGE_HEADER_FOOTER
 
         if not self._enabled:
             raise RuntimeError("ETL4LLM is disabled (ETL4LLM_ENABLED=false).")
@@ -316,7 +316,7 @@ class Etl4LlmParser:
         metadata: dict[str, Any],
     ) -> None:
         try:
-            fallback_enabled = bool(getattr(settings, "ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY", True))
+            fallback_enabled = settings.ETL4LLM_INCLUDE_PAGE_IMAGES_IF_EMPTY
             has_any_images = extracted_images > 0
             lowered = merged_text.lower()
             has_refs = ("![" in lowered) or ("<img" in lowered)
@@ -329,7 +329,7 @@ class Etl4LlmParser:
             ):
                 return
 
-            dpi = int(getattr(settings, "ETL4LLM_PAGE_IMAGE_DPI", 150) or 150)
+            dpi = int(settings.ETL4LLM_PAGE_IMAGE_DPI or 150)
             max_pages = max(0, int(settings.ETL4LLM_PAGE_IMAGE_MAX_PAGES))
             page_refs = self._render_page_image_refs(
                 file_path=file_path, images_dir=images_dir, dpi=dpi, max_pages=max_pages
