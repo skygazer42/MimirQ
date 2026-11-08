@@ -242,7 +242,7 @@ def search_colbert(request: CorpusChannelRequest, *, corpus_index: CorpusIndex) 
         )
         if index is None:
             raise RuntimeError("ColBERT index did not become ready")
-        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
+        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM)
         query_vector = embedder.encode_batch([raw_query])[0]
         scored = topk_cosine_scores(query_vec=query_vector, doc_vecs=index.vectors, k=max(0, request.top_k))
         return CorpusChannelOutcome(

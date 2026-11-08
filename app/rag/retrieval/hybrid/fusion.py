@@ -54,14 +54,14 @@ class FusionMixin:
     @staticmethod
     def _build_fusion_runtime(query: str | None) -> _FusionRuntime:
         field_aware_enabled = settings.RETRIEVAL_FIELD_AWARE_RECALL_ENABLED
-        field_aware_title_boost = max(0.0, settings.RETRIEVAL_FIELD_AWARE_TITLE_BOOST or 0.0)
+        field_aware_title_boost = max(0.0, settings.RETRIEVAL_FIELD_AWARE_TITLE_BOOST)
         field_aware_heading_boost = max(
             0.0,
-            settings.RETRIEVAL_FIELD_AWARE_HEADING_BOOST or 0.0,
+            settings.RETRIEVAL_FIELD_AWARE_HEADING_BOOST,
         )
-        field_aware_max_boost = max(0.0, settings.RETRIEVAL_FIELD_AWARE_MAX_BOOST or 0.0)
+        field_aware_max_boost = max(0.0, settings.RETRIEVAL_FIELD_AWARE_MAX_BOOST)
         chunk_type_weighting_enabled = settings.RETRIEVAL_CHUNK_TYPE_WEIGHTING_ENABLED
-        chunk_type_match_boost = max(0.0, settings.RETRIEVAL_CHUNK_TYPE_MATCH_BOOST or 0.0)
+        chunk_type_match_boost = max(0.0, settings.RETRIEVAL_CHUNK_TYPE_MATCH_BOOST)
         return {
             "field_aware_enabled": field_aware_enabled,
             "field_aware_title_boost": min(field_aware_title_boost, field_aware_max_boost),
@@ -359,7 +359,7 @@ class FusionMixin:
             return
         phrase_boost_weight = max(
             0.0,
-            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST or 0.0,
+            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST,
         )
         for item in merged.values():
             _apply_exact_content_bonus_to_result(
@@ -914,7 +914,7 @@ class FusionMixin:
         keyword_scores = [cosine(query_vec, v) for v in doc_vecs]
 
         reranked: list[dict[str, Any]] = []
-        phrase_boost_weight = max(0.0, settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST or 0.0)
+        phrase_boost_weight = max(0.0, settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST)
         for doc, kw_score in zip(documents, keyword_scores, strict=False):
             vec_score = doc.get("vector_score", doc.get("score", 0.0))
             phrase = query_phrase_match(query, str(doc.get("content", "") or ""))

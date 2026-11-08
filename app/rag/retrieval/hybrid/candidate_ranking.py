@@ -230,7 +230,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             "skip_top_score": None,
             "skip_score_gap": None,
         }
-        provider = (self.reranker_provider or settings.RERANKER_PROVIDER or "llm").lower()
+        provider = (self.reranker_provider or settings.RERANKER_PROVIDER).lower()
         rerank_meta["provider"] = provider
         if provider in ("none", "off", "false", "0"):
             rerank_meta["skip_reason"] = "provider_off"
@@ -242,7 +242,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             if self.request.options.requested_k is not None
             else int(self.request.options.top_k or 0),
         )
-        candidates_n = max(self.reranker_top_n or settings.RERANKER_TOP_N or 20, final_k)
+        candidates_n = max(self.reranker_top_n or settings.RERANKER_TOP_N, final_k)
         candidates_n = min(candidates_n, len(merged_results))
         rerank_meta["candidates_n"] = candidates_n
         conditional_rerank_enabled = settings.RERANK_CONDITIONAL_ENABLED
@@ -251,8 +251,8 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
         score_gap = top_score - second_score
         rerank_meta["skip_top_score"] = round(top_score, 6)
         rerank_meta["skip_score_gap"] = round(score_gap, 6)
-        skip_threshold = settings.RERANK_SKIP_THRESHOLD or 0.85
-        skip_gap = settings.RERANK_SKIP_GAP or 0.15
+        skip_threshold = settings.RERANK_SKIP_THRESHOLD
+        skip_gap = settings.RERANK_SKIP_GAP
         if conditional_rerank_enabled and top_score >= skip_threshold and score_gap >= skip_gap:
             rerank_meta["skip_reason"] = "high_confidence"
             self.metrics["rerank"] = rerank_meta
@@ -355,7 +355,7 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
         boosted_after_rerank = 0
         phrase_boost_weight = max(
             0.0,
-            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST or 0.0,
+            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST,
         )
         for rid in ordered_ids:
             doc = id_to_doc.get(rid)

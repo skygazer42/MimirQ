@@ -140,7 +140,7 @@ class SparseCorpusIndex:
         if not settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return None
         try:
-            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -166,7 +166,7 @@ class SparseCorpusIndex:
         if not settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return ({}, "skipped")
         try:
-            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -418,7 +418,7 @@ class SparseCorpusIndex:
         load_outcome = "miss"
         try:
             fp = self._sparse_corpus_fingerprint(docs)
-            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -518,13 +518,11 @@ class ColbertCorpusIndex:
 
     @staticmethod
     def _colbert_provider_name() -> str:
-        return (settings.COLBERT_RETRIEVAL_PROVIDER or "deterministic").strip().lower()
+        return (settings.COLBERT_RETRIEVAL_PROVIDER).strip().lower()
 
     @staticmethod
     def _build_colbert_provider_config(build_colbert_provider_config: Any, *, provider: str) -> dict[str, Any]:
-        return build_colbert_provider_config(
-            provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64
-        )
+        return build_colbert_provider_config(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM)
 
     @staticmethod
     def _collect_colbert_doc_text_pairs(docs: list[Document]) -> tuple[list[str], list[str]]:
@@ -557,7 +555,7 @@ class ColbertCorpusIndex:
         if not settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return
         try:
-            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -588,7 +586,7 @@ class ColbertCorpusIndex:
 
         provider = self._colbert_provider_name()
         provider_config = self._build_colbert_provider_config(build_colbert_provider_config, provider=provider)
-        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
+        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM)
         doc_ids, texts = self._collect_colbert_doc_text_pairs(docs)
         vecs = self._encode_colbert_texts(embedder, texts)
         fp = self._colbert_corpus_fingerprint(docs)
@@ -697,7 +695,7 @@ class ColbertCorpusIndex:
         if not base_ids or base_vecs is None:
             # Keep cold scopes lazy; the reader builds the full corpus when first needed.
             return
-        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM or 64)
+        embedder = get_dense_embedder(provider=provider, deterministic_dim=settings.COLBERT_RETRIEVAL_EMBED_DIM)
         packed = self._colbert_incremental_vectors(
             cache_key=cache_key,
             corpus_docs=corpus_docs,
@@ -794,7 +792,7 @@ class ColbertCorpusIndex:
         if not settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED:
             return None
         try:
-            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.COLBERT_RETRIEVAL_INDEX_DIR))
             loaded = store.load(cache_key=cache_key, provider_config=provider_config, expected_fingerprint=expected_fp)
             if loaded is not None:
                 self._colbert_index_cache[cache_key] = loaded

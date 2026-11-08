@@ -906,7 +906,7 @@ class PostProcessMixin:
             "sibling_enabled": bool(settings.RAG_CONTEXT_SIBLING_EXPAND_ENABLED),
             "short_doc_max_chunks": max(
                 0,
-                int(settings.RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS or 0),
+                int(settings.RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS),
             ),
         }
 
@@ -1193,8 +1193,8 @@ class PostProcessMixin:
             return results
 
         mode = self._parent_child_merge_mode()
-        min_children = max(1, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN or 2))
-        max_parents = max(0, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS or 20))
+        min_children = max(1, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN))
+        max_parents = max(0, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS))
         child_groups, parent_results, child_chunk_ids_by_group = self._group_parent_child_results(results)
 
         if not child_groups:
@@ -1238,7 +1238,7 @@ class PostProcessMixin:
 
     @staticmethod
     def _parent_child_merge_mode() -> str:
-        mode = str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or "replace").strip().lower()
+        mode = str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE).strip().lower()
         return mode if mode in {"replace", "append"} else "replace"
 
     def _group_parent_child_results(

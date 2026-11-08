@@ -39,7 +39,7 @@ class SparseIndexMixin:
         get_sparse_encoder: Any,
         parse_synonyms: Any,
     ) -> tuple[dict[str, Any], Any]:
-        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS or "")
+        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS)
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
         provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
         encoder = get_sparse_encoder(provider=provider, synonyms=synonyms, synonyms_raw=synonyms_raw)
@@ -94,7 +94,7 @@ class SparseIndexMixin:
             return None
 
         try:
-            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             store.save(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -121,7 +121,7 @@ class SparseIndexMixin:
             return {}, "skipped"
 
         try:
-            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,
@@ -391,7 +391,7 @@ class SparseIndexMixin:
         build_sparse_provider_config: Any,
         parse_synonyms: Any,
     ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS or "")
+        synonyms_raw = str(settings.SPARSE_RETRIEVAL_SYNONYMS)
         synonyms = parse_synonyms(synonyms_raw) if synonyms_raw.strip() else {}
         provider_config = build_sparse_provider_config(provider=provider, synonyms_raw=synonyms_raw)
         return synonyms_raw, synonyms, provider_config
@@ -414,7 +414,7 @@ class SparseIndexMixin:
         load_outcome = "miss"
         try:
             fp = self._sparse_corpus_fingerprint(docs)
-            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR or ""))
+            store = store_cls(base_dir=str(settings.SPARSE_RETRIEVAL_INDEX_DIR))
             loaded = store.load(
                 cache_key=cache_key,
                 provider_config=provider_config,

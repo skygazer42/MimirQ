@@ -197,7 +197,7 @@ def search_runtime_shards(
             )
             return VectorShardResult(shard=shard, records=[], failure=exc, native_hybrid=None)
 
-    max_workers = min(len(shards), max(1, settings.RAG_VECTOR_SHARD_MAX_CONCURRENCY or 1))
+    max_workers = min(len(shards), max(1, settings.RAG_VECTOR_SHARD_MAX_CONCURRENCY))
     if max_workers <= 1:
         outcomes = tuple(search(shard) for shard in shards)
     else:

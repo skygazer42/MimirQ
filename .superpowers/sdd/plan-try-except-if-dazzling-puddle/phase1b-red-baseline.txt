@@ -1,0 +1,413 @@
+FF.FFF.FFFF............................F...FFF.                          [100%]
+================================== FAILURES ===================================
+_______________ test_kg_boost_uses_actual_settings[0.0-2-True] ________________
+
+weight = 0.0, max_promoted = 2, enabled = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AA85543020>
+
+    @pytest.mark.parametrize("weight,max_promoted,enabled", [(0.0, 2, True), (0.15, 0, True), (0.15, 2, False)])
+    def test_kg_boost_uses_actual_settings(weight, max_promoted, enabled, monkeypatch):
+        from app.rag.retrieval import orchestrator
+
+        monkeypatch.setattr(orchestrator.settings, "RAG_KG_CHUNK_BOOST_WEIGHT", weight)
+        monkeypatch.setattr(orchestrator.settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", max_promoted)
+        monkeypatch.setattr(orchestrator.settings, "RAG_KG_CHUNK_BOOST_ENABLED", enabled)
+        context = SimpleNamespace(state={}, docs=[])
+        orchestrator._run_retrieval_tag_kg_boost_phase(context)
+>       assert context.kg_chunk_boost_meta["weight"] == weight
+E       assert 0.25 == 0.0
+
+tests\test_settings_declared_defaults.py:20: AssertionError
+_______________ test_kg_boost_uses_actual_settings[0.15-0-True] _______________
+
+weight = 0.15, max_promoted = 0, enabled = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA365EBD0>
+
+    @pytest.mark.parametrize("weight,max_promoted,enabled", [(0.0, 2, True), (0.15, 0, True), (0.15, 2, False)])
+    def test_kg_boost_uses_actual_settings(weight, max_promoted, enabled, monkeypatch):
+        from app.rag.retrieval import orchestrator
+
+        monkeypatch.setattr(orchestrator.settings, "RAG_KG_CHUNK_BOOST_WEIGHT", weight)
+        monkeypatch.setattr(orchestrator.settings, "RAG_KG_CHUNK_BOOST_MAX_PROMOTED", max_promoted)
+        monkeypatch.setattr(orchestrator.settings, "RAG_KG_CHUNK_BOOST_ENABLED", enabled)
+        context = SimpleNamespace(state={}, docs=[])
+        orchestrator._run_retrieval_tag_kg_boost_phase(context)
+        assert context.kg_chunk_boost_meta["weight"] == weight
+>       assert context.kg_chunk_boost_meta["max_promoted"] == max_promoted
+E       assert 3 == 0
+
+tests\test_settings_declared_defaults.py:21: AssertionError
+_______________ test_post_rerank_zero_calibration_is_preserved ________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA365F5F0>
+
+    def test_post_rerank_zero_calibration_is_preserved(monkeypatch):
+        from app.rag.retrieval.orchestrator_support_post_rerank import post_rerank_settings, settings
+
+        monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.0)
+        result = post_rerank_settings({}, cache_backend_fn=lambda: None, corpus_cache_token_fn=lambda state: None)
+>       assert result["score_calibration_alpha"] == 0.0
+E       assert 0.7 == 0.0
+
+tests\test_settings_declared_defaults.py:30: AssertionError
+___________ test_multi_query_zero_cap_and_false_flags_are_preserved ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA365FEF0>
+
+    def test_multi_query_zero_cap_and_false_flags_are_preserved(monkeypatch):
+        from app.rag.retrieval.orchestration.query_contracts import ModelQueryOverrides
+        from app.rag.retrieval.orchestration.query_options import resolve_model_query_settings, settings
+
+        monkeypatch.setattr(settings, "MULTI_QUERY_COUNT_CAP", 0)
+        monkeypatch.setattr(settings, "MULTI_QUERY_COUNT", 3)
+        monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False)
+        result = resolve_model_query_settings(ModelQueryOverrides())
+>       assert result.multi_query.count == 0
+E       assert 3 == 0
+E        +  where 3 = MultiQuerySettings(enabled=False, count=3, temperature=0.2, max_chars=200, experiment=MultiQueryExperiment(key=None, variant=None, seed=None, forced=False)).count
+E        +    where MultiQuerySettings(enabled=False, count=3, temperature=0.2, max_chars=200, experiment=MultiQueryExperiment(key=None, variant=None, seed=None, forced=False)) = ModelQuerySettings(multi_query=MultiQuerySettings(enabled=False, count=3, temperature=0.2, max_chars=200, experiment=M...e, max_questions=3, min_chars=60, max_chars=400, temperature=0.2, heuristic_enabled=True, model_api_key_present=False)).multi_query
+
+tests\test_settings_declared_defaults.py:41: AssertionError
+______________ test_preprocess_zero_sample_pages_reaches_scorer _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA3710680>
+
+    def test_preprocess_zero_sample_pages_reaches_scorer(monkeypatch):
+        from app.parsing.processors.support import process_document_flow as module
+        from app.parsing.quality import scorer
+
+        monkeypatch.setattr(module.settings, "PREPROCESS_SAMPLE_PAGES", 0)
+        monkeypatch.setattr(module.settings, "IMAGE_PREPROCESS_ENABLED", True)
+        score = MagicMock(return_value={})
+        monkeypatch.setattr(scorer, "score_pdf_quality", score)
+        monkeypatch.setattr(module, "metrics_span", lambda *a, **k: nullcontext())
+        monkeypatch.setattr(
+            module, "preprocess_image_document", lambda **k: SimpleNamespace(changed=False, to_dict=lambda: {})
+        )
+        module._apply_image_preprocess(
+            db=MagicMock(),
+            db_document=SimpleNamespace(doc_metadata={}),
+            document_id=uuid4(),
+            file_path=Path("sample.pdf"),
+            preprocessed_temp_path=None,
+            add_stage_duration=lambda *a: None,
+        )
+>       assert score.call_args.kwargs["sample_pages"] == 0
+E       assert 3 == 0
+
+tests\test_settings_declared_defaults.py:65: AssertionError
+_ test_evaluation_snapshot_uses_declared_values_without_fabricating_zero[True] _
+
+invalid_required_value = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8BF4530>
+
+    @pytest.mark.parametrize("invalid_required_value", [False, True])
+    def test_evaluation_snapshot_uses_declared_values_without_fabricating_zero(invalid_required_value, monkeypatch):
+        from app.api.v1 import evaluations
+        from app.rag.evaluation import kg_search_diagnostics
+
+        settings = evaluations.settings
+        monkeypatch.setattr(settings, "KG_ENABLED", True)
+        for name in ["KG_SEARCH_GRAPH_EMBEDDINGS_DIM", "KG_SEARCH_GRAPH_EMBEDDINGS_SEED", "KG_SEARCH_RELATION_MAX_EDGES"]:
+            monkeypatch.setattr(settings, name, 0)
+        monkeypatch.setattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY", 0.0)
+        monkeypatch.setattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED", False)
+        monkeypatch.setattr(settings, "KG_RELATION_ENABLED", False)
+        if invalid_required_value:
+            monkeypatch.setattr(settings, "KG_SEARCH_GRAPH_EMBEDDINGS_DIM", None)
+        response = SimpleNamespace(summary=None, items=[], run_id=None)
+        monkeypatch.setattr(kg_search_diagnostics, "run_kg_search_diagnostics", AsyncMock(return_value=response))
+        monkeypatch.setattr(evaluations.dataset_service, "ensure_member", lambda *a: None)
+        monkeypatch.setattr(evaluations.dataset_service, "get_dataset", lambda *a: SimpleNamespace())
+        monkeypatch.setattr(evaluations.dataset_service, "assert_dataset_readable", lambda *a: None)
+        db = MagicMock()
+        payload = evaluations.KGSearchDiagnosticsRequest(dataset_id=uuid4(), persist_run=True)
+        asyncio.run(evaluations.run_kg_search_diagnostics(payload, tenant_id=uuid4(), account_id="owner", db=db))
+        if invalid_required_value:
+>           db.add.assert_not_called()
+
+tests\test_settings_declared_defaults.py:91:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <MagicMock name='mock.add' id='1832487183392'>
+
+    def assert_not_called(self):
+        """assert that the mock was never called.
+        """
+        if self.call_count != 0:
+            msg = ("Expected '%s' to not have been called. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'add' to not have been called. Called 1 times.
+E           Calls: [call(<app.models.evaluation.KGSearchDiagnosticsRun object at 0x000001AAA8BF6450>)].
+
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\unittest\mock.py:910: AssertionError
+___________ test_zero_lexical_settings_use_existing_minimums[mixin] ___________
+
+implementation = 'mixin'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8C0C380>
+
+    @pytest.mark.parametrize("implementation", ["mixin", "active"])
+    def test_zero_lexical_settings_use_existing_minimums(implementation, monkeypatch):
+        from app.rag.retrieval.hybrid import lexical, lexical_search
+
+        for name in ["LEXICAL_DB_FETCH_MULTIPLIER", "LEXICAL_DB_MAX_CANDIDATES", "LEXICAL_DB_TRGM_MIN_QUERY_CHARS"]:
+            monkeypatch.setattr(lexical.settings, name, 0)
+        monkeypatch.setattr(lexical.settings, "LEXICAL_DB_TRGM_ENABLED", False)
+        resolve = (
+            lexical.LexicalDBMixin._lexical_search_config
+            if implementation == "mixin"
+            else lexical_search._lexical_search_config
+        )
+        _, fetch_k, want_trgm, min_chars = resolve(5)
+>       assert fetch_k == 5
+E       assert 20 == 5
+
+tests\test_hybrid_settings_declared_defaults.py:20: AssertionError
+__________ test_zero_lexical_settings_use_existing_minimums[active] ___________
+
+implementation = 'active'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8C0D370>
+
+    @pytest.mark.parametrize("implementation", ["mixin", "active"])
+    def test_zero_lexical_settings_use_existing_minimums(implementation, monkeypatch):
+        from app.rag.retrieval.hybrid import lexical, lexical_search
+
+        for name in ["LEXICAL_DB_FETCH_MULTIPLIER", "LEXICAL_DB_MAX_CANDIDATES", "LEXICAL_DB_TRGM_MIN_QUERY_CHARS"]:
+            monkeypatch.setattr(lexical.settings, name, 0)
+        monkeypatch.setattr(lexical.settings, "LEXICAL_DB_TRGM_ENABLED", False)
+        resolve = (
+            lexical.LexicalDBMixin._lexical_search_config
+            if implementation == "mixin"
+            else lexical_search._lexical_search_config
+        )
+        _, fetch_k, want_trgm, min_chars = resolve(5)
+>       assert fetch_k == 5
+E       assert 20 == 5
+
+tests\test_hybrid_settings_declared_defaults.py:20: AssertionError
+___________ test_zero_conditional_rerank_thresholds_skip_model_call ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8C0DB80>
+
+    def test_zero_conditional_rerank_thresholds_skip_model_call(monkeypatch):
+        from app.rag.retrieval.hybrid.candidate_ranking import _RankingRun, settings
+
+        monkeypatch.setattr(settings, "RERANK_CONDITIONAL_ENABLED", True)
+        monkeypatch.setattr(settings, "RERANK_SKIP_THRESHOLD", 0.0)
+        monkeypatch.setattr(settings, "RERANK_SKIP_GAP", 0.0)
+        model_call = MagicMock(side_effect=AssertionError("zero thresholds should skip reranker"))
+        context = SimpleNamespace(
+            reranker_provider="llm",
+            reranker_top_n=None,
+            metrics={},
+            request=SimpleNamespace(options=SimpleNamespace(requested_k=None, top_k=1), query="question"),
+            _run_llm_reranker=model_call,
+        )
+        results = [{"score": 0.1}, {"score": 0.1}]
+>       assert _RankingRun._apply_optional_llm_reranker(context, results) is results
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_hybrid_settings_declared_defaults.py:40:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\rag\retrieval\hybrid\candidate_ranking.py:261: in _apply_optional_llm_reranker
+    merged_results = self._run_llm_reranker(
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\unittest\mock.py:1139: in __call__
+    return self._mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\unittest\mock.py:1143: in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <MagicMock id='1832487278912'>, args = ()
+kwargs = {'candidates_n': 2, 'merged_results': [{'score': 0.1}, {'score': 0.1}], 'provider': 'llm', 'query': 'question', ...}
+effect = AssertionError('zero thresholds should skip reranker')
+
+    def _execute_mock_call(self, /, *args, **kwargs):
+        # separate from _increment_mock_call so that awaited functions are
+        # executed separately from their call, also AsyncMock overrides this method
+
+        effect = self.side_effect
+        if effect is not None:
+            if _is_exception(effect):
+>               raise effect
+E               AssertionError: zero thresholds should skip reranker
+
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\unittest\mock.py:1198: AssertionError
+_ test_run_retrieval_parallel_variant_execution_preserves_public_query_order __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8C0FFE0>
+
+    def test_run_retrieval_parallel_variant_execution_preserves_public_query_order(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        import app.rag.retrieval.orchestrator as orch_mod
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "ENABLE_QUERY_REWRITE", False, raising=False)
+        monkeypatch.setattr(settings, "ENABLE_MULTI_QUERY", False, raising=False)
+        monkeypatch.setattr(settings, "ENABLE_HYDE", False, raising=False)
+        monkeypatch.setattr(settings, "ENABLE_STEP_BACK_QUERY", False, raising=False)
+        monkeypatch.setattr(settings, "ENABLE_QUERY_DECOMPOSITION", False, raising=False)
+        monkeypatch.setattr(settings, "RETRIEVAL_QUERY_PARALLELISM", 3, raising=False)
+        monkeypatch.setattr(settings, "KG_ENABLED", False, raising=False)
+        monkeypatch.setattr(settings, "KG_CHAT_ENABLED", False, raising=False)
+        monkeypatch.setattr(settings, "RAG_KG_CHUNK_INJECTION_ENABLED", False, raising=False)
+        monkeypatch.setattr(settings, "RAG_KG_QUERY_EXPANSION_ENABLED", False, raising=False)
+
+        import app.query.expand as expand_mod
+
+        monkeypatch.setattr(expand_mod, "load_base_dictionary_rules", lambda: [], raising=True)
+        monkeypatch.setattr(
+            expand_mod,
+            "generate_dictionary_expansions",
+            lambda **_kwargs: (
+                [{"expanded_text": "dict evidence"}],
+                {"enabled": True, "used": True},
+            ),
+            raising=True,
+        )
+>       monkeypatch.setattr(
+            orch_mod,
+            "generate_alias_queries",
+            lambda **_kwargs: (["alias evidence"], {"enabled": True, "used": True}),
+            raising=True,
+        )
+E       AttributeError: <module 'app.rag.retrieval.orchestrator' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-task3-chat-tags\\MimirQ\\app\\rag\\retrieval\\orchestrator.py'> has no attribute 'generate_alias_queries'
+
+tests\test_retrieval_orchestrator_complexity.py:337: AttributeError
+__ test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8C21760>
+
+    def test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+>       retriever, vector_store = _build_retriever(
+            monkeypatch,
+            retrieval_mode="vector",
+            metadata_filter_enabled=True,
+            metadata_filter={"region": "east"},
+        )
+
+tests\test_retrieval_hybrid_channel_results.py:79:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8C21760>
+overrides = {'metadata_filter': {'region': 'east'}, 'metadata_filter_enabled': True, 'retrieval_mode': 'vector'}
+retriever_module = <module 'app.rag.retriever' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-task3-chat-tags\\MimirQ\\app\\rag\\retriever.py'>
+HybridRetriever = <class 'app.rag.retriever.HybridRetriever'>
+
+    def _build_retriever(monkeypatch: pytest.MonkeyPatch, **overrides):
+        import app.rag.retriever as retriever_module
+        from app.rag.retriever import HybridRetriever
+
+        _configure_retrieval_test(monkeypatch)
+        runtime = _embedding_runtime()
+        monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime)
+        monkeypatch.setattr(
+            HybridRetriever,
+            "_resolve_document_dataset_scope",
+            lambda self, *, tenant_id, document_ids: ((), True),  # noqa: ANN001,ARG005
+        )
+        monkeypatch.setattr(
+            HybridRetriever, "_enrich_results_with_db_metadata", lambda self, results, **kwargs: list(results)
+        )
+        monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, results: list(results))
+        monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, results: list(results))
+
+        vector_store = SimpleNamespace(search=lambda **kwargs: [])
+>       monkeypatch.setattr(retriever_module, "get_vector_store", lambda: vector_store)
+E       AttributeError: <module 'app.rag.retriever' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-task3-chat-tags\\MimirQ\\app\\rag\\retriever.py'> has no attribute 'get_vector_store'
+
+tests\test_retrieval_hybrid_channel_results.py:59: AttributeError
+___________ test_bm25_candidates_preserve_active_pipeline_identity ____________
+
+    def test_bm25_candidates_preserve_active_pipeline_identity() -> None:
+        from app.rag.retriever import HybridRetriever
+
+>       metadata = HybridRetriever._candidate_metadata_from_doc(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+            {
+                "document_id": "doc-1",
+                "pipeline_hash": "pipeline-v2",
+                "doc_pipeline_key": "doc-1:pipeline-v2",
+                "active_pipeline_hash": "pipeline-v2",
+            },
+            chunk_id="chunk-1",
+        )
+
+tests\test_retrieval_hybrid_channel_results.py:141:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <class 'app.rag.retriever.HybridRetriever'>
+item = '_candidate_metadata_from_doc'
+
+    def __getattr__(self, item: str) -> Any:
+        """This is necessary to keep attribute access working for class attribute access."""
+        private_attributes = self.__dict__.get('__private_attributes__')
+        if private_attributes and item in private_attributes:
+            return private_attributes[item]
+>       raise AttributeError(item)
+E       AttributeError: _candidate_metadata_from_doc
+
+E:\MimirQ\.venv\Lib\site-packages\pydantic\_internal\_model_construction.py:289: AttributeError
+_____ test_invoke_preserves_debug_degradation_contract_with_bm25_fallback _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8BFC0E0>
+
+    def test_invoke_preserves_debug_degradation_contract_with_bm25_fallback(
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+>       retriever, vector_store = _build_retriever(monkeypatch, k=1)
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_retrieval_hybrid_channel_results.py:159:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001AAA8BFC0E0>
+overrides = {'k': 1}
+retriever_module = <module 'app.rag.retriever' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-task3-chat-tags\\MimirQ\\app\\rag\\retriever.py'>
+HybridRetriever = <class 'app.rag.retriever.HybridRetriever'>
+
+    def _build_retriever(monkeypatch: pytest.MonkeyPatch, **overrides):
+        import app.rag.retriever as retriever_module
+        from app.rag.retriever import HybridRetriever
+
+        _configure_retrieval_test(monkeypatch)
+        runtime = _embedding_runtime()
+        monkeypatch.setattr(HybridRetriever, "_resolve_embedding_runtime", lambda self, *, tenant_id: runtime)
+        monkeypatch.setattr(
+            HybridRetriever,
+            "_resolve_document_dataset_scope",
+            lambda self, *, tenant_id, document_ids: ((), True),  # noqa: ANN001,ARG005
+        )
+        monkeypatch.setattr(
+            HybridRetriever, "_enrich_results_with_db_metadata", lambda self, results, **kwargs: list(results)
+        )
+        monkeypatch.setattr(HybridRetriever, "_expand_results_with_neighbors", lambda self, results: list(results))
+        monkeypatch.setattr(HybridRetriever, "_auto_merge_parent_child", lambda self, results: list(results))
+
+        vector_store = SimpleNamespace(search=lambda **kwargs: [])
+>       monkeypatch.setattr(retriever_module, "get_vector_store", lambda: vector_store)
+E       AttributeError: <module 'app.rag.retriever' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-task3-chat-tags\\MimirQ\\app\\rag\\retriever.py'> has no attribute 'get_vector_store'
+
+tests\test_retrieval_hybrid_channel_results.py:59: AttributeError
+=========================== short test summary info ===========================
+FAILED tests/test_settings_declared_defaults.py::test_kg_boost_uses_actual_settings[0.0-2-True]
+FAILED tests/test_settings_declared_defaults.py::test_kg_boost_uses_actual_settings[0.15-0-True]
+FAILED tests/test_settings_declared_defaults.py::test_post_rerank_zero_calibration_is_preserved
+FAILED tests/test_settings_declared_defaults.py::test_multi_query_zero_cap_and_false_flags_are_preserved
+FAILED tests/test_settings_declared_defaults.py::test_preprocess_zero_sample_pages_reaches_scorer
+FAILED tests/test_settings_declared_defaults.py::test_evaluation_snapshot_uses_declared_values_without_fabricating_zero[True]
+FAILED tests/test_hybrid_settings_declared_defaults.py::test_zero_lexical_settings_use_existing_minimums[mixin]
+FAILED tests/test_hybrid_settings_declared_defaults.py::test_zero_lexical_settings_use_existing_minimums[active]
+FAILED tests/test_hybrid_settings_declared_defaults.py::test_zero_conditional_rerank_thresholds_skip_model_call
+FAILED tests/test_retrieval_orchestrator_complexity.py::test_run_retrieval_parallel_variant_execution_preserves_public_query_order
+FAILED tests/test_retrieval_hybrid_channel_results.py::test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics
+FAILED tests/test_retrieval_hybrid_channel_results.py::test_bm25_candidates_preserve_active_pipeline_identity
+FAILED tests/test_retrieval_hybrid_channel_results.py::test_invoke_preserves_debug_degradation_contract_with_bm25_fallback
+13 failed, 34 passed in 9.92s

@@ -64,7 +64,7 @@ def _resolve_expected_source_keys(
     ):
         auto_max_keys = max(
             1,
-            int(settings.RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX or 12),
+            int(settings.RETRIEVAL_MUST_RECALL_AUTO_EXPECTED_SOURCE_KEYS_MAX),
         )
         allow_filter = bool(settings.RETRIEVAL_MUST_RECALL_AUTO_INFER_FROM_METADATA_FILTER)
         meta_filter = state.get("metadata_filter") if allow_filter else None
@@ -165,7 +165,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
         str(
             state.get("contextual_followup_mode")
             if state.get("contextual_followup_mode") is not None
-            else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE or "keyword")
+            else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE)
         )
         .strip()
         .lower()
@@ -177,11 +177,11 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
         "contextual_followup_enabled": contextual_followup_enabled,
         "contextual_followup_mode": contextual_followup_mode,
         "contextual_followup_top_k": max(
-            int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 1),
+            int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K),
             int(
                 state.get("contextual_followup_top_k")
                 if state.get("contextual_followup_top_k") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K or 40)
+                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K)
             ),
         ),
         "contextual_followup_max_docs": max(
@@ -189,7 +189,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_docs")
                 if state.get("contextual_followup_max_docs") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS or 4)
+                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS)
             ),
         ),
         "contextual_followup_max_terms": max(
@@ -197,7 +197,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_terms")
                 if state.get("contextual_followup_max_terms") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS or 4)
+                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS)
             ),
         ),
         "contextual_followup_min_term_chars": max(
@@ -205,7 +205,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_min_term_chars")
                 if state.get("contextual_followup_min_term_chars") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS or 4)
+                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS)
             ),
         ),
         "contextual_followup_max_query_chars": max(
@@ -213,7 +213,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_query_chars")
                 if state.get("contextual_followup_max_query_chars") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS or 500)
+                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS)
             ),
         ),
         "contextual_followup_max_hops": max(
@@ -221,7 +221,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_hops")
                 if state.get("contextual_followup_max_hops") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS or 1)
+                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS)
             ),
         ),
         "contextual_followup_latency_budget_ms": max(
@@ -229,7 +229,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             float(
                 state.get("contextual_followup_latency_budget_ms")
                 if state.get("contextual_followup_latency_budget_ms") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS or 500.0)
+                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS)
             ),
         ),
     }
@@ -250,7 +250,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
         str(
             state.get("hierarchy_family_aggregation")
             if state.get("hierarchy_family_aggregation") is not None
-            else (settings.HIERARCHY_RECALL_FAMILY_AGGREGATION or "combined")
+            else (settings.HIERARCHY_RECALL_FAMILY_AGGREGATION)
         )
         .strip()
         .lower()
@@ -274,7 +274,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
             int(
                 state.get("hierarchy_parent_depth")
                 if state.get("hierarchy_parent_depth") is not None
-                else (settings.HIERARCHY_RECALL_PARENT_DEPTH or 0)
+                else (settings.HIERARCHY_RECALL_PARENT_DEPTH)
             ),
         ),
         "hierarchy_sibling_window": max(
@@ -282,7 +282,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
             int(
                 state.get("hierarchy_sibling_window")
                 if state.get("hierarchy_sibling_window") is not None
-                else (settings.HIERARCHY_RECALL_SIBLING_WINDOW or 0)
+                else (settings.HIERARCHY_RECALL_SIBLING_WINDOW)
             ),
         ),
         "hierarchy_overfetch_factor": max(
@@ -290,7 +290,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
             int(
                 state.get("hierarchy_overfetch_factor")
                 if state.get("hierarchy_overfetch_factor") is not None
-                else (settings.HIERARCHY_RECALL_OVERFETCH_FACTOR or 4)
+                else (settings.HIERARCHY_RECALL_OVERFETCH_FACTOR)
             ),
         ),
     }
@@ -312,10 +312,10 @@ def resolve_contract_phase(
             if state.get("retrieval_contract_mode") is not None
             else settings.RETRIEVAL_CONTRACT_MODE
         ),
-        requested_top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
+        requested_top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K),
         hard_fallback_enabled_setting=bool(settings.RETRIEVAL_HARD_FALLBACK_ENABLED),
-        hard_fallback_mode_setting=str(settings.RETRIEVAL_HARD_FALLBACK_MODE or "keyword"),
-        hard_fallback_top_k_setting=int(settings.RETRIEVAL_HARD_FALLBACK_TOP_K or 30),
+        hard_fallback_mode_setting=str(settings.RETRIEVAL_HARD_FALLBACK_MODE),
+        hard_fallback_top_k_setting=int(settings.RETRIEVAL_HARD_FALLBACK_TOP_K),
         visible_evidence_only_setting=bool(settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED),
         evidence_span_strict_setting=bool(settings.RAG_EVIDENCE_REQUIRE_SPANS_ENABLED),
     )
@@ -346,12 +346,10 @@ def resolve_contract_phase(
         bool(retrieval_contract_policy.get("enable_partial_miss_second_pass"))
         and bool(settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED)
     )
-    must_recall_second_pass_mode = (
-        str(settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE or "keyword").strip().lower() or "keyword"
-    )
+    must_recall_second_pass_mode = str(settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE).strip().lower() or "keyword"
     must_recall_second_pass_top_k = max(
-        int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 1),
-        int(settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K or 80),
+        int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K),
+        int(settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K),
     )
     return {
         "requested_retrieval_mode": requested_retrieval_mode,
@@ -417,11 +415,11 @@ def _apply_intent_router(
             retrieval_profile=(
                 str(requested_retrieval_profile).strip() if requested_retrieval_profile is not None else None
             ),
-            top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5),
+            top_k=int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K),
             score_threshold=float(
                 state.get("score_threshold", settings.SIMILARITY_THRESHOLD)
                 if state.get("score_threshold", settings.SIMILARITY_THRESHOLD) is not None
-                else (settings.SIMILARITY_THRESHOLD or 0.0)
+                else (settings.SIMILARITY_THRESHOLD)
             ),
             enable_reranker=bool(state.get("enable_reranker", settings.ENABLE_RERANKER)),
             enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
@@ -436,12 +434,12 @@ def _apply_intent_router(
             learned_router_model_path=(
                 str(state.get("intent_router_model_path") or "").strip()
                 if state.get("intent_router_model_path") is not None
-                else str(settings.RAG_INTENT_ROUTER_MODEL_PATH or "").strip()
+                else str(settings.RAG_INTENT_ROUTER_MODEL_PATH).strip()
             ),
             learned_router_confidence_min=float(
                 state.get("intent_router_model_confidence_min")
                 if state.get("intent_router_model_confidence_min") is not None
-                else (settings.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN or 0.7)
+                else (settings.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN)
             ),
         )
         for key, value in (overrides or {}).items():
@@ -480,7 +478,7 @@ def _apply_adaptive_router(
 
     adaptive_policy = state.get("adaptive_router_policy")
     if not isinstance(adaptive_policy, dict):
-        policy_path = str(settings.RAG_ADAPTIVE_ROUTER_POLICY_PATH or "").strip()
+        policy_path = str(settings.RAG_ADAPTIVE_ROUTER_POLICY_PATH).strip()
         if policy_path:
             try:
                 adaptive_policy = _load_policy_from_path(policy_path=policy_path)
@@ -540,19 +538,19 @@ def _build_query_contract(
                 overfetch_factor=int(hierarchy_overfetch_factor),
             ),
             defaults=QueryContractDefaults(
-                retrieval_top_k=int(settings.RETRIEVAL_TOP_K or 5),
-                similarity_threshold=float(settings.SIMILARITY_THRESHOLD or 0.0),
+                retrieval_top_k=int(settings.RETRIEVAL_TOP_K),
+                similarity_threshold=float(settings.SIMILARITY_THRESHOLD),
                 enable_reranker=bool(settings.ENABLE_RERANKER),
-                reranker_provider=str(settings.RERANKER_PROVIDER or ""),
-                reranker_top_n=int(settings.RERANKER_TOP_N or 20),
-                retrieval_contract_mode=str(settings.RETRIEVAL_CONTRACT_MODE or ""),
+                reranker_provider=str(settings.RERANKER_PROVIDER),
+                reranker_top_n=int(settings.RERANKER_TOP_N),
+                retrieval_contract_mode=str(settings.RETRIEVAL_CONTRACT_MODE),
                 hard_fallback_enabled_setting=bool(settings.RETRIEVAL_HARD_FALLBACK_ENABLED),
-                hard_fallback_mode_setting=str(settings.RETRIEVAL_HARD_FALLBACK_MODE or "keyword"),
-                hard_fallback_top_k_setting=int(settings.RETRIEVAL_HARD_FALLBACK_TOP_K or 30),
+                hard_fallback_mode_setting=str(settings.RETRIEVAL_HARD_FALLBACK_MODE),
+                hard_fallback_top_k_setting=int(settings.RETRIEVAL_HARD_FALLBACK_TOP_K),
                 visible_evidence_only_setting=bool(settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED),
                 evidence_span_strict_setting=bool(settings.RAG_EVIDENCE_REQUIRE_SPANS_ENABLED),
-                retrieval_fusion_strategy=str(settings.RETRIEVAL_FUSION_STRATEGY or ""),
-                retrieval_mmr_lambda=float(settings.RETRIEVAL_MMR_LAMBDA or 0.0),
+                retrieval_fusion_strategy=str(settings.RETRIEVAL_FUSION_STRATEGY),
+                retrieval_mmr_lambda=float(settings.RETRIEVAL_MMR_LAMBDA),
             ),
         )
     )
@@ -575,9 +573,7 @@ def _resolve_channel_budget_meta(
     channel_budget_policy = state.get("channel_budget_policy")
     channel_budget_policy_meta: dict[str, Any] = {"enabled": False, "used": False}
     if not isinstance(channel_budget_policy, dict):
-        policy_path = str(
-            state.get("channel_budget_policy_path") or settings.RAG_CHANNEL_BUDGET_POLICY_PATH or ""
-        ).strip()
+        policy_path = str(state.get("channel_budget_policy_path") or settings.RAG_CHANNEL_BUDGET_POLICY_PATH).strip()
         if policy_path:
             channel_budget_policy_meta = {"enabled": True, "used": False, "policy_path": policy_path}
             try:

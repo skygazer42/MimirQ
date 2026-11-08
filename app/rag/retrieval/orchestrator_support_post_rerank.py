@@ -81,13 +81,13 @@ def post_rerank_settings(
     cache_backend_fn: Callable[[], Any],
     corpus_cache_token_fn: Callable[[dict[str, Any]], str | None],
 ) -> dict[str, Any]:
-    provider = str(settings.EVIDENCE_POST_RERANK_PROVIDER or "none").strip().lower()
+    provider = str(settings.EVIDENCE_POST_RERANK_PROVIDER).strip().lower()
     reject_retired_provider(provider, capability="reranker")
     if settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED:
         reject_retired_rerank_providers(settings.EVIDENCE_POST_RERANK_PIPELINE)
     cache_enabled = bool(settings.EVIDENCE_POST_RERANK_CACHE_ENABLED)
     try:
-        calibration_alpha = float(settings.EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA or 0.7)
+        calibration_alpha = float(settings.EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA)
     except (TypeError, ValueError, AttributeError):
         calibration_alpha = 0.7
     calibration_alpha = min(1.0, max(0.0, calibration_alpha))
@@ -96,7 +96,7 @@ def post_rerank_settings(
         "pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
         "pipeline_raw": settings.EVIDENCE_POST_RERANK_PIPELINE,
         "provider": provider,
-        "top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
+        "top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N),
         "cache_enabled": cache_enabled,
         "cache_backend": cache_backend_fn(),
         "corpus_cache_token": corpus_cache_token_fn(state),

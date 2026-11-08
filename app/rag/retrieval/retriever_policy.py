@@ -132,7 +132,7 @@ class RetrievalPolicyMixin:
 
         phrase_boost_weight = max(
             0.0,
-            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST or 0.0,
+            settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST,
         )
         exact_adjusted = 0
         for result in out:

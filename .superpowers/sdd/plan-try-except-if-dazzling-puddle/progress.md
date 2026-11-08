@@ -1,6 +1,6 @@
-# Phase 0 / Phase 1A 进度
+# 后端去过度防御进度（Phase 0 / 1A / 1B）
 
-状态：本轮列举位置的审查、回归与修复完成。历史暂停记录保留；八组 Desktop 验收及逐处定性见文末与 classification.md。全库 Phase 1A 扩展扫描不宣称清零。
+状态：Phase 1A 列举位置及审查修正完成；Phase 1B 限定切片的 181 处修改已验证，其余 1339 候选按范围裁决列入后续清单。历史暂停记录保留，不宣称全库清零。
 
 ## 并发裁决
 
@@ -170,3 +170,32 @@ _run_precheck_scan 分开创建提交与可选执行边界：创建提交失败�
 修复前4 failed（修正响应 UUID JSON 比较后又临时恢复旧源码重证）；修复后结果见 precheck-review-green.txt。旧 service 回归更新为 optional worker 失败保留已创建 run、创建提交失败返回 None，避免把原先错误断言当产品契约。源码修改前 hash 1cdd2a24b713983dcd88fdd0691dcc90f3ec19e6，修改后5c78167eafe40677044d1c7aa05851c5de004a5d；动手前git log -3无外部新提交。
 
 审查修正验证：指定解释器 -m pytest -q -p no:cacheprovider --basetemp=.ptreviewg2 tests/test_precheck_scan_response_contract.py tests/test_service_commit_failure_boundaries.py tests/test_dataset_scan_queue_contracts.py：36 passed，4.92s；3文件 Ruff check / format通过。上一收尾提交 c243d0033（22 files, +1792/-32）。
+
+## Phase 1B：声明默认值归属（限定切片）
+
+前置审查修正已提交 8309eec52（7 files, +350/-22）；真实SQLAlchemy测试36 passed，恢复失败记录链接并使refresh错误冒泡。
+
+全量定位以rg与AST交叉执行：rg单行 settings.[A-Z_]+ or 与-U getattr(settings,...)变体输出 phase1b-rg.txt；完整原始AST候选1522条见 phase1b-inventory.json（含13条getattr变体及真正逻辑OR，不能当1522个已判缺陷）。超过总指挥60阈值，按授权只做计划三处 + rag/retrieval，范围外1339候选逐行列在 phase1b-deferred.md，不改其他模块。
+
+限定范围原有183个直接Settings OR候选：181个字面量兜底删除（retrieval167、evaluations KG snapshot13、process_document_flow PREPROCESS_SAMPLE_PAGES 1），21个源文件、99个配置字段；每一字段均对照config.py注解与默认表达式，为非Optional并有默认值。逐处映射在 phase1b-classification.md / phase1b-decisions.json。没有需新增is None分支的字段，未改config声明、.env.example、部署或默认值文档；Nullable字段和未声明getattr候选留给范围外下一片。
+
+保留2个真正逻辑OR：ENABLE_MULTI_QUERY or forced（实验强制启用）和 RETRIEVAL_COMPACT_HIGH_CONFIDENCE_ENABLED or policy.enabled（策略合并）。另外4个紧邻的 .strip()/lower() 后文本规范化OR是生成审查记录时遇到的外层节点，并非直接Settings兜底，本片保持。请求覆盖优先级、业务min/max限制、类型转换和其他非Settings兜底不动。
+
+新测试 test_settings_declared_defaults.py 与 test_hybrid_settings_declared_defaults.py 共11例：旧源码9 failed / 2 passed。红证据包括KGweight=0.0被改为0.25、max_promoted=0被改为3、calibration alpha=0被改0.7、multi-query cap=0被改8、PDF sample_pages=0被改3、lexical的0未走既有最小值、rerank阈值0未跳过模型。BOOL False由KG启用和multi-query/lexical开关控制用例验证，不删除真的逻辑或。
+
+特别说明：evaluations 的 or 0 / or 0.0 原本保留合法零值，valid零值/False快照用例修复前已pass，不能伪造此处零值bug。它的红证据是给非Optional DIM注入None时不应伪造零快照；直接读取后int(None)进入原有optional snapshot失败分支，不再db.add伪造记录。此None是故障注入，不代表合法配置输入。
+
+修改后11新例全通过（13.10s，phase1b-new-green.txt）；扩展相关pytest组合56 passed / 4既有failed（13.65s，phase1b-final-pytest.txt）。修复前组合34 passed / 13 failed，其中9为新红例、4为相同旧失败（phase1b-red-baseline.txt）。旧失败列表：
+- test_retrieval_orchestrator_complexity.py::test_run_retrieval_parallel_variant_execution_preserves_public_query_order：patch已不存在的 generate_alias_queries。
+- test_retrieval_hybrid_channel_results.py::test_hybrid_search_normalizes_vector_candidates_and_exact_anchor_metrics：patch不存在的 retriever.get_vector_store。
+- test_retrieval_hybrid_channel_results.py::test_bm25_candidates_preserve_active_pipeline_identity：引用已退出 _candidate_metadata_from_doc。
+- test_retrieval_hybrid_channel_results.py::test_invoke_preserves_debug_degradation_contract_with_bm25_fallback：patch不存在的 retriever.get_vector_store。
+不顺手恢复旧别名或改无关测试。
+
+验证命令：指定E:/MimirQ/.venv/Scripts/python.exe -m ruff check app/rag/retrieval app/api/v1/evaluations.py app/parsing/processors/support/process_document_flow.py tests/test_settings_declared_defaults.py tests/test_hybrid_settings_declared_defaults.py 通过；format --check同范围82 files already formatted。全app check仍是基线8个connector I001，format 1216 files already formatted。限定pytest命令完整文件集合见 phase1b-final-pytest.txt 的结果及工具执行记录；没有模型、解析器或容器服务启动。notes三门禁通过135 notes/0 archives。
+
+修改前对21文件逐个git log -3及hash，见 phase1b-file-history.json / phase1b-hashes-before.json；修改后hash见phase1b-hashes-after.json。以8309eec52完整模块AST为基准，仅应用批准删除Settings字面量默认的变换，21/21文件与实际修改AST相等（phase1b-ast-proof.json），证明没有旁带语义编辑。
+
+独立只读审查核对181条、99字段，未发现阻塞问题；限制是代表性运行测试未逐一执行181条路径，eval None仅为故障注入。最终复扫全app剩1341个候选 = 范围外1339 + retrieval保留逻辑OR2；本轮限定直接Settings字面量兜底已收尾，Phase1B全库仍未完成，不扩大到其余候选。
+
+Phase1B所有实际复现命令已单列 phase1b-commands.txt；提交前再次核对21文件hash与验证时一致。只有本代理自有改动；新提交仍为8309eec52，没有触发外部写入停工条件。

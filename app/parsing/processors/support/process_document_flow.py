@@ -515,7 +515,7 @@ def _apply_image_preprocess(
 
                     pdf_quality = score_pdf_quality(
                         file_path,
-                        sample_pages=int(settings.PREPROCESS_SAMPLE_PAGES or 3),
+                        sample_pages=int(settings.PREPROCESS_SAMPLE_PAGES),
                         use_ocr_validation=False,
                     )
                     try:

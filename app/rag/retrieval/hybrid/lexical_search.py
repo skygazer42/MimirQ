@@ -46,13 +46,13 @@ class _LexicalRun:
 
 
 def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
-    fts_config = (settings.LEXICAL_DB_FTS_CONFIG or "simple").strip() or "simple"
-    fetch_mult = max(1, settings.LEXICAL_DB_FETCH_MULTIPLIER or 4)
-    fetch_cap = max(10, settings.LEXICAL_DB_MAX_CANDIDATES or 200)
+    fts_config = (settings.LEXICAL_DB_FTS_CONFIG).strip() or "simple"
+    fetch_mult = max(1, settings.LEXICAL_DB_FETCH_MULTIPLIER)
+    fetch_cap = max(10, settings.LEXICAL_DB_MAX_CANDIDATES)
     limit = max(0, top_k)
     fetch_k = min(fetch_cap, max(limit, limit * fetch_mult))
     want_trgm = settings.LEXICAL_DB_TRGM_ENABLED
-    trgm_min_chars = max(1, settings.LEXICAL_DB_TRGM_MIN_QUERY_CHARS or 3)
+    trgm_min_chars = max(1, settings.LEXICAL_DB_TRGM_MIN_QUERY_CHARS)
     return (fts_config, fetch_k, want_trgm, trgm_min_chars)
 
 
@@ -60,7 +60,7 @@ def _lexical_cjk_token_terms(raw_query: str) -> list[str]:
     text = raw_query.strip()
     if not text or not re.search("[\\u3400-\\u4dbf\\u4e00-\\u9fff]", text):
         return []
-    max_terms = max(1, min(16, settings.LEXICAL_DB_CJK_TOKEN_MAX_TERMS or 6))
+    max_terms = max(1, min(16, settings.LEXICAL_DB_CJK_TOKEN_MAX_TERMS))
     candidates: list[str] = []
     seen: set[str] = set()
     for token in tokenize_lexical_text(text):
@@ -453,7 +453,7 @@ def _search_metadata_exact_anchor_db_with_session(
         return []
     dataset_uuid, dataset_str = lexical_dataset_scope(metadata_filter)
     limit = max(1, top_k)
-    cap = max(1, settings.RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES or 80)
+    cap = max(1, settings.RETRIEVAL_METADATA_EXACT_DB_MAX_CANDIDATES)
     fetch_k = min(cap, max(limit, limit * 4))
     patterns = [f"%{_escape_sql_like_term(term)}%" for term in _metadata_exact_db_like_terms(raw_query)]
     if not patterns:

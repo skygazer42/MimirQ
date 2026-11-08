@@ -113,19 +113,19 @@ QUERY_PLANNING_OPTION_KEYS = frozenset(
 
 def query_contract_defaults() -> QueryContractDefaults:
     return QueryContractDefaults(
-        retrieval_top_k=settings.RETRIEVAL_TOP_K or 5,
-        similarity_threshold=float(settings.SIMILARITY_THRESHOLD or 0.0),
+        retrieval_top_k=settings.RETRIEVAL_TOP_K,
+        similarity_threshold=float(settings.SIMILARITY_THRESHOLD),
         enable_reranker=settings.ENABLE_RERANKER,
         reranker_provider=settings.RERANKER_PROVIDER,
-        reranker_top_n=settings.RERANKER_TOP_N or 20,
+        reranker_top_n=settings.RERANKER_TOP_N,
         retrieval_contract_mode=settings.RETRIEVAL_CONTRACT_MODE,
         hard_fallback_enabled_setting=settings.RETRIEVAL_HARD_FALLBACK_ENABLED,
-        hard_fallback_mode_setting=settings.RETRIEVAL_HARD_FALLBACK_MODE or "keyword",
-        hard_fallback_top_k_setting=settings.RETRIEVAL_HARD_FALLBACK_TOP_K or 30,
+        hard_fallback_mode_setting=settings.RETRIEVAL_HARD_FALLBACK_MODE,
+        hard_fallback_top_k_setting=settings.RETRIEVAL_HARD_FALLBACK_TOP_K,
         visible_evidence_only_setting=settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED,
         evidence_span_strict_setting=settings.RAG_EVIDENCE_REQUIRE_SPANS_ENABLED,
         retrieval_fusion_strategy=settings.RETRIEVAL_FUSION_STRATEGY,
-        retrieval_mmr_lambda=float(settings.RETRIEVAL_MMR_LAMBDA or 0.0),
+        retrieval_mmr_lambda=float(settings.RETRIEVAL_MMR_LAMBDA),
     )
 
 
@@ -158,8 +158,8 @@ def resolve_query_preparation_request(
             settings.RAG_INDUSTRY_RULES_RULESETS
             if overrides.industry_rulesets is None
             else overrides.industry_rulesets,
-            settings.RAG_INDUSTRY_RULES_MAX_ALIASES or 16,
-            settings.RAG_INDUSTRY_RULES_MAX_QUERY_CHARS or 2000,
+            settings.RAG_INDUSTRY_RULES_MAX_ALIASES,
+            settings.RAG_INDUSTRY_RULES_MAX_QUERY_CHARS,
         ),
         temporal_enabled,
     )
@@ -177,9 +177,9 @@ def resolve_kg_expansion_settings(*, enabled: bool | None) -> KGExpansionSetting
     return KGExpansionSettings(
         settings.RAG_KG_QUERY_EXPANSION_ENABLED if enabled is None else enabled,
         settings.KG_ENABLED and settings.KG_CHAT_ENABLED,
-        max(0, settings.RAG_KG_QUERY_EXPANSION_MAX_ENTITIES or 5),
-        max(0, settings.RAG_KG_QUERY_EXPANSION_MAX_QUERIES or 5),
-        settings.RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT or 0.15,
+        max(0, settings.RAG_KG_QUERY_EXPANSION_MAX_ENTITIES),
+        max(0, settings.RAG_KG_QUERY_EXPANSION_MAX_QUERIES),
+        settings.RAG_KG_QUERY_EXPANSION_MIN_ENTITY_WEIGHT,
         tuple(parse_csv(settings.RAG_KG_QUERY_EXPANSION_EXCLUDE_ENTITY_TYPES)),
     )
 
@@ -200,7 +200,7 @@ def resolve_model_query_settings(overrides: ModelQueryOverrides) -> ModelQuerySe
     )
     multi = MultiQuerySettings(
         settings.ENABLE_MULTI_QUERY or forced if overrides.enable_multi_query is None else overrides.enable_multi_query,
-        max(0, min(count, max(0, settings.MULTI_QUERY_COUNT_CAP or 8))),
+        max(0, min(count, max(0, settings.MULTI_QUERY_COUNT_CAP))),
         min(2.0, max(0.0, temperature)),
         max(0, max_chars),
         experiment,

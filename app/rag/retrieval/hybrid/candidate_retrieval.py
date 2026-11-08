@@ -285,7 +285,7 @@ class CandidateCacheSession:
                     payload = candidate_cache.wait_for_inflight_retrieval_candidates(
                         key,
                         future,
-                        timeout_sec=max(1.0, settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 60.0),
+                        timeout_sec=max(1.0, settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC),
                     )
                 finally:
                     self.metadata["local_singleflight_wait_ms"] = round(
