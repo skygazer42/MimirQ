@@ -82,7 +82,7 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
         at = rest.find("@")
         if at >= 0:
             name = _take_name_token(rest[at + 1 :])
-    return kind, (name or None)
+    return kind, name
 
 
 def _iter_defs(text: str) -> list[_Def]:

@@ -108,7 +108,7 @@ def _build_stages(text: str) -> list[_Stage]:
                 start=start,
                 end=end,
                 index=idx,
-                from_image=img or None,
+                from_image=img,
                 from_alias=als or None,
             )
         )

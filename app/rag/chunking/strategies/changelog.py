@@ -125,7 +125,7 @@ def _iter_release_headings(text: str) -> list[_ReleaseHeading]:
         date = None
         dm = _DATE_RE.search(rest)
         if dm:
-            date = (dm.group("date") or "").strip() or None
+            date = dm.group("date")
 
         title = norm
         headings.append(
