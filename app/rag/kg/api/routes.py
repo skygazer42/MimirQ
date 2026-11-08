@@ -2418,10 +2418,12 @@ def delete_kg_for_document(
         ).delete(synchronize_session=False)
         db.flush()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning(
+            "KG relation cleanup failed before document event deletion: document_id=%s",
+            document_id,
+            exc_info=True,
+        )
 
     stats = Indexer(db).delete_event_indexes(
         tenant_id=tenant_id,
@@ -2458,8 +2460,12 @@ def delete_kg_for_document(
         )
         db.commit()
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
+        logger.warning(
+            "KG document deletion completed but audit logging failed: document_id=%s",
+            document_id,
+            exc_info=True,
+        )
     return KGDeleteResponse(document_id=document_id, **(stats or {}))
 
 
