@@ -1730,7 +1730,9 @@ def build_rag_state(
     # serializable graph inputs while excluding this execution-only dependency.
     state = asdict(replace(resolved, db=None))
     state["history"] = resolved.history or []
-    state["intent_router_policy"] = _normalize_intent_router_policy_or_none(resolved.intent_router_policy)
+    from app.rag.policy.intent_router import normalize_intent_router_policy
+
+    state["intent_router_policy"] = normalize_intent_router_policy(resolved.intent_router_policy)
     state["format_instructions"] = (
         build_structured_output_instructions(resolved.structured_preset) if resolved.structured_output else ""
     )
@@ -1756,15 +1758,6 @@ def build_rag_state(
     state.pop("db", None)
     state.pop("ab_user_key", None)
     return state
-
-
-def _normalize_intent_router_policy_or_none(policy: dict[str, Any] | None) -> dict[str, Any] | None:
-    try:
-        from app.rag.policy.intent_router import normalize_intent_router_policy
-
-        return normalize_intent_router_policy(policy)
-    except Exception:
-        return None
 
 
 def _resolve_prompt_template_fields(

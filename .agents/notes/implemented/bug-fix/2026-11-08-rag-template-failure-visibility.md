@@ -26,6 +26,8 @@ Status: implemented
 
 迭代检索直接读取声明为 bool/int 的配置，次数仍按原规则至少为一。备用状态直接读取实际 `build_rag_state` 产生且经 profile 处理的整数 `top_k`，缺字段或非法值不能伪装成零预算；20／50／80 候选下限与初次结果选择规则保持。相关性分数属于原始检索 metrics，标准数值转换失败仍按原规则返回零，只捕获 TypeError、ValueError 和 OverflowError。
 
+`build_rag_state` 在原来的策略归一化阶段直接调用 `intent_router.normalize_intent_router_policy`，删除只有一个调用点的吞错转发函数。实际 normalizer 继续处理缺少策略、错误 schema、无有效规则等输入并返回 `None`；模块导入和意外归一化错误不再被外层伪装成没有策略。
+
 本决定接续[聊天运行时类型契约](../simplification/2026-11-03-chat-runtime-typed-contracts.md)和[模型退出边界](../architecture/2026-11-05-retire-in-process-models.md)。前者的实际模型字段和 analytics 归属、后者的最终模型选择校验继续有效；这里把其他真实模板解析错误也交还调用方。
 
 ## Alternatives considered
