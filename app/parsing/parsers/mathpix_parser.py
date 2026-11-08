@@ -48,8 +48,8 @@ class MathpixParser:
                 f"MathpixParser supports only {sorted(self.SUPPORTED_EXTENSIONS)}, got: {file_path.suffix.lower()}"
             )
 
-        app_id = str(getattr(settings, "MATHPIX_APP_ID", "") or "").strip()
-        app_key = str(getattr(settings, "MATHPIX_APP_KEY", "") or "").strip()
+        app_id = settings.MATHPIX_APP_ID.strip()
+        app_key = settings.MATHPIX_APP_KEY.strip()
         if not app_id or not app_key:
             raise RuntimeError("Mathpix is not configured")
 

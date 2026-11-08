@@ -54,9 +54,9 @@ class OlmocrParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "OLMOCR_ENABLED", False))
-        self._api_url = (getattr(settings, "OLMOCR_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "OLMOCR_TIMEOUT_SEC", 1800) or 1800)
+        self._enabled = settings.OLMOCR_ENABLED
+        self._api_url = settings.OLMOCR_API_URL.strip()
+        self._timeout_sec = float(settings.OLMOCR_TIMEOUT_SEC or 1800)
 
         if not self._enabled:
             raise RuntimeError("olmOCR is disabled (OLMOCR_ENABLED=false).")
