@@ -33,17 +33,17 @@ def _sanitize_run_id(value: str) -> str:
 
 class PandocParser:
     def __init__(self, *, force_enabled: bool = False, force_libreoffice: bool = False) -> None:
-        self._enabled = bool(force_enabled) or bool(getattr(settings, "PANDOC_ENABLED", False))
-        self._cli = (getattr(settings, "PANDOC_CLI", "") or "pandoc").strip() or "pandoc"
-        self._timeout_sec = float(getattr(settings, "PANDOC_TIMEOUT_SEC", 180) or 180)
-        self._to_format = (getattr(settings, "PANDOC_TO_FORMAT", "") or "gfm").strip() or "gfm"
-        self._wrap = (getattr(settings, "PANDOC_WRAP", "") or "none").strip() or "none"
-        self._extract_media = bool(getattr(settings, "PANDOC_EXTRACT_MEDIA", True))
-        self._html_use_readability = bool(getattr(settings, "PANDOC_HTML_USE_READABILITY", True))
+        self._enabled = force_enabled or settings.PANDOC_ENABLED
+        self._cli = (settings.PANDOC_CLI or "pandoc").strip() or "pandoc"
+        self._timeout_sec = float(settings.PANDOC_TIMEOUT_SEC or 180)
+        self._to_format = (settings.PANDOC_TO_FORMAT or "gfm").strip() or "gfm"
+        self._wrap = (settings.PANDOC_WRAP or "none").strip() or "none"
+        self._extract_media = settings.PANDOC_EXTRACT_MEDIA
+        self._html_use_readability = settings.PANDOC_HTML_USE_READABILITY
 
-        self._lo_enabled = bool(force_libreoffice) or bool(getattr(settings, "LIBREOFFICE_ENABLED", False))
-        self._lo_cli = (getattr(settings, "LIBREOFFICE_CLI", "") or "soffice").strip() or "soffice"
-        self._lo_timeout_sec = float(getattr(settings, "LIBREOFFICE_TIMEOUT_SEC", 300) or 300)
+        self._lo_enabled = force_libreoffice or settings.LIBREOFFICE_ENABLED
+        self._lo_cli = (settings.LIBREOFFICE_CLI or "soffice").strip() or "soffice"
+        self._lo_timeout_sec = float(settings.LIBREOFFICE_TIMEOUT_SEC or 300)
 
         if not self._enabled:
             raise RuntimeError("Pandoc parser is disabled (PANDOC_ENABLED=false).")
