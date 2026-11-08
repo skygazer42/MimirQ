@@ -52,7 +52,7 @@ from app.tasks.locks import (
 logger = get_logger("tasks.jobs")
 
 _TASK_SEMAPHORE_LEASE_TTL_SEC = task_semaphore_lease_ttl_sec()
-_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC = max(0.0, float(getattr(settings, "TASK_SEMAPHORE_ACQUIRE_WAIT_SEC", 5.0) or 0.0))
+_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC = max(0.0, settings.TASK_SEMAPHORE_ACQUIRE_WAIT_SEC)
 _TASK_LOCK_RETRY_DEFER_SEC = 30
 _TASK_COORDINATION_UNAVAILABLE = "task_coordination_unavailable"
 _TASK_CONCURRENCY_BUSY = "task_concurrency_busy"
@@ -159,7 +159,7 @@ async def _record_job_outcome(ctx, payload: dict[str, Any]) -> None:  # noqa: AN
 
         await observe_task_job_outcome(
             redis=redis,
-            queue_name=str(getattr(settings, "TASK_QUEUE_NAME", "") or "mimirq"),
+            queue_name=settings.TASK_QUEUE_NAME or "mimirq",
             outcome=payload,
         )
     except Exception:  # noqa: BLE001
@@ -202,15 +202,15 @@ def _current_job_try(ctx) -> int:  # noqa: ANN001
 
 
 def _document_job_max_tries() -> int:
-    return max(1, int(getattr(settings, "TASK_DOCUMENT_JOB_MAX_TRIES", 80) or 80))
+    return max(1, settings.TASK_DOCUMENT_JOB_MAX_TRIES or 80)
 
 
 def _task_job_max_tries() -> int:
-    return max(1, int(getattr(settings, "TASK_JOB_MAX_TRIES", 80) or 80))
+    return max(1, settings.TASK_JOB_MAX_TRIES or 80)
 
 
 def _kg_job_max_tries() -> int:
-    return max(1, int(getattr(settings, "TASK_KG_JOB_MAX_TRIES", 80) or 80))
+    return max(1, settings.TASK_KG_JOB_MAX_TRIES or 80)
 
 
 def _raise_task_retry(*, defer_sec: int, cause: Exception | None = None) -> None:
@@ -377,14 +377,14 @@ async def _acquire_document_job_coordination(
 ) -> tuple[Any, Any, Any, str, str] | dict[str, Any]:
     lock_val = make_lock_value(requested_by)
     lock_ttl = _task_job_lock_ttl_sec()
-    retry_defer_sec = int(getattr(settings, "TASK_DOCUMENT_RETRY_DEFER_SEC", 30) or 30)
+    retry_defer_sec = settings.TASK_DOCUMENT_RETRY_DEFER_SEC or 30
     try:
         redis = _task_queue_redis_or_retry(ctx, retry_defer_sec=retry_defer_sec)
         sem_key = await tenant_acquire(
             redis,
             tenant_id=tenant_id,
             kind="doc",
-            limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+            limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
             ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
             retry_defer_sec=retry_defer_sec,
             wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -394,7 +394,7 @@ async def _acquire_document_job_coordination(
             tenant_id=tenant_id,
             dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
             kind="doc",
-            limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_DOC", 0) or 0),
+            limit=settings.TASK_DATASET_MAX_CONCURRENCY_DOC,
             ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
             retry_defer_sec=retry_defer_sec,
             wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -479,9 +479,7 @@ async def _resolve_object_storage_document_path(
     pipeline_hash: str | None,
     raw_path: str,
 ) -> tuple[Path | None, Path | None, dict[str, Any] | None]:
-    if not bool(getattr(settings, "MINIO_ENABLED", False)) and not bool(
-        getattr(settings, "OBJECT_STORAGE_ENABLED", False)
-    ):
+    if not settings.MINIO_ENABLED and not settings.OBJECT_STORAGE_ENABLED:
         return (
             None,
             None,
@@ -548,7 +546,7 @@ async def _resolve_object_storage_document_path(
             store.download_object_to_path,
             object_name=ref.object_name,
             destination=temp_path,
-            max_bytes=int(getattr(settings, "MAX_FILE_SIZE", 0) or 0),
+            max_bytes=settings.MAX_FILE_SIZE,
         )
     except Exception as exc:  # noqa: BLE001
         with contextlib.suppress(Exception):
@@ -702,7 +700,7 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
                 redis,
                 tenant_id=tenant_id,
                 kind="evidence_repair",
-                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_EVIDENCE_REPAIR", 0) or 0),
+                limit=settings.TASK_TENANT_MAX_CONCURRENCY_EVIDENCE_REPAIR,
                 ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
                 wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -857,7 +855,7 @@ async def connector_run_job(ctx, tenant_id: str, run_id: str, requested_by: str)
                 redis,
                 tenant_id=tenant_id,
                 kind="connector",
-                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_CONNECTOR", 0) or 0),
+                limit=settings.TASK_TENANT_MAX_CONCURRENCY_CONNECTOR,
                 ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
                 wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -1135,7 +1133,7 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                 redis,
                 tenant_id=tenant_id,
                 kind="scan",
-                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+                limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
                 ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
                 wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -1292,7 +1290,7 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 redis,
                 tenant_id=tenant_id,
                 kind="scan",
-                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+                limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
                 ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
                 wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -1455,7 +1453,7 @@ async def _acquire_kg_tenant_coordination(
             redis,
             tenant_id=tenant_id,
             kind="kg",
-            limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_KG", 0) or 0),
+            limit=settings.TASK_TENANT_MAX_CONCURRENCY_KG,
             ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
             retry_defer_sec=retry_defer_sec,
             wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -1592,7 +1590,7 @@ async def _acquire_kg_document_coordination(
             tenant_id=tenant_id,
             dataset_id=str(doc.dataset_id) if doc.dataset_id else "",
             kind="kg",
-            limit=int(getattr(settings, "TASK_DATASET_MAX_CONCURRENCY_KG", 0) or 0),
+            limit=settings.TASK_DATASET_MAX_CONCURRENCY_KG,
             ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
             retry_defer_sec=retry_defer_sec,
             wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -1881,7 +1879,7 @@ async def extract_kg_job(
     dataset_sem_key = None
     lock_key = None
     lock_val = None
-    kg_retry_defer_sec = max(2, int(getattr(settings, "TASK_KG_RETRY_DEFER_SEC", 30) or 30))
+    kg_retry_defer_sec = max(2, settings.TASK_KG_RETRY_DEFER_SEC or 30)
     try:
         options_state = await _normalize_kg_job_options_or_result(
             ctx,
@@ -2035,7 +2033,7 @@ async def rebuild_indexes_job(
                 redis,
                 tenant_id=tenant_id,
                 kind="rebuild",
-                limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+                limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
                 ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
                 retry_defer_sec=retry_defer_sec,
                 wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
@@ -2144,7 +2142,7 @@ async def _acquire_reconcile_job_coordination(
             redis,
             tenant_id=tenant_id,
             kind="index_audit_reconcile",
-            limit=int(getattr(settings, "TASK_TENANT_MAX_CONCURRENCY_DOC", 0) or 0),
+            limit=settings.TASK_TENANT_MAX_CONCURRENCY_DOC,
             ttl_sec=_TASK_SEMAPHORE_LEASE_TTL_SEC,
             retry_defer_sec=retry_defer_sec,
             wait_timeout_sec=_TASK_SEMAPHORE_ACQUIRE_WAIT_SEC,
