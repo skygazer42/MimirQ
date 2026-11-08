@@ -25,6 +25,7 @@ from app.api.schemas.db_catalog import (
 from app.connectors.db.profile_privacy import sanitize_db_profile_snapshot
 from app.core.database import get_db
 from app.models.db_catalog import DbCatalogColumn, DbCatalogTable, DbProfileSnapshot
+from app.rag.core.logging import get_logger
 from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
 from app.services.db_catalog_profile_cache import (
@@ -46,6 +47,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 _DB_PROFILE_VERSION = 1
 _DB_PROFILE_CACHE_TTL_SEC = 30.0
+logger = get_logger(__name__)
 
 
 def _audit_fls_redaction(
@@ -74,12 +76,14 @@ def _audit_fls_redaction(
                 "column_count": len(cols),
             },
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - audit logging is a documented fail-open boundary
+        logger.warning("DB catalog redaction audit write failed", exc_info=True)
         return
     try:
         db.commit()
-    except Exception:
-        return
+    except Exception:  # noqa: BLE001 - audit logging is a documented fail-open boundary
+        db.rollback()
+        logger.warning("DB catalog redaction audit commit failed", exc_info=True)
 
 
 @router.get(

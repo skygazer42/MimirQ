@@ -45,6 +45,9 @@
 - Phase 1B complete: commit `33c3879eb`。暂存 blob 通过 UTF-8/Python 3.14 编译，结构化 warning 五字段、限定差异/空白和 131 篇 Note 门禁通过；原 `_split_prefixed_field` 工作树改动未进入提交。按裁决未运行 Python 测试或数据库/QA 运行时。
 - Phase 1C ruling: ingestion run 创建和 attachment 是文档主入库后的可选追踪；失败不得伪装为主入库失败，但必须先 rollback 恢复 Session，并由 `_attach_document_to_ingestion_run` 单一 owner 记录降级。删除三个调用方重复 suppress。代价是 run manifest 可缺记录，运维需按 warning 对账。
 - Phase 1C complete: commit `bea542575`。暂存 blob 通过 UTF-8/Python 3.14 编译，逐段核对两处 create rollback/warning、attachment 两段 rollback/warning 与三个调用迁移；限定差异/空白及 131 篇 Note 门禁通过。一次零上下文暂存预览发现错位并在提交前清空重建，最终索引源码已编译；其他 direct-value 工作树 hunks 未提交。未运行 Python 测试或入库运行时。
+- Phase 1D ruling: batch item 由独立 Session 形成结果，主请求 Session 的 ingestion run manifest 是旁路。run 创建、metadata、attachment、close_intake 失败都必须 rollback + warning，但不得改写已形成的批量成功/失败列表。代价是 manifest 可能不完整，需按日志对账。
+- External HEAD: Phase 1D 施工中发现用户提交 `4c1cb4531 Update files`，仅改 `document_batch_ingestion.py` 两处 `file_sha256=(file_sha256)`。该提交保留为当前基线；与 run-tracking 事务/日志 hunks 不重叠，不回退、不改写归属。
+- Phase 1D complete: commit `2a67d0ba6`（基于外部 `4c1cb4531`）。暂存 blob 通过 UTF-8/Python 3.14 编译；静态核对 run create、metadata、attachment、close_intake 四处 rollback/warning，限定差异/空白及 131 篇 Note 门禁通过。未运行 Python 测试或 batch/数据库运行时。
 
 ## 恢复后的基线与目标文件冲突
 
@@ -60,3 +63,36 @@
 - 已重新用 Python subprocess 传递精确 rg 正则重建 baseline-counts.json；替代先前 PowerShell 参数传递的计数。app 汇总：{"except": 2227, "suppress": 255, "or_collection": 3058, "getattr_3": 900, "isinstance": 3970, "settings_or": 1518}。三参 getattr 仍为单行词法近似。
 
 待总指挥协调 document_versions 文件归属后继续；尚无本轮回归测试红绿证据或修复提交。
+
+## 第一提交：table API 审计边界（已实现，待提交）
+
+总指挥放宽规则：冲突只跳过对应文件，其他继续。document_versions.py、services/document_*（含 document_qa_service.py）、connector_execution/ 由并发会话处理（d1f607a39/33c3879eb），本计划不重复。已完整阅读 document-mutation-contracts note，本批同样保留文档化审计旁路。
+
+### 定性与修改
+
+- app/services/audit_log_service.py:4 明确声明 Best-effort, fail-open: logging must never break product flows；本批三个 helper 仅调用该服务并提交审计记录，不提交请求主业务数据。
+- app/api/v1/db_catalog.py 原 :80，_audit_fls_redaction：文档化审计旁路，保留 fail-open，commit 失败 rollback、warning+exc_info；write 失败同样 warning+exc_info。
+- app/api/v1/dataset_tables.py 原 :185，_audit_table_query：同上。
+- app/api/v1/dataset_tables.py 原 :221，_audit_fls_redaction：另有本地 Best-effort, fail-open 注释；同上。
+- 全部宽捕获加边界原因 noqa。没有新增捕获、默认值、重试或静默降级；rollback 自身失败向上传播。没有强行把这三个审计点改为主业务 P0。
+
+### 红绿证据与命令
+
+- 新增 tests/test_table_audit_commit_failures.py::test_audit_commit_failure_rolls_back_and_warns，参数 catalog_redaction/table_query/table_redaction。调用真实 API helper 与真实 audit_log_event，仅 Session 在 commit 注入 RuntimeError。
+- 修复前：3 failed，均 assert db.rolled_back 为 False（table-audit-red.txt）。
+- 修复后：上述三例及原先三份现有单测共 14 passed，15.03s（table-audit-green.txt）。
+- 局部 ruff check 通过，ruff format --check 通过（3 files already formatted）。
+- 命令均使用授权的 E:/MimirQ/.venv/Scripts/python.exe，cwd 本 worktree，pytest 使用 -p no:cacheprovider 避免既有 cache 权限警告。
+
+### 并发与 hunk 归属
+
+- 修改前 db_catalog hash 5d1d6b967bf9ba4eab4f010988ec355222254b71，修改后 ff7aae89b13143fe5be3cf8fed438c1ab4f12062。
+- 修改前 dataset_tables hash 12733e2ad7303fc6c6b52e57d0222e880cf23d72，修改后 9639d0ee92802f61ab78b7ba8e5cf72c080daaa2。
+- 修改前分别查看每文件 git log -3；没有最近两小时同类修复占用。原有 dataset_tables WIP 在 4c1cb4531 Update files 中由并发方提交，本代理未代提交。该提交不包含本轮审计 hunk；提交前源码 diff 仅本轮 17 insertions / 11 deletions。
+- 原始文件快照仅用于核对，不纳入提交。未操作他人暂存内容。
+
+### 剩余范围
+
+datasets.py 指定 7 处、dataset_precheck.py 2 处、ingestion_runs.py 4 处、rag.py usage_count、KG routes.py/extraction.py 尚待下一组逐处回归。已初读 ingestion_runs 四处均为审计（export/compare 有本地 best-effort 注释）；extraction.py :184 同样为审计，datasets :1957 为 purge 审计。尚未声称完成 Phase 1A 全部主写入调查或完成路由 5xx 回归；本批经契约核实是合法旁路清理。
+
+补充验证：catalog 鉴权 + 本轮回归 11 passed，9.78s（catalog-green.txt）。提交前 HEAD 2a67d0ba6；4c1cb4531 之后仅 document_batch_ingestion 并发提交，不碰本批。提交标题按真实审计降级语义使用 expose audit commit failures，而非声称所有 commit 均重抛。

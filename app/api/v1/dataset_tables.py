@@ -179,12 +179,14 @@ def _audit_table_query(
                 "sql_redacted": redacted_sql,
             },
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - audit logging is a documented fail-open boundary
+        logger.warning("Table query audit write failed", exc_info=True)
         return
     try:
         db.commit()
-    except Exception:
-        return
+    except Exception:  # noqa: BLE001 - audit logging is a documented fail-open boundary
+        db.rollback()
+        logger.warning("Table query audit commit failed", exc_info=True)
 
 
 def _audit_fls_redaction(
@@ -214,14 +216,14 @@ def _audit_fls_redaction(
             resource_id=str(resource_id or "")[:255] if resource_id else None,
             details=payload,
         )
-    except Exception as exc:
-        logger.debug("Ignoring FLS redaction audit write failure: %s", exc)
+    except Exception:  # noqa: BLE001 - FLS audit must not block redaction enforcement
+        logger.warning("FLS redaction audit write failed", exc_info=True)
         return
     try:
         db.commit()
-    except Exception as exc:
-        logger.debug("Ignoring FLS redaction audit commit failure: %s", exc)
-        return
+    except Exception:  # noqa: BLE001 - FLS audit must not block redaction enforcement
+        db.rollback()
+        logger.warning("FLS redaction audit commit failed", exc_info=True)
 
 
 def _table_member_context(
