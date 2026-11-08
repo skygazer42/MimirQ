@@ -43,7 +43,7 @@ class EmbeddingHTTPConcurrency:
 
     @staticmethod
     def _capacity() -> int:
-        return max(1, settings.EMBEDDING_API_MAX_CONCURRENCY or 3)
+        return max(1, settings.EMBEDDING_API_MAX_CONCURRENCY)
 
     def _get_sync_semaphore(self) -> threading.BoundedSemaphore:
         cap = self._capacity()
@@ -97,8 +97,8 @@ def _parse_retry_after_seconds(value: str | None) -> float | None:
 
 
 def _sleep_seconds_for_attempt(*, attempt: int, retry_after_sec: float | None) -> float:
-    backoff = max(0.0, settings.EMBEDDING_API_RETRY_BACKOFF_SEC or 0.5)
-    jitter = max(0.0, settings.EMBEDDING_API_RETRY_JITTER_SEC or 0.0)
+    backoff = max(0.0, settings.EMBEDDING_API_RETRY_BACKOFF_SEC)
+    jitter = max(0.0, settings.EMBEDDING_API_RETRY_JITTER_SEC)
     delay = backoff * (2**attempt)
     if retry_after_sec is not None:
         delay = max(delay, retry_after_sec)
@@ -106,7 +106,7 @@ def _sleep_seconds_for_attempt(*, attempt: int, retry_after_sec: float | None) -
 
 
 def _max_retries() -> int:
-    return max(0, settings.EMBEDDING_API_MAX_RETRIES or 0)
+    return max(0, settings.EMBEDDING_API_MAX_RETRIES)
 
 
 def _next_retry_delay(*, attempt: int, max_retries: int) -> float | None:

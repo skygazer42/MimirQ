@@ -232,7 +232,7 @@ def compress_context_docs_with_llm(
     if not query_text:
         return list(docs)
 
-    ratio = settings.RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO or 0.5
+    ratio = settings.RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO
     ratio = min(max(ratio, 0.1), 1.0)
 
     out: list[Document] = []

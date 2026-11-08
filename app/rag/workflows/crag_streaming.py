@@ -49,8 +49,8 @@ async def run_crag_streaming(
     lang: str | None = None,
     region: str | None = None,
 ) -> dict[str, Any]:
-    min_citations = max(1, settings.RAG_CRAG_STREAMING_MIN_CITATIONS or 1)
-    min_top_score = settings.RAG_CRAG_STREAMING_MIN_TOP_SCORE or 0.35
+    min_citations = max(1, settings.RAG_CRAG_STREAMING_MIN_CITATIONS)
+    min_top_score = settings.RAG_CRAG_STREAMING_MIN_TOP_SCORE
     evaluator = evaluate_retrieval_verdict(
         retrieval_result=retrieval_result,
         min_citations=min_citations,

@@ -172,12 +172,12 @@ class RAGState(TypedDict, total=False):
 
 
 _RAG_TASK_RETRY_POLICY = RetryPolicy(
-    max_attempts=max(1, int(settings.RAG_GRAPH_MAX_RETRIES or 0) + 1),
+    max_attempts=max(1, int(settings.RAG_GRAPH_MAX_RETRIES) + 1),
     retry_on=lambda exc: not isinstance(exc, (ValueError, TypeError, KeyError)),
 )
 
 
-_RAG_RETRIEVE_CACHE_TTL_SEC = max(0, int(settings.RAG_GRAPH_CACHE_TTL_SEC or 0))
+_RAG_RETRIEVE_CACHE_TTL_SEC = max(0, int(settings.RAG_GRAPH_CACHE_TTL_SEC))
 
 
 def _retrieve_cache_key(state: dict[str, Any]) -> str:
@@ -286,10 +286,10 @@ def _build_context(docs: list[Document], *, query: str | None = None) -> str:
     usable_docs = _prepare_context_docs(docs, query=query)
 
     parts = []
-    max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
-    max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
-    max_per_chunk_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK or 0))
-    max_total_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS or 0))
+    max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK))
+    max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS))
+    max_per_chunk_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK))
+    max_total_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS))
     total_chars = 0
     total_tokens = 0
     for idx, doc in enumerate(usable_docs, 1):
@@ -646,7 +646,7 @@ def _abstain_answer_payload(state: RAGState, *, abstain_message: str) -> str:
     if not state.get("structured_output"):
         return abstain_message
     citations = state.get("citations") or []
-    top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K or 5)
+    top_k = int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K)
     payload = build_structured_abstain_payload(
         preset=state.get("structured_preset"),
         answer=abstain_message,
@@ -706,7 +706,7 @@ def _prepare_generation_answer(
 
 
 def _normalized_claim_verifier_mode() -> str:
-    mode = str(settings.RAG_CLAIM_VERIFIER_MODE or "token_overlap").strip().lower()
+    mode = str(settings.RAG_CLAIM_VERIFIER_MODE).strip().lower()
     return mode if mode in {"token_overlap", "semantic_heuristic", "strict"} else "token_overlap"
 
 
@@ -721,7 +721,7 @@ def _generation_claim_context(*, state: RAGState, ctx: str, pii_on: bool) -> dic
         "claim_check_configured": claim_check_configured,
         "claim_check_mode": claim_check_mode,
         "claim_check_applied": claim_check_mode != "none",
-        "claim_check_max_claims": max(1, int(settings.RAG_CLAIM_CHECK_MAX_CLAIMS or 24)),
+        "claim_check_max_claims": max(1, int(settings.RAG_CLAIM_CHECK_MAX_CLAIMS)),
         "claim_verifier_mode": _normalized_claim_verifier_mode(),
         "claim_verifier_enable_contradiction_check": bool(settings.RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK),
         "evidence_text": redact_text(ctx) if pii_on else ctx,
@@ -733,8 +733,8 @@ def _claim_verifier_kwargs(claim_ctx: dict[str, Any]) -> dict[str, Any]:
         "verifier_mode": claim_ctx["claim_verifier_mode"],
         "verifier_enable_contradiction_check": claim_ctx["claim_verifier_enable_contradiction_check"],
         "use_nli_fallback": bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-        "nli_provider": str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-        "nli_model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+        "nli_provider": str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+        "nli_model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
         "nli_timeout_sec": float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
     }
 
@@ -854,7 +854,7 @@ def _render_generation_answer_extras(
 ) -> tuple[str, dict[str, Any]]:
     sentence_meta = {
         "enabled": bool(settings.SENTENCE_CITATIONS_INLINE_ENABLED),
-        "style": str(settings.SENTENCE_CITATIONS_INLINE_STYLE or "appendix").strip().lower() or "appendix",
+        "style": str(settings.SENTENCE_CITATIONS_INLINE_STYLE).strip().lower() or "appendix",
         "used": False,
         "count": 0,
         "fallback_reason": None,
@@ -903,10 +903,10 @@ def _render_sentence_citation_variants(
 
 def _sentence_citation_render_limits() -> dict[str, int]:
     return {
-        "max_items": max(0, int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS or 8)),
+        "max_items": max(0, int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS)),
         "max_evidence_per_claim": max(
             1,
-            int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM or 2),
+            int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM),
         ),
     }
 
@@ -1007,12 +1007,12 @@ def _compute_generation_faithfulness(
     return compute_faithfulness_score(
         answer=str(answer or ""),
         evidence_text=_generation_evidence_text(docs),
-        max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS or 24)),
+        max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
         verifier_mode=verifier_mode,
         verifier_enable_contradiction_check=bool(verifier_enable_contradiction_check),
         use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-        nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-        nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+        nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+        nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
         nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
     )
 
@@ -1052,14 +1052,12 @@ def _apply_common_generation_metrics(
     metrics["generation_elapsed_sec"] = round(float(generation_elapsed), 3)
     metrics["context_evidence_enabled"] = bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
     metrics["context_evidence_max_sentences_per_chunk"] = (
-        int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)
+        int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK)
         if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
         else None
     )
     metrics["context_evidence_min_sentence_chars"] = (
-        int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0)
-        if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
-        else None
+        int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS) if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED) else None
     )
     metrics["faithfulness_score_enabled"] = bool(settings.FAITHFULNESS_SCORE_ENABLED)
     metrics["faithfulness_score_method"] = str(faithfulness_meta.get("method") or "claim_support_ratio")
@@ -1122,17 +1120,17 @@ def _populate_standard_generation_metrics(
     metrics.update(
         compute_context_cliff_metrics(
             context_tokens=int(metrics["context_tokens"] or 0),
-            threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS or 2500),
+            threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS),
         )
     )
     metrics["history_chars"] = len(hist_text or "")
     metrics["history_tokens"] = num_tokens_from_string(hist_text or "")
     metrics["question_chars"] = len(state.get("question") or "")
     metrics["question_tokens"] = num_tokens_from_string(state.get("question") or "")
-    metrics["context_limit_total_chars"] = int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0)
-    metrics["context_limit_total_tokens"] = int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS or 0)
-    metrics["context_limit_per_chunk_chars"] = int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0)
-    metrics["context_limit_per_chunk_tokens"] = int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK or 0)
+    metrics["context_limit_total_chars"] = int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS)
+    metrics["context_limit_total_tokens"] = int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS)
+    metrics["context_limit_per_chunk_chars"] = int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK)
+    metrics["context_limit_per_chunk_tokens"] = int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK)
     metrics["claim_check_enabled"] = bool(claim_ctx["claim_check_applied"])
     metrics["claim_check_mode"] = claim_ctx["claim_check_mode"]
     metrics["claim_verifier_mode"] = claim_ctx["claim_verifier_mode"]
@@ -1145,8 +1143,8 @@ def _populate_standard_generation_metrics(
     )
     metrics["claim_nli_verifier"] = {
         "enabled": bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-        "provider": str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-        "model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+        "provider": str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+        "model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
     }
     metrics["claim_evidence"] = claim_evidence
     metrics["sentence_citations_count"] = int(len(claim_evidence or []))
@@ -1348,18 +1346,18 @@ def _run_corrective_loop(
     - metrics include a compact corrective summary for debugging.
     """
     corrective_enabled = bool(settings.RAG_CORRECTIVE_ENABLED)
-    max_attempts_raw = int(settings.RAG_CORRECTIVE_MAX_ATTEMPTS or 2)
+    max_attempts_raw = int(settings.RAG_CORRECTIVE_MAX_ATTEMPTS)
     max_attempts = max(1, min(max_attempts_raw, 3))
-    min_faithfulness = float(settings.RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE or 0.75)
+    min_faithfulness = float(settings.RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE)
     min_faithfulness = min(1.0, max(0.0, min_faithfulness))
 
     # Second-pass retrieval overrides (best-effort).
-    second_profile = str(settings.RAG_CORRECTIVE_SECOND_PASS_PROFILE or "recall50").strip().lower()
+    second_profile = str(settings.RAG_CORRECTIVE_SECOND_PASS_PROFILE).strip().lower()
     if second_profile not in {"recall20", "recall50", "coverage80", "hierarchy_recall20", "hierarchy_recall20_expand"}:
         second_profile = "recall50"
     second_enable_mq = bool(settings.RAG_CORRECTIVE_SECOND_PASS_ENABLE_MULTI_QUERY)
-    second_mq_count = int(settings.RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT or 5)
-    second_mq_count = max(0, min(second_mq_count, int(settings.MULTI_QUERY_COUNT_CAP or 8)))
+    second_mq_count = int(settings.RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT)
+    second_mq_count = max(0, min(second_mq_count, int(settings.MULTI_QUERY_COUNT_CAP)))
 
     base_state = dict(state or {})
     metrics0 = dict(base_state.get("metrics") or {})
@@ -1538,7 +1536,7 @@ def run_rag_workflow_functional(
     """
     state = dict(state)
     state.pop("db", None)
-    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
+    recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT))
     config: dict[str, Any] = {
         "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
         "recursion_limit": recursion_limit,
@@ -1968,7 +1966,7 @@ def run_rag_graph(
         logger.debug("RAG workflow executed using Functional API")
     else:
         app = build_rag_graph()
-        recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
+        recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT))
         config = {
             "configurable": {"thread_id": thread_id or f"rag-{uuid4()}"},
             "recursion_limit": recursion_limit,

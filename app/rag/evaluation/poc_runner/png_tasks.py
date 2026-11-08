@@ -52,24 +52,24 @@ def _get_client() -> "Redis":
 
 
 def _prefix() -> str:
-    return str(settings.DATASET_ANALYSIS_PNG_REDIS_PREFIX or "dataset-analysis-png")
+    return str(settings.DATASET_ANALYSIS_PNG_REDIS_PREFIX)
 
 
 def _active_ttl_sec() -> int:
-    stale_after = max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC or 60))
+    stale_after = max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC))
     return max(300, stale_after * 4)
 
 
 def _terminal_ttl_sec() -> int:
-    return max(1, int(settings.DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC or 600))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC))
 
 
 def _stale_after_sec() -> int:
-    return max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC or 60))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_STALE_AFTER_SEC))
 
 
 def _result_max_bytes() -> int:
-    return max(1, int(settings.DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES or 5_000_000))
+    return max(1, int(settings.DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES))
 
 
 def get_png_export_task_heartbeat_interval_sec() -> float:

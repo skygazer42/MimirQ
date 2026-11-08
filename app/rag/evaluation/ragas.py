@@ -1019,7 +1019,7 @@ def _load_ragas_evaluation_runtime() -> tuple[Any, Any, Any, Any, Any]:
 
 
 def _resolve_response_relevancy_strictness() -> int:
-    configured = int(settings.RAGAS_RESPONSE_RELEVANCY_STRICTNESS or 0)
+    configured = int(settings.RAGAS_RESPONSE_RELEVANCY_STRICTNESS)
     if configured > 0:
         return max(1, min(configured, 10))
 
@@ -1037,10 +1037,10 @@ def _build_ragas_run_config():
     from ragas.run_config import RunConfig
 
     return RunConfig(
-        timeout=max(5, int(settings.RAGAS_RUN_TIMEOUT_SEC or 60)),
-        max_retries=max(0, int(settings.RAGAS_RUN_MAX_RETRIES or 0)),
-        max_wait=max(1, int(settings.RAGAS_RUN_MAX_WAIT_SEC or 2)),
-        max_workers=max(1, int(settings.RAGAS_RUN_MAX_WORKERS or 4)),
+        timeout=max(5, int(settings.RAGAS_RUN_TIMEOUT_SEC)),
+        max_retries=max(0, int(settings.RAGAS_RUN_MAX_RETRIES)),
+        max_wait=max(1, int(settings.RAGAS_RUN_MAX_WAIT_SEC)),
+        max_workers=max(1, int(settings.RAGAS_RUN_MAX_WORKERS)),
     )
 
 
@@ -1213,8 +1213,8 @@ def _build_llm_and_embeddings():
         embeddings = create_langchain_embeddings_from_config(
             provider="dashscope",
             model=settings.EMBEDDING_MODEL,
-            api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or "",
-            base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "",
+            api_key=settings.EMBEDDING_API_KEY or settings.LLM_API_KEY,
+            base_url=settings.EMBEDDING_API_BASE or settings.LLM_API_BASE,
             dimension=None,
         )
     else:
@@ -1445,7 +1445,7 @@ def _run_conversation_ragas(
 
     wall_timeout_sec = max(
         5.0,
-        float(settings.RAGAS_CONVERSATION_WALL_TIMEOUT_SEC or 90),
+        float(settings.RAGAS_CONVERSATION_WALL_TIMEOUT_SEC),
     )
     result, eval_prompt_tokens, eval_completion_tokens, eval_total_cost = _run_with_wall_timeout(
         lambda: _evaluate_ragas_dataset(
@@ -1608,7 +1608,7 @@ def run_conversation_ragas_evaluation(
         except TimeoutError as exc:
             wall_timeout_sec = max(
                 5.0,
-                float(settings.RAGAS_CONVERSATION_WALL_TIMEOUT_SEC or 90),
+                float(settings.RAGAS_CONVERSATION_WALL_TIMEOUT_SEC),
             )
             logger.warning(
                 "Conversation RAGAS evaluation timed out after %.1fs; using deterministic fallback run_id=%s",
@@ -1907,7 +1907,7 @@ def _resolve_table_tag_context(
 
         doc_ids_for_tag = list(scope_doc_ids or [])
         if not doc_ids_for_tag and scope_dataset_id is not None:
-            max_doc_ids = int(settings.CHAT_TAG_MAX_DOC_IDS or 1000)
+            max_doc_ids = int(settings.CHAT_TAG_MAX_DOC_IDS)
             candidate_rows = (
                 db.query(DBDocument.id)
                 .filter(
@@ -2060,7 +2060,7 @@ def _invoke_regression_graph(
         graph_result = run_rag_workflow_functional(state, thread_id=thread_id, context=None) or {}
     else:
         app = build_rag_graph()
-        recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT or 25))
+        recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT))
         config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
         graph_result = app.invoke(state, config=config, context=None) or {}
     return (graph_result or {}).get("answer") or "", (graph_result or {}).get("citations") or [], graph_result

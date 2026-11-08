@@ -157,7 +157,7 @@ class HybridRetriever(
     context_neighbor_mid_span: int | None = None
     enable_hierarchy_recall: bool = False
     hierarchy_family_collapse: bool = settings.HIERARCHY_RECALL_FAMILY_COLLAPSE
-    hierarchy_overfetch_factor: int = max(1, int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR or 4))
+    hierarchy_overfetch_factor: int = max(1, int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR))
     lexical_db_hybrid_fallback_only: bool | None = None
     lexical_db_hybrid_metadata_exact_fallback_enabled: bool | None = None
     metadata_exact_db_fallback_enabled: bool | None = None
@@ -220,7 +220,7 @@ class HybridRetriever(
         if tenant_id is not None:
             return tenant_id
         try:
-            return UUID(str(settings.DEFAULT_TENANT_ID or ""))
+            return UUID(str(settings.DEFAULT_TENANT_ID))
         except (TypeError, ValueError, AttributeError):
             return None
 
@@ -386,7 +386,7 @@ class HybridRetriever(
 
         max_workers = min(
             len(runtime_shards),
-            max(1, int(settings.RAG_VECTOR_SHARD_MAX_CONCURRENCY or 1)),
+            max(1, int(settings.RAG_VECTOR_SHARD_MAX_CONCURRENCY)),
         )
         if max_workers <= 1:
             outcomes = [search_shard(shard) for shard in runtime_shards]
@@ -769,7 +769,7 @@ class HybridRetriever(
         results: list[dict[str, Any]] = []
         can_try_native_hybrid = bool(
             native_hybrid_meta["enabled"]
-            and str(settings.VECTOR_BACKEND or "").strip().lower() == "milvus"
+            and str(settings.VECTOR_BACKEND).strip().lower() == "milvus"
             and self._effective_sparse_enabled()
         )
         if can_try_native_hybrid:
@@ -783,11 +783,11 @@ class HybridRetriever(
                     .lower()
                     or "deterministic"
                 )
-                synonyms = parse_synonyms(str(settings.SPARSE_RETRIEVAL_SYNONYMS or ""))
+                synonyms = parse_synonyms(str(settings.SPARSE_RETRIEVAL_SYNONYMS))
                 encoder = get_sparse_encoder(
                     provider=sparse_provider,
                     synonyms=synonyms,
-                    synonyms_raw=str(settings.SPARSE_RETRIEVAL_SYNONYMS or ""),
+                    synonyms_raw=str(settings.SPARSE_RETRIEVAL_SYNONYMS),
                 )
                 sparse_query_vector = self._sparse_query_vector(encoder, query)
                 if not getattr(sparse_query_vector, "weights", None):
@@ -1190,7 +1190,7 @@ class HybridRetriever(
         return docs
 
     def _normalize_retrieval_query(self, query: str) -> tuple[str, str, "NormalizedQuery"]:
-        max_query_chars = int(settings.RETRIEVAL_QUERY_MAX_CHARS or 8_000)
+        max_query_chars = int(settings.RETRIEVAL_QUERY_MAX_CHARS)
         if len(str(query or "")) > max_query_chars:
             raise ValueError(f"retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
         from app.query.normalize import normalize_query
@@ -1219,7 +1219,7 @@ class HybridRetriever(
         if self.enable_reranker:
             search_k = resolve_rerank_search_k(
                 requested_k=search_k,
-                profile=str(settings.RERANK_PROFILE or ""),
+                profile=str(settings.RERANK_PROFILE),
             )
         hierarchy_family_collapse_enabled = self._should_apply_hierarchy_family_collapse()
         hierarchy_overfetch_factor = max(1, int(self.hierarchy_overfetch_factor or 1))
@@ -1290,18 +1290,18 @@ class HybridRetriever(
             "overfetch_enabled": search_k > requested_k,
             "overfetch_reasons": overfetch_reasons,
             "retrieval_profile": retrieval_profile,
-            "rerank_profile": normalize_rerank_profile(str(settings.RERANK_PROFILE or "")),
+            "rerank_profile": normalize_rerank_profile(str(settings.RERANK_PROFILE)),
             "hierarchy_family_collapse_enabled": self._should_apply_hierarchy_family_collapse(),
             "hierarchy_overfetch_factor": max(1, int(self.hierarchy_overfetch_factor or 1)),
             "overfetch_multiplier": int(
                 self.retrieval_overfetch_multiplier
                 if self.retrieval_overfetch_multiplier is not None
-                else settings.RETRIEVAL_OVERFETCH_MULTIPLIER or 1
+                else settings.RETRIEVAL_OVERFETCH_MULTIPLIER
             ),
             "overfetch_cap_k": int(
                 self.retrieval_overfetch_max_k
                 if self.retrieval_overfetch_max_k is not None
-                else settings.RETRIEVAL_OVERFETCH_MAX_K or 0
+                else settings.RETRIEVAL_OVERFETCH_MAX_K
             ),
             "query_normalization": {
                 "original": original_query,
@@ -1355,7 +1355,7 @@ class HybridRetriever(
 
     def _record_milvus_pushdown_debug(self, debug: dict[str, Any]) -> None:
         try:
-            max_doc_ids = int(settings.MILVUS_EXPR_MAX_DOC_IDS or 0)
+            max_doc_ids = int(settings.MILVUS_EXPR_MAX_DOC_IDS)
             debug["milvus_doc_id_pushdown_skipped"] = bool(
                 settings.VECTOR_BACKEND == "milvus"
                 and max_doc_ids > 0
@@ -1804,9 +1804,9 @@ class HybridRetriever(
         prefer_authority: bool,
         prefer_latest: bool,
     ) -> tuple[list[tuple[float, int, dict[str, Any]]], list[float]]:
-        auth_boost_max = float(settings.RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX or 0.0)
-        latest_boost_max = float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX or 0.0)
-        window_days = max(1, int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS or 180))
+        auth_boost_max = float(settings.RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX)
+        latest_boost_max = float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX)
+        window_days = max(1, int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS))
         now_ts = time.time()
         boosts: list[float] = []
         scored: list[tuple[float, int, dict[str, Any]]] = []

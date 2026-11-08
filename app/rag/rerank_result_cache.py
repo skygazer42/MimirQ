@@ -84,16 +84,16 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
     if normalized == "colbert":
         sig.update(
             {
-                "colbert_provider": str(settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower(),
-                "colbert_embed_dim": int(settings.COLBERT_RERANK_EMBED_DIM or 64),
+                "colbert_provider": str(settings.COLBERT_RERANK_PROVIDER).strip().lower(),
+                "colbert_embed_dim": int(settings.COLBERT_RERANK_EMBED_DIM),
             }
         )
         return sig
 
     sig.update(
         {
-            "reranker_model": str(settings.RERANKER_MODEL or ""),
-            "reranker_api_base": str(settings.RERANKER_API_BASE or ""),
+            "reranker_model": str("" if settings.RERANKER_MODEL is None else settings.RERANKER_MODEL),
+            "reranker_api_base": str(settings.RERANKER_API_BASE),
         }
     )
     return sig
@@ -182,7 +182,7 @@ def build_evidence_post_rerank_cache_key(
     }
     raw = json.dumps(sig, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
     digest = stable_hash(raw, length=32)
-    prefix = str(settings.EVIDENCE_POST_RERANK_CACHE_PREFIX or "eprr").strip() or "eprr"
+    prefix = str(settings.EVIDENCE_POST_RERANK_CACHE_PREFIX).strip() or "eprr"
     return f"{prefix}:{digest}"
 
 
@@ -196,10 +196,10 @@ class _TTLCache:
             self._data.clear()
 
     def _ttl_sec(self) -> float:
-        return float(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC or 0)
+        return float(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC)
 
     def _max_entries(self) -> int:
-        return max(0, int(settings.EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES or 0))
+        return max(0, int(settings.EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES))
 
     def _enabled(self) -> bool:
         return bool(settings.EVIDENCE_POST_RERANK_CACHE_ENABLED) and self._max_entries() > 0
@@ -244,7 +244,7 @@ _CACHE = _TTLCache()
 
 
 def get_evidence_post_rerank_cache_backend() -> str:
-    backend = str(settings.EVIDENCE_POST_RERANK_CACHE_BACKEND or "memory").strip().lower()
+    backend = str(settings.EVIDENCE_POST_RERANK_CACHE_BACKEND).strip().lower()
     if backend not in {"memory", "redis"}:
         return "memory"
     return backend
@@ -277,7 +277,7 @@ def _set_cached_payload_to_redis(key: str, payload: dict[str, Any]) -> bool:
     client = _get_redis_client()
     if client is None:
         return False
-    ttl = int(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC or 0)
+    ttl = int(settings.EVIDENCE_POST_RERANK_CACHE_TTL_SEC)
     try:
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str).encode("utf-8")
     except Exception:  # noqa: BLE001

@@ -239,7 +239,7 @@ def _flush_cjk_oov_buffer(buf: list[str], out_tokens: list[str], *, extra_budget
     if not settings.BM25_TOKENIZE_CJK_OOV_BIGRAM_ENABLED:
         return
 
-    max_term_chars = settings.BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS or 8
+    max_term_chars = settings.BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS
     if 2 <= len(s) <= max_term_chars and _keep_token(s):
         out_tokens.append(s)
         extra_budget[0] = max(0, extra_budget[0] - 1)

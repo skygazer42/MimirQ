@@ -575,7 +575,7 @@ async def _run_preflight_extraction(
     if missing:
         max_conc = max(
             1,
-            min(int(settings.KG_EXTRACT_MAX_CONCURRENCY or 3), 5),
+            min(int(settings.KG_EXTRACT_MAX_CONCURRENCY), 5),
         )
         sem = asyncio.Semaphore(max_conc)
 

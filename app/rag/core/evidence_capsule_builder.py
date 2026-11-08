@@ -154,7 +154,7 @@ def _signing_secret_from_settings() -> str:
     try:
         from app.core.config import settings  # noqa: WPS433
 
-        return str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
+        return str(settings.EVIDENCE_CAPSULE_SIGNING_SECRET).strip()
     except Exception:
         return ""
 
@@ -233,10 +233,8 @@ def build_evidence_capsule(
         from app.core.config import settings  # noqa: WPS433
 
         if bool(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_ENABLED", False)):
-            secret = str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_SECRET", "") or "").strip()
-            key_id = (
-                str(getattr(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", "default") or "default").strip() or "default"
-            )
+            secret = str(settings.EVIDENCE_CAPSULE_SIGNING_SECRET).strip()
+            key_id = str(settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID).strip() or "default"
             sig = sign_evidence_capsule(payload, secret=secret, key_id=key_id)
             if isinstance(sig, dict):
                 payload["signature"] = sig

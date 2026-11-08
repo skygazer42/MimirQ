@@ -124,9 +124,9 @@ class InputGuard:
         if not matched_rules:
             return "allow"
 
-        warn_threshold = float(settings.INPUT_GUARD_WARN_THRESHOLD or 0.35)
-        block_threshold = float(settings.INPUT_GUARD_SCORE_THRESHOLD or 0.7)
-        mode = str(settings.INPUT_GUARD_MODE or "warn").strip().lower()
+        warn_threshold = float(settings.INPUT_GUARD_WARN_THRESHOLD)
+        block_threshold = float(settings.INPUT_GUARD_SCORE_THRESHOLD)
+        mode = str(settings.INPUT_GUARD_MODE).strip().lower()
 
         if score >= block_threshold:
             return "block" if mode == "block" else "warn"

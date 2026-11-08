@@ -119,7 +119,7 @@ class MultiAgentRAGRunner:
         try:
             plan_chain = (
                 self._engine.decompose_prompt
-                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE or 0.2)
+                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
                 | StrOutputParser()
             )
             raw = await plan_chain.ainvoke({"query": question, "n": max_sub_questions})
@@ -453,9 +453,9 @@ class MultiAgentRAGRunner:
         retrieval_mode = stream_request.retrieval_mode
         structured_output = stream_request.structured_output
         complexity_score = self._engine._score_question_complexity(question, history)
-        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD or 250.0
+        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
-        max_sub_questions = max(1, settings.RAG_MULTI_AGENT_MAX_SUB_AGENTS or 4)
+        max_sub_questions = max(1, settings.RAG_MULTI_AGENT_MAX_SUB_AGENTS)
         base_state = self._build_base_state(stream_request=stream_request, question=question, history=history)
 
         yield self._stream_route_event(

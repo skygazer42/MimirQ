@@ -647,3 +647,220 @@
 | `app/rag/kg/search/searcher.py:416` | `KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
 | `app/rag/kg/search/tracker.py:18` | `KG_SEARCH_NODE_TEXT_MAX_CHARS` | `int` | direct | declared non-Optional default owns the value |
 | `app/rag/kg/search/tracker.py:72` | `KG_SEARCH_MAX_CLUES` | `int` | direct | declared non-Optional default owns the value |
+
+## rag_other
+
+| 原位置 | 字段 | 类型 | 裁决 | 理由 |
+|---|---|---|---|---|
+| `app/rag/agents/multi_agent.py:456` | `RAG_AGENTIC_COMPLEXITY_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/agents/multi_agent.py:458` | `RAG_MULTI_AGENT_MAX_SUB_AGENTS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/agents/multi_agent.py:122` | `QUERY_DECOMPOSITION_TEMPERATURE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/agents/rag_agent.py:320` | `RAG_AGENTIC_REFLECT_TOP_SCORE_MIN` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/agents/rag_agent.py:876` | `RAG_AGENTIC_COMPLEXITY_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/agents/rag_agent.py:319` | `RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/agents/rag_agent.py:751` | `RAG_SELF_RAG_ENABLED` | `bool` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/agents/rag_agent.py:878` | `RAG_AGENTIC_MAX_RETRIEVE_ROUNDS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/agents/rag_agent.py:271` | `QUERY_DECOMPOSITION_TEMPERATURE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/core/claim_nli_verifier.py:101` | `LLM_API_BASE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/core/claim_nli_verifier.py:104` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/core/claim_nli_verifier.py:98` | `LLM_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/core/claim_nli_verifier.py:99` | `LLM_API_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/core/context_denoise.py:235` | `RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/core/evidence_capsule_builder.py:157` | `EVIDENCE_CAPSULE_SIGNING_SECRET` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/core/evidence_capsule_builder.py:236` | `EVIDENCE_CAPSULE_SIGNING_SECRET` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/core/evidence_capsule_builder.py:238` | `EVIDENCE_CAPSULE_SIGNING_KEY_ID` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/core/vision_reader.py:267` | `VISION_LLM_MAX_TOKENS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/core/vision_reader.py:353` | `VISION_LLM_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/core/vision_reader.py:457` | `VISION_LLM_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/core/vision_reader.py:476` | `VISION_RAG_READER_MAX_IMAGES` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/core/vision_reader.py:477` | `VISION_RAG_READER_MAX_IMAGE_BYTES` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/core/vision_reader.py:478` | `VISION_RAG_READER_MAX_OUTPUT_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/embedding/adapter.py:96` | `EMBEDDING_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/adapter.py:260` | `EMBEDDING_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/providers/_embedding_http.py:100` | `EMBEDDING_API_RETRY_BACKOFF_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/providers/_embedding_http.py:101` | `EMBEDDING_API_RETRY_JITTER_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/providers/_embedding_http.py:109` | `EMBEDDING_API_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/providers/_embedding_http.py:46` | `EMBEDDING_API_MAX_CONCURRENCY` | `int` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/embedding/providers/dashscope.py:69` | `EMBEDDING_API_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/embedding/providers/dashscope.py:96` | `EMBEDDING_API_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/embedding/providers/ollama.py:74` | `EMBEDDING_API_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/embedding/providers/ollama.py:113` | `EMBEDDING_API_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/embedding/providers/ollama.py:105` | `EMBEDDING_API_BATCH_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/providers/ollama.py:138` | `EMBEDDING_API_BATCH_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/providers/openai.py:74` | `EMBEDDING_API_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/embedding/providers/openai.py:119` | `EMBEDDING_API_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/embedding/providers/openai.py:66` | `EMBEDDING_API_BATCH_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/embedding/utils.py:106` | `EMBEDDING_API_BASE` | `str` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/engine.py:244` | `LLM_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:737` | `LLM_TEMPERATURE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:738` | `LLM_TIMEOUT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:739` | `LLM_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:744` | `LLM_MOCK_RESPONSE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:620` | `RAG_AGENTIC_COMPLEXITY_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:729` | `LLM_API_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:252` | `LLM_MODEL_FAST` | `str | None` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/engine.py:257` | `LLM_MODEL_HEAVY` | `str | None` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/engine.py:732` | `LLM_API_BASE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:733` | `LLM_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine.py:734` | `LLM_MODEL_FAST` | `str | None` | optional | Optional: only None chooses the fallback; explicit false/empty values preserved |
+| `app/rag/engine.py:735` | `LLM_MODEL_HEAVY` | `str | None` | optional | Optional: only None chooses the fallback; explicit false/empty values preserved |
+| `app/rag/engine.py:742` | `LLM_FALLBACK_MODELS` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/kg_search_diagnostics.py:578` | `KG_EXTRACT_MAX_CONCURRENCY` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/evaluation/poc_runner/png_tasks.py:55` | `DATASET_ANALYSIS_PNG_REDIS_PREFIX` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/poc_runner/png_tasks.py:59` | `DATASET_ANALYSIS_PNG_STALE_AFTER_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/poc_runner/png_tasks.py:64` | `DATASET_ANALYSIS_PNG_TERMINAL_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/poc_runner/png_tasks.py:68` | `DATASET_ANALYSIS_PNG_STALE_AFTER_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/poc_runner/png_tasks.py:72` | `DATASET_ANALYSIS_PNG_RESULT_MAX_BYTES` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/evaluation/ragas.py:329` | `LLM_TIMEOUT` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/evaluation/ragas.py:1022` | `RAGAS_RESPONSE_RELEVANCY_STRICTNESS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/ragas.py:1221` | `EMBEDDING_API_KEY` | `str` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/evaluation/ragas.py:1222` | `EMBEDDING_API_BASE` | `str` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/evaluation/ragas.py:1448` | `RAGAS_CONVERSATION_WALL_TIMEOUT_SEC` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/evaluation/ragas.py:1216` | `LLM_API_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/ragas.py:1217` | `LLM_API_BASE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/ragas.py:1910` | `CHAT_TAG_MAX_DOC_IDS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/ragas.py:2063` | `LANGGRAPH_RECURSION_LIMIT` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/evaluation/ragas.py:1040` | `RAGAS_RUN_TIMEOUT_SEC` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/evaluation/ragas.py:1041` | `RAGAS_RUN_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/ragas.py:1042` | `RAGAS_RUN_MAX_WAIT_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/ragas.py:1043` | `RAGAS_RUN_MAX_WORKERS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/evaluation/ragas.py:1611` | `RAGAS_CONVERSATION_WALL_TIMEOUT_SEC` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/evaluation/test_generator.py:68` | `LLM_TIMEOUT` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/llm/factory.py:91` | `LLM_USE_POOLED_ASYNC_HTTP_CLIENT` | `bool` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/llm/factory.py:179` | `EMBEDDING_API_BATCH_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/llm/factory.py:180` | `KG_EXTRACT_EMBED_BATCH_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/llm/factory.py:279` | `LLM_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/llm/langchain_chat.py:345` | `LLM_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/llm/prompt_cache.py:46` | `PROMPT_CACHE_MIN_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/middleware/agent_logging.py:99` | `AGENT_LOG_MAX_PREVIEW_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/middleware/tool_logging.py:199` | `TOOL_CALL_LOG_MAX_PREVIEW_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/pipeline_plugins/refs.py:13` | `PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipeline_plugins/registry.py:210` | `PYTHON_PIPELINE_PLUGIN_DIRS` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:180` | `RAG_GRAPH_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:649` | `RETRIEVAL_TOP_K` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1132` | `RAG_CONTEXT_MAX_TOTAL_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1133` | `RAG_CONTEXT_MAX_TOTAL_TOKENS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1134` | `RAG_CONTEXT_MAX_CHARS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1135` | `RAG_CONTEXT_MAX_TOKENS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1351` | `RAG_CORRECTIVE_MAX_ATTEMPTS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1353` | `RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1361` | `RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:289` | `RAG_CONTEXT_MAX_CHARS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:290` | `RAG_CONTEXT_MAX_TOTAL_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:291` | `RAG_CONTEXT_MAX_TOKENS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:292` | `RAG_CONTEXT_MAX_TOTAL_TOKENS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:736` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:737` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:738` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/pipelines/langgraph.py:985` | `FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/pipelines/langgraph.py:1055` | `RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1060` | `RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1148` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1149` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1541` | `LANGGRAPH_RECURSION_LIMIT` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/pipelines/langgraph.py:724` | `RAG_CLAIM_CHECK_MAX_CLAIMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:906` | `SENTENCE_CITATIONS_INLINE_MAX_ITEMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:909` | `SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1014` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1015` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1016` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/pipelines/langgraph.py:1362` | `MULTI_QUERY_COUNT_CAP` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1971` | `LANGGRAPH_RECURSION_LIMIT` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/pipelines/langgraph.py:175` | `RAG_GRAPH_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1010` | `FAITHFULNESS_SCORE_MAX_CLAIMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1125` | `RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:709` | `RAG_CLAIM_VERIFIER_MODE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:1357` | `RAG_CORRECTIVE_SECOND_PASS_PROFILE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/pipelines/langgraph.py:857` | `SENTENCE_CITATIONS_INLINE_STYLE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/preprocessing/processor.py:271` | `GOVERNANCE_REGEX_TIMEOUT_MS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/preprocessing/tokenization.py:242` | `BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS` | `int` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/preprocessing/tokenization.py:269` | `BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/rerank_result_cache.py:280` | `EVIDENCE_POST_RERANK_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/rerank_result_cache.py:199` | `EVIDENCE_POST_RERANK_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/rerank_result_cache.py:95` | `RERANKER_MODEL` | `str | None` | optional | Optional: only None chooses the fallback; explicit false/empty values preserved |
+| `app/rag/rerank_result_cache.py:96` | `RERANKER_API_BASE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/rerank_result_cache.py:202` | `EVIDENCE_POST_RERANK_CACHE_MAX_ENTRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/rerank_result_cache.py:88` | `COLBERT_RERANK_EMBED_DIM` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/rerank_result_cache.py:185` | `EVIDENCE_POST_RERANK_CACHE_PREFIX` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/rerank_result_cache.py:247` | `EVIDENCE_POST_RERANK_CACHE_BACKEND` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/rerank_result_cache.py:87` | `COLBERT_RERANK_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:182` | `RERANKER_API_RATE_LIMIT_QPS` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:201` | `RERANKER_API_RATE_LIMIT_QPS` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:698` | `RERANKER_API_TIMEOUT_SEC` | `float` | decision | external request timeout fallback chain requires review |
+| `app/rag/reranker/base.py:781` | `RERANKER_API_BATCH_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:785` | `RERANKER_MAX_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:230` | `RERANKER_API_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:231` | `RERANKER_API_CIRCUIT_BREAKER_RESET_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:551` | `RERANKER_API_MAX_CONCURRENCY` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/reranker/base.py:552` | `RERANKER_API_RATE_LIMIT_QPS` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:553` | `RERANKER_API_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:621` | `RERANKER_API_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:622` | `RERANKER_API_RETRY_BACKOFF_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:623` | `RERANKER_API_MAX_CONCURRENCY` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/reranker/base.py:699` | `RERANKER_API_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:700` | `RERANKER_API_RETRY_BACKOFF_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:701` | `RERANKER_API_MAX_CONCURRENCY` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/reranker/base.py:405` | `RERANKER_API_CACHE_MAX_ENTRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:510` | `RERANKER_API_MAX_CONCURRENCY` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/reranker/base.py:511` | `RERANKER_API_RATE_LIMIT_QPS` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:512` | `RERANKER_API_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:409` | `RERANKER_API_CACHE_MAX_ENTRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:410` | `RERANKER_API_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:574` | `RERANKER_API_MAX_CONCURRENCY` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/reranker/base.py:575` | `RERANKER_API_RATE_LIMIT_QPS` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/base.py:576` | `RERANKER_API_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/capabilities.py:45` | `COLBERT_RERANK_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/reranker/llm_based.py:308` | `LLM_MODEL_FAST` | `str | None` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/reranker/llm_based.py:452` | `RERANKER_MAX_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/reranker/llm_based.py:318` | `RERANKER_TEMPERATURE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/retrieval_candidate_cache.py:300` | `RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retrieval_candidate_cache.py:441` | `RETRIEVAL_CANDIDATE_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retrieval_candidate_cache.py:525` | `RETRIEVAL_CANDIDATE_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retrieval_candidate_cache.py:219` | `RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/retrieval_candidate_cache.py:228` | `RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC` | `float` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/retrieval_candidate_cache.py:239` | `RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC` | `float` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/retrieval_candidate_cache.py:114` | `RETRIEVAL_CANDIDATE_CACHE_PREFIX` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/retrieval_candidate_cache.py:233` | `SECRET_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:160` | `HIERARCHY_RECALL_OVERFETCH_FACTOR` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:1030` | `RETRIEVAL_CANDIDATE_CACHE_ENABLED` | `bool` | retain | logical OR / configuration-source precedence, not a static default |
+| `app/rag/retriever.py:1193` | `RETRIEVAL_QUERY_MAX_CHARS` | `int` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/retriever.py:1807` | `RETRIEVAL_GOVERNANCE_AUTHORITY_BOOST_MAX` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:1808` | `RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:1358` | `MILVUS_EXPR_MAX_DOC_IDS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:1809` | `RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:223` | `DEFAULT_TENANT_ID` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:389` | `RAG_VECTOR_SHARD_MAX_CONCURRENCY` | `int` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/retriever.py:1293` | `RERANK_PROFILE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:1299` | `RETRIEVAL_OVERFETCH_MULTIPLIER` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:1304` | `RETRIEVAL_OVERFETCH_MAX_K` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:786` | `SPARSE_RETRIEVAL_SYNONYMS` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:1222` | `RERANK_PROFILE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:790` | `SPARSE_RETRIEVAL_SYNONYMS` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/retriever.py:772` | `VECTOR_BACKEND` | `Literal['milvus', 'memory', 'qdrant', 'pgvector']` | direct | declared non-Optional default owns the value |
+| `app/rag/safety/input_guard.py:127` | `INPUT_GUARD_WARN_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/safety/input_guard.py:128` | `INPUT_GUARD_SCORE_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/safety/input_guard.py:129` | `INPUT_GUARD_MODE` | `Literal['warn', 'block']` | direct | declared non-Optional default owns the value |
+| `app/rag/store/factory.py:35` | `LANGGRAPH_STORE_BACKEND` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/mcp_tools.py:195` | `DEFAULT_TENANT_ID` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/mcp_tools.py:436` | `DEFAULT_TENANT_ID` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/mcp_tools.py:517` | `DEFAULT_TENANT_ID` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:28` | `PRECHECK_PDF_SCAN_RATIO_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:34` | `PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:40` | `PRECHECK_TEXT_SHORT_CHARS_THRESHOLD` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:46` | `PRECHECK_TEXT_LOW_DENSITY_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:52` | `PRECHECK_TEXT_GIBBERISH_DENSITY_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:58` | `PRECHECK_TEXT_HIGH_REPLACEMENT_RATIO_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:64` | `PRECHECK_NEAR_DUP_HAMMING_THRESHOLD` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/pre_poc_scanner/settings.py:70` | `PRECHECK_NEAR_DUP_MAX_PAIRS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/tools/pre_poc_scanner/settings.py:76` | `PRECHECK_SAMPLE_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/web_search.py:70` | `TAVILY_API_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/web_search.py:116` | `SERPER_API_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/web_search.py:166` | `BRAVE_SEARCH_API_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/tools/web_search.py:214` | `WEB_SEARCH_MAX_RESULTS` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/tools/web_search.py:85` | `WEB_SEARCH_TIMEOUT_SEC` | `float` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/tools/web_search.py:135` | `WEB_SEARCH_TIMEOUT_SEC` | `float` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/tools/web_search.py:181` | `WEB_SEARCH_TIMEOUT_SEC` | `float` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/workflows/crag_streaming.py:53` | `RAG_CRAG_STREAMING_MIN_TOP_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/workflows/crag_streaming.py:52` | `RAG_CRAG_STREAMING_MIN_CITATIONS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/workflows/crag_streaming.py:75` | `RAG_CRAG_STREAMING_MAX_RESULTS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/workflows/critic.py:79` | `FAITHFULNESS_SCORE_MAX_CLAIMS` | `int` | direct | declared non-Optional default owns the value |

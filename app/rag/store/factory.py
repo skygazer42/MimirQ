@@ -32,7 +32,7 @@ def get_langgraph_store() -> BaseStore | None:
     if _store is not None:
         return _store
 
-    backend = str(settings.LANGGRAPH_STORE_BACKEND or "memory").strip().lower()
+    backend = str(settings.LANGGRAPH_STORE_BACKEND).strip().lower()
     if backend in {"none", "disabled"}:
         return None
 

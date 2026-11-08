@@ -241,7 +241,7 @@ class RAGEngine(LlmRoutingMixin, DocUtilsMixin):
         self.http_async_client = pool.get_external_async_client()
 
         # Build available models for dynamic routing (inspired by agent middleware pattern)
-        default_model_name = settings.LLM_MODEL or "gpt-5.4-mini"
+        default_model_name = settings.LLM_MODEL
         self.models: dict[str, Any] = {}
         self.models["default"] = self._build_llm(ChatOpenAI, default_model_name)
         if settings.ENABLE_DYNAMIC_MODEL_ROUTING:
@@ -617,7 +617,7 @@ Requirements:
 
         try:
             complexity_score = self._score_question_complexity(question, history)
-            agentic_threshold = float(settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD or 250.0)
+            agentic_threshold = float(settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD)
             if bool(settings.RAG_AGENTIC_MODE_ENABLED) and complexity_score >= agentic_threshold:
                 runner = get_agentic_runner(engine=self)
                 async for event in runner.stream(
@@ -726,22 +726,22 @@ _rag_engine_lock: threading.Lock = threading.Lock()
 
 def _rag_engine_settings_signature() -> str:
     """Return a PII-safe signature for runtime settings captured by RAGEngine."""
-    api_key = str(settings.LLM_API_KEY or "").strip()
+    api_key = str(settings.LLM_API_KEY).strip()
     api_key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
     payload = {
-        "llm_api_base": str(settings.LLM_API_BASE or "").strip(),
-        "llm_model": str(settings.LLM_MODEL or "").strip(),
-        "llm_model_fast": str(settings.LLM_MODEL_FAST or "").strip(),
-        "llm_model_heavy": str(settings.LLM_MODEL_HEAVY or "").strip(),
+        "llm_api_base": str(settings.LLM_API_BASE).strip(),
+        "llm_model": str(settings.LLM_MODEL).strip(),
+        "llm_model_fast": str("" if settings.LLM_MODEL_FAST is None else settings.LLM_MODEL_FAST).strip(),
+        "llm_model_heavy": str("" if settings.LLM_MODEL_HEAVY is None else settings.LLM_MODEL_HEAVY).strip(),
         "llm_api_key_hash": api_key_hash,
-        "llm_temperature": float(settings.LLM_TEMPERATURE or 0.0),
-        "llm_timeout": float(settings.LLM_TIMEOUT or 0.0),
-        "llm_max_retries": int(settings.LLM_MAX_RETRIES or 0),
+        "llm_temperature": float(settings.LLM_TEMPERATURE),
+        "llm_timeout": float(settings.LLM_TIMEOUT),
+        "llm_max_retries": int(settings.LLM_MAX_RETRIES),
         "llm_pooled_async_http_client": bool(settings.LLM_USE_POOLED_ASYNC_HTTP_CLIENT),
         "llm_fallback_enabled": bool(settings.LLM_FALLBACK_ENABLED),
-        "llm_fallback_models": str(settings.LLM_FALLBACK_MODELS or "").strip(),
+        "llm_fallback_models": str(settings.LLM_FALLBACK_MODELS).strip(),
         "llm_mock_enabled": bool(settings.LLM_MOCK_ENABLED),
-        "llm_mock_response": str(settings.LLM_MOCK_RESPONSE or ""),
+        "llm_mock_response": str(settings.LLM_MOCK_RESPONSE),
         "dynamic_model_routing": bool(settings.ENABLE_DYNAMIC_MODEL_ROUTING),
     }
     return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()

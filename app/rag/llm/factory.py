@@ -176,8 +176,8 @@ class EmbeddingClient:
     async def generate_batch(self, texts: list[str]) -> list[list[float]]:
         provider = self._provider
         batch_limit = min(
-            max(1, settings.EMBEDDING_API_BATCH_SIZE or 64),
-            max(1, settings.KG_EXTRACT_EMBED_BATCH_SIZE or 128),
+            max(1, settings.EMBEDDING_API_BATCH_SIZE),
+            max(1, settings.KG_EXTRACT_EMBED_BATCH_SIZE),
         )
         if len(texts or []) > batch_limit:
             out: list[list[float]] = []
@@ -276,7 +276,7 @@ async def _build_fallback_clients(
     if not specs:
         return [primary]
 
-    primary_model = str((model_config or {}).get("model") or settings.LLM_MODEL or "").strip()
+    primary_model = str((model_config or {}).get("model") or settings.LLM_MODEL).strip()
     clients: list[BaseLLMClient] = [primary]
     seen_models = {primary_model} if primary_model else set()
     for spec in specs:

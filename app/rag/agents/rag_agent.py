@@ -268,7 +268,7 @@ class AgenticRAGRunner:
         try:
             plan_chain = (
                 self._engine.decompose_prompt
-                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE or 0.2)
+                | planner_llm.bind(temperature=settings.QUERY_DECOMPOSITION_TEMPERATURE)
                 | StrOutputParser()
             )
             raw = await plan_chain.ainvoke({"query": question, "n": max_steps})
@@ -316,8 +316,8 @@ class AgenticRAGRunner:
             return False
         citations = result.get("citations") or []
         metrics = result.get("metrics") or {}
-        min_citations = max(1, settings.RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN or 1)
-        min_top_score = settings.RAG_AGENTIC_REFLECT_TOP_SCORE_MIN or 0.35
+        min_citations = max(1, settings.RAG_AGENTIC_REFLECT_TOP_CITATIONS_MIN)
+        min_top_score = settings.RAG_AGENTIC_REFLECT_TOP_SCORE_MIN
         if len(citations) >= min_citations:
             return True
         try:
@@ -873,9 +873,9 @@ class AgenticRAGRunner:
         retrieval_mode = stream_request.retrieval_mode
         structured_output = stream_request.structured_output
         complexity_score = self._engine._score_question_complexity(question, history)
-        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD or 250.0
+        threshold = settings.RAG_AGENTIC_COMPLEXITY_THRESHOLD
         llm, model_route, routing_reason = self._engine._select_llm(question, history)
-        max_rounds = max(1, settings.RAG_AGENTIC_MAX_RETRIEVE_ROUNDS or 3)
+        max_rounds = max(1, settings.RAG_AGENTIC_MAX_RETRIEVE_ROUNDS)
         plan_steps = await self._plan(question=question, llm=llm, max_steps=max_rounds)
 
         if settings.RAG_MULTI_AGENT_ENABLED and len(plan_steps) > 1:

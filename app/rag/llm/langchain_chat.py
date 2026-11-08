@@ -342,7 +342,7 @@ def build_chat_model_from_config(
     streaming: bool,
 ) -> BaseChatModel:
     cfg = dict(model_config or {})
-    model_name = str(cfg.get("model") or settings.LLM_MODEL or "").strip()
+    model_name = str(cfg.get("model") or settings.LLM_MODEL).strip()
     base_url = normalize_openai_compatible_base_url(cfg.get("base_url") or settings.LLM_API_BASE)
     timeout = cfg.get("timeout", settings.LLM_TIMEOUT)
     common_kwargs: dict[str, Any] = {

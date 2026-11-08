@@ -66,7 +66,7 @@ class DashScopeEmbedding(BaseEmbeddingModel):
     def encode(self, message: str | list[str]) -> list[list[float]]:
         """Synchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
-        timeout = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
+        timeout = settings.EMBEDDING_API_TIMEOUT_SEC
         response: httpx.Response | None = None
         try:
             response = self.http_client.post(
@@ -93,7 +93,7 @@ class DashScopeEmbedding(BaseEmbeddingModel):
     async def aencode(self, message: str | list[str]) -> list[list[float]]:
         """Asynchronously encode text(s) to embeddings."""
         payload = self._build_payload(message)
-        timeout = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
+        timeout = settings.EMBEDDING_API_TIMEOUT_SEC
         response: httpx.Response | None = None
         try:
             response = await self.http_async_client.post(

@@ -207,7 +207,7 @@ def derive_registered_stage_plugin_ref(
 
 
 def default_plugin_directories() -> list[Path]:
-    raw = str(settings.PYTHON_PIPELINE_PLUGIN_DIRS or "").strip()
+    raw = str(settings.PYTHON_PIPELINE_PLUGIN_DIRS).strip()
     parts = [p.strip() for p in raw.split(",") if p.strip()]
     return [Path(p).expanduser() for p in parts]
 

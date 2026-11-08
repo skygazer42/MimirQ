@@ -71,7 +71,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
 
     def _encode_one_batch(self, texts: list[str]) -> list[list[float]]:
         payload = self._build_payload(texts)
-        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
+        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC
         try:
             return post_with_retries_sync(
                 client=self.http_client,
@@ -102,7 +102,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
         if not texts:
             return []
 
-        batch_size = max(1, settings.EMBEDDING_API_BATCH_SIZE or 64)
+        batch_size = max(1, settings.EMBEDDING_API_BATCH_SIZE)
         out: list[list[float]] = []
         for start in range(0, len(texts), batch_size):
             out.extend(self._encode_one_batch(texts[start : start + batch_size]))
@@ -110,7 +110,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
 
     async def _aencode_one_batch(self, texts: list[str]) -> list[list[float]]:
         payload = self._build_payload(texts)
-        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC or 60.0
+        timeout_sec = settings.EMBEDDING_API_TIMEOUT_SEC
         try:
             return await post_with_retries_async(
                 client=self.http_async_client,
@@ -135,7 +135,7 @@ class OllamaEmbedding(BaseEmbeddingModel):
         if not texts:
             return []
 
-        batch_size = max(1, settings.EMBEDDING_API_BATCH_SIZE or 64)
+        batch_size = max(1, settings.EMBEDDING_API_BATCH_SIZE)
         out: list[list[float]] = []
         for start in range(0, len(texts), batch_size):
             out.extend(await self._aencode_one_batch(texts[start : start + batch_size]))

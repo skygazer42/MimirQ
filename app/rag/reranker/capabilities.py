@@ -42,7 +42,7 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> RerankerD
     if family.canonical_name in {"long_context", "mmr"}:
         return {"provider": family.canonical_name, "tier": family.tier}
     if family.canonical_name == "colbert":
-        mode = provider_name or (settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower()
+        mode = provider_name or (settings.COLBERT_RERANK_PROVIDER).strip().lower()
         reject_retired_provider(mode, capability="colbert")
         if mode == "deterministic":
             return {"provider": "colbert", "tier": "offline_only", "mode": "deterministic"}

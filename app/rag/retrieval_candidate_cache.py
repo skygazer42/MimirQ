@@ -111,7 +111,7 @@ def build_retrieval_candidate_cache_key(
     Note: We hash the full signature to avoid leaking query text or other potentially
     sensitive information in Redis key names.
     """
-    prefix = str(settings.RETRIEVAL_CANDIDATE_CACHE_PREFIX or "rcand").strip() or "rcand"
+    prefix = str(settings.RETRIEVAL_CANDIDATE_CACHE_PREFIX).strip() or "rcand"
 
     signature: dict[str, Any] = {
         "v": 1,
@@ -216,7 +216,7 @@ def wait_for_inflight_retrieval_candidates(
 def _retrieval_candidate_singleflight_lease_ttl_sec(cache_ttl_sec: int) -> int:
     wait_timeout_sec = max(
         1,
-        int(settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 60.0),
+        int(settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC),
     )
     response_ttl_sec = max(60, int(cache_ttl_sec or 0))
     return max(60, min(300, max(response_ttl_sec, wait_timeout_sec)))
@@ -225,18 +225,18 @@ def _retrieval_candidate_singleflight_lease_ttl_sec(cache_ttl_sec: int) -> int:
 def _retrieval_candidate_singleflight_wait_timeout_sec() -> float:
     return max(
         1.0,
-        float(settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 60.0),
+        float(settings.RETRIEVAL_CANDIDATE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC),
     )
 
 
 def _distributed_result_encryption_available() -> bool:
-    return len(str(settings.SECRET_KEY or "").strip()) >= 32
+    return len(str(settings.SECRET_KEY).strip()) >= 32
 
 
 def _retrieval_candidate_singleflight_result_ttl_sec() -> int:
     return max(
         5,
-        min(30, int(settings.RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC or 15.0)),
+        min(30, int(settings.RAG_RETRIEVAL_ADMISSION_TIMEOUT_SEC)),
     )
 
 
@@ -297,7 +297,7 @@ def _write_retrieval_candidate_payload(
     if client is None:
         return False
 
-    max_bytes = int(settings.RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES or 0)
+    max_bytes = int(settings.RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES)
     try:
         raw_text = json.dumps(payload, separators=(",", ":"), ensure_ascii=False, default=str)
         if encrypted:
@@ -438,7 +438,7 @@ def acquire_or_wait_for_distributed_inflight_retrieval_candidates(
     if not _distributed_result_encryption_available():
         return True, None, None
 
-    cache_ttl_sec = int(settings.RETRIEVAL_CANDIDATE_CACHE_TTL_SEC or 0)
+    cache_ttl_sec = int(settings.RETRIEVAL_CANDIDATE_CACHE_TTL_SEC)
     client = _get_redis_client()
     if client is None:
         return True, None, None
@@ -522,7 +522,7 @@ def set_cached_retrieval_candidates(key: str, payload: list[dict[str, Any]]) -> 
     if not settings.RETRIEVAL_CANDIDATE_CACHE_ENABLED:
         return False
 
-    ttl = int(settings.RETRIEVAL_CANDIDATE_CACHE_TTL_SEC or 0)
+    ttl = int(settings.RETRIEVAL_CANDIDATE_CACHE_TTL_SEC)
     return _write_retrieval_candidate_payload(key, payload, ttl_sec=ttl)
 
 

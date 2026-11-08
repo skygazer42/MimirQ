@@ -95,10 +95,10 @@ def verify_claim_with_nli(
             diagnostics={"reason_code": "nli_provider_unsupported"},
         )
 
-    resolved_model = str(model_name or settings.RAG_CLAIM_NLI_VERIFIER_MODEL or settings.LLM_MODEL or "").strip()
-    resolved_api_key = str(api_key or settings.RAG_CLAIM_NLI_VERIFIER_API_KEY or settings.LLM_API_KEY or "").strip()
+    resolved_model = str(model_name or settings.RAG_CLAIM_NLI_VERIFIER_MODEL or settings.LLM_MODEL).strip()
+    resolved_api_key = str(api_key or settings.RAG_CLAIM_NLI_VERIFIER_API_KEY or settings.LLM_API_KEY).strip()
     resolved_api_base = normalize_openai_compatible_base_url(
-        api_base or settings.RAG_CLAIM_NLI_VERIFIER_API_BASE or settings.LLM_API_BASE or ""
+        api_base or settings.RAG_CLAIM_NLI_VERIFIER_API_BASE or settings.LLM_API_BASE
     )
     resolved_timeout = float(
         timeout_sec if timeout_sec is not None else settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8

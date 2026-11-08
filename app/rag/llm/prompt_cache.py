@@ -43,7 +43,7 @@ def should_cache_message(*, role: str, content: Any, anthropic_compatible: bool)
     role_norm = str(role or "").strip().lower()
     if role_norm in {"system", "developer"}:
         return True
-    min_chars = settings.PROMPT_CACHE_MIN_CHARS or 1000
+    min_chars = settings.PROMPT_CACHE_MIN_CHARS
     return len(message_content_to_text(content)) >= max(0, min_chars)
 
 

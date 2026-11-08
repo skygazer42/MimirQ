@@ -93,7 +93,7 @@ def _write_missing_document_vectors(
     computed: list[list[float]],
     out: list[list[float] | None],
 ) -> None:
-    ttl = settings.EMBEDDING_CACHE_TTL_SEC or 0
+    ttl = settings.EMBEDDING_CACHE_TTL_SEC
     try:
         pipe = client.pipeline(transaction=False)
         for (idx, _text), vec in zip(missing, computed, strict=False):
@@ -257,7 +257,7 @@ class LangChainEmbeddingsAdapter(Embeddings):
                 cache_misses = 1
                 embeddings = self._model.encode([text])
                 try:
-                    ttl = settings.EMBEDDING_CACHE_TTL_SEC or 0
+                    ttl = settings.EMBEDDING_CACHE_TTL_SEC
                     payload = json.dumps(embeddings[0], separators=(",", ":")).encode("utf-8")
                     if ttl > 0:
                         client.set(key, payload, ex=ttl)

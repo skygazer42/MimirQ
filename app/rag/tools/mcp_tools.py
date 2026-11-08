@@ -192,7 +192,7 @@ def _document_content_ids(
     except Exception:
         return _document_content_error(document_id, page, "document_id must be a UUID")
     try:
-        tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID or "").strip())
+        tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID).strip())
     except Exception:
         return _document_content_error(document_id, page, "DEFAULT_TENANT_ID is invalid")
     return dataset_uuid, document_uuid, tenant_uuid
@@ -433,7 +433,7 @@ def _get_document_sync(
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
-            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID or "").strip())
+            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID).strip())
         except Exception:
             return {"document_id": document_id, "error": "dataset_id/document_id/DEFAULT_TENANT_ID must be UUIDs"}
 
@@ -514,7 +514,7 @@ def _get_document_structure_sync(
         try:
             ds_uuid = UUID(str(dataset_id))
             doc_uuid = UUID(str(document_id))
-            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID or "").strip())
+            tenant_uuid = UUID(str(settings.DEFAULT_TENANT_ID).strip())
         except Exception:
             return {
                 "schema": _DOCUMENT_STRUCTURE_SCHEMA,

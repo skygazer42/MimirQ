@@ -40,3 +40,10 @@ SCIM安全补充：`test_unresolved_scim_zero_cap_keeps_existing_page_limit` 先
 - `tests/test_settings_rag_engine_defaults.py::test_zero_adaptive_threshold_is_not_replaced[200.0-None]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
 - `tests/test_settings_rag_engine_defaults.py::test_zero_adaptive_threshold_is_not_replaced[0.0-recall50]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
 - `tests/test_settings_rag_engine_defaults.py::test_kg_zero_concurrency_uses_existing_minimum`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+
+## rag_other
+
+红：2 failed in 10.81s；绿：2 passed in 6.92s。
+
+- `tests/test_settings_rag_pipeline_defaults.py::test_zero_corrective_faithfulness_threshold_does_not_retry`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+- `tests/test_settings_rag_pipeline_defaults.py::test_zero_agent_reflection_threshold_is_preserved`：声明值被旧消费端默认值替换，或必需值被静默伪造。

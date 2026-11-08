@@ -57,3 +57,28 @@
 - `app/rag/kg/search/searcher.py:414` `KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY`（config.py:2181，默认 `12`）：`settings.KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY or 12`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
 - `app/rag/kg/search/searcher.py:415` `KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY`（config.py:2182，默认 `6`）：`settings.KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY or 6`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
 - `app/rag/kg/search/searcher.py:416` `KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS`（config.py:2183，默认 `3200`）：`settings.KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS or 3200`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/claim_nli_verifier.py:104` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:267` `VISION_LLM_MAX_TOKENS`（config.py:1914，默认 `Field(default=4096, validation_alias=AliasChoices('MIMIRQ_VISION_LLM_MAX_TOKENS', 'VISION_LLM_MAX_TOKENS'))`）：`settings.VISION_LLM_MAX_TOKENS or 4096`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:353` `VISION_LLM_TIMEOUT_SEC`（config.py:1910，默认 `Field(default=120, validation_alias=AliasChoices('MIMIRQ_VISION_LLM_TIMEOUT_SEC', 'VISION_LLM_TIMEOUT_SEC'))`）：`settings.VISION_LLM_TIMEOUT_SEC or 120`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:457` `VISION_LLM_TIMEOUT_SEC`（config.py:1910，默认 `Field(default=120, validation_alias=AliasChoices('MIMIRQ_VISION_LLM_TIMEOUT_SEC', 'VISION_LLM_TIMEOUT_SEC'))`）：`settings.VISION_LLM_TIMEOUT_SEC or 120`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:476` `VISION_RAG_READER_MAX_IMAGES`（config.py:1932，默认 `Field(default=2, validation_alias=AliasChoices('MIMIRQ_VISION_RAG_READER_MAX_IMAGES', 'VISION_RAG_READER_MAX_IMAGES'))`）：`settings.VISION_RAG_READER_MAX_IMAGES or 2`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/core/vision_reader.py:478` `VISION_RAG_READER_MAX_OUTPUT_CHARS`（config.py:1940，默认 `Field(default=1500, validation_alias=AliasChoices('MIMIRQ_VISION_RAG_READER_MAX_OUTPUT_CHARS', 'VISION_RAG_READER_MAX_OUTPUT_CHARS'))`）：`settings.VISION_RAG_READER_MAX_OUTPUT_CHARS or 1500`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/evaluation/ragas.py:329` `LLM_TIMEOUT`（config.py:299，默认 `60`）：`settings.LLM_TIMEOUT or 60`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/evaluation/test_generator.py:68` `LLM_TIMEOUT`（config.py:299，默认 `60`）：`settings.LLM_TIMEOUT or 60`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/middleware/agent_logging.py:99` `AGENT_LOG_MAX_PREVIEW_CHARS`（config.py:1473，默认 `500`）：`settings.AGENT_LOG_MAX_PREVIEW_CHARS or 500`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/middleware/tool_logging.py:199` `TOOL_CALL_LOG_MAX_PREVIEW_CHARS`（config.py:1469，默认 `500`）：`settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS or 500`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/pipelines/langgraph.py:738` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/pipelines/langgraph.py:985` `FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS`（config.py:1706，默认 `24000`）：`settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/pipelines/langgraph.py:1016` `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC`（config.py:1451，默认 `8`）：`settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/preprocessing/processor.py:271` `GOVERNANCE_REGEX_TIMEOUT_MS`（config.py:1758，默认 `100`）：`settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/preprocessing/tokenization.py:269` `BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS`（config.py:1529，默认 `128`）：`settings.BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS or 128`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:698` `RERANKER_API_TIMEOUT_SEC`（config.py:1859，默认 `30.0`）：`settings.RERANKER_API_TIMEOUT_SEC or self.timeout.total or 30.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:551` `RERANKER_API_MAX_CONCURRENCY`（config.py:1861，默认 `4`）：`settings.RERANKER_API_MAX_CONCURRENCY or 1`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:510` `RERANKER_API_MAX_CONCURRENCY`（config.py:1861，默认 `4`）：`settings.RERANKER_API_MAX_CONCURRENCY or 1`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/base.py:574` `RERANKER_API_MAX_CONCURRENCY`（config.py:1861，默认 `4`）：`settings.RERANKER_API_MAX_CONCURRENCY or 1`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/reranker/llm_based.py:452` `RERANKER_MAX_CHARS`（config.py:1852，默认 `800`）：`settings.RERANKER_MAX_CHARS or 800`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/pre_poc_scanner/settings.py:70` `PRECHECK_NEAR_DUP_MAX_PAIRS`（config.py:447，默认 `5000`）：`settings.PRECHECK_NEAR_DUP_MAX_PAIRS or 5000`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/web_search.py:85` `WEB_SEARCH_TIMEOUT_SEC`（config.py:1361，默认 `8.0`）：`settings.WEB_SEARCH_TIMEOUT_SEC or 8.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/web_search.py:135` `WEB_SEARCH_TIMEOUT_SEC`（config.py:1361，默认 `8.0`）：`settings.WEB_SEARCH_TIMEOUT_SEC or 8.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/tools/web_search.py:181` `WEB_SEARCH_TIMEOUT_SEC`（config.py:1361，默认 `8.0`）：`settings.WEB_SEARCH_TIMEOUT_SEC or 8.0`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。
+- `app/rag/workflows/crag_streaming.py:75` `RAG_CRAG_STREAMING_MAX_RESULTS`（config.py:1732，默认 `5`）：`max_results or settings.RAG_CRAG_STREAMING_MAX_RESULTS or 5`。移除兜底可能让0进入无上限/未知语义路径；本轮未改。

@@ -10,7 +10,7 @@ REGISTERED_PYTHON_PLUGIN_REF_RE = re.compile(
 
 
 def python_plugin_allow_prefixes() -> tuple[str, ...]:
-    raw = str(settings.PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES or "").strip()
+    raw = str(settings.PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES).strip()
     return tuple(prefix.strip() for prefix in raw.split(",") if prefix.strip())
 
 

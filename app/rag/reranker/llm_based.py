@@ -315,7 +315,7 @@ class LLMReranker(DocumentReranker):
             model=model_name,
             api_key=settings.LLM_API_KEY,
             base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
-            temperature=float(settings.RERANKER_TEMPERATURE or 0.0),
+            temperature=float(settings.RERANKER_TEMPERATURE),
             streaming=False,
             timeout=settings.LLM_TIMEOUT,
             max_retries=settings.LLM_MAX_RETRIES,

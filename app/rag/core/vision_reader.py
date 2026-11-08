@@ -474,7 +474,7 @@ async def stream_vision_chat_completions_tokens(
 def _vision_reader_limits() -> _VisionReaderLimits:
     return _VisionReaderLimits(
         max(0, settings.VISION_RAG_READER_MAX_IMAGES or 2),
-        max(1, settings.VISION_RAG_READER_MAX_IMAGE_BYTES or 3_000_000),
+        max(1, settings.VISION_RAG_READER_MAX_IMAGE_BYTES),
         max(0, settings.VISION_RAG_READER_MAX_OUTPUT_CHARS or 1500),
     )
 

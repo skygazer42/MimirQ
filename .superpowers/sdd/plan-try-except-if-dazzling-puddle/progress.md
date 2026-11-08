@@ -225,3 +225,7 @@ C1 扩展相关测试13passed/2failed；两例 adaptive routing 缺少 OpenAI �
 ## 后续批次 rag_kg_engine
 
 候选 194；direct 172、Optional显式None 0、保留逻辑/来源链 0、安全裁决未改 22；源码 23 文件。声明与逐处裁决见 phase1b-remaining-classification.md，安全项见 phase1b-review-decisions.md。红：3 failed in 7.33s；绿：3 passed in 5.84s。原始输出/完整命令/源码前后hash/逐文件git log及AST证明位于仓库外 `C:/Users/jiahuanl/Documents/Codex/2026-11-08/opencode-omo-slim-orch-opus5-5/outputs/mimirq-evidence/rag_kg_engine/`。Ruff check/format 与完整模块AST对照通过；不改变Settings声明或环境默认值。
+
+## 后续批次 rag_other
+
+候选 212；direct 175、Optional显式None 3、保留逻辑/来源链 9、安全裁决未改 25；源码 35 文件。声明与逐处裁决见 phase1b-remaining-classification.md，安全项见 phase1b-review-decisions.md。红：2 failed in 10.81s；绿：2 passed in 6.92s。原始输出/完整命令/源码前后hash/逐文件git log及AST证明位于仓库外 `C:/Users/jiahuanl/Documents/Codex/2026-11-08/opencode-omo-slim-orch-opus5-5/outputs/mimirq-evidence/rag_other/`。Ruff check/format 与完整模块AST对照通过；不改变Settings声明或环境默认值。

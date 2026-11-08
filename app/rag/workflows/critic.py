@@ -76,7 +76,7 @@ def run_critic_review(
     evidence_raw = str(evidence_text or "").strip()
     claims = split_into_claims(
         raw_answer,
-        max_claims=int(max_claims or settings.FAITHFULNESS_SCORE_MAX_CLAIMS or 24),
+        max_claims=int(max_claims or settings.FAITHFULNESS_SCORE_MAX_CLAIMS),
     )
 
     claim_results: list[_CriticClaim] = []
