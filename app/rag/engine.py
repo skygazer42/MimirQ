@@ -731,8 +731,8 @@ def _rag_engine_settings_signature() -> str:
     payload = {
         "llm_api_base": str(settings.LLM_API_BASE).strip(),
         "llm_model": str(settings.LLM_MODEL).strip(),
-        "llm_model_fast": str("" if settings.LLM_MODEL_FAST is None else settings.LLM_MODEL_FAST).strip(),
-        "llm_model_heavy": str("" if settings.LLM_MODEL_HEAVY is None else settings.LLM_MODEL_HEAVY).strip(),
+        "llm_model_fast": str(settings.LLM_MODEL_FAST or "").strip(),
+        "llm_model_heavy": str(settings.LLM_MODEL_HEAVY or "").strip(),
         "llm_api_key_hash": api_key_hash,
         "llm_temperature": float(settings.LLM_TEMPERATURE),
         "llm_timeout": float(settings.LLM_TIMEOUT),

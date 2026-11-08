@@ -1162,7 +1162,7 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         "enable_reranker": bool(settings.ENABLE_RERANKER),
         "dify_reranker_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED),
         "reranker_provider": str(settings.RERANKER_PROVIDER),
-        "reranker_model": str("" if settings.RERANKER_MODEL is None else settings.RERANKER_MODEL),
+        "reranker_model": str(settings.RERANKER_MODEL or ""),
         "reranker_top_n": int(settings.RERANKER_TOP_N),
         "metadata_anchor_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED),
         "metadata_anchor_preflight_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED),

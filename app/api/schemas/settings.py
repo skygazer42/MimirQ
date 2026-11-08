@@ -249,7 +249,7 @@ class MagicPDFConfig(BaseModel):
     debug: bool = False
     timeout_sec: int = 600
     models_dir: str = ""
-    device_mode: str = "cpu"
+    device_mode: str = ""
     keep_artifacts: bool = False
 
 
