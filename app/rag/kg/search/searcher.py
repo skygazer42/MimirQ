@@ -331,7 +331,7 @@ def _event_response(
         "original": config.query,
         "mode": str(query_mode),
         "mode_reason_codes": [str(x) for x in (config.query_mode_reason_codes or []) if str(x).strip()][:8],
-        "mode_confidence": (str(config.query_mode_confidence or "").strip() or None),
+        "mode_confidence": config.query_mode_confidence,
     }
     return response
 
