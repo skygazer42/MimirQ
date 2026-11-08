@@ -1816,10 +1816,10 @@ def _apply_profile_overrides_to_state(state: dict[str, Any]) -> None:
         reranker_top_n=int(state.get("reranker_top_n") or 0),
         enable_weight_rerank=bool(state.get("enable_weight_rerank")),
     )
-    state["retrieval_profile"] = profile_applied.get("retrieval_profile")
-    state["top_k"] = int(profile_applied.get("top_k") or 0)
-    state["score_threshold"] = float(profile_applied.get("score_threshold") or 0.0)
-    state["retrieval_mode"] = str(profile_applied.get("retrieval_mode") or state.get("retrieval_mode") or "hybrid")
+    state["retrieval_profile"] = profile_applied["retrieval_profile"]
+    state["top_k"] = profile_applied["top_k"]
+    state["score_threshold"] = profile_applied["score_threshold"] or 0.0
+    state["retrieval_mode"] = str(profile_applied["retrieval_mode"] or state.get("retrieval_mode") or "hybrid")
     for key in (
         "enable_reranker",
         "reranker_provider",
@@ -1835,8 +1835,9 @@ def _apply_profile_overrides_to_state(state: dict[str, Any]) -> None:
         "hierarchy_sibling_window",
         "hierarchy_overfetch_factor",
     ):
-        if profile_applied.get(key) is not None and profile_applied.get(key) != "":
-            state[key] = profile_applied.get(key)
+        value = profile_applied.get(key)
+        if value is not None and value != "":
+            state[key] = value
 
 
 def run_rag_graph(

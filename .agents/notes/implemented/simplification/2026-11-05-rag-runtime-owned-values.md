@@ -16,6 +16,8 @@ Status: implemented
 
 重排 profile 的名称规则由 rerank_profile.normalize_rerank_profile 持有，配置查找和检索调试共用去空白／小写／空值规则。预算调用直接传入原字符串，由现有查找入口归一化一次，不再先做同样的清理。未知名称仍无预设；设置读取、搜索最小值、重排预设、层级扩取、上限和 MMR 乘数顺序保持。
 
+图状态消费 `apply_retrieval_profile_overrides` 的实际固定核心字段，按键读取 profile、top_k、score_threshold 和 retrieval_mode；已有 builder 已生成原生 int/float，消费者不再补造缺失键或重复转型。阈值的零值继续规范化为正零，模式的真实可空优先级保持。层级和稀疏的可选覆盖每项只 `.get()` 一次；动态状态入口的输入解析继续由原位置负责，不能仅凭 dataclass 注解删除。
+
 检索预算实际由 int、固定整数预设和 max／min 生成；计算与调试记录直接使用这些整数，查询归一化使用实际 NormalizedQuery 并继续复制 applied_rules 列表。实体分区元数据顺序选择原覆盖和模型值，不改变显式空值在实际分区解析与调试计数中的既有区别。已经检查为列表／元组／集合的 $in 直接按键迭代，每个原始元素只归一化一次；交集、大小写与输出顺序保持。
 
 Redis JSON、SDK 与动态候选、模型结果、原始 metadata、授权范围和注入回调继续由原适配器处理。缓存键、内容指纹、空列表命中、租户／账号／文档绑定、加密、TTL、轮询、租约归属与续租、失败／取消与 finally 政策保持。LangGraph 的 task、entrypoint、重试／缓存装饰器、checkpointer、同步／异步边界及 stream writer 位置保持。
