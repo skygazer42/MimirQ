@@ -293,9 +293,9 @@ class KeywordExtractRequest(BaseModel):
     @field_validator("provider")
     @classmethod
     def _validate_keyword_provider(cls, value: str) -> str:
-        from app.core.model_execution import reject_retired_model_provider
+        from app.core.model_execution import reject_retired_provider
 
-        reject_retired_model_provider(value, capability="keyword")
+        reject_retired_provider(value, capability="keyword")
         return value
 
 
@@ -328,9 +328,9 @@ class AutoAnnotationRequest(BaseModel):
     @field_validator("keyword_provider")
     @classmethod
     def _validate_keyword_execution(cls, value: str) -> str:
-        from app.core.model_execution import reject_retired_model_provider
+        from app.core.model_execution import reject_retired_provider
 
-        reject_retired_model_provider(value, capability="keyword")
+        reject_retired_provider(value, capability="keyword")
         return value
 
     keyword_top_k: int = Field(default=12, ge=1, le=50)

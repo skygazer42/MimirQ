@@ -101,7 +101,7 @@ def _request_json(
             except Exception:
                 parsed = raw.decode("utf-8", errors="replace")
         return HttpResult(
-            status_code=int(getattr(exc, "code", 0) or 0) or None,
+            status_code=(exc.code),
             elapsed_ms=elapsed_ms,
             data=parsed,
             error=f"HTTPError: {getattr(exc, 'code', 'unknown')}",

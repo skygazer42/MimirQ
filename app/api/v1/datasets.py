@@ -42,6 +42,7 @@ from app.api.schemas.dataset import (
     DatasetRAGDefaults,
     DatasetRetentionPolicy,
     DatasetUpdate,
+    validate_dataset_execution,
 )
 from app.api.schemas.dataset_category import DatasetCategoryAssignmentRequest, DatasetCategoryAssignmentResponse
 from app.api.schemas.dataset_health import DatasetHealthIngestionSummary, DatasetHealthResponse
@@ -96,6 +97,7 @@ from app.services.ingestion_policy import (
     export_policy_json,
     parse_ingestion_policy_from_metadata,
     validate_and_normalize_ingestion_policy,
+    validate_ingestion_policy_execution,
 )
 from app.services.pipeline_config import parse_pipeline_from_metadata, upsert_pipeline_metadata
 from app.services.rbac_service import TenantPermissions, ensure_tenant_permission
@@ -1031,7 +1033,7 @@ def _apply_policy_bundle_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle
     if replace or cfg.ingestion_policy is not None:
         if cfg.ingestion_policy is not None:
             normalized = validate_and_normalize_ingestion_policy(cfg.ingestion_policy)
-            meta["ingestion_policy"] = normalized.model_dump()
+            _apply_ingestion_policy_metadata(meta, normalized)
         else:
             meta.pop("ingestion_policy", None)
         changed = True
@@ -1111,6 +1113,9 @@ def _apply_config_import_lifecycle_metadata(meta: dict[str, Any], cfg: DatasetCo
 
 
 def _apply_config_import_metadata(meta: dict[str, Any], cfg: DatasetConfigBundle, *, replace: bool) -> bool:
+    validate_dataset_execution(cfg.embedding_defaults, cfg.rag_defaults, cfg.pipeline, cfg.default_parser_backend)
+    if cfg.ingestion_policy is not None:
+        validate_ingestion_policy_execution(cfg.ingestion_policy)
     changed = _apply_config_import_core_metadata(meta, cfg, replace=replace)
     changed = _apply_config_import_reference_metadata(meta, cfg, replace=replace) or changed
     changed = _apply_config_import_lifecycle_metadata(meta, cfg, replace=replace) or changed
@@ -1190,7 +1195,7 @@ def list_datasets(
     )
 
     filtered_query = scope_query
-    term = str(q or "").strip()
+    term = str((q if q is not None else "")).strip()
     if term:
         id_search_expr = _dataset_id_search_expr(term)
         filtered_query = filtered_query.filter(
@@ -1763,8 +1768,8 @@ def clone_dataset(
     created = dataset_service.create_dataset(
         db=db,
         tenant_id=tenant_id,
-        name=str(payload.name or "").strip(),
-        description=str(payload.description or "").strip() or None,
+        name=payload.name.strip(),
+        description=payload.description,
         permission=permission,
         owner_id=account_id,
         partial_members=partial_members,
@@ -2097,8 +2102,8 @@ def _append_ingestion_policy_version(
     item: dict[str, object] = {
         "id": version_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": str(account_id or "").strip() or None,
-        "source": str(source or "put"),
+        "created_by": account_id,
+        "source": source,
         "policy": policy.model_dump(),
     }
     if isinstance(note, str) and note.strip():
@@ -2198,6 +2203,7 @@ def _normalized_stored_ingestion_policy(target: dict) -> IngestionPolicy:
 
 
 def _apply_ingestion_policy_metadata(meta: dict[str, Any], policy: IngestionPolicy) -> None:
+    validate_ingestion_policy_execution(policy)
     if policy.rules:
         meta["ingestion_policy"] = policy.model_dump()
     else:
@@ -2262,10 +2268,7 @@ def put_dataset_ingestion_policy(
 
     normalized = validate_and_normalize_ingestion_policy(payload)
     meta = dict(dataset.dataset_metadata or {})
-    if normalized.rules:
-        meta["ingestion_policy"] = normalized.model_dump()
-    else:
-        meta.pop("ingestion_policy", None)
+    _apply_ingestion_policy_metadata(meta, normalized)
     meta, _vid = _append_ingestion_policy_version(meta, policy=normalized, account_id=account_id, source="put")
     dataset.dataset_metadata = meta
     db.commit()
@@ -2309,10 +2312,7 @@ async def import_dataset_ingestion_policy(
     if not replace and "ingestion_policy" in meta:
         # Best-effort: do not merge in v1 (explicit by design).
         raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
-    if normalized.rules:
-        meta["ingestion_policy"] = normalized.model_dump()
-    else:
-        meta.pop("ingestion_policy", None)
+    _apply_ingestion_policy_metadata(meta, normalized)
     meta, _vid = _append_ingestion_policy_version(meta, policy=normalized, account_id=account_id, source="import")
     dataset.dataset_metadata = meta
     db.commit()
@@ -2841,41 +2841,29 @@ def _dt_to_json(v: Any) -> str | None:
     return s
 
 
-def _trimmed_metadata_str(
-    meta: dict[str, Any],
-    key: str,
-    *,
-    lowercase: bool = False,
-    max_length: int | None = None,
-) -> str | None:
-    value = str(meta.get(key) or "").strip()
-    if lowercase:
-        value = value.lower()
-    if max_length is not None and len(value) > max_length:
-        value = value[:max_length]
-    return value or None
-
-
 def _document_pipeline_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
     active_hash = get_active_pipeline_hash(meta)
     return {
-        "file_sha256": _trimmed_metadata_str(meta, "file_sha256", lowercase=True),
+        "file_sha256": meta.get("file_sha256"),
         "doc_pipeline_key": build_doc_pipeline_key(doc.id, active_hash) if active_hash else None,
-        "pipeline_hash": _trimmed_metadata_str(meta, "pipeline_hash"),
-        "active_pipeline_hash": _trimmed_metadata_str(meta, "active_pipeline_hash"),
+        "pipeline_hash": meta.get("pipeline_hash"),
+        "active_pipeline_hash": meta.get("active_pipeline_hash"),
     }
 
 
 def _document_source_export_fields(meta: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
-    source_url = _trimmed_metadata_str(meta, "source_url")
-    source_path = _trimmed_metadata_str(meta, "source_path")
+    source_url = meta.get("source_url")
+    source_path = meta.get("source_path")
+    source_etag = meta.get("source_etag")
+    if source_etag is not None:
+        source_etag = source_etag[:500]
     return {
         "source_url_hash": (stable_hash(source_url, length=16) if source_url and not include_sensitive else None),
         "source_path_hash": (stable_hash(source_path, length=16) if source_path and not include_sensitive else None),
-        "source_last_modified_at": _trimmed_metadata_str(meta, "source_last_modified_at"),
-        "source_last_modified_source": _trimmed_metadata_str(meta, "source_last_modified_source"),
-        "source_fetched_at": _trimmed_metadata_str(meta, "source_fetched_at"),
-        "source_etag": _trimmed_metadata_str(meta, "source_etag", max_length=500),
+        "source_last_modified_at": meta.get("source_last_modified_at"),
+        "source_last_modified_source": meta.get("source_last_modified_source"),
+        "source_fetched_at": meta.get("source_fetched_at"),
+        "source_etag": source_etag,
     }
 
 
@@ -2884,12 +2872,12 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
         "schema": "mimirq.dataset_document_export.v1",
         "id": str(doc.id),
         "tenant_id": str(doc.tenant_id),
-        "dataset_id": (str(doc.dataset_id) if doc.dataset_id is not None else None),
-        "status": str(doc.status or ""),
-        "file_type": str(doc.file_type or ""),
-        "file_size": int(doc.file_size or 0),
-        "chunk_count": int(doc.chunk_count or 0),
-        "total_characters": int(doc.total_characters or 0),
+        "dataset_id": doc.dataset_id,
+        "status": doc.status,
+        "file_type": doc.file_type,
+        "file_size": doc.file_size,
+        "chunk_count": doc.chunk_count,
+        "total_characters": doc.total_characters,
         "created_at": _dt_to_json(doc.created_at),
         "updated_at": _dt_to_json(doc.updated_at),
         "processed_at": _dt_to_json(doc.processed_at),
@@ -2898,8 +2886,8 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
         # Lifecycle / governance workflow signals (PII-safe by default).
         "lifecycle_owner_hash": None,
         "review_due_at": _dt_to_json(doc.review_due_at),
-        "authority_level": (int(doc.authority_level or 0) if doc.authority_level is not None else None),
-        "supersedes_document_id": (str(doc.supersedes_document_id or "") or None),
+        "authority_level": doc.authority_level,
+        "supersedes_document_id": doc.supersedes_document_id,
         **_document_pipeline_export_fields(doc, meta),
         **_document_source_export_fields(meta, include_sensitive=include_sensitive),
     }
@@ -2907,12 +2895,12 @@ def _document_base_export_row(doc: DBDocument, meta: dict[str, Any], *, include_
 
 def _document_sensitive_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
     return {
-        "filename": str(doc.filename or ""),
-        "file_path": str(doc.file_path or ""),
-        "owner_id": (str(doc.owner_id or "") or None),
-        "access_mode": (str(doc.access_mode or "") or None),
-        "lifecycle_owner": (str(doc.lifecycle_owner or "") or None),
-        "error_message": (str(doc.error_message or "") or None),
+        "filename": doc.filename,
+        "file_path": doc.file_path,
+        "owner_id": doc.owner_id,
+        "access_mode": doc.access_mode,
+        "lifecycle_owner": doc.lifecycle_owner,
+        "error_message": doc.error_message,
         "doc_metadata": meta,
     }
 
@@ -3125,10 +3113,10 @@ def _dataset_bundle_summary_payload(ds: Dataset, tenant_id: UUID, exported_at: d
         "tenant_id": str(tenant_id),
         "dataset": {
             "id": str(ds.id),
-            "name": str(ds.name or ""),
-            "description": str(ds.description or ""),
+            "name": ds.name,
+            "description": ds.description,
             "permission": str(ds.permission or ""),
-            "owner_id": (str(ds.owner_id or "") or None),
+            "owner_id": ds.owner_id,
             "created_at": _dt_to_json(ds.created_at),
             "updated_at": _dt_to_json(ds.updated_at),
         },

@@ -26,7 +26,7 @@ async def search_kg_query_async(request: KGQueryRequest) -> dict[str, Any]:
         query=request.query,
         tenant_id=scope.tenant_id,
         account_id=scope.account_id,
-        document_ids=list(scope.document_ids) if scope.document_ids else None,
+        document_ids=None if scope.document_ids is None else list(scope.document_ids),
         dataset_id=scope.dataset_id,
         dataset_ids=list(scope.dataset_ids) if scope.dataset_ids else None,
     )

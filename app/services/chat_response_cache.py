@@ -240,21 +240,21 @@ def build_chat_cache_key(
     signature = {
         "v": 1,
         "tenant_id": str(tenant_id),
-        "account_id": str(account_id or ""),
-        "dataset_id": str(dataset_id or "") or None,
+        "account_id": account_id,
+        "dataset_id": dataset_id,
         # Bind to the current embedding "space" (provider/model/base_url) so a model
         # change can't serve stale cached responses.
-        "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
-        "corpus_cache_token": str(corpus_cache_token or "") or None,
+        "embedding_space_hash": current_embedding_space_hash(),
+        "corpus_cache_token": corpus_cache_token,
         "retrieval_runtime": retrieval_cache_runtime_values(),
         "doc_scope": _hash_doc_scope(document_ids),
         "doc_count": len([d for d in document_ids if d]),
-        "question": (question or "").strip(),
+        "question": question.strip(),
         "rag": rag_config,
         "prompt": prompt_config,
-        "structured_output": bool(structured_output),
-        "structured_preset": str(structured_preset or "") or None,
-        "use_graph": bool(use_graph),
+        "structured_output": structured_output,
+        "structured_preset": structured_preset,
+        "use_graph": use_graph,
     }
 
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -277,7 +277,7 @@ def resolve_chat_response_cache_key(
     use_graph: bool,
 ) -> tuple[str | None, str | None]:
     doc_ids = [doc_id for doc_id in (document_ids or []) if doc_id is not None]
-    scope_dataset_id = dataset_id if dataset_id is not None else None
+    scope_dataset_id = dataset_id
     if not doc_ids and scope_dataset_id is None:
         return None, "missing_scope"
 

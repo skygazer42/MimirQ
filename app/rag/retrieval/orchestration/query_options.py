@@ -132,9 +132,9 @@ def query_contract_defaults() -> QueryContractDefaults:
 def resolve_query_preparation_request(
     question: str, history_text: str, overrides: QueryPreparationOverrides, *, temporal_enabled: bool
 ) -> QueryPreparationRequest:
-    from app.core.model_execution import reject_retired_model_provider
+    from app.core.model_execution import reject_retired_provider
 
-    reject_retired_model_provider(
+    reject_retired_provider(
         settings.SPARSE_RETRIEVAL_PROVIDER if overrides.sparse_provider is None else overrides.sparse_provider,
         capability="sparse",
     )
@@ -188,7 +188,7 @@ def resolve_model_query_settings(overrides: ModelQueryOverrides) -> ModelQuerySe
     variant = overrides.multi_query_ab_variant.strip().lower() if overrides.multi_query_ab_variant is not None else None
     forced = overrides.enable_multi_query is None and variant in {"on", "enabled", "treatment", "mq"}
     key = overrides.multi_query_ab_test_key.strip() if overrides.multi_query_ab_test_key is not None else None
-    experiment = MultiQueryExperiment(key or None, variant or None, overrides.multi_query_ab_seed, forced)
+    experiment = MultiQueryExperiment(key, variant, overrides.multi_query_ab_seed, forced)
     count = settings.MULTI_QUERY_COUNT if overrides.multi_query_count is None else overrides.multi_query_count
     temperature = (
         settings.MULTI_QUERY_TEMPERATURE
@@ -231,9 +231,10 @@ def resolve_model_query_settings(overrides: ModelQueryOverrides) -> ModelQuerySe
     return ModelQuerySettings(multi, hyde, step_back, decomposition)
 
 
-def _normalize_multi_query_label(value):
-    normalized = str(value or "").strip()
-    return normalized if normalized else None
+def _normalize_multi_query_label(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.strip()
 
 
 def parse_model_query_overrides(options: Mapping[str, Any]) -> ModelQueryOverrides:
@@ -250,8 +251,8 @@ def parse_model_query_overrides(options: Mapping[str, Any]) -> ModelQueryOverrid
         enable_query_decomposition=None
         if options.get("enable_query_decomposition") is None
         else bool(options["enable_query_decomposition"]),
-        multi_query_ab_test_key=_normalize_multi_query_label(options.get("multi_query_ab_test_key")),
-        multi_query_ab_variant=_normalize_multi_query_label(options.get("multi_query_ab_variant")),
+        multi_query_ab_test_key=(_normalize_multi_query_label(options.get("multi_query_ab_test_key"))),
+        multi_query_ab_variant=(_normalize_multi_query_label(options.get("multi_query_ab_variant"))),
         multi_query_ab_seed=options.get("multi_query_ab_seed"),
     )
 

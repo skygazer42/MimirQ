@@ -1,6 +1,6 @@
 from typing import Any, TypedDict
 
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.rag.kg.extraction.relation_processor import normalize_predicate
 
 AUTO_GRAPH_R1_PLAN_SCHEMA_V1 = "mimirq.kg.auto_graph_r1_plan.v1"
@@ -18,8 +18,8 @@ class _PredicateCount(TypedDict):
 
 
 def _normalize_backend(value: str | None) -> str:
-    backend = str(value or "").strip().lower()
-    reject_retired_model_provider(backend, capability="kg_extraction")
+    backend = str((value if value is not None else "")).strip().lower()
+    reject_retired_provider(backend, capability="kg_extraction")
     if backend in _VALID_BACKENDS:
         return backend
     return "llm"
@@ -27,7 +27,7 @@ def _normalize_backend(value: str | None) -> str:
 
 def _normalize_type_counts(entity_type_counts: dict[str, int] | None) -> list[_EntityTypeCount]:
     counts: dict[str, int] = {}
-    for raw_key, raw_count in (entity_type_counts or {}).items():
+    for raw_key, raw_count in (entity_type_counts if entity_type_counts is not None else {}).items():
         key = str(raw_key or "").strip().lower() or "unknown"
         try:
             count = max(0, int(raw_count or 0))
@@ -45,7 +45,7 @@ def _normalize_type_counts(entity_type_counts: dict[str, int] | None) -> list[_E
 
 def _normalize_predicate_counts(predicate_counts: dict[str, int] | None) -> list[_PredicateCount]:
     counts: dict[str, int] = {}
-    for raw_key, raw_count in (predicate_counts or {}).items():
+    for raw_key, raw_count in (predicate_counts if predicate_counts is not None else {}).items():
         key = normalize_predicate(str(raw_key or ""))
         try:
             count = max(0, int(raw_count or 0))

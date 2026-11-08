@@ -88,7 +88,7 @@ def _summary_from_text(text: str, *, max_chars: int) -> str | None:
     summary = _normalize_space(paragraphs[0])
     if len(summary) > max_chars:
         summary = summary[: max_chars - 3].rstrip() + "..."
-    return summary or None
+    return summary
 
 
 def _build_questions(

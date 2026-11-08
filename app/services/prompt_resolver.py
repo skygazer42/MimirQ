@@ -76,8 +76,8 @@ def resolve_prompt_template(
     tenant_id: UUID,
     prompt_template_id: UUID | None = None,
     template_key: str | None = None,
-    ab_experiment_key: str | None = None,
-    ab_user_key: str | None = None,
+    ab_experiment_key: str | None,
+    ab_user_key: str | None,
 ) -> PromptTemplate | None:
     """
     Resolve the final PromptTemplate to use (returns ORM object).

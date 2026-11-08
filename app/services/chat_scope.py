@@ -23,7 +23,7 @@ class ResolvedChatConversationScope:
     conversation: Conversation
     conversation_id: UUID
     scope_dataset_id: UUID | None
-    allowed_doc_ids: list[UUID]
+    allowed_doc_ids: list[UUID] | None
 
 
 def _resolve_existing_conversation_document_scope(
@@ -111,14 +111,14 @@ def _resolve_requested_dataset_scope(
     account_id: str,
     request_dataset_id: UUID,
     conversation: Conversation | None = None,
-) -> tuple[UUID, list[UUID]]:
+) -> tuple[UUID, None]:
     dataset_service.ensure_member(db, tenant_id, account_id)
     dataset = dataset_service.get_dataset(db, tenant_id, request_dataset_id)
     dataset_service.assert_dataset_readable(db, dataset, account_id)
     if conversation is not None:
         conversation.dataset_id = request_dataset_id
         conversation.document_ids = []
-    return request_dataset_id, []
+    return request_dataset_id, None
 
 
 def _get_existing_conversation_scope(
@@ -132,7 +132,7 @@ def _get_existing_conversation_scope(
     allow_open_scope: bool,
     dataset_required_detail: str,
     document_scope_mismatch_detail: str,
-) -> tuple[UUID | None, list[UUID]]:
+) -> tuple[UUID | None, list[UUID] | None]:
     if request_document_ids:
         return _resolve_requested_document_scope(
             db,
@@ -165,7 +165,7 @@ def _get_existing_conversation_scope(
     scope_dataset_id = conversation.dataset_id
     if scope_dataset_id is None and not allow_open_scope:
         raise HTTPException(status_code=400, detail=dataset_required_detail)
-    return scope_dataset_id, []
+    return scope_dataset_id, None
 
 
 def _get_new_conversation_scope(
@@ -178,7 +178,7 @@ def _get_new_conversation_scope(
     allow_open_scope: bool,
     dataset_required_detail: str,
     document_scope_mismatch_detail: str,
-) -> tuple[UUID | None, list[UUID]]:
+) -> tuple[UUID | None, list[UUID] | None]:
     if request_document_ids:
         return _resolve_requested_document_scope(
             db,
@@ -197,7 +197,7 @@ def _get_new_conversation_scope(
         )
     if not allow_open_scope:
         raise HTTPException(status_code=400, detail=dataset_required_detail)
-    return None, []
+    return None, None
 
 
 def _load_conversation(
@@ -229,7 +229,7 @@ def _create_conversation(
     account_id: str,
     request_message: str,
     scope_dataset_id: UUID | None,
-    allowed_doc_ids: list[UUID],
+    allowed_doc_ids: list[UUID] | None,
 ) -> Conversation:
     conversation = Conversation(
         id=uuid4(),
@@ -237,7 +237,7 @@ def _create_conversation(
         owner_account_id=account_id,
         title_source=CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
-        document_ids=allowed_doc_ids,
+        document_ids=[] if allowed_doc_ids is None else allowed_doc_ids,
     )
     apply_auto_conversation_title(conversation, request_message)
     db.add(conversation)

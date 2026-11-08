@@ -810,8 +810,8 @@ def _record_crawled_url(
     out.append(out_url)
     sync_tokens[out_url] = _build_page_sync_token(
         url=out_url,
-        text=(text or None),
-        content_type=(content_type or None),
+        text=(text),
+        content_type=(content_type),
     )
 
 

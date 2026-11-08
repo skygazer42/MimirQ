@@ -375,7 +375,7 @@ def _retry_info_event(runtime: StandardStreamState) -> dict[str, Any] | None:
         docs_count=len(runtime.data.docs),
         citations_count=len(runtime.data.citations),
         abstain_triggered=runtime.data.abstain_triggered,
-        retrieval_profile=runtime.data.profile_norm or None,
+        retrieval_profile=runtime.data.profile_norm,
     )
 
 
@@ -383,7 +383,7 @@ def _record_corrective_attempt(runtime: StandardStreamState) -> None:
     runtime.data.corrective_attempts.append(
         {
             "attempt": int(runtime.data.corrective_attempt_count),
-            "retrieval_profile": runtime.data.profile_norm or None,
+            "retrieval_profile": runtime.data.profile_norm,
             "query_count": len(runtime.data.retry_queries),
             "docs_count": len(runtime.data.docs),
             "citations_count": len(runtime.data.citations),

@@ -11,8 +11,7 @@ CONVERSATION_NOT_ACCESSIBLE_DETAIL = "Conversation is not accessible"
 
 
 def _normalized_account_id(value: str | UUID | None) -> str | None:
-    account_id = str(value).strip() if value is not None else ""
-    return account_id or None
+    return str(value).strip() if value is not None else None
 
 
 def _conversation_owner_account_id(conv: Conversation) -> str | None:

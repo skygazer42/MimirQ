@@ -218,7 +218,7 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
         docs_count=len(runtime.data.docs),
         citations_count=len(runtime.data.citations),
         abstain_triggered=runtime.data.abstain_triggered,
-        retrieval_profile=runtime.data.profile_norm or None,
+        retrieval_profile=runtime.data.profile_norm,
     )
     if runtime.data.retrieval_info_event is not None:
         yield runtime.data.retrieval_info_event
@@ -226,7 +226,7 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
     runtime.data.corrective_attempts.append(
         {
             "attempt": int(runtime.data.corrective_attempt_count),
-            "retrieval_profile": runtime.data.profile_norm or None,
+            "retrieval_profile": runtime.data.profile_norm,
             "query_count": len(runtime.data.retrieval_queries),
             "docs_count": len(runtime.data.docs),
             "citations_count": len(runtime.data.citations),
@@ -330,11 +330,11 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                     "retrieval_mode": runtime.data.mode_used,
                     "retrieval_mode_requested": runtime.data.mode_req,
                     "retrieval_mode_auto_routed": bool(runtime.data.mode_auto),
-                    "retrieval_profile": runtime.data.profile_norm or None,
+                    "retrieval_profile": runtime.data.profile_norm,
                     "retrieval_profile_requested": (
                         str(runtime.data.profile_req).strip().lower() if runtime.data.profile_req is not None else None
                     ),
-                    "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective or None,
+                    "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective,
                     "retrieval_contract_policy": dict(runtime.data.retrieval_contract_policy or {}),
                     "intent_router_enabled": bool(runtime.data.intent_router_meta.get("enabled")),
                     "intent_router_used": bool(runtime.data.intent_router_meta.get("used")),
@@ -489,7 +489,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                 request_id=str(runtime.data.request_id),
                 answer=str(runtime.data.full_response or ""),
                 contexts=[str(getattr(d, "page_content", "") or "") for d in (runtime.data.docs or [])],
-                retrieval_mode=str(runtime.data.mode_used or "") or None,
+                retrieval_mode=runtime.data.mode_used,
                 citations_count=len(runtime.data.citations or []),
             )
         except Exception as exc:
@@ -687,7 +687,7 @@ def _post_rerank_pipeline_summary() -> list[dict[str, Any]]:
                 top_n = int(stage.get("top_n")) if stage.get("top_n") is not None else 0
             except Exception:
                 top_n = 0
-            summary.append({"provider": provider, "top_n": max(0, top_n) or None})
+            summary.append({"provider": provider, "top_n": max(0, top_n)})
             if len(summary) >= 4:
                 break
     except Exception:
@@ -696,123 +696,103 @@ def _post_rerank_pipeline_summary() -> list[dict[str, Any]]:
 
 
 def _rag_config_template_fingerprint(raw_template: Any) -> dict[str, Any] | None:
-    if not isinstance(raw_template, dict) or not raw_template:
+    if raw_template is None:
         return None
-    fingerprint = {}
-    template_key = str(raw_template.get("template_key") or "").strip()
-    if template_key:
-        fingerprint["template_key"] = template_key
-    try:
-        version = int(raw_template.get("version") or 0)
-    except Exception:
-        version = 0
-    if version > 0:
-        fingerprint["version"] = version
-    experiment = str(raw_template.get("ab_experiment_key") or "").strip()
-    if experiment:
-        fingerprint["ab_experiment_key"] = experiment
-    variant = str(raw_template.get("ab_variant") or "").strip()
-    if variant:
-        fingerprint["ab_variant"] = variant
-    patch_hash = str(raw_template.get("patch_hash") or "").strip()
-    if patch_hash:
-        fingerprint["patch_hash"] = patch_hash
-    return fingerprint or None
+    return {
+        key: value
+        for key, value in raw_template.items()
+        if key in ("template_key", "version", "ab_experiment_key", "ab_variant", "patch_hash")
+    }
 
 
 async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
-    try:
-        from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
+    from app.rag.core.retrieval_config_fingerprint import build_retrieval_config_fingerprint
 
-        runtime.data.pipe_summary = _post_rerank_pipeline_summary()
-        runtime.data.rag_cfg_tpl_fp = _rag_config_template_fingerprint(runtime.data.rag_config_template)
+    runtime.data.pipe_summary = _post_rerank_pipeline_summary()
+    runtime.data.rag_cfg_tpl_fp = _rag_config_template_fingerprint(runtime.data.rag_config_template)
 
-        runtime.data.fp = build_retrieval_config_fingerprint(
-            config={
-                "requested_retrieval_mode": str(runtime.data.mode_req or ""),
-                "retrieval_mode": str(runtime.data.mode_used or ""),
-                "retrieval_mode_auto_routed": bool(runtime.data.mode_auto),
-                "retrieval_profile": runtime.data.profile_norm or None,
-                "rag_config_template": runtime.data.rag_cfg_tpl_fp,
-                "top_k": int(runtime.data.top_k) if runtime.data.top_k is not None else None,
-                "score_threshold": float(runtime.data.score_threshold_used or 0.0),
-                "alpha": float(runtime.data.alpha_val or 0.0),
-                "fusion_strategy": str(runtime.data.fusion_strategy or "").strip().lower()
-                or settings.RETRIEVAL_FUSION_STRATEGY,
-                "fusion_budgets": runtime.data.fusion_budgets,
-                "fusion_min_scores": runtime.data.fusion_min_scores,
-                "fusion_weights": runtime.data.fusion_weights,
-                "enable_weight_rerank": bool(runtime.data.weight_rerank),
-                "vector_weight": float(runtime.data.vec_w or 0.0),
-                "keyword_weight": float(runtime.data.kw_w or 0.0),
-                "mmr_lambda": float(runtime.data.mmr_lambda_val or 0.0),
-                "enable_reranker": bool(runtime.data.rerank_on),
-                "reranker_provider": str(runtime.data.rerank_provider or ""),
-                "reranker_tier": runtime.module.describe_reranker_provider(
-                    str(runtime.data.rerank_provider or ""),
-                    provider_name=str(settings.COLBERT_RERANK_PROVIDER or "deterministic"),
-                ).get("tier"),
-                "reranker_top_n": int(runtime.data.rerank_top_n),
-                "visible_evidence_only": bool(runtime.data.visible_evidence_only),
-                "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective or None,
-                "must_recall_requested": bool(runtime.data.must_recall),
-                "must_recall_expected_source_keys": list(runtime.data.must_recall_expected_source_keys or []),
-                "must_recall_required_anchor_fields": list(runtime.data.must_recall_required_anchor_fields or []),
-                "vector_backend": str(settings.VECTOR_BACKEND or ""),
-                "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
-                "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
-                "sparse_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
-                "sparse_provider": str(settings.SPARSE_RETRIEVAL_PROVIDER or ""),
-                "sparse_index_persist_enabled": bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED),
-                "colbert_enabled": bool(settings.COLBERT_RETRIEVAL_ENABLED),
-                "colbert_provider": str(settings.COLBERT_RETRIEVAL_PROVIDER or ""),
-                "colbert_index_persist_enabled": bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED),
-                "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0),
-                "parent_child_auto_merge_enabled": bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED),
-                "parent_child_auto_merge_mode": str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or ""),
-                "kg_query_expansion_enabled": bool(runtime.data.kg_query_expansion_enabled),
-                "kg_chunk_injection_enabled": bool(runtime.data.kg_chunk_injection_enabled),
-                "kg_chunk_injection_max_chunks": int(runtime.data.kg_chunk_injection_max_chunks_i or 0),
-                "kg_chunk_boost_enabled": bool(runtime.data.kg_chunk_boost_meta.get("enabled")),
-                "kg_chunk_boost_weight": runtime.data.kg_chunk_boost_meta.get("weight"),
-                "kg_chunk_boost_max_promoted": runtime.data.kg_chunk_boost_meta.get("max_promoted"),
-                "kg_chunk_boost_promoted": int(runtime.data.kg_chunk_boost_meta.get("promoted", 0) or 0),
-                "kg_chunk_boost_top_changed": bool(runtime.data.kg_chunk_boost_meta.get("top_changed")),
-                "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
-                "evidence_post_rerank_provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or ""),
-                "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
-                "evidence_post_rerank_pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
-                "evidence_post_rerank_pipeline": runtime.data.pipe_summary,
-                "multi_query": {
-                    "enabled": bool(runtime.data.mq_enabled),
-                    "count": int(runtime.data.mq_n or 0),
-                    "temperature": float(runtime.data.mq_temp or 0.0),
-                    "max_chars": int(runtime.data.mq_max_chars or 0),
-                    "diversify": {
-                        "enabled": bool(runtime.data.mq_diversify_enabled),
-                        "budget": int(runtime.data.mq_diversify_budget or 0)
-                        if runtime.data.mq_diversify_enabled
-                        else 0,
-                    },
+    runtime.data.fp = build_retrieval_config_fingerprint(
+        config={
+            "requested_retrieval_mode": str(runtime.data.mode_req or ""),
+            "retrieval_mode": str(runtime.data.mode_used or ""),
+            "retrieval_mode_auto_routed": bool(runtime.data.mode_auto),
+            "retrieval_profile": runtime.data.profile_norm,
+            "rag_config_template": runtime.data.rag_cfg_tpl_fp,
+            "top_k": int(runtime.data.top_k) if runtime.data.top_k is not None else None,
+            "score_threshold": float(runtime.data.score_threshold_used or 0.0),
+            "alpha": float(runtime.data.alpha_val or 0.0),
+            "fusion_strategy": str(runtime.data.fusion_strategy or "").strip().lower()
+            or settings.RETRIEVAL_FUSION_STRATEGY,
+            "fusion_budgets": runtime.data.fusion_budgets,
+            "fusion_min_scores": runtime.data.fusion_min_scores,
+            "fusion_weights": runtime.data.fusion_weights,
+            "enable_weight_rerank": bool(runtime.data.weight_rerank),
+            "vector_weight": float(runtime.data.vec_w or 0.0),
+            "keyword_weight": float(runtime.data.kw_w or 0.0),
+            "mmr_lambda": float(runtime.data.mmr_lambda_val or 0.0),
+            "enable_reranker": bool(runtime.data.rerank_on),
+            "reranker_provider": str(runtime.data.rerank_provider or ""),
+            "reranker_tier": runtime.module.describe_reranker_provider(
+                str(runtime.data.rerank_provider or ""),
+                provider_name=str(settings.COLBERT_RERANK_PROVIDER or "deterministic"),
+            ).get("tier"),
+            "reranker_top_n": int(runtime.data.rerank_top_n),
+            "visible_evidence_only": bool(runtime.data.visible_evidence_only),
+            "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective,
+            "must_recall_requested": bool(runtime.data.must_recall),
+            "must_recall_expected_source_keys": list(runtime.data.must_recall_expected_source_keys or []),
+            "must_recall_required_anchor_fields": list(runtime.data.must_recall_required_anchor_fields or []),
+            "vector_backend": str(settings.VECTOR_BACKEND or ""),
+            "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
+            "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
+            "sparse_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
+            "sparse_provider": str(settings.SPARSE_RETRIEVAL_PROVIDER or ""),
+            "sparse_index_persist_enabled": bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED),
+            "colbert_enabled": bool(settings.COLBERT_RETRIEVAL_ENABLED),
+            "colbert_provider": str(settings.COLBERT_RETRIEVAL_PROVIDER or ""),
+            "colbert_index_persist_enabled": bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED),
+            "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0),
+            "parent_child_auto_merge_enabled": bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED),
+            "parent_child_auto_merge_mode": str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or ""),
+            "kg_query_expansion_enabled": bool(runtime.data.kg_query_expansion_enabled),
+            "kg_chunk_injection_enabled": bool(runtime.data.kg_chunk_injection_enabled),
+            "kg_chunk_injection_max_chunks": int(runtime.data.kg_chunk_injection_max_chunks_i or 0),
+            "kg_chunk_boost_enabled": bool(runtime.data.kg_chunk_boost_meta.get("enabled")),
+            "kg_chunk_boost_weight": runtime.data.kg_chunk_boost_meta.get("weight"),
+            "kg_chunk_boost_max_promoted": runtime.data.kg_chunk_boost_meta.get("max_promoted"),
+            "kg_chunk_boost_promoted": int(runtime.data.kg_chunk_boost_meta.get("promoted", 0) or 0),
+            "kg_chunk_boost_top_changed": bool(runtime.data.kg_chunk_boost_meta.get("top_changed")),
+            "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
+            "evidence_post_rerank_provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or ""),
+            "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
+            "evidence_post_rerank_pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
+            "evidence_post_rerank_pipeline": runtime.data.pipe_summary,
+            "multi_query": {
+                "enabled": bool(runtime.data.mq_enabled),
+                "count": int(runtime.data.mq_n or 0),
+                "temperature": float(runtime.data.mq_temp or 0.0),
+                "max_chars": int(runtime.data.mq_max_chars or 0),
+                "diversify": {
+                    "enabled": bool(runtime.data.mq_diversify_enabled),
+                    "budget": int(runtime.data.mq_diversify_budget or 0) if runtime.data.mq_diversify_enabled else 0,
                 },
-                "step_back": {
-                    "enabled": bool(runtime.data.step_back_enabled),
-                    "temperature": float(runtime.data.step_back_temp or 0.0),
-                    "max_chars": int(runtime.data.step_back_max_chars or 0),
-                    "output_max_chars": int(runtime.data.step_back_output_max or 0),
-                },
-                "query_rewrite": {
-                    "enabled": bool(runtime.data.rewrite_enabled),
-                    "strategy_id": runtime.data.rewrite_strategy_id if runtime.data.rewrite_enabled else None,
-                    "strategy_hash": runtime.data.rewrite_strategy_hash if runtime.data.rewrite_enabled else None,
-                    "temperature": runtime.data.rewrite_temperature if runtime.data.rewrite_enabled else None,
-                    "max_chars": int(runtime.data.rewrite_max_chars or 0) if runtime.data.rewrite_enabled else None,
-                },
-            }
-        )
-        runtime.data.retrieval_config_hash = str(runtime.data.fp.get("hash") or "").strip() or None
-    except Exception:
-        runtime.data.retrieval_config_hash = None
+            },
+            "step_back": {
+                "enabled": bool(runtime.data.step_back_enabled),
+                "temperature": float(runtime.data.step_back_temp or 0.0),
+                "max_chars": int(runtime.data.step_back_max_chars or 0),
+                "output_max_chars": int(runtime.data.step_back_output_max or 0),
+            },
+            "query_rewrite": {
+                "enabled": bool(runtime.data.rewrite_enabled),
+                "strategy_id": runtime.data.rewrite_strategy_id if runtime.data.rewrite_enabled else None,
+                "strategy_hash": runtime.data.rewrite_strategy_hash if runtime.data.rewrite_enabled else None,
+                "temperature": runtime.data.rewrite_temperature if runtime.data.rewrite_enabled else None,
+                "max_chars": int(runtime.data.rewrite_max_chars or 0) if runtime.data.rewrite_enabled else None,
+            },
+        }
+    )
+    runtime.data.retrieval_config_hash = runtime.data.fp["hash"]
 
 
 async def build_rag_trace_payload(runtime: StandardStreamState) -> None:
@@ -897,11 +877,11 @@ async def build_rag_trace_payload(runtime: StandardStreamState) -> None:
             "mode": runtime.data.mode_used,
             "requested_mode": runtime.data.mode_req,
             "auto_routed": bool(runtime.data.mode_auto),
-            "profile": runtime.data.profile_norm or None,
+            "profile": runtime.data.profile_norm,
             "profile_requested": (
                 str(runtime.data.profile_req).strip().lower() if runtime.data.profile_req is not None else None
             ),
-            "contract_mode": runtime.data.retrieval_contract_mode_effective or None,
+            "contract_mode": runtime.data.retrieval_contract_mode_effective,
             "contract_policy": dict(runtime.data.retrieval_contract_policy or {}),
             "intent_router": runtime.data.intent_router_meta,
             "industry_rules": dict(runtime.data.industry_rules_meta),

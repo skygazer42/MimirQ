@@ -117,9 +117,9 @@ def _sanitize_error_message(exc: BaseException) -> str:
 def _probe_embedding_runtime_sync() -> dict[str, Any]:
     from app.storage.vector.factory import get_embedding_client, get_vector_store
 
-    provider_name = str(settings.EMBEDDING_PROVIDER or "").strip().lower() or "openai_compatible"
-    model_name = str(settings.EMBEDDING_MODEL or "").strip() or None
-    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower() or "milvus"
+    provider_name = settings.EMBEDDING_PROVIDER.strip().lower()
+    model_name = settings.EMBEDDING_MODEL
+    vector_backend = settings.VECTOR_BACKEND.strip().lower()
     probe = _new_probe_state("embedding")
     probe.update({"provider": provider_name, "model": model_name, "vector_backend": vector_backend})
     started = time.perf_counter()
@@ -157,9 +157,9 @@ def _probe_embedding_runtime_sync() -> dict[str, Any]:
 
 
 async def _probe_embedding_runtime(timeout_sec: float) -> dict[str, Any]:
-    provider_name = str(settings.EMBEDDING_PROVIDER or "").strip().lower() or None
-    model_name = str(settings.EMBEDDING_MODEL or "").strip() or None
-    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower() or None
+    provider_name = settings.EMBEDDING_PROVIDER.strip().lower()
+    model_name = settings.EMBEDDING_MODEL
+    vector_backend = settings.VECTOR_BACKEND.strip().lower()
     try:
         return await asyncio.wait_for(asyncio.to_thread(_probe_embedding_runtime_sync), timeout=timeout_sec)
     except asyncio.TimeoutError:
@@ -196,12 +196,12 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
     from app.rag.reranker.factory import describe_reranker_provider, get_reranker
     from app.rag.reranker.types import RerankCandidate
 
-    configured_provider = str(settings.RERANKER_PROVIDER or "").strip().lower() or "none"
+    configured_provider = settings.RERANKER_PROVIDER.strip().lower()
     probe = _new_probe_state("reranker")
     probe.update(
         {
             "provider": configured_provider,
-            "model": str(settings.RERANKER_MODEL or "").strip() or None,
+            "model": settings.RERANKER_MODEL,
         }
     )
     if configured_provider in {"none", "off", "false", "0"}:
@@ -230,7 +230,7 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
         top_n=1,
         max_chars=128,
     )
-    ordered_ids = list(result.ordered_ids or [])
+    ordered_ids = list(result.ordered_ids)
     if configured_provider not in {"parent_child", "pc"} and not ordered_ids:
         raise RuntimeError("reranker_probe_returned_no_results")
 
@@ -251,8 +251,8 @@ def _probe_reranker_runtime_sync(timeout_sec: float) -> dict[str, Any]:
 
 
 async def _probe_reranker_runtime(timeout_sec: float) -> dict[str, Any]:
-    provider_name = str(settings.RERANKER_PROVIDER or "").strip().lower() or None
-    model_name = str(settings.RERANKER_MODEL or "").strip() or None
+    provider_name = settings.RERANKER_PROVIDER.strip().lower()
+    model_name = settings.RERANKER_MODEL
     try:
         return await asyncio.wait_for(
             asyncio.to_thread(_probe_reranker_runtime_sync, timeout_sec),

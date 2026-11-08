@@ -53,13 +53,14 @@ make up
 # 查看标准栈状态
 make ps
 
-# (可选) 低资源模式（lite：不启动 Milvus/MinIO，默认使用 Chroma 本地向量库）
-# 适合：笔记本 / 小内存机器 / 快速试跑（更省资源）
+# API/Worker 模式：共享 Milvus，关闭文档对象存储，不含前端
+# Milvus 自身仍需要 Etcd 与内部 MinIO，不再是免向量服务的低资源模式
 make up-lite
 make ps-lite
 
 # (推荐给检索质量实验) 最小 retrieval-dev 组合：
-# 仅启动 postgres + redis + api，不启用重解析服务；默认 LLM_MOCK_ENABLED=true
+# 启动 postgres + redis + api + Milvus（含内部依赖），不启用重解析服务
+# 默认 LLM_MOCK_ENABLED=true
 make up-retrieval-dev
 make ps-retrieval-dev
 make api-ping
@@ -561,7 +562,6 @@ mineru:
 - [FastAPI 文档](https://fastapi.tiangolo.com/)
 - [LangChain 文档](https://python.langchain.com/)
 - [Next.js 文档](https://nextjs.org/docs)
-- [ChromaDB 文档](https://docs.trychroma.com/)
 
 ---
 

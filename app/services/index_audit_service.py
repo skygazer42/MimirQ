@@ -59,7 +59,7 @@ def build_index_drift_marker(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema": "mimirq.index_drift_marker.v1",
-        "created_at": str(created_at or _now_utc_iso()),
+        "created_at": _now_utc_iso() if created_at is None else created_at,
         "operation": str(operation or "").strip()[:80],
         "strictness": str(strictness or "").strip().lower()[:20] or "off",
         "tenant_id": str(tenant_id) if tenant_id is not None else None,
@@ -104,21 +104,17 @@ def record_index_drift_item(
     if not isinstance(marker, dict):
         raise ValueError("marker must be an object")
 
-    reconcile_task_id = str(reconcile_task_id or "").strip()
-    if not reconcile_task_id:
-        reconcile_task_id = None
-
     item = IndexDriftItem(
         tenant_id=_uuid_or_none(marker.get("tenant_id")),
         dataset_id=_uuid_or_none(dataset_id),
         document_id=_uuid_or_none(marker.get("document_id")),
         chunk_id=_uuid_or_none(marker.get("chunk_id")),
-        operation=str(marker.get("operation") or "").strip()[:80] or "unknown",
-        channel=str(marker.get("channel") or "").strip().lower()[:40] or "unknown",
-        strictness=str(marker.get("strictness") or "off").strip().lower()[:20] or "off",
+        operation=marker["operation"],
+        channel=marker["channel"],
+        strictness=marker["strictness"],
         status="open",
-        reason=str(marker.get("reason") or "").strip()[:240] or "index_operation_failed",
-        details=dict(marker.get("details") or {}) if isinstance(marker.get("details"), dict) else {},
+        reason=marker["reason"],
+        details=dict(marker.get("details", {})),
         marker=dict(marker),
         reconcile_task_id=reconcile_task_id,
         replay_count=0,
@@ -188,15 +184,11 @@ def resolve_index_drift_item(
     if item is None:
         return None
 
+    resolved_by = resolved_by.strip()[:255]
+    resolution_note = resolution_note.strip()[:2000]
     item.status = "resolved"
     item.resolved_at = datetime.now(UTC)
-    resolved_by = str(resolved_by or "").strip()[:255]
-    if not resolved_by:
-        resolved_by = None
     item.resolved_by = resolved_by
-    resolution_note = str(resolution_note or "").strip()[:2000]
-    if not resolution_note:
-        resolution_note = None
     item.resolution_note = resolution_note
     db.commit()
     db.refresh(item)
@@ -559,9 +551,7 @@ def compute_index_audit_summary(
     cap = max(0, int(sample_limit or 0))
 
     checked = [str(x) for x in (vector_ids_checked or []) if str(x).strip()]
-    existing = {str(x) for x in (vector_ids_existing or set()) if str(x).strip()}
-
-    missing_in_vector = [vid for vid in checked if vid not in existing] if checked else []
+    missing_in_vector = [vid for vid in checked if vid not in vector_ids_existing]
     missing_in_vector_sorted = sorted(set(missing_in_vector))
 
     orphan_sample: list[str] = []
@@ -584,9 +574,9 @@ def compute_index_audit_summary(
         "vector_ids_checked": len(checked),
         "vector_ids_missing_in_backend": len(missing_in_vector_sorted),
         "vector_ids_missing_in_backend_sample": _sample(missing_in_vector_sorted),
-        "milvus_ids_sampled": len(milvus_ids_sample or []),
+        "milvus_ids_sampled": len((milvus_ids_sample if milvus_ids_sample is not None else [])),
         "milvus_orphan_ids_sample": _sample(orphan_sample),
-        "index_channels": dict(index_channels or {}),
+        "index_channels": dict((index_channels if index_channels is not None else {})),
     }
 
 
@@ -609,9 +599,7 @@ def _index_channel_rows_by_document(
         document_key = str(row.document_id or "")
         if not document_key:
             continue
-        pipeline_hash = str(row.pipeline_hash or "").strip()
-        if not pipeline_hash:
-            pipeline_hash = None
+        pipeline_hash = row.pipeline_hash
         if pipeline_hash != pipeline_hash_by_document.get(document_key):
             continue
         rows_seen_by_document.add(document_key)
@@ -784,7 +772,7 @@ def get_index_audit_reconcile_document_state(
 
 def _bounded_index_audit_reconcile_scan_limit(limit: int | None) -> int:
     try:
-        parsed = int(limit or 0)
+        parsed = int((limit if limit is not None else 0))
     except (TypeError, ValueError):
         parsed = 0
     if parsed <= 0:
@@ -1115,12 +1103,9 @@ def _active_index_audit_documents(
 def _milvus_existing_vector_ids(vector_ids_checked: list[str]) -> set[str] | None:
     if not vector_ids_checked:
         return None
-    try:
-        from app.storage.vector.milvus import milvus_store
+    from app.storage.vector.milvus import milvus_store
 
-        return milvus_store.fetch_existing_ids(vector_ids_checked)
-    except Exception:
-        return None
+    return milvus_store.fetch_existing_ids(vector_ids_checked)
 
 
 def _milvus_ids_sample(*, tenant_id: UUID, dataset_id: UUID, milvus_list_limit: int) -> list[str] | None:
@@ -1252,9 +1237,8 @@ def _run_dataset_index_audit_core(
         .limit(cap_check)
         .all()
     )
-    vector_ids_checked = [str(row[0]) for row in vec_rows if row and row[0]]
-
-    vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower()
+    vector_backend = settings.VECTOR_BACKEND.strip().lower()
+    vector_ids_checked = [str(row[0]) for row in vec_rows if row and row[0]] if vector_backend == "milvus" else []
     vector_ids_existing = _milvus_existing_vector_ids(vector_ids_checked) if vector_backend == "milvus" else None
     milvus_ids_sample = (
         _milvus_ids_sample(tenant_id=tenant_id, dataset_id=dataset_id, milvus_list_limit=milvus_list_limit)

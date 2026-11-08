@@ -81,8 +81,8 @@ help:
 	@echo "  make models    - download and verify the pinned DeepDoc model bundle"
 	@echo "  make up        - docker compose up (build + detach)"
 	@echo "  make up-web    - initialize local env and start backend + infra + frontend"
-	@echo "  make up-lite   - docker compose up (lite: no milvus/minio; chroma by default)"
-	@echo "  make up-retrieval-dev - start minimal retrieval-only stack (postgres+redis+api; no parser services)"
+	@echo "  make up-lite   - start API/worker with shared Milvus; document object storage disabled"
+	@echo "  make up-retrieval-dev - start retrieval stack (postgres+redis+api+Milvus; no parser services)"
 	@echo "  make up-docling - docker compose up + isolated Docling Serve CPU parser (profile docling)"
 	@echo "  make up-docling-gpu - docker compose up + isolated Docling Serve CUDA parser (profile docling-gpu)"
 	@echo "  make up-etl4llm - docker compose up + ETL4LLM parser (profile etl4llm)"
@@ -498,23 +498,16 @@ compileall-docker:
 
 # No patched releases exist for these advisories yet. Keep the exceptions explicit
 # and centralized while still resolving and auditing every transitive dependency:
-# - Chroma: MimirQ only reaches the embedded local LangChain Chroma path
-#   (`collection_name` + optional local `persist_directory`); it does not configure
-#   Chroma HTTP or RBAC APIs, and distributed deployments reject VECTOR_BACKEND=chroma.
 # - Ragas: MimirQ does not call the affected multimodal URL evaluator.
 # - DiskCache: exploitation requires prior write access to the private cache directory.
 # - ecdsa: JWT signing uses the cryptography backend; verification is unaffected.
 audit-py:
 	PIP_DEFAULT_TIMEOUT=60 $(PY) -m pip_audit -r requirements.txt \
-		-r requirements-chroma.txt -r requirements-faiss.txt \
 		--timeout 60 \
 		--index-url https://pypi.org/simple \
 		--ignore-vuln PYSEC-2026-311 \
 		--ignore-vuln PYSEC-2026-3046 \
 		--ignore-vuln PYSEC-2026-2447 \
-		--ignore-vuln CVE-2026-45830 \
-		--ignore-vuln CVE-2026-45831 \
-		--ignore-vuln CVE-2026-45833 \
 		--ignore-vuln PYSEC-2026-1325
 
 audit-web:

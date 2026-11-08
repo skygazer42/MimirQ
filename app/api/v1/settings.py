@@ -462,7 +462,7 @@ def _apply_rag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]
             with contextlib.suppress(Exception):
                 from app.rag.retriever import hybrid_retriever
 
-                hybrid_retriever.clear_bm25_cache()
+                hybrid_retriever.clear_derived_index_caches()
 
 
 def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]) -> None:
@@ -1821,18 +1821,12 @@ def _get_milvus_status() -> dict[str, object]:
         return {"connected": False, "message": "Milvus 客户端未安装"}
 
     try:
-        milvus_user = settings.MILVUS_USER
-        if not milvus_user:
-            milvus_user = None
-        milvus_password = settings.MILVUS_PASSWORD
-        if not milvus_password:
-            milvus_password = None
         connections.connect(
             alias="status_check",
             host=settings.MILVUS_HOST,
             port=settings.MILVUS_PORT,
-            user=milvus_user,
-            password=milvus_password,
+            user=settings.MILVUS_USER,
+            password=settings.MILVUS_PASSWORD,
             timeout=1.0,
         )
         connections.disconnect("status_check")

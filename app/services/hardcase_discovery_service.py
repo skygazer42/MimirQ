@@ -439,7 +439,7 @@ def build_parse_risk_hardcase_candidate(
         "reason": "parse_risk_tail",
         "query_hash": str(query_hash or "").strip(),
         "mode": str(retrieval_mode or "").strip(),
-        "profile": str(retrieval_profile or "").strip() or None,
+        "profile": retrieval_profile,
         "cfg_hash": cfg_hash,
         "parse_risk_level": level,
     }
@@ -448,7 +448,7 @@ def build_parse_risk_hardcase_candidate(
         "reason": "parse_risk_tail",
         "query_hash": str(query_hash or "").strip(),
         "retrieval_mode": str(retrieval_mode or "").strip(),
-        "retrieval_profile": (str(retrieval_profile or "").strip() or None),
+        "retrieval_profile": (retrieval_profile),
         "retrieval_config_hash": cfg_hash,
         "parse_risk_level": level,
         "parse_risk_score": round(score, 3),

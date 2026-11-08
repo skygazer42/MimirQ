@@ -84,7 +84,7 @@ def test_memory_chinese_matches_and_wildcards_are_literal(memory_db, monkeypatch
     _insert(db, table, tenant, conversation, "100%_done marker")
     _insert(db, table, tenant, conversation, "100XXXdone marker", 1)
     assert memory._retrieve_long_term_messages(db, conversation, tenant, "社保")[0]["content"] == "社保缴纳办理说明"
-    monkeypatch.setattr(memory, "tokenize_for_bm25", lambda _query: ["100%_done"])
+    monkeypatch.setattr(memory, "tokenize_lexical_text", lambda _query: ["100%_done"])
     assert [row["content"] for row in memory._retrieve_long_term_messages(db, conversation, tenant, "literal")] == [
         "100%_done marker"
     ]

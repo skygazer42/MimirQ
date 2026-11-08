@@ -77,6 +77,8 @@ def test_auth_dependency_sets_request_state_user_and_tenant_in_jwt_mode(monkeypa
 
 @pytest.mark.asyncio
 async def test_optional_jwt_db_work_runs_off_event_loop_and_is_awaited(monkeypatch):
+    from app.services import jwt_group_sync_service, tenant_member_provisioning_service
+
     tenant_id = "00000000-0000-0000-0000-000000000000"
     monkeypatch.setattr(settings, "AUTH_MODE", "jwt", raising=False)
     monkeypatch.setattr(settings, "JWT_TENANT_CLAIM", "tenant_id", raising=False)
@@ -105,9 +107,11 @@ async def test_optional_jwt_db_work_runs_off_event_loop_and_is_awaited(monkeypat
         worker_thread_ids.append(threading.get_ident())
         worker_contexts.append(get_request_context())
 
-    monkeypatch.setattr(auth_module, "_decode_or_cached_jwt_payload", fake_decode)
-    monkeypatch.setattr(auth_module, "_maybe_sync_jwt_groups", fake_group_sync)
-    monkeypatch.setattr(auth_module, "_maybe_auto_provision_tenant_member", fake_auto_provision)
+    monkeypatch.setattr(auth_module, "_resolve_jwt_payload", fake_decode)
+    monkeypatch.setattr(jwt_group_sync_service, "maybe_sync_jwt_groups", fake_group_sync)
+    monkeypatch.setattr(
+        tenant_member_provisioning_service, "maybe_auto_provision_jwt_tenant_member_best_effort", fake_auto_provision
+    )
 
     event_loop_thread_id = threading.get_ident()
     auth_task = asyncio.create_task(
@@ -115,6 +119,7 @@ async def test_optional_jwt_db_work_runs_off_event_loop_and_is_awaited(monkeypat
             authorization="Bearer token",
             x_user_id=None,
             x_tenant_id=None,
+            request=Request({"type": "http", "headers": []}),
         )
     )
     try:

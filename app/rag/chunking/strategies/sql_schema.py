@@ -56,11 +56,11 @@ def _infer_object_name(stmt_text: str) -> tuple[str, str | None]:
     m = _OBJ_NAME_RE.search(stmt_text[:2000])
     if m:
         kind = (m.group("kind") or "create").strip().lower()
-        name = (m.group("name") or "").strip() or None
+        name = m.group("name").strip()
         return kind, name
     m = _ALTER_NAME_RE.search(stmt_text[:2000])
     if m:
-        name = (m.group("name") or "").strip() or None
+        name = m.group("name").strip()
         return "alter_table", name
     head = stmt_text.strip().splitlines()[:1]
     head_str = head[0] if head else ""

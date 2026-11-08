@@ -48,7 +48,7 @@ def test_disabled_rebuild_cap_skips_the_count_query(monkeypatch):
         corpus, "_count_retrieval_docs_in_db", lambda *_args, **_kwargs: pytest.fail("count should be skipped")
     )
     monkeypatch.setattr(corpus, "_load_retrieval_docs_from_db", lambda *_args, **_kwargs: [])
-    assert corpus._load_retrieval_docs_for_rebuild(object(), tenant_id=uuid.uuid4()) == []
+    assert corpus._load_bounded_corpus_documents(object(), tenant_id=uuid.uuid4()) == []
 
 
 def test_rebuild_persisted_retrieval_indexes_builds_under_cap(monkeypatch):

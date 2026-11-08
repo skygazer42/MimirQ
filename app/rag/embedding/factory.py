@@ -1,9 +1,9 @@
 """
-Embedding model factory and testing utilities.
+Embedding model factory and connectivity probes.
 
 This module provides functions to:
 - Select and instantiate embedding models by ID
-- Test embedding model connectivity
+- Probe embedding model connectivity
 - List available models
 """
 
@@ -60,9 +60,9 @@ def select_embedding_model(model_id: str) -> BaseEmbeddingModel:
         >>> async_model = select_embedding_model("siliconflow/BAAI/bge-m3")
         >>> embeddings = await async_model.aencode(["Hello world"])
     """
-    from app.core.model_execution import reject_retired_model_provider
+    from app.core.model_execution import reject_retired_provider
 
-    reject_retired_model_provider(model_id.split("/", 1)[0], capability="embedding")
+    reject_retired_provider(model_id.split("/", 1)[0], capability="embedding")
     supported_models = get_supported_model_ids()
 
     if model_id not in supported_models:
@@ -97,16 +97,28 @@ def resolve_language_aware_model_id(
     text: str | None = None,
     current_model_id: str | None = None,
 ) -> str:
-    base_model_id = str(current_model_id or settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
+    base_model_id = str(
+        (
+            current_model_id
+            if current_model_id
+            else embedding_model_value
+            if (embedding_model_value := settings.EMBEDDING_MODEL)
+            else "text-embedding-3-small"
+        )
+    ).strip()
     if "/" not in base_model_id:
         base_model_id = f"openai/{base_model_id}"
     if not settings.EMBEDDING_LANGUAGE_ROUTING_ENABLED:
         return base_model_id
 
-    lang = str(language or "").strip().lower()
+    lang = str((language if language is not None else "")).strip().lower()
     if not lang and text:
         try:
-            lang = str(detect_language(str(text or ""), min_chars=1).language or "").strip().lower()
+            lang = (
+                str(detect_language(str((text if text is not None else "")), min_chars=1).language or "")
+                .strip()
+                .lower()
+            )
         except Exception:
             lang = ""
 
@@ -121,8 +133,8 @@ def resolve_language_aware_model_id(
     return base_model_id
 
 
-async def test_embedding_model_status(model_id: str) -> EmbeddingModelStatus:
-    """Test the status of a specific embedding model.
+async def probe_embedding_model_status(model_id: str) -> EmbeddingModelStatus:
+    """Probe connectivity and return the status of a specific embedding model.
 
     Args:
         model_id: Model identifier in "provider/model" format
@@ -168,8 +180,8 @@ async def test_embedding_model_status(model_id: str) -> EmbeddingModelStatus:
         }
 
 
-async def test_all_embedding_models_status() -> EmbeddingModelStatusSummary:
-    """Test all supported embedding models concurrently.
+async def probe_all_embedding_models_status() -> EmbeddingModelStatusSummary:
+    """Probe all supported embedding models concurrently.
 
     Returns:
         Dictionary containing overall results:
@@ -183,7 +195,7 @@ async def test_all_embedding_models_status() -> EmbeddingModelStatusSummary:
     results: dict[str, EmbeddingModelStatus] = {}
 
     # Test all models concurrently
-    tasks = [test_embedding_model_status(model_id) for model_id in supported_models]
+    tasks = [probe_embedding_model_status(model_id) for model_id in supported_models]
     model_statuses = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, status in enumerate(model_statuses):
@@ -207,7 +219,7 @@ async def test_all_embedding_models_status() -> EmbeddingModelStatusSummary:
     }
 
 
-def get_default_embedding_model() -> str:
+def get_default_embedding_model_id() -> str:
     """Get the default embedding model ID."""
     return "siliconflow/BAAI/bge-m3"
 

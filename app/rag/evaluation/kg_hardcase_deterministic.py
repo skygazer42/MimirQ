@@ -247,7 +247,7 @@ def generate_hardcases_deterministic(
         q2 = _truncate(_collapse_ws(hc.question), max_chars=max_chars)
         if not q2:
             continue
-        cleaned.append(Hardcase(kind=hc.kind, question=q2, rationale=_collapse_ws(hc.rationale) or None))
+        cleaned.append(Hardcase(kind=hc.kind, question=q2, rationale=(hc.rationale)))
 
     return _dedupe_questions(cleaned, max_items=lim)
 

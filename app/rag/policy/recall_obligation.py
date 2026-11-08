@@ -39,12 +39,12 @@ def _build_source_key_obligations(
     )
     obligations: list[SourceKeyObligation] = []
     for key in required_source_keys:
-        matched = str(matched_by_required.get(key) or "").strip()
+        matched = matched_by_required.get(key)
         obligations.append(
             {
                 "source_key": key,
                 "status": ("matched" if matched else "missing"),
-                "matched_source_key": (matched or None),
+                "matched_source_key": matched,
             }
         )
     return obligations

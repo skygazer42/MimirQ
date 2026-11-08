@@ -72,7 +72,10 @@ Notes:
 ## Code conventions
 
 - Use PEP 8 and the repository's Ruff configuration for Python, with a target line length of 120.
-  Put types in function signatures. Comments should explain business rules, constraints and reasons.
+  Describe structured request and response data with Pydantic. Ordinary business functions may use plain
+  parameters without type annotations; retain the annotations FastAPI needs for injection and validation.
+  Declare real nullable fields and defaults in their input models, and avoid repeating those declarations
+  throughout business functions. Comments should explain business rules, constraints and reasons.
 - Ordinary Python services are module functions with explicit dependencies. Keep classes for state,
   resource lifecycles, framework requirements and meaningful domain objects.
 - Business functions raise specific domain exceptions. Convert them at API, task or CLI boundaries,

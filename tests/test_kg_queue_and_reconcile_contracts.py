@@ -278,12 +278,15 @@ async def test_kg_enqueue_response_rejects_duplicate_job_handoff(monkeypatch: py
 
 
 @pytest.mark.asyncio
-async def test_kg_enqueue_response_preserves_unversioned_chunk_scope(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("legacy_hash", [None, "legacy-version"])
+async def test_kg_enqueue_response_preserves_unversioned_chunk_scope(
+    monkeypatch: pytest.MonkeyPatch, legacy_hash
+) -> None:
     from app.rag.kg.api import routes
 
     tenant_id = uuid.uuid4()
     document_id = uuid.uuid4()
-    document = SimpleNamespace(doc_metadata={})
+    document = SimpleNamespace(doc_metadata={"pipeline_hash": legacy_hash})
     captured: dict[str, object] = {}
 
     async def _enqueue(**kwargs):  # noqa: ANN003, ANN202

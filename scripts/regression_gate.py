@@ -806,7 +806,7 @@ def build_regression_gate_report(
         "retrieval_slices": dict(summary.get("retrieval_slices") or {}),
         "failures": [str(msg) for msg in (failures or []) if str(msg or "").strip()],
         "run_status": str(run.get("status") or ""),
-        "error_message": str(run.get("error_message") or "") or None,
+        "error_message": (run.get("error_message")),
         "channel_attribution": summarize_channel_attribution(items),
         "multihop": summarize_multihop_diagnostics(items),
         "run_params": dict(run_payload or {}),

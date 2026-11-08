@@ -2,7 +2,10 @@ from collections import Counter
 from datetime import UTC, datetime
 from typing import Any
 
-from app.rag.evaluation.synthetic.critic import critique_synthetic_sample, should_keep_synthetic_sample
+from app.rag.evaluation.synthetic.critic import (
+    evaluate_synthetic_sample_acceptance,
+    normalize_synthetic_sample_critique,
+)
 from app.rag.evaluation.synthetic.generator import generate_synthetic_sample
 
 
@@ -11,9 +14,13 @@ def generate_stage2_synthetic_dataset(
     seed_rows: list[dict[str, Any]],
     target_count: int,
     generator_fn=generate_synthetic_sample,
-    critic_fn=critique_synthetic_sample,
+    critic_fn=normalize_synthetic_sample_critique,
     max_attempts: int | None = None,
 ) -> dict[str, Any]:
+    if max_attempts is not None and (isinstance(max_attempts, bool) or not isinstance(max_attempts, int)):
+        raise TypeError("max_attempts must be an integer or None")
+    if max_attempts is not None and max_attempts < 0:
+        raise ValueError("max_attempts must be nonnegative")
     generated: list[dict[str, Any]] = []
     seeds = list(seed_rows or [])
     if not seeds:
@@ -33,7 +40,7 @@ def generate_stage2_synthetic_dataset(
         }
 
     target = max(0, int(target_count or 0))
-    attempts_limit = max(target, int(max_attempts or max(target * 3, target)))
+    attempts_limit = max(target * 3, target) if max_attempts is None else max_attempts
     attempted = 0
     rejection_reasons: Counter[str] = Counter()
 
@@ -46,7 +53,7 @@ def generate_stage2_synthetic_dataset(
         attempted += 1
         idx += 1
 
-        keep, failures = should_keep_synthetic_sample(sample)
+        keep, failures = evaluate_synthetic_sample_acceptance(sample)
         if not keep:
             for reason in failures:
                 rejection_reasons[str(reason)] += 1

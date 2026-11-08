@@ -76,8 +76,8 @@ def _run_manual_kg_extraction(
                 chunks=db_chunks,
                 index_options=index_options,
                 prompt_template_id=prompt_template_id,
-                prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY.strip() or None,
-                prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY.strip() or None,
+                prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY,
+                prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY,
                 ab_user_key=account_id,
             )
         )

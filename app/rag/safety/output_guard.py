@@ -55,7 +55,7 @@ class OutputGuard:
             action=self._resolve_action(score=score, matched_rules=matched_rules),
             score=round(score, 3),
             matched_rules=matched_rules,
-            details=details or None,
+            details=details,
         )
 
     def _check_sync(self, text: str, context_chunks: list[str]) -> OutputGuardResult:
@@ -87,7 +87,7 @@ class OutputGuard:
             action=self._resolve_action(score=score, matched_rules=matched_rules),
             score=round(score, 3),
             matched_rules=matched_rules,
-            details=details or None,
+            details=details,
         )
 
     @staticmethod

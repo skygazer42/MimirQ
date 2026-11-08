@@ -44,7 +44,7 @@ def _clean_int_fusion_map(raw: dict[str, int] | None, *, field_name: str) -> dic
         if v < 0 or v > 200:
             raise ValueError(f"{field_name} values must be between 0 and 200")
         cleaned[key] = v
-    return cleaned or None
+    return cleaned
 
 
 def _clean_float_fusion_map(
@@ -65,7 +65,7 @@ def _clean_float_fusion_map(
         if fv < rule.min_value or fv > rule.max_value:
             raise ValueError(f"{rule.field_name} values must be between {rule.min_value:.1f} and {rule.max_value:.1f}")
         cleaned[key] = fv
-    return cleaned or None
+    return cleaned
 
 
 def _profile_from_mode(mode: str) -> str:
@@ -370,9 +370,9 @@ class ChatRAGConfig(BaseModel):
     @field_validator("reranker_provider")
     @classmethod
     def _validate_reranker_execution(cls, value: str) -> str:
-        from app.core.model_execution import reject_retired_model_provider
+        from app.core.model_execution import reject_retired_provider
 
-        reject_retired_model_provider(value, capability="reranker")
+        reject_retired_provider(value, capability="reranker")
         return value
 
     reranker_top_n: int = Field(default_factory=lambda: settings.RERANKER_TOP_N, ge=1, le=200)
@@ -447,7 +447,7 @@ class ChatRAGConfig(BaseModel):
             cleaned.append(s)
             if len(cleaned) >= 80:
                 break
-        return cleaned or None
+        return cleaned
 
     @field_validator("hierarchy_family_aggregation", mode="before")
     @classmethod

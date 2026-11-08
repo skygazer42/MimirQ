@@ -66,7 +66,7 @@
 
 - [ ] **Postgres**：连接池与备份策略明确（RPO/RTO）
 - [ ] **Redis**：用于 task queue / 缓存（如启用）；设置合理的超时与容量
-- [ ] **向量库**：Milvus/Chroma 连接与健康检查通过；容量规划明确
+- [ ] **向量库**：实际配置的 Milvus/Qdrant/pgvector 连接与健康检查通过；容量规划明确
 - [ ] **对象存储（可选）**：MinIO/S3 配置与权限正确（上传/下载/删除）
 - [ ] **数据生命周期**：
   - [ ] Dataset 文档清单导出（默认脱敏）：`GET /api/v1/datasets/{dataset_id}/documents/export`

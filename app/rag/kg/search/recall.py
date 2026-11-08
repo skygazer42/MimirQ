@@ -849,7 +849,7 @@ def _record_relation_clue(
             "evidence_multiplier": float(evidence_mult),
             "evidence_source": evidence_source,
             "confidence_bucket": bucket,
-            "relation_id": str(rel.id or "") or None,
+            "relation_id": str(rel.id),
             "relation_document_id": str(rel.document_id or "") or None,
             "relation_chunk_id": str(rel.chunk_id or "") or None,
             "relation_event_id": str(rel.event_id or "") or None,

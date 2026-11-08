@@ -689,7 +689,7 @@ def run_kg_diagnostics(
 
     result = {
         "kg_diagnostics": {
-            "run_id": run_id or None,
+            "run_id": (run_id),
             "baseline_hit_rate": summary_obj.get("baseline_hit_rate"),
             "baseline_recall": summary_obj.get("baseline_recall"),
             "failure_breakdown": summary_obj.get("failure_breakdown"),

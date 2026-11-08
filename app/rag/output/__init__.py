@@ -262,8 +262,8 @@ def _adapt_shared_payload(
                 ActionItem(
                     task=task,
                     priority=str(item.get("priority") or "medium").strip() or "medium",
-                    assignee=(str(item.get("owner") or item.get("assignee") or "").strip() or None),
-                    deadline=(str(item.get("due") or item.get("deadline") or "").strip() or None),
+                    assignee=(item.get("owner", item.get("assignee"))),
+                    deadline=(item.get("due", item.get("deadline"))),
                     status=str(item.get("status") or "pending").strip() or "pending",
                 )
             )

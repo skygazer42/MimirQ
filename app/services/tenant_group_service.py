@@ -85,7 +85,11 @@ def create_group(db: Session, *, tenant_id: UUID, name: str, external_id: str | 
     if len(n) > 255:
         raise BadRequestError("name too long (max=255)")
 
-    ext = (external_id or "").strip() or None
+    ext = external_id
+    if ext is not None:
+        ext = ext.strip()
+        if not ext:
+            ext = None
     if ext is not None and len(ext) > 255:
         raise BadRequestError("external_id too long (max=255)")
 
@@ -138,7 +142,9 @@ def update_group(
             group.name = n
 
     if external_id is not None:
-        ext = (external_id or "").strip() or None
+        ext = external_id.strip()
+        if not ext:
+            ext = None
         if ext is not None and len(ext) > 255:
             raise BadRequestError("external_id too long (max=255)")
         if ext is not None:

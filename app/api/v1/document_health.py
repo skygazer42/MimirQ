@@ -81,8 +81,8 @@ def _parsing_health(document: DBDocument, meta: dict[str, Any]) -> DocumentHealt
     except Exception:
         page_count = None
     return DocumentHealthParsing(
-        parser_backend=(str(meta.get("parser_backend") or "").strip() or None),
-        parser_backend_requested=(str(meta.get("parser_backend_requested") or "").strip() or None),
+        parser_backend=meta.get("parser_backend"),
+        parser_backend_requested=meta.get("parser_backend_requested"),
         parse_quality=meta.get("parse_quality") if isinstance(meta.get("parse_quality"), dict) else None,
         pdf_quality=pdf_quality,
         seal_summary=meta.get("seal_summary") if isinstance(meta.get("seal_summary"), dict) else None,
@@ -269,8 +269,8 @@ def get_document_health_card(
         )
     )
     chunking = DocumentHealthChunking(
-        chunk_strategy=(str(meta.get("chunk_strategy") or "").strip() or None),
-        chunk_strategy_requested=(str(meta.get("chunk_strategy_requested") or "").strip() or None),
+        chunk_strategy=meta.get("chunk_strategy"),
+        chunk_strategy_requested=meta.get("chunk_strategy_requested"),
         chunk_count=document.chunk_count or 0,
         total_characters=document.total_characters or 0,
         coverage=coverage_out,
@@ -292,7 +292,7 @@ def get_document_health_card(
         created_at=document.created_at,
         updated_at=document.updated_at,
         generated_at=now0,
-        status=document.status or None,
+        status=document.status,
         parsing=_parsing_health(document, meta),
         chunking=chunking,
         kg=_best_effort_kg_report(db=db, meta=meta, tenant_id=tenant_id, document_id=document_id),

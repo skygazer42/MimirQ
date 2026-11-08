@@ -293,7 +293,9 @@ def _add_hierarchy_doc(
     if doc_key in original_keys or doc_key in seen:
         return
     meta = dict(getattr(doc, "metadata", None) or {})
-    if role == "hierarchy_sibling" and not _sibling_matches_anchor(anchor_meta or {}, meta):
+    if role == "hierarchy_sibling" and not _sibling_matches_anchor(
+        (anchor_meta if anchor_meta is not None else {}), meta
+    ):
         stats["skipped_cross_record_siblings"] += 1
         return
     meta["retrieval_role"] = role
@@ -344,7 +346,7 @@ def _append_anchor_expansion(
             original_keys=original_keys,
             doc=cache.get((doc_id, parent_key)),
             role="hierarchy_parent",
-            neighbor_of=anchor_chunk_id or None,
+            neighbor_of=anchor_chunk_id,
             base_score=anchor_score,
             score_scale=0.92,
             anchor_meta=anchor_meta,
@@ -358,7 +360,7 @@ def _append_anchor_expansion(
             original_keys=original_keys,
             doc=cache.get((doc_id, sibling_key)),
             role="hierarchy_sibling",
-            neighbor_of=anchor_chunk_id or None,
+            neighbor_of=anchor_chunk_id,
             base_score=anchor_score,
             score_scale=0.85,
             anchor_meta=anchor_meta,
@@ -373,7 +375,7 @@ def _append_anchor_expansion(
             original_keys=original_keys,
             doc=cache.get((doc_id, sibling_key)),
             role="hierarchy_sibling",
-            neighbor_of=anchor_chunk_id or None,
+            neighbor_of=anchor_chunk_id,
             base_score=anchor_score,
             score_scale=0.85,
             anchor_meta=anchor_meta,

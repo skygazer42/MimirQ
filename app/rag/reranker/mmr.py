@@ -1,13 +1,13 @@
 from collections.abc import Sequence
 from typing import Any
 
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
 def _token_set(text: str) -> set[str]:
-    return {str(tok).strip() for tok in tokenize_for_bm25(str(text or "")) if str(tok).strip()}
+    return {str(tok).strip() for tok in tokenize_lexical_text(str(text or "")) if str(tok).strip()}
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -22,7 +22,7 @@ def _jaccard(a: set[str], b: set[str]) -> float:
 
 class MMRReranker(BaseReranker):
     def __init__(self, *, lambda_mult: float = 0.7) -> None:
-        self.lambda_mult = max(0.0, min(1.0, float(lambda_mult or 0.0)))
+        self.lambda_mult = max(0.0, min(1.0, float(lambda_mult)))
 
     def rerank(
         self,

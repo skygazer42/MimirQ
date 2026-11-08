@@ -32,7 +32,7 @@ body:
     attributes:
       label: Retrieval Profile / Runtime Config
       description: Retrieval profile and key knobs used (mode/top_k/reranker/fusion).
-      placeholder: "profile=hybrid_ce, mode=hybrid, top_k=20, reranker=ltr"
+      placeholder: "profile=hybrid_ce, mode=hybrid, top_k=20, reranker=pc"
     validations:
       required: true
   - type: textarea

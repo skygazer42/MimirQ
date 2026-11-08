@@ -18,6 +18,8 @@ Status: implemented
 
 去重键由 `document_identity.build_document_dedup_key` 统一持有，单文件和批量调用直接传入 `content_sha256` 与 `pipeline_hash`，不再经过只改参数名的私有转发。来源元数据和流水线哈希按顺序归一化、显式将空字符串映射为 `None`；日期解析、ETag 长度上限、URL 优先级和 `setdefault` 的求值时机保持。
 
+2026-11-07 增量：策略刷新直接读取已声明的 Dataset.dataset_metadata。resolve_writable_dataset 的真实结果仍可能为空，因此保留原 dataset is not None 分支、空策略以及 JSON 字典校验；字段存在性默认退出不代表数据集成为必填项。
+
 ## Alternatives considered
 
 保留 `Any` 和 `getattr` 默认值可以继续容忍不符合 ORM 契约的内部对象；没有选择这种写法，因为新建路径构造 ORM 模型，重复路径由同租户持久化查询返回 ORM 模型，且模型对直接读取字段声明了必需约束。
@@ -33,3 +35,5 @@ Ruff、格式、语法、调用关系与 diff 检查通过；按用户要求未�
 来源与重复记录这批的静态证据保存在 `E:/MimirQ/.superpowers/document-source-record-contracts-20261107/`，包含实际模型／工厂来源、完整 AST 对照以及单独的暂存区补丁。原有无关修改与测试源码保留，未执行应用、SDK、数据库或 Python 测试；静态检查不证明运行时等价。
 
 上传结果契约的源码证据位于 `E:/MimirQ/.superpowers/upload-producer-contracts-20261107/`，记录保存函数、暂存生产者、消费者、ORM 与已安装异常类型来源。完整源码对照和部分暂存区补丁仅覆盖批准的读取与转换；按用户要求不运行或修改 Python 测试，也不执行应用、SDK、模型或数据库。
+
+本次策略读取包含在 record-declared-fields-20261107 的批准表达式和完整 AST 对照中；实际 Dataset 声明和调用者来源已核对。覆盖清单只追加本文件结论，原事务、precheck、配额、清理和逐项失败语义保持。

@@ -2066,7 +2066,7 @@ def generate_test_cases_from_documents(
             tenant_id=tenant_id,
             account_id=account_id,
             dataset_id=request.dataset_id,
-            document_ids=request.document_ids or None,
+            document_ids=request.document_ids,
             num_questions=request.num_questions,
             question_types=request.question_types,
             prompt_template_id=request.prompt_template_id,
@@ -2142,7 +2142,7 @@ def _document_dataset_map(
         .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(list(set(document_ids))))
         .all()
     )
-    return {str(document_id): (dataset_id if dataset_id is not None else None) for document_id, dataset_id in rows}
+    return {str(document_id): dataset_id for document_id, dataset_id in rows}
 
 
 def _generated_question_document_ids(questions: list[_GeneratedTestQuestion]) -> list[UUID]:
@@ -2423,7 +2423,7 @@ async def run_kg_search_diagnostics(
                         {
                             "kind": str(getattr(hc, "kind", "") or ""),
                             "metrics": (m_obj.model_dump(mode="json") if hasattr(m_obj, "model_dump") else {}),
-                            "error": (str(getattr(run, "error", "") or "") or None),
+                            "error": (run.error if run is not None else None),
                         }
                     )
 
@@ -2439,7 +2439,7 @@ async def run_kg_search_diagnostics(
                         "attribution": attr_dict,
                         "baseline": {
                             "metrics": baseline_metrics,
-                            "error": (str(getattr(baseline, "error", "") or "") or None),
+                            "error": (baseline.error),
                             "returned_events": int(len(getattr(baseline, "events", []) or [])),
                             "selected_entities": int(len(getattr(baseline, "entities", []) or [])),
                             "clues_total": int(len(getattr(baseline, "clues", []) or [])),

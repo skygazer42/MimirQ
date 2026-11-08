@@ -1,4 +1,4 @@
-"""ColBERT-style ANN index build/search for the hybrid retriever.
+"""Deterministic dense index build/search for the hybrid retriever.
 
 Split out of ``app.rag.retriever`` (see ``app.rag.retrieval.hybrid``). The
 methods below run on the ``HybridRetriever`` instance via mixin inheritance.
@@ -23,14 +23,14 @@ if TYPE_CHECKING:
 
 
 class ColbertIndexMixin:
-    """ColBERT-style late-interaction ANN index: build, persist, incremental upsert, and search."""
+    """ColBERT-stack dense index: build, persist, incremental upsert, and exact search."""
 
     def _get_colbert_build_lock(self, cache_key: str) -> threading.Lock:
         return self._colbert_build_locks.setdefault(cache_key, threading.Lock())
 
     def _colbert_corpus_fingerprint(self, docs: list[Document]) -> str:
         """
-        Stable fingerprint for a ColBERT ANN index corpus.
+        Stable fingerprint for a dense-candidate index corpus.
 
         Uses chunk_id + pipeline markers so persisted indices can be invalidated after re-chunking.
         """
@@ -122,12 +122,12 @@ class ColbertIndexMixin:
 
     def _build_colbert_index(self, *, cache_key: str, docs: list[Document]) -> None:
         """
-        Build (or rebuild) a ColBERT-style ANN index for the current scope key.
+        Build (or rebuild) a deterministic dense index for the current scope key.
 
         Design:
         - Deterministic embedder for tests/offline (no model downloads)
-        - Optional HF embedder (opt-in)
-        - Persisted index to disk for fast cold-start in multi-process deployments
+        - Exact cosine scoring over the resulting dense vectors
+        - Optional persistence using the existing index format
         """
         if self._colbert_scope_exceeds_limit(cache_key=cache_key, docs=docs):
             return
@@ -247,7 +247,7 @@ class ColbertIndexMixin:
         upsert_docs: list[Document],
     ) -> None:
         """
-        Incrementally update a ColBERT ANN index for a scope key.
+        Incrementally update a deterministic dense index for a scope key.
 
         This updates/overwrites vectors only for `upsert_docs` when an index already exists,
         avoiding a full re-embed of the corpus on each chunk-level upsert.
@@ -307,26 +307,6 @@ class ColbertIndexMixin:
             doc_ids=doc_ids,
             vectors=vectors,
         )
-
-    def _sync_colbert_index_after_bm25_upsert(
-        self,
-        *,
-        cache_key: str,
-        merged_docs: list[Document],
-        upsert_docs: list[Document],
-    ) -> None:
-        if not bool(settings.COLBERT_RETRIEVAL_ENABLED):
-            return
-
-        try:
-            with self._get_colbert_build_lock(cache_key):
-                self._upsert_colbert_index_incremental(
-                    cache_key=cache_key,
-                    corpus_docs=merged_docs,
-                    upsert_docs=upsert_docs,
-                )
-        except Exception as exc:
-            logger.warning("ColBERT index update failed for scope %s: %s", cache_key, str(exc)[:200])
 
     def _remove_colbert_vectors_for_deleted_chunks(
         self,
@@ -452,7 +432,7 @@ class ColbertIndexMixin:
                 self._colbert_index_cache[cache_key] = loaded
             return loaded
         except Exception as exc:
-            _log_retriever_fallback("_search_colbert_ann", exc)
+            _log_retriever_fallback("_search_colbert_dense", exc)
             return None
 
     def _ensure_colbert_search_index(
@@ -487,7 +467,7 @@ class ColbertIndexMixin:
                 if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
                     return index
         except Exception as exc:
-            _log_retriever_fallback("_search_colbert_ann", exc)
+            _log_retriever_fallback("_search_colbert_dense", exc)
         return None
 
     @staticmethod
@@ -541,7 +521,7 @@ class ColbertIndexMixin:
             )
         return results
 
-    def _search_colbert_ann_docs(
+    def _search_colbert_dense_docs(
         self,
         *,
         raw_query: str,
@@ -555,11 +535,11 @@ class ColbertIndexMixin:
             ColbertAnnIndexStore,
             build_colbert_provider_config,
             get_dense_embedder,
-            resolve_colbert_ann_provider_capability,
+            resolve_colbert_retrieval_capability,
             topk_cosine_scores,
         )
 
-        max_docs, readiness = self._resolve_colbert_readiness(resolve_colbert_ann_provider_capability, docs=docs)
+        max_docs, readiness = self._resolve_colbert_readiness(resolve_colbert_retrieval_capability, docs=docs)
         if str(readiness.get("reason") or "") == "too_many_docs":
             self._mark_colbert_skipped(
                 reason="too_many_docs",
@@ -606,7 +586,7 @@ class ColbertIndexMixin:
             metadata_filter=metadata_filter,
         )
 
-    def _search_colbert_ann(
+    def _search_colbert_dense(
         self,
         query: str,
         top_k: int = 10,
@@ -615,11 +595,11 @@ class ColbertIndexMixin:
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Optional ColBERT-style ANN retrieval channel (production scaffold).
+        Optional deterministic dense candidate retrieval for ColBERT-stack experiments.
 
         Notes:
-        - Uses the same BM25-scoped in-memory corpus as the index source.
-        - Deterministic by default (no model downloads), with optional HF provider.
+        - Reads a bounded published snapshot from the shared corpus owner.
+        - Uses deterministic embeddings and exact NumPy cosine scoring.
         - Persists index artifacts to disk when enabled (best-effort).
         """
         raw_query = str(query or "").strip()
@@ -628,7 +608,7 @@ class ColbertIndexMixin:
         if not bool(settings.COLBERT_RETRIEVAL_ENABLED):
             return []
 
-        _tenant_uuid, _dataset_scope_ids, cache_key, docs = self._bm25_scope_docs(
+        _tenant_uuid, _dataset_scope_ids, cache_key, docs = self._resolve_derived_corpus_snapshot(
             tenant_id=tenant_id,
             document_ids=document_ids,
             metadata_filter=metadata_filter,
@@ -637,7 +617,7 @@ class ColbertIndexMixin:
             return []
         if not docs:
             return []
-        return self._search_colbert_ann_docs(
+        return self._search_colbert_dense_docs(
             raw_query=raw_query,
             top_k=top_k,
             cache_key=cache_key,

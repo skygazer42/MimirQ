@@ -51,4 +51,4 @@ def get_latest_user_message_content(
     )
     if row is None:
         return None
-    return (row[0] or "").strip() or None
+    return row[0]

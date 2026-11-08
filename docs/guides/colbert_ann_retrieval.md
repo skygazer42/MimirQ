@@ -1,94 +1,53 @@
-# ColBERT ANN Retrieval（候选召回通道脚手架）
+# ColBERT 确定性稠密候选召回
 
-本仓库提供一个可选的 “ColBERT stack” 候选召回通道（工程脚手架）：
+仓库保留一个默认关闭的 ColBERT-stack 实验通道，用确定性哈希向量和 NumPy 精确余弦评分生成候选。它适合离线回归和通道验证，可与受支持的 late-interaction reranker 组合使用。
 
-- **默认不启用**（避免改变现有行为）
-- 用于在没有可用 vector backend（或 vector 返回空）时提供一个 **可持久化的候选召回** 路径
-- 与 late-interaction rerank（`provider=colbert`）/ LTR 等精排组件可以组合使用
+当前提供方为 `deterministic`。HF/Torch 提供方已退出，不再配置本地模型、设备或模型 batch encode 参数。该实现按 chunk 保存一个稠密向量；完整 token-level ColBERT 检索需要独立的实现与质量评估。
 
-代码位置：
-- `app/rag/retrieval/colbert_ann.py`（embedder + index store + ANN 计算工具）
-- `app/rag/retriever.py`（HybridRetriever 集成）
+## 代码入口
 
----
+- `app/rag/retrieval/colbert_ann.py`：确定性 embedder、索引持久化、`resolve_colbert_retrieval_capability` 和 NumPy 评分。
+- `app/rag/retrieval/hybrid/corpus_channels.py`：当前候选通道的 `search_colbert` 入口。
+- `app/rag/retrieval/hybrid/colbert_index.py`：检索器已有的 `_search_colbert_dense` / `_search_colbert_dense_docs` 方法。
+- `app/rag/retrieval/corpus_index.py`：发布语料快照与范围约束。
+- `app/rag/retrieval/corpus_artifacts.py`：派生索引的缓存、加载和构建。
 
-## 1) 当前实现的定位（重要）
+已有模块路径、`ColbertAnnIndex` / `ColbertAnnIndexStore` 类名、`mimirq.colbert_ann_index.v1` 持久化 schema 和 `colbert_ann` 诊断字段继续使用原名称，以保持索引及调用契约。
 
-这是一个 **工程 scaffolding**，不是完整的 ColBERT token-level index：
-- deterministic provider 用于单测/回归（无模型下载）
-- HF provider 提供真实模型加载与 batch encode（opt-in）
-- ANN 检索以 “chunk -> dense vector” 为主（候选生成），不等价于原始 ColBERT 的 token-level late-interaction 检索
+## 查询流程
 
-它的价值是把 “索引构建/持久化/冷启动加载/可控 fallback” 的工程链路先打通。
+1. vector 通道没有候选且显式启用该能力时，检索流程尝试确定性 ColBERT 候选通道。
+2. `CorpusIndex.load_corpus_snapshot` 从数据库读取指定租户、数据集或文档范围内的发布语料。它使用独立的有界快照，不要求存在 BM25 文档缓存。
+3. 按语料指纹和 provider 配置复用或构建稠密向量索引；允许持久化时，沿原格式加载和保存。
+4. query 使用相同的确定性编码，NumPy 对范围内向量计算余弦 Top-K，再沿原路径生成候选及范围过滤。
 
----
+## 配置与资源上限
 
-## 2) 工作方式（当前实现）
+配置由 `app/core/config.py` 持有：
 
-1. **语料来源**：复用 BM25 的 scope cache（tenant/dataset/document scope 下的 chunks）。
-2. **索引构建**：对 chunk 文本做 batch encode 得到 dense vectors，落盘保存（可选）。
-3. **ANN 查询**：对 query encode 得到向量，与 doc vectors 做 cosine similarity Top-K（可选 FAISS）。
-4. **集成策略**：在 `HybridRetriever` 的 vector 通道里，当 vector backend 返回空结果时，使用 ColBERT ANN 作为 fallback（opt-in）。
+| 配置 | 默认值 | 用途 |
+| --- | --- | --- |
+| `COLBERT_RETRIEVAL_ENABLED` | `false` | 显式启用候选通道。 |
+| `COLBERT_RETRIEVAL_PROVIDER` | `deterministic` | 保留的确定性提供方。 |
+| `COLBERT_RETRIEVAL_EMBED_DIM` | `64` | 哈希稠密向量维度。 |
+| `COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED` | `true` | 按既有 best-effort 策略持久化索引。 |
+| `COLBERT_RETRIEVAL_INDEX_DIR` | `./data/colbert_indexes` | 索引目录。 |
+| `COLBERT_RETRIEVAL_MAX_DOCS` | `10000` | 单 scope 的候选索引文档数量上限。 |
 
-> 注意：因为语料复用 BM25 cache，如果 scope 没有 BM25 文档缓存（未 upsert / 未 warm），该通道也会是空的。
+发布语料快照还遵守 `RETRIEVAL_REBUILD_MAX_CHUNKS` 的现有加载上限：计数检查和加载后复核超限会明确失败。`COLBERT_RETRIEVAL_MAX_DOCS` 用于通道构建前的数量检查，超限时返回 `skipped_reason=too_many_docs` 并清理该 scope 的派生索引缓存。
 
----
+精确评分需要扫描该 scope 的稠密矩阵，成本随文档数量和维度增长。确定性结果用于验证工程链路，检索质量仍需在实际数据集上评估。
 
-## 3) 配置项（Settings）
+## 诊断与回归入口
 
-后端配置（见 `app/core/config.py`）：
+现有诊断字段保持：
 
-- `COLBERT_RETRIEVAL_ENABLED=true|false`（默认 false）
-- `COLBERT_RETRIEVAL_PROVIDER=deterministic|hf`
-- `COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED=true|false`（默认 true，best-effort）
-- `COLBERT_RETRIEVAL_INDEX_DIR=./data/colbert_indexes`
-
-HF provider（可选，需显式配置模型）：
-- `COLBERT_RETRIEVAL_MODEL_NAME=...`（必填；例如任意 HF encoder 模型）
-- `COLBERT_RETRIEVAL_DEVICE=cpu|cuda|auto`
-- `COLBERT_RETRIEVAL_BATCH_SIZE=16`
-- `COLBERT_RETRIEVAL_MAX_LENGTH=256`
-- `COLBERT_RETRIEVAL_MAX_DOCS=10000`：资源上限（按 scope 的 chunk 数量），超过则跳过该通道以避免 OOM/长尾延迟
-
-Deterministic provider（单测/回归）：
-- `COLBERT_RETRIEVAL_EMBED_DIM=64`
-
----
-
-## 4) 资源上限（Bounded resource use）
-
-该通道会在以下场景 **主动跳过**（返回空候选）以保证资源可控：
-
-- 当 scope 的 chunk 数量超过 `COLBERT_RETRIEVAL_MAX_DOCS` 时：
-  - 不会构建/更新 ANN matrix
-  - 会清理该 scope 的 in-memory ColBERT index cache（best-effort）
-  - 整体检索链路仍会继续（vector backend / BM25 / lexical / sparse 等不受影响）
-
-可用于灰度策略：
-- 先设置较小的 `COLBERT_RETRIEVAL_MAX_DOCS` 在预发观察成本曲线
-- 再按数据集规模逐步放开（或为大 scope 保持跳过）
-
-可观测（用于评测/诊断）：
-- `rag_trace.channels.colbert_ann.skipped_reason=too_many_docs`
-- `rag_trace.channels.timing.colbert_ms`（fallback 查询耗时）
+- `rag_trace.channels.colbert_ann.readiness`
+- `rag_trace.channels.colbert_ann.skipped_reason`
+- `rag_trace.channels.timing.colbert_ms`
 - `rag_trace.channels.counts.colbert_candidates`
 
----
-
-## 5) Tradeoffs
-
-- 额外索引构建开销（CPU/GPU + 内存）
-- 多进程场景下，持久化索引可以显著降低冷启动成本（best-effort）
-- 这不是完整 ColBERT 检索：如果你需要真实 token-level ColBERT index，需要额外工程与依赖
-
----
-
-## 6) Bounded Regression Artifact
-
-Wave D 为 ColBERT fallback 增加了一个稳定的 bounded fixture：
-
-- Fixture: `data/sample/retrieval_fixture_colbert_v1.json`
-- Local run:
+仓库的 bounded fixture 位于 `data/sample/retrieval_fixture_colbert_v1.json`，命令入口为：
 
 ```bash
 python scripts/run_sample_retrieval_benchmark.py \
@@ -99,40 +58,4 @@ python scripts/run_sample_retrieval_benchmark.py \
   --colbert-retrieval-provider deterministic
 ```
 
-输出重点：
-
-- `runtime.colbert_retrieval_enabled=true`
-- `runtime.colbert_retrieval_provider=deterministic`
-- `summary.hit_at_k / mrr / ndcg_at_k`
-
-CI 中对应 artifact 为：
-
-- `artifacts/sample_retrieval_bench.colbert.json`
-
-它的定位是“验证 ColBERT fallback 路径仍可工作且结果稳定”，不是替代完整 leaderboard / production 数据集评估。
-
----
-
-## 7) Rollout Criteria
-
-建议 rollout 顺序：
-
-1. **先用 deterministic provider 跑 bounded fixture**
-   - 目标：确认回退链路、索引构建、runtime metadata、CI artifact 都稳定。
-2. **再在预发启用真实 provider（HF）**
-   - 目标：观察 `rag_trace.channels.colbert_ann.*` 的耗时与候选量。
-3. **只在 vector backend 空结果占比可接受的前提下扩大范围**
-   - ColBERT 当前是 vector fallback，不是主通道。
-
-推荐观察项：
-
-- `rag_trace.channels.timing.colbert_ms`
-- `rag_trace.channels.counts.colbert_candidates`
-- `rag_trace.channels.colbert_ann.skipped_reason`
-- `COLBERT_RETRIEVAL_MAX_DOCS` 是否频繁触发资源保护
-
-建议停下 rollout 的信号：
-
-- bounded fixture 不能稳定保持 `hit_at_k=1.0`
-- `skipped_reason=too_many_docs` 在目标数据集上持续出现
-- HF provider 冷启动或索引构建耗时明显拉高请求尾延迟
+检查输出中的 provider、是否启用以及 `hit_at_k` / `mrr` / `ndcg_at_k`，并结合实际候选数和跳过原因判断通道是否运行。该夹具用于验证确定性回退流程，不代表生产数据质量验收。

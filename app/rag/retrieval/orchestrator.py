@@ -1217,7 +1217,7 @@ def _run_retrieval_bootstrap_phase(ctx: RetrievalRuntimeState) -> dict[str, Any]
     ctx.retrieval_contract_mode = normalization.retrieval_contract_mode
     ctx.contract_deterministic_recall = normalization.contract_deterministic_recall
     ctx.contract_must_recall_strict = bool(evidence["contract_must_recall_strict"])
-    ctx.profile_norm = normalization.profile_norm or ""
+    ctx.profile_norm = normalization.profile_norm
     ctx.retrieval_profile = normalization.profile_norm
     ctx.intent_router_meta = routing.intent_metadata
     ctx.adaptive_router_meta = routing.adaptive_metadata
@@ -1369,7 +1369,7 @@ def _hierarchy_invocation_debug(docs: list[Document], debug: dict[str, Any] | No
         if family_key:
             family_keys.append(family_key)
     distinct_families = len(set(family_keys)) if family_keys else 0
-    result = dict(debug or {})
+    result = dict((debug if debug is not None else {}))
     result["hierarchy_family"] = {
         "docs": len(docs),
         "docs_with_key": len(family_keys),
@@ -1955,9 +1955,9 @@ def _run_kg_injection(ctx: RetrievalRuntimeState) -> list[Document]:
         kg_kwargs = {
             "query": ctx.query_for_retrieval,
             "tenant_id": tenant_id,
-            "document_ids": document_ids or None,
+            "document_ids": document_ids,
             "dataset_id": dataset_id,
-            "account_id": account_id if not document_ids else None,
+            "account_id": account_id,
         }
         if dataset_ids:
             kg_kwargs["dataset_ids"] = dataset_ids
@@ -2799,7 +2799,7 @@ def _run_retrieval_metrics_core_phase(ctx: RetrievalRuntimeState) -> dict[str, A
     ctx.metrics["retrieval_mode"] = ctx.request_retrieval_mode
     ctx.metrics["retrieval_mode_requested"] = ctx.requested_retrieval_mode
     ctx.metrics["retrieval_mode_auto_routed"] = bool(ctx.retrieval_mode_routed)
-    ctx.metrics["retrieval_profile"] = ctx.profile_norm or None
+    ctx.metrics["retrieval_profile"] = ctx.profile_norm
     ctx.metrics["retrieval_profile_requested"] = (
         str(ctx.requested_retrieval_profile).strip().lower() if ctx.requested_retrieval_profile is not None else None
     )
@@ -2809,7 +2809,7 @@ def _run_retrieval_metrics_core_phase(ctx: RetrievalRuntimeState) -> dict[str, A
     ctx.metrics["temporal_recency_rerank"] = (
         dict(ctx.temporal_recency_meta) if isinstance(ctx.temporal_recency_meta, dict) else None
     )
-    ctx.metrics["retrieval_contract_mode"] = ctx.retrieval_contract_mode or None
+    ctx.metrics["retrieval_contract_mode"] = ctx.retrieval_contract_mode
     ctx.metrics["retrieval_contract_policy"] = dict(ctx.retrieval_contract_policy or {})
     ctx.metrics["retrieval_contract_deterministic_recall"] = bool(ctx.contract_deterministic_recall)
     ctx.metrics["retrieval_contract_must_recall_strict"] = bool(ctx.contract_must_recall_strict)
@@ -3266,7 +3266,7 @@ def _emit_retrieval_hardcase(ctx: RetrievalRuntimeState) -> None:
         "reason": reason,
         "query_hash": stable_hash(ctx.query_for_retrieval),
         "mode": str(ctx.request_retrieval_mode or ""),
-        "profile": ctx.profile_norm or None,
+        "profile": ctx.profile_norm,
         "cfg_hash": ctx.metrics.get("retrieval_config_hash"),
     }
     ctx.metrics["hardcase_candidate"] = {
@@ -3274,7 +3274,7 @@ def _emit_retrieval_hardcase(ctx: RetrievalRuntimeState) -> None:
         "reason": reason,
         "query_hash": stable_hash(ctx.query_for_retrieval),
         "retrieval_mode": str(ctx.request_retrieval_mode or ""),
-        "retrieval_profile": ctx.profile_norm or None,
+        "retrieval_profile": ctx.profile_norm,
         "dedupe_key": stable_hash(
             json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True),
             length=32,
@@ -3309,7 +3309,7 @@ def _emit_parse_risk_hardcase(ctx: RetrievalRuntimeState, policy: dict[str, Any]
     candidate = build_parse_risk_hardcase_candidate(
         query_hash=stable_hash(ctx.query_for_retrieval),
         retrieval_mode=str(ctx.request_retrieval_mode or ""),
-        retrieval_profile=(ctx.profile_norm or None),
+        retrieval_profile=ctx.profile_norm,
         retrieval_config_hash=(ctx.metrics.get("retrieval_config_hash") if isinstance(ctx.metrics, dict) else None),
         parse_risk=ctx.parse_risk,
         ts_ms=int(time.time() * 1000),
@@ -3457,7 +3457,7 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
 
     ctx.query_debug["query_for_retrieval"] = ctx.query_for_retrieval
     ctx.query_debug["rewrite_used"] = bool(ctx.rewrite_used)
-    ctx.query_debug["retrieval_profile"] = ctx.profile_norm or None
+    ctx.query_debug["retrieval_profile"] = ctx.profile_norm
     ctx.query_debug["retrieval_profile_requested"] = (
         str(ctx.requested_retrieval_profile).strip().lower() if ctx.requested_retrieval_profile is not None else None
     )
@@ -3561,7 +3561,7 @@ def _run_retrieval_query_debug_phase(ctx: RetrievalRuntimeState) -> dict[str, An
         "forced_enable": bool(ctx.multi_query_ab_forced),
     }
     ctx.query_debug["retrieval_contract"] = {
-        "mode": ctx.retrieval_contract_mode or None,
+        "mode": ctx.retrieval_contract_mode,
         "deterministic_recall": bool(ctx.contract_deterministic_recall),
         "must_recall_strict": bool(ctx.contract_must_recall_strict),
         "must_recall_enabled": bool(ctx.must_recall_enabled),
@@ -3604,8 +3604,8 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
             request_retrieval_mode=ctx.request_retrieval_mode,
             retrieval_mode_routed=bool(ctx.retrieval_mode_routed),
             requested_retrieval_profile=ctx.requested_retrieval_profile,
-            profile_norm=ctx.profile_norm or None,
-            retrieval_contract_mode=ctx.retrieval_contract_mode or None,
+            profile_norm=ctx.profile_norm,
+            retrieval_contract_mode=ctx.retrieval_contract_mode,
             contract_deterministic_recall=bool(ctx.contract_deterministic_recall),
             must_recall_enabled=bool(ctx.must_recall_enabled),
             must_recall_status=str(ctx.must_recall_status),
@@ -3790,7 +3790,7 @@ def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[s
             "requested_retrieval_mode": str(ctx.requested_retrieval_mode or ""),
             "retrieval_mode": str(ctx.request_retrieval_mode or ""),
             "retrieval_mode_auto_routed": bool(ctx.retrieval_mode_routed),
-            "retrieval_profile": ctx.profile_norm or None,
+            "retrieval_profile": ctx.profile_norm,
             "top_k": int(ctx.top_k),
             "score_threshold": float(ctx.retriever_update.get("score_threshold") or 0.0),
             "alpha": float(ctx.retriever_update.get("alpha") or 0.0),
@@ -3838,7 +3838,7 @@ def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[s
             "kg_query_expansion_enabled": bool(ctx.kg_query_expansion_enabled),
             "kg_chunk_injection_enabled": bool(ctx.kg_chunk_injection_enabled),
             "kg_chunk_boost_enabled": bool(ctx.kg_chunk_boost_meta.get("enabled")),
-            "retrieval_contract_mode": ctx.retrieval_contract_mode or None,
+            "retrieval_contract_mode": ctx.retrieval_contract_mode,
             "retrieval_contract_policy": dict(ctx.retrieval_contract_policy or {}),
             "retrieval_contract_deterministic_recall": bool(ctx.contract_deterministic_recall),
             "retrieval_hard_fallback_enabled": bool(ctx.hard_fallback_enabled),

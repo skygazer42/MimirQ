@@ -1,0 +1,62 @@
+# Phase 0 / Phase 1A 进度
+
+状态：暂停源码施工，等待总指挥协调并发写入；未修改源码、测试或暂存区，未提交。
+
+## 并发裁决
+
+- 初始 HEAD：d04e10ab93fd96ea2a9d0dd6a8fcf3bde2366776。
+- 调查中发现新 HEAD：255fb9cc7（refactor: preserve connector-owned values）。按交接「发现有新提交/文件被并发改动就停下来」停止。
+- 不代提交既有 WIP：归属不明且存在活跃写入者。没有执行整体 stage 或清理。
+- 本快照 tracked status 条目：482；untracked status 条目：66（按默认 porcelain 目录折叠计数，并非实际文件数）。
+- baseline-status.txt / baseline-diffstat.txt / baseline-counts.json 保存停止时快照；它们不是最初 HEAD 的完整基线。
+
+## 基线计数口径
+
+使用 rg -o，app 下 *.py；每个匹配单独计数。三参 getattr 为单行词法近似，不能用作缺陷总数。各目录同样记录全部六项模式。
+
+## 环境与未执行验证
+
+- python -m ruff check app、python -m ruff format --check app 和 pytest 尚未成功启动：当前 PATH 找不到 python、python3、py、uv，工作区 .venv/Scripts/python.exe 不存在。
+- 初次尝试的 Python 基线脚本没有执行，未产生文件；本记录与快照由 PowerShell 保存。
+- C:/Users/jiahuanl/AppData/Local/Programs/Python 的目录检查被权限拒绝，未请求升级或安装依赖。
+- 未启动解析器、模型服务或容器。
+- FastCtx 工具未暴露，使用本地文件命令。工作区 rg 未发现 AGENTS.md；已读 C:/Users/jiahuanl/.codex/AGENTS.md、完整计划和三篇指定 note。
+
+## 已核实调用链（仅调查，未修复）
+
+- datasets.py create_dataset 的主写入由 dataset_service.create_dataset 执行，路由 1163 的 commit 位于明确注释 Best-effort audit log (commit separately; never block response) 后；依总指挥补充规则应按文档化审计旁路定性，保留时需提高日志可观测性，不能直接声称是未提交主数据。
+- datasets.py update_dataset 的 1562 同样在服务调用后的审计写入；需进一步核实 update 服务提交契约。
+- document_versions.py 472/588：审计提交后 rollback 但未重抛；570：删除 KG 关系和索引后 commit 失败被回滚吞掉。后者涉及真实清理持久化，不应返回成功；尚未写回归测试。
+- document_qa_service.py _update_document_chunk_stats 763：chunk_count/total_characters 更新提交失败后 rollback 并正常返回，是服务层回归测试候选。
+- document_ingestion.py _attach_document_to_ingestion_run 1121：document 关联元数据提交失败后继续 add_document；需确认 ingestion run 旁路契约与外层失败处理。
+- document_metadata_operations.py _commit_audit_event 已有 warning+exc_info 和 rollback；属于审计旁路候选，按补充规则逐处核实，不机械删除。
+
+## 下一步
+
+总指挥协调并发写入窗口并指定可用 Python 解释器后，重新建立稳定 HEAD 基线，运行现有相关 pytest，先编写并证明 commit 抛错回归失败，再实施首批主写入修复。当前 Phase 0 未完成，Phase 1A 尚未开始；无修复前后测试证据、无提交 SHA。
+
+## 续作裁决（2026-11-08）
+
+- 已确认仅主代理运行，HEAD 为 `255fb9cc7`，并发暂停条件解除；`py` 指向 Python 3.14，可执行源码语法检查。
+- Ruling: 用户明确要求不处理 Python 测试，因此本轮不新增或运行 pytest；以完整调用链、暂存源码编译、差异检查和 Note 门禁作为证据。代价是数据库异常路径没有运行时回归证明，交付说明必须保留该缺口。
+- Phase 1A 先修 `document_versions.delete_document_version`：KG/事件数据库清理失败必须向上抛出；向量、BM25 与审计旁路保留可观测降级，不新增重试、兼容分支或默认成功。
+- Phase 1A complete: commit `d1f607a39`。暂存版本通过 Python 3.14 源码编译、限定差异/空白检查及 131 篇 Note tree/format/archive 门禁；静态核对两个派生索引 warning、两个审计 helper 调用及 KG rollback 后 re-raise。按裁决未运行 Python 测试，未执行数据库、索引或 API 运行时。
+- Phase 1B ruling: `document_qa_service._persist_qa_chunks` 已在统计刷新前提交 QA chunks；`chunk_count/total_characters` 是可重算投影。统计 commit 失败继续 rollback 并返回生成结果，但必须发出带堆栈和修复建议的结构化 warning。代价是响应成功时统计可能暂时陈旧，运维需按日志重算。
+- Phase 1B complete: commit `33c3879eb`。暂存 blob 通过 UTF-8/Python 3.14 编译，结构化 warning 五字段、限定差异/空白和 131 篇 Note 门禁通过；原 `_split_prefixed_field` 工作树改动未进入提交。按裁决未运行 Python 测试或数据库/QA 运行时。
+- Phase 1C ruling: ingestion run 创建和 attachment 是文档主入库后的可选追踪；失败不得伪装为主入库失败，但必须先 rollback 恢复 Session，并由 `_attach_document_to_ingestion_run` 单一 owner 记录降级。删除三个调用方重复 suppress。代价是 run manifest 可缺记录，运维需按 warning 对账。
+- Phase 1C complete: commit `bea542575`。暂存 blob 通过 UTF-8/Python 3.14 编译，逐段核对两处 create rollback/warning、attachment 两段 rollback/warning 与三个调用迁移；限定差异/空白及 131 篇 Note 门禁通过。一次零上下文暂存预览发现错位并在提交前清空重建，最终索引源码已编译；其他 direct-value 工作树 hunks 未提交。未运行 Python 测试或入库运行时。
+
+## 恢复后的基线与目标文件冲突
+
+经总指挥授权，仅借用 E:/MimirQ/.venv/Scripts/python.exe；所有命令 cwd 为本 worktree，未读取或复制 E 盘源码。
+
+新 HEAD d1f607a39 (fix: surface document version cleanup failures) 直接修改本切片 app/api/v1/document_versions.py（86 行差异），并且文件仍有 WIP。依更新后的并发规则停止源码施工；未写源码或测试、未暂存或提交。该文件当前 hash-object 为 7374e8f12e4051901527820e7b516b87ade81586。connector_execution 全部延后，有活跃写入者。
+
+以下是存在并发写入者时的时点快照，不代表固定 HEAD 的干净基线。
+
+- `E:/MimirQ/.venv/Scripts/python.exe -m ruff check app`：exit 1，8 个 I001；条目 app\services\connector_execution\confluence.py:1:1, app\services\connector_execution\db_catalog.py:1:1, app\services\connector_execution\drive_files.py:1:1, app\services\connector_execution\github_repo.py:1:1, app\services\connector_execution\jira.py:1:1, app\services\connector_execution\minio_bucket.py:1:1, app\services\connector_execution\url_batch.py:1:1, app\services\connector_execution\web_crawl.py:1:1。完整输出 ruff-check-baseline.txt。
+- `E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check app`：exit 0，1216 files already formatted。
+- `E:/MimirQ/.venv/Scripts/python.exe -m pytest -q tests/test_document_versions_integration.py tests/test_dataset_ingestion_policy_endpoints.py tests/test_dataset_service_atomic_acl.py tests/test_document_lifecycle_metadata_endpoints.py`：11 passed，2 skipped，74.42s，无失败；document_versions_integration.py:69/:195 因集成开关关闭跳过；一个 pytest cache 写权限警告。未启用外部集成服务。
+- 已重新用 Python subprocess 传递精确 rg 正则重建 baseline-counts.json；替代先前 PowerShell 参数传递的计数。app 汇总：{"except": 2227, "suppress": 255, "or_collection": 3058, "getattr_3": 900, "isinstance": 3970, "settings_or": 1518}。三参 getattr 仍为单行词法近似。
+
+待总指挥协调 document_versions 文件归属后继续；尚无本轮回归测试红绿证据或修复提交。

@@ -336,8 +336,14 @@ class ParserFactory:
         """
         Resolve the actual parser to use based on file type and user selection.
         """
-        explicit_backend = bool(str(parser_backend or "").strip())
-        normalized = normalize_parser_backend(parser_backend or settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
+        requested = normalize_parser_backend(parser_backend)
+        explicit_backend = bool(requested)
+        normalized = normalize_parser_backend(settings.DEFAULT_PARSER_BACKEND) if requested == "" else requested
+        if normalized == "":
+            normalized = "auto"
+        from app.core.model_execution import reject_retired_provider
+
+        reject_retired_provider(normalized, capability="parser")
         file_ext = file_ext.lower()
 
         if file_ext != ".pdf":
@@ -758,7 +764,7 @@ class ParserFactory:
         provenance: dict[str, Any] = {
             "version": "2",
             "file_type": file_ext.lstrip("."),
-            "requested_backend": str(parser_backend or ""),
+            "requested_backend": str((parser_backend if parser_backend is not None else "")),
             "resolved_backend": backend,
             "attempts": attempts,
             "elapsed_ms": int(round((time.perf_counter() - total_t0) * 1000)),

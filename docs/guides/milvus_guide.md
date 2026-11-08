@@ -316,11 +316,7 @@ docker compose logs milvus
 
 ### Q4: 如何迁移 ChromaDB 数据到 Milvus？
 
-**迁移脚本**（示例，仓库未内置）:
-
-```python
-# TODO: 如需迁移，请联系技术支持
-```
+当前版本已退出 Chroma 后端。仓库不提供自动迁移脚本；请使用旧版本导出，并核对 Embedding 模型、维度、归一化方式和元数据，再导入 Milvus 或从原始文档重建。切换 `VECTOR_BACKEND` 不会自动搬迁索引，也不会删除旧数据。
 
 ---
 

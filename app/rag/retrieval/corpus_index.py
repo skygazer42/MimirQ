@@ -16,7 +16,7 @@ from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.hashing import stable_hash
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 from app.rag.retrieval.corpus_artifacts import ColbertCorpusIndex, CorpusArtifacts, SparseCorpusIndex
 from app.rag.retrieval.hybrid.common import _log_retriever_fallback
 from app.rag.retrieval.hybrid.text_preparation import prepare_retrieval_document
@@ -44,7 +44,8 @@ class CorpusSearchResult:
     status: dict[str, Any]
 
 
-def bm25_available() -> bool:
+def is_milvus_bm25_enabled() -> bool:
+    """Check native BM25 configuration without probing the storage service."""
     return settings.BM25_INDEX_ENABLED and settings.VECTOR_BACKEND.strip().lower() == "milvus"
 
 
@@ -63,7 +64,7 @@ class CorpusIndex:
     def _open_session() -> Session:
         return SessionLocal()
 
-    _bm25_tokenize = staticmethod(tokenize_for_bm25)
+    _tokenize_lexical_text = staticmethod(tokenize_lexical_text)
 
     @staticmethod
     def _normalize_dataset_scope_ids(dataset_ids) -> tuple[UUID, ...]:
@@ -93,10 +94,10 @@ class CorpusIndex:
             raise ValueError("Corpus search requires an explicit tenant")
         status = {
             "provider": "milvus_bm25",
-            "index_enabled": bm25_available(),
+            "index_enabled": is_milvus_bm25_enabled(),
             "scope": "documents" if scope.document_ids else "dataset" if scope.dataset_ids else "tenant",
         }
-        if not bm25_available():
+        if not is_milvus_bm25_enabled():
             return CorpusSearchResult(
                 [],
                 {
@@ -171,18 +172,18 @@ class CorpusIndex:
             for key in [key for key in self._corpus_token_cache if key[0] == prefix]:
                 self._corpus_token_cache.pop(key, None)
 
-    def clear_bm25_cache(self) -> None:
+    def clear_derived_index_caches(self) -> None:
         """Clear only derived artifacts and version tokens; native data is durable."""
         with self._lock:
             self._corpus_token_cache.clear()
         self.artifacts.sparse.clear()
         self.artifacts.colbert.clear()
 
-    def scope_documents(self, scope: CorpusScope) -> CorpusSnapshot:
+    def load_corpus_snapshot(self, scope: CorpusScope) -> CorpusSnapshot:
         """Read a bounded published snapshot only for selected derived indexes."""
         db = self._open_session()
         try:
-            documents = self._load_retrieval_docs_for_rebuild(
+            documents = self._load_bounded_corpus_documents(
                 db, tenant_id=scope.tenant_id, dataset_ids=scope.dataset_ids, document_ids=list(scope.document_ids)
             )
         finally:
@@ -366,10 +367,10 @@ class CorpusIndex:
         document_ids: list[UUID] | None = None,
     ) -> None:
         raise RuntimeError(
-            f"Retrieval rebuild aborted: scope has {int(chunk_count)} published chunks, exceeds RETRIEVAL_REBUILD_MAX_CHUNKS={int(limit)} (tenant_id={tenant_id}, dataset_id={dataset_id}, document_ids={len(document_ids or [])}). Narrow the rebuild scope or raise RETRIEVAL_REBUILD_MAX_CHUNKS."
+            f"Retrieval rebuild aborted: scope has {int(chunk_count)} published chunks, exceeds RETRIEVAL_REBUILD_MAX_CHUNKS={int(limit)} (tenant_id={tenant_id}, dataset_id={dataset_id}, document_ids={len((document_ids if document_ids is not None else []))}). Narrow the rebuild scope or raise RETRIEVAL_REBUILD_MAX_CHUNKS."
         )
 
-    def _load_retrieval_docs_for_rebuild(
+    def _load_bounded_corpus_documents(
         self,
         db: Session,
         *,
@@ -379,6 +380,7 @@ class CorpusIndex:
         batch_size: int = 2000,
         dataset_ids=(),
     ) -> list[Document]:
+        """Load published corpus documents within the configured rebuild/snapshot cap."""
         rebuild_limit = max(0, settings.RETRIEVAL_REBUILD_MAX_CHUNKS)
         if rebuild_limit > 0:
             scope_count = self._count_retrieval_docs_in_db(
@@ -413,11 +415,11 @@ class CorpusIndex:
         return docs
 
     def rebuild(self, db: Session, *, scope: CorpusScope, batch_size: int = 2000) -> int:
-        if not bm25_available():
+        if not is_milvus_bm25_enabled():
             raise ValueError("BM25 backfill requires Milvus and BM25_INDEX_ENABLED=true")
         if batch_size <= 0:
             raise ValueError("BM25 backfill batch size must be positive")
-        documents = self._load_retrieval_docs_for_rebuild(
+        documents = self._load_bounded_corpus_documents(
             db,
             tenant_id=scope.tenant_id,
             dataset_ids=scope.dataset_ids,
@@ -445,7 +447,11 @@ class CorpusIndex:
     ) -> int:
         return self.rebuild(
             db,
-            scope=CorpusScope(tenant_id, (dataset_id,) if dataset_id is not None else (), tuple(document_ids or ())),
+            scope=CorpusScope(
+                tenant_id,
+                (dataset_id,) if dataset_id is not None else (),
+                tuple((document_ids if document_ids is not None else ())),
+            ),
             batch_size=batch_size,
         )
 
@@ -455,11 +461,11 @@ class CorpusIndex:
         if batch_size <= 0:
             raise ValueError("Retrieval backfill batch size must be positive")
         scope = CorpusScope(tenant_id, (dataset_id,) if dataset_id is not None else ())
-        documents = self._load_retrieval_docs_for_rebuild(
+        documents = self._load_bounded_corpus_documents(
             db, tenant_id=tenant_id, dataset_id=dataset_id, batch_size=batch_size
         )
         key = self.scope_key(scope)
-        native = bm25_available()
+        native = is_milvus_bm25_enabled()
         if native:
             if not documents:
                 self._store.initialize()

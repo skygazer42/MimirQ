@@ -935,11 +935,13 @@ def _build_index_channel_result(
 
 
 def _index_channel_status(value: dict[str, Any] | None) -> str:
-    return str((value or {}).get("status") or "skipped").strip().lower()
+    return str((value if value is not None else {}).get("status") or "skipped").strip().lower()
 
 
 def _index_drift_marker_rows(drift_markers: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    return [dict(marker) for marker in (drift_markers or []) if isinstance(marker, dict)][:20]
+    return [
+        dict(marker) for marker in (drift_markers if drift_markers is not None else []) if isinstance(marker, dict)
+    ][:20]
 
 
 def _build_chunk_index_operation_result(
@@ -963,8 +965,8 @@ def _build_chunk_index_operation_result(
         "success": bool(success),
         "vector": dict(vector or {}),
         "bm25": dict(bm25 or {}),
-        "kg": (dict(kg or {}) if isinstance(kg, dict) else None),
-        "reconcile": (dict(reconcile or {}) if isinstance(reconcile, dict) else None),
+        "kg": (dict((kg if kg is not None else {})) if isinstance(kg, dict) else None),
+        "reconcile": (dict((reconcile if reconcile is not None else {})) if isinstance(reconcile, dict) else None),
         "drift_markers": _index_drift_marker_rows(drift_markers),
     }
 

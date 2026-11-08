@@ -44,7 +44,7 @@ from app.services.fls_policy import (
     redact_row_dicts,
     redact_row_lists,
 )
-from app.services.lotus_bridge import LotusAvailability, lotus_available
+from app.services.lotus_bridge import LotusAvailability, get_lotus_availability
 from app.services.lotus_bridge import sem_filter as lotus_sem_filter
 from app.services.rbac_service import TenantPermissions, role_allows
 from app.services.security_redaction import redact_sql_literals
@@ -204,7 +204,7 @@ def _audit_fls_redaction(
             "dataset_id": str(dataset_id),
             "source": str(source or "")[:64],
         }
-        payload.update(dict(details or {}))
+        payload.update(dict((details if details is not None else {})))
         audit_log_event(
             db,
             tenant_id=tenant_id,
@@ -499,7 +499,7 @@ def _generate_table_ask_sql_bundle(
             columns=columns,
             max_rows=max_rows,
             sample_rows=sample_rows,
-            table_aliases=[str(table_id), doc.filename, str(sheet_name or "")],
+            table_aliases=[str(table_id), doc.filename, str((sheet_name if sheet_name is not None else ""))],
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
@@ -685,7 +685,8 @@ def _lotus_fallback_query_response(
 ) -> TableQueryResponse:
     if not tag_enabled():
         raise HTTPException(
-            status_code=400, detail=f"LOTUS unavailable: {avail_reason or 'unknown'} (and TABLE_NL2SQL_ENABLED=false)"
+            status_code=400,
+            detail=f"LOTUS unavailable: {(avail_reason)} (and TABLE_NL2SQL_ENABLED=false)",
         )
     prompt_q = f"Filter rows that match: {(body.user_instruction or '').strip()}. Return the matching rows."
     try:
@@ -1228,7 +1229,7 @@ def lotus_sem_filter_dataset_table(
     output_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200
     output_rows = min(output_rows, (settings.TABLE_QUERY_MAX_ROWS or 200))
 
-    avail = lotus_available()
+    avail = get_lotus_availability()
     if avail.ok:
         try:
             df = _load_lotus_dataframe(

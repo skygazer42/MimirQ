@@ -11,9 +11,6 @@ import csv
 import hashlib
 import io
 import json
-import re
-import zipfile
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
@@ -57,16 +54,15 @@ from app.models.feedback import MessageFeedback
 from app.rag.core.logging import get_logger
 from app.services import dataset_service
 from app.services.audit_log_service import audit_log_event
+from app.services.evidence_feedback_materialization import materialize_feedback_case, normalize_reference_sources
 from app.services.hardcase_discovery_service import (
     build_rag_trace_index_from_records,
     plan_feedback_hardcase_candidates,
     read_jsonl_tail,
 )
-from app.services.ltr_rollout_workflow import materialize_feedback_case, normalize_reference_sources
 
 if TYPE_CHECKING:
-    from app.rag.reranker.ltr import LTRFeatureSpec
-    from app.rag.reranker.types import RerankCandidate
+    pass
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
     400: {"description": "Bad Request"},
@@ -404,319 +400,6 @@ def _apply_evidence_item_patch_fields(
     )
 
 
-def _as_float_or_zero(value: Any) -> float:
-    try:
-        if value is None:
-            return 0.0
-        return float(value)
-    except Exception:
-        return 0.0
-
-
-def _extract_reference_chunk_ids(item: EvidenceItem) -> set[str]:
-    refs = item.reference_sources or []
-    if not isinstance(refs, list):
-        return set()
-    out: set[str] = set()
-    for src in refs:
-        if not isinstance(src, dict):
-            continue
-        chunk_id = str(src.get("chunk_id") or "").strip()
-        if chunk_id:
-            out.add(chunk_id)
-    return out
-
-
-def _resolve_retrieval_config_hash(snapshot: dict[str, Any]) -> str | None:
-    metrics = snapshot.get("metrics") if isinstance(snapshot.get("metrics"), dict) else {}
-    retrieval_cfg_hash = str(metrics.get("retrieval_config_hash") or "").strip() or None
-    if retrieval_cfg_hash is not None:
-        return retrieval_cfg_hash
-
-    trace = snapshot.get("retrieval_trace") if isinstance(snapshot.get("retrieval_trace"), dict) else None
-    fingerprint = (
-        (trace or {}).get("retrieval_config") if isinstance((trace or {}).get("retrieval_config"), dict) else None
-    )
-    maybe_hash = (fingerprint or {}).get("hash") if isinstance(fingerprint, dict) else None
-    return str(maybe_hash or "").strip() or None
-
-
-def _build_ltr_candidate_metadata(citation: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "vector_score": _as_float_or_zero(citation.get("vector_score")),
-        "bm25_score": _as_float_or_zero(citation.get("bm25_score")),
-        "lexical_score": _as_float_or_zero(citation.get("lexical_score")),
-        "sparse_score": _as_float_or_zero(citation.get("sparse_score")),
-        "score": _as_float_or_zero(
-            citation.get("relevance_score") or citation.get("retrieval_score") or citation.get("score")
-        ),
-        "retrieval_role": citation.get("retrieval_role"),
-        "kg_pagerank": _as_float_or_zero(citation.get("kg_pagerank")),
-        "kg_shared_events": _as_float_or_zero(citation.get("kg_shared_events")),
-        "kg_path_length": _as_float_or_zero(citation.get("kg_path_length")),
-        "kg_edge_conf_low": _as_float_or_zero(citation.get("kg_edge_conf_low")),
-        "kg_edge_conf_mid": _as_float_or_zero(citation.get("kg_edge_conf_mid")),
-        "kg_edge_conf_high": _as_float_or_zero(citation.get("kg_edge_conf_high")),
-        "kg_evidence_anchored": _as_float_or_zero(citation.get("kg_evidence_anchored")),
-    }
-
-
-def _build_ltr_training_row(
-    *,
-    suite: EvidenceSuite,
-    item: EvidenceItem,
-    citation: dict[str, Any],
-    rank: int,
-    query_hash: str,
-    retrieval_cfg_hash: str | None,
-    ref_chunk_ids: set[str],
-    spec: "LTRFeatureSpec",
-    extract_ltr_features: Callable[..., list[float]],
-    rerank_candidate_cls: type["RerankCandidate"],
-) -> dict[str, Any] | None:
-    chunk_id = str(citation.get("chunk_id") or "").strip()
-    if not chunk_id:
-        return None
-
-    values = extract_ltr_features(
-        spec=spec,
-        query="",
-        candidate=rerank_candidate_cls(
-            id=chunk_id,
-            text="",
-            metadata=_build_ltr_candidate_metadata(citation),
-        ),
-    )
-    features = {name: float(value) for name, value in zip(spec.feature_names, values, strict=False)}
-    return {
-        "schema": "mimirq.ltr_training_row.v1",
-        "suite_id": str(suite.id),
-        "item_id": str(item.id),
-        "dataset_id": str(suite.dataset_id),
-        "query_hash": query_hash,
-        "retrieval_config_hash": retrieval_cfg_hash,
-        "rank": rank,
-        "label": 1 if chunk_id in ref_chunk_ids else 0,
-        "candidate": {
-            "chunk_id": chunk_id,
-            "document_id": str(citation.get("document_id") or "").strip() or None,
-        },
-        "slices": {
-            "status": str(item.status or "").strip().lower() or None,
-            "tags": list(item.tags or []),
-        },
-        "features": features,
-    }
-
-
-def _append_hard_negative_line(
-    *,
-    hard_lines: list[str],
-    suite: EvidenceSuite,
-    item: EvidenceItem,
-    citations: list[dict[str, Any]],
-    retrieval_cfg_hash: str | None,
-    query_hash: str,
-    mine_hard_negatives_for_case_from_trace: Callable[..., dict[str, Any]],
-) -> int:
-    try:
-        trace_record = {
-            "citations": citations,
-            "retrieval": {"retrieval_config_hash": retrieval_cfg_hash},
-        }
-        case = {"reference_sources": item.reference_sources or []}
-        hard_negative = mine_hard_negatives_for_case_from_trace(
-            case=case,
-            trace_record=trace_record,
-            query_hash=query_hash,
-            max_hard_negatives=10,
-            max_negatives_per_document=2,
-        )
-        if not isinstance(hard_negative, dict):
-            return 0
-        hard_negative["suite_id"] = str(suite.id)
-        hard_negative["item_id"] = str(item.id)
-        hard_negative["dataset_id"] = str(suite.dataset_id)
-        hard_negative["tags"] = list(item.tags or [])
-        hard_lines.append(json.dumps(hard_negative, ensure_ascii=False, separators=(",", ":"), default=str))
-        return 1
-    except Exception as exc:
-        logger.debug("Failed to export hard negative row; continuing training export: %s", exc)
-        return 0
-
-
-def _collect_ltr_training_bundle_rows(
-    *,
-    suite: EvidenceSuite,
-    items: list[EvidenceItem],
-    spec: "LTRFeatureSpec",
-    stable_hash: Callable[..., str],
-    extract_ltr_features: Callable[..., list[float]],
-    rerank_candidate_cls: type["RerankCandidate"],
-    mine_hard_negatives_for_case_from_trace: Callable[..., dict[str, Any]],
-) -> tuple[list[str], list[str], int, int, int]:
-    training_lines: list[str] = []
-    hard_lines: list[str] = []
-    items_with_snapshot = 0
-    rows_total = 0
-    hard_total = 0
-
-    for item in items:
-        snapshot = item.retrieval_snapshot or {}
-        if not isinstance(snapshot, dict):
-            continue
-        citations = snapshot.get("citations") or []
-        if not isinstance(citations, list) or not citations:
-            continue
-
-        items_with_snapshot += 1
-        query_hash = stable_hash(str(item.query or ""), length=64)
-        ref_chunk_ids = _extract_reference_chunk_ids(item)
-        retrieval_cfg_hash = _resolve_retrieval_config_hash(snapshot)
-
-        for rank, citation in enumerate(citations, 1):
-            if not isinstance(citation, dict):
-                continue
-            row = _build_ltr_training_row(
-                suite=suite,
-                item=item,
-                citation=citation,
-                rank=rank,
-                query_hash=query_hash,
-                retrieval_cfg_hash=retrieval_cfg_hash,
-                ref_chunk_ids=ref_chunk_ids,
-                spec=spec,
-                extract_ltr_features=extract_ltr_features,
-                rerank_candidate_cls=rerank_candidate_cls,
-            )
-            if row is None:
-                continue
-            training_lines.append(json.dumps(row, ensure_ascii=False, separators=(",", ":"), default=str))
-            rows_total += 1
-
-        hard_total += _append_hard_negative_line(
-            hard_lines=hard_lines,
-            suite=suite,
-            item=item,
-            citations=[citation for citation in citations if isinstance(citation, dict)],
-            retrieval_cfg_hash=retrieval_cfg_hash,
-            query_hash=query_hash,
-            mine_hard_negatives_for_case_from_trace=mine_hard_negatives_for_case_from_trace,
-        )
-    return training_lines, hard_lines, items_with_snapshot, rows_total, hard_total
-
-
-def _build_ltr_training_manifest(
-    *,
-    exported_at: datetime,
-    tenant_id: UUID,
-    suite: EvidenceSuite,
-    include_archived_items: bool,
-    max_items: int,
-    spec_version: int,
-    spec: "LTRFeatureSpec",
-    items_total: int,
-    items_with_snapshot: int,
-    rows_total: int,
-    hard_total: int,
-) -> dict[str, Any]:
-    return {
-        "schema": "mimirq.ltr_training_export.v1",
-        "exported_at": exported_at.isoformat(),
-        "tenant_id": str(tenant_id),
-        "dataset_id": str(suite.dataset_id),
-        "suite": {
-            "id": str(suite.id),
-            "name": str(suite.name or ""),
-            "tags": list(suite.tags or []),
-            "include_archived_items": bool(include_archived_items),
-            "max_items": int(max_items or 0),
-        },
-        "feature_spec": {
-            "version": int(spec_version),
-            "schema": str(spec.schema),
-            "feature_names": list(spec.feature_names),
-        },
-        "counts": {
-            "items_total": int(items_total),
-            "items_with_snapshot": int(items_with_snapshot),
-            "training_rows": int(rows_total),
-            "hard_negative_records": int(hard_total),
-        },
-    }
-
-
-def _audit_ltr_training_export(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    account_id: str,
-    suite_id: UUID,
-    suite_dataset_id: UUID,
-    items_total: int,
-    items_with_snapshot: int,
-    rows_total: int,
-    hard_total: int,
-    spec_version: int,
-) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="evidence_suite.export_ltr_training",
-            resource_type="evidence_suite",
-            resource_id=str(suite_id),
-            details={
-                "dataset_id": str(suite_dataset_id),
-                "items_total": int(items_total),
-                "items_with_snapshot": int(items_with_snapshot),
-                "training_rows": int(rows_total),
-                "hard_negative_records": int(hard_total),
-                "feature_spec_version": int(spec_version),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
-
-
-def _render_ltr_training_zip(
-    *,
-    manifest: dict[str, Any],
-    training_lines: list[str],
-    hard_lines: list[str],
-) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, separators=(",", ":"), default=str))
-        zf.writestr(
-            "training_rows.ndjson",
-            ("\n".join(training_lines) + ("\n" if training_lines else "")).encode("utf-8"),
-        )
-        zf.writestr(
-            "hard_negatives.ndjson",
-            ("\n".join(hard_lines) + ("\n" if hard_lines else "")).encode("utf-8"),
-        )
-        zf.writestr(
-            "README.txt",
-            (
-                "MimirQ Evidence Suite LTR Training Export\n\n"
-                "- manifest.json: export metadata + LTR feature spec\n"
-                "- training_rows.ndjson: one row per (query_hash, candidate chunk_id) with features + label\n"
-                "- hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash\n"
-                "\n"
-                "Notes:\n"
-                "- training_rows is PII-minimized: it does not include raw query text.\n"
-                "- This export relies on per-item retrieval_snapshot for reproducibility.\n"
-            ),
-        )
-    return buf.getvalue()
-
-
 def _feedback_training_export_row(
     *,
     feedback: MessageFeedback,
@@ -731,19 +414,19 @@ def _feedback_training_export_row(
         "schema": "mimirq.training_export_row.v1",
         "source_type": "feedback",
         "source_id": str(feedback.id),
-        "dataset_id": str(conversation.dataset_id or "") or None,
+        "dataset_id": conversation.dataset_id,
         "status": "feedback",
-        "question": str(question or "").strip(),
+        "question": question.strip(),
         "expected_answer": feedback.expected_answer,
         "tags": list(feedback.tags or []),
         "reference_sources": normalize_reference_sources(reference_sources),
-        "trace_snapshot": dict(trace_payload or {}),
+        "trace_snapshot": dict((trace_payload if trace_payload is not None else {})),
         "rag_config_snapshot": dict(extra.get("rag_config_snapshot") or {}),
         "source_metadata": {
             "conversation_id": str(conversation.id),
             "message_id": str(assistant.id),
-            "rating": int(feedback.rating or 0),
-            "reason": str(feedback.reason or "") or None,
+            "rating": int(feedback.rating),
+            "reason": feedback.reason,
         },
         "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
         "updated_at": feedback.updated_at.isoformat() if feedback.updated_at else None,
@@ -751,17 +434,17 @@ def _feedback_training_export_row(
 
 
 def _evidence_training_export_row(item: EvidenceItem) -> dict[str, Any]:
-    source_metadata = dict(item.source_metadata or {})
+    source_metadata = dict(item.source_metadata)
     source_metadata.setdefault("suite_id", str(item.suite_id or ""))
     return {
         "schema": "mimirq.training_export_row.v1",
         "source_type": "evidence_item",
         "source_id": str(item.id),
-        "dataset_id": str(item.dataset_id or "") or None,
-        "status": str(item.status or "").strip().lower() or None,
-        "question": str(item.query or "").strip(),
+        "dataset_id": item.dataset_id,
+        "status": item.status,
+        "question": item.query.strip(),
         "expected_answer": item.expected_answer,
-        "tags": list(item.tags or []),
+        "tags": list(item.tags),
         "reference_sources": normalize_reference_sources(item.reference_sources),
         "trace_snapshot": dict(item.retrieval_snapshot or {}),
         "rag_config_snapshot": dict(item.rag_config_snapshot or {}),
@@ -2110,106 +1793,5 @@ def export_training_dataset(
     return Response(
         content=content,
         media_type=media_type,
-        headers=download_response_headers(filename),
-    )
-
-
-@router.get("/suites/{suite_id}/export-ltr-training", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-def export_evidence_suite_ltr_training_bundle(
-    suite_id: UUID,
-    include_archived_items: bool = False,
-    max_items: Annotated[int, Query(ge=1, le=10000, description="Max items to include in export")] = 2000,
-    *,
-    tenant_id: Annotated[UUID, Depends(get_tenant_id)],
-    account_id: Annotated[str, Depends(get_current_account_id)],
-    db: Annotated[Session, Depends(get_db)],
-):
-    """
-    Export a PII-minimized LTR training bundle from an Evidence Suite.
-
-    Contents:
-    - manifest.json: export metadata + feature spec
-    - training_rows.ndjson: per-citation features + labels (0/1), grouped by query_hash
-    - hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash
-
-    Notes:
-    - This endpoint intentionally avoids including raw query text in training rows.
-    - It relies on per-item retrieval_snapshot for reproducibility; items without a snapshot are skipped.
-    """
-    from app.core.config import settings
-    from app.rag.core.hashing import stable_hash
-    from app.rag.evaluation.hard_negative_mining import mine_hard_negatives_for_case_from_trace
-    from app.rag.reranker.ltr import LTRFeatureSpec, extract_ltr_features
-    from app.rag.reranker.types import RerankCandidate
-
-    dataset_service.ensure_member(db, tenant_id, account_id)
-
-    suite = _get_evidence_suite_or_404(db, tenant_id=tenant_id, suite_id=suite_id)
-    _assert_suite_access(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        suite=suite,
-        writable=False,
-    )
-
-    q = (
-        db.query(EvidenceItem)
-        .filter(EvidenceItem.tenant_id == tenant_id, EvidenceItem.suite_id == suite_id)
-        .order_by(EvidenceItem.created_at.asc())
-        .limit(int(max_items or 0))
-    )
-    if not include_archived_items:
-        q = q.filter(EvidenceItem.status != "archived")
-    items = q.all()
-
-    spec_version = int(settings.LTR_FEATURE_SPEC_VERSION or 1)
-    spec = LTRFeatureSpec.from_version(spec_version)
-    items_total = len(items)
-    training_lines, hard_lines, items_with_snapshot, rows_total, hard_total = _collect_ltr_training_bundle_rows(
-        suite=suite,
-        items=items,
-        spec=spec,
-        stable_hash=stable_hash,
-        extract_ltr_features=extract_ltr_features,
-        rerank_candidate_cls=RerankCandidate,
-        mine_hard_negatives_for_case_from_trace=mine_hard_negatives_for_case_from_trace,
-    )
-    manifest = _build_ltr_training_manifest(
-        exported_at=_now_utc(),
-        tenant_id=tenant_id,
-        suite=suite,
-        include_archived_items=bool(include_archived_items),
-        max_items=int(max_items or 0),
-        spec_version=spec_version,
-        spec=spec,
-        items_total=items_total,
-        items_with_snapshot=items_with_snapshot,
-        rows_total=rows_total,
-        hard_total=hard_total,
-    )
-    _audit_ltr_training_export(
-        db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        suite_id=suite_id,
-        suite_dataset_id=suite.dataset_id,
-        items_total=items_total,
-        items_with_snapshot=items_with_snapshot,
-        rows_total=rows_total,
-        hard_total=hard_total,
-        spec_version=spec_version,
-    )
-
-    raw = _render_ltr_training_zip(
-        manifest=manifest,
-        training_lines=training_lines,
-        hard_lines=hard_lines,
-    )
-    safe = re.sub(r"[^a-zA-Z0-9_.-]+", "_", str(suite.name or "evidence_suite"))[:64]
-    filename = f"{safe}.ltr_training.zip"
-    return Response(
-        content=raw,
-        media_type="application/zip",
         headers=download_response_headers(filename),
     )

@@ -778,7 +778,7 @@ def test_lotus_sem_filter_dataset_table_fallback_runs_nl2sql_and_masks_rows(
     monkeypatch.setattr(dataset_tables.settings, "TABLE_LOTUS_ENABLED", True, raising=False)
     monkeypatch.setattr(dataset_tables.settings, "LLM_API_KEY", "key", raising=False)
     monkeypatch.setattr(
-        dataset_tables, "lotus_available", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True
+        dataset_tables, "get_lotus_availability", lambda: SimpleNamespace(ok=False, reason="missing"), raising=True
     )
     monkeypatch.setattr(dataset_tables, "tag_enabled", lambda: True, raising=True)
     monkeypatch.setattr(

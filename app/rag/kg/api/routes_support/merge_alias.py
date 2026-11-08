@@ -106,7 +106,7 @@ def _vector_alias_suggestions(
             query_vector=list(entity.vector),
             tenant_id=tenant_id,
             k=max(1, int(want_k)),
-            entity_type=str(entity.type or None) or None,
+            entity_type=entity.type,
         )
         suggestions = [
             _vector_alias_suggestion_item(hit)

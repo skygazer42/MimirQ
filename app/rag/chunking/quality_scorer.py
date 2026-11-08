@@ -11,7 +11,7 @@ Used initially by chunk preview to surface "needs_review" signals for data gover
 import re
 from typing import Any
 
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 
 # P0 Optimization: Chunk size bounds based on Vectara NAACL 2025 research
 MIN_CHUNK_SIZE_TOKENS = 100  # Minimum for effective retrieval
@@ -259,11 +259,11 @@ def score_chunk_semantic_quality(
         )
 
     sample = trimmed[: max(0, int(max_tokenize_chars or 0))] if max_tokenize_chars else trimmed
-    tokens = tokenize_for_bm25(sample)
+    tokens = tokenize_lexical_text(sample)
     token_set = set(tokens or [])
     keyword_count = len(token_set)
 
-    denom_tokens = int(tokens_est or 0)
+    denom_tokens = int((tokens_est if tokens_est is not None else 0))
     if denom_tokens <= 0:
         denom_tokens = max(1, len(tokens or []))
 

@@ -37,7 +37,7 @@ def _json_safe(value: Any) -> Any:
 
 
 def _json_safe_mapping(value: Mapping[str, Any] | Mapping[Any, Any] | None) -> dict[str, Any]:
-    return {str(k): _json_safe(v) for k, v in dict(value or {}).items()}
+    return {str(k): _json_safe(v) for k, v in dict((value if value is not None else {})).items()}
 
 
 __all__ = ["ParseQualityGateDecision"]

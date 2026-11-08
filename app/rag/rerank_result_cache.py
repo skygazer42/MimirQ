@@ -2,7 +2,7 @@
 Evidence post-rerank result cache (in-memory, short TTL, best-effort).
 
 Goal:
-- Avoid repeated cross-encoder / LTR reranking work for identical evidence requests
+- Avoid repeated supported reranking work for identical evidence requests
   over a short time window (e.g., UI refresh, retry, offline replay loops).
 
 Security posture:
@@ -19,7 +19,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from app.core.config import settings
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.core.redis_client import LazyRedisClient
 from app.rag.core.hashing import stable_hash
 from app.rag.core.logging import get_logger
@@ -65,10 +65,8 @@ _invalidate_redis_client = _redis_client_slot.invalidate
 
 
 def _normalize_provider(provider: str | None) -> str:
-    p = str(provider or "").strip().lower()
-    reject_retired_model_provider(p, capability="reranker")
-    if p in {"xgboost_ltr"}:
-        return "ltr"
+    p = str((provider if provider is not None else "")).strip().lower()
+    reject_retired_provider(p, capability="reranker")
     if p in {"late_interaction"}:
         return "colbert"
     return p or "unknown"
@@ -82,16 +80,6 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
     """
     normalized = _normalize_provider(provider)
     sig: dict[str, Any] = {"provider": normalized}
-
-    if normalized == "ltr":
-        sig.update(
-            {
-                "ltr_model_path": str(settings.LTR_MODEL_PATH or ""),
-                "ltr_manifest_path": str(settings.LTR_MODEL_MANIFEST_PATH or ""),
-                "ltr_feature_spec_version": int(settings.LTR_FEATURE_SPEC_VERSION or 1),
-            }
-        )
-        return sig
 
     if normalized == "colbert":
         sig.update(
@@ -180,15 +168,15 @@ def build_evidence_post_rerank_cache_key(
     """
     provider_norm = _normalize_provider(provider)
     sig = {
-        "schema": str(schema or "").strip() or "mimirq.evidence_post_rerank_cache.v1",
+        "schema": schema.strip(),
         "provider": provider_norm,
-        "top_n": int(top_n or 0),
-        "query_hash": stable_hash((query or "").strip(), length=16),
-        "candidates": str(candidates_fingerprint or ""),
-        "corpus_cache_token": str(corpus_cache_token or "") or None,
-        "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
-        "tenant_hash": stable_hash(str(tenant_id or ""), length=16),
-        "account_hash": stable_hash(str(account_id or ""), length=16),
+        "top_n": int(top_n),
+        "query_hash": stable_hash(query.strip(), length=16),
+        "candidates": candidates_fingerprint,
+        "corpus_cache_token": corpus_cache_token,
+        "embedding_space_hash": current_embedding_space_hash(),
+        "tenant_hash": stable_hash(str((tenant_id if tenant_id is not None else "")), length=16),
+        "account_hash": stable_hash(str((account_id if account_id is not None else "")), length=16),
         # Provider/model/spec identity so cache entries do not cross incompatible reranker versions.
         "provider_version": _provider_version_signature(provider_norm),
     }
@@ -342,8 +330,8 @@ def get_cached_evidence_post_rerank_result(key: str) -> RerankResult | None:
         ordered_ids=ordered_ids,
         score_map=score_map_out,
         elapsed_sec=0.0,
-        provider=str(payload.get("provider") or "") or None,
-        model_used=str(payload.get("model_used") or "") or None,
+        provider=payload["provider"],
+        model_used=payload["model_used"],
         stats={"cache_hit": True},
     )
 

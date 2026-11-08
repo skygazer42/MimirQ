@@ -19,7 +19,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
@@ -68,7 +68,7 @@ _EMBEDDER_CACHE: dict[str, TokenEmbedder] = {}
 
 
 def get_token_embedder(*, provider_name: str, deterministic_dim: int = 16) -> TokenEmbedder:
-    reject_retired_model_provider(provider_name, capability="colbert")
+    reject_retired_provider(provider_name, capability="colbert")
     provider = str(provider_name or "").strip().lower() or "deterministic"
     if provider != "deterministic":
         raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
@@ -83,7 +83,7 @@ def get_token_embedder(*, provider_name: str, deterministic_dim: int = 16) -> To
 
 
 def check_colbert_provider_readiness(*, provider_name: str) -> dict[str, Any]:
-    reject_retired_model_provider(provider_name, capability="colbert")
+    reject_retired_provider(provider_name, capability="colbert")
     provider = str(provider_name or "").strip().lower() or "deterministic"
     if provider != "deterministic":
         raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
@@ -131,14 +131,16 @@ class ColBERTReranker(BaseReranker):
         embedder: TokenEmbedder | None = None,
     ) -> None:
         provider = str(provider_name or "").strip().lower() or "deterministic"
-        reject_retired_model_provider(provider, capability="colbert")
+        reject_retired_provider(provider, capability="colbert")
         if provider != "deterministic":
             raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
 
         self.provider_name = provider
         self.deterministic_dim = max(2, int(deterministic_dim or 0))
-        self._embedder = embedder or get_token_embedder(
-            provider_name=self.provider_name, deterministic_dim=self.deterministic_dim
+        self._embedder = (
+            embedder
+            if embedder is not None
+            else get_token_embedder(provider_name=self.provider_name, deterministic_dim=self.deterministic_dim)
         )
 
     def rerank(

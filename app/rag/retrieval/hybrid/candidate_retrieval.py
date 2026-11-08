@@ -140,7 +140,7 @@ def _cache_scope(request: CandidateRequest) -> HybridCacheScopeDecision:
         runtime_shard_count=len(resolved.runtime_shards),
         runtime_scope_missing_dataset_ids=resolved.missing_dataset_ids,
         runtime_pipeline_values=[shard.runtime.embedding_space_hash for shard in resolved.runtime_shards],
-        embedding_space=resolved.runtime.embedding_space_hash or None,
+        embedding_space=resolved.runtime.embedding_space_hash,
         cache_ttl=settings.RETRIEVAL_CANDIDATE_CACHE_TTL_SEC,
         semantic_cache_ttl=settings.SEMANTIC_CACHE_TTL_SEC,
     )

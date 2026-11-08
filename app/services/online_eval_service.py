@@ -431,7 +431,7 @@ def maybe_enqueue_online_eval(
     if not enabled:
         return {"enabled": False, "enqueued": False, "reason": "disabled"}
 
-    rate = float(settings.ONLINE_EVAL_SAMPLE_RATE or 0.05)
+    rate = float(settings.ONLINE_EVAL_SAMPLE_RATE)
     if not _stable_sample(tenant_id=str(tenant_id) if tenant_id else None, request_id=str(request_id or ""), rate=rate):
         return {"enabled": True, "enqueued": False, "reason": "not_sampled", "sample_rate": rate}
 
@@ -440,7 +440,7 @@ def maybe_enqueue_online_eval(
         "tenant_id": str(tenant_id) if tenant_id else None,
         "dataset_id": str(dataset_id) if dataset_id else None,
         "request_id": str(request_id or "")[:200] if request_id else None,
-        "retrieval_mode": str(retrieval_mode or "").strip().lower() or None,
+        "retrieval_mode": retrieval_mode,
         "citations_count": int(citations_count) if citations_count is not None else None,
         "sample_rate": round(rate, 6),
         "answer": str(answer or ""),

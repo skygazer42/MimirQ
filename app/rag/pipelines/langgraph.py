@@ -211,6 +211,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "account_id": account_id,
         "dataset_id": dataset_id,
         "document_ids": doc_ids_key,
+        "document_scope_selected": state.get("document_ids") is not None,
         "embedding_space_hash": embedding_space,
         # Retrieval parameters (must match _retrieve_node defaults; avoid `or` because 0.0 is valid).
         "top_k": int(settings.RETRIEVAL_TOP_K if state.get("top_k") is None else state.get("top_k")),
@@ -224,7 +225,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         # Query expansion knobs affect retrieval results; include them to avoid cache collisions.
         "enable_query_alias_expansion": state.get("enable_query_alias_expansion"),
         "query_alias_max_queries": state.get("query_alias_max_queries"),
-        "query_aliases": state.get("query_aliases") or None,
+        "query_aliases": state.get("query_aliases"),
         "enable_multi_query": state.get("enable_multi_query"),
         "multi_query_count": state.get("multi_query_count"),
         "multi_query_temperature": state.get("multi_query_temperature"),
@@ -265,7 +266,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         ),
         "sparse_retrieval_enabled": state.get("sparse_retrieval_enabled"),
         "sparse_retrieval_provider": state.get("sparse_retrieval_provider"),
-        "metadata_filter": state.get("metadata_filter") or None,
+        "metadata_filter": state.get("metadata_filter"),
     }
     return json.dumps(key_obj, ensure_ascii=False, sort_keys=True, default=str)
 
@@ -1157,7 +1158,7 @@ def _populate_standard_generation_metrics(
     metrics["sentence_citations_inline_fallback_reason"] = sentence_meta["fallback_reason"]
     metrics["visible_evidence_only_enabled"] = bool(claim_ctx["strict_visible"])
     metrics["visible_evidence_only_requested"] = bool(state.get("visible_evidence_only"))
-    metrics["generation_max_tokens"] = generation_max_tokens or None
+    metrics["generation_max_tokens"] = generation_max_tokens
     metrics["source_identification_answer_used"] = bool(source_identification_answer_used)
 
 
@@ -1844,7 +1845,7 @@ def _apply_active_pipeline_metadata_filter(
 
 
 def _active_pipeline_hash(*, status: Any, meta: Any) -> str | None:
-    metadata = meta if isinstance(meta, dict) else {}
+    metadata = {} if meta is None else meta
     ready = (
         bool(metadata.get("active_pipeline_ready"))
         if "active_pipeline_ready" in metadata
@@ -1852,8 +1853,9 @@ def _active_pipeline_hash(*, status: Any, meta: Any) -> str | None:
     )
     if not ready:
         return None
-    active_hash = str(metadata.get("active_pipeline_hash") or metadata.get("pipeline_hash") or "").strip()
-    return active_hash or None
+    from app.core.pipeline_versions import get_active_pipeline_hash
+
+    return get_active_pipeline_hash(metadata)
 
 
 def _apply_profile_overrides_to_state(state: dict[str, Any]) -> None:

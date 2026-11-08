@@ -240,7 +240,7 @@ Dify 標準の外部ナレッジベースエンドポイントは `POST /api/v1/
 |:---|:---|:---|:---|:---|:---|:---|
 | **ドキュメントパース** | **30 のパース基盤**：PDF、OCR、レイアウト、表、数式、VLM | Knowledge Pipeline；PDF、PPT など一般的な形式 | **DeepDoc**；複雑なレイアウトとスキャン；MinerU / Docling | PDF・スキャン・表・数式を Markdown 化 | PDF、TXT、DOCX などのドキュメントパイプライン | Document Loaders とサードパーティパーサー連携 |
 | **チャンク分割** | **86 種の戦略**：再帰、セマンティック、親子、RAPTOR、Late Chunking；可視化プレビュー | 汎用、親子、Q&A、パイプライン定義の処理 | テンプレートベースのチャンク分割；可視化した人手介入 | 自動、手動、Q&A、拡張処理 | ドキュメントパイプラインの自動チャンク分割 | Text Splitters；アプリケーションコードで組み立て |
-| **検索 / リランク** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**13 種のリランカー** | セマンティック・全文・ハイブリッド検索；リランク設定可 | 複数リコール + 融合リランク | セマンティック・全文・ハイブリッド検索 + RRF + リランク | 複数のベクトル DB 検索 + 出典引用 | Retriever / reranker コンポーネント；自前で編成 |
+| **検索 / リランク** | Milvus + BM25 / SPLADE / ColBERT / RRF | セマンティック・全文・ハイブリッド検索；リランク設定可 | 複数リコール + 融合リランク | セマンティック・全文・ハイブリッド検索 + RRF + リランク | 複数のベクトル DB 検索 + 出典引用 | Retriever / reranker コンポーネント；自前で編成 |
 | **ナレッジグラフ** | エンティティ・関係・イベント抽出；エンティティ解決、コミュニティ検出、マルチホップ検索 | ワークフロー・プラグイン・外部サービス経由で接続 | GraphRAG を内蔵 | ワークフローや外部サービス経由で接続 | エージェント / ツール経由で接続 | グラフ連携とカスタムチェーン |
 | **エージェント / MCP** | LangGraph エージェント、Self-RAG / CRAG / FLARE；MCP クライアント / サーバー | Function Calling / ReAct エージェント、ツール、MCP | Agentic Workflow、MCP、コード実行 | Agent V2、ツール、MCP、VM 実行 | ノーコード Agent Builder、MCP、定期タスク | Agents / LangGraph / MCP；コードファースト |
 | **可視化ワークフロー** | **汎用ノードキャンバスなし**；RAG デバッグ・ガバナンス画面・API に注力 | **中核機能**：アプリ / エージェントのノード編成 | エージェントと取り込みパイプラインの編成 | **中核機能**：フローノード編成 | ノーコード Agent Builder | 組み込みの製品 UI なし；アプリ側で実装 |
@@ -305,7 +305,7 @@ Dify HTTP / External の検索エビデンスカバレッジは 96.3% / 99.7%、
 |:---:|:---|:---|
 | **標準デプロイ** | `make up` | フルスタック：Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **標準 + フロントエンド** | `make up-web` | 初回起動に推奨；ローカル設定を初期化し完全な Web スタックを起動 |
-| **軽量モード** | `make up-lite` | Milvus の代わりに Chroma/FAISS、MinIO 不要、素早い試用向け |
+| **API/Worker モード** | `make up-lite` | 共有 Milvus と内部依存サービスを使用。文書のオブジェクト保存は無効、フロントエンドなし |
 | **開発モード** | `make infra-up` | インフラのみ、バックエンド / フロントエンドをローカル実行 |
 | **Helm / K8s** | `helm install` | 本番グレード、HPA、PDB、CronJob、PrometheusRule 付き |
 | **パーサー拡張** | [Docker Compose ガイド](./docs/deployment/docker_compose.md) | 必要な CPU / GPU プロファイルを起動 |

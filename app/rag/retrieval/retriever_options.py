@@ -21,7 +21,7 @@ def _dataset_scoped_runtime_lookup_error(
     detail = reason.strip() or "unavailable"
     return LookupError(
         "dataset-scoped embedding runtime "
-        f"{detail} (tenant_id={tenant_id}, dataset_ids={len(dataset_ids)}, document_ids={len(document_ids or [])})"
+        f"{detail} (tenant_id={tenant_id}, dataset_ids={len(dataset_ids)}, document_ids={len((document_ids if document_ids is not None else []))})"
     )
 
 

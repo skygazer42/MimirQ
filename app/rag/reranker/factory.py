@@ -24,8 +24,6 @@ _api_reranker_cache: dict[str, BaseReranker] = {}
 _local_reranker_lock = threading.Lock()
 _local_reranker_cache: dict[str, BaseReranker] = {}
 
-DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
-
 
 def _api_cache_key(
     provider: str,
@@ -88,11 +86,16 @@ def _build_dashscope_reranker(
 ) -> BaseReranker:
     dashscope_reranker_cls = _load_attr("app.rag.reranker.dashscope", "DashScopeReranker")
 
-    resolved_model_name = model_name or settings.RERANKER_MODEL or DEFAULT_RERANKER_MODEL
-    resolved_api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
-    resolved_base_url = base_url or "https://dashscope.aliyuncs.com/api/v1/services/rerank"
+    resolved_model_name = settings.RERANKER_MODEL if model_name is None else model_name
+    resolved_api_key = api_key
+    if api_key is None:
+        configured_key = settings.RERANKER_API_KEY
+        resolved_api_key = settings.LLM_API_KEY if configured_key == "" else configured_key
+    resolved_base_url = (
+        "https://dashscope.aliyuncs.com/api/v1/services/rerank" if base_url is None else base_url.strip()
+    )
 
-    timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+    timeout = float(settings.RERANKER_API_TIMEOUT_SEC if kwargs.get("timeout") is None else kwargs["timeout"])
     kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
     cache_key = _api_cache_key(
         requested_provider,
@@ -126,11 +129,16 @@ def _build_openai_reranker(
 ) -> BaseReranker:
     openai_reranker_cls = _load_attr("app.rag.reranker.openai", "OpenAIReranker")
 
-    resolved_model_name = model_name or settings.RERANKER_MODEL or DEFAULT_RERANKER_MODEL
-    resolved_api_key = api_key or settings.RERANKER_API_KEY or settings.LLM_API_KEY
-    resolved_base_url = base_url or settings.RERANKER_API_BASE or settings.LLM_API_BASE
-
-    timeout = float(kwargs.get("timeout") or settings.RERANKER_API_TIMEOUT_SEC or 30.0)
+    resolved_model_name = settings.RERANKER_MODEL if model_name is None else model_name
+    resolved_api_key = api_key
+    if api_key is None:
+        configured_key = settings.RERANKER_API_KEY
+        resolved_api_key = settings.LLM_API_KEY if configured_key == "" else configured_key
+    resolved_base_url = base_url
+    if base_url is None:
+        configured_base = settings.RERANKER_API_BASE
+        resolved_base_url = settings.LLM_API_BASE if configured_base == "" else configured_base
+    timeout = float(settings.RERANKER_API_TIMEOUT_SEC if kwargs.get("timeout") is None else kwargs["timeout"])
     kwargs_copy = {k: v for k, v in kwargs.items() if k != "timeout"}
     cache_key = _api_cache_key(
         requested_provider,
@@ -186,78 +194,25 @@ def _build_colbert_reranker(
     model_name: str | None,
     **kwargs: Any,
 ) -> BaseReranker:
-    from app.core.model_execution import reject_retired_model_provider
+    from app.core.model_execution import reject_retired_provider
 
-    provider_name = (
-        str(kwargs.get("provider_name") or settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower()
-    )
-    reject_retired_model_provider(provider_name, capability="colbert")
+    provider_name = settings.COLBERT_RERANK_PROVIDER if kwargs.get("provider_name") is None else kwargs["provider_name"]
+    provider_name = provider_name.strip().lower()
+    reject_retired_provider(provider_name, capability="colbert")
     if provider_name != "deterministic":
         raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
     colbert_reranker_cls = _load_attr("app.rag.reranker.colbert", "ColBERTReranker")
     return colbert_reranker_cls(
         provider_name=provider_name,
-        deterministic_dim=max(2, int(kwargs.get("deterministic_dim") or settings.COLBERT_RERANK_EMBED_DIM or 64)),
-        embedder=kwargs.get("embedder"),
-    )
-
-
-def _build_ltr_reranker(_requested_provider: str, **kwargs: Any) -> BaseReranker:
-    ltr_feature_spec_cls = _load_attr("app.rag.reranker.ltr", "LTRFeatureSpec")
-    ltr_reranker_cls = _load_attr("app.rag.reranker.ltr", "LTRReranker")
-
-    model_path = str(kwargs.get("model_path") or "").strip() or settings.LTR_MODEL_PATH.strip()
-    if not model_path:
-        try:
-            from app.services.ltr_model_registry import resolve_active_model_paths  # noqa: WPS433
-
-            mp, man_p, spec_v, _mid = resolve_active_model_paths()
-            if mp:
-                model_path = str(mp)
-                settings.LTR_MODEL_PATH = str(mp)
-            if man_p:
-                settings.LTR_MODEL_MANIFEST_PATH = str(man_p)
-            if spec_v:
-                settings.LTR_FEATURE_SPEC_VERSION = int(spec_v)
-        except Exception as exc:
-            logger.debug("Ignoring LTR active model registry lookup failure: %s", exc)
-
-    if not model_path:
-        raise ValueError("LTR reranker requires model_path (pass model_path=... or set LTR_MODEL_PATH)")
-
-    manifest_path = str(kwargs.get("manifest_path") or "").strip() or settings.LTR_MODEL_MANIFEST_PATH.strip()
-
-    spec_version = kwargs.get("feature_spec_version")
-    if spec_version is None:
-        spec_version = settings.LTR_FEATURE_SPEC_VERSION
-
-    feature_names = kwargs.get("feature_names")
-    if isinstance(feature_names, (list, tuple)) and feature_names:
-        spec = ltr_feature_spec_cls(
-            schema="mimirq.ltr_features.custom",
-            feature_names=tuple(str(x) for x in feature_names if x is not None),
-        )
-    else:
-        spec = ltr_feature_spec_cls.from_version(spec_version)
-
-    cache_key = _local_cache_key(
-        "ltr",
-        [
-            model_path,
-            manifest_path,
-            spec.schema,
-            ",".join(spec.feature_names),
-        ],
-    )
-    return _get_or_create_cached_reranker(
-        cache=_local_reranker_cache,
-        lock=_local_reranker_lock,
-        cache_key=cache_key,
-        build=lambda: ltr_reranker_cls(
-            model_path=model_path,
-            spec=spec,
-            manifest_path=(manifest_path or None),
+        deterministic_dim=max(
+            2,
+            int(
+                settings.COLBERT_RERANK_EMBED_DIM
+                if kwargs.get("deterministic_dim") is None
+                else kwargs["deterministic_dim"]
+            ),
         ),
+        embedder=kwargs.get("embedder"),
     )
 
 
@@ -273,20 +228,23 @@ def _build_long_context_reranker(
     if scorer is not None:
         return long_context_reranker_cls(scorer=scorer, model_name=model_name)
 
-    resolved_model = str(model_name or "long_context:deterministic").strip() or "long_context:deterministic"
-    cache_key = _local_cache_key("long_context", [resolved_model])
+    candidate = long_context_reranker_cls(model_name=model_name)
+    cache_key = _local_cache_key("long_context", [candidate.model_name])
     return _get_or_create_cached_reranker(
         cache=_local_reranker_cache,
         lock=_local_reranker_lock,
         cache_key=cache_key,
-        build=lambda: long_context_reranker_cls(model_name=resolved_model),
+        build=lambda: candidate,
     )
 
 
 def _build_mmr_reranker(_requested_provider: str, **kwargs: Any) -> BaseReranker:
     mmr_reranker_cls = _load_attr("app.rag.reranker.mmr", "MMRReranker")
 
-    lambda_mult = float(kwargs.get("lambda_mult") or kwargs.get("mmr_lambda") or settings.RETRIEVAL_MMR_LAMBDA or 0.7)
+    requested_lambda = kwargs.get("lambda_mult")
+    if requested_lambda is None:
+        requested_lambda = kwargs.get("mmr_lambda")
+    lambda_mult = float(settings.RETRIEVAL_MMR_LAMBDA if requested_lambda is None else requested_lambda)
     cache_key = _local_cache_key("mmr", [str(round(lambda_mult, 6))])
     return _get_or_create_cached_reranker(
         cache=_local_reranker_cache,
@@ -311,7 +269,6 @@ _PROVIDER_BUILDERS = {
     "parent_child": _build_parent_child_reranker,
     "weighted": _build_weighted_reranker,
     "colbert": _build_colbert_reranker,
-    "ltr": _build_ltr_reranker,
     "long_context": _build_long_context_reranker,
     "mmr": _build_mmr_reranker,
     "kg_pagerank": _build_kg_reranker,
@@ -346,10 +303,10 @@ def get_reranker(
     Returns:
         BaseReranker instance
     """
-    requested_provider = (provider or "").lower()
-    from app.core.model_execution import reject_retired_model_provider
+    requested_provider = provider.lower()
+    from app.core.model_execution import reject_retired_provider
 
-    reject_retired_model_provider(requested_provider, capability="reranker")
+    reject_retired_provider(requested_provider, capability="reranker")
     family = get_reranker_provider_family(requested_provider)
     dispatch_key = family.canonical_name if family is not None else requested_provider
     builder = _PROVIDER_BUILDERS.get(dispatch_key)
@@ -377,8 +334,10 @@ def get_rag_reranker(provider: str | None = None) -> BaseReranker:
 
     warnings.warn("get_rag_reranker() is deprecated, use get_reranker() instead", DeprecationWarning, stacklevel=2)
 
-    provider = (provider or "llm").lower()
+    provider = ("llm" if provider is None else provider).lower()
+    from app.core.model_execution import reject_retired_provider
+
+    reject_retired_provider(provider, capability="reranker")
     if provider == "pc":
         return get_reranker("parent_child")
-    else:
-        return get_reranker("llm")
+    return get_reranker(provider)

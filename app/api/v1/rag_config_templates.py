@@ -223,9 +223,9 @@ def _apply_rag_config_template_fields(
     request: RagConfigTemplateUpdate,
 ) -> None:
     if request.template_key is not None:
-        template.template_key = str(request.template_key or "").strip() or None
+        template.template_key = request.template_key.strip()
     if request.name is not None:
-        template.name = str(request.name or "").strip()[:200] or template.name
+        template.name = request.name.strip()
     if request.description is not None:
         template.description = request.description
     if request.config_patch is not None:
@@ -243,9 +243,9 @@ def _apply_rag_config_template_experiment_fields(
     request: RagConfigTemplateUpdate,
 ) -> None:
     if request.ab_experiment_key is not None:
-        template.ab_experiment_key = str(request.ab_experiment_key or "").strip() or None
+        template.ab_experiment_key = request.ab_experiment_key.strip()
     if request.ab_variant is not None:
-        template.ab_variant = str(request.ab_variant or "").strip()[:50] or None
+        template.ab_variant = request.ab_variant.strip()
     if request.ab_weight is not None:
         template.ab_weight = float(request.ab_weight)
 
@@ -301,7 +301,7 @@ def create_rag_config_template_version(
         template_key=template_key,
         version=next_version,
         parent_id=current.id,
-        name=request.name or current.name,
+        name=request.name if request.name is not None else current.name,
         description=request.description if request.description is not None else current.description,
         config_patch=effective_patch,
         is_active=bool(request.is_active),
@@ -309,7 +309,7 @@ def create_rag_config_template_version(
         if request.ab_experiment_key is not None
         else current.ab_experiment_key,
         ab_variant=request.ab_variant if request.ab_variant is not None else current.ab_variant,
-        ab_weight=float(request.ab_weight or 1.0),
+        ab_weight=request.ab_weight,
     )
 
     db.add(new_template)

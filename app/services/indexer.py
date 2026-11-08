@@ -30,7 +30,7 @@ from app.rag.pipeline_plugins.contracts import (
     RETRIEVAL_TEXT_METADATA_KEY,
 )
 from app.rag.preprocessing.normalization import normalize_text
-from app.rag.retrieval.corpus_index import bm25_available, get_corpus_index
+from app.rag.retrieval.corpus_index import get_corpus_index, is_milvus_bm25_enabled
 from app.services.dataset_embedding_config import (
     DatasetEmbeddingRuntimeConfig,
     collection_name_for_embedding_space,
@@ -101,7 +101,7 @@ def _record_ingest_gate_outcome(
     reason: str,
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    out = dict(metadata or {})
+    out = dict((metadata if metadata is not None else {}))
     gates = out.get("ingest_gate_outcomes")
     gates = dict(gates) if isinstance(gates, dict) else {}
     entry: dict[str, Any] = {
@@ -143,7 +143,7 @@ def _audit_ingest_gate_event(
                 "gate": str(gate or "").strip() or "unknown",
                 "outcome": str(outcome or "").strip() or "degraded",
                 "reason": str(reason or "").strip() or "unknown",
-                **(dict(details or {}) if isinstance(details, dict) else {}),
+                **(dict((details if details is not None else {})) if isinstance(details, dict) else {}),
             },
         )
     except Exception as exc:
@@ -387,7 +387,7 @@ def _chunk_index_content(content: str, metadata: dict[str, Any] | None) -> tuple
     Business plugins may produce a recall-optimized `_retrieval_text` that includes
     labels/aliases/structured fields. The stored chunk body remains the clean content.
     """
-    meta = dict(metadata or {})
+    meta = dict((metadata if metadata is not None else {}))
     display_content = str(content or "")
     raw_index_text = meta.get(RETRIEVAL_TEXT_METADATA_KEY)
     index_text = str(raw_index_text or "").strip() if isinstance(raw_index_text, str) else ""
@@ -463,7 +463,7 @@ def _coerce_short_text(value: Any, *, max_chars: int) -> str | None:
         return None
     if len(s) > int(max_chars or 0) > 0:
         s = s[: int(max_chars or 0)]
-    return s or None
+    return s
 
 
 def _title_from_document_metadata(doc_metadata: Any) -> str | None:
@@ -558,7 +558,7 @@ def _append_metadata_prefix_line(
             return
         rendered = joiner.join(value) if joiner is not None else ""
     else:
-        rendered = str(value or "").strip()
+        rendered = str((value if value is not None else "")).strip()
     if not rendered:
         return
     lines.append(f"[{label}] {rendered}")
@@ -658,7 +658,7 @@ def _build_llm_contextual_summary(
     max_input_chars, max_summary_chars = limits
     sample = text[:max_input_chars] if max_input_chars else text
     section = _extract_heading_for_embedding(meta) or ""
-    title = str(document_title or "").strip()
+    title = str((document_title if document_title is not None else "")).strip()
     try:
         summary = _invoke_contextual_summary_llm(
             title=title,
@@ -673,7 +673,7 @@ def _build_llm_contextual_summary(
         return None
     if len(summary) > max_summary_chars:
         summary = summary[:max_summary_chars].rstrip()
-    return summary or None
+    return summary
 
 
 def _contextual_summary_limits() -> tuple[int, int] | None:
@@ -1365,7 +1365,7 @@ class Indexer:
         document_ids: list[UUID] | None = None,
         kinds: Sequence[IndexKind] | None = None,
     ) -> None:
-        active = set(kinds or (IndexKind.CHUNK, IndexKind.EVENT))
+        active = set((kinds if kinds is not None else (IndexKind.CHUNK, IndexKind.EVENT)))
         if IndexKind.CHUNK in active:
             self.rebuild_chunk_indexes(tenant_id=tenant_id, document_ids=document_ids)
         if IndexKind.EVENT in active:
@@ -1388,7 +1388,7 @@ class Indexer:
                 "db_document": db_document,
                 "dataset_uuid": db_document.dataset_id,
                 "dataset_id_str": str(db_document.dataset_id) if db_document.dataset_id is not None else None,
-                "file_type_str": db_document.file_type if db_document.file_type is not None else None,
+                "file_type_str": db_document.file_type,
                 "document_title": _derive_document_title(db_document.filename, doc_meta),
                 "document_retrieval_metadata": dict(doc_meta) if isinstance(doc_meta, dict) else {},
             }
@@ -1484,7 +1484,7 @@ class Indexer:
             and _should_apply_contextual_retrieval_prefix(meta, lazy_mode=flags["contextual_retrieval_lazy_mode"])
         ):
             try:
-                title = document_title or _extract_title_for_embedding(meta)
+                title = document_title if document_title else _extract_title_for_embedding(meta)
                 prefix = _build_contextual_prefix_for_chunk(
                     raw_body=raw_body,
                     document_title=title,
@@ -1805,7 +1805,7 @@ class Indexer:
         entity_cache: dict[tuple[str, str, str], KgEntity] = {}
         db_events: list[KgSourceEvent] = []
         for item in events:
-            refs = item.references if isinstance(item.references, dict) else {}
+            refs = {} if item.references is None else item.references
             event_obj = KgSourceEvent(
                 tenant_id=tenant_id,
                 pipeline_hash=_normalize_event_pipeline_hash(refs.get("pipeline_hash")),
@@ -1815,7 +1815,7 @@ class Indexer:
                 summary=item.summary,
                 content=item.content,
                 content_vector=item.vector,
-                references=refs or None,
+                references=(item.references),
                 extra_data=item.extra_data,
             )
             self._db.add(event_obj)
@@ -1830,8 +1830,6 @@ class Indexer:
                 if entity_obj is None:
                     continue
                 link_extra = self._event_link_extra(ent=ent, link_extra_data=link_extra_data)
-                if not link_extra:
-                    link_extra = None
                 self._db.add(
                     KgEventEntity(
                         event=event_obj,
@@ -2318,7 +2316,7 @@ class Indexer:
         tenant_id: UUID,
         document_ids: list[UUID] | None = None,
     ) -> None:
-        if not bm25_available():
+        if not is_milvus_bm25_enabled():
             return
         count = get_corpus_index().rebuild_bm25_index_for_operational_scope(
             self._db,
@@ -2591,7 +2589,7 @@ class Indexer:
         if not enable_vectors:
             return [None] * len(docs)
 
-        runtime = embedding_runtime or resolve_dataset_embedding_runtime(None)
+        runtime = embedding_runtime if embedding_runtime is not None else resolve_dataset_embedding_runtime(None)
         if runtime.dataset_scoped and milvus_backend_enabled():
             return self._write_dataset_scoped_chunk_vectors(
                 docs,

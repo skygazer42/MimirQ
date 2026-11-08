@@ -83,7 +83,7 @@ _LOCAL_DEV_SCHEMES = {"http", "https"}
 
 def _normalize_dev_origin(raw: str) -> str | None:
     origin = (raw or "").strip().rstrip("/")
-    return origin or None
+    return origin if origin else None
 
 
 def _parse_local_dev_origin(origin: str) -> tuple[str, str, int | None] | None:
@@ -192,10 +192,10 @@ def _warmup_retrieval_tokenizer() -> None:
     if not settings.BM25_INDEX_ENABLED:
         return
 
-    from app.rag.preprocessing.tokenization import warmup_bm25_tokenizer
+    from app.rag.preprocessing.tokenization import warmup_lexical_tokenizer
 
     started_at = time.perf_counter()
-    warmup_bm25_tokenizer()
+    warmup_lexical_tokenizer()
     logger.info("BM25 tokenizer initialized in %.3fs", time.perf_counter() - started_at)
 
 
@@ -212,12 +212,9 @@ def _start_runtime_warmup() -> Task[None] | None:
 
 
 def _iter_startup_directories() -> list[str | None]:
-    vector_backend = settings.VECTOR_BACKEND
     return [
         settings.UPLOAD_DIR,
         settings.TABLE_STORE_DIR,
-        settings.FAISS_STORE_PATH if vector_backend == "faiss" else None,
-        settings.CHROMA_PERSIST_PATH if vector_backend == "chroma" else None,
     ]
 
 

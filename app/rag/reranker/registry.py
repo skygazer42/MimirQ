@@ -39,13 +39,6 @@ _FAMILIES: tuple[RerankerProviderFamily, ...] = (
         lazy_modules=("app.rag.reranker.mmr",),
     ),
     RerankerProviderFamily(
-        canonical_name="ltr",
-        aliases=("ltr", "xgboost_ltr"),
-        tier="prod",
-        category="local",
-        lazy_modules=("app.rag.reranker.ltr",),
-    ),
-    RerankerProviderFamily(
         canonical_name="weighted",
         aliases=("weighted",),
         tier="prod",
@@ -107,7 +100,7 @@ _FAMILY_BY_ALIAS = {alias: family for family in _FAMILIES for alias in family.al
 
 
 def get_reranker_provider_family(provider: str | None) -> RerankerProviderFamily | None:
-    normalized = str(provider or "").strip().lower()
+    normalized = str((provider if provider is not None else "")).strip().lower()
     if not normalized:
         return None
     return _FAMILY_BY_ALIAS.get(normalized)

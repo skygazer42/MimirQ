@@ -21,6 +21,7 @@ from langchain_core.documents import Document
 
 from app.core.config import settings
 from app.core.optional_deps import optional_import
+from app.parsing.backends import normalize_parser_backend
 from app.rag.core.logging import get_logger, setup_logging
 
 logger = get_logger("parsing.subprocess_worker")
@@ -214,9 +215,9 @@ def _serialize_documents(documents: list[Document]) -> list[dict[str, Any]]:
     for doc in documents:
         out.append(
             {
-                "page_content": doc.page_content or "",
-                "metadata": _jsonable(doc.metadata or {}),
-                "id": str(getattr(doc, "id", "") or "") or None,
+                "page_content": doc.page_content,
+                "metadata": _jsonable(doc.metadata),
+                "id": doc.id,
             }
         )
     return out
@@ -225,7 +226,7 @@ def _serialize_documents(documents: list[Document]) -> list[dict[str, Any]]:
 def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
     tenant_id = _as_uuid(payload["tenant_id"])
     file_path = Path(str(payload["file_path"]))
-    requested_backend = (payload.get("parser_backend") or "").strip() or None
+    requested_backend = payload.get("parser_backend")
     mode = (payload.get("mode") or "preview").strip().lower()
 
     dataset_id = payload.get("dataset_id")
@@ -235,7 +236,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
     pdf_quality = payload.get("pdf_quality") if isinstance(payload.get("pdf_quality"), dict) else None
     effective_backend = requested_backend
     if file_ext == ".pdf":
-        requested = (requested_backend or "").strip().lower()
+        requested = normalize_parser_backend(requested_backend)
         if pdf_quality is None and (not requested or requested == "auto"):
             from app.parsing.routing import route_pdf_backend
 
@@ -255,7 +256,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
         dataset_id=str(dataset_id) if dataset_id else None,
         document_id=str(document_id) if document_id else None,
         tenant_id=str(tenant_id),
-        account_id=str(payload.get("account_id") or "").strip() or None,
+        account_id=payload.get("account_id"),
         pdf_quality=pdf_quality,
         html_xpath=(payload.get("html_xpath") if isinstance(payload.get("html_xpath"), str) else None),
     )
@@ -272,7 +273,7 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
             _materialize_local_images_for_preview,
         )
 
-        account_id = str(payload.get("account_id") or "").strip() or None
+        account_id = payload.get("account_id")
         documents = _materialize_extracted_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
         documents = _materialize_local_images_for_preview(documents, tenant_id=tenant_id, account_id=account_id)
     else:
@@ -306,7 +307,7 @@ def _integrated_chunk(payload: dict[str, Any]) -> dict[str, Any]:
             _materialize_local_images_for_preview,
         )
 
-        account_id = str(payload.get("account_id") or "").strip() or None
+        account_id = payload.get("account_id")
 
         documents = _materialize_extracted_images_for_preview(
             documents,
@@ -336,7 +337,7 @@ def _pipeline_parse_preview(payload: dict[str, Any]) -> dict[str, Any]:
     result = document_parser_service.parse_for_preview(
         file_path=file_path,
         tenant_id=tenant_id,
-        account_id=str(payload.get("account_id") or "").strip() or None,
+        account_id=payload.get("account_id"),
         parser_backend=parser_backend,
     )
     return _jsonable(result)

@@ -305,7 +305,7 @@ def _upsert_dataset(
                 id=dataset_id,
                 tenant_id=tenant_id,
                 name=name,
-                description=description or None,
+                description=(description),
                 permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
                 owner_id=owner_id,
                 dataset_metadata=dict(meta or {}),
@@ -313,7 +313,7 @@ def _upsert_dataset(
             db.add(row)
         else:
             row.name = name
-            row.description = description or None
+            row.description = description
             row.owner_id = owner_id
             row.dataset_metadata = dict(meta or {})
         db.commit()

@@ -135,7 +135,7 @@ def _normalize_totals(*, definition: ConnectorDefinition, state: Mapping[str, An
         except (TypeError, ValueError, OverflowError):
             get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
-    return totals or None
+    return totals
 
 
 def _resolve_last_successful_markers(
@@ -146,8 +146,8 @@ def _resolve_last_successful_markers(
     recorded_at_norm: str | None,
 ) -> tuple[str | None, str | None]:
     prev = previous_state if isinstance(previous_state, Mapping) else {}
-    last_successful_run_id = str(prev.get("state_last_successful_run_id") or "").strip() or None
-    last_successful_recorded_at = str(prev.get("state_last_successful_recorded_at") or "").strip() or None
+    last_successful_run_id = prev.get("state_last_successful_run_id")
+    last_successful_recorded_at = prev.get("state_last_successful_recorded_at")
 
     status = (run_status or "").strip().lower()
     if status == "completed" and run_id is not None:
@@ -280,7 +280,7 @@ def build_saved_state_snapshot(
     history_entry = {
         "revision": revision,
         "run_id": str(run_id),
-        "status": (run_status or "").strip().lower() or None,
+        "status": run_status,
         "recorded_at": recorded_at_norm,
         "updated_keys": updated_keys,
     }
@@ -313,7 +313,7 @@ def build_saved_state_snapshot(
     if state_sync is not None:
         state["state_sync"] = state_sync
     state["state_audit"] = {
-        "last_status": (run_status or "").strip().lower() or None,
+        "last_status": run_status,
         "last_run_id": str(run_id),
         "last_recorded_at": recorded_at_norm,
         "updated_keys": list(updated_keys),

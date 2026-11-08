@@ -559,7 +559,7 @@ def _build_dify_response_cache_key(
         "knowledge_id": str(knowledge_id or "").strip(),
         "query": str(query or "").strip(),
         "retrieval_setting": retrieval_setting.model_dump(mode="json"),
-        "metadata_condition": metadata_condition or None,
+        "metadata_condition": metadata_condition,
         "dataset_ids": [str(item) for item in scope_plan.dataset_ids],
         "primary_dataset_ids": [str(item) for item in scope_plan.primary_dataset_ids],
         "expansion_dataset_ids": [str(item) for item in scope_plan.expansion_dataset_ids],

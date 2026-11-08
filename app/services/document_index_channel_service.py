@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import Insert
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.orm import Session
 
-from app.core.pipeline_versions import get_active_pipeline_hash
+from app.core.pipeline_versions import get_selected_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document_index_channel import DocumentIndexChannel
 from app.services.pipeline_config import resolve_pipeline_effective
@@ -72,11 +72,7 @@ def normalize_document_index_channel(channel: str) -> str:
 
 
 def _pipeline_hash_from_document(document: DBDocument, pipeline_hash: str | None = None) -> str | None:
-    if pipeline_hash:
-        normalized_hash = str(pipeline_hash).strip()
-        return normalized_hash if normalized_hash else None
-    meta = dict(document.doc_metadata or {})
-    return get_active_pipeline_hash(meta)
+    return get_selected_pipeline_hash(document.doc_metadata, pipeline_hash)
 
 
 def document_index_channel_flags(effective: "PipelineEffective") -> dict[str, bool]:
@@ -113,8 +109,7 @@ def legacy_document_index_channel_status(document: DBDocument, *, channel: str, 
 
     error = None
     if status == "error":
-        error_message = str(document.error_message or meta.get("error_message") or "").strip()
-        error = error_message if error_message else None
+        error = document.error_message if document.error_message is not None else meta.get("error_message")
 
     return {
         "channel": channel,
@@ -130,20 +125,19 @@ def legacy_document_index_channel_status(document: DBDocument, *, channel: str, 
 def document_index_channel_status(row: DocumentIndexChannel) -> dict[str, Any]:
     """Serialize the channel state shared by detail and audit responses."""
     payload = {
-        "channel": str(row.channel or ""),
-        "required": bool(row.required),
-        "enabled": bool(row.enabled),
-        "status": str(row.status or "pending").strip().lower(),
+        "channel": row.channel,
+        "required": row.required,
+        "enabled": row.enabled,
+        "status": row.status,
+        "error": row.error,
     }
-    error_message = str(row.error or "").strip()
-    payload["error"] = error_message if error_message else None
     return payload
 
 
 def _row_to_dict(row: DocumentIndexChannel) -> dict[str, Any]:
     payload = document_index_channel_status(row)
     payload.update(
-        attempt_count=int(row.attempt_count or 0),
+        attempt_count=row.attempt_count,
         last_attempted_at=row.last_attempted_at,
         last_succeeded_at=row.last_succeeded_at,
         last_failed_at=row.last_failed_at,
@@ -181,9 +175,10 @@ def _transition_error_value(status: str, error: str | None) -> str | None:
     )
 
 
-def _normalize_channel_error(error):
-    error_message = str(error if error is not None else "").strip()[:2000]
-    return error_message if error_message else None
+def _normalize_channel_error(error: str | None) -> str | None:
+    if error is None:
+        return None
+    return error.strip()[:2000]
 
 
 def _existing_document_index_channel(
@@ -348,7 +343,7 @@ def list_document_index_channels(
     document_id: UUID,
     pipeline_hash: str | None,
 ) -> list[DocumentIndexChannel]:
-    normalized_hash = str(pipeline_hash or "").strip()
+    normalized_hash = str((pipeline_hash if pipeline_hash is not None else "")).strip()
     query = (
         db.query(DocumentIndexChannel)
         .filter(
@@ -390,7 +385,7 @@ def upsert_document_index_channel(
 
     normalized_attempt_increment = max(0, int(attempt_count_increment or 0))
     normalized_attempt_count = max(0, int(attempt_count)) if attempt_count is not None else None
-    occurred_at = last_status_changed_at or _utcnow()
+    occurred_at = last_status_changed_at if last_status_changed_at is not None else _utcnow()
 
     if _supports_atomic_postgresql_upsert(db):
         insert_values = _document_index_channel_insert_values(
@@ -611,10 +606,9 @@ def reconcile_document_index_channels(
             error = None
             attempt_count = 0
         else:
-            status = str(row.status or "").strip().lower()
-            error_message = str(row.error or "").strip()
-            error = error_message if error_message else None
-            attempt_count = int(row.attempt_count or 0)
+            status = row.status.strip().lower()
+            error = row.error
+            attempt_count = int(row.attempt_count)
         if not enabled:
             status = "disabled"
             error = None

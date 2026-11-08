@@ -117,9 +117,9 @@ def _compare_capture(
 ) -> tuple[bool, dict[str, Any]]:
     fingerprint_expected = str(record.get("citations_fingerprint") or "").strip()
     fingerprint_actual = fingerprint_citations(payload.get("citations"))
-    config_expected = str(record.get("retrieval_config_hash") or "").strip() or None
+    config_expected = record.get("retrieval_config_hash")
     metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
-    config_actual = str(metrics.get("retrieval_config_hash") or "").strip() or None
+    config_actual = metrics.get("retrieval_config_hash")
     matched = bool(fingerprint_expected) and fingerprint_actual == fingerprint_expected
     matched = matched and (config_expected is None or config_actual == config_expected)
     mismatch = {

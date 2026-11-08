@@ -23,7 +23,7 @@ def _normalize_dataset_row(row: dict[str, Any]) -> _DatasetDedupRow:
 
     return {
         "dataset_id": str(row.get("dataset_id") or "").strip(),
-        "dataset_name": str(row.get("dataset_name") or "").strip() or None,
+        "dataset_name": row.get("dataset_name"),
         "enabled": bool(summary.get("enabled", False)),
         "pairs": int(summary.get("pairs") or 0),
         "clusters": int(summary.get("clusters") or 0),

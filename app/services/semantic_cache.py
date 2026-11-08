@@ -117,26 +117,26 @@ def build_semantic_cache_scope_hash(
     - scope_hash excludes the raw query text and is used to keep the semantic cache strictly scoped.
     - vector_id is deterministic (scope_hash + query_hash) to allow idempotent upserts.
     """
-    pipeline_key = str(current_embedding_space_hash() or "") or None
+    pipeline_key = current_embedding_space_hash()
 
     signature: dict[str, Any] = {
         "v": 1,
         "tenant_id": str(tenant_id),
-        "account_id": str(account_id or ""),
-        "dataset_id": str(dataset_id or "") or None,
-        "pipeline_key": str(pipeline_key or "") or None,
-        "corpus_cache_token": str(corpus_cache_token or ""),
-        "behavior_hash": str(behavior_hash or "") or None,
+        "account_id": account_id,
+        "dataset_id": dataset_id,
+        "pipeline_key": pipeline_key,
+        "corpus_cache_token": corpus_cache_token,
+        "behavior_hash": behavior_hash,
         "doc_scope": _hash_doc_scope(document_ids),
         "doc_count": int(len([d for d in document_ids if d])),
-        "top_k": int(top_k or 0),
-        "score_threshold": float(score_threshold or 0.0),
-        "retrieval_mode": str(retrieval_mode or "hybrid").strip().lower() or "hybrid",
+        "top_k": int(top_k),
+        "score_threshold": float(score_threshold),
+        "retrieval_mode": retrieval_mode.strip().lower(),
         "metadata_filter": _coerce_metadata_filter(metadata_filter),
     }
 
     scope_hash = stable_hash(stable_json_dumps(signature), length=32)
-    q_norm = (query or "").strip()
+    q_norm = query.strip()
     q_hash = stable_hash(q_norm, length=32)
     vector_id = stable_hash(f"{scope_hash}:{q_hash}", length=32)
     return scope_hash, vector_id
@@ -194,7 +194,7 @@ def _semantic_cache_lookup_precheck(
     if not account_id or not str(account_id).strip():
         meta["skip_reason"] = "missing_account"
         return meta, ttl
-    if (not document_ids) and not (dataset_id or "").strip():
+    if (not document_ids) and not (dataset_id if dataset_id is not None else "").strip():
         meta["skip_reason"] = "missing_scope"
         return meta, ttl
     if not corpus_cache_token or not str(corpus_cache_token).strip():
@@ -526,7 +526,7 @@ def set_cached_semantic_payload(
     meta = {
         "tenant_id": str(tenant_id),
         "account_id": str(account_id or ""),
-        "dataset_id": str(dataset_id or "") or "",
+        "dataset_id": str((dataset_id if dataset_id is not None else "")) or "",
         "embedding_space_hash": pipeline_key,
         "corpus_cache_token": str(corpus_cache_token),
         "scope_hash": str(scope_hash),
@@ -548,13 +548,13 @@ def set_cached_semantic_payload(
 def _semantic_cache_retention_limits(
     *, max_delete: int, max_scan: int | None, now_epoch: int | None
 ) -> tuple[int, int, int]:
-    now_epoch_i = int(now_epoch or time.time())
+    now_epoch_i = int((now_epoch if now_epoch is not None else time.time()))
     try:
         max_delete_i = max(1, int(max_delete or 0))
     except Exception:
         max_delete_i = 1000
     try:
-        max_scan_i = max(1, int(max_scan or _RETENTION_MAX_SCAN_DEFAULT))
+        max_scan_i = max(1, int((max_scan if max_scan is not None else _RETENTION_MAX_SCAN_DEFAULT)))
     except Exception:
         max_scan_i = _RETENTION_MAX_SCAN_DEFAULT
     return now_epoch_i, max_delete_i, max_scan_i
@@ -645,7 +645,7 @@ def _collect_retention_delete_ids(
     iterator = None
     try:
         iterator = adapter.open_semantic_cache_maintenance_iterator(
-            tenant_id=str(tenant_id or ""),
+            tenant_id=str((tenant_id if tenant_id is not None else "")),
             batch_size=min(page_size, max_scan),
         )
         while (not exhausted) and summary["scanned"] < max_scan and len(delete_ids) < max_delete:

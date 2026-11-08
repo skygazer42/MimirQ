@@ -1658,10 +1658,6 @@ def _rounded_float(value: Any, *, digits: int) -> float | None:
     return round(coerced, digits) if coerced is not None else None
 
 
-def _str_or_none(value: Any) -> str | None:
-    return str(value or "").strip() or None
-
-
 def _retrieval_bool_or_none(retrieval: dict[str, Any], key: str) -> bool | None:
     value = retrieval.get(key)
     return bool(value) if value is not None else None
@@ -1669,15 +1665,15 @@ def _retrieval_bool_or_none(retrieval: dict[str, Any], key: str) -> bool | None:
 
 def _trace_bundle_retrieval_summary(retrieval: dict[str, Any], done: dict[str, Any]) -> dict[str, Any]:
     return {
-        "retrieval_config_hash": _str_or_none(retrieval.get("retrieval_config_hash")),
-        "retrieval_mode": _str_or_none(retrieval.get("mode") or done.get("retrieval_mode")),
-        "retrieval_requested_mode": _str_or_none(retrieval.get("requested_mode")),
+        "retrieval_config_hash": retrieval.get("retrieval_config_hash"),
+        "retrieval_mode": retrieval.get("mode", done.get("retrieval_mode")),
+        "retrieval_requested_mode": retrieval.get("requested_mode"),
         "retrieval_auto_routed": _retrieval_bool_or_none(retrieval, "auto_routed"),
-        "retrieval_profile": _str_or_none(retrieval.get("profile")),
+        "retrieval_profile": retrieval.get("profile"),
         "retrieval_top_k": _coerce_int(retrieval.get("top_k")),
         "retrieval_alpha": _rounded_float(retrieval.get("alpha"), digits=6),
         "retrieval_enable_reranker": _retrieval_bool_or_none(retrieval, "enable_reranker"),
-        "retrieval_reranker_provider": _str_or_none(retrieval.get("reranker_provider")),
+        "retrieval_reranker_provider": retrieval.get("reranker_provider"),
         "retrieval_reranker_top_n": _coerce_int(retrieval.get("reranker_top_n")),
         "retrieval_query_parallelism": _coerce_int(retrieval.get("query_parallelism")),
         "retrieval_query_count": _coerce_int(retrieval.get("query_count")),
@@ -1688,9 +1684,9 @@ def _trace_bundle_retrieval_summary(retrieval: dict[str, Any], done: dict[str, A
 
 def _trace_bundle_model_summary(route_trace: dict[str, Any], done: dict[str, Any]) -> dict[str, Any]:
     return {
-        "model_route": _str_or_none(route_trace.get("model_route") or done.get("route")),
-        "model_used": _str_or_none(route_trace.get("model_used") or done.get("model_used")),
-        "vector_backend": _str_or_none(done.get("vector_backend")),
+        "model_route": route_trace.get("model_route", done.get("route")),
+        "model_used": route_trace.get("model_used", done.get("model_used")),
+        "vector_backend": done.get("vector_backend"),
     }
 
 

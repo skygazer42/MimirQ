@@ -56,7 +56,7 @@ class KGEngine:
             prompt_ab_experiment_key=prompt_ab_experiment_key,
             ab_user_key=ab_user_key,
             extraction_backend=extraction_backend,
-            kg_python_plugin=(str(kg_python_plugin or "").strip() or None),
+            kg_python_plugin=(kg_python_plugin),
             kg_python_params=dict(kg_python_params or {}),
         )
         return await self.extractor.extract(
@@ -85,6 +85,6 @@ class KGEngine:
             account_id=account_id,
             query_mode=(str(query_mode or "auto")),
             query_mode_reason_codes=[str(x) for x in (query_mode_reason_codes or []) if str(x).strip()][:8],
-            query_mode_confidence=(str(query_mode_confidence or "").strip() or None),
+            query_mode_confidence=(query_mode_confidence),
         )
         return await search_kg(config)

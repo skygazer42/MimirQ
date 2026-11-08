@@ -54,15 +54,15 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "elapsed_sec": round(runtime.data.t_total, 3),
                 "retrieval_elapsed_sec": round(runtime.data.retrieval_elapsed, 3),
                 "generation_elapsed_sec": round(runtime.data.generation_elapsed, 3),
-                "generation_max_tokens": runtime.data.generation_max_tokens or None,
+                "generation_max_tokens": runtime.data.generation_max_tokens,
                 "retrieval_mode": runtime.data.mode_used,
                 "retrieval_mode_requested": runtime.data.mode_req,
                 "retrieval_mode_auto_routed": bool(runtime.data.mode_auto),
-                "retrieval_profile": runtime.data.profile_norm or None,
+                "retrieval_profile": runtime.data.profile_norm,
                 "retrieval_profile_requested": (
                     str(runtime.data.profile_req).strip().lower() if runtime.data.profile_req is not None else None
                 ),
-                "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective or None,
+                "retrieval_contract_mode": runtime.data.retrieval_contract_mode_effective,
                 "retrieval_contract_policy": dict(runtime.data.retrieval_contract_policy or {}),
                 "intent_router_enabled": bool(runtime.data.intent_router_meta.get("enabled")),
                 "intent_router_used": bool(runtime.data.intent_router_meta.get("used")),

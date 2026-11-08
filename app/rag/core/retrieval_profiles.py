@@ -1,6 +1,6 @@
 from typing import Any, NotRequired, TypedDict
 
-from app.core.model_execution import reject_retired_model_provider, reject_retired_retrieval_profile
+from app.core.model_execution import reject_retired_provider, reject_retired_retrieval_profile
 
 
 class _ProfileOptions(TypedDict):
@@ -106,15 +106,19 @@ def _apply_default_expansion_defaults(out: _ProfileOptions) -> _ProfileOptions:
 def _configured_reranker_provider(out: _ProfileOptions) -> str:
     """Require an explicit supported reranker for profiles that enable reranking."""
     provider = out["reranker_provider"]
-    reject_retired_model_provider(provider, capability="reranker")
+    reject_retired_provider(provider, capability="reranker")
     if provider and provider not in {"none", "off", "false", "0"}:
         return provider
     raise ValueError("This retrieval profile requires an explicitly configured reranker provider")
 
 
-def _normalize_profile_option(value):
-    normalized = str(value or "").strip().lower()
-    return normalized if normalized else None
+def _normalize_profile_option(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    return normalized
 
 
 def _initial_profile_options(
@@ -132,14 +136,14 @@ def _initial_profile_options(
 ) -> _ProfileOptions:
     return {
         "retrieval_profile": normalized,
-        "top_k": int(top_k or 0),
-        "score_threshold": float(score_threshold or 0.0),
-        "retrieval_mode": _normalize_profile_option(retrieval_mode),
+        "top_k": int(top_k),
+        "score_threshold": float(score_threshold),
+        "retrieval_mode": (_normalize_profile_option(retrieval_mode)),
         "enable_reranker": None if enable_reranker is None else bool(enable_reranker),
-        "reranker_provider": _normalize_profile_option(reranker_provider),
-        "reranker_top_n": None if reranker_top_n is None else int(reranker_top_n or 0),
+        "reranker_provider": (_normalize_profile_option(reranker_provider)),
+        "reranker_top_n": None if reranker_top_n is None else int(reranker_top_n),
         "enable_weight_rerank": None if enable_weight_rerank is None else bool(enable_weight_rerank),
-        "retrieval_contract_mode": _normalize_profile_option(retrieval_contract_mode),
+        "retrieval_contract_mode": (_normalize_profile_option(retrieval_contract_mode)),
         "visible_evidence_only": None if visible_evidence_only is None else bool(visible_evidence_only),
     }
 

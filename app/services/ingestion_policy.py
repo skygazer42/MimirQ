@@ -266,7 +266,18 @@ def parse_ingestion_policy_from_metadata(metadata: dict[str, Any]) -> IngestionP
 def policy_to_metadata(policy: IngestionPolicy | None) -> dict | None:
     if policy is None:
         return None
-    return validate_and_normalize_ingestion_policy(policy).model_dump()
+    normalized = validate_and_normalize_ingestion_policy(policy)
+    validate_ingestion_policy_execution(normalized)
+    return normalized.model_dump()
+
+
+def validate_ingestion_policy_execution(policy: IngestionPolicy) -> None:
+    """Validate active selections only at policy writes, preserving historical reads."""
+    from app.core.model_execution import reject_retired_provider
+
+    for rule in policy.rules:
+        if rule.enabled:
+            reject_retired_provider(rule.parser_backend, capability="parser")
 
 
 def match_ingestion_rule(policy: IngestionPolicy | None, *, filename: str, file_ext: str) -> IngestionRule | None:

@@ -201,7 +201,7 @@ def _parse_quality_risk_counters(
     low_count = 0
     scores: list[float] = []
     low_samples: list[dict[str, Any]] = []
-    for index, doc in enumerate((docs or [])[:50]):
+    for index, doc in enumerate((docs if docs is not None else [])[:50]):
         if doc is None:
             continue
         meta = doc.metadata or {}
@@ -249,7 +249,7 @@ def _classify_parse_risk(
     hardcase_min_low_ratio: float,
     hardcase_min_considered: int,
 ) -> dict[str, Any]:
-    payload = summary or {}
+    payload = summary if summary is not None else {}
     considered = int(payload.get("considered") or 0)
     low_ratio = float(payload.get("low_ratio") or 0.0)
     recommendation = str(payload.get("recommendation") or "").strip()

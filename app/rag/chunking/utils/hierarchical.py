@@ -49,7 +49,7 @@ def apply_sibling_hierarchy_links(
     next_field: str = "hierarchy_next_sibling_key",
     overwrite: bool = False,
 ) -> None:
-    keys = [str(item.get(key_field) or "").strip() or None for item in items]
+    keys = [item.get(key_field) for item in items]
     total = len(items)
     for idx, item in enumerate(items):
         prev_key = keys[idx - 1] if idx > 0 else None
@@ -84,7 +84,7 @@ def apply_sequence_hierarchy_metadata(
         node_key = str(
             meta.get("hierarchy_node_key") or meta.get("chunk_key") or f"{document_id}:{chunk_index_int}"
         ).strip()
-        parent_key = str(meta.get("hierarchy_parent_key") or meta.get("parent_id") or "").strip() or None
+        parent_key = meta.get("hierarchy_parent_key", meta.get("parent_id"))
 
         meta.setdefault("hierarchy_basis", str(basis or "chunk_sequence"))
         meta.setdefault("hierarchy_level", str(level or "chunk"))

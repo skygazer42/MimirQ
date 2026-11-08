@@ -8,6 +8,8 @@ Status: implemented
 
 ## Decision
 
+本篇 LTR 训练和评测所有者部分由[退出 XGBoost、unstructured 和腾讯云 SDK](2026-11-06-retire-parser-ml.md)取代：LTR 模块与 `eval_ltr_offline.py` 退出，保留的 pipeline 评测在自身脚本持有原有通用指标；其他 HTTP、trace 和策略规则归属继续适用。
+
 五个 HTTP 工具直接导入 `scripts/retrieval_ablation.py` 现有的 JSON 读取、请求头和 case bundle 归一化规则，其中三个工具同时复用相同的 JSON 写入规则。替代定义的完整参数、默认值、异常和函数体一致，仅说明文字不同。这个所有者只导入标准库和 httpx，五个消费者本来都依赖 httpx。需要跨脚本导入的独立 CLI 在导入前按现有形式加入自身仓库根路径。
 
 rerank 评估和训练脚本复用 `eval_ltr_offline.py` 的相同标量转换、reference ID 和对应指标或 pipeline hint 规则。两个消费者原本已经依赖同一 LTR 模块；新增导入不构造模型或客户端。两个不同的 citation 特征构造函数继续分别持有各自字段语义。adaptive policy 直接复用 channel policy 的 `_safe_float` 和 export intent 的 `_resolve_path_under_cwd`；这些所有者只有标准库依赖，路径边界仍在每次调用时按当前工作目录解析。

@@ -495,7 +495,9 @@ def run_blocking_retrieval_call_sync(
     distributed_lease = None
     distributed_state = "nested" if already_distributed_admitted else "disabled"
     wait_deadline = _admission_deadline(admission_timeout_sec)
-    effective_cancel_event = cancel_event or getattr(_admission_state, "cancel_event", None)
+    effective_cancel_event = (
+        cancel_event if cancel_event is not None else getattr(_admission_state, "cancel_event", None)
+    )
     try:
         acquired, distributed_lease, distributed_state = _acquire_sync_retrieval_admission(
             gate=gate,
@@ -616,7 +618,9 @@ def run_with_retrieval_backend_budget_sync(
             return func(*args, **kwargs)
 
     wait_timeout_sec = (
-        _configured_admission_timeout_sec() if timeout_sec is None else max(0.0, float(timeout_sec or 0.0))
+        _configured_admission_timeout_sec()
+        if timeout_sec is None
+        else max(0.0, float((timeout_sec if timeout_sec is not None else 0.0)))
     )
     deadline = _admission_deadline(wait_timeout_sec)
     distributed_ttl_sec = _distributed_admission_ttl_sec(wait_timeout_sec)

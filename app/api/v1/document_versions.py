@@ -309,7 +309,7 @@ def list_document_versions(
     return {
         "document_id": document_id,
         "active_pipeline_hash": active_hash,
-        "pipeline_hash": str(doc_meta.get("pipeline_hash") or "").strip() or None,
+        "pipeline_hash": doc_meta.get("pipeline_hash"),
         "items": items,
     }
 

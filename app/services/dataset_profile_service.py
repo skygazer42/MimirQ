@@ -1272,7 +1272,7 @@ def compute_dataset_profile_summary(
     dataset_meta = dict(dataset.dataset_metadata or {})
 
     # Optional pipeline version filter: use active_pipeline_hash when present (fallback to pipeline_hash).
-    pipeline_hash_norm = str(pipeline_hash or "").strip() or None
+    pipeline_hash_norm = pipeline_hash
     if pipeline_hash_norm:
         active_expr = func.coalesce(
             DBDocument.doc_metadata["active_pipeline_hash"].as_string(),

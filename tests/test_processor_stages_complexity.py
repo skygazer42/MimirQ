@@ -60,7 +60,8 @@ async def test_parsing_stage_uses_parse_cache_without_subprocess(monkeypatch: py
         "get_parse_cache",
         lambda **_kwargs: (
             SimpleNamespace(
-                documents=[{"page_content": "cached body", "metadata": {"source": "parser.pdf"}, "id": "doc-1"}]
+                resolved_backend="basic",
+                documents=[{"page_content": "cached body", "metadata": {"source": "parser.pdf"}, "id": "doc-1"}],
             ),
             123,
         ),

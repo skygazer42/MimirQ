@@ -73,7 +73,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
 COPY --from=builder /opt/venv /opt/venv
 
 # 创建必要的目录
-RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
+RUN mkdir -p uploads logs /data/uploads \
     /app/.cache/huggingface \
     /opt/venv/lib/python3.11/site-packages/rapidocr/models \
     /opt/venv/lib/python3.11/site-packages/rapid_table/models \
@@ -85,9 +85,6 @@ RUN mkdir -p uploads logs vector_faiss vector_chroma chroma_db /data/uploads \
     && chown -R appuser:appuser \
         uploads \
         logs \
-        vector_faiss \
-        vector_chroma \
-        chroma_db \
         /app/.cache \
         /data \
         /opt/venv/lib/python3.11/site-packages/rapidocr/models \

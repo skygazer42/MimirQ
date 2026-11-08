@@ -135,14 +135,14 @@ class MimirQError(Exception):
         self.message = message
         self.error_code = error_code
         self.status_code = status_code
-        self.detail = detail or {}
+        self.detail = detail
         super().__init__(message)
 
     def to_response(self, request_id: str | None = None) -> ErrorResponse:
         return ErrorResponse(
             error=self.error_code,
             message=self.message,
-            detail=self.detail if self.detail else None,
+            detail=self.detail,
             request_id=request_id,
         )
 
@@ -182,14 +182,14 @@ class ValidationError(MimirQError):
         field: str | None = None,
         detail: dict[str, Any] | None = None,
     ) -> None:
-        merged_detail: dict[str, Any] = dict(detail or {})
-        if field:
+        merged_detail: dict[str, Any] = dict(detail) if detail is not None else {}
+        if field is not None:
             merged_detail["field"] = field
         super().__init__(
             message=message,
             error_code="VALIDATION_ERROR",
             status_code=HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=merged_detail or None,
+            detail=merged_detail,
         )
 
 
@@ -206,13 +206,13 @@ class RateLimitError(MimirQError):
 class LLMError(MimirQError):
     def __init__(self, message: str, provider: str | None = None) -> None:
         detail: dict[str, Any] = {}
-        if provider:
+        if provider is not None:
             detail["provider"] = provider
         super().__init__(
             message=message,
             error_code="LLM_ERROR",
             status_code=HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail or None,
+            detail=detail,
         )
 
 

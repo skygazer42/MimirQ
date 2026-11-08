@@ -203,7 +203,7 @@ make api-ping
 | **前端 UI** | [http://localhost:3000](http://localhost:3000) |
 | **API 文档** | [http://localhost:8000/docs](http://localhost:8000/docs) |
 
-> 低资源模式可使用 `make up-lite`，它用 Chroma/FAISS 替代 Milvus、免 MinIO，默认不含前端；适合验证 API `ready` 与 `make core-e2e` 最小闭环。需要 UI 时另运行 `make web`，或改用 `make up-web`。外部 LLM/Embedding 调用仍需对应模型供应商密钥。
+> `make up-lite` 保留 API/Worker 入口，向量索引统一使用共享 Milvus，关闭文档对象存储，默认不含前端。Milvus 自身仍运行 Etcd 和内部 MinIO；该入口不再是免向量服务的低资源模式。需要 UI 时另运行 `make web`，或使用 `make up-web`。外部 LLM/Embedding 调用仍需对应模型供应商密钥。
 
 高级模型、解析器和代理配置见 [`.env.example`](./.env.example)。更换 Embedding 模型后必须重建已有知识库索引；更多平台与 Windows 步骤见[开发文档](./docs/quickstart.md)，可选政务示例见[插件说明](./plugins/pipelines/changzhou-gov-service-knowledge/README.md)。
 
@@ -244,7 +244,7 @@ Dify 标准外部知识库端点为 `POST /api/v1/integrations/dify/retrieval`�
 |:---|:---|:---|:---|:---|:---|:---|
 | **文档解析** | **30 种解析后端**：PDF、OCR、版式、表格、公式、VLM | Knowledge Pipeline；PDF、PPT 等常见格式 | **DeepDoc**；复杂版式、扫描件、MinerU / Docling | PDF、扫描件、表格、公式转 Markdown | PDF、TXT、DOCX 等文档管道 | Document Loaders 与第三方解析器集成 |
 | **切块能力** | **86 种策略**：递归、语义、父子、RAPTOR、Late Chunking；可视化预览 | 通用、父子、Q&A 与可编排处理 | 模板化切块；支持可视化人工干预 | 自动、手工、Q&A 与增强处理 | 文档管道自动分块 | Text Splitters；由应用代码组合 |
-| **检索 / 重排** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF；**13 种重排器** | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
+| **检索 / 重排** | Milvus + BM25 / SPLADE / ColBERT / RRF | 语义、全文、混合检索；可配置 rerank | 多路召回 + 融合重排 | 语义、全文、混合检索 + RRF + rerank | 多种向量库检索 + 来源引用 | Retriever / reranker 组件；自行编排 |
 | **知识图谱** | 实体、关系、事件抽取；实体消解、社区发现与多跳检索 | 通过工作流、插件或外部服务接入 | 内建 GraphRAG | 通过工作流或外部服务接入 | 通过 Agent / Tool 外接 | 图数据库集成与自定义链路 |
 | **Agent / MCP** | LangGraph Agent、Self-RAG / CRAG / FLARE；MCP client / server | Function Calling / ReAct Agent、工具与 MCP | Agentic Workflow、MCP、代码执行器 | Agent V2、工具、MCP 与 VM 执行 | No-code Agent Builder、MCP、定时任务 | Agents / LangGraph / MCP；代码优先 |
 | **可视化工作流** | **无通用节点画布**；专注 RAG 调试、治理页面与 API | **核心能力**：应用 / Agent 节点编排 | Agent 与入库 Pipeline 编排 | **核心能力**：Flow 节点编排 | No-code Agent Builder | 无内建产品 UI；由应用实现 |
@@ -285,7 +285,7 @@ Ragvia 已用于**市级政务智能问答助手**，覆盖 7 个区域级 + 1 �
 |:---:|:---|:---|
 | **标准部署** | `make up` | 完整栈：Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **标准 + 前端** | `make up-web` | 推荐首次启动；自动初始化本地配置并启动完整 Web 栈 |
-| **轻量模式** | `make up-lite` | Chroma/FAISS 替代 Milvus，无需 MinIO，适合快速体验 |
+| **API/Worker 模式** | `make up-lite` | 共享 Milvus 及其内部依赖；关闭文档对象存储，不含前端 |
 | **开发模式** | `make infra-up` | 仅基础设施，后端/前端本地运行 |
 | **Helm / K8s** | `helm install` | 生产级部署，含 HPA、PDB、CronJob、PrometheusRule |
 | **解析器扩展** | [Docker Compose 指南](./docs/deployment/docker_compose.md) | 按需启动 CPU / GPU profile |

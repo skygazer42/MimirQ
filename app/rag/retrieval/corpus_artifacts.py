@@ -146,7 +146,7 @@ class SparseCorpusIndex:
                 provider_config=provider_config,
                 corpus_fingerprint=self._sparse_corpus_fingerprint(corpus_docs),
                 vectors=vectors,
-                version_token=str(version_token or "").strip(),
+                version_token=str((version_token if version_token is not None else "")).strip(),
             )
             return "ok"
         except Exception as exc:
@@ -171,7 +171,7 @@ class SparseCorpusIndex:
                 cache_key=cache_key,
                 provider_config=provider_config,
                 expected_fingerprint=self._sparse_corpus_fingerprint(corpus_docs),
-                expected_version_token=str(version_token or "").strip(),
+                expected_version_token=str((version_token if version_token is not None else "")).strip(),
             )
             if loaded:
                 return (loaded, "hit")
@@ -333,7 +333,7 @@ class SparseCorpusIndex:
                     self._build_sparse_index(
                         cache_key=cache_key,
                         docs=corpus_docs,
-                        version_token=str(version_token or "").strip(),
+                        version_token=str((version_token if version_token is not None else "")).strip(),
                         provider=provider,
                     )
                     return
@@ -423,7 +423,7 @@ class SparseCorpusIndex:
                 cache_key=cache_key,
                 provider_config=provider_config,
                 expected_fingerprint=fp,
-                expected_version_token=str(version_token or "").strip(),
+                expected_version_token=str((version_token if version_token is not None else "")).strip(),
             )
             if loaded:
                 self._sparse_doc_vectors[cache_key] = loaded
@@ -570,12 +570,12 @@ class ColbertCorpusIndex:
 
     def _build_colbert_index(self, *, cache_key: str, docs: list[Document]) -> None:
         """
-        Build (or rebuild) a ColBERT-style ANN index for the current scope key.
+        Build (or rebuild) a deterministic dense index for the current scope key.
 
         Design:
         - Deterministic embedder for tests/offline (no model downloads)
-        - Optional HF embedder (opt-in)
-        - Persisted index to disk for fast cold-start in multi-process deployments
+        - Exact cosine scoring over the resulting dense vectors
+        - Optional persistence using the existing index format
         """
         if self._colbert_scope_exceeds_limit(cache_key=cache_key, docs=docs):
             return
@@ -675,7 +675,7 @@ class ColbertCorpusIndex:
         self, *, cache_key: str, corpus_docs: list[Document], upsert_docs: list[Document]
     ) -> None:
         """
-        Incrementally update a ColBERT ANN index for a scope key.
+        Incrementally update a deterministic dense index for a scope key.
 
         This updates/overwrites vectors only for `upsert_docs` when an index already exists,
         avoiding a full re-embed of the corpus on each chunk-level upsert.
@@ -722,19 +722,6 @@ class ColbertCorpusIndex:
             doc_ids=doc_ids,
             vectors=vectors,
         )
-
-    def _sync_colbert_index_after_bm25_upsert(
-        self, *, cache_key: str, merged_docs: list[Document], upsert_docs: list[Document]
-    ) -> None:
-        if not settings.COLBERT_RETRIEVAL_ENABLED:
-            return
-        try:
-            with self._get_colbert_build_lock(cache_key):
-                self._upsert_colbert_index_incremental(
-                    cache_key=cache_key, corpus_docs=merged_docs, upsert_docs=upsert_docs
-                )
-        except Exception as exc:
-            logger.warning("ColBERT index update failed for scope %s: %s", cache_key, str(exc)[:200])
 
     def _remove_colbert_vectors_for_deleted_chunks(
         self, *, scope_key: str, removed_ids: set[str], filtered: list[Document]
@@ -813,7 +800,7 @@ class ColbertCorpusIndex:
                 self._colbert_index_cache[cache_key] = loaded
             return loaded
         except Exception as exc:
-            _log_retriever_fallback("_search_colbert_ann", exc)
+            _log_retriever_fallback("_search_colbert_dense", exc)
             return None
 
     def _ensure_colbert_search_index(
@@ -837,7 +824,7 @@ class ColbertCorpusIndex:
                 if self._colbert_index_matches(index, expected_fp=expected_fp, provider_config=provider_config):
                     return index
         except Exception as exc:
-            _log_retriever_fallback("_search_colbert_ann", exc)
+            _log_retriever_fallback("_search_colbert_dense", exc)
             raise
         return None
 

@@ -414,14 +414,14 @@ def _resolve_generation_judge_prompt(
     if template is None:
         return None, None, None, {}
 
-    content = str(template.content or "").strip() or None
+    content = template.content.strip()
     variables = list(template.variables or [])
-    version = int(template.version or 0) or None
+    version = template.version
     metadata = {
-        "prompt_template_id": str(template.id or "") or None,
-        "prompt_template_key": str(template.template_key or "").strip() or None,
-        "prompt_ab_experiment_key": str(template.ab_experiment_key or "").strip() or None,
-        "prompt_ab_variant": str(template.ab_variant or "").strip() or None,
+        "prompt_template_id": str(template.id),
+        "prompt_template_key": template.template_key,
+        "prompt_ab_experiment_key": template.ab_experiment_key,
+        "prompt_ab_variant": template.ab_variant,
         "prompt_template_version": version,
     }
     return content, variables, version, metadata
@@ -587,7 +587,7 @@ def attach_llm_judge_to_eval_items(
         )
 
     return {
-        "llm_judge_model_used": str(model_used or "") or None,
+        "llm_judge_model_used": model_used,
         "llm_judge_version_hash": judge_version,
         "llm_judge_items": len(overall_scores),
         "llm_judge_retrieval_avg": _mean_judge_score(retrieval_scores),

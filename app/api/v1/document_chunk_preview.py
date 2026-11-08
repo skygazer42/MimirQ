@@ -486,7 +486,7 @@ def _resolve_preview_pipeline_state(
         separator_config=separator_config,
         strategy_params_out={},
         governance_options=build_governance_options(pipeline_effective, remove_common_lines=False),
-        governance_rules=combined_rules or None,
+        governance_rules=combined_rules,
     )
 
 
@@ -497,7 +497,7 @@ def _materialize_preview_documents(parsed_docs_payload: list[dict[str, Any]] | N
             metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
             id=item.get("id") if isinstance(item.get("id"), str) else None,
         )
-        for item in (parsed_docs_payload or [])
+        for item in (parsed_docs_payload if parsed_docs_payload is not None else [])
         if isinstance(item, dict)
     ]
 
@@ -956,7 +956,7 @@ def _store_preview_parse_cache(
         ParseCacheEntry(
             created_at_monotonic=time.monotonic(),
             created_at_wall=time.time(),
-            file_sha256=str(file_sha256 or ""),
+            file_sha256=str((file_sha256 if file_sha256 is not None else "")),
             parser_backend=(parser_backend or ""),
             resolved_backend=str(resolved_backend or ""),
             documents=list(parsed_docs_payload),
@@ -1498,7 +1498,7 @@ def _serialize_preview_parse_documents(documents: list[Document]) -> list[dict[s
             {
                 "page_content": doc.page_content or "",
                 "metadata": safe_metadata,
-                "id": doc.id or None,
+                "id": doc.id,
             }
         )
     return out
@@ -1550,7 +1550,7 @@ async def preview_chunking(
         raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
         err_type = (e.details or {}).get("type")
-        if err_type == "ValueError":
+        if err_type in {"ValueError", "RetiredModelProviderError"}:
             raise HTTPException(status_code=400, detail=str(e)) from e
         logger.error("Subprocess worker failed during chunk preview: %s", str(e)[:200])
         raise HTTPException(

@@ -31,10 +31,9 @@ def get_conversation_summary(
         )
         .first()
     )
-    if not row:
+    if row is None:
         return None
-    text = (row.summary or "").strip()
-    return text or None
+    return row.summary
 
 
 def clear_conversation_summary(

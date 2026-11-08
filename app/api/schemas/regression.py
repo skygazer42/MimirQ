@@ -317,7 +317,7 @@ class RagasRegressionRunCreateRequest(BaseModel):
     )
     reranker_provider: str = Field(
         default_factory=lambda: settings.RERANKER_PROVIDER,
-        description="Reranker provider: llm | pc | ltr | colbert | openai | dashscope | none",
+        description="Reranker provider: llm | pc | colbert | openai | dashscope | none",
     )
     reranker_top_n: int = Field(
         default_factory=lambda: settings.RERANKER_TOP_N,
@@ -373,11 +373,13 @@ class RagasRegressionRunCreateRequest(BaseModel):
             )
         return raw
 
-    @field_validator("query_rewrite_strategy", mode="before")
+    @field_validator("query_rewrite_strategy", mode="after")
     @classmethod
-    def _normalize_query_rewrite_strategy(cls, v: Any) -> str | None:
-        raw = str(v or "").strip()
-        return raw or None
+    def _normalize_query_rewrite_strategy(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        raw = v.strip()
+        return raw if raw else None
 
     @field_validator("sparse_retrieval_provider", mode="before")
     @classmethod
@@ -385,9 +387,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
         raw = str(v or "").strip().lower()
         if not raw:
             return None
-        from app.core.model_execution import reject_retired_model_provider
+        from app.core.model_execution import reject_retired_provider
 
-        reject_retired_model_provider(raw, capability="sparse")
+        reject_retired_provider(raw, capability="sparse")
         if raw != "deterministic":
             raise ValueError("sparse_retrieval_provider must be deterministic")
         return raw
@@ -395,9 +397,9 @@ class RagasRegressionRunCreateRequest(BaseModel):
     @field_validator("reranker_provider")
     @classmethod
     def _validate_reranker_execution(cls, value: str | None) -> str | None:
-        from app.core.model_execution import reject_retired_model_provider
+        from app.core.model_execution import reject_retired_provider
 
-        reject_retired_model_provider(value, capability="reranker")
+        reject_retired_provider(value, capability="reranker")
         return value
 
     @model_validator(mode="after")

@@ -25,7 +25,7 @@ from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
-from app.rag.retrieval.corpus_index import bm25_available, get_corpus_index
+from app.rag.retrieval.corpus_index import get_corpus_index, is_milvus_bm25_enabled
 from app.rag.retrieval.hybrid import candidate_ranking, candidate_retrieval, channel_collection, corpus_channels
 from app.rag.retrieval.hybrid.bm25_index import Bm25IndexMixin
 from app.rag.retrieval.hybrid.channel_diagnostics import empty_channel_metrics
@@ -213,7 +213,7 @@ class HybridRetriever(
         )
 
     def _tenant_key(self, tenant_id: UUID | None) -> str:
-        return str(tenant_id or settings.DEFAULT_TENANT_ID)
+        return str((tenant_id if tenant_id else settings.DEFAULT_TENANT_ID))
 
     @staticmethod
     def _resolve_tenant_uuid(tenant_id: UUID | None) -> UUID | None:
@@ -246,7 +246,7 @@ class HybridRetriever(
         dataset_ids = self._explicit_dataset_scope_ids()
         if not dataset_ids:
             return metadata_filter
-        scoped_filter = dict(metadata_filter or {})
+        scoped_filter = dict((metadata_filter if metadata_filter is not None else {}))
         scoped_filter.setdefault("dataset_id", self._dataset_scope_filter_value(dataset_ids))
         return scoped_filter
 
@@ -262,10 +262,7 @@ class HybridRetriever(
         *,
         embedding_space: str,
         dataset_ids: tuple[UUID, ...] | None = None,
-    ) -> dict[str, Any] | None:
-        if not metadata_filter and not embedding_space and not dataset_ids:
-            return None
-
+    ) -> dict[str, Any]:
         vector_allowed = {
             "tenant_id",
             "dataset_id",
@@ -284,7 +281,7 @@ class HybridRetriever(
             "partition_keys",
         }
         vf: dict[str, Any] = {}
-        for k, v in (metadata_filter or {}).items():
+        for k, v in (metadata_filter if metadata_filter is not None else {}).items():
             if not isinstance(k, str):
                 continue
             if "." in k:
@@ -302,7 +299,7 @@ class HybridRetriever(
             vf["dataset_id"] = HybridRetriever._dataset_scope_filter_value(dataset_ids)
         if embedding_space:
             vf["embedding_space_hash"] = {"$in": [embedding_space, ""]}
-        return vf or None
+        return vf
 
     @staticmethod
     def _tag_vector_hits_with_expected_space(
@@ -438,7 +435,7 @@ class HybridRetriever(
         if explicit_keys:
             return explicit_keys
 
-        explicit_entity = str(entity_key or "").strip()
+        explicit_entity = str((entity_key if entity_key is not None else "")).strip()
         if explicit_entity:
             return [explicit_entity]
 
@@ -472,7 +469,7 @@ class HybridRetriever(
         if not keys:
             return metadata_filter, None
 
-        merged = dict(metadata_filter or {})
+        merged = dict((metadata_filter if metadata_filter is not None else {}))
         existing = merged.get("partition_keys")
         if existing is None:
             merged["partition_keys"] = {"$in": list(keys)}
@@ -534,7 +531,7 @@ class HybridRetriever(
         return question_channel_overlap_score(
             query_tokens=query_tokens,
             metadata=metadata,
-            tokenize=self._bm25_tokenize,
+            tokenize=self._tokenize_lexical_text,
         )
 
     def _resolve_embedding_runtime(self, *, tenant_id: UUID | None) -> DatasetEmbeddingRuntimeConfig:
@@ -629,7 +626,9 @@ class HybridRetriever(
         tenant_id: UUID | None,
         dataset_ids: tuple[UUID, ...] | None = None,
     ) -> list[tuple[DatasetEmbeddingRuntimeConfig, tuple[UUID, ...]]]:
-        scope_dataset_ids = self._normalize_dataset_scope_ids(dataset_ids or self._explicit_dataset_scope_ids())
+        scope_dataset_ids = self._normalize_dataset_scope_ids(
+            (dataset_ids if dataset_ids else self._explicit_dataset_scope_ids())
+        )
         if tenant_id is None or not scope_dataset_ids:
             return []
 
@@ -756,7 +755,7 @@ class HybridRetriever(
     ) -> list[dict[str, Any]]:
         embeddings = create_embeddings_for_runtime(embedding_runtime)
         query_vector = embeddings.embed_query(query)
-        scoped_filter = dict(metadata_filter or {})
+        scoped_filter = dict((metadata_filter if metadata_filter is not None else {}))
         if tenant_id is not None:
             scoped_filter.setdefault("tenant_id", str(tenant_id))
         if document_ids:
@@ -798,7 +797,7 @@ class HybridRetriever(
                         query_vector=query_vector,
                         sparse_query_vector=sparse_query_vector,
                         top_k=max(1, top_k * 2),
-                        metadata_filter=scoped_filter or None,
+                        metadata_filter=(scoped_filter),
                     )
                     native_hybrid_meta["used"] = True
                     native_hybrid_meta["provider"] = sparse_provider
@@ -811,7 +810,7 @@ class HybridRetriever(
             results = adapter.search(
                 query_vector=query_vector,
                 top_k=max(1, top_k * 2),
-                metadata_filter=scoped_filter or None,
+                metadata_filter=(scoped_filter),
             )
             if can_try_native_hybrid and native_hybrid_meta.get("fallback_reason") is None:
                 native_hybrid_meta["fallback_reason"] = "empty_result_fallback"
@@ -827,7 +826,7 @@ class HybridRetriever(
         document_ids: list[UUID] | None,
         dataset_ids: list[UUID] | tuple[UUID, ...] | None = None,
     ) -> str | None:
-        tenant_uuid = tenant_id or self.tenant_id
+        tenant_uuid = tenant_id if tenant_id else self.tenant_id
         if tenant_uuid is None:
             return None
 
@@ -836,7 +835,7 @@ class HybridRetriever(
         )
         dataset_id = scope_dataset_ids[0] if len(scope_dataset_ids) == 1 else None
         multi_dataset_scope = scope_dataset_ids if len(scope_dataset_ids) > 1 else ()
-        normalized_document_ids = list(dict.fromkeys(document_ids or []))
+        normalized_document_ids = list(dict.fromkeys((document_ids if document_ids is not None else [])))
         document_scope = tuple(sorted(str(document_id) for document_id in normalized_document_ids))
         scope_key = (
             str(tenant_uuid),
@@ -1110,7 +1109,7 @@ class HybridRetriever(
             native_hybrid_enabled=bool(settings.MILVUS_NATIVE_HYBRID),
             colbert_enabled=bool(settings.COLBERT_RETRIEVAL_ENABLED),
             colpali_enabled=bool(settings.COLPALI_RETRIEVAL_ENABLED),
-            bm25_enabled=bm25_available(),
+            bm25_enabled=is_milvus_bm25_enabled(),
             lexical_enabled=bool(settings.LEXICAL_DB_ENABLED),
             keyword_bm25_secondary_enabled=bool(settings.RETRIEVAL_KEYWORD_BM25_SECONDARY_ENABLED),
             lexical_hybrid_fallback_only=lexical_hybrid_fallback_only,

@@ -363,7 +363,7 @@ def _resolve_dataset_scope(
     dataset_ids: list[UUID] | None,
 ) -> tuple[UUID | None, list[UUID]]:
     scoped_dataset_ids = _dedupe_uuid_list(dataset_ids)
-    if document_ids or dataset_id is not None:
+    if document_ids is not None or dataset_id is not None:
         return dataset_id, []
     if len(scoped_dataset_ids) == 1:
         return scoped_dataset_ids[0], []
@@ -493,11 +493,11 @@ def _kg_search_cache_config(*, resolved_mode: str) -> dict[str, Any]:
 def _resolve_search_pipeline_fingerprint(
     *,
     tenant_id: UUID,
-    document_ids: list[str],
+    document_ids: list[str] | None,
     dataset_id: UUID | None,
 ) -> str | None:
     try:
-        if document_ids:
+        if document_ids is not None:
             return _resolve_doc_pipeline_fingerprint(tenant_id=tenant_id, document_ids=document_ids)
         if dataset_id is not None:
             return _resolve_dataset_pipeline_fingerprint(tenant_id=tenant_id, dataset_ids=[dataset_id])
@@ -521,7 +521,7 @@ def _build_kg_search_cache_key_if_enabled(
     if not cache_enabled or ttl_sec <= 0 or max_entries <= 0:
         return None
     eff_tenant_id = tenant_id or settings.DEFAULT_TENANT_ID
-    eff_doc_ids = [str(doc_id) for doc_id in (document_ids or []) if doc_id is not None]
+    eff_doc_ids = None if document_ids is None else [str(doc_id) for doc_id in document_ids]
     pipeline_fp = _resolve_search_pipeline_fingerprint(
         tenant_id=eff_tenant_id,
         document_ids=eff_doc_ids,
@@ -531,11 +531,11 @@ def _build_kg_search_cache_key_if_enabled(
         return None
     return build_kg_search_cache_key(
         tenant_id=str(eff_tenant_id),
-        account_id=str(account_id or ""),
+        account_id=account_id,
         dataset_id=(str(dataset_id) if dataset_id is not None else None),
         document_ids=eff_doc_ids,
         pipeline_fingerprint=pipeline_fp,
-        query=str(query or ""),
+        query=query,
         search_config=_kg_search_cache_config(resolved_mode=resolved_mode),
     )
 

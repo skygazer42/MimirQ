@@ -79,11 +79,11 @@ Guide:
 ## 4) Reranking
 
 Key settings:
-- `RERANKER_PROVIDER` (`llm` | `pc` | `colbert` | `ltr` | `openai` | `dashscope` | `none`)
+- `RERANKER_PROVIDER` (`llm` | `pc` | `colbert` | `openai` | `dashscope` | `none`)
 
 Tradeoffs:
 - `llm` rerank improves precision but increases latency/cost.
-- `colbert`/`ltr` are intended for deterministic/fast reranking (local providers; see guides below).
+- `colbert` retains its deterministic offline scaffold; local XGBoost LTR has been retired.
 - `none` is fastest; rely on better chunking + retrieval thresholds.
 
 Guides:

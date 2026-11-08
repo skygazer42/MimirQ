@@ -21,7 +21,7 @@ def build_stage3_manifest(
         "sample_count": len(normalized_rows),
         "source_type_counts": dict(sorted(source_counts.items(), key=lambda kv: kv[0])),
         "query_type_counts": dict(sorted(query_counts.items(), key=lambda kv: kv[0])),
-        "generated_at": str(generated_at or "").strip() or None,
+        "generated_at": (generated_at),
     }
 
 

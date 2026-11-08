@@ -266,7 +266,7 @@ def _normalize_entity_input(
             key=key,
             name=ent_name,
             type=ent_type,
-            description=_norm(item.description) or None,
+            description=item.description,
             aliases=aliases,
             extra_data=_json_dict(item.extra_data),
             row=row_index,

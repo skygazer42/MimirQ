@@ -50,8 +50,8 @@ def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
         out.setdefault("element_kind", "paragraph")
     out.setdefault("element_text", text)
     attrs = out.get("element_attributes") if isinstance(out.get("element_attributes"), dict) else {}
-    attrs.setdefault("source_content_type", content_type or None)
-    attrs.setdefault("source_doc_type", doc_type or None)
+    attrs.setdefault("source_content_type", out.get("content_type"))
+    attrs.setdefault("source_doc_type", out.get("doc_type_kwd"))
 
     raw_positions = out.get("positions")
     if isinstance(raw_positions, list) and raw_positions:

@@ -8,11 +8,6 @@ from uuid import UUID
 from app.rag.core.hashing import stable_hash
 
 
-def _as_token_part(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
 def resolve_corpus_cache_token(
     _db: Any,
     *,
@@ -23,10 +18,10 @@ def resolve_corpus_cache_token(
 ) -> str | None:
     parts = {
         "schema": "mimirq.corpus_cache_token.stub.v1",
-        "tenant_id": _as_token_part(tenant_id),
-        "dataset_id": _as_token_part(dataset_id) if dataset_id is not None else None,
-        "dataset_ids": [_as_token_part(v) for v in (dataset_ids or []) if _as_token_part(v)],
-        "document_ids": [_as_token_part(v) for v in (document_ids or []) if _as_token_part(v)],
+        "tenant_id": str(tenant_id),
+        "dataset_id": str(dataset_id) if dataset_id is not None else None,
+        "dataset_ids": [str(value) for value in dataset_ids] if dataset_ids is not None else [],
+        "document_ids": [str(value) for value in document_ids] if document_ids is not None else [],
     }
     if not parts["dataset_id"] and not parts["dataset_ids"] and not parts["document_ids"]:
         return None

@@ -1,5 +1,5 @@
 # Default API runtime: Milvus and remote model providers.
-# In-process Torch models are retired; alternative vector stores have optional profiles.
+# In-process Torch models and embedded Chroma/FAISS backends are retired.
 # See docs/guides/dependencies.md for supported services and installation profiles.
 
 fastapi==0.135.3
@@ -38,7 +38,6 @@ minio==7.2.20
 # Install it separately only when enabling MAGIC_PDF_ENABLED=true.
 # See: docs/guides/magicpdf_guide.md
 PyMuPDF==1.27.2.2
-unstructured==0.18.32
 python-magic==0.4.27
 markdown==3.10.2
 markitdown==0.1.5
@@ -53,10 +52,6 @@ python-pptx==1.0.2
 chardet==7.4.1
 tiktoken==0.12.0
 trio==0.33.0
-# The standard Linux wheel pulls the CUDA NCCL runtime even for CPU-only use.
-# XGBoost publishes this smaller CPU distribution with the same `xgboost` module.
-xgboost-cpu==3.2.0; platform_system == "Linux" or platform_system == "Windows"
-xgboost==3.2.0; platform_system != "Linux" and platform_system != "Windows"
 huggingface-hub==1.9.2
 Pillow==12.3.0
 # NOTE: opencv-python 4.13.x is compatible with the current numpy 2.4.x pin.
@@ -69,7 +64,6 @@ tqdm==4.67.3
 beartype==0.22.9
 hanziconv==0.3.2
 nltk==3.10.2
-tencentcloud-sdk-python==3.1.72
 html-text==0.7.1
 readability-lxml==0.8.4.1
 

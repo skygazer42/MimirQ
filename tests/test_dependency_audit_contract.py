@@ -28,11 +28,15 @@ def test_audit_remediation_pins_known_fixed_versions() -> None:
         "langchain-chroma",
         "faiss-cpu",
         "rank-bm25",
+        "xgboost",
+        "xgboost-cpu",
+        "unstructured",
+        "tencentcloud-sdk-python",
     }.isdisjoint(versions)
     assert versions["nltk"] == "3.10.2"
     assert not ROOT.joinpath("requirements-local-models.txt").exists()
-    assert _requirement_versions("requirements-chroma.txt")["chromadb"] == "1.5.7"
-    assert _requirement_versions("requirements-faiss.txt")["faiss-cpu"] == "1.13.2"
+    assert not ROOT.joinpath("requirements-chroma.txt").exists()
+    assert not ROOT.joinpath("requirements-faiss.txt").exists()
 
 
 def test_unused_direct_dependencies_stay_removed() -> None:

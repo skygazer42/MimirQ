@@ -1339,7 +1339,7 @@ def _golden_case_payload(golden: CaseGoldenData) -> dict[str, Any] | None:
         "image_visual_kinds": golden.image_visual_kinds,
         "image_code_values": golden.image_code_values,
         "table_continuity": golden.table_continuity,
-        "missing_local_assets": golden.missing_local_assets or None,
+        "missing_local_assets": golden.missing_local_assets,
     }
 
 
@@ -1348,7 +1348,7 @@ def _build_case_row(case: BenchmarkCase, golden: CaseGoldenData) -> dict[str, An
         "id": case.case_id,
         "path": str(case.path),
         "file_type": case.path.suffix.lower().lstrip("."),
-        "input_missing_local_assets": golden.missing_input_assets or None,
+        "input_missing_local_assets": golden.missing_input_assets,
         "golden_markdown_path": str(case.golden_markdown_path) if case.golden_markdown_path else None,
         "golden": _golden_case_payload(golden),
         "attempts": [],

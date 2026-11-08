@@ -25,7 +25,7 @@
 2. 准备备份：
    - Postgres dump（必备）
    - MinIO bucket mirror/snapshot（若启用对象存储）
-   - 向量库（Milvus/Chroma）备份或重建策略
+   - 向量库（Milvus/Qdrant/pgvector）备份或重建策略
 3. 确认演练环境的 Secret/配置齐全（DATABASE_URL / VECTOR_BACKEND / MINIO_* / REDIS_*）
 
 参考：`docs/deployment/backup_restore.md`

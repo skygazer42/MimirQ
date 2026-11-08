@@ -1,10 +1,6 @@
 import datetime as dt
-import io
-import json
 import uuid
-import zipfile
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 
 import pytest
 
@@ -79,11 +75,11 @@ class _FakeDB:
         evidence_suites=None,
     ) -> None:
         self._rows = {
-            MessageFeedback: list(feedback_rows or []),
-            Message: list(messages or []),
-            Conversation: list(conversations or []),
-            EvidenceItem: list(evidence_items or []),
-            EvidenceSuite: list(evidence_suites or []),
+            MessageFeedback: list((feedback_rows if feedback_rows is not None else [])),
+            Message: list((messages if messages is not None else [])),
+            Conversation: list((conversations if conversations is not None else [])),
+            EvidenceItem: list((evidence_items if evidence_items is not None else [])),
+            EvidenceSuite: list((evidence_suites if evidence_suites is not None else [])),
         }
         self.commit_calls = 0
         self.rollback_calls = 0
@@ -359,157 +355,3 @@ def test_patch_evidence_item_only_updates_selected_fields_and_finalizes_refs(
     assert row.source_metadata == {"keep": True}
     assert row.reference_sources == finalized_refs
     assert db.commit_calls == 1
-
-
-def test_export_evidence_suite_ltr_training_bundle_preserves_schema_when_hard_negatives_fail(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    tenant_id = uuid.uuid4()
-    dataset_id = uuid.uuid4()
-    suite_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
-    suite = EvidenceSuite(
-        id=suite_id,
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        name="Suite 13",
-        tags=["baseline"],
-        archived_at=None,
-        created_at=now,
-        updated_at=now,
-    )
-    skipped_no_snapshot = EvidenceItem(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        suite_id=suite_id,
-        status="approved",
-        query="skip-me",
-        reference_sources=[],
-        retrieval_snapshot=None,
-        created_at=now,
-        updated_at=now,
-    )
-    skipped_no_citations = EvidenceItem(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        suite_id=suite_id,
-        status="approved",
-        query="skip-empty-citations",
-        reference_sources=[],
-        retrieval_snapshot={"citations": []},
-        created_at=now,
-        updated_at=now,
-    )
-    kept_item = EvidenceItem(
-        id=uuid.uuid4(),
-        tenant_id=tenant_id,
-        dataset_id=dataset_id,
-        suite_id=suite_id,
-        status="approved",
-        query="kept-query",
-        tags=["exported"],
-        reference_sources=[{"chunk_id": "chunk-1"}],
-        retrieval_snapshot={
-            "citations": [
-                {
-                    "chunk_id": "chunk-1",
-                    "document_id": str(uuid.uuid4()),
-                    "retrieval_score": 0.42,
-                    "kg_shared_events": 2,
-                }
-            ],
-            "metrics": {},
-            "retrieval_trace": {"retrieval_config": {"hash": "cfg-from-trace"}},
-        },
-        created_at=now,
-        updated_at=now,
-    )
-    db = _FakeDB(
-        evidence_suites=[suite],
-        evidence_items=[skipped_no_snapshot, skipped_no_citations, kept_item],
-    )
-
-    monkeypatch.setattr(evidence_api.dataset_service, "ensure_member", lambda *_args, **_kwargs: None, raising=True)
-    monkeypatch.setattr(evidence_api.dataset_service, "get_dataset", lambda *_args, **_kwargs: object(), raising=True)
-    monkeypatch.setattr(
-        evidence_api.dataset_service,
-        "assert_dataset_readable",
-        lambda *_args, **_kwargs: None,
-        raising=True,
-    )
-    monkeypatch.setattr(evidence_api, "audit_log_event", lambda *_args, **_kwargs: None, raising=True)
-
-    import app.rag.core.hashing as hashing_mod
-    import app.rag.evaluation.hard_negative_mining as hard_negative_mod
-    import app.rag.reranker.ltr as ltr_mod
-
-    monkeypatch.setattr(evidence_api.settings, "LTR_FEATURE_SPEC_VERSION", 7, raising=False)
-    monkeypatch.setattr(hashing_mod, "stable_hash", lambda text, length=64: f"hash:{text}:{length}", raising=True)
-    monkeypatch.setattr(
-        ltr_mod.LTRFeatureSpec,
-        "from_version",
-        classmethod(lambda cls, version: SimpleNamespace(schema="ltr.schema.v1", feature_names=["score", "kg"])),
-        raising=True,
-    )
-    monkeypatch.setattr(ltr_mod, "extract_ltr_features", lambda **_kwargs: [0.42, 2.0], raising=True)
-    monkeypatch.setattr(
-        hard_negative_mod,
-        "mine_hard_negatives_for_case_from_trace",
-        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("skip hard negatives")),
-        raising=True,
-    )
-
-    response = evidence_api.export_evidence_suite_ltr_training_bundle(
-        suite_id,
-        tenant_id=tenant_id,
-        account_id="reader",
-        db=db,
-    )
-
-    bundle = zipfile.ZipFile(io.BytesIO(response.body))
-    manifest = json.loads(bundle.read("manifest.json"))
-    training_rows = [json.loads(line) for line in bundle.read("training_rows.ndjson").decode("utf-8").splitlines()]
-    hard_negatives = bundle.read("hard_negatives.ndjson").decode("utf-8")
-
-    assert response.media_type == "application/zip"
-    assert set(bundle.namelist()) == {
-        "README.txt",
-        "hard_negatives.ndjson",
-        "manifest.json",
-        "training_rows.ndjson",
-    }
-    assert manifest["feature_spec"] == {
-        "version": 7,
-        "schema": "ltr.schema.v1",
-        "feature_names": ["score", "kg"],
-    }
-    assert manifest["counts"] == {
-        "items_total": 3,
-        "items_with_snapshot": 1,
-        "training_rows": 1,
-        "hard_negative_records": 0,
-    }
-    assert training_rows == [
-        {
-            "schema": "mimirq.ltr_training_row.v1",
-            "suite_id": str(suite_id),
-            "item_id": str(kept_item.id),
-            "dataset_id": str(dataset_id),
-            "query_hash": "hash:kept-query:64",
-            "retrieval_config_hash": "cfg-from-trace",
-            "rank": 1,
-            "label": 1,
-            "candidate": {
-                "chunk_id": "chunk-1",
-                "document_id": training_rows[0]["candidate"]["document_id"],
-            },
-            "slices": {
-                "status": "approved",
-                "tags": ["exported"],
-            },
-            "features": {"score": 0.42, "kg": 2.0},
-        }
-    ]
-    assert hard_negatives == ""

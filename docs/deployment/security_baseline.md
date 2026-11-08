@@ -30,7 +30,7 @@ security:
 - 全局：`security.podSecurityContext` / `security.containerSecurityContext`
 - 组件级：`api.podSecurityContext` / `api.securityContext`（worker/cronjobs 同理）
 
-> 注意：chart **不会默认开启** `readOnlyRootFilesystem`，因为某些可选本地后端（如 Chroma/FAISS）可能需要写入容器文件系统。若你要开启，请先验证写路径并配合可写 volume（见 1.3）。
+> 注意：chart **不会默认开启** `readOnlyRootFilesystem`，因为上传、临时文件与解析缓存仍可能需要写入容器文件系统。若你要开启，请先验证写路径并配合可写 volume（见 1.3）。
 
 ### 1.2 ServiceAccount token（建议默认不挂载）
 

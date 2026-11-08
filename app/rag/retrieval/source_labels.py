@@ -72,7 +72,7 @@ def _title_from_first_chunk(first_chunk_content: Any) -> str | None:
     if not title_lines:
         return None
     title = _clean_line(" ".join(title_lines))[:200]
-    return title if title else None
+    return title
 
 
 def _title_from_filename(filename: Any) -> str | None:

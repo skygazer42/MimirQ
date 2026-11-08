@@ -63,7 +63,7 @@ def _normalize_threshold_rule(cfg_raw: Any) -> dict[str, Any] | None:
     _coerce_rule_bound(row, cfg_raw, "min")
     _coerce_rule_bound(row, cfg_raw, "max")
     row["required"] = bool(cfg_raw.get("required", True))
-    return row if row else None
+    return row
 
 
 def normalize_thresholds(payload: Any) -> dict[str, dict[str, Any]]:

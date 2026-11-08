@@ -117,7 +117,7 @@ def search_dataset_vectors(
                     query_vector=query_vector,
                     sparse_query_vector=sparse_query,
                     top_k=max(1, request.top_k * 2),
-                    metadata_filter=scoped_filter or None,
+                    metadata_filter=(scoped_filter),
                 )
                 outcome = replace(outcome, used=True, provider=provider)
         except NotImplementedError:
@@ -127,7 +127,9 @@ def search_dataset_vectors(
             outcome = replace(outcome, fallback_reason=f"error:{exc.__class__.__name__}")
     if not records:
         records = adapter.search(
-            query_vector=query_vector, top_k=max(1, request.top_k * 2), metadata_filter=scoped_filter or None
+            query_vector=query_vector,
+            top_k=max(1, request.top_k * 2),
+            metadata_filter=(scoped_filter),
         )
         if can_try_native and outcome.fallback_reason is None:
             outcome = replace(outcome, fallback_reason="empty_result_fallback")

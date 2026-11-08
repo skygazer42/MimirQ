@@ -220,7 +220,7 @@ def resolve_agentic_stream_request(
             ab_user_key=legacy_overrides.get("ab_user_key"),
             request_id=legacy_overrides.get("request_id"),
             db=legacy_overrides.get("db"),
-            state_overrides=state_overrides or None,
+            state_overrides=state_overrides,
         )
     if not legacy_overrides:
         return request
@@ -619,7 +619,7 @@ class AgenticRAGRunner:
         if not bool(crag_result.get("used")) or not context_block.strip():
             return None
         state.crag_used = True
-        state.crag_provider = str(crag_result.get("provider") or "").strip() or None
+        state.crag_provider = crag_result.get("provider")
         state.crag_web_results = int(crag_result.get("web_result_count") or 0)
         return (
             {

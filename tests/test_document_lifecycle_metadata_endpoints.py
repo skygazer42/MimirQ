@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.core.database import get_db
+from app.models.dataset import Dataset
+from app.models.document import Document as DBDocument
 
 
 class _DummyQuery:
@@ -45,9 +47,8 @@ class _DummyDB:
 
 
 def _build_client(monkeypatch, *, doc):  # noqa: ANN001
-    import app.api.v1.document_lifecycle as lifecycle_module
     import app.api.v1.documents as documents_module
-    from app.models.document import Document as DBDocument
+    from app.services import document_lifecycle_service as lifecycle_module
 
     tenant_id = doc.tenant_id
 
@@ -62,7 +63,12 @@ def _build_client(monkeypatch, *, doc):  # noqa: ANN001
 
     # Bypass membership checks in unit tests (covered by dedicated RBAC tests).
     monkeypatch.setattr(lifecycle_module.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
-    monkeypatch.setattr(lifecycle_module.dataset_service, "get_dataset", lambda *_a, **_k: object(), raising=True)
+    monkeypatch.setattr(
+        lifecycle_module.dataset_service,
+        "get_dataset",
+        lambda *_a, **_k: Dataset(id=doc.dataset_id, owner_id="dataset-owner"),
+        raising=True,
+    )
 
     app = FastAPI()
     app.dependency_overrides[get_db] = _override_get_db
@@ -77,18 +83,7 @@ def test_document_lifecycle_metadata_get_and_patch(monkeypatch):  # noqa: ANN001
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    class _DummyDoc:
-        def __init__(self) -> None:
-            self.id = doc_id
-            self.tenant_id = tenant_id
-            self.dataset_id = dataset_id
-            self.publication_status = "published"
-            self.lifecycle_owner = None
-            self.review_due_at = None
-            self.authority_level = None
-            self.supersedes_document_id = None
-
-    dummy_doc = _DummyDoc()
+    dummy_doc = DBDocument(id=doc_id, tenant_id=tenant_id, dataset_id=dataset_id, publication_status="published")
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
     # Allow writes for this test.
@@ -164,17 +159,7 @@ def test_document_lifecycle_metadata_patch_denied_when_not_writable(monkeypatch)
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    class _DummyDoc:
-        def __init__(self) -> None:
-            self.id = doc_id
-            self.tenant_id = tenant_id
-            self.dataset_id = dataset_id
-            self.lifecycle_owner = None
-            self.review_due_at = None
-            self.authority_level = None
-            self.supersedes_document_id = None
-
-    dummy_doc = _DummyDoc()
+    dummy_doc = DBDocument(id=doc_id, tenant_id=tenant_id, dataset_id=dataset_id, publication_status="published")
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
     def _deny(*_a, **_k):  # noqa: ANN001
@@ -195,17 +180,7 @@ def test_document_lifecycle_metadata_patch_rejects_self_supersedes(monkeypatch, 
     tenant_id = uuid.uuid4()
     dataset_id = uuid.uuid4()
 
-    class _DummyDoc:
-        def __init__(self) -> None:
-            self.id = doc_id
-            self.tenant_id = tenant_id
-            self.dataset_id = dataset_id
-            self.lifecycle_owner = None
-            self.review_due_at = None
-            self.authority_level = None
-            self.supersedes_document_id = None
-
-    dummy_doc = _DummyDoc()
+    dummy_doc = DBDocument(id=doc_id, tenant_id=tenant_id, dataset_id=dataset_id, publication_status="published")
     client, documents_module = _build_client(monkeypatch, doc=dummy_doc)
 
     monkeypatch.setattr(

@@ -44,7 +44,7 @@ class SmallModelStatus:
             "path": str(self.path) if self.path is not None else None,
             "repo_id": self.repo_id,
             "revision": self.revision,
-            "version": self.version or ("local" if self.available else "unresolved"),
+            "version": self.version,
             "size_mb": self.size_mb,
             "elapsed_ms": int(self.elapsed_ms),
         }
@@ -186,7 +186,7 @@ class SmallModelRuntime:
                 optional=spec.optional,
                 reason="local_model_missing",
                 path=path,
-                version=version or "unresolved",
+                version=version,
                 elapsed_ms=elapsed_ms,
             )
         rejection_reason, size_mb = self._cpu_rejection_reason(spec, path=path)
@@ -196,7 +196,7 @@ class SmallModelRuntime:
             optional=spec.optional,
             reason=rejection_reason,
             path=path,
-            version=version or ("local" if rejection_reason is None else "unresolved"),
+            version=version,
             size_mb=size_mb,
             elapsed_ms=elapsed_ms,
         )
@@ -220,7 +220,7 @@ class SmallModelRuntime:
                 path=local_path,
                 repo_id=spec.repo_id,
                 revision=spec.revision,
-                version=version or ("local" if rejection_reason is None else "unresolved"),
+                version=version,
                 size_mb=size_mb,
                 elapsed_ms=elapsed_ms,
             )
@@ -233,7 +233,7 @@ class SmallModelRuntime:
                 reason=rejection_reason,
                 repo_id=spec.repo_id,
                 revision=spec.revision,
-                version=version or "unresolved",
+                version=version,
                 size_mb=size_mb,
                 elapsed_ms=elapsed_ms,
             )
@@ -245,7 +245,7 @@ class SmallModelRuntime:
                 reason="hf_download_disabled",
                 repo_id=spec.repo_id,
                 revision=spec.revision,
-                version=version or "unresolved",
+                version=version,
                 elapsed_ms=elapsed_ms,
             )
         if not spec.repo_id:
@@ -254,7 +254,7 @@ class SmallModelRuntime:
                 available=False,
                 optional=spec.optional,
                 reason="hf_repo_missing",
-                version=version or "unresolved",
+                version=version,
                 elapsed_ms=elapsed_ms,
             )
         snapshot = download_hf_snapshot(repo_id=spec.repo_id, revision=spec.revision)
@@ -267,7 +267,7 @@ class SmallModelRuntime:
             path=snapshot.path,
             repo_id=spec.repo_id,
             revision=spec.revision,
-            version=version or ("downloaded" if rejection_reason is None else "unresolved"),
+            version=version,
             size_mb=size_mb,
             elapsed_ms=elapsed_ms,
         )
@@ -275,18 +275,18 @@ class SmallModelRuntime:
     def resolve(self, task: str, *, model_id: str | None = None, allow_download: bool = False) -> SmallModelStatus:
         started = time.perf_counter()
         spec = self._spec(task, model_id=model_id)
-        version = str(spec.metadata.get("version") or spec.revision or "").strip() or None
+        version = spec.metadata.get("version", spec.revision)
 
         def elapsed_ms() -> int:
             return max(0, int(round((time.perf_counter() - started) * 1000)))
 
         if spec.kind == "onnx":
-            return self._resolve_onnx_status(spec, version=version or "", elapsed_ms=elapsed_ms())
+            return self._resolve_onnx_status(spec, version=version, elapsed_ms=elapsed_ms())
 
         if spec.kind == "hf_transformers":
             return self._resolve_hf_status(
                 spec,
-                version=version or "",
+                version=version,
                 elapsed_ms=elapsed_ms(),
                 allow_download=allow_download,
             )
@@ -296,7 +296,7 @@ class SmallModelRuntime:
             available=False,
             optional=spec.optional,
             reason="unsupported_model_kind",
-            version=version or "unresolved",
+            version=version,
             elapsed_ms=elapsed_ms(),
         )
 

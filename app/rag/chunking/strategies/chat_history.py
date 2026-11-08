@@ -230,7 +230,7 @@ def _iter_messages(text: str) -> list[_Msg]:
         end = leads[idx + 1][0] if idx + 1 < len(leads) else len(text)
         if not speaker:
             continue
-        msgs.append(_Msg(start=start, end=end, speaker=speaker, ts=(ts if ts else None)))
+        msgs.append(_Msg(start=start, end=end, speaker=speaker, ts=(ts)))
     return msgs if len(msgs) >= 2 else []
 
 

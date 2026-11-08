@@ -102,7 +102,7 @@ def _is_scheduled_config_due(cfg: ConnectorConfig, *, now: datetime) -> bool:
     schedule = str(cfg.schedule_cron or "").strip()
     if not schedule:
         return False
-    return _schedule_due(schedule=schedule, now=now, last_run_at=(cfg.last_run_at or None))
+    return _schedule_due(schedule=schedule, now=now, last_run_at=cfg.last_run_at)
 
 
 def _config_dataset_is_writable(ctx: _ScheduledTickContext, cfg: ConnectorConfig) -> bool:

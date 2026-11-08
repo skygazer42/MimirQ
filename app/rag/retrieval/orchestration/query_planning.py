@@ -230,7 +230,13 @@ def _deterministic_and_kg_request(
     documents, dataset, datasets = _resolve_kg_scope(options)
     kg_request = KGQueryRequest(
         request.prepared.query,
-        KGQueryScope(options.get("tenant_id"), options.get("account_id"), tuple(documents), dataset, tuple(datasets)),
+        KGQueryScope(
+            options.get("tenant_id"),
+            options.get("account_id"),
+            None if documents is None else tuple(documents),
+            dataset,
+            tuple(datasets),
+        ),
     )
     return deterministic, aliases, kg_request
 

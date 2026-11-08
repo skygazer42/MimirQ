@@ -60,7 +60,7 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
         except Exception:
             top_n = 0
         top_n = max(0, top_n)
-        out.append({"provider": provider, "top_n": top_n or None})
+        out.append({"provider": provider, "top_n": top_n})
         if len(out) >= 4:
             break
     return out
@@ -77,8 +77,8 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
     rewrite_max_chars: int | None = None
     if rewrite_enabled:
         spec = build_query_rewrite_strategy_spec(settings.QUERY_REWRITE_STRATEGY)
-        rewrite_strategy_id = str(spec.get("strategy_id") or "").strip() or None
-        rewrite_strategy_hash = str(spec.get("strategy_hash") or "").strip() or None
+        rewrite_strategy_id = spec["strategy_id"]
+        rewrite_strategy_hash = spec["strategy_hash"]
         try:
             rewrite_temp = float(settings.QUERY_REWRITE_TEMPERATURE or 0.0)
         except Exception:
@@ -94,7 +94,7 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
             "retrieval_mode": mode,
             "retrieval_mode_auto_routed": False,
             "retrieval_profile": None,
-            "top_k": int(rp.get("top_k") or 0) or None,
+            "top_k": rp.get("top_k"),
             "score_threshold": _to_float(rp.get("score_threshold")) or 0.0,
             "alpha": _to_float(rp.get("alpha")) or 0.0,
             "fusion_strategy": str(settings.RETRIEVAL_FUSION_STRATEGY or "linear"),
@@ -136,8 +136,7 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
             },
         }
     )
-    out = str(fp.get("hash") or "").strip()
-    return out or None
+    return fp["hash"]
 
 
 def build_regression_run_leaderboard(

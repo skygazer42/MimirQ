@@ -75,9 +75,9 @@
 - [guides/retrieval_fusion.md](./guides/retrieval_fusion.md)：多通道检索融合（Multi-Channel Fusion）。
 - [guides/sparse_retrieval.md](./guides/sparse_retrieval.md)：SPLADE 风格稀疏检索通道。
 - [guides/lexical_fallback.md](./guides/lexical_fallback.md)：Lexical fallback（Postgres FTS + pg_trgm）配置、索引与可观测性。
-- [guides/colbert_ann_retrieval.md](./guides/colbert_ann_retrieval.md)：ColBERT ANN 候选召回通道。
+- [guides/colbert_ann_retrieval.md](./guides/colbert_ann_retrieval.md)：ColBERT 确定性稠密候选召回通道。
 - [guides/reranking_colbert.md](./guides/reranking_colbert.md)：ColBERT 晚交互重排指南。
-- [guides/reranking_ltr.md](./guides/reranking_ltr.md)：LTR 重排（XGBoost）指南。
+- [guides/reranking_ltr.md](./guides/reranking_ltr.md)：LTR 重排退出说明。
 - [guides/table_tag.md](./guides/table_tag.md)：表格 / TAG（Table Augmented Generation）。
 - [guides/milvus_guide.md](./guides/milvus_guide.md)：Milvus 的部署、调优与常见问题。
 

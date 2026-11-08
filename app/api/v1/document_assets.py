@@ -48,28 +48,12 @@ def _asset_cache_control(*, max_age: int) -> str:
     return "private, no-store"
 
 
-def _parse_uuid(value: str) -> UUID:
-    return asset_identity._parse_tenant_id(value)
-
-
-def _asset_request_header_account(request, *, is_production: bool) -> str | None:
-    return asset_identity._asset_request_header_account(request, is_production=is_production)
-
-
-def _asset_request_authorization(request) -> str:
-    return asset_identity._asset_request_authorization(request)
-
-
-async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID | None = None) -> str | None:
+async def _resolve_account_id_for_asset_request(request, *, tenant_id: UUID) -> str | None:
     return await asset_identity._resolve_account_id_for_asset_request(
         request,
         tenant_id=tenant_id,
         authenticator=get_current_account_id_from_headers,
     )
-
-
-def _get_tenant_id_from_request_if_provided(request) -> UUID | None:
-    return asset_identity._explicit_tenant_id(request)
 
 
 async def _resolve_tenant_id_for_asset_request(
@@ -161,8 +145,8 @@ def _asset_disposition_type(*, inline: bool, filename: str | None, media_type: s
     if not inline:
         return "attachment"
 
-    normalized_media_type = str(media_type or "").split(";", 1)[0].strip().lower()
-    normalized_suffix = Path(str(filename or "")).suffix.strip().lower()
+    normalized_media_type = str((media_type if media_type is not None else "")).split(";", 1)[0].strip().lower()
+    normalized_suffix = Path(str((filename if filename is not None else ""))).suffix.strip().lower()
     if normalized_media_type in _ACTIVE_CONTENT_MEDIA_TYPES or normalized_suffix in _ACTIVE_CONTENT_SUFFIXES:
         return "attachment"
     return "inline"
@@ -180,7 +164,7 @@ def _asset_cache_control_value() -> str:
 
 
 def _quoted_etag(raw_value: str | None) -> str | None:
-    etag_raw = str(raw_value or "").strip()
+    etag_raw = str((raw_value if raw_value is not None else "")).strip()
     if not etag_raw:
         return None
     return etag_raw if etag_raw.startswith('"') else f'"{etag_raw}"'
@@ -273,7 +257,7 @@ def _resolve_document_download(
 
 
 def _resolve_document_media_type(filename: str | None) -> str:
-    media_type, _encoding = mimetypes.guess_type(filename or "")
+    media_type, _encoding = mimetypes.guess_type((filename if filename is not None else ""))
     return media_type or "application/octet-stream"
 
 

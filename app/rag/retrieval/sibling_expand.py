@@ -24,7 +24,7 @@ def _original_results_map(
     results: list[dict[str, Any]],
     supplied: dict[str, dict[str, Any]] | None,
 ) -> dict[str, dict[str, Any]]:
-    original_map = dict(supplied or {})
+    original_map = dict((supplied if supplied is not None else {}))
     if original_map:
         return original_map
     for item in results or []:
@@ -63,7 +63,7 @@ def _sibling_metadata(
         stored_meta.setdefault("start_char", row.start_char)
     if getattr(row, "end_char", None) is not None:
         stored_meta.setdefault("end_char", row.end_char)
-    stored_meta["sibling_of"] = anchor_chunk_id or None
+    stored_meta["sibling_of"] = anchor_chunk_id
     stored_meta["retrieval_role"] = "sibling"
     return stored_meta
 

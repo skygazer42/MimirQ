@@ -15,13 +15,12 @@ from sqlalchemy.orm import Session
 from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
-from app.api.v1.rag import _enforce_non_empty_retrieval_scope
+from app.api.v1.rag import _resolve_retrieval_scope
 from app.core.config import settings
 from app.core.database import get_db
 from app.rag.pipelines.langgraph import build_rag_state
 from app.rag.retrieval.orchestrator import run_retrieval
 from app.services import dataset_service
-from app.services.document_access import filter_allowed_document_ids
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
 _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
@@ -117,23 +116,12 @@ async def explain_retrieval(
 
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    scope_dataset_id: UUID | None = None
-    scope_document_ids: list[UUID] = []
-    if body.document_ids:
-        scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, body.document_ids)
-    elif body.dataset_id is not None:
-        ds = dataset_service.get_dataset(db, tenant_id, body.dataset_id)
-        dataset_service.assert_dataset_readable(db, ds, account_id)
-        scope_dataset_id = body.dataset_id
-    elif not bool(settings.CHAT_ALLOW_OPEN_SCOPE):
-        raise HTTPException(status_code=400, detail="dataset_id is required when document_ids is empty")
-
-    _enforce_non_empty_retrieval_scope(
-        db,
+    scope_dataset_id, _scope_dataset_ids, scope_document_ids = _resolve_retrieval_scope(
+        db=db,
         tenant_id=tenant_id,
         account_id=account_id,
-        scope_document_ids=scope_document_ids,
-        scope_dataset_id=scope_dataset_id,
+        document_ids=body.document_ids,
+        dataset_id=body.dataset_id,
     )
 
     request_fields_set = set(body.model_fields_set or set())
@@ -251,9 +239,7 @@ async def explain_retrieval(
         retrieval_only=True,
         query_for_retrieval=str(out.get("query_for_retrieval") or body.query),
         retrieval_degraded=bool(out.get("retrieval_degraded") or metrics.get("retrieval_degraded")),
-        fallback_reason=(
-            str(out.get("fallback_reason") or metrics.get("retrieval_fallback_reason") or "").strip() or None
-        ),
+        fallback_reason=(out.get("fallback_reason")),
         channel_health=channel_health,
         channels=channels,
         hierarchy_recall=hierarchy_recall,

@@ -1,8 +1,4 @@
-"""
-Tenant identification dependency.
-
-Parses tenant ID from request headers with default value fallback.
-"""
+"""Resolve tenant identity from verified JWT claims or explicit request headers."""
 
 from typing import Any
 from uuid import UUID
@@ -13,17 +9,6 @@ from jwt import ExpiredSignatureError, InvalidTokenError
 from app.core.config import settings
 from app.core.env import is_production_env
 from app.core.jwt_verify import decode_access_token
-
-
-def _tenant_uuid_from_state(request: Request) -> UUID | None:
-    state_tenant_id = getattr(request.state, "tenant_id", None)
-    if state_tenant_id is None:
-        return None
-    try:
-        return state_tenant_id if isinstance(state_tenant_id, UUID) else UUID(str(state_tenant_id))
-    except ValueError:
-        # Ignore invalid cached value and fall back to header/default parsing.
-        return None
 
 
 def _extract_bearer_token(authorization: str) -> str:
@@ -58,20 +43,20 @@ def _cache_jwt_identity(request: Request, *, payload: dict[str, Any], tenant_uui
     request.state.tenant_id = tenant_uuid
     request.state.tenant_id_source = "jwt"
     if request.client is not None:
-        request.state.client_host = (request.client.host or "").strip()
+        request.state.client_host = request.client.host.strip()
     raw_sub = payload.get("sub")
     if raw_sub:
         request.state.user_id = str(raw_sub)
 
 
 async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
-    if tenant_uuid := _tenant_uuid_from_state(request):
+    tenant_uuid = getattr(request.state, "tenant_id", None)
+    if tenant_uuid is not None:
         return tenant_uuid
 
-    auth_mode = (settings.AUTH_MODE or "jwt").lower()
-    claim = (settings.JWT_TENANT_CLAIM or "").strip()
-    authorization = (request.headers.get("authorization") or "").strip()
-    if auth_mode != "jwt" or not claim or not authorization:
+    claim = settings.JWT_TENANT_CLAIM.strip()
+    authorization = request.headers.get("authorization", "").strip()
+    if settings.AUTH_MODE != "jwt" or not claim or not authorization:
         return None
 
     payload = await _decode_tenant_jwt_payload(_extract_bearer_token(authorization))
@@ -82,16 +67,11 @@ async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
     return tenant_uuid
 
 
-def _tenant_header_value(request: Request, x_tenant_id: str | None) -> tuple[str | None, str]:
-    raw = (x_tenant_id or "").strip() or None
-    tenant_header = (settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
-    if not raw and tenant_header.lower() != "x-tenant-id":
-        raw = (request.headers.get(tenant_header) or "").strip() or None
-    return raw, tenant_header
-
-
 def _tenant_uuid_from_header_or_default(request: Request, x_tenant_id: str | None) -> UUID:
-    raw, tenant_header = _tenant_header_value(request, x_tenant_id)
+    tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
+    raw = (x_tenant_id if x_tenant_id is not None else "").strip()
+    if not raw and tenant_header.lower() != "x-tenant-id":
+        raw = request.headers.get(tenant_header, "").strip()
     source = "header"
     if not raw:
         if is_production_env():
@@ -105,14 +85,12 @@ def _tenant_uuid_from_header_or_default(request: Request, x_tenant_id: str | Non
     request.state.tenant_id = tenant_uuid
     request.state.tenant_id_source = source
     if request.client is not None:
-        request.state.client_host = (request.client.host or "").strip()
+        request.state.client_host = request.client.host.strip()
     return tenant_uuid
 
 
 async def get_tenant_id(request: Request, x_tenant_id: str | None = Header(default=None)) -> UUID:
-    """
-    Get tenant ID from request header, using default value if not provided.
-    """
+    """Prefer a verified tenant; require headers in production and use the local default otherwise."""
     if tenant_uuid := await _preferred_jwt_tenant_id(request):
         return tenant_uuid
     return _tenant_uuid_from_header_or_default(request, x_tenant_id)

@@ -251,7 +251,7 @@ class Settings(BaseSettings):
     TENANT_EMBED_CHAR_QUOTA_MODE: str = "block"
     TENANT_QUOTA_FAIL_CLOSED: bool = False
 
-    # Vector write batching (Milvus/Chroma/etc). Smaller batches reduce tail latency and memory spikes.
+    # Vector write batching. Smaller batches reduce tail latency and memory spikes.
     VECTOR_WRITE_BATCH_SIZE: int = 256
     # Adaptive write batching: when chunks are large, reduce batch size to avoid
     # large embedding payloads / insert spikes (default: enabled).
@@ -679,11 +679,6 @@ class Settings(BaseSettings):
     ETL4LLM_PAGE_IMAGE_MAX_PAGES: int = 20
 
     # Tencent Cloud ADP parser (optional).
-    TCADP_SECRET_ID: str = ""
-    TCADP_SECRET_KEY: str = ""
-    TCADP_REGION: str = "ap-guangzhou"
-    TCADP_TABLE_RESULT_TYPE: str = "1"
-    TCADP_MARKDOWN_IMAGE_RESPONSE_TYPE: str = "1"
     PARSE_QUALITY_OCR_LOW_CONFIDENCE_THRESHOLD: float = 0.7
 
     # Marker (PDF -> Markdown external service; optional)
@@ -1162,7 +1157,7 @@ class Settings(BaseSettings):
     RETRIEVAL_HARD_FALLBACK_ENABLED: bool = False
     RETRIEVAL_HARD_FALLBACK_MODE: str = "keyword"  # hybrid | vector | keyword | mmr
     RETRIEVAL_HARD_FALLBACK_TOP_K: int = 30
-    # Optional hardcase emission hook for downstream EvidenceSuite/LTR automation.
+    # Optional hardcase emission hook for downstream EvidenceSuite automation.
     RETRIEVAL_HARDCASE_EMIT_ENABLED: bool = False
     # Parse-quality retrieval diagnostics (operator-facing; no ranking change by default).
     RETRIEVAL_PARSE_QUALITY_LOW_THRESHOLD: float = 0.35
@@ -1247,7 +1242,7 @@ class Settings(BaseSettings):
     # Used only by deterministic provider (test scaffold).
     SPARSE_RETRIEVAL_SYNONYMS: str = ""
 
-    # Optional ColBERT-style retrieval (ANN) channel.
+    # Optional deterministic dense candidate retrieval channel for ColBERT experiments.
     #
     # Notes:
     # - Disabled by default (no behavior change).
@@ -1257,7 +1252,7 @@ class Settings(BaseSettings):
     COLBERT_RETRIEVAL_PROVIDER: str = "deterministic"  # deterministic (test implementation)
     COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED: bool = True
     COLBERT_RETRIEVAL_INDEX_DIR: str = "./data/colbert_indexes"
-    # Safety cap: avoid building huge in-memory ANN matrices by accident.
+    # Safety cap: bound in-memory dense matrices and exact cosine scoring.
     # 0 disables the cap (not recommended for production).
     COLBERT_RETRIEVAL_MAX_DOCS: int = 10_000
     # Used only by deterministic provider.
@@ -1409,9 +1404,9 @@ class Settings(BaseSettings):
     EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_PROFILE: str = "coverage80"  # recall20|recall50|coverage80
     EVIDENCE_ITERATIVE_RETRIEVE_FALLBACK_MODE: str = "keyword"  # hybrid|vector|keyword|mmr
     # Optional post-fusion rerank for retrieval-only Evidence API (runs after query expansion fusion).
-    # Intended for deterministic/fast rerankers like LTR; do not enable heavyweight LLM rerank here.
+    # Select a supported reranker explicitly when enabling this optional stage.
     EVIDENCE_POST_RERANK_ENABLED: bool = False
-    EVIDENCE_POST_RERANK_PROVIDER: str = "ltr"  # ltr | colbert | ...
+    EVIDENCE_POST_RERANK_PROVIDER: str = "none"
     EVIDENCE_POST_RERANK_TOP_N: int = 30
     # Optional calibrated blending between retrieval fusion score and rerank score.
     # Final score = alpha * norm(rerank_score) + (1 - alpha) * norm(retrieval_score).
@@ -1423,10 +1418,10 @@ class Settings(BaseSettings):
     # the configured stages sequentially (stage2 runs on the prefix produced by stage1, etc.).
     #
     # Expected format (JSON):
-    #   [{"provider":"ltr","top_n":50},{"provider":"colbert","top_n":20}]
+    #   [{"provider":"pc","top_n":50},{"provider":"colbert","top_n":20}]
     #
     # Notes:
-    # - Keep providers deterministic/fast by default (LTR, ColBERT late-interaction).
+    # - Use supported providers explicitly; retired local models cannot be selected.
     # - Do not embed model_path/api_key values here; use env vars for those.
     EVIDENCE_POST_RERANK_PIPELINE_ENABLED: bool = False
     EVIDENCE_POST_RERANK_PIPELINE: str = ""
@@ -1477,7 +1472,7 @@ class Settings(BaseSettings):
     AGENT_LOG_INCLUDE_EXECUTION_PATH: bool = False
     AGENT_LOG_MAX_PREVIEW_CHARS: int = 500
 
-    VECTOR_BACKEND: Literal["milvus", "memory", "faiss", "chroma", "qdrant", "pgvector"] = "milvus"
+    VECTOR_BACKEND: Literal["milvus", "memory", "qdrant", "pgvector"] = "milvus"
     # Optional JSON object keyed by region -> backend, e.g. {"cn-shanghai":"qdrant"}.
     VECTOR_REGION_BACKENDS: str = ""
     # Indexing toggles (to reduce duplicate pipelines when desired)
@@ -1606,10 +1601,6 @@ class Settings(BaseSettings):
     TABLE_SEM_FILTER_MAX_COLS: int = 30
     TABLE_SEM_FILTER_MAX_CELL_CHARS: int = 200
     TABLE_SEM_FILTER_BATCH_SIZE: int = 25
-    FAISS_STORE_PATH: str = "./vector_faiss"
-    # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
-    FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False
-    CHROMA_PERSIST_PATH: str = "./vector_chroma"
     ENABLE_METRICS_LOG: bool = False
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"
     EVIDENCE_CAPSULE_STORE_DIR: str = "./runs/evidence_capsules"
@@ -1849,18 +1840,7 @@ class Settings(BaseSettings):
     NEAR_DEDUP_MAX_BUCKET_SIZE: int = 256
     # Reranker (optional: use LLM to rerank candidates for better quality).
     ENABLE_RERANKER: bool = False
-    RERANKER_PROVIDER: str = "llm"  # llm | pc | ltr | colbert | long_context | mmr | none
-    # Local Learning-to-Rank model path (xgboost JSON/UBJ).
-    # Used when reranker_provider="ltr" and by Evidence API post-rerank when enabled.
-    LTR_MODEL_PATH: str = ""
-    # Optional: sidecar manifest path for LTR model artifact (JSON).
-    # When provided (or when a sidecar `<model>.manifest.json` is present), the LTR reranker
-    # validates feature schema + model hash for safer production deployment.
-    LTR_MODEL_MANIFEST_PATH: str = ""
-    # LTR feature spec version (must match the model artifact's feature count/order).
-    # - v1: base retrieval scores + retrieval_role one-hot
-    # - v2: v1 + KG ranking features (kg_pagerank/path/etc)
-    LTR_FEATURE_SPEC_VERSION: int = 1
+    RERANKER_PROVIDER: str = "llm"  # llm | pc | colbert | long_context | mmr | none
     RERANKER_MODEL: str | None = None
     # Optional rerank budget/search profile. Example: "sweet_spot" -> keep coarse retrieval at SEARCH_K=20.
     RERANK_PROFILE: str = ""

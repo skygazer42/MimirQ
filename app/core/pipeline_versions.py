@@ -20,7 +20,15 @@ def get_active_pipeline_hash(doc_metadata: Mapping[str, Any] | None) -> str | No
     2) metadata.pipeline_hash (legacy/current pipeline hash)
     """
     meta = {} if doc_metadata is None else doc_metadata
-    value = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
+    active = meta.get("active_pipeline_hash")
+    if active is not None:
+        active = active.strip()
+        if active:
+            return active
+    pipeline_hash = meta.get("pipeline_hash")
+    if pipeline_hash is None:
+        return None
+    value = pipeline_hash.strip()
     return value if value else None
 
 

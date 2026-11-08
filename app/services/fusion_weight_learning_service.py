@@ -17,8 +17,9 @@ def _as_float(value: Any, default: float = 0.0) -> float:
 
 
 def _normalize_tenant_id(value: Any) -> str | None:
-    normalized = str(value or "").strip()
-    return normalized if normalized else None
+    if value is None:
+        return None
+    return str(value).strip()
 
 
 def _extract_trace_payload(row: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str]:
@@ -41,8 +42,8 @@ def _iter_filtered_traces(
         trace, source = _extract_trace_payload(row)
         if not isinstance(trace, dict):
             continue
-        trace_tenant = _normalize_tenant_id(trace.get("tenant_id") or row.get("tenant_id"))
-        if tenant_id and trace_tenant and trace_tenant != tenant_id:
+        trace_tenant = _normalize_tenant_id(trace.get("tenant_id", row.get("tenant_id")))
+        if tenant_id is not None and trace_tenant != tenant_id:
             continue
         out.append((trace, row, source))
     return out
@@ -94,16 +95,6 @@ def _count_channel_signal_coverage(
                 coverage[channel] += 1
 
 
-def _is_ltr_training_ready_row(*, row: Mapping[str, Any], trace: Mapping[str, Any]) -> bool:
-    return (
-        str(row.get("schema") or "").strip() == "mimirq.training_export_row.v1"
-        and isinstance(row.get("reference_sources"), list)
-        and isinstance(trace.get("citations"), list)
-        and bool(row.get("reference_sources"))
-        and bool(trace.get("citations"))
-    )
-
-
 def summarize_fusion_weight_observability(
     rows: Sequence[Mapping[str, Any]],
     *,
@@ -116,9 +107,8 @@ def summarize_fusion_weight_observability(
     rrf_hist: Counter[str] = Counter()
     channel_signal_coverage: Counter[str] = Counter()
     weight_profiles: Counter[str] = Counter()
-    ltr_training_ready_rows = 0
 
-    for trace, row, _source in filtered:
+    for trace, _row, _source in filtered:
         channels = _extract_channels(trace)
         strategy = str(channels.get("fusion_strategy") or "").strip().lower()
         if strategy:
@@ -136,15 +126,11 @@ def summarize_fusion_weight_observability(
             coverage=channel_signal_coverage,
         )
 
-        if _is_ltr_training_ready_row(row=row, trace=trace):
-            ltr_training_ready_rows += 1
-
     return {
         "schema": FUSION_WEIGHT_OBSERVABILITY_SCHEMA,
         "tenant_id": tenant_norm,
         "summary": {
             "observed_rows": len(filtered),
-            "ltr_training_ready_rows": ltr_training_ready_rows,
             "fusion_strategy_histogram": dict(sorted(strategy_hist.items())),
             "rrf_k_histogram": dict(sorted(rrf_hist.items(), key=lambda item: int(item[0]))),
             "channel_signal_coverage": {key: channel_signal_coverage[key] for key in _CHANNELS},

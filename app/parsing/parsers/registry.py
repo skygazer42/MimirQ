@@ -78,7 +78,6 @@ def _aliases_for(canonical_name: str, *extra_aliases: str) -> tuple[str, ...]:
 _EXPORTS: tuple[ParserExport, ...] = (
     ParserExport("MinerUParser", "app.parsing.parsers.mineru_parser", "MinerUParser", "mineru"),
     ParserExport("DoclingParser", "app.parsing.parsers.docling_parser", "DoclingParser", "docling"),
-    ParserExport("TCADPParser", "app.parsing.parsers.tcadp_parser", "TCADPParser", "tcadp"),
     ParserExport("Etl4LlmParser", "app.parsing.parsers.etl4llm_parser", "Etl4LlmParser", "etl4llm"),
 )
 
@@ -508,7 +507,7 @@ def resolve_parser_export(name: str):
 
 
 def get_parser_backend_family(backend: str | None) -> ParserBackendFamily | None:
-    normalized = str(backend or "").strip().lower()
+    normalized = str((backend if backend is not None else "")).strip().lower()
     if not normalized:
         return None
     return _BACKEND_BY_ALIAS.get(normalized)

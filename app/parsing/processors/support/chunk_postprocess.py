@@ -279,8 +279,10 @@ def _chunk_record_identity_key(chunk: Document) -> str | None:
     record_identity = meta.get("_record_identity") if isinstance(meta, dict) else None
     if not isinstance(record_identity, dict):
         return None
-    key = str(record_identity.get("key") or "").strip()
-    return key or None
+    key = record_identity["key"].strip()
+    if not key:
+        raise ValueError("Record identity key must not be empty")
+    return key
 
 
 def _chunks_share_record_identity_boundary(first: Document, second: Document) -> bool:

@@ -83,7 +83,7 @@ def run(*, capsule_path: Path, strict: bool = True, verify_signature: bool = Fal
         "capsule_hash_recomputed": actual_hash,
         "capsule_hash_valid": hash_valid,
         "signature_valid": signature_valid,
-        "signature_reason": signature_reason or None,
+        "signature_reason": (signature_reason),
         "replay_request": replay_request,
         "must_recall": {
             "status": str(must_recall.get("status") or ""),

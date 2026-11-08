@@ -532,7 +532,7 @@ def _format_tag_table_store_summary(doc: Document, *, meta: dict[str, Any]) -> s
     if truncated:
         parts.append("(truncated)")
 
-    return "\n".join(parts).strip() or None
+    return "\n".join(parts).strip()
 
 
 def _bounded_str(value: Any, *, limit: int) -> str | None:

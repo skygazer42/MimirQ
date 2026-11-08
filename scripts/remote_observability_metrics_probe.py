@@ -288,7 +288,7 @@ def build_probe_report(
         "schema": "mimirq.observability_metrics_probe.v1",
         "started_at_ms": started_at,
         "base_url": args.base_url,
-        "dataset_id": dataset_id or None,
+        "dataset_id": (dataset_id),
         "conversation_ids": conversation_ids,
         "before_summary": {
             "enabled": before_summary.get("enabled"),

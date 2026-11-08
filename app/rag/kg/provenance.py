@@ -98,25 +98,16 @@ def build_event_entity_provenance(
     return out
 
 
-def _normalized_key_entity_ids(key_entity_ids: set[str] | None) -> set[str] | None:
-    if not isinstance(key_entity_ids, set) or not key_entity_ids:
-        return None
-    cleaned = {str(value).strip() for value in key_entity_ids if str(value).strip()}
-    return cleaned or None
-
-
 def _path_entity_id_and_type(obj: Any) -> tuple[str | None, str | None]:
     if obj is None:
         return None, None
     if isinstance(obj, dict):
-        entity_id = obj.get("entity_id") or obj.get("id")
+        entity_id = obj.get("entity_id", obj.get("id"))
         entity_type = obj.get("type")
     else:
         entity_id = getattr(obj, "id", None)
         entity_type = getattr(obj, "type", None)
-    entity_id_text = str(entity_id or "").strip()
-    entity_type_text = str(entity_type or "").strip()
-    return entity_id_text or None, entity_type_text or None
+    return str(entity_id) if entity_id is not None else None, entity_type
 
 
 def _dedup_path_entities(
@@ -161,7 +152,7 @@ def build_kg_path_provenance(
 
     dedup = _dedup_path_entities(
         entities,
-        key_entity_ids=_normalized_key_entity_ids(key_entity_ids),
+        key_entity_ids=key_entity_ids,
     )
     pairs = sorted(((eid, typ) for eid, typ in dedup.items()), key=lambda x: (x[1], x[0]))
     return [{"entity_id": entity_id, "type": entity_type} for entity_id, entity_type in pairs[:lim]]
@@ -269,9 +260,7 @@ def _relation_path_entry(
     object_id_text = _safe_uuid_str(object_id)
     if not subject_id_text or not object_id_text or subject_id_text == object_id_text:
         return None
-    evidence_source = ""
-    if isinstance(references, dict):
-        evidence_source = str(references.get("evidence_source") or "").strip().casefold()
+    evidence_source = references.get("evidence_source") if references is not None else None
     return frozenset({subject_id_text, object_id_text}), {
         "relation_id": _safe_uuid_str(relation_id),
         "predicate": _safe_str(predicate, max_len=200),
@@ -281,7 +270,7 @@ def _relation_path_entry(
             low_max=bucket_low_max,
             mid_max=bucket_mid_max,
         ),
-        "evidence_source": evidence_source or None,
+        "evidence_source": evidence_source,
         "document_id": _safe_uuid_str(document_id),
         "chunk_id": _safe_uuid_str(chunk_id),
         "event_id": _safe_uuid_str(event_id),
@@ -406,7 +395,7 @@ def build_kg_shortest_path_provenance(
 
     ents = _shortest_path_entities(
         entities,
-        key_entity_ids=_normalized_key_entity_ids(key_entity_ids),
+        key_entity_ids=key_entity_ids,
     )
     if len(ents) < 2:
         return None

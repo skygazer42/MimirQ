@@ -161,7 +161,7 @@ docs = hybrid_retriever.retrieve(query, doc_ids, tenant_id, top_k=5)
 ```
 
 **子模块：**
-- `vector/` - 向量数据库（Milvus、FAISS、Chroma）
+- `vector/` - 向量数据库（Milvus、Qdrant、pgvector）与进程内 memory 测试索引
 - `object/` - 对象存储（MinIO）
 - `search/` - 混合检索（BM25 + 向量）
 

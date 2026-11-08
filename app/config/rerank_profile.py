@@ -13,7 +13,9 @@ _RERANK_PROFILES = {
 
 
 def normalize_rerank_profile(name):
-    key = (name or "").strip().lower()
+    if name is None:
+        return None
+    key = name.strip().lower()
     return key if key else None
 
 

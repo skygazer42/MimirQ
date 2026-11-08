@@ -8,6 +8,8 @@ The local document adapters mix parser interfaces and resource state with render
 
 ## Decision
 
+本篇保留 TCADP 的范围由[退出 XGBoost、unstructured 和腾讯云 SDK](2026-11-06-retire-parser-ml.md)部分取代：腾讯 SDK 解析器、包装与导出退出，其他解析器资源及辅助函数归属决定继续适用。
+
 Parser classes and the registry retain their existing interfaces and modules. BaseAdvancedParser retains its framework conversion hooks, async wrapper, logger and lazy parser ownership. Excel keeps configuration and workbook lifetime; DeepDoc keeps parser caches, the lock and SmallModelRuntime; Pandoc and MarkItDown keep CLI or converter resources and optional dependencies.
 
 Stateless HTML, PDF, Excel and DeepDoc rendering and metadata helpers are ordinary functions in their original modules. Their callers name those functions directly. The existing PDF test reference follows the relocated helper; its inputs and assertions stay the same. There is no compatibility wrapper or new helper module.

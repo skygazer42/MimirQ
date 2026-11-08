@@ -3,7 +3,7 @@
 本项目提供多套 Compose 配置：
 
 - `docker/docker-compose.yml`：主栈（`mimirq-api`/`mimirq-worker` + Postgres/Milvus/Redis/MinIO；默认不暴露基础设施端口）
-- `docker/docker-compose.lite.yml`：低资源栈（`mimirq-api`/`mimirq-worker` + Postgres/Redis；默认使用 Chroma 本地向量库，不启动 Milvus/MinIO）
+- `docker/docker-compose.lite.yml`：API/Worker + Postgres/Redis + 共享 Milvus（含 Etcd/内部 MinIO）；关闭文档对象存储，不含前端。保留旧命令入口，不再是免向量服务的低资源栈。
 - `docker/docker-compose.infra.yml`：仅基础设施（暴露端口，便于本地后端调试）
 - `docker/docker-compose.parsers.yml`：可选外部解析服务（Docling Serve/Marker/PaddleOCR-VL/olmOCR/Qianfan-OCR/MinerU/ETL4LLM/MagicPDF），用 `-f` 叠加并通过 `--profile` 按需启用
 
@@ -206,7 +206,7 @@ make up-prod-web
 - `postgres_data`：PostgreSQL 数据
 - `milvus_data` / `etcd_data` / `minio_data`：Milvus 相关数据
 - `upload_data`：上传文件（后端容器内路径默认为 `/data/uploads`）
-- `vector_data`：lite 模式下的本地向量库持久化目录（`CHROMA_PERSIST_PATH_DOCKER=/app/vector_chroma`）
+- 原 Chroma `vector_data` 卷不再挂载；已有数据保留，须在旧版本导出并显式迁移或重建，当前版本不自动清理该旧卷。
 - `*_cache`：按需启动的解析器模型与运行缓存
 
 从仓库根目录按需要选择一个命令：

@@ -96,7 +96,7 @@ def _scan_trace_hits(
                 continue
             if str(record.get("tenant_id") or "") != tenant_id:
                 continue
-            ts_ms = _to_int(record.get("ts_ms")) or 0
+            ts_ms = ts_ms_value if (ts_ms_value := _to_int(record.get("ts_ms"))) is not None else 0
             if ts_ms and ts_ms < cutoff_ms:
                 continue
             traces_scanned += 1
@@ -130,7 +130,7 @@ def compute_document_retrieval_hit_frequency(
 
     window_minutes_i = max(1, min(window_minutes, 60 * 24 * 30))
     max_bytes_i = max(1, min(max_bytes, 50_000_000))
-    now0 = now or datetime.now(UTC)
+    now0 = now if now is not None else datetime.now(UTC)
     cutoff_ms = int(now0.timestamp() * 1000) - (window_minutes_i * 60 * 1000)
 
     if not enabled or not path.exists():

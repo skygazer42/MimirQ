@@ -22,7 +22,7 @@ Chart 目录：`deploy/helm/mimirq`
 - 你已准备好（或计划自建）以下依赖：
   - Postgres（必需）
   - Redis（建议：用于任务队列/缓存）
-  - 向量库（Milvus / Chroma 等，取决于 `VECTOR_BACKEND`）
+  - 向量库（Milvus / Qdrant / pgvector，取决于 `VECTOR_BACKEND`）
   - MinIO（可选：图片/文档对象存储，取决于 `MINIO_ENABLED` / `MINIO_DOCUMENTS_ENABLED`）
 
 后端就绪探针（readiness）使用：
@@ -199,7 +199,7 @@ migrations:
   - `ENV=production`
   - `DB_CREATE_ALL_ON_STARTUP=false`
   - `DB_RUNTIME_MIGRATIONS_ENABLED=false`
-  - 不使用 `VECTOR_BACKEND=faiss/chroma`
+  - Chroma 与 FAISS 后端已退出，单副本和多副本均不得选择
   - 若未启用 `MINIO_ENABLED=true` 且 `MINIO_DOCUMENTS_ENABLED=true`，则 `persistence.uploads.accessModes` 必须包含 `ReadWriteMany`
 - `migrations.enabled=true` 只支持配合 `existingSecretName` 使用；pre-install hook 早于 chart 管理的 Secret 创建，不能安全依赖内置 Secret。
 - API 在 `DB_CREATE_ALL_ON_STARTUP=false` 且 `DB_RUNTIME_MIGRATIONS_ENABLED=false` 时会校验 `alembic_version`；迁移 Job 未执行或版本落后时 readiness 会保持 503，不会让 schema 不兼容的 Pod 接流量。
@@ -370,7 +370,7 @@ make helm-lint
 
 - 必须设置 `existingSecretName`
 - 必须把 `DB_CREATE_ALL_ON_STARTUP` / `DB_RUNTIME_MIGRATIONS_ENABLED` 关闭
-- 多副本场景下不得使用本地 `faiss/chroma`
+- Chroma 与 FAISS 后端已退出，不再提供本地持久向量库部署
 - 多副本 + 本地文档存储时，uploads PVC 必须声明 `ReadWriteMany`
 
 ```bash

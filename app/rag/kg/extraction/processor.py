@@ -84,7 +84,7 @@ def _render_prompt(
     max_events: int,
     max_entities: int,
 ) -> str:
-    if prompt_template:
+    if prompt_template is not None:
         schema_hint = json.dumps(schema, ensure_ascii=False)
         template_vars = {
             "context": context,
@@ -118,7 +118,7 @@ def _coerce_entity_input(ent: Any) -> tuple[str, str, str, Any, Any, str, dict[s
             ent.get("name") or "",
             ent.get("type") or "unknown",
             ent.get("description") or "",
-            ent.get("role") or None,
+            ent.get("role"),
             ent.get("weight"),
             ent.get("evidence_quote") or "",
             source_span,
@@ -159,14 +159,13 @@ def _build_entity_payload(
     )
 
 
-def _merge_entity_payload(existing: dict[str, Any], *, description: str, role: Any, evidence_quote: str) -> None:
-    new_desc = description.strip()
-    if new_desc and len(new_desc) > len(str(existing.get("description") or "")):
-        existing["description"] = new_desc
-    if not str(existing.get("evidence_quote") or "").strip():
-        existing["evidence_quote"] = str(evidence_quote or "").strip() or None
-    if not existing.get("role") and role:
-        existing["role"] = str(role or "").strip() or None
+def _merge_entity_payload(existing: dict[str, Any], *, incoming: dict[str, Any]) -> None:
+    if len(incoming["description"]) > len(existing["description"]):
+        existing["description"] = incoming["description"]
+    if existing["evidence_quote"] is None:
+        existing["evidence_quote"] = incoming["evidence_quote"]
+    if existing["role"] is None:
+        existing["role"] = incoming["role"]
 
 
 def _collect_event_entities(entities_raw: Any) -> list[dict[str, Any]]:
@@ -189,7 +188,7 @@ def _collect_event_entities(entities_raw: Any) -> list[dict[str, Any]]:
         if existing is None:
             entity_map[key] = payload
             continue
-        _merge_entity_payload(existing, description=description, role=role, evidence_quote=evidence_quote)
+        _merge_entity_payload(existing, incoming=payload)
     return list(entity_map.values())
 
 
@@ -214,7 +213,7 @@ class EventProcessor:
 
     def __init__(self, llm_client: BaseLLMClient, *, prompt_template: str | None = None):
         self.llm_client = llm_client
-        self.prompt_template = (prompt_template or "").strip() or None
+        self.prompt_template = prompt_template
 
     async def extract_from_sections(
         self,

@@ -57,7 +57,6 @@ export function EvidenceSuiteWorkbenchShell({
   handleConvertFeedbackToEvidence,
   handleCreateItem,
   handleCreateSuite,
-  handleExportLtrTraining,
   handleExportSuite,
   handleImportQAFaq,
   handlePickPackFile,
@@ -249,7 +248,6 @@ export function EvidenceSuiteWorkbenchShell({
               onOpenHardcases={() => setHardcaseOpen(true)}
               onOpenDashboard={() => setDashboardOpen(true)}
               onExportSuite={handleExportSuite}
-              onExportLtrTraining={handleExportLtrTraining}
               onSyncSuite={() => {
                 void handleSyncSuite()
               }}

@@ -27,7 +27,7 @@ WIKI_LONGFORM_PROFILE_KEY = "builtin:wiki_longform"
 def validate_profile_key(key: str | None) -> str | None:
     if key is None:
         return None
-    val = str(key or "").strip()
+    val = str((key if key is not None else "")).strip()
     if not val:
         return None
     if val.startswith("builtin:"):
@@ -75,9 +75,9 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
         cleaned_formats = ["markdown"]
 
     cleaned_patch = _normalize_pipeline_patch(payload.pipeline_patch)
-    from app.core.model_execution import reject_retired_model_provider
+    from app.core.model_execution import reject_retired_provider
 
-    reject_retired_model_provider(cleaned_patch.get("governance_keywords_provider"), capability="keyword")
+    reject_retired_provider(cleaned_patch.get("governance_keywords_provider"), capability="keyword")
     cleaned_rules = _normalize_regex_rules(payload.regex_rules)
     scripts = list(payload.processing_scripts or [])
     if len(scripts) > 10:
@@ -113,7 +113,7 @@ def _p(
         extends=extends,
         input_formats=[f for f in input_formats if f in {"markdown", "html"}] or ["markdown"],  # type: ignore[arg-type]
         pipeline_patch=dict(pipeline_patch or {}),
-        regex_rules=[RegexRuleModel(**r) for r in (regex_rules or [])],
+        regex_rules=[RegexRuleModel(**r) for r in (regex_rules if regex_rules is not None else [])],
     )
 
 

@@ -449,32 +449,6 @@ def by_docling(
     return sections, tables, pdf_parser
 
 
-def by_tcadp(
-    filename,
-    binary=None,
-    from_page=0,
-    to_page=100000,
-    lang="Chinese",
-    callback=None,
-    pdf_cls=None,
-    **kwargs,
-):
-    from app.deepdoc.parser.tcadp_parser import TCADPParser
-
-    tcadp_parser = TCADPParser()
-
-    if not tcadp_parser.check_installation():
-        callback(-1, "TCADP parser not available. Please check Tencent Cloud API configuration.")
-        return None, None, tcadp_parser
-
-    sections, tables = tcadp_parser.parse_pdf(
-        filepath=filename,
-        binary=binary,
-        callback=callback,
-        output_dir=os.environ.get("TCADP_OUTPUT_DIR", ""),
-        file_type="PDF",
-    )
-    return sections, tables, tcadp_parser
 
 
 def by_plaintext(filename, binary=None, from_page=0, to_page=100000, callback=None, **kwargs):
@@ -494,7 +468,6 @@ PARSERS = {
     "deepdoc": by_deepdoc,
     "mineru": by_mineru,
     "docling": by_docling,
-    "tcadp": by_tcadp,
     "plaintext": by_plaintext,  # default
 }
 
@@ -1020,7 +993,10 @@ def _handle_pdf_file(ctx):
     if isinstance(layout_recognizer, bool):
         layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
+    from app.core.model_execution import reject_retired_provider
+
     parser_name = layout_recognizer.strip().lower()
+    reject_retired_provider(parser_name.replace(" ", "_"), capability="parser")
     parser = PARSERS.get(parser_name, by_plaintext)
     ctx.callback(0.1, "Start to parse.")
     sections, tables, pdf_parser = parser(
@@ -1035,7 +1011,7 @@ def _handle_pdf_file(ctx):
     )
     if not sections and not tables:
         return ChunkBody(return_now=True)
-    if parser_name in ["tcadp", "docling", "mineru"]:
+    if parser_name in ["docling", "mineru"]:
         ctx.parser_config["chunk_token_num"] = 0
     res = tokenize_table(tables, ctx.doc, ctx.is_english)
     ctx.callback(0.8, "Finish parsing.")
@@ -1050,29 +1026,9 @@ def _handle_pdf_file(ctx):
 def _handle_spreadsheet_file(ctx):
     ctx.callback(0.1, "Start to parse.")
     layout_recognizer = ctx.parser_config.get("layout_recognize", "DeepDOC")
-    if layout_recognizer == "TCADP Parser":
-        from app.deepdoc.parser.tcadp_parser import TCADPParser
+    from app.core.model_execution import reject_retired_provider
 
-        tcadp_parser = TCADPParser(
-            table_result_type=ctx.parser_config.get("table_result_type", "1"),
-            markdown_image_response_type=ctx.parser_config.get("markdown_image_response_type", "1"),
-        )
-        if not tcadp_parser.check_installation():
-            ctx.callback(-1, "TCADP parser not available. Please check Tencent Cloud API configuration.")
-            return ChunkBody(return_now=True)
-
-        file_type = "XLSX" if re.search(r"\.xlsx?$", ctx.filename, re.IGNORECASE) else "CSV"
-        sections, tables = tcadp_parser.parse_pdf(
-            filepath=ctx.filename,
-            binary=ctx.binary,
-            callback=ctx.callback,
-            output_dir=os.environ.get("TCADP_OUTPUT_DIR", ""),
-            file_type=file_type,
-        )
-        ctx.parser_config["chunk_token_num"] = 0
-        res = tokenize_table(tables, ctx.doc, ctx.is_english)
-        ctx.callback(0.8, "Finish parsing.")
-        return ChunkBody(res=res, sections=sections)
+    reject_retired_provider(str(layout_recognizer).strip().lower().replace(" ", "_"), capability="parser")
 
     excel_parser = ExcelParser()
     if ctx.parser_config.get("html4excel"):

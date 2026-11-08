@@ -50,7 +50,7 @@ def _safe_post_rerank_pipeline_item(item: Any) -> dict[str, Any] | None:
     if not provider or provider in {"none", "off", "false", "0"}:
         return None
     top_n = _safe_int(item.get("top_n"), minimum=0)
-    return {"provider": provider, "top_n": top_n or None}
+    return {"provider": provider, "top_n": (top_n)}
 
 
 def _coerce_channel_budgets(raw: Any) -> dict[str, int]:
@@ -104,7 +104,7 @@ def resolve_channel_budget_policy_overrides(
         return {}, meta
 
     mode_norm = str(retrieval_mode or "").strip().lower() or "hybrid"
-    profile_norm = str(retrieval_profile or "").strip().lower()
+    profile_norm = retrieval_profile.strip().lower() if retrieval_profile is not None else None
     selected_key, selected, disabled_meta = _channel_budget_policy_selected(
         profiles,
         mode_norm=mode_norm,
@@ -146,7 +146,7 @@ def _channel_budget_policy_schema_meta(policy: dict[str, Any]) -> dict[str, Any]
     return None
 
 
-def _select_channel_budget_profile(profiles: dict[str, Any], *, profile_norm: str, mode_norm: str) -> str:
+def _select_channel_budget_profile(profiles: dict[str, Any], *, profile_norm: str | None, mode_norm: str) -> str:
     for key in (profile_norm, mode_norm, "default"):
         if key and isinstance(profiles.get(key), dict):
             return key
@@ -157,7 +157,7 @@ def _channel_budget_policy_selected(
     profiles: dict[str, Any],
     *,
     mode_norm: str,
-    profile_norm: str,
+    profile_norm: str | None,
 ) -> tuple[str, dict[str, Any], dict[str, Any] | None]:
     selected_key = _select_channel_budget_profile(profiles, profile_norm=profile_norm, mode_norm=mode_norm)
     if not selected_key:
@@ -167,7 +167,7 @@ def _channel_budget_policy_selected(
             {
                 "reason": "profile_not_found",
                 "retrieval_mode": mode_norm,
-                "retrieval_profile": profile_norm or None,
+                "retrieval_profile": profile_norm,
             },
         )
     selected = profiles.get(selected_key) if isinstance(profiles.get(selected_key), dict) else {}
@@ -199,7 +199,7 @@ def _channel_budget_policy_applied_meta(
     *,
     selected_key: str,
     mode_norm: str,
-    profile_norm: str,
+    profile_norm: str | None,
     budgets: dict[str, int],
 ) -> dict[str, Any]:
     return {
@@ -207,7 +207,7 @@ def _channel_budget_policy_applied_meta(
         "reason": "applied",
         "selected_profile": selected_key,
         "retrieval_mode": mode_norm,
-        "retrieval_profile": profile_norm or None,
+        "retrieval_profile": profile_norm,
         "budget_channels": sorted(budgets.keys()),
         "policy_hash": stable_hash(json.dumps(policy, ensure_ascii=False, sort_keys=True), length=16),
     }

@@ -10,8 +10,9 @@ KG_EXTRACTION_JOB_OPTIONS_SCHEMA = "mimirq.kg_extraction_job_options.v1"
 
 
 def _optional_text(value: object) -> str | None:
-    text = str(value or "").strip()
-    return text or None
+    if value is not None and not isinstance(value, str):
+        raise ValueError("KG extraction text options must be strings or null")
+    return value
 
 
 def _optional_bool(value: object, *, field: str) -> bool | None:
@@ -57,9 +58,7 @@ def build_kg_extraction_job_options(
     extract_skills: bool | None,
 ) -> dict[str, Any]:
     normalized_pipeline_hash = _optional_text(pipeline_hash)
-    normalized_prompt_template_id = _optional_text(prompt_template_id)
-    if normalized_prompt_template_id is not None:
-        normalized_prompt_template_id = str(UUID(normalized_prompt_template_id))
+    normalized_prompt_template_id = str(UUID(str(prompt_template_id))) if prompt_template_id is not None else None
 
     return {
         "schema": KG_EXTRACTION_JOB_OPTIONS_SCHEMA,
@@ -81,12 +80,12 @@ def normalize_kg_extraction_job_options(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping) or value.get("schema") != KG_EXTRACTION_JOB_OPTIONS_SCHEMA:
         raise ValueError("unsupported KG extraction job options schema")
     return build_kg_extraction_job_options(
-        pipeline_hash=_optional_text(value.get("pipeline_hash")),
+        pipeline_hash=value.get("pipeline_hash"),
         prompt_template_id=value.get("prompt_template_id"),
-        prompt_template_key=_optional_text(value.get("prompt_template_key")),
-        prompt_ab_experiment_key=_optional_text(value.get("prompt_ab_experiment_key")),
-        extraction_backend=_optional_text(value.get("extraction_backend")),
-        kg_python_plugin=_optional_text(value.get("kg_python_plugin")),
+        prompt_template_key=value.get("prompt_template_key"),
+        prompt_ab_experiment_key=value.get("prompt_ab_experiment_key"),
+        extraction_backend=value.get("extraction_backend"),
+        kg_python_plugin=value.get("kg_python_plugin"),
         kg_python_params=value.get("kg_python_params"),
         replace_existing=_required_bool(value.get("replace_existing"), field="replace_existing"),
         prune_orphan_entities=_required_bool(value.get("prune_orphan_entities"), field="prune_orphan_entities"),

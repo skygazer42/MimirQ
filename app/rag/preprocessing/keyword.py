@@ -13,7 +13,7 @@ from collections import Counter
 from operator import itemgetter
 from typing import Any, cast
 
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.rag.preprocessing.stopwords import STOPWORDS
 
 
@@ -47,8 +47,8 @@ def _expand_tokens_with_subtokens(tokens: set[str]) -> set[str]:
 
 
 def get_keyword_extractor(provider: str | None = None) -> object:
-    key = (provider or "jieba").lower().strip()
-    reject_retired_model_provider(key, capability="keyword")
+    key = ("jieba" if provider is None else provider).lower().strip()
+    reject_retired_provider(key, capability="keyword")
     cached = _extractor_cache.get(key)
     if cached is not None:
         return cached
@@ -71,8 +71,7 @@ def extract_keywords(
     top_k: int | None = 10,
     **kwargs: Any,
 ) -> list[str]:
-    provider_key = (provider or "jieba").lower().strip()
-    extractor = get_keyword_extractor(provider_key)
+    extractor = get_keyword_extractor(provider)
     if not hasattr(extractor, "extract_keywords"):
         raise KeywordProviderUnavailableError(f"Invalid keyword extractor for provider={provider!r}")
     keywords = extractor.extract_keywords(text or "", max_keywords_per_chunk=top_k, **kwargs)

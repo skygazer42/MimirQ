@@ -137,12 +137,8 @@ The Makefile is the source of truth for common workflows; these scripts are the 
   - Plugin Golden source example: `python scripts/regression_gate.py --dataset-id <dataset_uuid> --plugin-golden-ref plugin:<id>@<version>:chunk --metrics "" --thresholds ci/plugin.thresholds.json`
   - Generated Plugin Golden thresholds preserve compact `case_source` provenance and reject plugin ref/package-hash mismatches before starting a run.
 - `release_gate.py`: combine regression gate + SLO snapshot + cost budgets into a single release gate (CI/staging)
-- `train_ltr_from_regression_cases.py`: train an xgboost LTR reranker model from regression cases via Evidence API (retrieval-only)
-  - Writes a sidecar manifest by default: `<out-model>.manifest.json` (can be disabled with `--no-manifest`)
-- `eval_ltr_offline.py`: compare baseline retrieval vs local LTR rerank offline (candidates via Evidence API)
-- `prepare_ltr_rollout.py`: materialize approved evidence / selected feedback into a bounded LTR rollout workflow, then train, evaluate, compare, and optionally register a candidate model without activating it
-- `eval_rerank_pipeline_offline.py`: compare baseline retrieval vs a local multi-stage rerank pipeline (LTR/ColBERT), offline
-  - Supports `--colbert-provider deterministic|hf` plus model/device/batch flags
+- `eval_rerank_pipeline_offline.py`: compare baseline retrieval vs a local multi-stage rerank pipeline (ColBERT), offline
+  - Uses the retained deterministic ColBERT scaffold; no local model weights are loaded
   - Summary JSON includes per-metric `wins/losses/ties` so you can see when the stronger path helps or hurts
 - `eval_retrieval_fusion_offline.py`: compare fusion strategy variants offline via Evidence API (retrieval-only)
 - `run_sample_retrieval_benchmark.py`: run a deterministic local sample benchmark from `data/sample/retrieval_fixture_v1.json`

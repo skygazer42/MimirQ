@@ -108,8 +108,8 @@ def _create_ingestion_run_if_missing(
 ) -> UUID | None:
     if ingestion_run_id is not None:
         return ingestion_run_id
+    ingestion_kind_norm = (default_kind if ingestion_kind is None else ingestion_kind).strip()
     try:
-        ingestion_kind_norm = str(ingestion_kind or default_kind).strip() or default_kind
         ingestion_run = ingestion_run_service.create_run(
             db,
             tenant_id=tenant_id,
@@ -160,7 +160,7 @@ def _finalize_document_metadata(
     if ingestion_run_id is not None:
         doc_metadata.setdefault("created_by_run_id", str(ingestion_run_id))
         doc_metadata["last_ingestion_run_id"] = str(ingestion_run_id)
-        doc_metadata["last_ingestion_kind"] = str(ingestion_kind or default_kind)
+        doc_metadata["last_ingestion_kind"] = default_kind if ingestion_kind is None else ingestion_kind
     return doc_metadata, pipeline_hash
 
 
@@ -285,7 +285,7 @@ def _create_url_ingestion_run(
 ) -> UUID | None:
     run_cfg = {
         "source_url": url,
-        "url_final_url": source.final_url or None,
+        "url_final_url": source.final_url,
         "url_canonical_url": source.canonical_url,
         "parser_backend_requested": str(body.parser_backend or "")[:80],
         "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
@@ -363,12 +363,12 @@ def _build_url_document_metadata(
         "source_last_modified_source": source.last_modified_source,
         "source_last_modified_raw": source.last_modified_raw,
         "source_etag": source.etag,
-        "url_content_type": ingest_file.content_type or None,
-        "url_final_url": source.final_url or None,
+        "url_content_type": ingest_file.content_type,
+        "url_final_url": source.final_url,
         "url_canonical_url": source.canonical_url,
-        "url_normalized_url": source.normalized_url or None,
-        "url_normalized_requested": source.normalized_requested or None,
-        "url_normalized_final": source.normalized_final or None,
+        "url_normalized_url": source.normalized_url,
+        "url_normalized_requested": source.normalized_requested,
+        "url_normalized_final": source.normalized_final,
         "url_normalized_canonical": source.normalized_canonical,
     }
 
@@ -402,7 +402,7 @@ def _build_local_html_document_metadata(
         "source_etag": None,
         "url_content_type": content_type,
         "url_final_url": source_url,
-        "url_normalized_url": url_normalized or None,
+        "url_normalized_url": url_normalized,
     }
 
 
@@ -502,7 +502,7 @@ async def _reuse_duplicate_document_for_ingest(
         meta,
         content_sha256=content_sha256,
         pipeline_hash=pipeline_hash,
-        parser_backend_resolved=str(meta.get("parser_backend_resolved") or "").strip() or None,
+        parser_backend_resolved=meta.get("parser_backend_resolved"),
     )
     duplicate.doc_metadata = meta
     duplicate.dedup_key = build_document_dedup_key(content_sha256=content_sha256, pipeline_hash=pipeline_hash)
@@ -622,7 +622,7 @@ async def _ingest_url_upload_request_with_source(
         ingestion_run_id=ingestion_run_id,
         ingestion_kind=ingestion_kind,
         default_kind="upload_url",
-        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+        parser_backend_resolved=doc_metadata.get("parser_backend_resolved"),
     )
 
     if settings.UPLOAD_DEDUP_ENABLED and ingest_file.content_sha256:
@@ -654,7 +654,7 @@ async def _ingest_url_upload_request_with_source(
         dataset_id=dataset.id,
         document_id=ingest_file.file_id,
         extension=ingest_file.file_ext,
-        content_type=ingest_file.content_type or None,
+        content_type=ingest_file.content_type,
     )
     if is_object_storage_uri(stored_path):
         store = get_document_object_store()
@@ -823,12 +823,9 @@ def _sync_duplicate_document_pipeline_identity(
         doc_metadata,
         content_sha256=file_sha256,
         pipeline_hash=pipeline_hash,
-        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+        parser_backend_resolved=doc_metadata.get("parser_backend_resolved"),
     )
-    normalized_pipeline_hash = str(pipeline_hash or "").strip()
-    if not normalized_pipeline_hash:
-        normalized_pipeline_hash = None
-    doc_metadata["pipeline_hash"] = normalized_pipeline_hash
+    doc_metadata["pipeline_hash"] = pipeline_hash
     duplicate_document.dedup_key = build_document_dedup_key(content_sha256=file_sha256, pipeline_hash=pipeline_hash)
 
 
@@ -954,7 +951,7 @@ def _build_document_metadata(
         doc_metadata,
         content_sha256=file_sha256 if isinstance(file_sha256, str) else None,
         pipeline_hash=pipeline_hash,
-        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+        parser_backend_resolved=doc_metadata.get("parser_backend_resolved"),
     )
     return _PreparedDocumentMetadata(doc_metadata=doc_metadata, pipeline_hash=pipeline_hash)
 
@@ -1001,16 +998,13 @@ def _merge_duplicate_document_metadata(
             patch=user_patch,
             replace=False,
         )
-    active_pipeline_hash = str(meta_any.get("pipeline_hash") or "").strip()
-    if not active_pipeline_hash:
-        active_pipeline_hash = None
-    meta_any.setdefault("active_pipeline_hash", active_pipeline_hash)
+    meta_any.setdefault("active_pipeline_hash", meta_any["pipeline_hash"])
     meta_any.setdefault("active_pipeline_ready", bool(str(duplicate_document.status or "").lower() == "completed"))
     sync_pipeline_execution_identity(
         meta_any,
         content_sha256=file_sha256,
         pipeline_hash=pipeline_hash,
-        parser_backend_resolved=str(meta_any.get("parser_backend_resolved") or "").strip() or None,
+        parser_backend_resolved=meta_any.get("parser_backend_resolved"),
     )
     if ingest_lock.key and ingest_lock.value:
         meta_any["ingest_lock_key"] = ingest_lock.key
@@ -1543,7 +1537,7 @@ async def _ingest_local_html_request_with_source(
         ingestion_run_id=ingestion_run_id,
         ingestion_kind=ingestion_kind,
         default_kind="connector_html",
-        parser_backend_resolved=str(doc_metadata.get("parser_backend_resolved") or "").strip() or None,
+        parser_backend_resolved=doc_metadata.get("parser_backend_resolved"),
     )
     if settings.UPLOAD_DEDUP_ENABLED and ingest_file.content_sha256:
         duplicate = source_persistence.find_duplicate_document(

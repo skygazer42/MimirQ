@@ -116,7 +116,7 @@ def _enforce_non_empty_retrieval_scope(
     *,
     tenant_id: UUID,
     account_id: str,
-    scope_document_ids: list[UUID],
+    scope_document_ids: list[UUID] | None,
     scope_dataset_id: UUID | None,
     scope_dataset_ids: list[UUID] | None = None,
     allow_empty_scope: bool = False,
@@ -200,14 +200,14 @@ def _resolve_retrieval_scope(
     dataset_id: UUID | None,
     dataset_ids: list[UUID] | None = None,
     allow_multi_dataset: bool = False,
-) -> tuple[UUID | None, list[UUID], list[UUID]]:
+) -> tuple[UUID | None, list[UUID], list[UUID] | None]:
     requested_dataset_ids = _unique_dataset_ids(dataset_ids)
     if allow_multi_dataset and dataset_id is not None and requested_dataset_ids:
         raise HTTPException(status_code=400, detail=DATASET_ID_AND_DATASET_IDS_CONFLICT_DETAIL)
 
     scope_dataset_id: UUID | None = None
     scope_dataset_ids: list[UUID] = []
-    scope_document_ids: list[UUID] = []
+    scope_document_ids: list[UUID] | None = None
     if document_ids:
         scope_document_ids = filter_allowed_document_ids(db, tenant_id, account_id, document_ids)
     elif allow_multi_dataset and requested_dataset_ids:
@@ -245,7 +245,7 @@ def _resolve_dataset_defaults_rag_config(
     db: Session,
     tenant_id: UUID,
     scope_dataset_id: UUID | None,
-    scope_document_ids: list[UUID],
+    scope_document_ids: list[UUID] | None,
     rag_config: ChatRAGConfig,
     request_fields_set: set[str],
     default_profile: str | None = None,
@@ -363,7 +363,7 @@ def _resolve_structure_dataset_id(
     db: Session,
     tenant_id: UUID,
     scope_dataset_id: UUID | None,
-    scope_document_ids: list[UUID],
+    scope_document_ids: list[UUID] | None,
 ) -> UUID | None:
     if scope_dataset_id is not None or not scope_document_ids:
         return scope_dataset_id
@@ -496,7 +496,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
             {
                 "pass": "primary",
                 "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
-                "retrieval_profile": str(state.get("retrieval_profile") or "") or None,
+                "retrieval_profile": state.get("retrieval_profile"),
                 "empty_retrieval": metrics.get("empty_retrieval")
                 if isinstance(metrics.get("empty_retrieval"), dict)
                 else None,
@@ -532,7 +532,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
     qd = fallback.get("query_debug")
     result["query_debug"] = qd if isinstance(qd, dict) else query_debug
     result["abstain_triggered"] = f_abstain
-    result["abstain_reason"] = fallback.get("abstain_reason") or f_metrics.get("abstain_reason") or None
+    result["abstain_reason"] = fallback.get("abstain_reason")
     result["has_evidence"] = f_has_evidence
     result["selected_pass"] = "fallback"
     return result
@@ -607,7 +607,7 @@ def _build_evidence_capsule_payload(
     tenant_id: UUID,
     scope_dataset_id: UUID | None,
     scope_dataset_ids: list[UUID],
-    scope_document_ids: list[UUID],
+    scope_document_ids: list[UUID] | None,
     selected_pass: str,
 ) -> dict[str, Any] | None:
     try:
@@ -625,7 +625,7 @@ def _build_evidence_capsule_payload(
                 "tenant_id": str(tenant_id),
                 "dataset_id": str(scope_dataset_id) if scope_dataset_id else None,
                 "dataset_ids": [str(dataset_id) for dataset_id in scope_dataset_ids],
-                "document_ids": [str(d) for d in scope_document_ids[:200]],
+                "document_ids": None if scope_document_ids is None else [str(d) for d in scope_document_ids[:200]],
                 "selected_pass": str(selected_pass),
             },
         )
@@ -907,11 +907,11 @@ async def retrieve_preview(
     state = build_rag_state(
         question=body.query,
         history=[m.model_dump() for m in body.history],
-        document_ids=scope_document_ids or None,
+        document_ids=scope_document_ids,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=scope_dataset_id,
-        dataset_ids=scope_dataset_ids or None,
+        dataset_ids=scope_dataset_ids,
         top_k=effective_rag_config.top_k,
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
@@ -1247,11 +1247,11 @@ async def retrieve_evidence(
     state = build_rag_state(
         question=body.query,
         history=[m.model_dump() for m in body.history],
-        document_ids=scope_document_ids or None,
+        document_ids=scope_document_ids,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=scope_dataset_id,
-        dataset_ids=scope_dataset_ids or None,
+        dataset_ids=scope_dataset_ids,
         top_k=effective_rag_config.top_k,
         score_threshold=effective_rag_config.score_threshold,
         retrieval_mode=effective_rag_config.retrieval_mode,
@@ -1512,7 +1512,7 @@ async def prompt_preview(
     state = build_rag_state(
         question=body.query,
         history=[m.model_dump() for m in body.history],
-        document_ids=scope_document_ids or None,
+        document_ids=scope_document_ids,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=scope_dataset_id,

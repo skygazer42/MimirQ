@@ -23,8 +23,8 @@ class LazyRedisClient:
         on_error: Callable[[Exception], None] | None = None,
     ) -> None:
         self._url = url
-        self._kwargs = dict(kwargs or {})
-        self._enabled = enabled or (lambda: True)
+        self._kwargs = dict((kwargs if kwargs is not None else {}))
+        self._enabled = enabled if enabled is not None else lambda: True
         self._skip_empty_url = skip_empty_url
         self._strip_url = strip_url
         self._suppress_errors = suppress_errors

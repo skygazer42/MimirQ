@@ -149,7 +149,7 @@ def _analyze_image_code(
             "code_text": code_text,
             "element": {
                 "kind": "image",
-                "visual_kind": visual_kind or None,
+                "visual_kind": visual_kind,
                 "text": code_text or str(alt or "").strip() or f"{visual_kind or 'image'} image",
                 "attributes": {
                     "source_content_type": "image_code" if code_text else "image_understanding",

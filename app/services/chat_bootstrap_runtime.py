@@ -13,6 +13,7 @@ from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
 from app.models.rag_config_template import RagConfigTemplate
 from app.services.chat_cache_runtime import (
+    ChatCacheLookupInput,
     annotate_chat_cache_metrics,
     prepare_chat_cache_lookup,
 )
@@ -61,7 +62,7 @@ class PreparedChatTurnSession:
     conversation: Conversation
     conversation_id: UUID
     scope_dataset_id: UUID | None
-    allowed_doc_ids: list[UUID]
+    allowed_doc_ids: list[UUID] | None
     long_term_messages: list[dict[str, Any]]
 
 
@@ -185,7 +186,7 @@ def _build_rag_template_meta(
     strategy = str(rag_config_template_resolver_debug.get("strategy") or "").strip().lower()
     if strategy == "adaptive_epsilon_greedy":
         rag_config_template_meta["reward_writeback"] = build_adaptive_routing_reward_writeback(
-            experiment_key=chosen.ab_experiment_key or effective_rag_config_ab_experiment_key,
+            experiment_key=(chosen.ab_experiment_key),
             variant=chosen.ab_variant,
             strategy=rag_config_template_resolver_debug.get("strategy"),
             decision=rag_config_template_resolver_debug.get("decision"),
@@ -220,8 +221,16 @@ def _resolve_rag_template_runtime(
     try:
         if not (
             effective_rag_config_template_id
-            or (effective_rag_config_template_key or "").strip()
-            or (effective_rag_config_ab_experiment_key or "").strip()
+            if effective_rag_config_template_id
+            else normalized_value
+            if (
+                normalized_value := (
+                    effective_rag_config_template_key if effective_rag_config_template_key is not None else ""
+                ).strip()
+            )
+            else (
+                effective_rag_config_ab_experiment_key if effective_rag_config_ab_experiment_key is not None else ""
+            ).strip()
         ):
             return effective_rag_config, None
         chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
@@ -463,29 +472,31 @@ async def prepare_stream_chat_runtime(
     rag_config_template_meta = request_runtime.rag_config_template_meta
     history_for_llm = request_runtime.history_for_llm
 
-    cache_scope_dataset_id = dataset_id_used or scope_dataset_id
+    cache_scope_dataset_id = dataset_id_used
     rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
     prompt_cfg = {
         "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
-        "prompt_template_key": (effective_prompt_template_key or None),
-        "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
+        "prompt_template_key": effective_prompt_template_key,
+        "prompt_ab_experiment_key": effective_prompt_ab_experiment_key,
     }
     cache_feature_enabled, cache_key, cache_skip_reason = prepare_chat_cache_lookup(
-        db=db,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=cache_scope_dataset_id,
-        document_ids=document_ids,
-        history=request.history,
-        enable_long_term_memory=request.enable_long_term_memory,
-        long_term_messages=long_term_messages,
-        enable_structured_memory=request.enable_structured_memory,
-        question=request.message,
-        rag_config=rag_cfg,
-        prompt_config=prompt_cfg,
-        structured_output=request.structured_output,
-        structured_preset=request.structured_preset,
-        use_graph=effective_rag_config.use_graph,
+        options=ChatCacheLookupInput(
+            db=db,
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=cache_scope_dataset_id,
+            document_ids=document_ids,
+            history=request.history,
+            enable_long_term_memory=request.enable_long_term_memory,
+            long_term_messages=long_term_messages,
+            enable_structured_memory=request.enable_structured_memory,
+            question=request.message,
+            rag_config=rag_cfg,
+            prompt_config=prompt_cfg,
+            structured_output=request.structured_output,
+            structured_preset=request.structured_preset,
+            use_graph=effective_rag_config.use_graph,
+        ),
     )
     cache_eligible = bool(cache_key)
     cached = await get_cached_chat_response_async(cache_key) if cache_key else None

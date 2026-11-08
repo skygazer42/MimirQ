@@ -432,7 +432,7 @@ def _extract_language_and_keywords(state: _DocumentState, options: GovernanceCle
     if options.detect_language:
         try:
             result = detect_language_fn(state.text, min_chars=int(options.language_min_chars or 0))
-            state.language = result.language.strip() or None
+            state.language = result.language
             state.language_confidence = result.confidence
         except Exception:
             state.language = None
@@ -683,7 +683,7 @@ class GovernanceProcessor:
         stats = _build_governance_stats(
             totals,
             document_count=document_count,
-            gate_reasons=gate_reasons or None,
+            gate_reasons=gate_reasons,
         )
         return ([], stats) if gate_reasons else (cleaned, stats)
 

@@ -120,7 +120,7 @@ class FallbackChatOpenAI(BaseChatModel):
     @property
     def model_name(self) -> str | None:
         meta = self.get_last_invocation_meta()
-        return str(meta.get("selected_model") or _model_name_of(self.primary) or "") or None
+        return meta.get("selected_model", _model_name_of(self.primary))
 
     @property
     def model(self) -> str | None:

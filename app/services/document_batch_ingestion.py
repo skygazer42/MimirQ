@@ -540,7 +540,7 @@ async def _process_live_batch_upload(
             file_id=file_id,
             file_path=file_path,
             file_size=file_size,
-            file_sha256=file_sha256,
+            file_sha256=(file_sha256),
             content_type=file.content_type or "application/octet-stream",
             request_parser_backend=request_parser_backend,
             request_chunk_strategy=request_chunk_strategy,
@@ -901,7 +901,7 @@ async def _stage_upload_for_precheck(
         "file_id": file_id,
         "file_path": str(file_path),
         "file_size": file_size,
-        "file_sha256": file_sha256,
+        "file_sha256": (file_sha256),
         "content_type": file.content_type or "application/octet-stream",
     }
 

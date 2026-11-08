@@ -133,10 +133,10 @@ def get_document_timeline(
                 action="document.created",
                 created_at=created_at,
                 source="synthetic",
-                actor_id=(document.owner_id or None),
-                stage=(document.current_stage or None),
-                status=((document.status or "").strip() or None),
-                progress=document.processing_progress or 0,
+                actor_id=document.owner_id,
+                stage=document.current_stage,
+                status=document.status,
+                progress=document.processing_progress,
             )
         )
 
@@ -148,9 +148,9 @@ def get_document_timeline(
                 action="document.status",
                 created_at=updated_at,
                 source="synthetic",
-                stage=(document.current_stage or None),
-                status=((document.status or "").strip() or None),
-                progress=document.processing_progress or 0,
+                stage=document.current_stage,
+                status=document.status,
+                progress=document.processing_progress,
             )
         )
 
@@ -169,8 +169,8 @@ def get_document_timeline(
                 action=row.action or "",
                 created_at=row.created_at,
                 source="audit",
-                actor_id=(row.actor_id or None),
-                request_id=(row.request_id or None),
+                actor_id=row.actor_id,
+                request_id=row.request_id,
                 stage=stage,
                 status=status,
                 progress=progress,

@@ -116,14 +116,12 @@ from app.parsing.processors.support.quality import (  # noqa: F401
     _low_confidence_span,
     _ocr_confidence_from_metadata,
     _positive_governance_counts,
-    _positive_string_count_map,
     _safe_governance_int,
     _seal_candidate_from_document,
     _seal_primary_metadata,
     _seal_segment_candidate_count,
     _seal_segment_page,
     _seal_summary_to_specialty_signals,
-    _string_count_map,
 )
 from app.parsing.processors.support.recovery import (
     CheckpointedRetryRequiredError,
@@ -906,8 +904,6 @@ class DocumentProcessorService:
         metadata = dict(db_doc.doc_metadata or {})
         metadata["parser_backend"] = parser_backend
         metadata["chunk_strategy"] = chunk_strategy
-        metadata.setdefault("parser_backend_requested", parser_backend)
-        metadata.setdefault("chunk_strategy_requested", chunk_strategy)
 
         db_doc.doc_metadata = metadata
         db.commit()
@@ -1131,8 +1127,8 @@ class DocumentProcessorService:
         return {
             "chunk_index": int(index),
             "page": page,
-            "content_type": str(meta.get("content_type") or "").strip().lower() or None,
-            "doc_type_kwd": str(meta.get("doc_type_kwd") or "").strip().lower() or None,
+            "content_type": meta.get("content_type"),
+            "doc_type_kwd": meta.get("doc_type_kwd"),
         }
 
     @staticmethod
@@ -1423,8 +1419,8 @@ class DocumentProcessorService:
         - governance quality metrics (density / outline ratio)
         """
 
-        before = list(before_items or [])
-        after = list(after_items or [])
+        before = list((before_items if before_items is not None else []))
+        after = list((after_items if after_items is not None else []))
 
         original_chars = sum(len(d.page_content or "") for d in before)
         cleaned_chars = sum(len(d.page_content or "") for d in after)
@@ -1486,20 +1482,20 @@ class DocumentProcessorService:
         metadata["governance_rules_applied"] = int(stats.applied_rules)
         metadata["governance_dropped_documents"] = int(stats.dropped or 0)
 
-        drop_reasons = _string_count_map(stats.drop_reasons)
+        drop_reasons = stats.drop_reasons
         if drop_reasons:
             metadata["governance_drop_reasons"] = drop_reasons
-        pii_hits = _string_count_map(stats.pii_hits)
+        pii_hits = stats.pii_hits
         if pii_hits:
             metadata["governance_pii_hits"] = pii_hits
-        secrets_hits = _string_count_map(stats.secrets_hits)
+        secrets_hits = stats.secrets_hits
         if secrets_hits:
             metadata["governance_secrets_hits"] = secrets_hits
 
         # Persist richer "effects" counters for dataset-level governance audit (best-effort).
         metadata.update(_positive_governance_counts(stats))
 
-        languages = _positive_string_count_map(stats.languages)
+        languages = stats.languages
         if languages:
             # Keep small; caller can still use governance_enrichment.language for a canonical single value.
             metadata["governance_languages"] = languages
@@ -1852,10 +1848,10 @@ class DocumentProcessorService:
         coverage: dict[str, float | int] | None,
     ) -> dict[str, float | int]:
         def int_metric(source: dict[str, Any] | None, key: str) -> int:
-            return int((source or {}).get(key) or 0) if isinstance(source, dict) else 0
+            return int((source if source is not None else {}).get(key) or 0) if isinstance(source, dict) else 0
 
         def float_metric(source: dict[str, Any] | None, key: str) -> float:
-            return float((source or {}).get(key) or 0.0) if isinstance(source, dict) else 0.0
+            return float((source if source is not None else {}).get(key) or 0.0) if isinstance(source, dict) else 0.0
 
         return {
             "count": int_metric(stats, "count"),
@@ -1962,7 +1958,9 @@ class DocumentProcessorService:
 
         # Best-effort chunk coverage metrics (requires offsets).
         ranges = self._chunk_coverage_ranges(chunks)
-        total_chars = int(total_characters or 0) or int(getattr(db_doc, "total_characters", 0) or 0)
+        total_chars = int((total_characters if total_characters is not None else 0)) or int(
+            getattr(db_doc, "total_characters", 0) or 0
+        )
         coverage: dict[str, float | int] | None = None
         if ranges and total_chars > 0:
             coverage = compute_chunk_coverage_metrics_from_ranges(
@@ -2510,7 +2508,7 @@ class DocumentProcessorService:
             if isinstance(raw_image, bytes):
                 return cls._jpeg_bytes_from_binary(raw_image)
             return cls._jpeg_bytes_from_pil_image(raw_image)
-        return cls._jpeg_bytes_from_binary(base64.b64decode(b64_data or ""))
+        return cls._jpeg_bytes_from_binary(base64.b64decode((b64_data if b64_data is not None else "")))
 
     @staticmethod
     def _close_metadata_raw_image(raw_image: Any | None) -> None:

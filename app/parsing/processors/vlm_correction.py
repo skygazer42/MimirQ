@@ -22,7 +22,7 @@ def should_apply_vlm_correction(
 ) -> bool:
     if not bool(enabled):
         return False
-    raw = (pdf_quality or {}).get("table_quality_score")
+    raw = (pdf_quality if pdf_quality is not None else {}).get("table_quality_score")
     try:
         score = float(raw)
     except Exception:
@@ -79,7 +79,7 @@ async def apply_vlm_correction_async(
     applied_pages: list[int] = []
     remaining = max(0, int(max_pages or 0))
 
-    for doc in documents or []:
+    for doc in documents if documents is not None else []:
         meta = dict(doc.metadata or {})
         page_raw = meta.get("page")
         if page_raw is None:
@@ -121,7 +121,7 @@ def apply_vlm_correction(
     applied_pages: list[int] = []
     remaining = max(0, int(max_pages or 0))
 
-    for doc in documents or []:
+    for doc in documents if documents is not None else []:
         meta = dict(doc.metadata or {})
         page_raw = meta.get("page")
         if page_raw is None:
@@ -211,7 +211,7 @@ async def _call_vlm_backend_async(
       - JSON {"markdown": "..."} OR
       - raw text body (treated as markdown)
     """
-    payload = {"markdown": str(markdown or ""), "meta": dict(meta or {})}
+    payload = {"markdown": str(markdown or ""), "meta": dict((meta if meta is not None else {}))}
     timeout = float(timeout_sec)
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
@@ -327,7 +327,9 @@ def maybe_correct_markdown_pages(
         corrected, is_changed, _note = _call_vlm_backend(
             api_url=url,
             markdown=raw,
-            meta={**(meta or {}), "page_index": int(i + 1)} if meta is not None else {"page_index": int(i + 1)},
+            meta={**(meta if meta is not None else {}), "page_index": int(i + 1)}
+            if meta is not None
+            else {"page_index": int(i + 1)},
             timeout_sec=timeout_f,
         )
         if is_changed:

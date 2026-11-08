@@ -25,7 +25,7 @@ def _apply_connector_identity_metadata(
     if isinstance(extra, dict):
         connector_meta.update({key: value for key, value in extra.items() if value is not None})
 
-    connector_meta["connector_id"] = str(connector_id or "").strip()
+    connector_meta["connector_id"] = connector_id.strip()
     connector_meta["run_id"] = str(run.id)
     if run.dataset_id is not None:
         connector_meta["dataset_id"] = str(run.dataset_id)
@@ -34,8 +34,8 @@ def _apply_connector_identity_metadata(
     if config_id:
         connector_meta["config_id"] = config_id
 
-    source_ref_norm = str(source_ref or "").strip()[:1000] or None
-    source_id_norm = str(source_id or source_ref_norm or "").strip()[:1000] or None
+    source_ref_norm = source_ref.strip()[:1000] if source_ref is not None else None
+    source_id_norm = source_id.strip()[:1000] if source_id is not None else source_ref_norm
     if source_ref_norm is not None:
         connector_meta["source_ref"] = source_ref_norm
     if source_id_norm is not None:
@@ -170,7 +170,7 @@ def _upsert_db_row_sidecar_document(
             file_type="dbrows",
             file_size=0,
             file_path=file_path,
-            owner_id=(requested_by or None),
+            owner_id=(requested_by),
             access_mode="inherit",
             status="completed",
             processing_progress=100,

@@ -31,9 +31,9 @@ def ensure_tenant_member_for_jwt_user(
     tenant_id: UUID,
     user_id: str,
     actor_id: str = "system:jwt",
-    request_id: str | None = None,
-    ip: str | None = None,
-    user_agent: str | None = None,
+    request_id: str | None,
+    ip: str | None,
+    user_agent: str | None,
 ) -> bool:
     """
     Ensure a tenant_members row exists for (tenant_id, user_id).
@@ -88,9 +88,9 @@ def maybe_auto_provision_jwt_tenant_member_best_effort(
     db_factory: Callable[[], Session],
     tenant_id: UUID,
     user_id: str,
-    request_id: str | None = None,
-    ip: str | None = None,
-    user_agent: str | None = None,
+    request_id: str | None,
+    ip: str | None,
+    user_agent: str | None,
 ) -> bool:
     """
     Best-effort wrapper that opens/closes a DB session.

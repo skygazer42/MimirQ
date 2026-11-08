@@ -357,7 +357,7 @@ def _table_candidates_from_document(document: DBDocument, *, terms: list[str]) -
     if not isinstance(store, dict):
         return []
 
-    source_ext = str(store.get("source_ext") or "").strip().lower() or None
+    source_ext = store.get("source_ext")
     tables = store.get("tables")
     if not isinstance(tables, list):
         return []
@@ -399,7 +399,7 @@ def _table_candidate_from_store_entry(
     samples = table.get("sample_rows")
     columns = [col for col in cols if isinstance(col, dict)] if isinstance(cols, list) else []
     sample_rows = [row for row in samples if isinstance(row, dict)] if isinstance(samples, list) else []
-    sheet_name = _optional_str(table.get("sheet_name"))
+    sheet_name = table.get("sheet_name")
     return _TableCandidate(
         document_id=document.id,
         dataset_id=dataset_id,
@@ -413,9 +413,9 @@ def _table_candidate_from_store_entry(
         col_count=_safe_int(table.get("col_count")),
         columns=columns,
         sample_rows=sample_rows,
-        row_source_table=_optional_str(table.get("row_source_table")),
-        row_source_sync_token=_optional_str(table.get("row_source_sync_token")),
-        row_source_pk_hash_col=_optional_str(table.get("row_source_pk_hash_col")),
+        row_source_table=table.get("row_source_table"),
+        row_source_sync_token=table.get("row_source_sync_token"),
+        row_source_pk_hash_col=table.get("row_source_pk_hash_col"),
         score=_score_candidate(
             terms=terms,
             filename=filename,
@@ -431,11 +431,6 @@ def _safe_int(value: Any) -> int:
         return int(value or 0)
     except Exception:
         return 0
-
-
-def _optional_str(value: Any) -> str | None:
-    text = str(value).strip() if value is not None else ""
-    return text or None
 
 
 def _apply_source_key_match(

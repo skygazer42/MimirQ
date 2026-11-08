@@ -43,11 +43,13 @@ CLIP 编码器、图片向量索引与查询链退出；仍被图片引用、资
 
 ## Consequences
 
+本篇保留 FAISS 的决定由[退出 FAISS](../simplification/2026-11-06-retire-faiss.md)部分取代，其他本地模型退出边界保持。
+
 关于进程内 BM25 与 rank-bm25 的保留决定，由[Milvus 原生 BM25](2026-11-05-milvus-native-bm25.md)部分取代。jieba、模型服务、ONNX OCR 和本篇的其他能力退出边界保持。
 
 已有使用本地模型的知识库必须显式改用模型服务；模型、维度和向量空间不一致时需要独立重建索引。用户已确认功能退出，不能用自动更换模型掩盖迁移要求。确定性检索仍只代表既有测试能力，不作为神经检索替代宣传。
 
-本决定部分取代[可选安装决定](../process/2026-11-05-optional-model-vector-dependencies.md)中的本地模型配置；其中 Chroma/FAISS 安装边界继续成立。原有 embedding、corpus 笔记记录的类型与资源所有者约定仍成立，涉及已删除实现的陈述由本决定接管。
+本决定部分取代[可选安装决定](../process/2026-11-05-optional-model-vector-dependencies.md)中的本地模型配置；后续[FAISS 退出](../simplification/2026-11-06-retire-faiss.md)和[Chroma 退出](../simplification/2026-11-06-retire-chroma.md)接管相应向量后端的支持边界。原有 embedding、corpus 笔记记录的类型与资源所有者约定仍成立，涉及已删除实现的陈述由对应退出决定接管。
 
 要求重排的检索预设不再隐式装配旧 CrossEncoder 或另一个 API 模型，必须显式配置服务或轻量重排器。HTTP 410 兼容入口不作为浏览器能力，沿用 API coverage 的非浏览器入口清单；正常 API 契约检查仍覆盖其余路由。
 

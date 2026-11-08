@@ -42,7 +42,7 @@ def resolve_single_dataset_id_for_documents(
     if len(dataset_ids) != 1:
         return None
     only = next(iter(dataset_ids))
-    return only if only is not None else None
+    return only
 
 
 def load_dataset_metadata(

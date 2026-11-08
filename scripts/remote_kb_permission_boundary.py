@@ -201,7 +201,7 @@ def document_access_summary(body: Any) -> dict[str, Any]:
         }
     return {
         "mode": str(body.get("mode") or "").strip().lower(),
-        "owner_id": str(body.get("owner_id") or "").strip() or None,
+        "owner_id": (body.get("owner_id")),
         "partial_member_list": _normalized_text_list(body.get("partial_member_list")),
         "partial_group_list": _normalized_text_list(body.get("partial_group_list")),
     }

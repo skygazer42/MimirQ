@@ -72,7 +72,7 @@ def compute_document_analytics(
     latin: int | None = None
     if detect_language:
         out = detect_language_fn(raw, min_chars=language_min_chars)
-        lang_val = out.language.strip() or None
+        lang_val = out.language
         lang_conf = out.confidence
         cjk = out.cjk_chars
         latin = out.latin_chars

@@ -117,7 +117,7 @@ python scripts/rag_trace_diff.py --help
 优先级：
 
 1. Postgres（最致命）
-2. 向量库（Milvus/Chroma）
+2. 向量库（Milvus/Qdrant/pgvector）
 3. Redis（若启用队列）
 4. MinIO（若启用对象存储）
 

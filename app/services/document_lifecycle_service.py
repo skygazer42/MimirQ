@@ -412,7 +412,7 @@ def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document
         db_path.parent.parent.rmdir()
 
 
-def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
+def _delete_document_object(*, raw_path: str, tenant_id: UUID, document: DBDocument) -> None:
     try:
         store, ref = resolve_document_object_reference(
             raw_path,
@@ -420,7 +420,7 @@ def _delete_minio_document_object(*, raw_path: str, tenant_id: UUID, document: D
             dataset_id=document.dataset_id,
             document_id=document.id,
             file_type=document.file_type,
-            document_metadata=dict(getattr(document, "doc_metadata", None) or {}),
+            document_metadata=dict(document.doc_metadata or {}),
         )
     except ValueError as exc:
         if str(exc).strip().lower() not in _SAFE_OBJECT_REFERENCE_ERRORS:
@@ -457,7 +457,7 @@ def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
     if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         return
     if is_object_storage_uri(raw_path):
-        _delete_minio_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
+        _delete_document_object(raw_path=raw_path, tenant_id=tenant_id, document=document)
         return
     _delete_local_document_file(raw_path=raw_path, tenant_id=tenant_id)
 
@@ -648,7 +648,7 @@ async def _delete_document_lifecycle(
     - `enforce_permissions=True` matches the public endpoint behavior.
     - `enforce_permissions=False` is intended for admin-only lifecycle operations.
     """
-    factory = session_factory or SessionLocal
+    factory = session_factory if session_factory is not None else SessionLocal
     task_ids = await _run_delete_step_without_blocking_event_loop(
         _run_document_delete_session_step,
         factory,

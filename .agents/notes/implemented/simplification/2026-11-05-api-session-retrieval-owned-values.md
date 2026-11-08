@@ -12,6 +12,8 @@ API 直接读取实际声明且由当前调用链产生的字段。会话、消�
 
 聊天流式与普通入口使用已有配额检查函数；profile 的四个调用使用同一份原参数映射，保留每次调用、转换、默认和顺序。套件计数使用一个每次返回新字典的构造器，保持字段及插入顺序。迭代检索结果声明原有固定字段，直接传递已由本地 bool、int、float、len 和字面量产生的值，仍解析实际检索返回的原始数据。
 
+聊天共享配额拦截函数接收实际生产者的 ChatAssistantTokenQuota，直接检查 enabled、exceeded 和 block 模式，不以缺字段默认放行。429 的 limit 直接使用服务已产生的整数；错误字段、文案及两个聊天入口中的调用位置保持。生产者与用量界面的取值归属见[数据集与管线 API](2026-11-05-api-dataset-pipeline-owned-values.md)，源码核对证据位于 E:/MimirQ/.superpowers/quota-usage-readability-20261106/。这项整理不改变服务已有故障放行政策，也不改聊天入口的生成、持久化与流式处理。
+
 内部类型引用实际 ChatRAGConfig、生成问题、RerankResult、LTRFeatureSpec 和回调；LTR 类型只在 TYPE_CHECKING 导入，原有运行时依赖继续按既有时点加载。具有显式 response_model 的 LTR 和相似度端点标注其实际返回类型。Dify 只直接读取已声明 Settings 和实际证据响应字段；配置仍可变，因此数值转换、范围限制、默认及转换异常处理保持。
 
 query-rewrite 的若干字段没有在当前 ChatRAGConfig 声明，继续按原来的可选输入探测。Dify 的动态回调、兼容导出、锁、租约、缓存和实际 HTTP 适配器职责保持。[Dify 纯规则归属](2026-11-04-dify-helper-ownership.md)与[检索编排内部记录](2026-11-05-retrieval-orchestration-owned-values.md)是本轮消费的既有约束，不被替代；历史检索命中的前端会话记录属于其他所有者。

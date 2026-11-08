@@ -3,7 +3,7 @@
 from typing import Any, NotRequired, TypedDict
 
 from app.core.config import settings
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.rag.reranker.registry import (
     get_reranker_provider_family,
     iter_reranker_provider_families,
@@ -27,7 +27,7 @@ class RerankerCapabilities(TypedDict):
 
 
 def describe_reranker_provider(provider: str | None, **kwargs: Any) -> RerankerDescription:
-    normalized = str(provider or "").strip().lower() or "openai"
+    normalized = str((provider if provider is not None else "")).strip().lower() or "openai"
     provider_name = str(kwargs.get("provider_name") or "").strip().lower()
     if not provider_name:
         provider_name = None
@@ -39,11 +39,11 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> RerankerD
     if family.canonical_name == "none":
         return {"provider": "none", "tier": "disabled"}
 
-    if family.canonical_name in {"ltr", "long_context", "mmr"}:
+    if family.canonical_name in {"long_context", "mmr"}:
         return {"provider": family.canonical_name, "tier": family.tier}
     if family.canonical_name == "colbert":
         mode = provider_name or (settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower()
-        reject_retired_model_provider(mode, capability="colbert")
+        reject_retired_provider(mode, capability="colbert")
         if mode == "deterministic":
             return {"provider": "colbert", "tier": "offline_only", "mode": "deterministic"}
         raise ValueError(f"Unsupported ColBERT provider: {mode}")
@@ -52,7 +52,7 @@ def describe_reranker_provider(provider: str | None, **kwargs: Any) -> RerankerD
 
 
 def get_reranker_capabilities(provider: str | None, **kwargs: Any) -> RerankerCapabilities:
-    normalized = str(provider or "").strip().lower() or "openai"
+    normalized = str((provider if provider is not None else "")).strip().lower() or "openai"
     family = get_reranker_provider_family(normalized)
     summary = describe_reranker_provider(normalized, **kwargs)
     if family is None:

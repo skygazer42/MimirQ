@@ -119,6 +119,13 @@ def check_vector(
     milvus_status: dict[str, Any] = {"status": "not_configured", "count": None}
     ok = True
 
+    if vector_backend == "faiss":
+        vector_status.update({"status": "retired", "error": "FAISS vector backend has been retired"})
+        return vector_status, milvus_status, False
+    if vector_backend == "chroma":
+        vector_status.update({"status": "retired", "error": "Chroma vector backend has been retired"})
+        return vector_status, milvus_status, False
+
     if vector_backend == "milvus":
         milvus_status = {"status": "disconnected", "count": None}
         if milvus_get_collection_count is None:
@@ -149,14 +156,7 @@ def check_vector(
         vector_status["status"] = "ready"
         return vector_status, milvus_status, ok
 
-    # `mode="health"`: include extra hints for persistent local stores.
-    if vector_backend == "faiss":
-        path = Path(str(getattr(settings, "FAISS_STORE_PATH", "./vector_faiss")))
-        vector_status.update({"status": "ready" if path.exists() else "missing", "path": str(path)})
-    elif vector_backend == "chroma":
-        path = Path(str(getattr(settings, "CHROMA_PERSIST_PATH", "./vector_chroma")))
-        vector_status.update({"status": "ready" if path.exists() else "missing", "path": str(path)})
-    elif vector_backend == "memory":
+    if vector_backend == "memory":
         vector_status.update({"status": "ready"})
     else:
         vector_status.update({"status": "unknown"})
@@ -219,7 +219,7 @@ def check_redis(
     return redis_status, ok, should_reset_client
 
 
-def check_minio(
+def check_object_storage(
     settings: object,
     *,
     mode: HealthMode,
@@ -227,9 +227,9 @@ def check_minio(
     enabled_override: bool | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """
-    Return (minio_status, ok).
+    Return (storage_status, ok).
 
-    - mode="ready" returns the MinIOService.health_check() shape (includes `enabled`).
+    - mode="ready" returns the supplied object storage probe shape (includes `enabled`).
     - mode="health" keeps the historical `/health` response shape (no `enabled` key).
     """
     enabled = enabled_override

@@ -132,7 +132,7 @@ def update_hybrid_channel_diagnostics(
                 dict(
                     sorted(
                         (str(key), round(float(value), 6))
-                        for key, value in (fusion_weights or {}).items()
+                        for key, value in (fusion_weights if fusion_weights is not None else {}).items()
                         if str(key or "").strip() and value is not None
                     )
                 )

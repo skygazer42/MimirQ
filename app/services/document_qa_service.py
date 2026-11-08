@@ -100,7 +100,7 @@ def _split_prefixed_field(line: str, *, prefixes: tuple[str, ...], require_value
 
         if require_value:
             value = value.strip()
-            return value or None
+            return value if value else None
         return value.strip()
 
     return None

@@ -32,23 +32,20 @@ def _coerce_uuid_list(values: Any) -> list[UUID]:
     return out
 
 
-def _resolve_kg_scope(state: dict[str, Any]) -> tuple[list[UUID], UUID | None, list[UUID]]:
-    document_ids = _coerce_uuid_list(state.get("document_ids") or [])
-    if document_ids:
+def _resolve_kg_scope(state: dict[str, Any]) -> tuple[list[UUID] | None, UUID | None, list[UUID]]:
+    raw_document_ids = state.get("document_ids")
+    if raw_document_ids is not None:
+        document_ids = [value if isinstance(value, UUID) else UUID(str(value)) for value in raw_document_ids]
         return document_ids, None, []
 
     dataset_id_raw = state.get("dataset_id")
     dataset_id: UUID | None = None
     if dataset_id_raw is not None:
-        try:
-            dataset_id = dataset_id_raw if isinstance(dataset_id_raw, UUID) else UUID(str(dataset_id_raw))
-        except Exception as exc:
-            _log_orchestrator_fallback("_resolve_kg_scope.dataset_id", exc)
-            dataset_id = None
+        dataset_id = dataset_id_raw if isinstance(dataset_id_raw, UUID) else UUID(str(dataset_id_raw))
     if dataset_id is not None:
-        return [], dataset_id, []
+        return None, dataset_id, []
 
-    return [], None, _coerce_uuid_list(state.get("dataset_ids") or [])
+    return None, None, _coerce_uuid_list(state.get("dataset_ids") or [])
 
 
 def _kg_signal_score(meta: dict[str, Any]) -> float:
@@ -117,7 +114,7 @@ def _merge_kg_metadata_into_main(main_doc: Document, kg_doc: Document) -> Docume
 
 
 def _merge_kg_docs_preserving_main(docs: list[Document] | None, kg_docs: list[Document] | None) -> list[Document]:
-    merged = [d for d in (docs or []) if d is not None]
+    merged = [d for d in (docs if docs is not None else []) if d is not None]
     index_by_key: dict[str, int] = {}
     for i, doc in enumerate(merged):
         try:
@@ -125,7 +122,7 @@ def _merge_kg_docs_preserving_main(docs: list[Document] | None, kg_docs: list[Do
         except Exception as exc:
             _log_orchestrator_fallback("_merge_kg_docs_preserving_main", exc)
 
-    for kg_doc in kg_docs or []:
+    for kg_doc in kg_docs if kg_docs is not None else []:
         if kg_doc is None:
             continue
         try:
@@ -149,7 +146,7 @@ def _fetch_document_chunks_for_kg_injection(
     account_id: Any,
     dataset_id: Any,
     dataset_ids: list[Any] | None = None,
-    document_ids: list[Any],
+    document_ids: list[Any] | None,
     chunk_ids: list[UUID],
 ) -> list[Any]:
     """
@@ -166,7 +163,7 @@ def _fetch_document_chunks_for_kg_injection(
     from app.models.document import DocumentChunk as DBDocumentChunk  # noqa: WPS433
 
     # Prefer explicit document_ids scope (already ACL-filtered by the API layer when present).
-    if document_ids:
+    if document_ids is not None:
         return (
             db.query(DBDocumentChunk)
             .filter(
@@ -178,7 +175,7 @@ def _fetch_document_chunks_for_kg_injection(
         )
 
     # Dataset-scoped retrieval: enforce dataset permission + doc-level ACL via shared helper.
-    scoped_dataset_ids = _coerce_uuid_list(dataset_ids or [])
+    scoped_dataset_ids = _coerce_uuid_list((dataset_ids if dataset_ids is not None else []))
     if dataset_id is not None:
         scoped_dataset_ids = _coerce_uuid_list([dataset_id])
 

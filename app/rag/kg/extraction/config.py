@@ -38,7 +38,7 @@ def _clean_kg_python_params(raw: object) -> dict | None:
             continue
         cleaned_key, cleaned_value = item
         cleaned[cleaned_key] = cleaned_value
-    return cleaned or None
+    return cleaned
 
 
 def _clean_kg_python_plugin(raw: object) -> str | None:

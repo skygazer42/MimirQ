@@ -52,7 +52,7 @@ def build_retrieval_per_query_item(payload: RetrievalPerQueryItemInput) -> dict[
 
 def format_retrieval_error(kind: str, error: str | None) -> str:
     normalized_kind = kind.strip() or "main"
-    return f"{normalized_kind}:{(error or '')[:160]}"
+    return f"{normalized_kind}:{(error if error is not None else '')[:160]}"
 
 
 def build_query_invocation_record(payload: QueryInvocationRecordInput) -> QueryInvocationRecordOutput:

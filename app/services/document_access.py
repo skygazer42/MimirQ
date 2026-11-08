@@ -135,7 +135,7 @@ def build_document_read_filter(
 
 
 def _normalize_doc_access_mode(value: str | None) -> str:
-    return (value or "").strip().lower()
+    return (value if value is not None else "").strip().lower()
 
 
 def _doc_access_allows(
@@ -155,7 +155,7 @@ def _doc_access_allows(
     - Unknown modes fail closed for defense-in-depth.
     """
     mode = _normalize_doc_access_mode(access_mode)
-    owner = (owner_id or "").strip()
+    owner = (owner_id if owner_id is not None else "").strip()
 
     if mode in _DOC_ACCESS_DEFAULTS:
         return has_dataset or bool(owner and owner == account_id)
@@ -300,7 +300,7 @@ def _observe_partial_document_group_result(
     mode = _normalize_doc_access_mode(access_mode)
     if mode != _DOC_ACCESS_PARTIAL:
         return
-    if (owner_id or "").strip() == account_id or doc_id in allowlist_state.member_doc_ids:
+    if (owner_id if owner_id is not None else "").strip() == account_id or doc_id in allowlist_state.member_doc_ids:
         return
     if not allowlist_state.group_ids:
         observe_group_permission_check(resource="document", action="read", result="deny_no_groups")
@@ -385,7 +385,7 @@ def get_readable_datasets_map(
     *,
     check_member: bool = True,
 ) -> dict[UUID, Dataset]:
-    requested_ids = list(dict.fromkeys(dataset_ids or []))
+    requested_ids = list(dict.fromkeys((dataset_ids if dataset_ids is not None else [])))
     if check_member:
         dataset_service.ensure_member(db, tenant_id, account_id)
     if not requested_ids:

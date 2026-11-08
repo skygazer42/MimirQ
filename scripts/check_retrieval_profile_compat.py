@@ -76,7 +76,7 @@ def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
     requested_top_n = int(args.reranker_top_n or 0)
 
     effective_provider = str(effective.get("reranker_provider") or "").strip().lower()
-    provider_meta = describe_reranker_provider(effective_provider or None)
+    provider_meta = describe_reranker_provider((effective_provider))
     provider_norm = str(provider_meta.get("provider") or effective_provider or "").strip().lower()
     provider_tier = str(provider_meta.get("tier") or "").strip().lower()
     effective_enable_reranker = bool(effective.get("enable_reranker"))
@@ -110,7 +110,7 @@ def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
             "top_k": int(args.top_k or 0),
             "score_threshold": float(args.score_threshold or 0.0),
             "enable_reranker": requested_enable_reranker,
-            "reranker_provider": requested_provider or None,
+            "reranker_provider": (requested_provider),
             "reranker_top_n": requested_top_n,
         },
         "effective": {
@@ -119,8 +119,8 @@ def _collect_issues(args: argparse.Namespace) -> tuple[list[str], dict[str, Any]
             "top_k": int(effective.get("top_k") or 0),
             "score_threshold": float(effective.get("score_threshold") or 0.0),
             "enable_reranker": effective_enable_reranker,
-            "reranker_provider": provider_norm or None,
-            "reranker_tier": provider_tier or None,
+            "reranker_provider": (provider_norm),
+            "reranker_tier": (provider_tier),
             "reranker_top_n": effective_top_n,
             "enable_weight_rerank": bool(effective.get("enable_weight_rerank", True)),
         },

@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.parsing.artifact_stats import compute_parsing_artifact_stats
+from app.parsing.backends import normalize_parser_backend, require_resolved_parser_backend
 from app.parsing.enrich.chart_to_data import add_chart_data_blocks
 from app.parsing.enrich.formula_ocr import add_formula_latex_blocks
 from app.parsing.enrich.image_caption import add_image_captions
@@ -184,7 +185,7 @@ class ParsingStage:
                 metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
                 id=item.get("id") if isinstance(item.get("id"), str) else None,
             )
-            for item in (items or [])
+            for item in (items if items is not None else [])
             if isinstance(item, dict)
         ]
 
@@ -274,12 +275,12 @@ class ParsingStage:
         file_path: Path,
         parser_backend: str | None,
     ) -> tuple[str | None, dict[str, Any] | None]:
-        effective_parser_backend = parser_backend
+        effective_parser_backend = normalize_parser_backend(parser_backend) if parser_backend is not None else None
         pdf_quality = None
         if file_path.suffix.lower() != ".pdf":
             return effective_parser_backend, pdf_quality
 
-        requested = (parser_backend or "").strip().lower()
+        requested = (parser_backend if parser_backend is not None else "").strip().lower()
         if requested and requested != "auto":
             return effective_parser_backend, pdf_quality
 
@@ -313,23 +314,25 @@ class ParsingStage:
         tenant_id: UUID,
         dataset_id: str,
         effective_parser_backend: str | None,
-    ) -> tuple[str | None, bool, list[Document]]:
+    ) -> tuple[str | None, bool, list[Document], str | None]:
         parse_cache_key: str | None = None
         if not bool(settings.PARSE_CACHE_ENABLED) or not bool(settings.MINIO_ENABLED):
-            return parse_cache_key, False, []
+            return parse_cache_key, False, [], None
 
         try:
             metadata = dict(db_document.doc_metadata or {})
             file_sha = str(metadata.get("file_sha256") or "").strip().lower()
             pipeline_hash = str(metadata.get("pipeline_hash") or metadata.get("active_pipeline_hash") or "").strip()
-            backend_key = str(effective_parser_backend or "").strip().lower()
-            if not file_sha or not backend_key:
-                return parse_cache_key, False, []
+            backend_key = (
+                str((effective_parser_backend if effective_parser_backend is not None else "")).strip().lower()
+            )
+            if not file_sha or not backend_key or not pipeline_hash:
+                return parse_cache_key, False, [], None
 
             parse_cache_key = build_remote_parse_cache_key(
                 file_sha256=file_sha,
                 resolved_backend=backend_key,
-                config_hash=(pipeline_hash or "unknown"),
+                config_hash=pipeline_hash,
                 version=str(settings.PARSE_CACHE_VERSION or "v1"),
             )
             cached, age_ms = get_parse_cache(
@@ -339,9 +342,11 @@ class ParsingStage:
                 ttl_sec=int(settings.PARSE_CACHE_TTL_SEC or 0),
                 max_bytes=int(settings.PARSE_CACHE_MAX_BYTES or 0),
             )
-            documents = self._documents_from_items(list(getattr(cached, "documents", None) or []))
+            if cached is None:
+                return parse_cache_key, False, [], None
+            documents = self._documents_from_items(cached.documents)
             if not documents:
-                return parse_cache_key, False, []
+                return parse_cache_key, False, [], None
 
             try:
                 meta_patch = dict(db_document.doc_metadata or {})
@@ -349,15 +354,15 @@ class ParsingStage:
                     "schema": "mimirq.parse_cache_hit.v1",
                     "hit": True,
                     "age_ms": int(age_ms or 0),
-                    "backend": backend_key,
+                    "backend": cached.resolved_backend,
                 }
                 self._commit_document_metadata(db, db_document, meta_patch)
             except Exception as exc:
                 logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-            return parse_cache_key, True, documents
+            return parse_cache_key, True, documents, cached.resolved_backend
         except Exception as exc:
             _log_processor_fallback("run", exc)
-            return parse_cache_key, False, []
+            return parse_cache_key, False, [], None
 
     async def _parse_documents(
         self,
@@ -394,6 +399,7 @@ class ParsingStage:
             payload=payload,
             error_prefix="Parsing failed",
         )
+        parsed = {**parsed, "resolved_backend": require_resolved_parser_backend(parsed["resolved_backend"])}
         return parsed, self._documents_from_items(parsed.get("documents"))
 
     def _persist_parse_provenance(self, db: Session, db_document: DBDocument, parsed: dict[str, Any] | None) -> None:
@@ -466,7 +472,7 @@ class ParsingStage:
         parse_cache_key: str | None,
         parse_cache_hit: bool,
         documents: list[Document],
-        effective_parser_backend: str | None,
+        resolved_backend: str,
     ) -> None:
         if parse_cache_hit or not parse_cache_key or not documents:
             return
@@ -478,8 +484,8 @@ class ParsingStage:
             entry = RemoteParseCacheEntry(
                 created_at=dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
                 file_sha256=file_sha,
-                resolved_backend=str(effective_parser_backend or "").strip().lower(),
-                config_hash=(pipeline_hash or "unknown"),
+                resolved_backend=resolved_backend,
+                config_hash=pipeline_hash,
                 documents=[
                     {
                         "page_content": str(doc.page_content or ""),
@@ -532,7 +538,7 @@ class ParsingStage:
             file_path=file_path,
             parser_backend=parser_backend,
         )
-        parse_cache_key, parse_cache_hit, documents = self._maybe_load_parse_cache(
+        parse_cache_key, parse_cache_hit, documents, resolved_backend = self._maybe_load_parse_cache(
             db=db,
             db_document=db_document,
             tenant_id=tenant_id,
@@ -553,6 +559,7 @@ class ParsingStage:
                 pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
                 html_xpath=html_xpath,
             )
+            resolved_backend = parsed["resolved_backend"]
 
         documents = _attach_logical_source_metadata(documents, db_document=db_document, file_path=file_path)
         self._persist_parse_provenance(db, db_document, parsed)
@@ -569,11 +576,8 @@ class ParsingStage:
             parse_cache_key=parse_cache_key,
             parse_cache_hit=parse_cache_hit,
             documents=documents,
-            effective_parser_backend=effective_parser_backend,
+            resolved_backend=resolved_backend,
         )
-
-        parsed_backend = parsed.get("resolved_backend") if isinstance(parsed, dict) else None
-        resolved_backend = str(parsed_backend or effective_parser_backend or parser_backend or "auto")
         self._svc._record_processing_metadata(
             db,
             tenant_id,
@@ -902,7 +906,7 @@ def chunk_documents(
     logger.info("Chunking document into smaller pieces...")
     if chunk_overlap >= chunk_size:
         raise ValueError("chunk_overlap must be less than chunk_size")
-    params = dict(chunk_strategy_params or {})
+    params = dict((chunk_strategy_params if chunk_strategy_params is not None else {}))
     plugin_ref = str(chunk_python_plugin or "").strip()
     if plugin_ref:
         return ChunkingResult(
@@ -1054,7 +1058,7 @@ def _plugin_chunks(
     return apply_chunk_python_plugin(
         documents,
         plugin_ref=plugin_ref,
-        params={**params, **dict(chunk_python_params or {})},
+        params={**params, **dict((chunk_python_params if chunk_python_params is not None else {}))},
         context={
             "chunk_strategy": chunk_strategy,
             "chunk_size": int(chunk_size),
@@ -1114,8 +1118,10 @@ def _dedup_record_identity_key(meta: dict[str, Any]) -> str | None:
     record_identity = meta.get("_record_identity")
     if not isinstance(record_identity, dict):
         return None
-    key = str(record_identity.get("key") or "").strip()
-    return key or None
+    key = record_identity["key"].strip()
+    if not key:
+        raise ValueError("Record identity key must not be empty")
+    return key
 
 
 def _duplicate_text_chunk(

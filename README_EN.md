@@ -266,7 +266,7 @@ The standard Dify external-knowledge endpoint is `POST /api/v1/integrations/dify
 |:---|:---|:---|:---|:---|:---|:---|
 | **Document parsing** | **30 backends** for PDF, OCR, layout, tables, formulas, and VLM | Knowledge Pipeline for PDF, PPT, and other common formats | **DeepDoc** for complex layouts and scans; MinerU / Docling | PDF and scans with tables and formulas converted to Markdown | Document pipeline for PDF, TXT, DOCX, and more | Document Loaders and third-party parser integrations |
 | **Chunking** | **86 strategies** including recursive, semantic, parent-child, RAPTOR, and late chunking; visual preview | General, parent-child, Q&A, and pipeline-defined processing | Template-based chunking with visual human intervention | Automatic, manual, Q&A, and enhanced processing | Automatic document-pipeline chunking | Text Splitters composed in application code |
-| **Retrieval / reranking** | Milvus / FAISS / Chroma + BM25 / SPLADE / ColBERT / LTR / RRF; **13 rerankers** | Semantic, full-text, and hybrid retrieval with optional reranking | Multiple recall with fused reranking | Semantic, full-text, and hybrid retrieval + RRF + reranking | Multiple vector databases with source citations | Retriever and reranker components assembled by the application |
+| **Retrieval / reranking** | Milvus + BM25 / SPLADE / ColBERT / RRF | Semantic, full-text, and hybrid retrieval with optional reranking | Multiple recall with fused reranking | Semantic, full-text, and hybrid retrieval + RRF + reranking | Multiple vector databases with source citations | Retriever and reranker components assembled by the application |
 | **Knowledge graph** | Entity, relation, and event extraction; entity resolution, community discovery, and multi-hop retrieval | Connected through workflows, plugins, or external services | Built-in GraphRAG | Connected through workflows or external services | Connected through agents or tools | Graph integrations and custom chains |
 | **Agents / MCP** | LangGraph agents, Self-RAG / CRAG / FLARE, and MCP client / server | Function Calling / ReAct agents, tools, and MCP | Agentic Workflow, MCP, and code executor | Agent V2, tools, MCP, and VM execution | No-code Agent Builder, MCP, and scheduled tasks | Agents / LangGraph / MCP with a code-first model |
 | **Visual workflows** | **No general node canvas**; focused on RAG debugging, governance screens, and APIs | **Core feature** for application and agent orchestration | Agent and ingestion-pipeline orchestration | **Core feature** with flow-node orchestration | No-code Agent Builder | No built-in product UI; supplied by the application |
@@ -331,7 +331,7 @@ Supported deployment modes:
 |:---:|:---|:---|
 | **Standard** | `make up` | Full stack: Postgres + Milvus + Etcd + MinIO + Redis + API + Worker |
 | **Standard + Web** | `make up-web` | Recommended first run; initializes local config and starts the complete web stack |
-| **Lite Mode** | `make up-lite` | Chroma/FAISS instead of Milvus, no MinIO — quick evaluation |
+| **API/Worker mode** | `make up-lite` | Shared Milvus with its internal dependencies; document object storage disabled, no frontend |
 | **Dev Mode** | `make infra-up` | Infrastructure only, run backend/frontend locally |
 | **Helm / K8s** | `helm install` | Production-grade with HPA, PDB, CronJob, PrometheusRule |
 | **Parser Extensions** | [Docker Compose guide](./docs/deployment/docker_compose.md) | Start CPU / GPU profiles as required |

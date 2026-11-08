@@ -328,7 +328,7 @@ def _build_regression_case_extra(
         extra["dataset_id"] = str(dataset_id)
     if fb.category:
         extra["feedback_category"] = str(fb.category)
-        extra["feedback_category_source"] = str(fb.category_source or "") or None
+        extra["feedback_category_source"] = fb.category_source
     return extra
 
 
@@ -790,7 +790,7 @@ def create_evidence_item_from_feedback(
     source_metadata: dict[str, Any] = {
         **extra,
         "conversation_id": str(conv.id),
-        "request_id": request_id or None,
+        "request_id": request_id,
     }
 
     row = EvidenceItem(

@@ -193,7 +193,7 @@ async def extract_llm_tags(
     if not isinstance(raw, dict):
         raw = {}
 
-    summary = str(raw.get("summary") or "").strip() or None
+    summary = raw.get("summary")
     document_tags = _normalize_document_tags(raw, max_items=max(1, int(max_items or 16)))
     span_annotations = _normalize_span_annotations(raw, max_items=max(1, int(max_items or 16)))
     return LLMTaggingResult(

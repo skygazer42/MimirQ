@@ -65,7 +65,7 @@ class BaseAdvancedParser(ABC):
         Return parser name (for logs and metadata).
 
         Returns:
-            Parser name, e.g. "mineru", "docling", "tcadp".
+            Parser name, e.g. "mineru", "docling".
         """
         pass
 
@@ -179,7 +179,7 @@ class BaseAdvancedParser(ABC):
 
         if tag and tag not in text:
             text = f"{text}{tag}"
-        return text, tag or None, section_kind
+        return text, (tag if tag else None), section_kind
 
     def _build_equation_document(self, text: str, tag: str | None, base_metadata: dict) -> Document:
         clean_text = _POSITION_TAG_RE.sub("", text).strip()
@@ -190,7 +190,7 @@ class BaseAdvancedParser(ABC):
             "element_kind": "equation",
             "element_text": clean_text or text,
         }
-        positions = self._positions_from_tag(tag or "")
+        positions = self._positions_from_tag((tag if tag is not None else ""))
         if positions:
             meta["positions"] = positions
             first = positions[0]

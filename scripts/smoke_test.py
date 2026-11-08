@@ -736,8 +736,8 @@ def _resolve_auth_headers(
 
     headers = build_headers(
         tenant_id=tenant_id,
-        user_id=(user_id or None),
-        token=(token or None),
+        user_id=(user_id),
+        token=(token),
     )
     report["headers"] = {
         "tenant": bool(headers.get("X-Tenant-ID")),
@@ -773,7 +773,7 @@ def _ensure_dataset(
         json=ds_payload,
     )
     ds_json = _parse_json(ds_resp)
-    dataset_id = str(ds_json.get("id") if isinstance(ds_json, dict) else "") or None
+    dataset_id = ds_json["id"]
     if not dataset_id:
         raise CallError(
             method="POST",
@@ -815,7 +815,7 @@ def _upload_smoke_document(
         ),
     )
     up_json = _parse_json(up_resp)
-    doc_id = str(up_json.get("id") if isinstance(up_json, dict) else "") or None
+    doc_id = up_json["id"]
     if not doc_id:
         raise CallError(
             method="POST",

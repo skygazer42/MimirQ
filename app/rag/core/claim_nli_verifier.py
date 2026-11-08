@@ -51,7 +51,7 @@ def _extract_label(content: str) -> tuple[str | None, str | None]:
         parsed = None
     if isinstance(parsed, dict):
         label = str(parsed.get("label") or "").strip().lower() or None
-        reason = str(parsed.get("reason") or "").strip() or None
+        reason = parsed.get("reason")
         if label in {"entailment", "contradiction", "neutral"}:
             return label, reason
 

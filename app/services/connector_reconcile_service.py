@@ -68,23 +68,17 @@ def extract_connector_source_identity(doc: Document) -> _ConnectorSourceIdentity
     meta_map = meta if isinstance(meta, Mapping) else {}
     connector = meta_map.get("connector") if isinstance(meta_map.get("connector"), Mapping) else {}
 
-    connector_id = str(connector.get("connector_id") or "").strip() or None
-    config_id = str(connector.get("config_id") or "").strip() or None
-
-    source_ref = (
-        str(
-            connector.get("source_ref")
-            or connector.get("source_id")
-            or connector.get("page_id")
-            or connector.get("issue_key")
-            or connector.get("issue_id")
-            or connector.get("issue_url")
-            or meta_map.get("source_url")
-            or ""
-        ).strip()
-        or None
+    connector_id = connector.get("connector_id")
+    config_id = connector.get("config_id")
+    source_ref = next(
+        (
+            connector[key]
+            for key in ("source_ref", "source_id", "page_id", "issue_key", "issue_id", "issue_url")
+            if key in connector
+        ),
+        meta_map.get("source_url"),
     )
-    source_id = str(connector.get("source_id") or source_ref or "").strip() or None
+    source_id = connector.get("source_id", source_ref)
     return {
         "connector_id": connector_id,
         "config_id": config_id,
@@ -111,14 +105,14 @@ def _collect_connector_reconcile_documents(
         if identity["connector_id"] != connector_id:
             continue
         doc_config_id = identity["config_id"]
-        if config_id and doc_config_id not in {config_id, None}:
+        if config_id is not None and doc_config_id not in {config_id, None}:
             continue
         documents_considered += 1
-        if config_id and doc_config_id is None:
+        if config_id is not None and doc_config_id is None:
             documents_without_identity += 1
             continue
 
-        source_ref = identity["source_ref"] or identity["source_id"]
+        source_ref = identity["source_ref"]
         if not source_ref:
             documents_without_identity += 1
             continue
@@ -168,7 +162,7 @@ def plan_connector_reconcile(
 ) -> dict[str, Any]:
     now_dt = now or _now_utc()
     normalized_connector_id = connector_id.strip()
-    normalized_config_id = (config_id or "").strip() or None
+    normalized_config_id = config_id
     desired_refs = _normalize_refs(desired_source_refs)
     desired_set = set(desired_refs)
     limit = max(1, int(sample_limit or 0))
@@ -199,7 +193,7 @@ def plan_connector_reconcile(
         "generated_at": now_dt.isoformat(),
         "connector_id": normalized_connector_id,
         "config_id": normalized_config_id,
-        "dataset_id": (dataset_id or "").strip() or None,
+        "dataset_id": dataset_id,
         "apply": apply,
         "documents_scanned": documents_scanned,
         "documents_considered": documents_considered,

@@ -224,8 +224,8 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
         "confidence": round(_clamp01(confidence), 4),
         "reason_codes": reason_codes[:12],
         "profile": {
-            "mime_type": mime or None,
-            "file_extension": ext or None,
+            "mime_type": mime,
+            "file_extension": ext,
             "page_count": page_count,
             "table_density": round(table_density, 4),
             "image_ratio": round(image_ratio, 4),

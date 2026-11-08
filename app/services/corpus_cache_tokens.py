@@ -21,13 +21,10 @@ from app.rag.rerank_result_cache import clear_evidence_post_rerank_cache
 from app.services.dataset_embedding_config import resolve_dataset_embedding_runtime
 
 
-def _as_iso(value: Any) -> str | None:
-    if value is None:
-        return None
+def _as_iso(value: datetime | str | None) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
-    text = str(value or "").strip()
-    return text or None
+    return value
 
 
 def _dataset_embedding_binding(dataset_meta: Any) -> dict[str, Any]:
@@ -36,10 +33,7 @@ def _dataset_embedding_binding(dataset_meta: Any) -> dict[str, Any]:
     raw_defaults = metadata.get("embedding_defaults")
     if not isinstance(raw_defaults, dict):
         raw_defaults = {}
-    embedding_defaults = {}
-    for key in ("provider", "model", "api_base"):
-        value = str(raw_defaults.get(key) or "").strip()
-        embedding_defaults[key] = value if value else None
+    embedding_defaults = {key: raw_defaults.get(key) for key in ("provider", "model", "api_base")}
     return {
         "dataset_scoped": runtime.dataset_scoped,
         "provider": runtime.provider,
@@ -73,13 +67,10 @@ def build_document_scope_corpus_cache_token(rows: Sequence[Any]) -> str | None:
         doc_id = str(payload.get("id") or "").strip()
         if not doc_id:
             continue
-        dataset_id = str(payload.get("dataset_id") or "").strip()
-        if not dataset_id:
-            dataset_id = None
         items.append(
             {
                 "id": doc_id,
-                "dataset_id": dataset_id,
+                "dataset_id": payload.get("dataset_id"),
                 "updated_at": _as_iso(payload.get("updated_at")),
                 "active_pipeline_hash": get_active_pipeline_hash(payload),
                 "dataset_embedding_binding": payload.get("dataset_embedding_binding"),
@@ -143,7 +134,7 @@ def resolve_corpus_cache_token(
     dataset_ids: Sequence[UUID] | None = None,
     document_ids: Sequence[UUID] | None = None,
 ) -> str | None:
-    doc_ids = [d for d in (document_ids or []) if d is not None]
+    doc_ids = [d for d in (document_ids if document_ids is not None else []) if d is not None]
     if doc_ids:
         rows = (
             db.query(DBDocument.id, DBDocument.dataset_id, DBDocument.updated_at, DBDocument.doc_metadata)
@@ -197,7 +188,12 @@ def resolve_corpus_cache_token(
         )
 
     scope_dataset_ids = sorted(
-        {dataset_scope_id for dataset_scope_id in (dataset_ids or []) if dataset_scope_id is not None}, key=str
+        {
+            dataset_scope_id
+            for dataset_scope_id in (dataset_ids if dataset_ids is not None else [])
+            if dataset_scope_id is not None
+        },
+        key=str,
     )
     if scope_dataset_ids:
         rows = (

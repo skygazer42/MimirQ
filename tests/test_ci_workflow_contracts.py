@@ -123,7 +123,7 @@ def test_public_pr_live_core_gate_launcher_contract() -> None:
     assert 'PRIMARY_LOG="artifacts/live-core-primary.log"' in script
     assert 'SECONDARY_LOG="artifacts/live-core-secondary.log"' in script
     assert 'export AUTH_MODE="${AUTH_MODE:-header}"' in script
-    assert 'export VECTOR_BACKEND="${VECTOR_BACKEND:-faiss}"' in script
+    assert 'export VECTOR_BACKEND="${VECTOR_BACKEND:-memory}"' in script
     assert 'export MINIO_ENABLED="${MINIO_ENABLED:-false}"' in script
     assert 'export UPLOAD_DEDUP_ENABLED="${UPLOAD_DEDUP_ENABLED:-true}"' in script
     assert 'export DIFY_EXTERNAL_KNOWLEDGE_ENABLED="false"' in script
@@ -177,33 +177,9 @@ def test_repo_checks_enforce_api_type_drift_and_shared_python_audit_policy() -> 
         "PYSEC-2026-311",
         "PYSEC-2026-3046",
         "PYSEC-2026-2447",
-        "CVE-2026-45830",
-        "CVE-2026-45831",
-        "CVE-2026-45833",
         "PYSEC-2026-1325",
     ):
         assert f"--ignore-vuln {advisory}" in python_audit
-
-
-def test_python_audit_chroma_exception_stays_bound_to_the_embedded_local_backend() -> None:
-    makefile = _read("Makefile")
-    vector_factory = _read("app/storage/vector/factory.py")
-    helm_validation = _read("deploy/helm/mimirq/templates/validate-runtime.yaml")
-    chroma_backend = vector_factory.split("class ChromaVectorStore(BaseVectorStore):", 1)[1].split(
-        "\n\n_VECTOR_STORE_SINGLETONS:", 1
-    )[0]
-
-    assert "embedded local LangChain Chroma path" in makefile
-    assert "Chroma HTTP or RBAC APIs" in makefile
-    assert '"collection_name": key' in chroma_backend
-    assert 'kwargs["persist_directory"] = self.persist_path' in chroma_backend
-    assert "HttpClient" not in chroma_backend
-    assert "host=" not in chroma_backend
-    assert "port=" not in chroma_backend
-    assert "headers=" not in chroma_backend
-    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in (
-        helm_validation
-    )
 
 
 def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:
@@ -467,9 +443,8 @@ def test_ci_backend_full_suite_runs_pytest_xdist_in_parallel() -> None:
     # parallelized with pytest-xdist (`-n auto`).
     assert "$(PY) -m pytest -q -n auto $(PYTEST_ARGS)" in makefile
     assert "pytest-xdist==3.8.0" in requirements_dev
-    # Both jobs explicitly install the complete regression profile; xgboost-cpu keeps the dependency
-    # graph CPU-only without filtering requirements or bypassing pip metadata.
-    assert workflow.count("python -m pip install --retries 10 --timeout 120 -r requirements-ci.txt") == 2
+    # Both jobs install development tools and the runtime without bypassing pip metadata.
+    assert workflow.count("python -m pip install --retries 10 --timeout 120 -r requirements-dev.txt") == 2
     assert "filter_cpu_ci_requirements.py" not in workflow
     assert "--no-deps xgboost" not in workflow
     assert workflow.count("run: make test\n") == 2
@@ -486,7 +461,7 @@ def test_host_setup_uses_project_venv_and_complete_cpu_dependencies() -> None:
     assert "ifneq ($(wildcard $(VENV_PY)),)" in makefile
     assert "$(VENV_PY) -m pip check" in makefile
     assert "cd web && pnpm install" in makefile
-    assert 'xgboost-cpu==3.2.0; platform_system == "Linux"' in requirements
+    assert "xgboost" not in requirements
     assert "filter_cpu_ci_requirements.py" not in dockerfile
     assert "--no-deps" not in dockerfile
     assert "${MILVUS_IMAGE:-milvusdb/milvus:v2.6.11}" in compose
@@ -625,7 +600,7 @@ def test_api_profiles_do_not_install_retired_local_models() -> None:
     assert "torch-" not in dockerfile
     assert "torchvision-" not in dockerfile
     assert "download_verified_wheels.py" not in workflow
-    assert "requirements-local-models.txt" not in _read("requirements-ci.txt")
+    assert "requirements-local-models.txt" not in _read("requirements-dev.txt")
 
 
 def test_docker_ci_supports_cold_web_builds() -> None:
@@ -649,10 +624,9 @@ def test_docker_ci_supports_cold_web_builds() -> None:
     assert 'python scripts/select_free_docker_subnet.py --seed "$GITHUB_RUN_ID"' in docker_job
     assert "printf 'DOCKER_BUILD_NETWORK=host\\n'" in docker_job
     assert "Set up Docker Buildx" not in docker_job
-    assert docker_job.count("docker build --network host") == 3
-    assert "--build-arg REQUIREMENTS_FILE=requirements-chroma.txt" in docker_job
-    assert "-t mimirq-backend-chroma-ci -f docker/Dockerfile ." in docker_job
-    assert docker_job.count("MIMIRQ_BACKEND_IMAGE: mimirq-backend-chroma-ci") == 5
+    assert docker_job.count("docker build --network host") == 2
+    assert "requirements-chroma.txt" not in docker_job
+    assert docker_job.count("MIMIRQ_BACKEND_IMAGE: mimirq-backend") == 5
     assert "--build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY" in docker_job
     assert "--build-arg NEXT_PUBLIC_API_URL=/" in docker_job
     assert "README docker quickstart smoke" in docker_job

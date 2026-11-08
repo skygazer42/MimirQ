@@ -271,7 +271,7 @@ def test_indexer_embedding_runtime_for_document_propagates_invalid_dataset_scope
 
     indexer = indexer_module.Indexer.__new__(indexer_module.Indexer)
     indexer._db = SimpleNamespace(query=lambda *_args, **_kwargs: _Query())
-    monkeypatch.setattr(indexer_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(indexer_module.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(
         indexer,
         "_load_dataset_metadata",
@@ -418,7 +418,7 @@ def test_retriever_embedding_runtime_propagates_invalid_dataset_scoped_config(
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
 
     with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
@@ -548,7 +548,7 @@ def test_multi_runtime_dataset_scope_fans_out_vector_search_and_keeps_exact_cach
     monkeypatch.setattr(
         retriever_module,
         "get_cached_retrieval_candidates",
-        lambda key: cache_lookups.append(key) or None,
+        lambda key: cache_lookups.append(key),
     )
     monkeypatch.setattr(HybridRetriever, "_search_bm25", lambda self, **kwargs: [])  # noqa: ANN001
     monkeypatch.setattr(HybridRetriever, "_search_lexical_db", lambda self, **kwargs: [])  # noqa: ANN001
@@ -621,7 +621,7 @@ def test_metadata_filter_dataset_scope_drives_runtime_shards(
     captured: dict[str, tuple[uuid.UUID, ...]] = {}
 
     def record_runtime_scope(self, *, tenant_id, dataset_ids=None):  # noqa: ANN001,ARG002
-        captured["dataset_ids"] = dataset_ids or ()
+        captured["dataset_ids"] = dataset_ids if dataset_ids is not None else ()
         return []
 
     monkeypatch.setattr(
@@ -683,7 +683,7 @@ def test_sparse_search_uses_metadata_scope_for_bm25_corpus(
         captured["search_kwargs"] = dict(kwargs)
         return [], "empty", "no_candidates", 0
 
-    monkeypatch.setattr(HybridRetriever, "_bm25_scope_docs", record_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_resolve_derived_corpus_snapshot", record_scope_docs)
     monkeypatch.setattr(HybridRetriever, "_search_sparse_docs", record_sparse_docs)
     monkeypatch.setattr(
         HybridRetriever,
@@ -731,11 +731,11 @@ def test_colbert_search_uses_metadata_scope_for_bm25_corpus(
         )
 
     monkeypatch.setattr(settings, "COLBERT_RETRIEVAL_ENABLED", True, raising=False)
-    monkeypatch.setattr(HybridRetriever, "_bm25_scope_docs", record_scope_docs)
-    monkeypatch.setattr(HybridRetriever, "_search_colbert_ann_docs", lambda self, **kwargs: [])  # noqa: ANN001
+    monkeypatch.setattr(HybridRetriever, "_resolve_derived_corpus_snapshot", record_scope_docs)
+    monkeypatch.setattr(HybridRetriever, "_search_colbert_dense_docs", lambda self, **kwargs: [])  # noqa: ANN001
 
     retriever = HybridRetriever(metadata_filter_enabled=True)
-    retriever._search_colbert_ann(
+    retriever._search_colbert_dense(
         "scope query",
         top_k=2,
         tenant_id=tenant_id,

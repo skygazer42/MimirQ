@@ -1100,13 +1100,7 @@ def _dedupe_dataset_ids(dataset_ids: list[UUID]) -> list[UUID]:
 def _cache_timestamp(value: Any) -> str | None:
     if value is None:
         return None
-    if hasattr(value, "isoformat"):
-        try:
-            return value.isoformat()
-        except Exception:
-            return str(value)
-    text = str(value or "").strip()
-    return text or None
+    return value.isoformat()
 
 
 def _resolve_dify_response_cache_corpus_token(

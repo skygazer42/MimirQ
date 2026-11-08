@@ -1,5 +1,6 @@
-from types import SimpleNamespace
 from uuid import uuid4
+
+from langchain_core.documents import Document
 
 
 def test_parse_documents_forwards_preview_owner_to_parser_factory(monkeypatch, tmp_path) -> None:
@@ -14,7 +15,7 @@ def test_parse_documents_forwards_preview_owner_to_parser_factory(monkeypatch, t
         @staticmethod
         def parse_with_provenance(_file_path, **kwargs):  # noqa: ANN001, ANN003, ANN202
             captured.update(kwargs)
-            return [SimpleNamespace(page_content="preview", metadata={})], "basic", {}
+            return [Document(page_content="preview", metadata={})], "basic", {}
 
     monkeypatch.setattr(worker, "_get_parser_factory", lambda: _Factory())
     monkeypatch.setattr(
@@ -45,7 +46,7 @@ def test_integrated_chunk_preview_materializes_extracted_and_local_images(monkey
     account_id = "preview-owner"
     file_path = tmp_path / "input.pdf"
     file_path.write_bytes(b"%PDF-1.4\n")
-    documents = [SimpleNamespace(page_content="![img](images/a.png)", metadata={"asset_base_dir": str(tmp_path)})]
+    documents = [Document(page_content="![img](images/a.png)", metadata={"asset_base_dir": str(tmp_path)})]
     calls: list[tuple[str, object, object]] = []
 
     monkeypatch.setattr(

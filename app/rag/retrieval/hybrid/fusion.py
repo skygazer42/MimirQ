@@ -36,7 +36,7 @@ class FusionMixin:
 
     @staticmethod
     def _resolve_query_chunk_type_signal(text: str | None) -> str | None:
-        raw = str(text or "").strip().lower()
+        raw = str((text if text is not None else "")).strip().lower()
         if not raw:
             return None
         if any(token in raw for token in ("表格", "字段", "列", "schema", "table", "column")):
@@ -593,7 +593,7 @@ class FusionMixin:
                 "k_prefix": int(k_prefix),
                 "rrf_k": int(k0),
                 "budgets": budgets_out,
-                "min_scores": min_scores_out or None,
+                "min_scores": (min_scores_out),
                 "eligible_total": int(eligible_total),
                 "selected_prefix": int(len(selected_keys)),
                 "picked_by_channel": picked_out,
@@ -613,7 +613,7 @@ class FusionMixin:
             channel: sorted(channel_results[channel], key=self._rank_sort_key) for channel in self._FUSION_CHANNELS
         }
         rank_maps = {channel: self._build_rank_map(sorted_results[channel]) for channel in self._FUSION_CHANNELS}
-        k0 = max(1, int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60))
+        k0 = max(1, int((rrf_k if rrf_k is not None else 0)) or int(getattr(self, "rrf_k", 60) or 60))
         merged, raw_scores, _keys = self._build_rrf_merged_items(
             channel_norms=channel_norms,
             rank_maps=rank_maps,
@@ -641,14 +641,14 @@ class FusionMixin:
             channel: sorted(channel_results[channel], key=self._rank_sort_key) for channel in self._FUSION_CHANNELS
         }
         rank_maps = {channel: self._build_rank_map(sorted_results[channel]) for channel in self._FUSION_CHANNELS}
-        k_prefix = max(1, int(top_k or 0) or int(getattr(self, "k", 0) or 0) or 10)
+        k_prefix = max(1, int((top_k if top_k is not None else 0)) or int(getattr(self, "k", 0) or 0) or 10)
         budgets = self._resolve_budgeted_budgets(
             configured=self._coerce_budgets(getattr(self, "fusion_budgets", None)),
             channel_results=sorted_results,
             k_prefix=k_prefix,
         )
         min_scores = self._coerce_min_scores(getattr(self, "fusion_min_scores", None))
-        k0 = max(1, int(rrf_k or 0) or int(getattr(self, "rrf_k", 60) or 60))
+        k0 = max(1, int((rrf_k if rrf_k is not None else 0)) or int(getattr(self, "rrf_k", 60) or 60))
         merged, raw_scores, keys = self._build_rrf_merged_items(
             channel_norms=channel_norms,
             rank_maps=rank_maps,
@@ -828,8 +828,8 @@ class FusionMixin:
         channel_results = {
             "vector": list(vector_results or []),
             "bm25": list(bm25_results or []),
-            "lexical": list(lexical_results or []),
-            "sparse": list(sparse_results or []),
+            "lexical": list((lexical_results if lexical_results is not None else [])),
+            "sparse": list((sparse_results if sparse_results is not None else [])),
         }
         runtime = self._build_fusion_runtime(query)
         channel_norms = {
@@ -837,7 +837,18 @@ class FusionMixin:
             for channel in self._FUSION_CHANNELS
         }
         self._update_fusion_observability(vector_norm=channel_norms["vector"], runtime=runtime)
-        fusion = (fusion_strategy or "linear").lower().strip()
+        fusion = ("linear" if fusion_strategy is None else fusion_strategy).lower().strip()
+        if fusion not in {
+            "linear",
+            "rrf",
+            "reciprocal_rank_fusion",
+            "budgeted_rrf",
+            "budget_rrf",
+            "weighted",
+            "weighted_linear",
+            "weighted_sum",
+        }:
+            raise ValueError(f"Unknown retrieval fusion strategy: {fusion!r}")
         if fusion in ("rrf", "reciprocal_rank_fusion"):
             return self._merge_results_rrf(
                 channel_results=channel_results,
@@ -870,8 +881,8 @@ class FusionMixin:
         if not documents:
             return documents
 
-        query_tokens = self._bm25_tokenize(query)
-        doc_tokens_list = [self._bm25_tokenize(doc.get("content", "")) for doc in documents]
+        query_tokens = self._tokenize_lexical_text(query)
+        doc_tokens_list = [self._tokenize_lexical_text(doc.get("content", "")) for doc in documents]
 
         doc_term_frequencies = [Counter(tokens) for tokens in doc_tokens_list]
         document_frequencies: Counter[str] = Counter()

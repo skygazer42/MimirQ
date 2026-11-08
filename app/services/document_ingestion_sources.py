@@ -32,7 +32,7 @@ def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
     - HTTP-date (e.g. Last-Modified: "Wed, 21 Oct 2015 07:28:00 GMT")
     - ISO 8601 timestamps (e.g. "2026-03-04T10:00:00Z")
     """
-    value = (raw or "").strip()
+    value = (raw if raw is not None else "").strip()
     if not value:
         return None
 
@@ -200,8 +200,8 @@ async def download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_i
                 max_bytes=(settings.URL_INGEST_MAX_BYTES or settings.MAX_FILE_SIZE),
                 timeout_sec=float(settings.URL_INGEST_TIMEOUT_SEC or 30.0),
                 follow_redirects=settings.URL_INGEST_FOLLOW_REDIRECTS,
-                user_agent=(body.user_agent or None),
-                extra_headers=(body.fetch_headers or None),
+                user_agent=body.user_agent,
+                extra_headers=body.fetch_headers,
             ),
         )
 

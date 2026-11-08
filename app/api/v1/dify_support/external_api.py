@@ -678,9 +678,12 @@ def _persist_dify_conversation_turn(
     conversation_id: UUID | None = None,
 ) -> DifyConversationTurnResponse:
     api = _api()
-    source_conversation_id = str(source_conversation_id or "").strip() or None
-    source_message_id = str(source_message_id or "").strip() or None
-    source_run_id = str(source_run_id or "").strip() or None
+    if source_conversation_id is not None:
+        source_conversation_id = source_conversation_id.strip()
+    if source_message_id is not None:
+        source_message_id = source_message_id.strip()
+    if source_run_id is not None:
+        source_run_id = source_run_id.strip()
     trace_request_id = str(trace_request_id or "").strip() or None
     question = str(query or "").strip()
     final_answer = str(answer or "").strip()

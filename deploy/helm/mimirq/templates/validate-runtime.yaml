@@ -44,8 +44,12 @@
 {{- fail "Distributed MimirQ deployments require DB_RUNTIME_MIGRATIONS_ENABLED=false." -}}
 {{- end -}}
 
-{{- if and $distributed (or (eq $apiVectorBackend "faiss") (eq $apiVectorBackend "chroma") (eq $workerVectorBackend "faiss") (eq $workerVectorBackend "chroma")) -}}
-{{- fail "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." -}}
+{{- if or (eq $apiVectorBackend "faiss") (eq $workerVectorBackend "faiss") -}}
+{{- fail "FAISS vector backend has been retired; choose a supported backend." -}}
+{{- end -}}
+
+{{- if or (eq $apiVectorBackend "chroma") (eq $workerVectorBackend "chroma") -}}
+{{- fail "Chroma vector backend has been retired; choose a supported backend." -}}
 {{- end -}}
 
 {{- if and $distributed (not $usesRemoteDocuments) (not $sharedUploads) -}}

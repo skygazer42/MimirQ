@@ -37,19 +37,19 @@ def _enabled() -> bool:
 
 
 def _norm_kind(value: str | None) -> str:
-    s = str(value or "").strip().lower()
+    s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
     return (s[:80] or "unknown").strip("_") or "unknown"
 
 
 def _norm_status(value: str | None) -> str:
-    s = str(value or "").strip().lower()
+    s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._-]+", "_", s)
     return (s[:32] or "unknown").strip("_") or "unknown"
 
 
 def _norm_stage(value: str | None) -> str:
-    s = str(value or "").strip().lower()
+    s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._-]+", "_", s)
     return (s[:64] or "unknown").strip("_") or "unknown"
 

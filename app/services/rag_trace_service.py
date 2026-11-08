@@ -352,7 +352,7 @@ def _safe_bucket_value(key: str, value: Any) -> bool | int | None:
     if bool_value is not None and key.endswith("_enabled"):
         return bool_value
     int_value = _safe_int(value)
-    return int_value if int_value is not None else None
+    return int_value
 
 
 def _safe_router_layer_row(item: Any, *, level: str) -> dict[str, Any]:
@@ -378,14 +378,20 @@ def _safe_router_layer_row(item: Any, *, level: str) -> dict[str, Any]:
 def _safe_scope(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         return {}
-    tenant_present = bool(str(raw.get("tenant_id") or "").strip())
-    dataset_present = bool(str(raw.get("dataset_id") or "").strip())
+    tenant_present = _to_bool(raw.get("tenant_id_present"))
+    if tenant_present is None and "tenant_id" in raw:
+        tenant_id = raw["tenant_id"]
+        tenant_present = tenant_id is not None and bool(str(tenant_id).strip())
+    dataset_present = _to_bool(raw.get("dataset_id_present"))
+    if dataset_present is None and "dataset_id" in raw:
+        dataset_id = raw["dataset_id"]
+        dataset_present = dataset_id is not None and bool(str(dataset_id).strip())
     scope: dict[str, Any] = {
         "account_id_present": _to_bool(raw.get("account_id_present")),
         "document_ids_count": _to_int(raw.get("document_ids_count")),
         "kind": (str(raw.get("kind")) if raw.get("kind") is not None else None),
-        "tenant_id_present": tenant_present if tenant_present else None,
-        "dataset_id_present": dataset_present if dataset_present else None,
+        "tenant_id_present": tenant_present,
+        "dataset_id_present": dataset_present,
     }
     return {k: v for k, v in scope.items() if v is not None}
 

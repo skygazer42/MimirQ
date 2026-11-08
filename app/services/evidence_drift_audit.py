@@ -118,9 +118,10 @@ def _chunk_metadata_drift(
 
     normalized_expected = expected_value.strip()
     metadata = chunk_row.get("metadata") if isinstance(chunk_row.get("metadata"), dict) else {}
-    observed_value = str(metadata.get(metadata_key) or "").strip()
-    observed[observed_key] = observed_value or None
-    if observed_value != normalized_expected:
+    observed_value = metadata.get(metadata_key)
+    observed[observed_key] = observed_value
+    comparable_value = observed_value.strip() if isinstance(observed_value, str) else observed_value
+    if comparable_value != normalized_expected:
         return False, reason, expected, observed
     return None
 

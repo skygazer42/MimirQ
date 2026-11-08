@@ -1101,7 +1101,7 @@ def _resolve_case_reference_sources(
 def _build_reference_target(case: dict[str, Any], refs: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "question": _text(case.get("question")),
-        "expected_answer": _text(case.get("expected_answer")) or None,
+        "expected_answer": (case.get("expected_answer")),
         "reference_sources": refs,
         "tags": [
             _text(case.get("case_type")),
@@ -1474,7 +1474,7 @@ def main(argv: list[str] | None = None) -> int:
         "service_records": len(records["service_records"]) if records is not None else None,
         "qa_records": len(records["qa_records"]) if records is not None else None,
         "one_thing_records": len(records["one_thing_records"]) if records is not None else None,
-        "dataset_id": dataset_id or None,
+        "dataset_id": (dataset_id),
         "resolved_bundle_items": len((resolved_bundle or {}).get("items") or []) if resolved_bundle else 0,
         "imported_created": (import_result or {}).get("created") if import_result else None,
         "imported_updated": (import_result or {}).get("updated") if import_result else None,

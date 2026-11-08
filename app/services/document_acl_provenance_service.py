@@ -45,7 +45,7 @@ def _normalize_external_ids(
 
     out: list[str] = []
     seen: set[str] = set()
-    for raw in external_ids or []:
+    for raw in external_ids if external_ids is not None else []:
         if not isinstance(raw, (str, int, float)):
             continue
         s = str(raw).strip()
@@ -66,7 +66,7 @@ def _normalize_group_ids(group_ids: Iterable[object] | None, *, max_items: int) 
     max_items = max(0, int(max_items or 0))
     out: list[str] = []
     seen: set[str] = set()
-    for raw in group_ids or []:
+    for raw in group_ids if group_ids is not None else []:
         s = str(raw or "").strip()
         if not s:
             continue
@@ -105,9 +105,11 @@ def build_document_acl_provenance(
     - `mapped_group_ids` are stored as strings (tenant group UUIDs).
     """
 
-    effective_mode = _normalize_mode((effective_access or {}).get("mode"), default="inherit")
-    partial_member_list = (effective_access or {}).get("partial_member_list")
-    partial_group_list = (effective_access or {}).get("partial_group_list")
+    effective_mode = _normalize_mode(
+        (effective_access if effective_access is not None else {}).get("mode"), default="inherit"
+    )
+    partial_member_list = (effective_access if effective_access is not None else {}).get("partial_member_list")
+    partial_group_list = (effective_access if effective_access is not None else {}).get("partial_group_list")
 
     member_count = 0
     if isinstance(partial_member_list, list):
@@ -128,8 +130,8 @@ def build_document_acl_provenance(
         "applied_at": _now_utc_iso(),
         "applied_by": {
             "kind": "connector",
-            "connector_id": str(connector_id or "").strip(),
-            "run_id": (str(connector_run_id or "").strip() or None),
+            "connector_id": connector_id,
+            "run_id": connector_run_id,
         },
         "effective_access": {
             "mode": effective_mode,

@@ -82,7 +82,7 @@ def _extract_play_field(block_text: str, *, key: str) -> str | None:
         val = _parse_yaml_inline_key_value(ln, key=key)
         if not val:
             continue
-        return val[:120] or None
+        return val[:120]
     return None
 
 

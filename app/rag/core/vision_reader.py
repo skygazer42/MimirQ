@@ -191,8 +191,8 @@ async def _load_image_bytes(
 
     Returns: (bytes|None, loader_reason)
     """
-    img_id = str(meta.get("img_id") or "").strip() or None
-    image_id = str(meta.get("image_id") or "").strip() or None
+    img_id = meta.get("img_id")
+    image_id = meta.get("image_id")
 
     if img_id and _looks_like_local_image_id(img_id):
         image_id = img_id
@@ -492,8 +492,9 @@ def _truncate_vision_reader_text(*, text: str, max_output_chars: int) -> str:
 
 
 def _build_vision_reader_doc(*, doc: Document, meta: dict[str, Any], text: str) -> Document:
-    origin_chunk_id = str(getattr(doc, "id", None) or meta.get("chunk_id") or "").strip() or None
-    vision_chunk_id = _stable_vision_reader_chunk_id(origin_chunk_id or str(uuid.uuid4()))
+    origin_chunk_id = doc.id if doc.id is not None else meta.get("chunk_id")
+    vision_origin = str(uuid.uuid4()) if origin_chunk_id is None else origin_chunk_id
+    vision_chunk_id = _stable_vision_reader_chunk_id(vision_origin)
     new_meta: dict[str, Any] = dict(meta)
     new_meta.update(
         {
@@ -649,7 +650,7 @@ async def build_vision_reader_context_docs(
             "max_image_bytes": max_image_bytes,
             "max_output_chars": max_output_chars,
             "errors": errors,
-            "model": settings.VISION_LLM_MODEL.strip() or None,
+            "model": settings.VISION_LLM_MODEL,
         }
     )
     return out, meta

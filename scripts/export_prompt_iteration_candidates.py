@@ -41,9 +41,13 @@ def export_prompt_iteration_candidates(*, feedback_rows: list[dict[str, Any]]) -
             samples.append(
                 {
                     "reason": str(row.get("reason") or "").strip(),
-                    "rewritten_query": str(metadata.get("rewritten_query") or "").strip() or None,
+                    "rewritten_query": (metadata.get("rewritten_query")),
                     "retrieval_mode": (
-                        str((rag_snapshot.get("rag_config_snapshot") or {}).get("retrieval_mode") or "").strip() or None
+                        (
+                            rag_snapshot["rag_config_snapshot"].get("retrieval_mode")
+                            if isinstance(rag_snapshot.get("rag_config_snapshot"), dict)
+                            else None
+                        )
                         if isinstance(rag_snapshot.get("rag_config_snapshot"), dict)
                         else None
                     ),

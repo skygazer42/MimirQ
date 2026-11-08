@@ -1072,10 +1072,6 @@ def _aggregate_hierarchy_recall_summary(
     )
 
 
-def _normalize_pipeline_hash(request: DatasetReportRequest) -> str | None:
-    return str(request.pipeline_hash or "").strip() or None
-
-
 def _active_pipeline_hash_expr(*, default_unknown: bool = False) -> "ColumnElement[str | None]":
     values: list[Any] = [
         DBDocument.doc_metadata["active_pipeline_hash"].as_string(),
@@ -1581,7 +1577,7 @@ def build_dataset_report(
     dataset = dataset_service.get_dataset(db, request.tenant_id, request.dataset_id)
     dataset_service.assert_dataset_readable(db, dataset, request.account_id)
 
-    pipeline_hash_norm = _normalize_pipeline_hash(request)
+    pipeline_hash_norm = request.pipeline_hash
     profile = compute_dataset_profile_summary(
         db,
         tenant_id=request.tenant_id,
@@ -1608,7 +1604,7 @@ def build_dataset_report(
 
     return DatasetReportOut(
         dataset_id=request.dataset_id,
-        dataset_name=str(dataset.name or "") or None,
+        dataset_name=dataset.name,
         pipeline_hash=pipeline_hash_norm,
         generated_at=datetime.now(UTC),
         data_provenance=DatasetReportDataProvenanceOut(),

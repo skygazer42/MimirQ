@@ -9,7 +9,7 @@ from app.rag.reranker.types import RerankCandidate, RerankResult, SyncReranker
 
 class _IdentityReranker:
     def __init__(self, provider: str | None = None) -> None:
-        self.provider = str(provider or "none").strip().lower() or "none"
+        self.provider = str((provider if provider else "none")).strip().lower() or "none"
         self.model_name = None
 
     def rerank(self, query: str, candidates: list[RerankCandidate], **kwargs: Any) -> RerankResult:  # noqa: ARG002

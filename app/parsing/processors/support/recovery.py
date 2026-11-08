@@ -325,7 +325,7 @@ def upsert_ingest_checkpoint(
     source: str,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    out = dict(metadata or {})
+    out = dict((metadata if metadata is not None else {}))
     checkpoint = {
         "version": "1",
         "stage": str(stage or "").strip() or "unknown",
@@ -349,7 +349,7 @@ def record_ingest_gate_outcome(
     reason: str,
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    out = dict(metadata or {})
+    out = dict((metadata if metadata is not None else {}))
     existing = out.get("ingest_gate_outcomes")
     gate_outcomes = dict(existing) if isinstance(existing, dict) else {}
     entry: dict[str, Any] = {
@@ -368,7 +368,7 @@ def record_ingest_gate_outcome(
 
 
 def _document_questions_enabled(metadata: dict[str, Any] | None) -> bool:
-    meta = dict(metadata or {})
+    meta = dict((metadata if metadata is not None else {}))
     for key in ("document_questions_enabled", "generate_document_questions"):
         if key in meta:
             value = meta.get(key)
@@ -382,7 +382,7 @@ def _document_questions_enabled(metadata: dict[str, Any] | None) -> bool:
 
 
 def _document_questions_count(metadata: dict[str, Any] | None) -> int:
-    meta = dict(metadata or {})
+    meta = dict((metadata if metadata is not None else {}))
     raw = meta.get("document_questions_count")
     if raw is None:
         raw = settings.DOCUMENT_QUESTIONS_COUNT
@@ -408,7 +408,7 @@ def audit_ingest_gate(
     audit_log_event(
         db,
         tenant_id=tenant_id,
-        actor_id=(db_document.owner_id or None),
+        actor_id=db_document.owner_id,
         action=AUDIT_ACTION_DOCUMENT_INGEST_GATE,
         resource_type="document",
         resource_id=str(db_document.id),
@@ -416,7 +416,7 @@ def audit_ingest_gate(
             "gate": str(gate or "").strip() or "unknown",
             "outcome": str(outcome or "").strip() or "degraded",
             "reason": str(reason or "").strip() or "unknown",
-            **(dict(details or {}) if isinstance(details, dict) else {}),
+            **(dict((details if details is not None else {})) if isinstance(details, dict) else {}),
         },
     )
     db.commit()
@@ -488,11 +488,6 @@ def _kg_prompt_template_id() -> UUID | None:
         return None
 
 
-def _kg_optional_setting(name: str) -> str | None:
-    value = str(getattr(settings, name, "") or "").strip()
-    return value or None
-
-
 def _kg_python_plugin_ref(pipeline_effective: PipelineEffective) -> str:
     plugin_ref = str(pipeline_effective.kg_python_plugin or "").strip()
     if plugin_ref:
@@ -536,18 +531,13 @@ async def _enqueue_post_completion_kg(
     from app.core.pipeline_versions import get_active_pipeline_hash
     from app.tasks.queue import enqueue_kg_extraction
 
-    raw_pipeline_hash = (
-        get_active_pipeline_hash(db_document.doc_metadata or {})
-        or (db_document.doc_metadata or {}).get("pipeline_hash")
-        or None
-    )
-    pipeline_hash = (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
+    pipeline_hash = get_active_pipeline_hash(db_document.doc_metadata)
     effective_options = build_kg_extraction_job_options(
         pipeline_hash=pipeline_hash,
         prompt_template_id=_kg_prompt_template_id(),
-        prompt_template_key=_kg_optional_setting("KG_EXTRACT_PROMPT_TEMPLATE_KEY"),
-        prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
-        extraction_backend=_kg_optional_setting("KG_EXTRACTION_BACKEND"),
+        prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY,
+        prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY,
+        extraction_backend=settings.KG_EXTRACTION_BACKEND,
         kg_python_plugin=_kg_python_plugin_ref(pipeline_effective),
         kg_python_params=dict(pipeline_effective.kg_python_params or {}),
         replace_existing=bool(settings.KG_EXTRACT_REPLACE_EXISTING),
@@ -590,8 +580,8 @@ async def _extract_post_completion_kg_events(
         chunks=db_chunks,
         index_options=index_options,
         prompt_template_id=_kg_prompt_template_id(),
-        prompt_template_key=_kg_optional_setting("KG_EXTRACT_PROMPT_TEMPLATE_KEY"),
-        prompt_ab_experiment_key=_kg_optional_setting("KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY"),
+        prompt_template_key=settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY,
+        prompt_ab_experiment_key=settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY,
         kg_python_plugin=kg_python_plugin_ref,
         kg_python_params=dict(pipeline_effective.kg_python_params or {}),
     )

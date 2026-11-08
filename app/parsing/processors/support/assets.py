@@ -37,7 +37,7 @@ def _collect_item_asset_refs(
     artifact_dirs: set[str],
     collect_images: bool,
 ) -> None:
-    for item in items or []:
+    for item in items if items is not None else []:
         meta = _asset_metadata(item)
         _collect_artifact_dir_from_meta(meta, artifact_dirs)
         if collect_images:

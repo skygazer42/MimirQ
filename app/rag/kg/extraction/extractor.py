@@ -257,7 +257,7 @@ def _build_canonicalized_entity(
     *,
     name: str,
     ent_type: str,
-    description: str,
+    description: str | None,
     role: object,
     evidence_quote: str | None,
     normalized_name: str | None = None,
@@ -279,9 +279,9 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
 
     raw_type = str(ent.get("type") or "unknown").strip() or "unknown"
     ent_type = normalize_entity_type(raw_type)
-    description = str(ent.get("description") or "").strip()
+    description = ent.get("description")
     role = ent.get("role")
-    evidence_quote = str(ent.get("evidence_quote") or "").strip() or None
+    evidence_quote = ent.get("evidence_quote")
 
     split = split_trailing_parenthetical_alias(raw_name)
     if split is None:
@@ -656,7 +656,7 @@ def _build_relation_verify_candidates(
                 predicate=str(relation.get("predicate") or "").strip() or "unknown",
                 object_id=str(relation.get("object_id") or "").strip(),
                 confidence=float(relation.get("confidence") or 0.5),
-                evidence_quote=str(relation.get("evidence_quote") or "").strip() or None,
+                evidence_quote=relation.get("evidence_quote"),
             )
         )
     return candidates, by_rid
@@ -1198,10 +1198,10 @@ def _resolve_prompt_template_content(
         ab_experiment_key=config.prompt_ab_experiment_key,
         ab_user_key=config.ab_user_key,
     )
-    if not (chosen and chosen.content):
+    if chosen is None:
         return None, None
 
-    prompt_template_content = str(chosen.content).strip() or None
+    prompt_template_content = chosen.content.strip()
     chosen_template_id = str(chosen.id)
     try:
         chosen.usage_count += 1
@@ -1293,9 +1293,13 @@ def _normalize_event_payload(
         summary = (content[:200] if content else "Event").strip() or "Event"
 
     entities = event_data.get("entities") if isinstance(event_data.get("entities"), list) else []
-    entities = [entity for entity in entities if isinstance(entity, dict)]
+    entities = [dict(entity) for entity in entities if isinstance(entity, dict)]
     if len(entities) > max_entities_per_event:
         entities = entities[:max_entities_per_event]
+    for entity in entities:
+        description = entity.get("description")
+        if description is not None:
+            entity["description"] = description.strip()
     entities = _canonicalize_entities_for_chunk(
         entities,
         chunk_text=(chunk.content or ""),
@@ -1370,7 +1374,7 @@ def _build_entity_candidates(processed_events: list[tuple[DocumentChunk, dict]])
                         name=name,
                         type=ent_type,
                         description=str(ent.get("description") or "").strip(),
-                        evidence_quote=str(ent.get("evidence_quote") or "").strip() or None,
+                        evidence_quote=ent.get("evidence_quote"),
                     )
                 )
             ent["_cid"] = cid
@@ -1680,11 +1684,11 @@ def _build_event_index_records(
                     name=name,
                     normalized_name=normalized,
                     type=ent_type,
-                    description=(ent.get("description") or "").strip() or None,
+                    description=ent.get("description"),
                     vector=embed_cache.get(ent_text),
                     role=ent.get("role"),
-                    evidence_quote=(str(ent.get("evidence_quote") or "").strip() or None),
-                    evidence_source=(str(ent.get("evidence_source") or "").strip() or None),
+                    evidence_quote=ent.get("evidence_quote"),
+                    evidence_source=ent.get("evidence_source"),
                     evidence_start_char=(
                         int(ent.get("evidence_start_char")) if ent.get("evidence_start_char") is not None else None
                     ),
@@ -2759,7 +2763,7 @@ def _append_extracted_relation_row(
             event_id=None,
             subject_entity_id=subj_ent_id,
             predicate=pred,
-            predicate_raw=(str(rel.get("predicate_raw") or "").strip() or None),
+            predicate_raw=(rel.get("predicate_raw")),
             object_entity_id=obj_ent_id,
             confidence=conf,
             qualifiers=rel.get("qualifiers") if isinstance(rel.get("qualifiers"), dict) else None,
@@ -2815,7 +2819,7 @@ def _append_heuristic_alias_relation_rows(
         alias_refs = dict(refs)
         evidence = coerce_evidence(
             text=(chunk.content or ""),
-            evidence_quote=(str(alias_quote).strip() or None),
+            evidence_quote=(alias_quote),
             fallback_mention=None,
             max_quote_chars=240,
         )
@@ -2892,7 +2896,7 @@ def _append_llm_alias_relation_rows(
         llm_refs = dict(refs)
         evidence = coerce_evidence(
             text=(chunk.content or ""),
-            evidence_quote=(str(item.get("evidence_quote") or "").strip() or None),
+            evidence_quote=(item.get("evidence_quote")),
             fallback_mention=None,
             max_quote_chars=240,
         )
@@ -3199,8 +3203,8 @@ def _normalize_skill_item(
     if evidence is None and skill_evidence_required:
         skill_evidence_stats["dropped_no_evidence"] += 1
         return None
-    summary = str(raw.get("summary") or "").strip() or None
-    category = str(raw.get("category") or "").strip() or None
+    summary = raw.get("summary")
+    category = raw.get("category")
     steps = raw.get("steps") if isinstance(raw.get("steps"), list) else []
     inputs = raw.get("inputs") if isinstance(raw.get("inputs"), list) else []
     outputs = raw.get("outputs") if isinstance(raw.get("outputs"), list) else []
@@ -3727,7 +3731,7 @@ def _append_skill_links(
                     entity_id=skill_id,
                     weight=conf,
                     role="skill",
-                    extra_data=(link_extra or None),
+                    extra_data=(link_extra),
                 )
             )
 
@@ -4133,7 +4137,7 @@ class EventExtractor:
         resolved_chunks: list[DocumentChunk],
         prompt_template_content: str | None,
     ) -> "tuple[ExtractionBackendSelection, BaseLLMClient | None]":
-        requested_backend = str(config.extraction_backend or "").strip().lower() or None
+        requested_backend = config.extraction_backend
         auto_backend_reason: str | None = None
         if requested_backend is None:
             long_doc_backend = settings.KG_EXTRACT_LONG_DOC_BACKEND.strip().lower()

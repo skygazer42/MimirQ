@@ -61,13 +61,16 @@ def _get_position_tagged_markdown(doc: Document) -> str:
 
 
 def _join_document_page_content(documents: list[Document] | None) -> str:
-    parts = [POSITION_TAG_RE.sub("", str(d.page_content or "").replace("\x00", "")).strip() for d in (documents or [])]
+    parts = [
+        POSITION_TAG_RE.sub("", str(d.page_content or "").replace("\x00", "")).strip()
+        for d in (documents if documents is not None else [])
+    ]
     return "\n\n".join(parts).strip()
 
 
 def _join_original_markdown_for_persistence(documents: list[Document] | None) -> str:
     parts: list[str] = []
-    for doc in documents or []:
+    for doc in documents if documents is not None else []:
         parts.append(_get_position_tagged_markdown(doc) or str(doc.page_content or "").replace("\x00", ""))
     return "\n\n".join(parts).strip()
 

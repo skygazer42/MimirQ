@@ -103,7 +103,7 @@ from app.services.chat_turn_persistence import (
     auto_update_summary_background as _auto_update_summary_background,
 )
 from app.services.metrics_logger import set_metrics_context
-from app.services.quota_service import check_chat_assistant_token_quota
+from app.services.quota_service import ChatAssistantTokenQuota, check_chat_assistant_token_quota
 from app.services.rag_runtime_limiter import (
     RetrievalAdmissionTimeoutError,
     run_blocking_call_with_managed_session,
@@ -374,22 +374,17 @@ async def _run_non_streaming_chat_generation(
     )
 
 
-def _raise_chat_quota_exceeded_if_needed(quota_meta: dict[str, Any]) -> None:
-    if not quota_meta.get("enabled"):
-        return
-    if not quota_meta.get("exceeded"):
-        return
-    if quota_meta.get("mode") != "block":
-        return
-    raise HTTPException(
-        status_code=429,
-        detail={
-            "message": "Chat quota exceeded (assistant tokens)",
-            "retry_after_sec": None,
-            "limit": int(quota_meta.get("limit") or 0),
-            "scope": "chat_tokens",
-        },
-    )
+def _raise_chat_quota_exceeded_if_needed(quota_meta: ChatAssistantTokenQuota) -> None:
+    if quota_meta["enabled"] and quota_meta["exceeded"] and quota_meta["mode"] == "block":
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "message": "Chat quota exceeded (assistant tokens)",
+                "retry_after_sec": None,
+                "limit": quota_meta["limit"],
+                "scope": "chat_tokens",
+            },
+        )
 
 
 def _reject_singleflight_leader_if_needed(
@@ -496,7 +491,7 @@ async def chat(
     conversation_id = request.conversation_id
     citations_data: list = []
     full_response = ""
-    allowed_doc_ids: list[UUID] = []
+    allowed_doc_ids: list[UUID] | None = None
     long_term_messages: list[dict] = []
     allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
     allow_open_scope = bool(settings.CHAT_ALLOW_OPEN_SCOPE)
@@ -535,7 +530,7 @@ async def chat(
         account_id=account_id,
     )
 
-    doc_ids_to_use = allowed_doc_ids or []
+    doc_ids_to_use = allowed_doc_ids
     request_runtime = _prepare_chat_request_runtime(
         db=db,
         tenant_id=tenant_id,
@@ -574,8 +569,8 @@ async def chat(
     rag_cfg = jsonable_encoder(effective_rag_config.model_dump())
     prompt_cfg = {
         "prompt_template_id": str(effective_prompt_template_id) if effective_prompt_template_id else None,
-        "prompt_template_key": (effective_prompt_template_key or None),
-        "prompt_ab_experiment_key": (effective_prompt_ab_experiment_key or None),
+        "prompt_template_key": effective_prompt_template_key,
+        "prompt_ab_experiment_key": effective_prompt_ab_experiment_key,
     }
     cache_state = await _prepare_non_streaming_chat_cache_state(
         options=_ChatCacheLookupInput(
@@ -676,7 +671,7 @@ async def chat(
                 assistant_message_id=assistant_message_id,
                 request_id=str(request_id),
                 question=request.message,
-                document_count=len(doc_ids_to_use),
+                document_count=0 if doc_ids_to_use is None else len(doc_ids_to_use),
                 full_response=full_response,
                 citations=citations_data,
                 metrics=metrics_data,
@@ -729,8 +724,8 @@ async def chat(
         conversation_id=conversation_id,
     )
 
-    retrieval_mode_used = metrics_data.get("retrieval_mode") or effective_rag_config.retrieval_mode
-    vector_backend_used = metrics_data.get("vector_backend") or settings.VECTOR_BACKEND
+    retrieval_mode_used = metrics_data.get("retrieval_mode")
+    vector_backend_used = metrics_data.get("vector_backend")
     structured_ok = bool(metrics_data.get("structured_parse_ok")) and structured_data is not None
 
     total_tokens = num_tokens_from_string(full_response or "")

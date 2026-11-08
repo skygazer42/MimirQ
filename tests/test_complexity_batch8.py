@@ -1,7 +1,3 @@
-import hashlib
-import json
-import sys
-import types
 import uuid
 from types import SimpleNamespace
 
@@ -10,7 +6,6 @@ import pytest
 from app.rag.kg.extraction.relation_processor import CandidateEntity, RelationProcessor
 from app.rag.kg.extraction.relation_verifier import RelationCandidate, RelationVerifier
 from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter
-from app.rag.reranker.ltr import LTRFeatureSpec, LTRReranker
 from app.rag.retrieval.hybrid.lexical import LexicalDBMixin
 from app.services.dify_integration.metadata_condition_helpers import (
     MetadataConditionValidationError,
@@ -22,7 +17,7 @@ from app.services.rag_config_template_resolver import resolve_rag_config_templat
 
 class _FakeAsyncLLM:
     def __init__(self, *, result: dict[str, object] | None = None, exc: Exception | None = None) -> None:
-        self._result = result or {}
+        self._result = result if result is not None else {}
         self._exc = exc
         self.calls: list[dict[str, object]] = []
 
@@ -198,45 +193,6 @@ def test_extract_markdown_frontmatter_preserves_list_and_strip_output_contract()
     assert result.changed is True
     assert result.start_char == 0
     assert result.end_char == len(result.raw)
-
-
-def test_ltr_reranker_init_preserves_manifest_validation_and_sha_model_id(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    model_path = tmp_path / "model.bin"
-    model_path.write_bytes(b"ltr-model")
-    sha = hashlib.sha256(b"ltr-model").hexdigest()
-    spec = LTRFeatureSpec.default()
-    (tmp_path / "model.manifest.json").write_text(
-        json.dumps(
-            {
-                "schema": "mimirq.ltr_model_manifest.v1",
-                "feature_schema": spec.schema,
-                "feature_names": list(spec.feature_names),
-                "model_sha256": sha,
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    loaded_paths: list[str] = []
-
-    class _FakeBooster:
-        def load_model(self, path: str) -> None:
-            loaded_paths.append(path)
-
-    monkeypatch.setitem(sys.modules, "xgboost", types.SimpleNamespace(Booster=_FakeBooster))
-
-    reranker = LTRReranker(model_path=str(model_path))
-
-    assert loaded_paths == [str(model_path)]
-    assert vars(reranker)["_manifest"] == {
-        "schema": "mimirq.ltr_model_manifest.v1",
-        "feature_schema": spec.schema,
-        "feature_names": list(spec.feature_names),
-        "model_sha256": sha,
-    }
-    assert vars(reranker)["_model_id"] == f"sha256:{sha[:12]}"
 
 
 def test_collect_lexical_dataset_scope_preserves_current_and_or_semantics() -> None:

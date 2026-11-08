@@ -33,8 +33,8 @@ class _BeamBudget:
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "max_llm_calls": self.max_calls or None,
-            "budget_seconds": self.budget_sec or None,
+            "max_llm_calls": self.max_calls,
+            "budget_seconds": self.budget_sec,
             "llm_calls_used": self.calls_used,
             "elapsed_sec": round(time.perf_counter() - self.started, 6),
             "exhausted": self.exhausted,

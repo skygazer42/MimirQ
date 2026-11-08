@@ -21,7 +21,7 @@ from app.api.utils.http_exception_responses import (
 )
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db
-from app.core.health_checks import check_database, check_minio, check_redis, check_vector
+from app.core.health_checks import check_database, check_object_storage, check_redis, check_vector
 from app.core.redis_client import LazyRedisClient
 from app.services.rag_runtime_warmup import (
     get_rag_runtime_warmup_status,
@@ -161,7 +161,7 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
 
     object_storage_ready_probe_enabled = minio_service.is_enabled()
     minio_health_check = minio_service.health_check if object_storage_ready_probe_enabled else None
-    minio_status, minio_ok = check_minio(
+    minio_status, minio_ok = check_object_storage(
         settings,
         mode="ready",
         minio_health_check=minio_health_check,

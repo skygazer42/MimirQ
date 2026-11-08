@@ -140,7 +140,7 @@ def _collect_drift_sample_items(
         if not content.strip():
             continue
         meta = meta_raw if isinstance(meta_raw, dict) else {}
-        stored_space = str(meta.get("embedding_space_hash") or "").strip() or None
+        stored_space = meta.get("embedding_space_hash")
         if stored_space:
             stored_space_counts[stored_space] += 1
         items.append(
@@ -213,7 +213,7 @@ def run_embedding_drift_monitor(
     Output intentionally does NOT include chunk/document identifiers or raw content.
     """
     vector_backend = str(settings.VECTOR_BACKEND or "milvus").strip().lower()
-    current_space = str(current_embedding_space_hash() or "").strip() or None
+    current_space = current_embedding_space_hash()
 
     cap = max(0, int(sample_n or 0))
     cap = min(cap, 2000)

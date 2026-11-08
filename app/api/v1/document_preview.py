@@ -74,7 +74,7 @@ def _serialize_inline_preview_documents(documents: list[Document]) -> list[dict[
             {
                 "page_content": _strip_preview_nul_chars(doc.page_content or ""),
                 "metadata": _sanitize_preview_value(metadata),
-                "id": doc.id or None,
+                "id": doc.id,
             }
         )
     return out
@@ -201,7 +201,7 @@ def _apply_preview_governance(
     combined_rules = build_governance_rules(extra_rules) if extra_rules else None
     cleaned_documents, _stats = governance_processor.clean_documents(
         documents,
-        rules=combined_rules or None,
+        rules=combined_rules,
         options=build_governance_options(pipeline_effective),
     )
     return cleaned_documents
@@ -271,7 +271,7 @@ def _raise_preview_http_exception(exc: Exception) -> NoReturn:
         raise HTTPException(status_code=499, detail="Client closed request") from None
     if isinstance(exc, SubprocessWorkerError):
         err_type = (exc.details or {}).get("type")
-        if err_type == "ValueError":
+        if err_type in {"ValueError", "RetiredModelProviderError"}:
             raise HTTPException(status_code=400, detail=f"Invalid input: {str(exc)[:100]}") from exc
         logger.error("Subprocess worker failed during preview: %s", str(exc)[:200])
         msg = (str(exc) or "").strip()

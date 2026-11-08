@@ -87,7 +87,7 @@ def _scope_from_or(parts: Any) -> list[UUID]:
     return scoped
 
 
-def lexical_dataset_scope(metadata_filter: dict[str, Any] | None) -> tuple[list[UUID] | None, str | None]:
+def lexical_dataset_scope(metadata_filter: dict[str, Any] | None) -> tuple[list[UUID], str | None]:
     dataset_uuids = collect_dataset_scope(metadata_filter)
     dataset_str = str(dataset_uuids[0]) if dataset_uuids else None
-    return (dataset_uuids or None, dataset_str)
+    return dataset_uuids, dataset_str

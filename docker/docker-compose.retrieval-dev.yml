@@ -5,7 +5,7 @@ x-backend-build: &backend_build
   dockerfile: docker/Dockerfile
   network: ${DOCKER_BUILD_NETWORK:-default}
   args:
-    REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements-chroma.txt}
+    REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements.txt}
     MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
     MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
 
@@ -18,9 +18,11 @@ x-backend-env: &backend_env
   DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@mimirq-postgres:5432/${POSTGRES_DB:-mimirq}
   REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
   # Retrieval-dev profile: keep startup light and deterministic.
-  VECTOR_BACKEND: ${VECTOR_BACKEND_RETRIEVAL_DEV:-chroma}
-  CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}
-  FAISS_STORE_PATH: ${FAISS_STORE_PATH_DOCKER:-/data/vector_faiss}
+  VECTOR_BACKEND: ${VECTOR_BACKEND_RETRIEVAL_DEV:-milvus}
+  MILVUS_HOST: mimirq-milvus
+  MILVUS_PORT: ${MILVUS_PORT_DOCKER:-19530}
+  MILVUS_USER: ${MILVUS_USER_DOCKER:-}
+  MILVUS_PASSWORD: ${MILVUS_PASSWORD_DOCKER:-}
   MINIO_ENABLED: ${MINIO_ENABLED_RETRIEVAL_DEV:-false}
   MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_RETRIEVAL_DEV:-false}
   TASK_QUEUE_ENABLED: ${TASK_QUEUE_ENABLED_RETRIEVAL_DEV:-false}
@@ -94,14 +96,32 @@ services:
         condition: service_healthy
       mimirq-redis:
         condition: service_healthy
+      mimirq-milvus:
+        condition: service_healthy
     environment:
       <<: *backend_env
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
-      - vector_data:/app/vector_chroma
+
+  mimirq-etcd:
+    extends:
+      file: docker-compose.yml
+      service: mimirq-etcd
+
+  mimirq-minio:
+    extends:
+      file: docker-compose.yml
+      service: mimirq-minio
+
+  mimirq-milvus:
+    extends:
+      file: docker-compose.yml
+      service: mimirq-milvus
 
 volumes:
   postgres_data:
   upload_data:
-  vector_data:
+  etcd_data:
+  minio_data:
+  milvus_data:

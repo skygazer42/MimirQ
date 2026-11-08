@@ -210,13 +210,13 @@ class DatasetEmbeddingDefaults(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    @field_validator("provider", "model", "api_base", mode="before")
+    @field_validator("provider", "model", "api_base", mode="after")
     @classmethod
     def _strip_empty_string(cls, v):  # noqa: ANN001
         if v is None:
             return None
-        value = str(v).strip()
-        return value or None
+        value = v.strip()
+        return value if value else None
 
 
 class DatasetRetentionPolicy(BaseModel):
@@ -268,25 +268,32 @@ class DatasetBase(BaseModel):
     retention_policy: DatasetRetentionPolicy | None = None
 
 
-def _validate_dataset_execution(
-    embedding: DatasetEmbeddingDefaults | None, rag: DatasetRAGDefaults | None, pipeline: DocumentPipelineOptions | None
+def validate_dataset_execution(
+    embedding: DatasetEmbeddingDefaults | None,
+    rag: DatasetRAGDefaults | None,
+    pipeline: DocumentPipelineOptions | None,
+    parser_backend: str | None = None,
 ) -> None:
-    from app.core.model_execution import reject_retired_model_provider, validate_rag_execution_selection
+    from app.core.model_execution import reject_retired_provider, validate_rag_execution_selection
+
+    reject_retired_provider(parser_backend, capability="parser")
 
     if embedding is not None:
-        reject_retired_model_provider(embedding.provider, capability="embedding")
+        reject_retired_provider(embedding.provider, capability="embedding")
     if rag is not None:
         validate_rag_execution_selection(
             reranker_provider=rag.reranker_provider, retrieval_profile=rag.retrieval_profile
         )
     if pipeline is not None:
-        reject_retired_model_provider(pipeline.governance_keywords_provider, capability="keyword")
+        reject_retired_provider(pipeline.governance_keywords_provider, capability="keyword")
 
 
 class DatasetCreate(DatasetBase):
     @model_validator(mode="after")
     def _validate_execution(self) -> "DatasetCreate":
-        _validate_dataset_execution(self.embedding_defaults, self.rag_defaults, self.pipeline)
+        validate_dataset_execution(
+            self.embedding_defaults, self.rag_defaults, self.pipeline, self.default_parser_backend
+        )
         return self
 
 
@@ -312,7 +319,9 @@ class DatasetUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _validate_execution(self) -> "DatasetUpdate":
-        _validate_dataset_execution(self.embedding_defaults, self.rag_defaults, self.pipeline)
+        validate_dataset_execution(
+            self.embedding_defaults, self.rag_defaults, self.pipeline, self.default_parser_backend
+        )
         return self
 
 

@@ -239,14 +239,14 @@ def _filter_scope_rows(
     feedback_polarity: str | None,
 ) -> list[dict[str, Any]]:
     filtered: list[dict[str, Any]] = []
-    wanted_polarity = str(feedback_polarity or "").strip().lower() or None
+    wanted_polarity = feedback_polarity
     for row in rows:
         created_at = _coerce_datetime(row.get("created_at"))
         if from_dt is not None and created_at is not None and created_at < from_dt:
             continue
         if to_dt is not None and created_at is not None and created_at > to_dt:
             continue
-        if wanted_polarity and row.get("feedback_polarity") != wanted_polarity:
+        if wanted_polarity is not None and row.get("feedback_polarity") != wanted_polarity:
             continue
         filtered.append(row)
     return filtered
@@ -357,10 +357,10 @@ def build_dataset_analysis_summary(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> dict[str, Any]:
     bundle = _build_full_bundle(
         db=db,
@@ -388,10 +388,10 @@ def build_dataset_analysis_examples(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
     limit: int = 20,
 ) -> dict[str, Any]:
     bundle = _build_full_bundle(
@@ -405,20 +405,21 @@ def build_dataset_analysis_examples(
         category=category,
         limit=limit,
     )
+    example_limit = max(1, int(limit or 1))
     top_examples = bundle["top_examples"]
     if category:
-        top_examples = {str(category): list(top_examples.get(str(category), []))[: max(1, int(limit or 1))]}
+        top_examples = {str(category): list(top_examples.get(str(category), []))[:example_limit]}
         manual_review = [
             row for row in bundle["manual_review_candidates"] if str(row.get("category") or "") == str(category)
-        ][: max(1, int(limit or 1))]
+        ][:example_limit]
     else:
-        manual_review = list(bundle["manual_review_candidates"])[: max(1, int(limit or 1))]
+        manual_review = list(bundle["manual_review_candidates"])[:example_limit]
     bundle["meta"]["schema_version"] = _EXAMPLES_SCHEMA
     return {
         "meta": bundle["meta"],
         "top_examples": top_examples,
         "manual_review_candidates": manual_review,
-        "glossary_candidates": bundle["glossary_candidates"][: max(1, int(limit or 1))],
+        "glossary_candidates": bundle["glossary_candidates"][:example_limit],
     }
 
 
@@ -429,9 +430,9 @@ def build_dataset_analysis_rule_suggestions(
     dataset_id: UUID,
     dataset_name: str,
     ruleset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
     limit: int = 20,
 ) -> dict[str, Any]:
     rows = _load_dataset_scope_rows(
@@ -455,9 +456,9 @@ def build_tenant_dataset_analysis_dashboard(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
     limit: int = 20,
 ) -> dict[str, Any]:
     dataset_service.ensure_member(db, tenant_id, account_id)
@@ -480,34 +481,32 @@ def build_tenant_dataset_analysis_dashboard(
             db=db,
             tenant_id=tenant_id,
             dataset_id=dataset.id,
-            dataset_name=str(dataset.name or ""),
+            dataset_name=dataset.name,
             from_ts=from_ts,
             to_ts=to_ts,
             feedback_polarity=feedback_polarity,
             category=None,
         )
-        meta = dict(payload.get("meta") or {})
-        scope_summary = dict(meta.get("scope_summary") or {})
-        counts = dict(payload.get("counts") or {})
-        metrics = dict(payload.get("metrics") or {})
+        meta = payload["meta"]
+        scope_summary = dict(meta["scope_summary"])
+        counts = dict(payload["counts"])
+        metrics = dict(payload["metrics"])
 
-        summary["all_interactions"] += int(scope_summary.get("all_interactions") or 0)
-        summary["feedback_interactions"] += int(scope_summary.get("feedback_interactions") or 0)
-        summary["attributable_feedback_interactions"] += int(
-            scope_summary.get("attributable_feedback_interactions") or 0
-        )
-        summary["retrieval_miss"] += int(counts.get("retrieval_miss") or 0)
-        summary["generation_error"] += int(counts.get("generation_error") or 0)
-        summary["out_of_scope"] += int(counts.get("out_of_scope") or 0)
+        summary["all_interactions"] += scope_summary["all_interactions"]
+        summary["feedback_interactions"] += scope_summary["feedback_interactions"]
+        summary["attributable_feedback_interactions"] += scope_summary["attributable_feedback_interactions"]
+        summary["retrieval_miss"] += counts["retrieval_miss"]
+        summary["generation_error"] += counts["generation_error"]
+        summary["out_of_scope"] += counts["out_of_scope"]
 
         cards.append(
             {
                 "dataset_id": str(dataset.id),
-                "dataset_name": str(dataset.name or ""),
+                "dataset_name": dataset.name,
                 "scope_summary": scope_summary,
                 "metrics": metrics,
                 "counts": counts,
-                "ratios": dict(payload.get("ratios") or {}),
+                "ratios": dict(payload["ratios"]),
             }
         )
         if len(cards) >= max(1, int(limit or 1)):
@@ -534,10 +533,10 @@ def export_dataset_analysis_json(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> dict[str, Any]:
     bundle = _build_full_bundle(
         db=db,
@@ -560,10 +559,10 @@ def export_dataset_analysis_jsonl(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> str:
     bundle = _build_full_bundle(
         db=db,
@@ -586,10 +585,10 @@ def export_dataset_analysis_html(
     tenant_id: UUID,
     dataset_id: UUID,
     dataset_name: str,
-    from_ts: str | None = None,
-    to_ts: str | None = None,
-    feedback_polarity: str | None = None,
-    category: str | None = None,
+    from_ts: str | None,
+    to_ts: str | None,
+    feedback_polarity: str | None,
+    category: str | None,
 ) -> str:
     bundle = _build_full_bundle(
         db=db,
@@ -602,25 +601,11 @@ def export_dataset_analysis_html(
         category=category,
         limit=20,
     )
-    report = build_dataset_analysis_report(
-        DatasetAnalysisReportPayload(
-            dataset_id=str(dataset_id),
-            dataset_name=dataset_name,
-            filters=bundle["meta"]["filters"],
-            scope_summary=bundle["meta"]["scope_summary"],
-            metrics=bundle["metrics"],
-            counts=bundle["counts"],
-            ratios=bundle["ratios"],
-            top_examples=bundle["top_examples"],
-            manual_review_candidates=bundle["manual_review_candidates"],
-            glossary_candidates=bundle["glossary_candidates"],
-            keyword_scores=bundle["keyword_scores"],
-            coverage_heatmap=bundle["coverage_heatmap"],
-            umap_scatter=bundle["umap_scatter"],
-            latency_breakdown=bundle["latency_breakdown"],
-        )
+    report = _build_dataset_analysis_report_payload(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        bundle=bundle,
     )
-    report["meta"]["definitions"] = bundle["meta"]["definitions"]
     return render_dataset_analysis_html(report)
 
 

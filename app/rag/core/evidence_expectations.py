@@ -42,10 +42,14 @@ def evaluate_evidence_anchor_expectations(
     required_fields: list[str] | tuple[str, ...] | None,
     exclude_retrieval_role_prefixes: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    req = normalize_anchor_fields(list(required_fields or []))
-    prefixes = [str(p or "").strip().lower() for p in (exclude_retrieval_role_prefixes or []) if str(p or "").strip()]
+    req = normalize_anchor_fields(list((required_fields if required_fields is not None else [])))
+    prefixes = [
+        str(p or "").strip().lower()
+        for p in (exclude_retrieval_role_prefixes if exclude_retrieval_role_prefixes is not None else [])
+        if str(p or "").strip()
+    ]
     if not req:
-        return _empty_anchor_expectations(len(citations or []))
+        return _empty_anchor_expectations(len((citations if citations is not None else [])))
 
     missing_counts: dict[str, int] = dict.fromkeys(req, 0)
     missing_examples: list[dict[str, Any]] = []
@@ -54,7 +58,7 @@ def evaluate_evidence_anchor_expectations(
     skipped = 0
     skipped_by_role: dict[str, int] = {}
 
-    for item in citations or []:
+    for item in citations if citations is not None else []:
         if not isinstance(item, dict):
             continue
         excluded_role = _excluded_retrieval_role(item, prefixes)

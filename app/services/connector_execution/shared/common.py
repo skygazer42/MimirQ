@@ -152,5 +152,4 @@ def _connector_run_completion_status(*, created: int, failed: int) -> str:
 
 def _connector_config_id_from_run(run: ConnectorRun) -> str | None:
     stats = dict(run.stats or {})
-    text = str(stats.get("config_id") or "").strip()
-    return text or None
+    return stats.get("config_id")

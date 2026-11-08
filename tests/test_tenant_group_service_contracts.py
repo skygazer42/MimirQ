@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from starlette.datastructures import State
 
+from app.api.schemas.group import TenantGroupUpdateRequest
 from app.api.v1 import scim
 from app.core.database import Base
 from app.core.exceptions import BadRequestError, ConflictError, MimirQError
@@ -30,6 +31,64 @@ def group_db() -> Iterator[Session]:
 def test_group_validation_raises_a_business_error(group_db: Session) -> None:
     with pytest.raises(BadRequestError, match="name is required"):
         tenant_group_service.create_group(group_db, tenant_id=uuid4(), name="   ")
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_group_update_request_exposes_invalid_names_to_the_service(group_db: Session, name: str) -> None:
+    tenant_id = uuid4()
+    group = tenant_group_service.create_group(group_db, tenant_id=tenant_id, name="readers")
+
+    with pytest.raises(BadRequestError):
+        request = TenantGroupUpdateRequest(name=name)
+        tenant_group_service.update_group(
+            group_db,
+            tenant_id=tenant_id,
+            group_id=group.id,
+            name=request.name,
+            external_id=request.external_id,
+        )
+
+    group_db.refresh(group)
+    assert group.name == "readers"
+
+
+@pytest.mark.parametrize("external_id", ["", "   ", None])
+def test_group_update_request_preserves_clear_and_omitted_external_ids(
+    group_db: Session, external_id: str | None
+) -> None:
+    tenant_id = uuid4()
+    group = tenant_group_service.create_group(group_db, tenant_id=tenant_id, name="readers", external_id="external-1")
+    request = TenantGroupUpdateRequest(external_id=external_id)
+
+    tenant_group_service.update_group(
+        group_db,
+        tenant_id=tenant_id,
+        group_id=group.id,
+        name=request.name,
+        external_id=request.external_id,
+    )
+
+    group_db.refresh(group)
+    assert group.external_id == ("external-1" if external_id is None else None)
+
+
+@pytest.mark.parametrize("external_id", [0, False])
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_group_service_exposes_invalid_external_id_types(group_db: Session, external_id, operation: str) -> None:
+    tenant_id = uuid4()
+    group = tenant_group_service.create_group(group_db, tenant_id=tenant_id, name="readers", external_id="external-1")
+
+    with pytest.raises(AttributeError):
+        if operation == "create":
+            tenant_group_service.create_group(group_db, tenant_id=tenant_id, name="writers", external_id=external_id)
+        else:
+            tenant_group_service.update_group(
+                group_db, tenant_id=tenant_id, group_id=group.id, name=None, external_id=external_id
+            )
+
+    group_db.refresh(group)
+    assert group.external_id == "external-1"
+    assert group_db.query(TenantGroup).count() == 1
 
 
 def test_group_conflict_raises_a_business_error(group_db: Session) -> None:

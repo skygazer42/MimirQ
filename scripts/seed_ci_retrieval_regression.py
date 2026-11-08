@@ -140,7 +140,7 @@ def _parse_fixture_config(
     ds_obj = fixture.get("dataset") if isinstance(fixture.get("dataset"), dict) else {}
     dataset_id = UUID(str(ds_obj.get("id") or "").strip())
     dataset_name = str(ds_obj.get("name") or "CI Retrieval Regression Fixture").strip()
-    dataset_desc = str(ds_obj.get("description") or "").strip() or None
+    dataset_desc = ds_obj.get("description")
 
     documents = fixture.get("documents")
     if not isinstance(documents, list) or not documents:

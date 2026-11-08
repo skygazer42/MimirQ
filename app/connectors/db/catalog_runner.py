@@ -219,9 +219,9 @@ def _normalize_column_dict(raw: Any) -> _CatalogColumnPayload | None:
     return {
         "ordinal": ordinal,
         "name": name,
-        "data_type": (str(raw.get("data_type") or "").strip() or None),
+        "data_type": (raw.get("data_type")),
         "nullable": (bool(raw.get("nullable")) if raw.get("nullable") is not None else None),
-        "comment": (str(raw.get("comment") or "").strip() or None),
+        "comment": (raw.get("comment")),
     }
 
 
@@ -287,10 +287,10 @@ def _catalog_table_entry(
 ) -> dict[str, Any]:
     return {
         "db_name": (str(row.get("db_name") or database).strip() or database),
-        "schema_name": (schema_name or None),
+        "schema_name": (schema_name),
         "table_name": str(row.get("table_name") or "").strip(),
         "table_type": (str(row.get("table_type") or "table").strip().lower() or "table"),
-        "comment": (str(row.get("comment") or "").strip() or None),
+        "comment": (row.get("comment")),
         "row_count_estimate": row.get("row_count_estimate"),
         "columns": columns,
     }
@@ -440,7 +440,7 @@ def _build_catalog_sync_item(
     table_name = str(raw_table.get("table_name") or "").strip()
     if not db_name or not table_name:
         return None
-    schema_name = str(raw_table.get("schema_name") or "").strip() or None
+    schema_name = raw_table.get("schema_name")
     table_type = str(raw_table.get("table_type") or "table").strip().lower()
     if table_type != "view":
         table_type = "table"
@@ -452,7 +452,7 @@ def _build_catalog_sync_item(
             schema_name=schema_name,
             table_name=table_name,
             table_type=table_type,
-            comment=(str(raw_table.get("comment") or "").strip() or None),
+            comment=(raw_table.get("comment")),
             fingerprint=_fingerprint(engine=engine, db_name=db_name, schema_name=schema_name, table_name=table_name),
             columns=_normalize_catalog_columns(raw_table.get("columns")),
         ),

@@ -560,7 +560,7 @@ def _run_retrieve_only_load_pair(
             base
             for base in (
                 config.api_base,
-                str(config.secondary_api_base or "").strip() or None,
+                (config.secondary_api_base),
             )
             if base
         )
@@ -596,12 +596,12 @@ def _build_gate_headers(
 ) -> tuple[dict[str, str], dict[str, str]]:
     primary_headers = build_headers(
         tenant_id=config.primary_tenant_id,
-        user_id=(config.user_id or None),
+        user_id=config.user_id,
         token=None,
     )
     secondary_headers = build_headers(
         tenant_id=config.secondary_tenant_id,
-        user_id=(config.user_id or None),
+        user_id=config.user_id,
         token=None,
     )
     return primary_headers, secondary_headers

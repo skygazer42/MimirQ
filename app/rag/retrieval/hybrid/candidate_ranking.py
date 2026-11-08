@@ -82,7 +82,7 @@ def rank_candidates(
 class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
     """One operation's algorithm configuration and diagnostics; never shared by requests."""
 
-    _bm25_tokenize = staticmethod(CorpusIndex._bm25_tokenize)
+    _tokenize_lexical_text = staticmethod(CorpusIndex._tokenize_lexical_text)
     _rerank_text_from_result = staticmethod(rerank_text_from_result)
 
     def __init__(self, request: ChannelRequest, *, policy: RankingPolicy) -> None:

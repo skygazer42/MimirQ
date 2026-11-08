@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
+from app.parsing.backends import require_resolved_parser_backend
 
 if TYPE_CHECKING:
     from app.parsing.processors.processor import DocumentProcessorService
@@ -148,7 +149,7 @@ def record_stage_duration(stage_durations_ms: dict[str, int], stage: str, elapse
 
 
 def attach_stage_durations(stage_durations_ms: dict[str, int], meta: dict[str, Any] | None) -> dict[str, Any]:
-    out = dict(meta or {})
+    out = dict((meta if meta is not None else {}))
     if stage_durations_ms:
         out["ingest_stage_durations_ms"] = dict(stage_durations_ms)
     return out
@@ -309,14 +310,11 @@ def _initialize_prepared_process_document_state(
     )
 
 
-def _checkpoint_option(metadata, key, requested):
-    value = metadata.get(key)
-    if not value:
-        value = metadata.get(f"{key}_requested")
-    if not value:
-        value = requested
-    normalized = str(value if value else "auto").strip()
-    return normalized if normalized else "auto"
+def _checkpoint_backend(metadata: dict[str, Any]) -> str | None:
+    try:
+        return require_resolved_parser_backend(metadata.get("parser_backend"))
+    except ValueError:
+        return None
 
 
 async def _resume_from_indexed_checkpoint(
@@ -333,6 +331,10 @@ async def _resume_from_indexed_checkpoint(
 ) -> dict[str, Any] | None:
     meta0 = dict(db_document.doc_metadata or {})
     if not indexed_checkpoint_is_reusable(meta0):
+        return None
+    resolved_backend = _checkpoint_backend(meta0)
+    resolved_chunk_strategy = meta0.get("chunk_strategy")
+    if resolved_backend is None or not isinstance(resolved_chunk_strategy, str) or not resolved_chunk_strategy.strip():
         return None
     checkpoint = dict(meta0.get("ingest_checkpoint") or {})
     doc_pipeline_key = str(
@@ -356,8 +358,6 @@ async def _resume_from_indexed_checkpoint(
         document_id,
         doc_pipeline_key or "document",
     )
-    resolved_backend = _checkpoint_option(meta0, "parser_backend", parser_backend)
-    resolved_chunk_strategy = _checkpoint_option(meta0, "chunk_strategy", chunk_strategy)
     total_chars = int(
         checkpoint.get("total_characters")
         or meta0.get("indexed_total_characters")
@@ -447,8 +447,8 @@ async def _run_pre_poc_quality_gate(
             "reason": "pre_poc_quality_gate_blocked",
             "chunk_count": 0,
             "total_characters": 0,
-            "parser_backend": parser_backend or "auto",
-            "chunk_strategy": chunk_strategy or "auto",
+            "parser_backend": (parser_backend),
+            "chunk_strategy": (chunk_strategy),
         }
     except Exception as exc:  # noqa: BLE001
         _log_processor_fallback("process_document", exc)
@@ -838,6 +838,9 @@ def _resume_parse_result_from_checkpoint(
         checkpoint = meta0.get("ingest_checkpoint")
         if not parsed_checkpoint_is_reusable(meta0):
             return None
+        resolved_backend = _checkpoint_backend(meta0)
+        if resolved_backend is None:
+            return None
         pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
         file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
         checkpoint_pipeline = str((checkpoint or {}).get("pipeline_hash") or "").strip()
@@ -867,7 +870,7 @@ def _resume_parse_result_from_checkpoint(
         if original_md and original_md != cleaned_md:
             resume_meta["position_tagged_markdown"] = original_md
         return ParseResult(
-            resolved_backend=_checkpoint_option(meta0, "parser_backend", parser_backend),
+            resolved_backend=resolved_backend,
             resolved_chunk_strategy=chunker_factory.resolve_strategy(chunk_strategy),
             documents=[Document(page_content=cleaned_md, metadata=resume_meta)],
         )
@@ -889,7 +892,7 @@ def _resume_parse_result_from_cache(
         meta0 = dict(db_document.doc_metadata or {})
         file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
         pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
-        parser_backend_key = str(parser_backend or "").strip().lower() or "auto"
+        parser_backend_key = parser_backend
         if not (bool(pipeline_effective.parse_cache_enabled) and file_sha0 and pipeline_hash0):
             return None, None, None
         parse_cache_store = LocalParseCacheStore(
@@ -907,10 +910,8 @@ def _resume_parse_result_from_cache(
         if cached_entry is None or (cached_entry.documents is None and cached_entry.chunks is None):
             return None, parse_cache_store, parse_cache_key
         parsed = ParseResult(
-            resolved_backend=str(cached_entry.resolved_backend or parser_backend_key),
-            resolved_chunk_strategy=str(
-                cached_entry.resolved_chunk_strategy or chunker_factory.resolve_strategy(chunk_strategy)
-            ),
+            resolved_backend=require_resolved_parser_backend(cached_entry.resolved_backend),
+            resolved_chunk_strategy=cached_entry.resolved_chunk_strategy,
             documents=_deserialize_documents_from_parse_cache(cached_entry.documents),
             chunks=_deserialize_documents_from_parse_cache(cached_entry.chunks),
         )
@@ -935,32 +936,14 @@ def _parse_stage_otel_attributes(
     parser_backend: str | None,
     chunk_strategy: str | None,
 ) -> dict[str, Any]:
-    return {
+    metadata = {} if db_document.doc_metadata is None else db_document.doc_metadata
+    attributes = {
         "ingest.stage": "parse",
-        "document.file_type": str(file_path.suffix.lstrip(".") or "unknown").lower(),
-        "parser.backend_requested": (
-            str(
-                (db_document.doc_metadata or {}).get("parser_backend_requested")
-                or (db_document.doc_metadata or {}).get("parser_backend")
-                or parser_backend
-                or "auto"
-            )
-            .strip()
-            .lower()
-            or "auto"
-        ),
-        "chunk.strategy_requested": (
-            str(
-                (db_document.doc_metadata or {}).get("chunk_strategy_requested")
-                or (db_document.doc_metadata or {}).get("chunk_strategy")
-                or chunk_strategy
-                or ""
-            )
-            .strip()
-            .lower()
-            or "default"
-        ),
+        "document.file_type": file_path.suffix.lstrip(".").lower() or "unknown",
+        "parser.backend_requested": metadata.get("parser_backend_requested", parser_backend),
+        "chunk.strategy_requested": metadata.get("chunk_strategy_requested", chunk_strategy),
     }
+    return {key: value for key, value in attributes.items() if value is not None}
 
 
 async def _run_parse_stage(
@@ -1006,7 +989,7 @@ async def _run_parse_stage(
 
 
 def _parsed_joined_text(documents: list[Document] | None) -> str:
-    return "\n\n".join([(doc.page_content or "") for doc in (documents or [])])
+    return "\n\n".join([(doc.page_content or "") for doc in (documents if documents is not None else [])])
 
 
 def _magicpdf_available() -> bool:
@@ -1030,20 +1013,20 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
         ),
         (
             "deepseek_ocr",
-            lambda: (bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY or "").strip())),
+            lambda: bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY or "").strip()),
         ),
         (
             "qianfan_ocr",
-            lambda: (bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL or "").strip())),
+            lambda: bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL or "").strip()),
         ),
         (
             "etl4llm",
-            lambda: (bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL or "").strip())),
+            lambda: bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL or "").strip()),
         ),
         ("deepdoc", lambda: settings.DEEPDOC_ENABLED),
         (
             "docling",
-            lambda: (bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL or "").strip())),
+            lambda: bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL or "").strip()),
         ),
         ("magicpdf", _magicpdf_available),
         ("markitdown", lambda: settings.MARKITDOWN_ENABLED),
@@ -1485,7 +1468,7 @@ async def _maybe_apply_parse_fallback(
     if not (
         bool(pipeline_effective.parse_fallback_enabled)
         and file_path.suffix.lower() == ".pdf"
-        and (str(parser_backend or "").strip().lower() in {"", "auto"})
+        and (str((parser_backend if parser_backend is not None else "")).strip().lower() in {"", "auto"})
         and (not resumed_from_checkpoint)
         and (not resumed_from_parse_cache)
         and parsed.documents is not None
@@ -1592,9 +1575,9 @@ def _persist_parse_cache_entry(
             LocalParseCacheEntry(
                 created_at_epoch=time.time(),
                 file_sha256=str((db_document.doc_metadata or {}).get("file_sha256") or "").strip().lower(),
-                parser_backend=str(parser_backend or "").strip().lower() or "auto",
-                resolved_backend=str(parsed.resolved_backend or resolved_backend),
-                resolved_chunk_strategy=str(parsed.resolved_chunk_strategy or resolved_chunk_strategy),
+                parser_backend=parser_backend,
+                resolved_backend=parsed.resolved_backend,
+                resolved_chunk_strategy=parsed.resolved_chunk_strategy,
                 documents=_serialize_documents_for_parse_cache(parsed.documents),
                 chunks=_serialize_documents_for_parse_cache(parsed.chunks),
             ),
@@ -1630,7 +1613,7 @@ async def _maybe_apply_parse_quality_gate(
     if not (
         bool(pipeline_effective.parse_fallback_enabled)
         and db_document.file_type == "pdf"
-        and (str(parser_backend or "").strip().lower() in {"", "auto"})
+        and (str((parser_backend if parser_backend is not None else "")).strip().lower() in {"", "auto"})
         and (not resumed_from_checkpoint)
         and (not resumed_from_parse_cache)
         and parsed.documents is not None
@@ -1710,7 +1693,7 @@ async def _maybe_apply_parse_quality_gate(
             audit_log_event(
                 db,
                 tenant_id=tenant_id,
-                actor_id=(db_document.owner_id or None),
+                actor_id=db_document.owner_id,
                 action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.parse_drop"),
                 resource_type="document",
                 resource_id=str(document_id),
@@ -1825,20 +1808,10 @@ async def execute_parse_pipeline(
         pdf_quality=prepared_state.pdf_quality,
     )
 
-    if resumed_from_checkpoint:
-        meta0 = dict(db_document.doc_metadata or {})
-        resolved_backend = (
-            str(
-                meta0.get("parser_backend") or meta0.get("parser_backend_requested") or parser_backend or "auto"
-            ).strip()
-            or "auto"
-        )
-        resolved_chunk_strategy = chunker_factory.resolve_strategy(chunk_strategy)
-    else:
-        if not resumed_from_parse_cache:
-            add_stage_duration("parse", (time.perf_counter() - parse_started_at) * 1000)
-        resolved_backend = parsed.resolved_backend
-        resolved_chunk_strategy = parsed.resolved_chunk_strategy
+    if not resumed_from_checkpoint and not resumed_from_parse_cache:
+        add_stage_duration("parse", (time.perf_counter() - parse_started_at) * 1000)
+    resolved_backend = parsed.resolved_backend
+    resolved_chunk_strategy = parsed.resolved_chunk_strategy
 
     parsed = _attach_logical_source_metadata_to_parsed_result(
         parsed,
@@ -2145,7 +2118,7 @@ async def _maybe_apply_llm_auto_tagging_audit(
     llm_tagging_meta = await service._apply_llm_auto_tagging(items, pipeline_effective=pipeline_effective)
     if not llm_tagging_meta:
         return governance_audit_patch
-    audit_patch = dict(governance_audit_patch or {})
+    audit_patch = dict((governance_audit_patch if governance_audit_patch is not None else {}))
     audit_patch["governance_llm_auto_tagging"] = llm_tagging_meta
     return audit_patch
 
@@ -2209,7 +2182,7 @@ async def _maybe_return_governance_drop_result(
         audit_log_event(
             db,
             tenant_id=tenant_id,
-            actor_id=(db_document.owner_id or None),
+            actor_id=db_document.owner_id,
             action=(AUDIT_ACTION_DOCUMENT_QUARANTINE if quarantined else "document.governance_drop"),
             resource_type="document",
             resource_id=str(document_id),
@@ -2405,7 +2378,7 @@ async def _run_document_governance_flow(
 ) -> dict[str, Any]:
     t0 = time.perf_counter()
     with metrics_span("ingest.normalize"):
-        normalized_documents = normalize_stage(items=parsed_documents or [])
+        normalized_documents = normalize_stage(items=(parsed_documents if parsed_documents is not None else []))
     add_stage_duration("normalize", (time.perf_counter() - t0) * 1000)
 
     pipeline_effective = prepared_state.pipeline_effective
@@ -2953,11 +2926,21 @@ async def _maybe_return_no_chunks_result(
     resolved_backend: str,
     resolved_chunk_strategy: str,
 ) -> dict[str, Any] | None:
-    sidecar_excluded = int((table_sidecar_routing_audit or {}).get("table_chunks_excluded_from_rag") or 0)
-    sidecar_imported = int((table_sidecar_routing_audit or {}).get("sidecar_tables_imported") or 0)
+    sidecar_excluded = int(
+        (table_sidecar_routing_audit if table_sidecar_routing_audit is not None else {}).get(
+            "table_chunks_excluded_from_rag"
+        )
+        or 0
+    )
+    sidecar_imported = int(
+        (table_sidecar_routing_audit if table_sidecar_routing_audit is not None else {}).get("sidecar_tables_imported")
+        or 0
+    )
     if sidecar_excluded > 0 and sidecar_imported > 0:
         meta_patch = dict(db_document.doc_metadata or {})
-        meta_patch["table_sidecar_routing"] = dict(table_sidecar_routing_audit or {})
+        meta_patch["table_sidecar_routing"] = dict(
+            (table_sidecar_routing_audit if table_sidecar_routing_audit is not None else {})
+        )
         meta_patch = with_stage_durations(meta_patch)
         await service._update_status(
             db,

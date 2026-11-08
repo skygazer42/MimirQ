@@ -240,7 +240,7 @@ KG 的目标不是替代 RAG，而是让 RAG 在“多跳关联 / 术语对齐 /
   - `RAG_KG_CHUNK_INJECTION_MAX_CHUNKS=5`：最多注入的 KG evidence chunks 数量上限。
 
 - KG ranking features（可选）：把 KG 从 “召回扩展” 提升为 “排序信号来源”。
-  - 当候选 chunk 带有 `retrieval_role="kg"`（来自 KG chunk injection）时，系统会在候选元数据里附加一组 **稳定、低基数** 的 KG 特征，用于后置精排（LTR 等）。
+  - 当候选 chunk 带有 `retrieval_role="kg"`（来自 KG chunk injection）时，系统会在候选元数据里附加一组 **稳定、低基数** 的 KG 特征，用于检索诊断与受支持的排序。
   - 这些特征只包含数值/布尔信号，不包含 tenant/dataset/event/entity 等 scope identifier，便于下游稳定解析与离线训练。
 
   当前特征（best-effort）：
@@ -250,8 +250,6 @@ KG 的目标不是替代 RAG，而是让 RAG 在“多跳关联 / 术语对齐 /
   - `kg_edge_conf_low|mid|high`: 边置信度桶（粗阈值 one-hot，低基数）
   - `kg_evidence_anchored`: 是否 evidence-anchored（布尔）
 
-  与 LTR 集成：
-  - LTR feature spec v2 会包含以上 KG 特征（`LTR_FEATURE_SPEC_VERSION=2`，详见 `docs/guides/reranking_ltr.md`）。
 
 ## 前端图谱（/graph）
 - Live：从后端实时加载（支持导出 GraphML）。

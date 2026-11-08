@@ -64,7 +64,7 @@ class RateLimiter:
         cleanup_interval: float = 60.0,
     ) -> None:
         self.requests_per_second = float(requests_per_second)
-        self.burst_size = int(burst_size or int(self.requests_per_second * 2))
+        self.burst_size = int(self.requests_per_second * 2) if burst_size is None else int(burst_size)
         self.cleanup_interval = float(cleanup_interval)
         self._buckets: dict[str, TokenBucket] = {}
         self._global_lock = Lock()
@@ -166,7 +166,7 @@ class RedisRateLimiter:
         self.redis_url = str(redis_url or "").strip()
         self.namespace = str(namespace or "default").strip() or "default"
         self.requests_per_second = float(requests_per_second)
-        self.burst_size = int(burst_size or int(self.requests_per_second * 2))
+        self.burst_size = int(self.requests_per_second * 2) if burst_size is None else int(burst_size)
         self.key_prefix = str(key_prefix or "rl").strip() or "rl"
         self.key_ttl_sec = max(10, int(key_ttl_sec or 0) or 600)
         self._client: Any | None = None
@@ -228,28 +228,34 @@ class RedisRateLimiter:
         return await asyncio.to_thread(self.check, key)
 
 
+def _create_rate_limiter(*, namespace, requests_per_second, burst_size, use_redis):
+    if use_redis:
+        return RedisRateLimiter(
+            redis_url=settings.REDIS_URL,
+            namespace=namespace,
+            requests_per_second=requests_per_second,
+            burst_size=burst_size,
+            key_prefix=settings.RATE_LIMIT_REDIS_PREFIX,
+            key_ttl_sec=settings.RATE_LIMIT_REDIS_KEY_TTL_SEC,
+        )
+    return RateLimiter(
+        requests_per_second=requests_per_second,
+        burst_size=burst_size,
+    )
+
+
 _default_limiter: RateLimiter | RedisRateLimiter | None = None
 
 
 def get_default_limiter() -> RateLimiter | RedisRateLimiter:
     global _default_limiter
     if _default_limiter is None:
-        from app.core.config import settings
-
-        if settings.RATE_LIMIT_REDIS_ENABLED and settings.REDIS_URL:
-            _default_limiter = RedisRateLimiter(
-                redis_url=settings.REDIS_URL or "",
-                namespace="default",
-                requests_per_second=settings.RATE_LIMIT_REQUESTS_PER_SECOND,
-                burst_size=settings.RATE_LIMIT_BURST_SIZE,
-                key_prefix=settings.RATE_LIMIT_REDIS_PREFIX or "rl",
-                key_ttl_sec=settings.RATE_LIMIT_REDIS_KEY_TTL_SEC or 600,
-            )
-        else:
-            _default_limiter = RateLimiter(
-                requests_per_second=settings.RATE_LIMIT_REQUESTS_PER_SECOND,
-                burst_size=settings.RATE_LIMIT_BURST_SIZE,
-            )
+        _default_limiter = _create_rate_limiter(
+            namespace="default",
+            requests_per_second=settings.RATE_LIMIT_REQUESTS_PER_SECOND,
+            burst_size=settings.RATE_LIMIT_BURST_SIZE,
+            use_redis=settings.RATE_LIMIT_REDIS_ENABLED and bool(settings.REDIS_URL),
+        )
     return _default_limiter
 
 
@@ -260,22 +266,22 @@ def _client_ip_from_request(request: Request) -> str:
 
 
 def _tenant_id_from_request(request: Request) -> str:
-    tenant_header = (settings.TENANT_HEADER or "X-Tenant-ID").strip() or "X-Tenant-ID"
-    tenant_id = (request.headers.get(tenant_header) or "").strip()
+    tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
+    tenant_id = request.headers.get(tenant_header, "").strip()
     if not tenant_id and tenant_header.lower() != "x-tenant-id":
-        tenant_id = (request.headers.get("X-Tenant-ID") or "").strip()
+        tenant_id = request.headers.get("X-Tenant-ID", "").strip()
     return tenant_id
 
 
 def _jwt_bearer_token(request: Request) -> str:
-    auth = (request.headers.get("Authorization") or "").strip()
+    auth = request.headers.get("Authorization", "").strip()
     if not auth.lower().startswith("bearer "):
         return ""
     return auth[7:].strip()
 
 
 def _tenant_id_from_jwt_payload(payload: dict[str, Any]) -> str:
-    claim = (settings.JWT_TENANT_CLAIM or "").strip()
+    claim = settings.JWT_TENANT_CLAIM.strip()
     if not claim:
         return ""
     raw = payload.get(claim)
@@ -306,11 +312,10 @@ async def get_client_key(request: Request) -> str:
     # Prefer a trusted user id:
     # - AUTH_MODE=jwt: JWT subject (ignore X-User-ID to avoid spoofing rate-limit keys)
     # - AUTH_MODE=header: X-User-ID (dev-only)
-    user_id = str(getattr(request.state, "user_id", "") or "").strip()
-    mode = (settings.AUTH_MODE or "jwt").lower()
+    user_id = getattr(request.state, "user_id", "").strip()
 
-    if not user_id and mode == "header":
-        user_id = (request.headers.get("X-User-ID") or "").strip()
+    if not user_id and settings.AUTH_MODE == "header":
+        user_id = request.headers.get("X-User-ID", "").strip()
     elif not user_id:
         user_id, token_tenant_id = await _jwt_identity_from_request(request)
         tenant_id = token_tenant_id or tenant_id
@@ -334,38 +339,22 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         self.limiter: RateLimiter | RedisRateLimiter
         use_redis = settings.RATE_LIMIT_REDIS_ENABLED and bool(settings.REDIS_URL)
-        if use_redis:
-            self.limiter = RedisRateLimiter(
-                redis_url=settings.REDIS_URL or "",
-                namespace="default",
-                requests_per_second=requests_per_second,
-                burst_size=burst_size,
-                key_prefix=settings.RATE_LIMIT_REDIS_PREFIX or "rl",
-                key_ttl_sec=settings.RATE_LIMIT_REDIS_KEY_TTL_SEC or 600,
-            )
-        else:
-            self.limiter = RateLimiter(
-                requests_per_second=requests_per_second,
-                burst_size=burst_size,
-            )
+        self.limiter = _create_rate_limiter(
+            namespace="default",
+            requests_per_second=requests_per_second,
+            burst_size=burst_size,
+            use_redis=use_redis,
+        )
 
         self.chat_limiter: RateLimiter | RedisRateLimiter | None = None
         if chat_requests_per_second is not None:
-            if use_redis:
-                self.chat_limiter = RedisRateLimiter(
-                    redis_url=settings.REDIS_URL or "",
-                    namespace="chat",
-                    requests_per_second=chat_requests_per_second,
-                    burst_size=chat_burst_size,
-                    key_prefix=settings.RATE_LIMIT_REDIS_PREFIX or "rl",
-                    key_ttl_sec=settings.RATE_LIMIT_REDIS_KEY_TTL_SEC or 600,
-                )
-            else:
-                self.chat_limiter = RateLimiter(
-                    requests_per_second=chat_requests_per_second,
-                    burst_size=chat_burst_size,
-                )
-        self.chat_prefixes = tuple(chat_prefixes or [])
+            self.chat_limiter = _create_rate_limiter(
+                namespace="chat",
+                requests_per_second=chat_requests_per_second,
+                burst_size=chat_burst_size,
+                use_redis=use_redis,
+            )
+        self.chat_prefixes = tuple((chat_prefixes if chat_prefixes is not None else []))
 
         # Exclude high-fanout "asset-like" endpoints from rate limiting, otherwise the browser
         # may trip the limiter when rendering many images at once (e.g., DeepDoc/Docling previews).
@@ -408,21 +397,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if request.method.upper() == "OPTIONS":
             return await call_next(request)
 
-        if path in self.exclude_paths or (
-            self.exclude_prefixes and any(path.startswith(p) for p in self.exclude_prefixes)
-        ):
+        if path in self.exclude_paths or any(path.startswith(p) for p in self.exclude_prefixes):
             return await call_next(request)
 
         key = await get_client_key(request)
         limiter = self.limiter
-        if self.chat_limiter is not None and self.chat_prefixes:
-            path = request.url.path
-            if any(path.startswith(prefix) for prefix in self.chat_prefixes):
-                limiter = self.chat_limiter
+        if self.chat_limiter is not None and any(path.startswith(prefix) for prefix in self.chat_prefixes):
+            limiter = self.chat_limiter
 
         allowed, retry_after = await limiter.acheck(key)
         if not allowed:
-            retry_after_sec = max(1, int(math.ceil(retry_after or 0.0)))
+            retry_after_sec = max(1, int(math.ceil(retry_after)))
             rate_scope = "chat" if limiter is self.chat_limiter else "api"
             logger.warning("Rate limit exceeded for %s on %s", key, request.url.path)
 
@@ -430,7 +415,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
             detail = {
                 "retry_after_sec": retry_after_sec,
-                "limit": limiter.requests_per_second or 0.0,
+                "limit": limiter.requests_per_second,
                 "scope": f"rate_limit:{rate_scope}",
             }
             return JSONResponse(
@@ -461,13 +446,13 @@ async def rate_limit_dependency(
     key = await get_client_key(request)
     allowed, retry_after = await limiter.acheck(key)
     if not allowed:
-        retry_after_sec = max(1, int(math.ceil(retry_after or 0.0)))
+        retry_after_sec = max(1, int(math.ceil(retry_after)))
         raise HTTPException(
             status_code=HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "message": "Too many requests. Please try again later.",
                 "retry_after_sec": retry_after_sec,
-                "limit": limiter.requests_per_second or 0.0,
+                "limit": limiter.requests_per_second,
                 "scope": "api",
             },
             headers={"Retry-After": str(retry_after_sec)},

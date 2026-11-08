@@ -31,14 +31,14 @@ def _coerce_chunk_index(meta: dict[str, Any]) -> int | None:
 
 
 def _normalize_short_doc_ids(short_doc_ids: set[str] | None) -> set[str]:
-    return {str(doc_id).strip() for doc_id in (short_doc_ids or set()) if str(doc_id or "").strip()}
+    return {str(doc_id).strip() for doc_id in (short_doc_ids if short_doc_ids else set()) if str(doc_id or "").strip()}
 
 
 def _build_original_result_map(
     results: list[dict[str, Any]],
     original_results_by_chunk_id: dict[str, dict[str, Any]] | None,
 ) -> dict[str, dict[str, Any]]:
-    original_map = dict(original_results_by_chunk_id or {})
+    original_map = dict((original_results_by_chunk_id if original_results_by_chunk_id is not None else {}))
     if original_map:
         return original_map
     for item in results or []:
@@ -77,7 +77,7 @@ def _neighbor_item(
         stored_meta.setdefault("page", chunk.page_number)
     if not stored_meta.get("source"):
         stored_meta["source"] = "unknown"
-    stored_meta["neighbor_of"] = anchor_chunk_id or None
+    stored_meta["neighbor_of"] = anchor_chunk_id
     stored_meta["retrieval_role"] = "neighbor"
     anchor_score = float(result.get("score", 0.0) or 0.0)
     return {
@@ -410,9 +410,9 @@ def expand_ranked_chunk_results(
     window_i = _coerce_non_negative_int(window)
     max_added_i = _coerce_non_negative_int(max_added)
     sibling_max_added_i = _coerce_non_negative_int(sibling_max_added)
-    document_chunks_by_doc = dict(document_chunks_by_doc or {})
+    document_chunks_by_doc = dict((document_chunks_by_doc if document_chunks_by_doc is not None else {}))
     short_doc_ids = _normalize_short_doc_ids(short_doc_ids)
-    neighbors_by_pair = dict(neighbors_by_pair or {})
+    neighbors_by_pair = dict((neighbors_by_pair if neighbors_by_pair is not None else {}))
 
     if window_i <= 0 and not short_doc_ids:
         return results, {"enabled": False, "reason": "disabled"}

@@ -142,7 +142,7 @@ def build_retrieval_replay_capture_record(
     qh = stable_hash(q, length=16) if q else ""
 
     metrics = evidence_payload.get("metrics") if isinstance(evidence_payload.get("metrics"), dict) else {}
-    retrieval_cfg_hash = str(metrics.get("retrieval_config_hash") or "").strip() or None
+    retrieval_cfg_hash = metrics.get("retrieval_config_hash")
 
     citations_safe = sanitize_citations_for_capture(
         evidence_payload.get("citations"), max_items=int(max_citations or 0)
@@ -150,7 +150,7 @@ def build_retrieval_replay_capture_record(
 
     rec: dict[str, Any] = {
         "schema": RETRIEVAL_REPLAY_CAPTURE_SCHEMA_V1,
-        "query_hash": qh or None,
+        "query_hash": (qh),
         "query_chars": len(q) if q else 0,
         "dataset_id_hash": (stable_hash(str(dataset_id), length=16) if dataset_id else None),
         "document_ids_count": len(document_ids or []),

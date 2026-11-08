@@ -29,7 +29,7 @@ from app.rag.embedding.adapter import (
 )
 from app.rag.embedding.base import BaseEmbeddingModel
 from app.rag.embedding.config import DEFAULT_EMBED_MODELS, EmbedModelInfo
-from app.rag.embedding.factory import select_embedding_model, test_embedding_model_status
+from app.rag.embedding.factory import probe_embedding_model_status, select_embedding_model
 from app.rag.embedding.providers import (
     DashScopeEmbedding,
     DeterministicTestEmbedding,
@@ -51,7 +51,7 @@ __all__ = [
     "create_langchain_embeddings_from_config",
     # Factory
     "select_embedding_model",
-    "test_embedding_model_status",
+    "probe_embedding_model_status",
     # Config
     "EmbedModelInfo",
     "DEFAULT_EMBED_MODELS",

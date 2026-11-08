@@ -316,7 +316,7 @@ def probe_llm_provider(api: Api, evidence: Evidence, *, timeout_sec: float = 15.
             "success": False,
             "reason": "missing_local_llm_api_key_api_base_or_model",
             "api_key_source": api_key_source,
-            "model": model or None,
+            "model": (model),
             "api_base_configured": bool(api_base),
         }
         evidence.check("llm_provider_health_recorded", True, provider_health=evidence.provider_health)

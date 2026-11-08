@@ -213,7 +213,9 @@ class ChunkerFactory:
         Raises:
             ValueError: If strategy is not supported.
         """
-        normalized = (strategy or settings.DEFAULT_CHUNK_STRATEGY).lower()
+        normalized = "" if strategy is None else strategy.lower()
+        if normalized == "":
+            normalized = settings.DEFAULT_CHUNK_STRATEGY.lower()
 
         if normalized in self.STRATEGY_ALIASES:
             normalized = self.STRATEGY_ALIASES[normalized]

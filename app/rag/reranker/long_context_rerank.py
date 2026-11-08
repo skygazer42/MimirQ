@@ -2,7 +2,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from app.rag.core.logging import get_logger
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 from app.rag.reranker.base import BaseReranker
 from app.rag.reranker.types import RerankCandidate, RerankResult
 
@@ -35,14 +35,14 @@ def rerank_long_context_candidates(
 
 
 def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dict[str, float]:
-    query_tokens = [str(tok).strip() for tok in tokenize_for_bm25(str(query or "")) if str(tok).strip()]
+    query_tokens = [str(tok).strip() for tok in tokenize_lexical_text(str(query or "")) if str(tok).strip()]
     if not query_tokens:
         return {str(doc.id): 0.0 for doc in (docs or [])}
 
     doc_tokens: dict[str, set[str]] = {}
     df: dict[str, int] = dict.fromkeys(query_tokens, 0)
     for doc in docs or []:
-        tokens = set(tokenize_for_bm25(str(doc.text or "")))
+        tokens = set(tokenize_lexical_text(str(doc.text or "")))
         doc_tokens[str(doc.id)] = tokens
         for token in query_tokens:
             if token in tokens:
@@ -78,8 +78,8 @@ class LongContextReranker(BaseReranker):
         scorer: Callable[[str, list[RerankCandidate]], dict[str, float]] | None = None,
         model_name: str | None = None,
     ) -> None:
-        self._scorer = scorer or _default_long_context_scorer
-        self.model_name = str(model_name or "long_context:deterministic").strip() or "long_context:deterministic"
+        self._scorer = scorer if scorer is not None else _default_long_context_scorer
+        self.model_name = "long_context:deterministic" if model_name is None else model_name.strip()
 
     def rerank(
         self,

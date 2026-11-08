@@ -91,7 +91,7 @@ def _extract_package(text: str) -> str | None:
     m = _PACKAGE_RE.search((text or "")[:8000])
     if not m:
         return None
-    return (m.group("name") or "").strip()[:200] or None
+    return m.group("name").strip()[:200]
 
 
 def looks_like_proto_schema(text: str) -> bool:

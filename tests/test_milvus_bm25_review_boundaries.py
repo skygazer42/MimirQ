@@ -36,7 +36,7 @@ def test_native_readiness_error_escapes_actual_serial_and_parallel_orchestration
         _run_retrieval_plan(ctx)
 
 
-@pytest.mark.parametrize("backend", ["chroma", "faiss"])
+@pytest.mark.parametrize("backend", ["pgvector", "qdrant"])
 def test_non_milvus_generic_rebuild_keeps_other_index_kinds_running(backend, monkeypatch):
     from app.core.config import settings
     from app.services import indexer as module

@@ -9,7 +9,7 @@ from dataclasses import asdict
 from typing import Any, Callable
 
 from app.core.config import settings
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.core.regex_safety import looks_like_nested_quantifier
 from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.refs import sanitize_python_plugin_ref
@@ -105,7 +105,9 @@ def _sanitize_chunk_strategy_params(value: Any) -> dict[str, Any] | None:
             cleaned[key] = v
         # No nested objects/lists.
 
-    return cleaned or None
+    if value and not cleaned:
+        return None
+    return cleaned
 
 
 def _sanitize_stage_python_plugin_ref(value: Any, expected_stage: str) -> str | None:
@@ -184,7 +186,9 @@ def _sanitize_regex_rules(value: Any) -> list[dict] | None:
         if len(out) >= _REGEX_RULES_MAX:
             break
 
-    return out or None
+    if value and not out:
+        return None
+    return out
 
 
 def _sanitize_rule_packs(value: Any) -> list[str] | None:
@@ -219,7 +223,9 @@ def _sanitize_rule_packs(value: Any) -> list[str] | None:
         if len(out) >= _RULE_PACKS_MAX:
             break
 
-    return out or None
+    if value and not out:
+        return None
+    return out
 
 
 def _resolve_flag(default: bool, override: bool | None) -> bool:
@@ -381,7 +387,7 @@ def _apply_sanitized_metadata_fields(
         if value is None:
             continue
         sanitized = sanitize(value)
-        if sanitized:
+        if sanitized is not None:
             target[metadata_key] = sanitized
 
 
@@ -627,12 +633,12 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
     if index:
         pipeline["index"] = index
 
-    return pipeline or None
+    return pipeline
 
 
 def validate_pipeline_execution(options: PipelineOptions | PipelineEffective) -> None:
     """Validate selected capabilities at write and execution boundaries, preserving readable history."""
-    reject_retired_model_provider(options.governance_keywords_provider, capability="keyword")
+    reject_retired_provider(options.governance_keywords_provider, capability="keyword")
 
 
 def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions | None) -> bool:
@@ -667,9 +673,11 @@ def resolve_pipeline_effective(
     - document metadata.pipeline
     - request_overrides (e.g., upload/preview payload)
     """
-    dataset_opts = parse_pipeline_from_metadata(dataset_metadata or {}) if dataset_metadata else PipelineOptions()
-    doc_opts = parse_pipeline_from_metadata(document_metadata or {}) if document_metadata else PipelineOptions()
-    merged = merge_pipeline_options(dataset_opts, doc_opts, request_overrides or PipelineOptions())
+    dataset_opts = parse_pipeline_from_metadata(dataset_metadata) if dataset_metadata else PipelineOptions()
+    doc_opts = parse_pipeline_from_metadata(document_metadata) if document_metadata else PipelineOptions()
+    merged = merge_pipeline_options(
+        dataset_opts, doc_opts, (request_overrides if request_overrides is not None else PipelineOptions())
+    )
     return resolve_pipeline_options(merged)
 
 
@@ -1012,7 +1020,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         if options.chunk_merge_small_min_chars is not None
         else int(settings.CHUNK_MERGE_SMALL_MIN_CHARS or 0)
     )
-    chunk_strategy_params = options.chunk_strategy_params if options.chunk_strategy_params is not None else None
+    chunk_strategy_params = options.chunk_strategy_params
     chunk_strategy_params = _sanitize_chunk_strategy_params(chunk_strategy_params) or {}
     chunk_python_plugin = _sanitize_stage_python_plugin_ref(options.chunk_python_plugin, "chunk") or ""
     chunk_python_params = _sanitize_chunk_strategy_params(options.chunk_python_params) or {}

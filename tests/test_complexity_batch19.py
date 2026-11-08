@@ -21,7 +21,7 @@ from app.rag.pipeline_plugins.registry import (
     _test_status,
 )
 from app.rag.preprocessing import tokenization as tokenization_module
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 from app.rag.retrieval.planner import (
     DatasetRouteHint,
     plan_dataset_scope,
@@ -162,7 +162,7 @@ def test_canonicalize_entities_for_chunk_splits_parenthetical_aliases_and_keeps_
     ]
 
 
-def test_tokenize_for_bm25_expands_ascii_paths_versions_and_numeric_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tokenize_lexical_text_expands_ascii_paths_versions_and_numeric_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(tokenization_module.settings, "BM25_TOKENIZE_ASCII_EXPAND_ENABLED", True, raising=False)
     monkeypatch.setattr(
         tokenization_module.settings,
@@ -171,7 +171,7 @@ def test_tokenize_for_bm25_expands_ascii_paths_versions_and_numeric_tokens(monke
         raising=False,
     )
 
-    tokens = tokenize_for_bm25("API/v1.2.3 Release_2026 build 1,024")
+    tokens = tokenize_lexical_text("API/v1.2.3 Release_2026 build 1,024")
 
     assert tokens == [
         "api/v1.2.3",

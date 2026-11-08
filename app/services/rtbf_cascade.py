@@ -81,8 +81,8 @@ def _list_rtbf_documents(
             {
                 "document_id": doc.id,
                 "dataset_id": doc.dataset_id,
-                "owner_id": str(doc.owner_id or "").strip() or None,
-                "filename": str(doc.filename or "").strip() or None,
+                "owner_id": doc.owner_id,
+                "filename": doc.filename,
                 "match_reasons": reasons,
             }
         )

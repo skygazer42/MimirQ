@@ -67,7 +67,7 @@ KG 是召回增强和解释层，不是业务 fast path。KG 可以做三件事�
 
 - Query expansion：从高置信实体或别名扩展候选查询，降低漏召回。
 - Chunk injection：把 KG 事件指向的 evidence chunk 注入候选池，增加覆盖。
-- Ranking features：给 rerank/LTR 提供低基数、可解释的结构化特征。
+- Ranking features：给 rerank 提供低基数、可解释的结构化特征。
 
 KG 不应该直接返回最终答案，也不应该跳过 vector/BM25/rerank 的统一候选流程。启用 KG 前后必须能用 KG-off/KG-on 对比证明：hit、effective context、metadata match 不下降，noise rate 不超过阈值。
 

@@ -293,7 +293,7 @@ def _serialize_inline_parse_documents(documents: list[Any]) -> list[dict[str, An
             {
                 "page_content": str(getattr(doc, "page_content", "") or ""),
                 "metadata": _sanitize_storage_value(metadata if isinstance(metadata, dict) else {}),
-                "id": str(getattr(doc, "id", "") or "") or None,
+                "id": getattr(doc, "id", None),
             }
         )
     return out

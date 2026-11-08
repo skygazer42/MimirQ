@@ -191,7 +191,7 @@ def _results_contain_metadata_exact_anchor(
     query: str, results: list[dict[str, Any]], *, limit: int | None = None
 ) -> bool:
     candidates = list(results or [])
-    if limit is not None and int(limit or 0) > 0:
+    if limit is not None and int((limit if limit is not None else 0)) > 0:
         candidates = sorted(
             candidates,
             key=lambda item: (

@@ -24,7 +24,7 @@ Note: To avoid circular imports, some submodules need to be imported directly:
 import importlib
 from typing import Any
 
-__all__ = ["select_embedding_model", "test_embedding_model_status", "DEFAULT_EMBED_MODELS"]
+__all__ = ["select_embedding_model", "probe_embedding_model_status", "DEFAULT_EMBED_MODELS"]
 
 
 def __getattr__(name: str) -> Any:
@@ -42,10 +42,10 @@ def __getattr__(name: str) -> Any:
         from app.rag.embedding import select_embedding_model
 
         return select_embedding_model
-    if name == "test_embedding_model_status":
-        from app.rag.embedding import test_embedding_model_status
+    if name == "probe_embedding_model_status":
+        from app.rag.embedding import probe_embedding_model_status
 
-        return test_embedding_model_status
+        return probe_embedding_model_status
     if name == "DEFAULT_EMBED_MODELS":
         from app.rag.embedding import DEFAULT_EMBED_MODELS
 

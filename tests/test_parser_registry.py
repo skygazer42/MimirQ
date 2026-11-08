@@ -14,7 +14,6 @@ EXPECTED_PARSER_EXPORTS = [
     "BaseAdvancedParser",
     "MinerUParser",
     "DoclingParser",
-    "TCADPParser",
     "Etl4LlmParser",
 ]
 
@@ -121,12 +120,6 @@ EXPECTED_EXPORT_CAPABILITIES = [
         "module_name": "app.parsing.parsers.docling_parser",
         "class_name": "DoclingParser",
         "backend_name": "docling",
-    },
-    {
-        "export_name": "TCADPParser",
-        "module_name": "app.parsing.parsers.tcadp_parser",
-        "class_name": "TCADPParser",
-        "backend_name": "tcadp",
     },
     {
         "export_name": "Etl4LlmParser",
@@ -640,7 +633,6 @@ def test_parser_factory_and_backend_capability_discovery_do_not_import_implement
             "app.parsing.parsers.image_parser",
             "app.parsing.parsers.audio_parser",
             "app.parsing.parsers.video_parser",
-            "app.parsing.parsers.tcadp_parser",
         ]
         for name in parser_modules:
             sys.modules.pop(name, None)
@@ -664,7 +656,7 @@ def test_parser_export_resolution_loads_only_requested_parser_module() -> None:
         before = set(sys.modules)
         import app.parsing.parsers as parsers
         after_import = set(sys.modules)
-        parser_cls = parsers.TCADPParser
+        parser_cls = parsers.Etl4LlmParser
         after_attr = set(sys.modules)
         print(
             json.dumps(
@@ -688,8 +680,8 @@ def test_parser_export_resolution_loads_only_requested_parser_module() -> None:
             "app.parsing.parsers.base_parser",
         ],
         "after_attr": [
+            "app.parsing.parsers.etl4llm_parser",
             "app.parsing.parsers.registry",
-            "app.parsing.parsers.tcadp_parser",
         ],
-        "class_name": "TCADPParser",
+        "class_name": "Etl4LlmParser",
     }

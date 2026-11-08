@@ -72,13 +72,13 @@ def audit_log_event(
         item = AuditLog(
             tenant_id=tenant_id,
             actor_id=str(actor_id) if actor_id is not None else None,
-            action=str(action or "")[:128],
-            resource_type=str(resource_type)[:64] if resource_type else None,
-            resource_id=str(resource_id)[:255] if resource_id else None,
-            request_id=str(request_id)[:128] if request_id else None,
-            ip=str(ip)[:64] if ip else None,
-            user_agent=str(user_agent)[:512] if user_agent else None,
-            details=dict(details or {}),
+            action=action[:128],
+            resource_type=str(resource_type)[:64] if resource_type is not None else None,
+            resource_id=str(resource_id)[:255] if resource_id is not None else None,
+            request_id=str(request_id)[:128] if request_id is not None else None,
+            ip=str(ip)[:64] if ip is not None else None,
+            user_agent=str(user_agent)[:512] if user_agent is not None else None,
+            details=dict(details) if details is not None else {},
         )
         db.add(item)
     except Exception:

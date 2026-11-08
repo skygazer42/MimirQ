@@ -565,32 +565,32 @@ def _fetch_connector_run_acl_summaries(
 
 
 def _run_out(run: ConnectorRun, *, acl_summary: dict[str, Any] | None = None) -> ConnectorRunOut:
-    documents = run.documents or []
-    connector_id = str(run.connector_id or "").strip()
+    documents = run.documents
+    connector_id = run.connector_id
     config = redact_connection_info(
-        redact_secrets(dict(run.config or {})),
-        enabled=connector_id in _DB_CONNECTOR_IDS,
+        redact_secrets(dict(run.config)),
+        enabled=connector_id.strip() in _DB_CONNECTOR_IDS,
     )
     return ConnectorRunOut(
         id=run.id,
         tenant_id=run.tenant_id,
         dataset_id=run.dataset_id,
         connector_id=connector_id,
-        requested_by=run.requested_by or None,
-        status=str(run.status or "pending"),
+        requested_by=run.requested_by,
+        status=run.status,
         config=config,
-        stats=dict(run.stats or {}),
-        error_message=run.error_message or None,
-        task_id=run.task_id or None,
+        stats=dict(run.stats),
+        error_message=run.error_message,
+        task_id=run.task_id,
         created_at=run.created_at,
         started_at=run.started_at,
         finished_at=run.finished_at,
-        acl_summary=acl_summary or None,
+        acl_summary=acl_summary,
         documents=[
             {
                 "document_id": document.document_id,
-                "source_ref": document.source_ref or None,
-                "status": str(document.status or "created"),
+                "source_ref": document.source_ref,
+                "status": document.status,
             }
             for document in documents
         ],

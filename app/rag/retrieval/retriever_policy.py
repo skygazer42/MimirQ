@@ -126,7 +126,7 @@ class RetrievalPolicyMixin:
         query: str | None,
     ) -> list[dict[str, Any]]:
         out = list(results or [])
-        query_text = str(query or "").strip()
+        query_text = str((query if query is not None else "")).strip()
         if not out or not query_text:
             return out
 

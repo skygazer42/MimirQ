@@ -81,7 +81,7 @@ def _parse_dataset_record(obj: dict[str, Any]) -> _ParsedRecord | None:
         kind="dataset",
         key=(rec_id,),
         fingerprint=(
-            _norm_str(obj.get("permission")) or None,
+            obj.get("permission"),
             _hash_or_fallback(obj, raw_key="owner_id", hash_key="owner_id_hash"),
             _hash_or_fallback(obj, raw_key="name", hash_key="name_hash"),
         ),
@@ -96,7 +96,7 @@ def _parse_document_record(obj: dict[str, Any]) -> _ParsedRecord | None:
         kind="document",
         key=(rec_id,),
         fingerprint=(
-            _norm_str(obj.get("dataset_id")) or None,
+            obj.get("dataset_id"),
             _norm_access_mode(obj.get("access_mode")),
             _hash_or_fallback(obj, raw_key="owner_id", hash_key="owner_id_hash"),
         ),

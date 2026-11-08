@@ -15,7 +15,7 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.filters import match_metadata_filter
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 from app.rag.retrieval.hybrid.common import (
     _metadata_exact_anchor_match,
     _query_looks_like_cjk_metadata_anchor,
@@ -63,7 +63,7 @@ def _lexical_cjk_token_terms(raw_query: str) -> list[str]:
     max_terms = max(1, min(16, settings.LEXICAL_DB_CJK_TOKEN_MAX_TERMS or 6))
     candidates: list[str] = []
     seen: set[str] = set()
-    for token in tokenize_for_bm25(text):
+    for token in tokenize_lexical_text(text):
         term = token.strip()
         if len(term) < 2:
             continue

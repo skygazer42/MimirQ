@@ -1,5 +1,5 @@
 """
-PII-safe hard negative mining helpers for LTR training.
+PII-safe hard negative mining helpers for retrieval evaluation.
 
 Wave7(A) goals:
 - Mine "near-miss" negatives (ranked above first positive) from regression traces.
@@ -127,7 +127,7 @@ def _first_positive(
         chunk_id = row["chunk_id"]
         if chunk_id and chunk_id in reference_chunk_ids:
             rank = row["rank"]
-            return rank or None, [{"chunk_id": chunk_id, "rank": rank}]
+            return (rank), [{"chunk_id": chunk_id, "rank": rank}]
     return None, []
 
 
@@ -312,7 +312,7 @@ def merge_hard_negative_records(
     - dedupe by chunk_id
     - bound output by max_hard_negatives
     """
-    rows = [r for r in (records or []) if isinstance(r, dict)]
+    rows = [r for r in (records if records is not None else []) if isinstance(r, dict)]
     if not rows:
         return _empty_merged_hard_negative_record()
 

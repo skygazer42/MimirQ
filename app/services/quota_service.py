@@ -47,7 +47,6 @@ def check_chat_assistant_token_quota(
     window_hours = max(1, window_hours)
     since = datetime.now(UTC) - timedelta(hours=window_hours)
 
-    used = 0
     try:
         used_raw = (
             db.query(func.coalesce(func.sum(Message.token_count), 0))

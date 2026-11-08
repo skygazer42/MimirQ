@@ -2919,9 +2919,9 @@ export interface paths {
         put?: never;
         /**
          * Import Manual Kg
-         * @description Import a manually governed KG payload into Ragvia.
+         * @description Import a manually governed KG payload into MimirQ.
          *
-         *     Domain-specific extraction/rule building should happen outside Ragvia and
+         *     Domain-specific extraction/rule building should happen outside MimirQ and
          *     produce this stable import format.
          */
         post: operations["import_manual_kg_api_v1_kg_imports_post"];
@@ -3740,35 +3740,6 @@ export interface paths {
          *     - `csv`: flattened export with nested JSON columns
          */
         get: operations["export_training_dataset_api_v1_evidence_training_export_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/evidence/suites/{suite_id}/export-ltr-training": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Export Evidence Suite Ltr Training Bundle
-         * @description Export a PII-minimized LTR training bundle from an Evidence Suite.
-         *
-         *     Contents:
-         *     - manifest.json: export metadata + feature spec
-         *     - training_rows.ndjson: per-citation features + labels (0/1), grouped by query_hash
-         *     - hard_negatives.ndjson: mined near-miss negatives (PII-safe) per query_hash
-         *
-         *     Notes:
-         *     - This endpoint intentionally avoids including raw query text in training rows.
-         *     - It relies on per-item retrieval_snapshot for reproducibility; items without a snapshot are skipped.
-         */
-        get: operations["export_evidence_suite_ltr_training_bundle_api_v1_evidence_suites__suite_id__export_ltr_training_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5847,7 +5818,7 @@ export interface paths {
         put?: never;
         /**
          * Ingest Conversation History
-         * @description Import externally generated chat turns into the standard Ragvia history.
+         * @description Import externally generated chat turns into the standard MimirQ history.
          */
         post: operations["ingest_conversation_history_api_v1_integrations_conversations_ingest_post"];
         delete?: never;
@@ -15745,7 +15716,7 @@ export interface components {
         };
         /**
          * ExternalConversationIngestRequest
-         * @description Import conversation turns from any external chat system into Ragvia history.
+         * @description Import conversation turns from any external chat system into MimirQ history.
          */
         ExternalConversationIngestRequest: {
             /**
@@ -15757,7 +15728,7 @@ export interface components {
             source_conversation_id: string;
             /**
              * Conversation Id
-             * @description Append to an existing Ragvia conversation
+             * @description Append to an existing MimirQ conversation
              */
             conversation_id?: string | null;
             /** Title */
@@ -18098,7 +18069,7 @@ export interface components {
          * @description Manual KG import payload.
          *
          *     The payload is intentionally domain-neutral. Business-specific extraction
-         *     should happen outside Ragvia; this endpoint only imports governed graph rows.
+         *     should happen outside MimirQ; this endpoint only imports governed graph rows.
          */
         KGManualImportRequest: {
             /**
@@ -22021,7 +21992,7 @@ export interface components {
             enable_reranker?: boolean;
             /**
              * Reranker Provider
-             * @description Reranker provider: llm | pc | ltr | colbert | openai | dashscope | none
+             * @description Reranker provider: llm | pc | colbert | openai | dashscope | none
              */
             reranker_provider?: string;
             /**
@@ -22521,7 +22492,7 @@ export interface components {
             enable_reranker?: boolean;
             /**
              * Reranker Provider
-             * @description Reranker provider: llm | pc | ltr | colbert | openai | dashscope | none
+             * @description Reranker provider: llm | pc | colbert | openai | dashscope | none
              */
             reranker_provider?: string;
             /**
@@ -23878,11 +23849,11 @@ export interface components {
              */
             tenant_id: string;
             /** User Id */
-            user_id?: string | null;
+            user_id: string;
             /** Username */
-            username?: string | null;
+            username: string;
             /** Email */
-            email?: string | null;
+            email: string;
             /**
              * Role
              * @description owner|admin|auditor|editor|dataset_operator|viewer
@@ -23899,10 +23870,16 @@ export interface components {
              * @default false
              */
             is_current: boolean;
-            /** Created At */
-            created_at?: string | null;
-            /** Updated At */
-            updated_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
         };
         /** TenantMemberUpdateRequest */
         TenantMemberUpdateRequest: {
@@ -40489,80 +40466,6 @@ export interface operations {
                 "x-user-id"?: string | null;
             };
             path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Range Not Satisfiable */
-            416: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_evidence_suite_ltr_training_bundle_api_v1_evidence_suites__suite_id__export_ltr_training_get: {
-        parameters: {
-            query?: {
-                include_archived_items?: boolean;
-                /** @description Max items to include in export */
-                max_items?: number;
-            };
-            header?: {
-                "x-tenant-id"?: string | null;
-                authorization?: string | null;
-                "x-user-id"?: string | null;
-            };
-            path: {
-                suite_id: string;
-            };
             cookie?: never;
         };
         requestBody?: never;

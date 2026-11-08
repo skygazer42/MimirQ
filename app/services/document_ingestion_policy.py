@@ -71,7 +71,7 @@ def _global_defaults() -> tuple[str, str]:
 def _normalized_dataset_default(value: object) -> str | None:
     # Dataset metadata is JSON; unlike an IngestionRule its values have no
     # per-key schema until this boundary reads them.
-    if not isinstance(value, str):
+    if value is None:
         return None
     normalized = value.strip().lower()
     return normalized if normalized else None
@@ -105,7 +105,10 @@ def select_upload_defaults(
         else chunk_strategy
     )
     return UploadDefaultSelection(
-        selected_pb, selected_cs, dataset_default_pb or global_pb, dataset_default_cs or global_cs
+        selected_pb,
+        selected_cs,
+        (dataset_default_pb if dataset_default_pb else global_pb),
+        (dataset_default_cs if dataset_default_cs else global_cs),
     )
 
 
@@ -178,7 +181,9 @@ def validate_pipeline_for_strategy(
     resolved_chunk_strategy: str,
 ) -> None:
     effective = resolve_pipeline_effective(
-        dataset_metadata=dataset_meta or {}, document_metadata={}, request_overrides=pipeline_options
+        dataset_metadata=(dataset_meta if dataset_meta is not None else {}),
+        document_metadata={},
+        request_overrides=pipeline_options,
     )
     if resolved_chunk_strategy not in chunker_factory.INTEGRATED_PIPELINE_STRATEGIES:
         validate_chunk_params(effective.chunk_size, effective.chunk_overlap)

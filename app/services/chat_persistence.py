@@ -157,7 +157,7 @@ def _online_eval_contexts(citations: list[Any]) -> list[str]:
 
 
 def _online_eval_retrieval_mode(metrics: dict[str, Any], retrieval_mode_default: str | None) -> str | None:
-    return str(metrics.get("retrieval_mode") or retrieval_mode_default or "") or None
+    return metrics.get("retrieval_mode", retrieval_mode_default)
 
 
 def _resolve_singleflight_payload(
@@ -226,7 +226,7 @@ def _log_extractive_fallback_rag_trace(
     if not _is_extractive_fallback_trace(metrics):
         return
 
-    retrieval_mode_used = str(metrics.get("retrieval_mode") or retrieval_mode_default or "").strip()
+    retrieval_mode_used = _online_eval_retrieval_mode(metrics, retrieval_mode_default)
     retrieval_elapsed_sec = _retrieval_elapsed_seconds(metrics)
     errors = _compact_retrieval_errors(metrics)
 
@@ -240,7 +240,7 @@ def _log_extractive_fallback_rag_trace(
         "citations_count": int(len(citations or [])),
         "citations": list(citations or []),
         "retrieval": {
-            "mode": retrieval_mode_used or None,
+            "mode": retrieval_mode_used,
             "elapsed_sec": retrieval_elapsed_sec,
             "errors": errors,
         },

@@ -56,7 +56,7 @@ def test_shared_corpus_reads_and_writes_native_storage_without_local_bm25(monkey
     assert corpus.remove(tenant_id=tenant, metadata_filter={"document_id": str(document)}) == 4
 
 
-@pytest.mark.parametrize("backend", ["chroma", "faiss", "memory"])
+@pytest.mark.parametrize("backend", ["pgvector", "memory"])
 def test_non_milvus_backend_disables_bm25_without_contacting_milvus(backend, monkeypatch):
     from app.core.config import settings
     from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope
@@ -117,7 +117,7 @@ def test_rebuild_published_corpus_batches_native_upserts_and_keeps_dataset_ids(m
         )
         for _ in range(5)
     ]
-    monkeypatch.setattr(corpus, "_load_retrieval_docs_for_rebuild", lambda *_args, **_kwargs: docs)
+    monkeypatch.setattr(corpus, "_load_bounded_corpus_documents", lambda *_args, **_kwargs: docs)
     assert corpus.rebuild(object(), scope=CorpusScope(tenant, (dataset,)), batch_size=2) == 5
     calls = [call for call in store.calls if call[0] == "upsert"]
     assert [len(call[1]) for call in calls] == [2, 2, 1]

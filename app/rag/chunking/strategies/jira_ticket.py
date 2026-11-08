@@ -244,7 +244,7 @@ def _extract_issue_key(text: str) -> str | None:
     m = _ISSUE_KEY_RE.search(text[:4000])
     if not m:
         return None
-    return (m.group(0) or "").strip() or None
+    return m.group(0).strip()
 
 
 def looks_like_jira_ticket(text: str) -> bool:

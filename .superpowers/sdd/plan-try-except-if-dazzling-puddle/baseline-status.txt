@@ -1,0 +1,548 @@
+ M .agents/notes/implemented/architecture/2026-11-05-milvus-native-bm25.md
+ M .agents/notes/implemented/architecture/2026-11-05-retire-in-process-models.md
+ M .agents/notes/implemented/process/2026-11-05-optional-model-vector-dependencies.md
+ M .agents/notes/implemented/simplification/2026-11-03-chat-runtime-typed-contracts.md
+ M .agents/notes/implemented/simplification/2026-11-03-document-batch-orm-contract.md
+ M .agents/notes/implemented/simplification/2026-11-04-dify-helper-ownership.md
+ M .agents/notes/implemented/simplification/2026-11-05-api-dataset-pipeline-owned-values.md
+ M .agents/notes/implemented/simplification/2026-11-05-api-session-retrieval-owned-values.md
+ M .agents/notes/implemented/simplification/2026-11-05-document-service-ownership.md
+ M .agents/notes/implemented/simplification/2026-11-05-offline-retrieval-ltr-owned-rules.md
+ M .agents/notes/implemented/simplification/2026-11-05-parser-adapter-helper-ownership.md
+ M .agents/notes/implemented/simplification/2026-11-05-parsing-stage-function-ownership.md
+ M .agents/notes/implemented/simplification/2026-11-05-service-configuration-owned-values.md
+ M .env.example
+ M .github/CONTRIBUTING.md
+ M .github/ISSUE_TEMPLATE/retrieval-quality-regression.yml
+ M .github/workflows/ci.yml
+ M .github/workflows/rag-quality-gate.yml
+ M Makefile
+ M README.md
+ M README_EN.md
+ M README_JA.md
+ M README_KO.md
+ M app/api/dependencies/auth.py
+ M app/api/dependencies/document_assets.py
+ M app/api/dependencies/tenant.py
+ M app/api/middleware/rate_limit.py
+ M app/api/middleware/request_id.py
+ M app/api/schemas/auth.py
+ M app/api/schemas/chat.py
+ M app/api/schemas/connector_acl.py
+ M app/api/schemas/dataset.py
+ M app/api/schemas/document.py
+ M app/api/schemas/group.py
+ M app/api/schemas/pipeline.py
+ M app/api/schemas/rbac.py
+ M app/api/schemas/regression.py
+ M app/api/schemas/settings.py
+ M app/api/v1/audit.py
+ M app/api/v1/chat.py
+ M app/api/v1/chat_conversation_memory.py
+ M app/api/v1/dataset_analysis.py
+ M app/api/v1/dataset_tables.py
+ M app/api/v1/datasets.py
+ M app/api/v1/dify_support/external_api.py
+ M app/api/v1/document_assets.py
+ M app/api/v1/document_chunk_preview.py
+ M app/api/v1/document_health.py
+ M app/api/v1/document_preview.py
+ M app/api/v1/document_timeline.py
+ M app/api/v1/document_versions.py
+ M app/api/v1/documents.py
+ M app/api/v1/evaluations.py
+ M app/api/v1/evidence.py
+ M app/api/v1/evidence_capsules.py
+ M app/api/v1/feedback.py
+ M app/api/v1/health.py
+ M app/api/v1/integrations_dify.py
+ M app/api/v1/metrics.py
+ M app/api/v1/observability.py
+ M app/api/v1/parsing.py
+ M app/api/v1/pipeline.py
+ M app/api/v1/pipeline_support/clean_preview.py
+ M app/api/v1/rag.py
+ M app/api/v1/rag_config_templates.py
+ M app/api/v1/retrieval_explain.py
+ M app/api/v1/retrieval_profiles.py
+ M app/api/v1/scim.py
+ M app/api/v1/settings.py
+ M app/api/v1/usage.py
+ M app/config/rerank_profile.py
+ M app/connectors/db/catalog_runner.py
+ M app/core/config.py
+ M app/core/config_validation.py
+ M app/core/constants.py
+ M app/core/exceptions.py
+ M app/core/health_checks.py
+ M app/core/model_execution.py
+ M app/core/pipeline_versions.py
+ M app/core/redis_client.py
+ M app/deepdoc/parser/__init__.py
+ M app/deepdoc/parser/pdf_parser.py
+ D app/deepdoc/parser/tcadp_parser.py
+ D app/deepdoc/resources/data_parser/qieci/updown_concat_xgb.json
+ D app/deepdoc/resources/data_parser/qieci/updown_concat_xgb.model
+ D app/deepdoc/resources/data_parser/qieci/updown_concat_xgb.ubj
+ M app/main.py
+ M app/parsing/backends.py
+ M app/parsing/enrich/image_code.py
+ M app/parsing/factory.py
+ M app/parsing/models/runtime.py
+ M app/parsing/parsers/__init__.py
+ M app/parsing/parsers/base_parser.py
+ M app/parsing/parsers/deepdoc_parser.py
+ M app/parsing/parsers/docling_parser.py
+ M app/parsing/parsers/registry.py
+ D app/parsing/parsers/tcadp_parser.py
+ M app/parsing/processors/cross_page_merge.py
+ M app/parsing/processors/parse_cache.py
+ M app/parsing/processors/parse_quality_gate.py
+ M app/parsing/processors/parse_quality_schema.py
+ M app/parsing/processors/parser_service.py
+ M app/parsing/processors/processor.py
+ M app/parsing/processors/support/assets.py
+ M app/parsing/processors/support/chunk_postprocess.py
+ M app/parsing/processors/support/parse_io.py
+ M app/parsing/processors/support/process_document_flow.py
+ M app/parsing/processors/support/quality.py
+ M app/parsing/processors/support/recovery.py
+ M app/parsing/processors/support/stages.py
+ M app/parsing/processors/vlm_correction.py
+ M app/parsing/subprocess_worker.py
+ M app/parsing/utils/document_elements.py
+ M app/rag/__init__.py
+ M app/rag/agents/rag_agent.py
+ M app/rag/chunking/contextual_enrichment.py
+ M app/rag/chunking/factory.py
+ M app/rag/chunking/quality_scorer.py
+ M app/rag/chunking/strategies/ansible_playbook.py
+ M app/rag/chunking/strategies/chat_history.py
+ M app/rag/chunking/strategies/docker_compose.py
+ M app/rag/chunking/strategies/jira_ticket.py
+ M app/rag/chunking/strategies/openapi_spec.py
+ M app/rag/chunking/strategies/proto_schema.py
+ M app/rag/chunking/strategies/rst_sections.py
+ M app/rag/chunking/strategies/sql_schema.py
+ M app/rag/chunking/strategies/stacktrace.py
+ M app/rag/chunking/utils/hierarchical.py
+ M app/rag/core/citations.py
+ M app/rag/core/claim_nli_verifier.py
+ M app/rag/core/evidence_expectations.py
+ M app/rag/core/metadata.py
+ M app/rag/core/retrieval_profiles.py
+ M app/rag/core/vision_reader.py
+ M app/rag/embedding/__init__.py
+ M app/rag/embedding/adapter.py
+ M app/rag/embedding/factory.py
+ M app/rag/engine.py
+ M app/rag/engine_support/standard_stream_corrective.py
+ M app/rag/engine_support/standard_stream_evidence.py
+ M app/rag/engine_support/standard_stream_finalization.py
+ M app/rag/engine_support/standard_stream_generation.py
+ M app/rag/engine_support/standard_stream_retrieval.py
+ M app/rag/engine_support/standard_stream_setup.py
+ M app/rag/evaluation/datasets/stage3_manifest.py
+ M app/rag/evaluation/hard_negative_mining.py
+ M app/rag/evaluation/kg_hardcase_deterministic.py
+ M app/rag/evaluation/llm_judge.py
+ M app/rag/evaluation/online_shadow.py
+ M app/rag/evaluation/poc_runner/png_tasks.py
+ M app/rag/evaluation/ragas.py
+ M app/rag/evaluation/replay_capture.py
+ M app/rag/evaluation/synthetic/critic.py
+ M app/rag/evaluation/synthetic/pipeline.py
+ M app/rag/evaluation/test_generator.py
+ M app/rag/feedback_loop/candidates.py
+ M app/rag/industry_rules/mining/auto_rules.py
+ M app/rag/kg/api/routes_support/extraction.py
+ M app/rag/kg/api/routes_support/merge_alias.py
+ M app/rag/kg/api/routes_support/projection.py
+ M app/rag/kg/engine/core.py
+ M app/rag/kg/extraction/auto_graph_r1.py
+ M app/rag/kg/extraction/backend_router.py
+ M app/rag/kg/extraction/config.py
+ M app/rag/kg/extraction/extractor.py
+ M app/rag/kg/extraction/processor.py
+ M app/rag/kg/extraction_job_options.py
+ M app/rag/kg/manual_import.py
+ M app/rag/kg/pipeline.py
+ M app/rag/kg/provenance.py
+ M app/rag/kg/search/agentic_beam_search.py
+ M app/rag/kg/search/cache.py
+ M app/rag/kg/search/expand.py
+ M app/rag/kg/search/recall.py
+ M app/rag/kg/search/searcher.py
+ M app/rag/llm/langchain_chat.py
+ M app/rag/output/__init__.py
+ M app/rag/pipeline_plugins/golden_drafts.py
+ M app/rag/pipeline_plugins/runtime.py
+ M app/rag/pipelines/langgraph.py
+ M app/rag/policy/intent_router.py
+ M app/rag/policy/recall_obligation.py
+ M app/rag/preprocessing/frontmatter.py
+ M app/rag/preprocessing/keyword.py
+ M app/rag/preprocessing/llm_tagger.py
+ M app/rag/preprocessing/metadata_enrichment.py
+ M app/rag/preprocessing/processor.py
+ M app/rag/preprocessing/tokenization.py
+ M app/rag/rerank_result_cache.py
+ M app/rag/reranker/capabilities.py
+ M app/rag/reranker/colbert.py
+ M app/rag/reranker/factory.py
+ M app/rag/reranker/long_context_rerank.py
+ D app/rag/reranker/ltr.py
+ M app/rag/reranker/mmr.py
+ M app/rag/reranker/registry.py
+ M app/rag/retrieval/colbert_ann.py
+ M app/rag/retrieval/context_expansion.py
+ M app/rag/retrieval/contextual_followup.py
+ M app/rag/retrieval/corpus_artifacts.py
+ M app/rag/retrieval/corpus_index.py
+ M app/rag/retrieval/evidence_gap.py
+ M app/rag/retrieval/hierarchy_expand.py
+ M app/rag/retrieval/hybrid/bm25_index.py
+ M app/rag/retrieval/hybrid/cache_scope.py
+ M app/rag/retrieval/hybrid/candidate_ranking.py
+ M app/rag/retrieval/hybrid/candidate_retrieval.py
+ M app/rag/retrieval/hybrid/channel_diagnostics.py
+ M app/rag/retrieval/hybrid/colbert_index.py
+ M app/rag/retrieval/hybrid/common.py
+ M app/rag/retrieval/hybrid/corpus_channels.py
+ M app/rag/retrieval/hybrid/fusion.py
+ M app/rag/retrieval/hybrid/lexical.py
+ M app/rag/retrieval/hybrid/lexical_search.py
+ M app/rag/retrieval/hybrid/metadata_scope.py
+ M app/rag/retrieval/hybrid/post_process.py
+ M app/rag/retrieval/hybrid/result_values.py
+ M app/rag/retrieval/hybrid/runtime_scope.py
+ M app/rag/retrieval/hybrid/sparse_index.py
+ M app/rag/retrieval/hybrid/vector_normalizer.py
+ M app/rag/retrieval/hybrid/vector_search.py
+ M app/rag/retrieval/orchestration/channel_budget.py
+ M app/rag/retrieval/orchestration/citation_quality.py
+ M app/rag/retrieval/orchestration/corpus_cache_tokens.py
+ M app/rag/retrieval/orchestration/debug_sanitize.py
+ M app/rag/retrieval/orchestration/finalize_trace.py
+ M app/rag/retrieval/orchestration/hierarchy.py
+ M app/rag/retrieval/orchestration/kg_merge_boost.py
+ M app/rag/retrieval/orchestration/kg_query_expansion.py
+ M app/rag/retrieval/orchestration/out_of_scope_live_gate.py
+ M app/rag/retrieval/orchestration/query_contract.py
+ M app/rag/retrieval/orchestration/query_contracts.py
+ M app/rag/retrieval/orchestration/query_invocation.py
+ M app/rag/retrieval/orchestration/query_options.py
+ M app/rag/retrieval/orchestration/query_planning.py
+ M app/rag/retrieval/orchestration/query_routing.py
+ M app/rag/retrieval/orchestration/reranker_factory.py
+ M app/rag/retrieval/orchestration/retriever_shim.py
+ M app/rag/retrieval/orchestration/text_helpers.py
+ M app/rag/retrieval/orchestrator.py
+ M app/rag/retrieval/orchestrator_support_contracts.py
+ M app/rag/retrieval/orchestrator_support_hierarchy.py
+ M app/rag/retrieval/orchestrator_support_post_rerank.py
+ M app/rag/retrieval/retriever_options.py
+ M app/rag/retrieval/retriever_policy.py
+ M app/rag/retrieval/sibling_expand.py
+ M app/rag/retrieval/source_labels.py
+ M app/rag/retrieval/sparse.py
+ M app/rag/retrieval/sparse_prometheus_metrics.py
+ M app/rag/retrieval_candidate_cache.py
+ M app/rag/retriever.py
+ M app/rag/safety/output_guard.py
+ M app/rag/workflows/flare.py
+ M app/services/access_graph_diff_service.py
+ M app/services/audit_log_service.py
+ M app/services/chat_bootstrap_runtime.py
+ M app/services/chat_cache_runtime.py
+ M app/services/chat_conversation_access.py
+ M app/services/chat_conversation_titles.py
+ M app/services/chat_memory_runtime.py
+ M app/services/chat_persistence.py
+ M app/services/chat_response_cache.py
+ M app/services/chat_runtime.py
+ M app/services/chat_scope.py
+ M app/services/chat_stream_common.py
+ M app/services/chat_stream_langchain.py
+ M app/services/chat_stream_orchestrator.py
+ M app/services/chat_stream_persistence.py
+ M app/services/chat_tag_service.py
+ M app/services/chat_turn_persistence.py
+ M app/services/connector_config_operations.py
+ M app/services/connector_execution/db_catalog.py
+ M app/services/connector_execution/plans/web_crawl.py
+ M app/services/connector_execution/shared/artifacts.py
+ M app/services/connector_execution/shared/common.py
+ M app/services/connector_reconcile_service.py
+ M app/services/connector_run_operations.py
+ M app/services/connector_schedule_operations.py
+ M app/services/connector_sync_state.py
+ M app/services/conversation_summary_service.py
+ M app/services/corpus_cache_tokens.py
+ M app/services/cross_dataset_dedup_report.py
+ M app/services/dataset_analysis_service.py
+ M app/services/dataset_defaults.py
+ M app/services/dataset_embedding_config.py
+ M app/services/dataset_precheck_ingestion_suggestion.py
+ M app/services/dataset_profile_service.py
+ M app/services/db_catalog_schema_doc_service.py
+ M app/services/dify_integration/conversation_turns.py
+ M app/services/dify_integration/evidence_adapter.py
+ M app/services/dify_integration/response_cache.py
+ M app/services/document_access.py
+ M app/services/document_access_service.py
+ M app/services/document_acl_provenance_service.py
+ M app/services/document_asset_access.py
+ M app/services/document_batch_ingestion.py
+ M app/services/document_chunk_operations.py
+ M app/services/document_identity.py
+ M app/services/document_index_channel_service.py
+ M app/services/document_ingestion.py
+ M app/services/document_ingestion_policy.py
+ M app/services/document_ingestion_sources.py
+ M app/services/document_lifecycle_service.py
+ M app/services/document_manual_ingestion.py
+ M app/services/document_preview_utils.py
+ M app/services/document_processing_operations.py
+ M app/services/document_qa_service.py
+ M app/services/document_retrieval_hit_frequency.py
+ M app/services/embedding_drift_monitor.py
+ M app/services/evidence_drift_audit.py
+ M app/services/feedback_service.py
+ M app/services/fusion_weight_learning_service.py
+ M app/services/governance_profiles.py
+ M app/services/hardcase_discovery_service.py
+ M app/services/index_audit_service.py
+ M app/services/indexer.py
+ M app/services/ingest_dead_letter_service.py
+ M app/services/ingestion_policy.py
+ M app/services/ingestion_prometheus_metrics.py
+ M app/services/ingestion_run_service.py
+ M app/services/lineage_service.py
+ M app/services/lotus_bridge.py
+ D app/services/ltr_model_registry.py
+ D app/services/ltr_rollout_workflow.py
+ M app/services/online_eval_service.py
+ M app/services/parse_cache.py
+ M app/services/parser_strategy_policy.py
+ M app/services/parsing_extract_service.py
+ M app/services/pipeline_config.py
+ M app/services/pipeline_provenance_service.py
+ M app/services/prompt_resolver.py
+ M app/services/quota_service.py
+ M app/services/rag_config_template_resolver.py
+ M app/services/rag_metrics_dashboard.py
+ M app/services/rag_runtime_limiter.py
+ M app/services/rag_runtime_warmup.py
+ M app/services/rag_trace_service.py
+ M app/services/regression_leaderboard.py
+ M app/services/report_service.py
+ M app/services/rtbf_cascade.py
+ M app/services/saml_service.py
+ M app/services/semantic_cache.py
+ M app/services/table_store_service.py
+ M app/services/tenant_group_service.py
+ M app/services/tenant_member_provisioning_service.py
+ M app/services/web_crawler.py
+ M app/storage/__init__.py
+ M app/storage/vector/factory.py
+ M app/storage/vector/milvus.py
+ M app/tasks/jobs.py
+ M app/third_party/integrated_pipeline/chunkers/book.py
+ M app/third_party/integrated_pipeline/chunkers/laws.py
+ M app/third_party/integrated_pipeline/chunkers/naive.py
+ M app/types/document_analytics.py
+ M deploy/helm/mimirq/templates/validate-runtime.yaml
+ M deploy/helm/mimirq/values.yaml
+ M docker/Dockerfile
+ M docker/docker-compose.lite.yml
+ M docker/docker-compose.retrieval-dev.yml
+ M docs/README.md
+ M docs/api/README.md
+ M docs/backend_structure.md
+ M docs/deployment/backup_restore.md
+ M docs/deployment/docker_compose.md
+ M docs/deployment/dr_drill.md
+ M docs/deployment/helm.md
+ M docs/deployment/incident_response_cookbook.md
+ M docs/deployment/private_delivery_checklist.md
+ M docs/deployment/runbook.md
+ M docs/deployment/security_baseline.md
+ M docs/guides/colbert_ann_retrieval.md
+ M docs/guides/dependencies.md
+ M docs/guides/evidence_api.md
+ M docs/guides/knowledge_graph.md
+ M docs/guides/milvus_bm25.md
+ M docs/guides/milvus_guide.md
+ M docs/guides/rag_optimization.md
+ M docs/guides/rag_platform_design_principles.md
+ M docs/guides/regression_gate.md
+ M docs/guides/release_gate.md
+ M docs/guides/reranking_colbert.md
+ M docs/guides/reranking_ltr.md
+ M docs/guides/retrieval_fusion.md
+ M docs/guides/training_export.md
+ M docs/maintenance/style-unification/README.md
+ M docs/maintenance/style-unification/coverage.csv
+ M docs/quickstart.md
+ D requirements-chroma.txt
+ D requirements-ci.txt
+ D requirements-faiss.txt
+ M requirements.txt
+ M scripts/README.md
+ M scripts/answer_quality_gate.py
+ M scripts/audit.ps1
+ M scripts/backfill_minio_images.py
+ M scripts/build_parsing_retrieval_proof_artifacts.py
+ M scripts/changzhou_gov_eval_pack.py
+ M scripts/check_retrieval_profile_compat.py
+ M scripts/deepdoc_quality_gate.py
+ M scripts/docs/bootstrap_handbook.py
+ D scripts/eval_ltr_offline.py
+ M scripts/eval_rerank_pipeline_offline.py
+ M scripts/export_prompt_iteration_candidates.py
+ M scripts/live_core_release_gate.py
+ D scripts/ltr_online_rollback_daemon.py
+ D scripts/ltr_rollout_gate.py
+ M scripts/parser_benchmark.py
+ M scripts/parsing_retrieval_proof_gate.py
+ D scripts/prepare_ltr_rollout.py
+ M scripts/production_readiness_chain.py
+ M scripts/rag_e2e_load_test.py
+ M scripts/regression_gate.py
+ M scripts/remote_kb_permission_boundary.py
+ M scripts/remote_kg_usefulness_matrix.py
+ M scripts/remote_observability_metrics_probe.py
+ M scripts/remote_permission_matrix.py
+ M scripts/replay_from_evidence_capsule.py
+ M scripts/replay_retrieval_replay.py
+ M scripts/run_ci_live_core_gate.sh
+ D scripts/run_ltr_nightly_cycle.py
+ M scripts/seed_ci_kg_search_regression.py
+ M scripts/seed_ci_retrieval_regression.py
+ M scripts/seed_public_bench_cfever_dev.py
+ M scripts/seed_public_bench_miracl_zh_pool.py
+ M scripts/smoke_test.py
+ D scripts/train_ltr_from_regression_cases.py
+ M tests/rag/evaluation/test_rag_quality_gate.py
+ M tests/test_auth_dependency_sets_request_state.py
+ M tests/test_backend_performance_fixes.py
+ M tests/test_bm25_tokenizer_startup_warmup.py
+ M tests/test_chat_memory_keyword_search.py
+ M tests/test_chat_persistence_metrics.py
+ M tests/test_chat_session_offload.py
+ D tests/test_chroma_metadata_codec.py
+ M tests/test_ci_workflow_contracts.py
+ M tests/test_complexity_batch11.py
+ M tests/test_complexity_batch13.py
+ M tests/test_complexity_batch14.py
+ M tests/test_complexity_batch19.py
+ M tests/test_complexity_batch20.py
+ M tests/test_complexity_batch6.py
+ M tests/test_complexity_batch8.py
+ M tests/test_compose_local_bindings.py
+ M tests/test_dataset_embedding_config_api.py
+ M tests/test_deepdoc_parser_lazy_exports.py
+ M tests/test_dependency_audit_contract.py
+ M tests/test_document_asset_auth.py
+ M tests/test_document_lifecycle_metadata_endpoints.py
+ M tests/test_document_lifecycle_retention.py
+ M tests/test_embedding_adapter_langchain_contract.py
+ D tests/test_eval_ltr_offline.py
+ M tests/test_eval_rerank_pipeline_offline.py
+ M tests/test_evidence_post_rerank_pipeline.py
+ M tests/test_health_meta_exposure.py
+ M tests/test_health_schema_readiness.py
+ M tests/test_indexer_strict_cleanup.py
+ M tests/test_kg_queue_and_reconcile_contracts.py
+ M tests/test_local_vector_store_concurrency.py
+ D tests/test_ltr_model_registry_manifest_validation.py
+ M tests/test_milvus_bm25_cutover.py
+ M tests/test_milvus_bm25_review_boundaries.py
+ M tests/test_optional_import_contracts.py
+ M tests/test_parser_registry.py
+ M tests/test_processor_stages_complexity.py
+ M tests/test_rerank_score_calibration.py
+ M tests/test_retrieval_orchestrator_complexity.py
+ M tests/test_retrieval_rebuild_limits.py
+ M tests/test_robustness_redundancy_fixes.py
+ M tests/test_security_boundary_permissions.py
+ M tests/test_source_guard_contracts.py
+ M tests/test_subprocess_worker_preview_assets.py
+ D tests/test_tcadp_parser_complexity.py
+ M tests/test_tenant_group_service_contracts.py
+ D tests/test_train_ltr_from_regression_cases.py
+ M tests/test_vector_store_singleton_refresh.py
+ M web/app/settings/_sections/algorithm-settings.behavior.test.tsx
+ M web/components/evidence/evidence-suite-workbench-shell.tsx
+ M web/components/evidence/suite-actions-bar.tsx
+ M web/components/evidence/use-evidence-suite-workbench-state.ts
+ M web/lib/api/evidence.ts
+ M web/lib/reranker-provider-options.ts
+ M web/types/openapi.ts
+?? .superpowers/
+?? app/services/evidence_feedback_materialization.py
+?? app/services/jwt_membership_sync.py
+?? docs/development/direct-value-contracts-verification.md
+?? docs/development/explicit-null-documents-test-selection.json
+?? docs/development/explicit-null-documents-verification.md
+?? docs/development/explicit-null-fallback-test-selection.json
+?? docs/development/explicit-null-fallback-verification.md
+?? docs/development/explicit-null-retrieval-test-selection.json
+?? docs/development/explicit-null-retrieval-verification.md
+?? docs/development/faiss-retirement-test-selection.json
+?? docs/development/faiss-retirement-verification.md
+?? docs/development/function-naming-followup-map.json
+?? docs/development/function-naming-followup-test-selection.json
+?? docs/development/function-naming-followup-verification.md
+?? docs/development/function-naming-refactor-map.json
+?? docs/development/function-naming-refactor-test-selection.json
+?? docs/development/function-naming-refactor-verification.md
+?? docs/development/function-naming-round3-map.json
+?? docs/development/function-naming-round3-test-selection.json
+?? docs/development/function-naming-round3-verification.md
+?? docs/development/parser-ml-retirement-test-selection.json
+?? docs/development/parser-ml-retirement-verification.md
+?? tests/test_adapter_value_contracts.py
+?? tests/test_cache_value_contracts.py
+?? tests/test_connector_provenance_values.py
+?? tests/test_corpus_token_value_contracts.py
+?? tests/test_diagnostic_projection_values.py
+?? tests/test_document_value_contracts.py
+?? tests/test_error_and_budget_values.py
+?? tests/test_explicit_document_scope_rejection.py
+?? tests/test_explicit_null_documents.py
+?? tests/test_explicit_null_fallback.py
+?? tests/test_explicit_null_retrieval.py
+?? tests/test_factory_selector_values.py
+?? tests/test_faiss_retirement.py
+?? tests/test_golden_metadata_values.py
+?? tests/test_index_audit_check_values.py
+?? tests/test_ingestion_index_values.py
+?? tests/test_kg_owned_option_values.py
+?? tests/test_local_parse_cache_provenance.py
+?? tests/test_milvus_existence_contract.py
+?? tests/test_nullable_scope_callers.py
+?? tests/test_offline_raw_values.py
+?? tests/test_owned_projection_boundaries.py
+?? tests/test_parsed_value_projections.py
+?? tests/test_parser_ml_retirement.py
+?? tests/test_parser_ml_review_boundaries.py
+?? tests/test_parser_provenance_values.py
+?? tests/test_pipeline_empty_overrides.py
+?? tests/test_plugin_optional_text_values.py
+?? tests/test_projection_value_contracts.py
+?? tests/test_ragas_provider_contract.py
+?? tests/test_regression_and_identity_scope.py
+?? tests/test_remaining_default_values.py
+?? tests/test_request_value_contracts.py
+?? tests/test_retrieval_projection_values.py
+?? tests/test_retrieval_value_contracts.py
+?? tests/test_scope_cache_raw_values.py
+?? tests/test_scope_owner_values.py
+?? tests/test_selected_prompt_values.py
+?? tests/test_service_identity_scope_values.py
+?? tests/test_service_projection_values.py
+?? tests/test_summary_value_contracts.py
+?? tests/test_update_and_audit_values.py
+?? tests/test_worker_and_cache_scope_values.py

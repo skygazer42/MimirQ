@@ -1,11 +1,12 @@
 import json
 from dataclasses import replace
-from typing import Any, AsyncIterator, Callable, cast
+from typing import Any, AsyncIterator, Callable
 from uuid import UUID, uuid4
 
+from fastapi import Request
 from sqlalchemy.orm import Session
 
-from app.api.schemas.chat import ChatRequest
+from app.api.schemas.chat import ChatRAGConfig, ChatRequest
 from app.core.config import settings
 from app.core.env import is_production_env
 from app.rag.core.logging import get_logger
@@ -46,7 +47,7 @@ def _format_retrieval_admission_timeout_sse(
     request_id: str,
     conversation_id: UUID | None,
 ) -> str:
-    retry_after_sec = int((exc.headers or {}).get("Retry-After", "1"))
+    retry_after_sec = int(exc.headers["Retry-After"])
     event = {
         "type": "error",
         "data": {
@@ -68,8 +69,8 @@ def _build_stream_persist_input(
     account_id: str,
     assistant_message_id: UUID,
     request_id: str,
-    request: Any,
-    doc_ids_to_use: list[UUID],
+    request: ChatRequest,
+    doc_ids_to_use: list[UUID] | None,
     dataset_id_used: UUID | None,
     cache_hit: bool,
     cache_key: str | None,
@@ -85,7 +86,7 @@ def _build_stream_persist_input(
         assistant_message_id=assistant_message_id,
         request_id=request_id,
         question=request.message,
-        document_count=len(doc_ids_to_use),
+        document_count=0 if doc_ids_to_use is None else len(doc_ids_to_use),
         content="",
         citations=[],
         metrics={},
@@ -104,8 +105,8 @@ def _build_stream_persist_input(
 def _build_materialized_runtime(
     *,
     request_id: str,
-    http_request: Any,
-    effective_rag_config: Any,
+    http_request: Request,
+    effective_rag_config: ChatRAGConfig,
     dataset_id_used: UUID | None,
     dataset_rag_defaults_applied_fields: list[str] | None,
     dataset_rag_config_template_defaults_applied_fields: list[str] | None,
@@ -114,9 +115,9 @@ def _build_materialized_runtime(
     tenant_qps_meta: dict[str, Any] | None,
     quota_meta: dict[str, Any] | None,
     structured_data: object | None,
-    request: Any,
+    request: ChatRequest,
 ) -> ChatStreamRuntimeContext:
-    cancel_on_disconnect = bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT)
+    cancel_on_disconnect = settings.CHAT_STREAM_CANCEL_ON_DISCONNECT
     disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
     return ChatStreamRuntimeContext(
         request_id=request_id,
@@ -130,7 +131,7 @@ def _build_materialized_runtime(
         quota_meta=quota_meta,
         retrieval_mode_default=effective_rag_config.retrieval_mode,
         vector_backend_default=settings.VECTOR_BACKEND,
-        request_structured_output=bool(request.structured_output),
+        request_structured_output=request.structured_output,
         structured_data=structured_data,
         structured_preset=request.structured_preset,
     )
@@ -141,14 +142,14 @@ def _build_execution_context(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     conversation_id: UUID | None,
     request_id: str,
     doc_ids_to_use: list[UUID],
     history_for_llm: list[dict[str, Any]],
     scope_dataset_id: UUID | None,
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     effective_prompt_template_id: UUID | None,
     effective_prompt_template_key: str | None,
     effective_prompt_ab_experiment_key: str | None,
@@ -207,20 +208,20 @@ async def _stream_extractive_fallback_sse_events(
     db: Session,
     tenant_id: UUID,
     account_id: str,
-    request: Any,
+    request: ChatRequest,
     conversation_id: UUID | None,
     scope_dataset_id: UUID | None,
     doc_ids_to_use: list[UUID],
     history_for_llm: list[dict[str, Any]],
     dataset_id_used: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     request_runtime: ChatStreamRuntimeContext,
     persist_in_background: bool,
     spawn_background_task: Callable[[Any], None],
     persist_options: ChatStreamPersistInput,
     reason: str,
-    original_error: BaseException | None = None,
-    provider_error: str | None = None,
+    original_error: BaseException | None,
+    provider_error: str | None,
 ) -> AsyncIterator[str]:
     chat_result = await run_blocking_retrieval_call_with_managed_session(
         lambda worker_db: execute_extractive_fallback_once(
@@ -238,7 +239,7 @@ async def _stream_extractive_fallback_sse_events(
         ),
         request_db=db,
     )
-    fallback_metrics = dict(chat_result.metrics or {})
+    fallback_metrics = dict(chat_result.metrics)
     if provider_error:
         fallback_metrics["generation_fallback_error"] = provider_error
     fallback_metrics.setdefault("generation_fallback_used", True)
@@ -250,23 +251,17 @@ async def _stream_extractive_fallback_sse_events(
             citations=chat_result.citations,
             metrics=fallback_metrics,
         ),
-        runtime=cast(
-            ChatStreamRuntimeContext,
-            replace(request_runtime, structured_data=chat_result.structured_data),
-        ),
+        runtime=replace(request_runtime, structured_data=chat_result.structured_data),
         persistence=ChatStreamPersistenceContext(
             db=db,
             persist_in_background=persist_in_background,
             spawn_background_task=spawn_background_task,
-            persist_options=cast(
-                ChatStreamPersistInput,
-                replace(
-                    persist_options,
-                    content=chat_result.content,
-                    citations=chat_result.citations,
-                    metrics=fallback_metrics,
-                    structured_data=chat_result.structured_data,
-                ),
+            persist_options=replace(
+                persist_options,
+                content=chat_result.content,
+                citations=chat_result.citations,
+                metrics=fallback_metrics,
+                structured_data=chat_result.structured_data,
             ),
         ),
     ):
@@ -281,11 +276,7 @@ def _build_graph_stream_options(
     cache_skip_reason: str | None,
     cache_eligible: bool,
     cache_key: str | None,
-    dataset_rag_defaults_applied_fields: list[str] | None,
-    dataset_rag_config_template_defaults_applied_fields: list[str] | None,
-    dataset_prompt_defaults_applied_fields: list[str] | None,
-    tenant_qps_meta: dict[str, Any] | None,
-    quota_meta: dict[str, Any] | None,
+    runtime: ChatStreamRuntimeContext,
     persist_in_background: bool,
     spawn_background_task: Callable[[Any], None],
     persist_options: ChatStreamPersistInput,
@@ -297,11 +288,11 @@ def _build_graph_stream_options(
         cache_skip_reason=cache_skip_reason,
         cache_eligible=cache_eligible,
         cache_key=cache_key,
-        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-        tenant_qps_meta=tenant_qps_meta,
-        quota_meta=quota_meta,
+        dataset_rag_defaults_applied_fields=runtime.dataset_rag_defaults_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields=runtime.dataset_rag_config_template_defaults_applied_fields,
+        dataset_prompt_defaults_applied_fields=runtime.dataset_prompt_defaults_applied_fields,
+        tenant_qps_meta=runtime.tenant_qps_meta,
+        quota_meta=runtime.quota_meta,
         persist_in_background=persist_in_background,
         spawn_background_task=spawn_background_task,
         persist_options=persist_options,
@@ -316,18 +307,14 @@ def _build_langchain_stream_options(
     cache_skip_reason: str | None,
     cache_eligible: bool,
     cache_key: str | None,
-    dataset_rag_defaults_applied_fields: list[str] | None,
-    dataset_rag_config_template_defaults_applied_fields: list[str] | None,
-    dataset_prompt_defaults_applied_fields: list[str] | None,
-    tenant_qps_meta: dict[str, Any] | None,
-    quota_meta: dict[str, Any] | None,
+    runtime: ChatStreamRuntimeContext,
     persist_in_background: bool,
     spawn_background_task: Callable[[Any], None],
     persist_options: ChatStreamPersistInput,
-    http_request: Any,
+    http_request: Request,
 ) -> LangChainChatStreamSessionInput:
     heartbeat_sec = max(0.0, settings.CHAT_STREAM_HEARTBEAT_SEC)
-    cancel_on_disconnect = bool(settings.CHAT_STREAM_CANCEL_ON_DISCONNECT)
+    cancel_on_disconnect = settings.CHAT_STREAM_CANCEL_ON_DISCONNECT
     disconnect_check = http_request.is_disconnected if cancel_on_disconnect else None
     return LangChainChatStreamSessionInput(
         execution=execution_context,
@@ -336,11 +323,11 @@ def _build_langchain_stream_options(
         cache_skip_reason=cache_skip_reason,
         cache_eligible=cache_eligible,
         cache_key=cache_key,
-        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-        tenant_qps_meta=tenant_qps_meta,
-        quota_meta=quota_meta,
+        dataset_rag_defaults_applied_fields=runtime.dataset_rag_defaults_applied_fields,
+        dataset_rag_config_template_defaults_applied_fields=runtime.dataset_rag_config_template_defaults_applied_fields,
+        dataset_prompt_defaults_applied_fields=runtime.dataset_prompt_defaults_applied_fields,
+        tenant_qps_meta=runtime.tenant_qps_meta,
+        quota_meta=runtime.quota_meta,
         heartbeat_sec=heartbeat_sec,
         disconnect_check=disconnect_check,
         persist_in_background=persist_in_background,
@@ -388,7 +375,7 @@ async def _stream_graph_sse_events(
 
 async def _stream_langchain_sse_events(
     *,
-    http_request: Any,
+    http_request: Request,
     request_id: str,
     conversation_id: UUID | None,
     fallback_factory: Callable[..., AsyncIterator[str]],
@@ -398,11 +385,7 @@ async def _stream_langchain_sse_events(
     cache_skip_reason: str | None,
     cache_eligible: bool,
     cache_key: str | None,
-    dataset_rag_defaults_applied_fields: list[str] | None,
-    dataset_rag_config_template_defaults_applied_fields: list[str] | None,
-    dataset_prompt_defaults_applied_fields: list[str] | None,
-    tenant_qps_meta: dict[str, Any] | None,
-    quota_meta: dict[str, Any] | None,
+    runtime: ChatStreamRuntimeContext,
     persist_in_background: bool,
     spawn_background_task: Callable[[Any], None],
     persist_options: ChatStreamPersistInput,
@@ -420,11 +403,7 @@ async def _stream_langchain_sse_events(
                 cache_skip_reason=cache_skip_reason,
                 cache_eligible=cache_eligible,
                 cache_key=cache_key,
-                dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-                dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-                dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-                tenant_qps_meta=tenant_qps_meta,
-                quota_meta=quota_meta,
+                runtime=runtime,
                 persist_in_background=persist_in_background,
                 spawn_background_task=spawn_background_task,
                 persist_options=persist_options,
@@ -466,10 +445,10 @@ async def _stream_langchain_sse_events(
 
 async def _stream_live_sse_events(
     *,
-    http_request: Any,
+    http_request: Request,
     request_id: str,
     conversation_id: UUID | None,
-    effective_rag_config: Any,
+    effective_rag_config: ChatRAGConfig,
     fallback_factory: Callable[..., AsyncIterator[str]],
     execution_context: ChatExecutionContext,
     cache_feature_enabled: bool,
@@ -477,17 +456,12 @@ async def _stream_live_sse_events(
     cache_skip_reason: str | None,
     cache_eligible: bool,
     cache_key: str | None,
-    dataset_rag_defaults_applied_fields: list[str] | None,
-    dataset_rag_config_template_defaults_applied_fields: list[str] | None,
-    dataset_prompt_defaults_applied_fields: list[str] | None,
-    tenant_qps_meta: dict[str, Any] | None,
-    quota_meta: dict[str, Any] | None,
+    runtime: ChatStreamRuntimeContext,
     persist_in_background: bool,
     spawn_background_task: Callable[[Any], None],
     persist_options: ChatStreamPersistInput,
 ) -> AsyncIterator[str]:
-    answer_mode = str(getattr(effective_rag_config, "answer_mode", "llm") or "llm")
-    if answer_mode == "extractive":
+    if effective_rag_config.answer_mode == "extractive":
         async for fallback_chunk in fallback_factory(reason="explicit_extractive_answer_mode"):
             yield fallback_chunk
         return
@@ -518,11 +492,7 @@ async def _stream_live_sse_events(
                 cache_skip_reason=cache_skip_reason,
                 cache_eligible=cache_eligible,
                 cache_key=cache_key,
-                dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-                dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-                dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-                tenant_qps_meta=tenant_qps_meta,
-                quota_meta=quota_meta,
+                runtime=runtime,
                 persist_in_background=persist_in_background,
                 spawn_background_task=spawn_background_task,
                 persist_options=persist_options,
@@ -542,11 +512,7 @@ async def _stream_live_sse_events(
         cache_skip_reason=cache_skip_reason,
         cache_eligible=cache_eligible,
         cache_key=cache_key,
-        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-        tenant_qps_meta=tenant_qps_meta,
-        quota_meta=quota_meta,
+        runtime=runtime,
         persist_in_background=persist_in_background,
         spawn_background_task=spawn_background_task,
         persist_options=persist_options,
@@ -556,41 +522,39 @@ async def _stream_live_sse_events(
 
 async def stream_chat_sse_events(
     *,
-    http_request: Any,
+    http_request: Request,
     db: Session,
     tenant_id: UUID,
     account_id: str,
     request: ChatRequest,
     conversation_id: UUID | None,
     scope_dataset_id: UUID | None,
-    allowed_doc_ids: list[UUID],
+    allowed_doc_ids: list[UUID] | None,
     long_term_messages: list[dict[str, Any]],
     assistant_message_id: UUID,
     tenant_qps_meta: dict[str, Any] | None,
     quota_meta: dict[str, Any] | None,
     spawn_background_task: Callable[[Any], None],
 ) -> AsyncIterator[str]:
-    doc_ids_to_use = allowed_doc_ids or []
-    request_id = getattr(http_request.state, "request_id", None) or uuid4().hex
-    metrics_data: dict[str, Any] = {}
-    structured_data: object | None = None
+    doc_ids_to_use = allowed_doc_ids
+    request_id = str(getattr(http_request.state, "request_id", None) or uuid4().hex)
 
     set_metrics_context(
-        request_id=str(request_id),
+        request_id=request_id,
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         account_id=account_id,
     )
 
-    persist_in_background = bool(settings.CHAT_STREAM_PERSIST_IN_BACKGROUND)
-    client_ip = getattr(getattr(http_request, "client", None), "host", None)
+    persist_in_background = settings.CHAT_STREAM_PERSIST_IN_BACKGROUND
+    client_ip = http_request.client.host if http_request.client else None
     user_agent = http_request.headers.get("user-agent")
-    enable_summary_memory = bool(getattr(request, "enable_summary_memory", False))
-    enable_structured_memory = bool(getattr(request, "enable_structured_memory", False))
+    enable_summary_memory = request.enable_summary_memory
+    enable_structured_memory = request.enable_structured_memory
 
     yield ": keepalive\n\n"
     start_event = {
-        "request_id": str(request_id),
+        "request_id": request_id,
         "type": "event",
         "data": {"message": "开始处理…"},
     }
@@ -605,7 +569,7 @@ async def stream_chat_sse_events(
         scope_dataset_id=scope_dataset_id,
         document_ids=doc_ids_to_use,
         long_term_messages=long_term_messages,
-        request_id=str(request_id),
+        request_id=request_id,
     )
     effective_rag_config = stream_runtime.effective_rag_config
     dataset_id_used = stream_runtime.dataset_id_used
@@ -630,7 +594,7 @@ async def stream_chat_sse_events(
     structured_data = stream_runtime.structured_data
 
     materialized_runtime = _build_materialized_runtime(
-        request_id=str(request_id),
+        request_id=request_id,
         http_request=http_request,
         effective_rag_config=effective_rag_config,
         dataset_id_used=dataset_id_used,
@@ -649,7 +613,7 @@ async def stream_chat_sse_events(
         account_id=account_id,
         request=request,
         conversation_id=conversation_id,
-        request_id=str(request_id),
+        request_id=request_id,
         doc_ids_to_use=doc_ids_to_use,
         history_for_llm=history_for_llm,
         scope_dataset_id=scope_dataset_id,
@@ -665,7 +629,7 @@ async def stream_chat_sse_events(
         conversation_id=conversation_id,
         account_id=account_id,
         assistant_message_id=assistant_message_id,
-        request_id=str(request_id),
+        request_id=request_id,
         request=request,
         doc_ids_to_use=doc_ids_to_use,
         dataset_id_used=dataset_id_used,
@@ -678,16 +642,13 @@ async def stream_chat_sse_events(
     )
 
     if cache_hit:
-        cached_persist_options = cast(
-            ChatStreamPersistInput,
-            replace(
-                base_persist_options,
-                content=full_response,
-                citations=citations_data,
-                metrics=metrics_data,
-                cache_hit=True,
-                structured_data=structured_data,
-            ),
+        cached_persist_options = replace(
+            base_persist_options,
+            content=full_response,
+            citations=citations_data,
+            metrics=metrics_data,
+            cache_hit=True,
+            structured_data=structured_data,
         )
         async for cached_chunk in _stream_cached_sse_events(
             db=db,
@@ -731,7 +692,7 @@ async def stream_chat_sse_events(
 
     async for stream_chunk in _stream_live_sse_events(
         http_request=http_request,
-        request_id=str(request_id),
+        request_id=request_id,
         conversation_id=conversation_id,
         effective_rag_config=effective_rag_config,
         fallback_factory=_stream_extractive_fallback,
@@ -741,11 +702,7 @@ async def stream_chat_sse_events(
         cache_skip_reason=cache_skip_reason,
         cache_eligible=cache_eligible,
         cache_key=cache_key,
-        dataset_rag_defaults_applied_fields=dataset_rag_defaults_applied_fields,
-        dataset_rag_config_template_defaults_applied_fields=dataset_rag_config_template_defaults_applied_fields,
-        dataset_prompt_defaults_applied_fields=dataset_prompt_defaults_applied_fields,
-        tenant_qps_meta=tenant_qps_meta,
-        quota_meta=quota_meta,
+        runtime=materialized_runtime,
         persist_in_background=persist_in_background,
         spawn_background_task=spawn_background_task,
         persist_options=base_persist_options,

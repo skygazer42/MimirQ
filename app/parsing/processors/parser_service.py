@@ -399,9 +399,6 @@ class DocumentParserService:
                 sample_pages=3,
                 use_ocr_validation=settings.RAPIDOCR_ENABLED,
             )
-        else:
-            # Non-PDF: route by backend (auto prefers Pandoc/Excel when enabled).
-            parser_backend = parser_backend or "auto"
 
         owner_account_id = str(account_id if account_id is not None else "").strip()
         parser_account_id = owner_account_id

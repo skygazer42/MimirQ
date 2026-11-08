@@ -675,7 +675,7 @@ def test_dataset_embedding_runtime_rejects_dataset_scoped_defaults_without_milvu
 ) -> None:
     import app.services.dataset_embedding_config as config_module
 
-    monkeypatch.setattr(config_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(config_module.settings, "VECTOR_BACKEND", "memory", raising=False)
 
     with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
         config_module.resolve_dataset_embedding_runtime(
@@ -748,7 +748,7 @@ def test_weight_rerank_builds_document_frequency_without_repeated_list_scans(
     def tokenize(_self, text: str) -> list[str]:  # noqa: ANN001
         return CountingTokens(text.split())
 
-    monkeypatch.setattr(HybridRetriever, "_bm25_tokenize", tokenize)
+    monkeypatch.setattr(HybridRetriever, "_tokenize_lexical_text", tokenize)
     documents = [
         {"chunk_id": "a", "content": "needle alpha alpha", "score": 0.4},
         {"chunk_id": "b", "content": "beta gamma", "score": 0.7},

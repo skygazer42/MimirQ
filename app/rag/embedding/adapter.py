@@ -2,7 +2,7 @@
 LangChain-compatible embeddings adapter.
 
 Adapts app.rag.embedding models to LangChain's Embeddings interface
-for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
+for use with supported vector stores (Milvus, Qdrant, pgvector, etc.).
 """
 
 import hashlib
@@ -39,10 +39,10 @@ _invalidate_redis_client = _redis_client_slot.invalidate
 def _embed_cache_key(text: str, *, space: str | None = None) -> str:
     # Bind to the current embedding "space" (provider/model/base_url) to avoid serving
     # incompatible vectors after a model/endpoint change.
-    space = space or current_embedding_space_hash()
+    space = current_embedding_space_hash() if space is None else space
     digest = hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()
     prefix = settings.EMBEDDING_CACHE_PREFIX
-    return f"{prefix}:{space}:{digest}"
+    return ":".join((prefix, space, digest))
 
 
 def _document_cache_client() -> "Redis | None":
@@ -160,13 +160,10 @@ class LangChainEmbeddingsAdapter(Embeddings):
         self._model = model
         self._normalize = normalize
         self._dimension = model.dimension
-        normalized_cache_space_hash = str(cache_space_hash if cache_space_hash is not None else "").strip()
-        self._cache_space_hash = normalized_cache_space_hash if normalized_cache_space_hash else None
+        self._cache_space_hash = cache_space_hash
 
     def _cache_key(self, text: str) -> str:
-        if self._cache_space_hash:
-            return _embed_cache_key(text, space=self._cache_space_hash)
-        return _embed_cache_key(text)
+        return _embed_cache_key(text, space=self._cache_space_hash)
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """Embed a list of text documents.
@@ -348,9 +345,9 @@ def create_langchain_embeddings_from_config(
     )
 
     provider = provider.lower()
-    from app.core.model_execution import reject_retired_model_provider
+    from app.core.model_execution import reject_retired_provider
 
-    reject_retired_model_provider(provider, capability="embedding")
+    reject_retired_provider(provider, capability="embedding")
     base_url = (base_url or "").strip()
     if provider in {"openai", "openai_compatible", "dashscope"}:
         stripped = base_url.rstrip("/")

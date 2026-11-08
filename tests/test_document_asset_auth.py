@@ -63,7 +63,10 @@ class _DBByModel:
 
 
 def _build_request(*, query: str = "", headers: dict[str, str] | None = None) -> Request:
-    raw_headers = [(name.lower().encode("latin-1"), value.encode("latin-1")) for name, value in (headers or {}).items()]
+    raw_headers = [
+        (name.lower().encode("latin-1"), value.encode("latin-1"))
+        for name, value in (headers if headers is not None else {}).items()
+    ]
     scope = {
         "type": "http",
         "method": "GET",
@@ -129,7 +132,7 @@ def test_asset_request_rejects_query_bearer_promotion(monkeypatch, query_key):  
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -283,7 +286,7 @@ def test_download_document_uses_header_auth_and_no_store_cache(monkeypatch, tmp_
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -345,7 +348,7 @@ def test_get_image_uses_header_auth_and_no_store_cache(monkeypatch, tmp_path):  
     auth_calls: list[dict[str, Any]] = []
     acl_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -406,7 +409,7 @@ def test_download_document_rejects_spoofed_request_tenant_when_verified_jwt_tena
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -459,7 +462,7 @@ def test_get_image_rejects_spoofed_request_tenant_when_verified_jwt_tenant_exist
 
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -782,7 +785,7 @@ def test_get_image_enforces_parent_document_acl_from_preview_ownership_metadata(
     auth_calls: list[dict[str, Any]] = []
     acl_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 
@@ -924,7 +927,7 @@ def test_get_image_url_rejects_img_tenant_that_conflicts_with_verified_jwt_tenan
     document_id = uuid.uuid4()
     auth_calls: list[dict[str, Any]] = []
 
-    async def _fake_auth(**kwargs):  # noqa: ANN003, ANN202
+    async def _fake_auth(*, request, **kwargs):  # noqa: ANN003, ANN202
         auth_calls.append(kwargs)
         return "acct-123"
 

@@ -338,15 +338,23 @@ def _coerce_event_entity(item: Any, *, event_index: int, entity_index: int) -> E
         return None
     normalized = str(item.get("normalized_name") or item.get("normalized") or name).strip() or name
     ent_type = str(item.get("type") or "unknown").strip() or "unknown"
+    optional_text: dict[str, str | None] = {}
+    for key in ("description", "role", "evidence_quote", "evidence_source"):
+        value = item.get(key)
+        if value is not None and not isinstance(value, str):
+            raise PythonPipelinePluginError(
+                f"kg plugin entity {key} must be a string or null at event {event_index}, index {entity_index}"
+            )
+        optional_text[key] = value.strip() if value is not None else None
     return EventEntityInput(
         name=name,
         normalized_name=normalized,
         type=ent_type,
-        description=(str(item.get("description") or "").strip() or None),
+        description=optional_text["description"],
         vector=_coerce_vector(item.get("vector")),
-        role=(str(item.get("role") or "").strip() or None),
-        evidence_quote=(str(item.get("evidence_quote") or "").strip() or None),
-        evidence_source=(str(item.get("evidence_source") or "").strip() or None),
+        role=optional_text["role"],
+        evidence_quote=optional_text["evidence_quote"],
+        evidence_source=optional_text["evidence_source"],
         evidence_start_char=_coerce_int(item.get("evidence_start_char")),
         evidence_end_char=_coerce_int(item.get("evidence_end_char")),
     )

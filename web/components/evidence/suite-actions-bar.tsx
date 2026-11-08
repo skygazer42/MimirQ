@@ -32,7 +32,6 @@ export function SuiteActionsBar({
   onOpenHardcases,
   onOpenDashboard,
   onExportSuite,
-  onExportLtrTraining,
   onSyncSuite,
 }: {
   selectedSuite: EvidenceSuite | null
@@ -43,7 +42,6 @@ export function SuiteActionsBar({
   onOpenHardcases: () => void
   onOpenDashboard: () => void
   onExportSuite: () => void
-  onExportLtrTraining: () => void
   onSyncSuite: () => void
 }) {
   const [confirm, setConfirm] = useState(false)
@@ -77,7 +75,6 @@ export function SuiteActionsBar({
               导入 QA／FAQ
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={onExportSuite}>导出证据集</DropdownMenuItem>
-            <DropdownMenuItem onSelect={onExportLtrTraining}>导出排序训练数据</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={onOpenHardcases}>难例候选</DropdownMenuItem>
             <DropdownMenuItem onSelect={onOpenDashboard}>统计概览</DropdownMenuItem>

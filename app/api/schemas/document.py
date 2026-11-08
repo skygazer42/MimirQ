@@ -68,7 +68,7 @@ def _clean_primitive_params(raw: Any, *, label: str) -> dict[str, Any] | None:
         pair = _clean_primitive_param_value(key, value, label=label)
         if pair is not None:
             cleaned[pair[0]] = pair[1]
-    return cleaned or None
+    return cleaned
 
 
 def _clean_chunk_strategy_params(raw: Any) -> dict[str, Any] | None:
@@ -116,10 +116,6 @@ def _dedupe_group_ids(raw_groups: list[UUID] | None) -> list[UUID] | None:
         if len(normalized) >= 200:
             break
     return normalized
-
-
-def _metadata_text_value(meta: dict[str, Any], key: str) -> str | None:
-    return str(meta.get(key) or "").strip() or None
 
 
 class GovernanceRegexRule(BaseModel):
@@ -1050,11 +1046,11 @@ class DocumentPipelineProvenance(BaseModel):
 
         return cls(
             active_pipeline_hash=_active_pipeline_hash_from_metadata(m),
-            pipeline_hash=_metadata_text_value(m, "pipeline_hash"),
-            parser_backend=_metadata_text_value(m, "parser_backend"),
-            parser_backend_requested=_metadata_text_value(m, "parser_backend_requested"),
-            chunk_strategy=_metadata_text_value(m, "chunk_strategy"),
-            chunk_strategy_requested=_metadata_text_value(m, "chunk_strategy_requested"),
+            pipeline_hash=m.get("pipeline_hash"),
+            parser_backend=m.get("parser_backend"),
+            parser_backend_requested=m.get("parser_backend_requested"),
+            chunk_strategy=m.get("chunk_strategy"),
+            chunk_strategy_requested=m.get("chunk_strategy_requested"),
             governance_enabled=governance_enabled,
             governance_rule_packs=_governance_rule_packs_from_metadata(m),
             pipeline_effective=effective,

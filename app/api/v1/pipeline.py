@@ -638,7 +638,7 @@ def list_governance_profiles(
     """
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    query = (q or "").strip().lower()
+    query = (q if q is not None else "").strip().lower()
     items: list[GovernanceProfileSummary] = []
     builtin_count = 0
 
@@ -1058,7 +1058,7 @@ async def parse_preview(
         raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
         err_type = (e.details or {}).get("type")
-        if err_type == "ValueError":
+        if err_type in {"ValueError", "RetiredModelProviderError"}:
             raise HTTPException(status_code=400, detail=str(e)) from e
         raise HTTPException(status_code=500, detail="Failed to parse preview") from e
     finally:
@@ -1231,7 +1231,7 @@ async def ingestion_preview(
         raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as e:
         err_type = (e.details or {}).get("type")
-        if err_type == "ValueError":
+        if err_type in {"ValueError", "RetiredModelProviderError"}:
             raise HTTPException(status_code=400, detail=str(e)) from e
         raise HTTPException(status_code=500, detail="Failed to parse preview") from e
     finally:
@@ -1662,7 +1662,7 @@ async def upload_zip_with_images(
         await save_upload_file(file, temp_zip_path, max_bytes=settings.MAX_FILE_SIZE)
 
         # Process ZIP: extract images and upload to MinIO.
-        doc_id = document_id or file.filename.rsplit(".", 1)[0]
+        doc_id = document_id if document_id else file.filename.rsplit(".", 1)[0]
         result = zip_image_processor.process_zip_with_images(
             zip_path=temp_zip_path, tenant_id=str(tenant_id), dataset_id=dataset_id, document_id=doc_id
         )

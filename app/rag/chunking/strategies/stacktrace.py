@@ -73,14 +73,14 @@ def _infer_exception(lines: list[_Line], start: int, end: int) -> str | None:
             continue
         m = _JS_EXCEPTION_RE.match(p)
         if m:
-            return (m.group(0) or "").strip()[:160] or None
+            return m.group(0).strip()[:160]
         m = _PY_EXCEPTION_RE.match(p)
         if m:
-            return p[:160] or None
+            return p[:160]
         if p.lower().startswith("caused by:"):
-            return p[:160] or None
+            return p[:160]
         if "exception" in p.lower() or "error" in p.lower():
-            return p[:160] or None
+            return p[:160]
     return None
 
 

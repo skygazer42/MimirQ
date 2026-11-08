@@ -36,7 +36,7 @@ class TenantGroupCreateRequest(BaseModel):
         if not self.name:
             raise ValueError("name is required")
         if self.external_id is not None:
-            self.external_id = self.external_id.strip() or None
+            self.external_id = self.external_id.strip()
         return self
 
 
@@ -47,9 +47,9 @@ class TenantGroupUpdateRequest(BaseModel):
     @model_validator(mode="after")
     def _normalize(self) -> "TenantGroupUpdateRequest":
         if self.name is not None:
-            self.name = self.name.strip() or None
+            self.name = self.name.strip()
         if self.external_id is not None:
-            self.external_id = self.external_id.strip() or None
+            self.external_id = self.external_id.strip()
         return self
 
 

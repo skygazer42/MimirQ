@@ -2,7 +2,7 @@ import re
 from collections import Counter
 from typing import Any
 
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
@@ -98,7 +98,7 @@ def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
         return []
     sample = text[: max(0, int(max_chars or 0))] if max_chars else text
 
-    tokens = tokenize_for_bm25(sample)
+    tokens = tokenize_lexical_text(sample)
     if not tokens:
         return []
 
@@ -177,7 +177,7 @@ def build_context_prefix(
     if not body:
         return None
 
-    title = str(document_title or "").strip()
+    title = str((document_title if document_title is not None else "")).strip()
     section = _extract_section(meta)
     keywords = _extract_keywords(body, top_k=int(keywords_top_k or 0), max_chars=int(keywords_max_chars or 0))
 

@@ -67,8 +67,8 @@ def build_online_shadow_plan(
             continue
         rec: _ShadowSample = {
             "query_hash": query_hash,
-            "dataset_id_hash": str(row.get("dataset_id_hash") or "").strip() or None,
-            "retrieval_config_hash": str(row.get("retrieval_config_hash") or "").strip() or None,
+            "dataset_id_hash": (row.get("dataset_id_hash")),
+            "retrieval_config_hash": (row.get("retrieval_config_hash")),
             "rag_config": dict(row.get("rag_config") or {}),
             "seed": row.get("seed"),
         }
@@ -97,15 +97,15 @@ def build_online_shadow_plan(
 
     return {
         "schema": "mimirq.online_shadow_plan.v1",
-        "day_key": str(day_key or "").strip() or None,
+        "day_key": (day_key),
         "summary": {
             "eligible": len(eligible),
             "selected": len(selected),
         },
         "sample_ids": [row["sample_id"] for row in selected],
         "samples": selected,
-        "baseline": {"label": str(baseline_label or "").strip() or None},
-        "candidate": {"label": str(candidate_label or "").strip() or None},
+        "baseline": {"label": (baseline_label)},
+        "candidate": {"label": (candidate_label)},
     }
 
 

@@ -22,7 +22,7 @@ def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
 
 def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
     best: float | None = None
-    for item in rows or []:
+    for item in rows if rows is not None else []:
         if not isinstance(item, dict):
             continue
         try:
@@ -38,7 +38,7 @@ def _best_score(rows: Sequence[dict[str, Any]] | None) -> float | None:
 def _expand_query(query: str, glossary: Mapping[str, Sequence[str]] | None) -> str:
     expanded: list[str] = [str(query or "").strip()]
     q_norm = expanded[0]
-    for key, values in (glossary or {}).items():
+    for key, values in (glossary if glossary is not None else {}).items():
         term = str(key or "").strip()
         if not term or term not in q_norm:
             continue
@@ -120,7 +120,7 @@ def run_default_out_of_scope_live_guard(
     tenant_uuid = UUID(str(tenant_id))
     dataset_uuid = UUID(str(dataset_id))
     glossary: Mapping[str, Sequence[str]] = {}
-    if str(ruleset_name or "").strip():
+    if str((ruleset_name if ruleset_name is not None else "")).strip():
         try:
             glossary = load_ruleset(str(ruleset_name)).glossary
         except Exception:
@@ -163,12 +163,12 @@ def run_default_out_of_scope_live_guard(
         glossary=glossary,
         keyword_search=_keyword_search,
         vector_search=_vector_search,
-        hyde_generate=lambda _q: str(hyde_query or "").strip(),
+        hyde_generate=lambda _q: str((hyde_query if hyde_query is not None else "")).strip(),
         vector_similarity_threshold=float(vector_similarity_threshold),
         hyde_similarity_threshold=float(hyde_similarity_threshold),
         enable_keyword=True,
         enable_vector=True,
-        enable_hyde=bool(str(hyde_query or "").strip()),
+        enable_hyde=bool(str((hyde_query if hyde_query is not None else "")).strip()),
     )
     return {"schema": _SCHEMA, **dict(verdict or {})}
 

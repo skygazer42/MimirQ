@@ -11,7 +11,6 @@ from sqlalchemy.exc import IntegrityError
 from starlette.requests import Request
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from app.api.dependencies.auth import _best_effort_client_ip
 from app.api.middleware.rate_limit import _client_ip_from_request
 from app.api.utils import url_ingest
 from app.api.v1 import scim
@@ -31,7 +30,6 @@ def test_client_ip_helpers_ignore_untrusted_forwarding_headers() -> None:
     )
 
     assert _client_ip_from_request(request) == "203.0.113.10"
-    assert _best_effort_client_ip(request) == "203.0.113.10"
     assert str(scim._extract_client_ip(request)) == "203.0.113.10"
 
 

@@ -200,18 +200,6 @@ export const evidenceApi = {
     })
   },
 
-  async exportSuiteLtrTrainingBundleZip(
-    suiteId: string,
-    params?: { include_archived_items?: boolean; max_items?: number },
-  ): Promise<Blob> {
-    const { data } = await apiClient.get(`/evidence/suites/${suiteId}/export-ltr-training`, {
-      params,
-      responseType: 'blob',
-      timeout: API_LONG_TIMEOUT_MS,
-    })
-    return data as Blob
-  },
-
   async exportTrainingDataset(params: {
     dataset_id: string
     format?: 'jsonl' | 'csv'

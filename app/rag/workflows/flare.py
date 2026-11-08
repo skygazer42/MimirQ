@@ -69,7 +69,7 @@ def run_flare_refinement(
         "schema": FLARE_REFINEMENT_SCHEMA_V1,
         "granularity": "paragraph",
         "need_retrieval": need_retrieval,
-        "rewrite_query": str(question or "").strip() or None if need_retrieval else None,
+        "rewrite_query": question if need_retrieval else None,
         "confidence_score": score,
         "confidence_band": confidence["band"],
         "confidence_reasons": list(confidence["reasons"]),

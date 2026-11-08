@@ -96,7 +96,7 @@ def _load_jsonl_path(scan_run: DBDatasetPrecheckScanRun, *, tenant_id: UUID) -> 
 def _iter_jsonl(path: Path):  # noqa: ANN202
     with path.open("r", encoding="utf-8") as f:
         for line in f:
-            s = (line or "").strip()
+            s = line.strip()
             if not s:
                 continue
             try:
@@ -115,23 +115,23 @@ def _rule(
     extensions: list[str],
     filename_regex: str | None = None,
     enabled: bool = True,
-    preprocess_steps: list[str] | None = None,
-    parser_backend: str | None = None,
+    preprocess_steps: list[str],
+    parser_backend: str,
     chunk_strategy: str | None = None,
-    governance_profile_ref: str | None = None,
-    pipeline_patch: dict[str, Any] | None = None,
+    governance_profile_ref: str,
+    pipeline_patch: dict[str, Any],
 ) -> dict[str, Any]:
-    steps = [{"id": sid, "params": {}} for sid in (preprocess_steps or [])]
+    steps = [{"id": sid, "params": {}} for sid in preprocess_steps]
     return {
         "id": rid,
         "name": name,
-        "enabled": bool(enabled),
+        "enabled": enabled,
         "match": {"extensions": extensions, "filename_regex": filename_regex},
         "preprocess": {"enabled": bool(steps), "steps": steps},
         "parser_backend": parser_backend,
         "chunk_strategy": chunk_strategy,
         "governance_profile_ref": governance_profile_ref,
-        "pipeline_patch": dict(pipeline_patch or {}),
+        "pipeline_patch": dict(pipeline_patch),
     }
 
 
@@ -279,7 +279,7 @@ def _table_pipeline_patch(*, pii_types: set[str]) -> dict[str, Any]:
         "table_store_auto_sheet_threshold": int(settings.TABLE_STORE_AUTO_SHEET_THRESHOLD or 5),
         "table_store_auto_file_bytes_threshold": int(settings.TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD or 5_000_000),
     }
-    if bool({"csv", "xls", "xlsx"} & pii_types):
+    if {"csv", "xls", "xlsx"} & pii_types:
         table_patch["table_store_sample_rows"] = 0
     return table_patch
 
@@ -330,7 +330,7 @@ def _build_ingestion_rules(
                 name="PDF 扫描/OCR（优先：文件名命中 scan/ocr/扫描）",
                 extensions=[".pdf"],
                 filename_regex=r"(?i)(scan|ocr|扫描|影印|图片|照片)",
-                preprocess_steps=None,
+                preprocess_steps=[],
                 parser_backend="auto",
                 governance_profile_ref="builtin:pdf_scanned_ocr",
                 pipeline_patch=pdf_patch,
@@ -341,7 +341,7 @@ def _build_ingestion_rules(
             rid="pdf-default",
             name="PDF 文本版（默认）",
             extensions=[".pdf"],
-            preprocess_steps=None,
+            preprocess_steps=[],
             parser_backend="auto",
             governance_profile_ref="builtin:pdf_text",
             pipeline_patch=pdf_patch,
@@ -369,7 +369,7 @@ def _build_ingestion_rules(
             rid="tables-excel-tag",
             name="表格（XLS/XLSX）：TAG 自动分流（大表→SQL，小表→RAG）",
             extensions=[".xls", ".xlsx"],
-            preprocess_steps=None,
+            preprocess_steps=[],
             parser_backend="auto",
             governance_profile_ref=STRUCTURED_DATA_PROFILE_REF,
             pipeline_patch=table_patch,
@@ -385,7 +385,7 @@ def _build_ingestion_rules(
             rid="office-default",
             name="Office（DOCX/PPTX）",
             extensions=[".docx", ".pptx"],
-            preprocess_steps=None,
+            preprocess_steps=[],
             parser_backend="markitdown",
             governance_profile_ref="builtin:kb_default",
             pipeline_patch=office_patch,
@@ -516,7 +516,7 @@ def _near_dup_manual_review_bucket(
                             affected.append(name)
             total_affected = len(set(affected))
             names = sorted(set(affected))[:max_names]
-    return {"key": "near_dup", "total": int(total_affected), "sample_names": names}
+    return {"key": "near_dup", "total": total_affected, "sample_names": names}
 
 
 def _manual_review_bucket(
@@ -528,8 +528,8 @@ def _manual_review_bucket(
     res = _list_finding_from_jsonl(jsonl_path=jsonl_path, finding_key=key, skip=0, limit=max_names or 1)
     return {
         "key": key,
-        "total": int(res.total),
-        "sample_names": [x.name for x in (res.items or [])],
+        "total": res.total,
+        "sample_names": [x.name for x in res.items],
     }
 
 
@@ -611,12 +611,12 @@ def apply_ingestion_policy_suggestion(
     Apply a suggested ingestion policy to a dataset (server-side convenience wrapper).
     """
     meta = dict(dataset.dataset_metadata or {})
-    if not bool(replace) and "ingestion_policy" in meta:
+    if not replace and "ingestion_policy" in meta:
         raise HTTPException(status_code=409, detail="ingestion_policy already exists; set replace=true to overwrite")
 
     suggestion = build_ingestion_policy_suggestion(scan_run, tenant_id=tenant_id, max_names_per_bucket=0)
     try:
-        policy = IngestionPolicy(**(suggestion.get("policy") or {}))
+        policy = IngestionPolicy(**suggestion["policy"])
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Invalid suggested policy: {str(exc)[:200]}") from exc
 

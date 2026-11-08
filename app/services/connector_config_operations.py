@@ -46,10 +46,10 @@ def build_saved_connector_run_config(config: ConnectorConfig) -> dict[str, Any]:
 
 
 def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
-    connector_id = str(cfg.connector_id or "").strip()
+    connector_id = cfg.connector_id
     config = redact_connection_info(
-        redact_secrets(dict(cfg.config or {})),
-        enabled=connector_id in _DB_CONNECTOR_IDS,
+        redact_secrets(dict(cfg.config)),
+        enabled=connector_id.strip() in _DB_CONNECTOR_IDS,
     )
     return ConnectorConfigOut(
         id=cfg.id,
@@ -58,13 +58,11 @@ def _config_out(cfg: ConnectorConfig) -> ConnectorConfigOut:
         connector_id=connector_id,
         name=cfg.name,
         enabled=cfg.enabled,
-        schedule_cron=(
-            str(cfg.schedule_cron).strip() if isinstance(cfg.schedule_cron, str) and cfg.schedule_cron.strip() else None
-        ),
+        schedule_cron=cfg.schedule_cron,
         config=config,
-        state=dict(cfg.state or {}),
-        last_run_at=cfg.last_run_at or None,
-        last_error=cfg.last_error or None,
+        state=dict(cfg.state),
+        last_run_at=cfg.last_run_at,
+        last_error=cfg.last_error,
         created_at=cfg.created_at,
         updated_at=cfg.updated_at,
     )

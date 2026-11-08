@@ -291,12 +291,8 @@ def normalize_section_metadata(meta: dict[str, Any]) -> dict[str, Any]:
     return meta
 
 
-def _hierarchy_parent_key(meta: dict[str, Any]) -> str:
-    if "hierarchy_parent_key" in meta:
-        raw_parent_key = meta.get("hierarchy_parent_key")
-    else:
-        raw_parent_key = meta.get("parent_id") or meta.get("parent_node_id")
-    return str(raw_parent_key or "").strip()
+def _hierarchy_parent_key(meta: dict[str, Any]) -> str | None:
+    return meta.get("hierarchy_parent_key", meta.get("parent_id", meta.get("parent_node_id")))
 
 
 def _hierarchy_level(meta: dict[str, Any], parent_key: str) -> str:
@@ -397,7 +393,7 @@ def ensure_hierarchy_overlay_metadata(
     meta["hierarchy_node_key"] = node_key
 
     parent_key = _hierarchy_parent_key(meta)
-    meta["hierarchy_parent_key"] = parent_key or None
+    meta["hierarchy_parent_key"] = parent_key
     meta["hierarchy_level"] = _hierarchy_level(meta, parent_key)
     meta["hierarchy_basis"] = _hierarchy_basis(meta)
     meta["hierarchy_family_key"] = _hierarchy_family_key(

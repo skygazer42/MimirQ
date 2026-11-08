@@ -1,9 +1,10 @@
 """
-Shared tokenization helpers.
+Shared lexical tokenization helpers.
 
 These are used across:
-- BM25 retrieval
-- Long-term memory retrieval (BM25 over chat history)
+- Lexical retrieval and reranking
+- Chunk quality and context analysis
+- Keyword matching over chat history in the database
 """
 
 import re
@@ -15,12 +16,12 @@ import jieba
 from app.core.config import settings
 from app.rag.preprocessing.stopwords import STOPWORDS
 
-_BM25_TOKENIZE_CACHE_MAX_CHARS = 200
+_LEXICAL_TOKENIZE_CACHE_MAX_CHARS = 200
 
 
 @lru_cache(maxsize=4096)
-def _tokenize_for_bm25_cached(text: str) -> tuple[str, ...]:
-    return tuple(_tokenize_for_bm25_impl(text))
+def _tokenize_lexical_text_cached(text: str) -> tuple[str, ...]:
+    return tuple(_tokenize_lexical_text_impl(text))
 
 
 _ASCII_TOKEN_RE = re.compile(r"[A-Za-z0-9][\\A-Za-z0-9_+./:-]*[A-Za-z0-9+]")
@@ -31,7 +32,7 @@ _NUM_SEQ_RE = re.compile(r"\d{2,}")
 _NUM_COMMA_UNDER_RE = re.compile(r"\d[\d,_]{2,}\d")
 
 
-def _normalize_for_bm25(text: str) -> str:
+def _normalize_lexical_text(text: str) -> str:
     """
     Normalize query/doc text before tokenization.
 
@@ -53,7 +54,7 @@ def _keep_token(norm: str) -> bool:
         return False
     if norm in STOPWORDS:
         return False
-    # Skip single-character tokens (too noisy for BM25).
+    # Skip single-character tokens (too noisy for lexical matching).
     if len(norm) < 2:
         return False
     return True
@@ -178,7 +179,7 @@ def _expand_ascii_subtokens(raw_tok: str, norm: str, *, tokens: list[str], seen:
         _append_unique_token(tokens, seen, sub)
 
 
-def _tokenize_for_bm25_ascii(text: str) -> list[str]:
+def _tokenize_ascii_text(text: str) -> list[str]:
     tokens: list[str] = []
     extra: set[str] = set()
     for token in _ASCII_TOKEN_RE.findall(text or ""):
@@ -205,7 +206,7 @@ def _tokenize_for_bm25_ascii(text: str) -> list[str]:
 
 def _append_ascii_tokens(tokens: list[str], cjk_oov_buf: list[str], extra_budget: list[int], text: str) -> None:
     _flush_cjk_oov_buffer(cjk_oov_buf, tokens, extra_budget=extra_budget)
-    for token in _tokenize_for_bm25_ascii(text):
+    for token in _tokenize_ascii_text(text):
         if _keep_token(token):
             tokens.append(token)
 
@@ -255,13 +256,13 @@ def _flush_cjk_oov_buffer(buf: list[str], out_tokens: list[str], *, extra_budget
             extra_budget[0] = max(0, extra_budget[0] - 1)
 
 
-def _tokenize_for_bm25_impl(text: str) -> list[str]:
-    raw = _normalize_for_bm25(text)
+def _tokenize_lexical_text_impl(text: str) -> list[str]:
+    raw = _normalize_lexical_text(text)
     if not raw:
         return []
 
     if raw.isascii():
-        return _tokenize_for_bm25_ascii(raw)
+        return _tokenize_ascii_text(raw)
 
     tokens: list[str] = []
     # Keep a small expansion budget to avoid pathological token explosion on weird inputs.
@@ -292,28 +293,28 @@ def _tokenize_for_bm25_impl(text: str) -> list[str]:
 
     # Also extract ASCII/numeric tokens from the full mixed text.
     # This catches things like "/api/v1" that may be adjacent to CJK and not surfaced by jieba reliably.
-    tokens.extend(_tokenize_for_bm25_ascii(raw))
+    tokens.extend(_tokenize_ascii_text(raw))
     return tokens
 
 
-def tokenize_for_bm25(text: str) -> list[str]:
+def tokenize_lexical_text(text: str) -> list[str]:
     """
-    Tokenize text for BM25.
+    Tokenize text for lexical matching and analysis.
 
     Notes:
     - Uses jieba search mode.
     - Applies conservative filters: stopwords, empty tokens, single-character tokens.
     """
-    raw = _normalize_for_bm25(text)
+    raw = _normalize_lexical_text(text)
     if not raw:
         return []
     # Cache only short strings (queries, titles) to avoid unbounded memory use.
-    if len(raw) <= _BM25_TOKENIZE_CACHE_MAX_CHARS:
-        return list(_tokenize_for_bm25_cached(raw))
-    return _tokenize_for_bm25_impl(raw)
+    if len(raw) <= _LEXICAL_TOKENIZE_CACHE_MAX_CHARS:
+        return list(_tokenize_lexical_text_cached(raw))
+    return _tokenize_lexical_text_impl(raw)
 
 
-def warmup_bm25_tokenizer() -> None:
+def warmup_lexical_tokenizer() -> None:
     """Pay the per-process Jieba initialization cost before serving traffic."""
     jieba.initialize()
-    tokenize_for_bm25("MimirQ knowledge retrieval 知识库检索预热")
+    tokenize_lexical_text("MimirQ knowledge retrieval 知识库检索预热")

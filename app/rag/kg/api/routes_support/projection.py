@@ -11,6 +11,7 @@ import hashlib
 import time
 import zlib
 from collections import Counter
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -18,6 +19,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.rag.kg.api.routes_support.common import logger
 from app.rag.kg.api.routes_support.schemas import (
     KGGraphBuildResult,
@@ -372,17 +374,8 @@ def _audit_hash_text(text: str) -> str:
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
-def _doc_pipeline_hash(meta: object) -> str | None:
-    """
-    Best-effort pipeline hash extraction from document metadata.
-
-    We prefer active_pipeline_hash when present, falling back to pipeline_hash.
-    """
-    if not isinstance(meta, dict):
-        return None
-    ph = meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or None
-    s = str(ph or "").strip()
-    return s or None
+def _doc_pipeline_hash(meta: Mapping[str, Any] | None) -> str | None:
+    return get_active_pipeline_hash(meta)
 
 
 def _chunk_matches_pipeline(chunk: "DocumentChunk", *, document_id: UUID, pipeline_hash: str) -> bool:

@@ -271,7 +271,9 @@ def _feedback_reference_values(
     meta: dict[str, Any],
     request_id: str,
 ) -> tuple[str | None, str | None, str | None, str | None]:
-    profile = _safe_text(meta.get("retrieval_profile"), max_len=64) or None
+    profile = meta.get("retrieval_profile")
+    if profile is not None:
+        profile = profile[:64]
     question = _previous_user_question(
         messages=db.query(Message)
         .filter(
@@ -282,12 +284,14 @@ def _feedback_reference_values(
         conversation_id=msg.conversation_id,
         assistant_created_at=msg.created_at,
     )
-    query_hash = _safe_text(meta.get("query_hash"), max_len=64) or (
-        stable_hash(question, length=64) if question else ""
-    )
-    retrieval_trace_ref = _safe_text(request_id, max_len=255)
-    judge_score_ref = _safe_text(meta.get("judge_score_ref"), max_len=255)
-    return query_hash or None, retrieval_trace_ref or None, judge_score_ref or None, profile
+    query_hash = meta.get("query_hash", stable_hash(question, length=64) if question else None)
+    if query_hash is not None:
+        query_hash = query_hash[:64]
+    retrieval_trace_ref = request_id[:255]
+    judge_score_ref = meta.get("judge_score_ref")
+    if judge_score_ref is not None:
+        judge_score_ref = judge_score_ref[:255]
+    return query_hash, retrieval_trace_ref, judge_score_ref, profile
 
 
 def _apply_feedback_row_update(
@@ -559,7 +563,7 @@ def list_message_feedback_enriched(
     for fb in rows:
         msg = message_map.get(fb.message_id)
         conv = conversation_map.get(fb.conversation_id)
-        fb.conversation_title = str(getattr(conv, "title", "") or "").strip() or None
+        fb.conversation_title = conv.title if conv is not None else None
         content = str(getattr(msg, "content", "") or "").strip()
         fb.message_content = content[:4000] if content else None
         fb.message_created_at = getattr(msg, "created_at", None)
@@ -689,9 +693,9 @@ def build_feedback_loop_candidates(
 
         extra = dict(fb.extra or {}) if isinstance(fb.extra, dict) else {}
         meta = dict(assistant.message_metadata or {}) if isinstance(assistant.message_metadata, dict) else {}
-        dataset_id = _safe_text(
-            meta.get("dataset_id") or extra.get("dataset_id") or getattr(conv, "dataset_id", None), max_len=128
-        )
+        dataset_id = meta.get("dataset_id", extra.get("dataset_id", conv.dataset_id if conv is not None else None))
+        if dataset_id is not None:
+            dataset_id = str(dataset_id)[:128]
         retrieval_trace = extra.get("retrieval_trace") if isinstance(extra.get("retrieval_trace"), dict) else {}
 
         candidate_rows.append(
@@ -709,7 +713,7 @@ def build_feedback_loop_candidates(
                 "judge_score_ref": fb.judge_score_ref,
                 "eval_case_status": extra.get("eval_case_status"),
                 "archived": bool(extra.get("archived")),
-                "dataset_id": dataset_id or None,
+                "dataset_id": dataset_id,
                 "conversation_id": str(fb.conversation_id or ""),
                 "message_id": str(fb.message_id or ""),
                 "original_query": _previous_user_question(

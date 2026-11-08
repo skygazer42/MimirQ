@@ -272,9 +272,7 @@ def _resolve_testgen_prompt_selection(
             logger.warning("Failed to resolve test generator prompt template: %s", exc)
             selected_template = None
     prompt_template_text = (
-        str(selected_template.content or "").strip()
-        if selected_template is not None
-        else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
+        selected_template.content.strip() if selected_template is not None else GENERATE_QUESTIONS_FROM_TEXT_PROMPT
     )
     prompt_variables = list((selected_template.variables if selected_template is not None else None) or [])
     if not prompt_variables:
@@ -282,16 +280,10 @@ def _resolve_testgen_prompt_selection(
     return TestGeneratorPromptSelection(
         prompt_template_text=prompt_template_text,
         prompt_variables=prompt_variables,
-        prompt_template_id=((str(selected_template.id or "") or None) if selected_template is not None else None),
-        prompt_template_key=(
-            (str(selected_template.template_key or "").strip() or None) if selected_template is not None else None
-        ),
-        prompt_ab_experiment_key=(str(selected_template.ab_experiment_key or "").strip() or None)
-        if selected_template is not None
-        else None,
-        prompt_ab_variant=(
-            (str(selected_template.ab_variant or "").strip() or None) if selected_template is not None else None
-        ),
+        prompt_template_id=str(selected_template.id) if selected_template is not None else None,
+        prompt_template_key=selected_template.template_key if selected_template is not None else None,
+        prompt_ab_experiment_key=selected_template.ab_experiment_key if selected_template is not None else None,
+        prompt_ab_variant=selected_template.ab_variant if selected_template is not None else None,
     )
 
 

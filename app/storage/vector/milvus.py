@@ -1734,7 +1734,7 @@ class MilvusVectorStore:
         timeout: float | None = None,
     ) -> set[str]:
         """
-        Best-effort existence check for a list of vector primary keys.
+        Check existence of vector primary keys; query failures propagate.
 
         Used by index audit / troubleshooting to detect missing vectors when the DB
         still references a vector_id.
@@ -1742,34 +1742,37 @@ class MilvusVectorStore:
         Notes:
         - Uses Milvus `query()` with an `id in [...]` expr.
         - Batches by both item count and expr length to reduce server-side rejects.
-        - Returns an empty set on any failure (audit should degrade gracefully).
+        - An empty result means a successful query found no matching keys.
         """
-        raw_ids = _normalize_milvus_query_ids(ids)
+        if any(not isinstance(value, str) or not value.strip() for value in ids):
+            raise ValueError("Vector primary keys must be nonempty strings")
+        raw_ids = _dedupe_milvus_query_ids(ids)
         if not raw_ids:
             return set()
 
         store = self._require_store()
-        col = getattr(store, "col", None)
-        if col is None or not hasattr(col, "query"):
+        col = store.col
+        if col is None:
             return set()
 
         primary_field = _milvus_store_field_name(store, "_primary_field", "id")
-        rows = _query_milvus_rows_by_ids(
-            col,
-            ids=_dedupe_milvus_query_ids(raw_ids),
-            primary_field=primary_field,
-            output_fields=[primary_field],
-            max_ids_per_query=max_ids_per_query,
-            timeout=timeout,
-        )
-        if rows is None:
-            return set()
-
+        query = col.query
         existing: set[str] = set()
-        for row in rows:
-            val = row.get(primary_field)
-            if val is not None:
-                existing.add(str(val))
+        for batch in _chunk_in_list_values(
+            raw_ids,
+            field=primary_field,
+            max_expr_chars=_MILVUS_EXPR_MAX_CHARS,
+            max_items=max_ids_per_query,
+        ):
+            expr = _milvus_in_expr(primary_field, batch)
+            rows = query(expr=expr, output_fields=[primary_field], timeout=timeout)
+            if not isinstance(rows, list):
+                raise ValueError("Milvus existence query must return a list of rows")
+            for row in rows:
+                value = row[primary_field]
+                if isinstance(value, bool) or not isinstance(value, (str, int)):
+                    raise ValueError("Milvus existence query returned an invalid primary key")
+                existing.add(str(value))
         return existing
 
     def fetch_vectors_by_ids(

@@ -158,23 +158,10 @@ def get_chat_token_quota_status(
 
     now = datetime.now(UTC)
     meta = check_chat_assistant_token_quota(db, tenant_id=tenant_id)
-    enabled = bool(meta.get("enabled"))
-    limit = int(meta.get("limit") or 0)
-    used = int(meta.get("used") or 0)
-    window_hours = int(meta.get("window_hours") or 24)
-    mode = str(meta.get("mode") or "block")
-    exceeded = bool(meta.get("exceeded")) if enabled else False
-    remaining = max(0, limit - used) if enabled and limit > 0 else 0
-    window_start = now - timedelta(hours=max(1, window_hours))
     return ChatTokenQuotaStatus(
-        enabled=enabled,
-        mode=mode,
-        limit=limit,
-        used=used,
-        remaining=remaining,
-        exceeded=exceeded,
-        window_hours=window_hours,
-        window_start=window_start,
+        **meta,
+        remaining=max(0, meta["limit"] - meta["used"]) if meta["enabled"] else 0,
+        window_start=now - timedelta(hours=max(1, meta["window_hours"])),
         window_end=now,
     )
 
@@ -197,63 +184,47 @@ def get_tenant_quota_summary(
     now = datetime.now(UTC)
 
     doc_meta = check_tenant_document_quota(db, tenant_id=tenant_id)
-    doc_enabled = bool(doc_meta.get("enabled"))
-    doc_limit = int(doc_meta.get("limit") or 0)
-    doc_used = int(doc_meta.get("used") or 0)
-    doc_exceeded = bool(doc_meta.get("exceeded")) if doc_enabled else False
-    doc_remaining = max(0, doc_limit - doc_used) if doc_enabled and doc_limit > 0 else 0
+    documents = TenantDocumentQuotaStatus(
+        enabled=doc_meta["enabled"],
+        limit=doc_meta["limit"] if doc_meta["enabled"] else 0,
+        used=doc_meta["used"] if doc_meta["enabled"] else 0,
+        remaining=max(0, doc_meta["limit"] - doc_meta["used"]) if doc_meta["enabled"] else 0,
+        exceeded=doc_meta["exceeded"],
+    )
 
     storage_meta = check_tenant_storage_quota(db, tenant_id=tenant_id)
-    storage_enabled = bool(storage_meta.get("enabled"))
-    storage_limit = int(storage_meta.get("limit_bytes") or 0)
-    storage_used = int(storage_meta.get("used_bytes") or 0)
-    storage_exceeded = bool(storage_meta.get("exceeded")) if storage_enabled else False
-    storage_remaining = max(0, storage_limit - storage_used) if storage_enabled and storage_limit > 0 else 0
+    storage = TenantStorageQuotaStatus(
+        enabled=storage_meta["enabled"],
+        limit_bytes=storage_meta["limit_bytes"] if storage_meta["enabled"] else 0,
+        used_bytes=storage_meta["used_bytes"] if storage_meta["enabled"] else 0,
+        remaining_bytes=max(0, storage_meta["limit_bytes"] - storage_meta["used_bytes"])
+        if storage_meta["enabled"]
+        else 0,
+        exceeded=storage_meta["exceeded"],
+    )
 
     embed_meta = check_tenant_embedding_char_quota(db, tenant_id=tenant_id)
-    embed_enabled = bool(embed_meta.get("enabled"))
-    embed_limit = int(embed_meta.get("limit_chars") or 0)
-    embed_used = int(embed_meta.get("used_chars") or 0)
-    embed_mode = str(embed_meta.get("mode") or "block")
-    embed_window_hours = int(embed_meta.get("window_hours") or 24)
-    embed_window_hours = max(1, embed_window_hours)
-    embed_exceeded = bool(embed_meta.get("exceeded")) if embed_enabled else False
-    embed_remaining = max(0, embed_limit - embed_used) if embed_enabled and embed_limit > 0 else 0
-    embed_window_start = now - timedelta(hours=embed_window_hours)
+    embed_window_hours = max(1, embed_meta["window_hours"])
+    embedding_chars = TenantEmbeddingCharQuotaStatus(
+        enabled=embed_meta["enabled"],
+        mode=embed_meta["mode"],
+        limit_chars=embed_meta["limit_chars"] if embed_meta["enabled"] else 0,
+        used_chars=embed_meta["used_chars"] if embed_meta["enabled"] else 0,
+        remaining_chars=max(0, embed_meta["limit_chars"] - embed_meta["used_chars"]) if embed_meta["enabled"] else 0,
+        exceeded=embed_meta["exceeded"],
+        window_hours=embed_window_hours,
+        window_start=now - timedelta(hours=embed_window_hours),
+        window_end=now,
+    )
 
     qps_cfg = get_tenant_qps_quota_config()
 
     return TenantQuotaSummary(
-        documents=TenantDocumentQuotaStatus(
-            enabled=doc_enabled,
-            limit=doc_limit if doc_enabled else 0,
-            used=doc_used if doc_enabled else 0,
-            remaining=doc_remaining if doc_enabled else 0,
-            exceeded=doc_exceeded,
-        ),
-        storage=TenantStorageQuotaStatus(
-            enabled=storage_enabled,
-            limit_bytes=storage_limit if storage_enabled else 0,
-            used_bytes=storage_used if storage_enabled else 0,
-            remaining_bytes=storage_remaining if storage_enabled else 0,
-            exceeded=storage_exceeded,
-        ),
-        embedding_chars=TenantEmbeddingCharQuotaStatus(
-            enabled=embed_enabled,
-            mode=embed_mode,
-            limit_chars=embed_limit if embed_enabled else 0,
-            used_chars=embed_used if embed_enabled else 0,
-            remaining_chars=embed_remaining if embed_enabled else 0,
-            exceeded=embed_exceeded,
-            window_hours=embed_window_hours,
-            window_start=embed_window_start,
-            window_end=now,
-        ),
+        documents=documents,
+        storage=storage,
+        embedding_chars=embedding_chars,
         qps=TenantQpsQuotaConfig(
-            enabled=bool(qps_cfg.get("enabled")),
-            mode=str(qps_cfg.get("mode") or "block"),
-            rps=float(qps_cfg.get("rps") or 0.0),
-            burst=int(qps_cfg.get("burst") or 0),
+            **qps_cfg,
             scopes=["chat", "retrieval"],
         ),
     )
@@ -279,8 +250,8 @@ def get_chat_token_usage_summary(
     _ensure_admin(db, tenant_id, account_id)
 
     now = datetime.now(UTC)
-    window_end = until or now
-    window_start = since or (window_end - timedelta(days=int(window_days or 1)))
+    window_end = until if until else now
+    window_start = since if since else window_end - timedelta(days=int(window_days or 1))
 
     # Postgres JSONB expression (used elsewhere in the codebase); safe in production deployments.
     dataset_expr = Message.message_metadata["dataset_id"].astext  # type: ignore[attr-defined]
@@ -303,25 +274,22 @@ def get_chat_token_usage_summary(
     )
 
     items: list[ChatTokenUsageRow] = []
-    total_msgs = 0
+    total_messages = 0
     total_tokens = 0
-    for ds_id, messages, tokens in rows:
-        m = int(messages or 0)
-        t = int(tokens or 0)
-        total_msgs += m
-        total_tokens += t
-        items.append(
-            ChatTokenUsageRow(
-                dataset_id=str(ds_id) if ds_id is not None else None,
-                assistant_messages=m,
-                assistant_tokens=t,
-            )
+    for dataset_id, message_count, token_count in rows:
+        usage_row = ChatTokenUsageRow(
+            dataset_id=str(dataset_id) if dataset_id is not None else None,
+            assistant_messages=int(message_count or 0),
+            assistant_tokens=int(token_count or 0),
         )
+        items.append(usage_row)
+        total_messages += usage_row.assistant_messages
+        total_tokens += usage_row.assistant_tokens
 
     return ChatTokenUsageSummary(
         window_start=window_start,
         window_end=window_end,
-        total_assistant_messages=total_msgs,
+        total_assistant_messages=total_messages,
         total_assistant_tokens=total_tokens,
         by_dataset=items,
     )
@@ -346,8 +314,8 @@ def get_chat_cost_usage_summary(
     _ensure_admin(db, tenant_id, account_id)
 
     now = datetime.now(UTC)
-    window_end = until or now
-    window_start = since or (window_end - timedelta(days=int(window_days or 1)))
+    window_end = until if until else now
+    window_start = since if since else window_end - timedelta(days=int(window_days or 1))
 
     dataset_expr = Message.message_metadata["dataset_id"].astext  # type: ignore[attr-defined]
 
@@ -390,7 +358,7 @@ def get_chat_cost_usage_summary(
     )
 
     items: list[ChatCostUsageRow] = []
-    total_msgs = 0
+    total_messages = 0
     total_llm_prompt = 0
     total_llm_completion = 0
     total_llm_total = 0
@@ -400,52 +368,41 @@ def get_chat_cost_usage_summary(
     total_rerank_sec = 0.0
 
     for (
-        ds_id,
+        dataset_id,
         messages,
-        p_tokens,
-        c_tokens,
-        t_tokens,
-        e_tokens,
-        e_chars,
-        r_sec,
-        rr_sec,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        embedding_tokens,
+        embedding_chars,
+        retrieval_elapsed,
+        rerank_elapsed,
     ) in rows:
-        m = int(messages or 0)
-        p = int(p_tokens or 0)
-        c = int(c_tokens or 0)
-        t = int(t_tokens or 0)
-        et = int(e_tokens or 0)
-        ec = int(e_chars or 0)
-        rs = float(r_sec or 0.0)
-        rrs = float(rr_sec or 0.0)
-
-        total_msgs += m
-        total_llm_prompt += p
-        total_llm_completion += c
-        total_llm_total += t
-        total_embed_tokens += et
-        total_embed_chars += ec
-        total_retrieval_sec += rs
-        total_rerank_sec += rrs
-
-        items.append(
-            ChatCostUsageRow(
-                dataset_id=str(ds_id) if ds_id is not None else None,
-                assistant_messages=m,
-                llm_prompt_tokens=p,
-                llm_completion_tokens=c,
-                llm_total_tokens=t,
-                embedding_query_tokens=et,
-                embedding_query_chars=ec,
-                retrieval_elapsed_sec_sum=rs,
-                rerank_elapsed_sec_sum=rrs,
-            )
+        usage_row = ChatCostUsageRow(
+            dataset_id=str(dataset_id) if dataset_id is not None else None,
+            assistant_messages=int(messages or 0),
+            llm_prompt_tokens=int(prompt_tokens or 0),
+            llm_completion_tokens=int(completion_tokens or 0),
+            llm_total_tokens=int(total_tokens or 0),
+            embedding_query_tokens=int(embedding_tokens or 0),
+            embedding_query_chars=int(embedding_chars or 0),
+            retrieval_elapsed_sec_sum=float(retrieval_elapsed or 0.0),
+            rerank_elapsed_sec_sum=float(rerank_elapsed or 0.0),
         )
+        items.append(usage_row)
+        total_messages += usage_row.assistant_messages
+        total_llm_prompt += usage_row.llm_prompt_tokens
+        total_llm_completion += usage_row.llm_completion_tokens
+        total_llm_total += usage_row.llm_total_tokens
+        total_embed_tokens += usage_row.embedding_query_tokens
+        total_embed_chars += usage_row.embedding_query_chars
+        total_retrieval_sec += usage_row.retrieval_elapsed_sec_sum
+        total_rerank_sec += usage_row.rerank_elapsed_sec_sum
 
     return ChatCostUsageSummary(
         window_start=window_start,
         window_end=window_end,
-        total_assistant_messages=total_msgs,
+        total_assistant_messages=total_messages,
         total_llm_prompt_tokens=total_llm_prompt,
         total_llm_completion_tokens=total_llm_completion,
         total_llm_total_tokens=total_llm_total,

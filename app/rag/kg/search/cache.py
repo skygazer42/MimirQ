@@ -23,7 +23,7 @@ from app.rag.core.hashing import stable_hash, stable_json_dumps
 
 
 def _hash_doc_scope(document_ids: list[str]) -> str:
-    joined = ",".join(sorted(str(d) for d in (document_ids or []) if str(d or "").strip()))
+    joined = ",".join(sorted(document_ids))
     # Use a longer digest than the default short IDs to keep collisions vanishingly unlikely.
     return stable_hash(joined, length=32)
 
@@ -45,22 +45,19 @@ def build_kg_search_cache_key(
     - We hash the signature to avoid storing raw query text / scope identifiers in key names.
     - `search_config` should include any settings/params that can affect results.
     """
-    doc_ids = [str(d) for d in (document_ids or []) if str(d or "").strip()]
-    pipeline_fp = str(pipeline_fingerprint or "").strip() or None
-
     signature: dict[str, Any] = {
         # Bump when signature fields change to avoid accidental collisions.
-        "v": 2,
-        "tenant_id": str(tenant_id),
-        "account_id": str(account_id or ""),
-        "dataset_id": str(dataset_id or "") or None,
-        "doc_scope": _hash_doc_scope(doc_ids),
-        "doc_count": len(doc_ids),
+        "v": 3,
+        "tenant_id": tenant_id,
+        "account_id": account_id,
+        "dataset_id": dataset_id,
+        "doc_scope": None if document_ids is None else _hash_doc_scope(document_ids),
+        "doc_count": None if document_ids is None else len(document_ids),
         # Hash of doc_id -> active_pipeline_hash (or pipeline_hash fallback) pairs.
         # This avoids serving stale results when a document switches its active pipeline version.
-        "pipeline_fp": pipeline_fp,
-        "query": (query or "").strip(),
-        "cfg": (search_config if isinstance(search_config, dict) else None) or {},
+        "pipeline_fp": pipeline_fingerprint,
+        "query": query.strip(),
+        "cfg": search_config,
     }
 
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
@@ -162,15 +159,14 @@ def build_kg_community_summary_cache_key(
     """
     Build a stable key for query-aware community summaries.
     """
-    doc_ids = [str(d) for d in (document_ids or []) if str(d or "").strip()]
     signature = {
-        "v": 2,
-        "tenant_id": str(tenant_id or "").strip(),
-        "dataset_id": str(dataset_id or "").strip() or None,
-        "doc_scope": _hash_doc_scope(doc_ids),
-        "doc_count": len(doc_ids),
-        "community_id": str(community_id or "").strip(),
-        "query": str(query or "").strip(),
+        "v": 3,
+        "tenant_id": tenant_id,
+        "dataset_id": dataset_id,
+        "doc_scope": None if document_ids is None else _hash_doc_scope(document_ids),
+        "doc_count": None if document_ids is None else len(document_ids),
+        "community_id": community_id,
+        "query": query.strip(),
         "report_fp": _community_report_fingerprint(report_payload),
     }
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)

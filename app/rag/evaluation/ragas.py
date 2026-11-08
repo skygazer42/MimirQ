@@ -17,7 +17,6 @@ from uuid import UUID
 
 import httpx
 from fastapi import HTTPException
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
 from app.core.config import settings
@@ -951,9 +950,12 @@ def _resolve_case_scope(
     2) case.dataset_id -> dataset-scoped retrieval (no document_id enumeration)
     3) fallback: open-scope retrieval (tenant + ACL trimming)
     """
-    raw_doc_ids = _parse_uuid_list(case.document_ids or [])
-    if raw_doc_ids:
-        return filter_allowed_document_ids(db, tenant_id, account_id, raw_doc_ids), None
+    if case.document_ids:
+        raw_doc_ids = _parse_uuid_list(case.document_ids)
+        if not raw_doc_ids:
+            raise HTTPException(status_code=400, detail="Regression case has no valid document identifiers")
+        allowed_doc_ids = filter_allowed_document_ids(db, tenant_id, account_id, raw_doc_ids)
+        return allowed_doc_ids, None
 
     if case.dataset_id:
         ds = dataset_service.get_dataset(db, tenant_id, case.dataset_id)
@@ -1195,6 +1197,10 @@ def _build_llm_and_embeddings():
     Build LangChain LLM + embeddings compatible with RAGAS wrappers.
     """
 
+    from app.core.model_execution import reject_retired_provider
+
+    provider = settings.EMBEDDING_PROVIDER.strip().lower()
+    reject_retired_provider(provider, capability="embedding")
     http_client, http_async_client = _build_http_clients()
     llm = ChatOpenAI(
         model=settings.LLM_MODEL,
@@ -1208,10 +1214,7 @@ def _build_llm_and_embeddings():
         http_async_client=http_async_client,
     )
 
-    provider = (settings.EMBEDDING_PROVIDER or "openai_compatible").lower()
-    if provider == "local":
-        embeddings = HuggingFaceEmbeddings(model_name=settings.EMBEDDING_MODEL)
-    elif provider == "dashscope":
+    if provider == "dashscope":
         embeddings = create_langchain_embeddings_from_config(
             provider="dashscope",
             model=settings.EMBEDDING_MODEL,
@@ -1987,7 +1990,7 @@ def _build_regression_graph_state(
     state = build_rag_state(
         question=case.question,
         history=[],
-        document_ids=(scope_doc_ids or None),
+        document_ids=scope_doc_ids,
         tenant_id=tenant_id,
         account_id=account_id,
         dataset_id=scope_dataset_id,

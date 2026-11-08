@@ -15,13 +15,14 @@ logger = get_logger(__name__)
 _FALLBACK_LOG_MESSAGE = "Ignoring non-critical retrieval orchestrator fallback failure: %s"
 
 
-def _bounded_text(value: Any, *, limit: int) -> str:
-    text = str(value).strip()
-    return text[:limit] if text else ""
+def _bounded_text(value: Any, *, limit: int) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip()[:limit]
 
 
 def safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
-    if not isinstance(raw, dict) or not raw:
+    if raw is None:
         return None
     out: dict[str, Any] = {}
     schema = _bounded_text(raw.get("schema"), limit=80)
@@ -59,7 +60,7 @@ def safe_kg_path_provenance(raw: Any) -> dict[str, Any] | None:
     if edges:
         out["edges"] = edges
 
-    return out or None
+    return out
 
 
 def _safe_kg_path_items(raw_items: Any, *, allowed_keys: tuple[str, ...]) -> list[dict[str, Any]]:

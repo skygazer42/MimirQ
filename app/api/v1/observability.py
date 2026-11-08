@@ -647,25 +647,25 @@ class PerfSuiteRunResponse(_SchemaAliasedModel):
 
 def _serialize_index_drift_item(item: "IndexDriftItem") -> dict[str, Any]:
     return {
-        "id": str(item.id or ""),
-        "tenant_id": str(item.tenant_id or ""),
-        "dataset_id": str(item.dataset_id or "") or None,
-        "document_id": str(item.document_id or "") or None,
-        "chunk_id": str(item.chunk_id or "") or None,
-        "operation": str(item.operation or ""),
-        "channel": str(item.channel or ""),
-        "strictness": str(item.strictness or ""),
-        "status": str(item.status or ""),
-        "reason": str(item.reason or ""),
-        "details": dict(item.details or {}),
-        "reconcile_task_id": str(item.reconcile_task_id or "") or None,
-        "replay_count": int(item.replay_count or 0),
+        "id": str(item.id),
+        "tenant_id": str(item.tenant_id),
+        "dataset_id": str(item.dataset_id) if item.dataset_id is not None else None,
+        "document_id": str(item.document_id) if item.document_id is not None else None,
+        "chunk_id": str(item.chunk_id) if item.chunk_id is not None else None,
+        "operation": item.operation,
+        "channel": item.channel,
+        "strictness": item.strictness,
+        "status": item.status,
+        "reason": item.reason,
+        "details": dict(item.details),
+        "reconcile_task_id": item.reconcile_task_id,
+        "replay_count": item.replay_count,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
         "last_replayed_at": item.last_replayed_at,
         "resolved_at": item.resolved_at,
-        "resolved_by": str(item.resolved_by or "") or None,
-        "resolution_note": str(item.resolution_note or "") or None,
+        "resolved_by": item.resolved_by,
+        "resolution_note": item.resolution_note,
     }
 
 
@@ -1232,7 +1232,7 @@ async def reconcile_index_audit(
         document_id=payload.document_id,
         scope=str(result.get("scope") or ("document" if payload.document_id is not None else "dataset")),
         status=str(result.get("status") or "unknown"),
-        job_id=str(result.get("task_id") or "") or None,
+        job_id=result.get("task_id"),
     )
     return result
 

@@ -225,7 +225,7 @@ def merge_cross_page_documents(
     table_enabled: bool = True,
     list_enabled: bool = True,
 ) -> list[Document]:
-    items = list(documents or [])
+    items = list((documents if documents is not None else []))
     if len(items) < 2:
         return items
 

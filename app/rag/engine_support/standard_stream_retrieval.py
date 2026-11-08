@@ -375,9 +375,9 @@ async def inject_kg_chunks(runtime: StandardStreamState) -> None:
         runtime.data.kg_kwargs = {
             "query": runtime.data.query_for_retrieval,
             "tenant_id": runtime.data.tenant_id,
-            "document_ids": runtime.data.kg_document_ids or None,
+            "document_ids": runtime.data.kg_document_ids,
             "dataset_id": runtime.data.kg_dataset_id,
-            "account_id": runtime.data.account_id if not runtime.data.kg_document_ids else None,
+            "account_id": runtime.data.account_id,
         }
         if runtime.data.kg_dataset_ids:
             runtime.data.kg_kwargs["dataset_ids"] = runtime.data.kg_dataset_ids

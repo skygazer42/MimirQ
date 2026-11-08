@@ -72,7 +72,7 @@ def _resolve_expected_source_keys(
         inferred = infer_expected_source_keys_fn(
             query=query_for_retrieval,
             metadata_filter=(meta_filter if isinstance(meta_filter, dict) else None),
-            scope=(scope_payload if scope_payload else None),
+            scope=(scope_payload),
             max_keys=auto_max_keys,
         )
         auto_source_keys = normalize_source_keys(list(inferred.get("expected_source_keys") or []))
@@ -563,7 +563,7 @@ def _resolve_channel_budget_meta(
     state: dict[str, Any],
     request_retrieval_mode: str,
     profile_applied: dict[str, Any],
-    profile_norm: str,
+    profile_norm: str | None,
 ) -> dict[str, Any]:
     explicit_fusion_budgets = state.get("fusion_budgets") if isinstance(state.get("fusion_budgets"), dict) else None
     explicit_fusion_weights = state.get("fusion_weights") if isinstance(state.get("fusion_weights"), dict) else None
@@ -596,7 +596,7 @@ def _resolve_channel_budget_meta(
     overrides, channel_budget_policy_meta = resolve_channel_budget_policy_overrides(
         policy=channel_budget_policy,
         retrieval_mode=str(profile_applied.get("retrieval_mode") or request_retrieval_mode),
-        retrieval_profile=(profile_norm or None),
+        retrieval_profile=profile_norm,
     )
     if overrides:
         for key, value in overrides.items():
@@ -655,7 +655,7 @@ def apply_routing_phase(  # noqa: PLR0913
     request_retrieval_mode = query_contract.request_retrieval_mode
     retrieval_mode_routed = query_contract.retrieval_mode_routed
     profile_applied = dict(query_contract.profile_applied)
-    profile_norm = query_contract.profile_norm or ""
+    profile_norm = query_contract.profile_norm
     sparse_enabled = query_contract.sparse_enabled
     sparse_provider = normalize_sparse_provider_name(query_contract.sparse_provider or "")
     hierarchy_recall_enabled = query_contract.hierarchy.enabled

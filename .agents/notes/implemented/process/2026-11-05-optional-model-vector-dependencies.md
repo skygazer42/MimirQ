@@ -10,7 +10,9 @@ Status: implemented
 
 ## Decision
 
-本地模型安装部分由[退出 API 内模型推理](../architecture/2026-11-05-retire-in-process-models.md)接管，`requirements-local-models.txt` 与对应实现已退出。本篇继续持有 Chroma/FAISS 的按需安装边界；下述本地模型安装验证属于首次拆分时的历史证据。
+本地模型安装部分由[退出 API 内模型推理](../architecture/2026-11-05-retire-in-process-models.md)接管，`requirements-local-models.txt` 与对应实现已退出。[FAISS 退出](../simplification/2026-11-06-retire-faiss.md)和[Chroma 退出](../simplification/2026-11-06-retire-chroma.md)进一步取代相应后端的按需安装边界；下述配置和验证是首次拆分时的决定与历史证据，不代表当前支持清单。
+
+这些可选后端退出后，CI 与本地开发直接使用同一个 `requirements-dev.txt`。只剩转发作用的 `requirements-ci.txt` 已删除，CI 安装和缓存入口同步到开发依赖文件，实际包版本和安装选项不变。
 
 `requirements.txt` 保留 Milvus、远程模型调用、现有文档处理、BM25、鉴权和服务基础依赖。`requirements-dev.txt` 继续在基础安装上叠加开发工具。本地推理依赖进入 `requirements-local-models.txt`，Chroma 和 FAISS 分别进入 `requirements-chroma.txt`、`requirements-faiss.txt`。每份可选配置引用基础文件，保留既有版本；Linux 的本地 Torch/torchvision 明确选择 CPU wheel。
 
@@ -34,6 +36,8 @@ Docker CI 同时保留默认基础镜像与独立的 `mimirq-backend-chroma-ci` 
 - 主 Dockerfile 和文档 CI 不再预装 Torch；本地模型 CPU 版本与既有校验 wheel 清单保持一致。安装文档记录每个配置的用途、BM25 的保留原因，以及现有环境不会自动卸载旧包。
 
 ## Consequences
+
+FAISS 的安装配置、运行时后端和可选加速由[退出 FAISS](../simplification/2026-11-06-retire-faiss.md)接管并删除；本篇其余安装隔离决定及历史验证证据保留。
 
 BM25 的依赖与索引所有权现由[Milvus 原生 BM25](../architecture/2026-11-05-milvus-native-bm25.md)接管；本篇关于可选向量后端和安装隔离的决定保持。
 

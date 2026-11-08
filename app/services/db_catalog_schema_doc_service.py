@@ -74,7 +74,7 @@ def build_virtual_schema_document_fields(
         "file_type": "md",
         "file_size": len(md.encode("utf-8", "ignore")),
         "file_path": virtual_schema_file_path(ds),
-        "owner_id": (_norm_str(requested_by) or None),
+        "owner_id": (requested_by),
         "access_mode": "inherit",
         "status": "completed",
         "processing_progress": 100,
@@ -614,7 +614,7 @@ def _render_nullable_marker(value: Any) -> str:
 def _append_table_metadata_lines(lines: list[str], *, table: Mapping[str, Any]) -> None:
     engine = _norm_str(table.get("engine")).lower()
     table_type = _norm_str(table.get("table_type")).lower() or "table"
-    comment = _norm_str(table.get("comment")) or None
+    comment = _norm_str(table.get("comment"))
     if engine:
         lines.append(f"- engine: `{engine}`")
     lines.append(f"- type: `{table_type}`")
@@ -698,7 +698,7 @@ def render_virtual_schema_markdown(
     for table in _iter_tables_sorted(tables):
         db_name = _norm_str(table.get("db_name"))
         schema_name_raw = _norm_str(table.get("schema_name")) or ""
-        schema_name = schema_name_raw or None
+        schema_name = schema_name_raw
         table_name = _norm_str(table.get("table_name"))
         if not db_name or not table_name:
             continue
@@ -828,8 +828,8 @@ def compute_schema_diff(
         for c in sorted(old_col_names & new_col_names):
             old_meta = old_cols_map.get(c) if isinstance(old_cols_map.get(c), Mapping) else {}
             new_meta = new_cols_map.get(c) if isinstance(new_cols_map.get(c), Mapping) else {}
-            old_type = str(old_meta.get("data_type") or "").strip() or None
-            new_type = str(new_meta.get("data_type") or "").strip() or None
+            old_type = old_meta.get("data_type")
+            new_type = new_meta.get("data_type")
             old_nullable = old_meta.get("nullable")
             new_nullable = new_meta.get("nullable")
 

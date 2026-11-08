@@ -15,7 +15,6 @@ __all__ = [
     "BaseAdvancedParser",
     "MinerUParser",
     "DoclingParser",
-    "TCADPParser",
     "Etl4LlmParser",
 ]
 

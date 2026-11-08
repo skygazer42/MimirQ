@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.services.navigation_visibility import normalize_navigation_modules
 
 _MINERU_BACKENDS = {"pipeline", "vlm-http-client"}
@@ -143,7 +143,7 @@ class RAGConfig(BaseModel):
             "aliyun",
             "colbert",
             "late_interaction",
-            "ltr",
+            "ltr",  # Historical settings stay readable; UpdateSettingsRequest rejects execution.
             "cross_encoder",
             "local_bge_v2_m3",
             "long_context",
@@ -390,14 +390,15 @@ class UpdateSettingsRequest(BaseModel):
     @classmethod
     def _validate_embedding_execution(cls, value: EmbeddingConfig | None) -> EmbeddingConfig | None:
         if value is not None:
-            reject_retired_model_provider(value.provider, capability="embedding")
+            reject_retired_provider(value.provider, capability="embedding")
         return value
 
     @field_validator("rag")
     @classmethod
-    def _validate_reranker_execution(cls, value: RAGConfig | None) -> RAGConfig | None:
+    def _validate_rag_execution(cls, value: RAGConfig | None) -> RAGConfig | None:
         if value is not None:
-            reject_retired_model_provider(value.reranker_provider, capability="reranker")
+            reject_retired_provider(value.reranker_provider, capability="reranker")
+            reject_retired_provider(value.default_parser_backend, capability="parser")
         return value
 
 

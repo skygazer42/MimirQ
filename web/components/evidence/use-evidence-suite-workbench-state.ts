@@ -26,7 +26,6 @@ import {
   RETRIEVAL_PROFILE_VALUES,
   asDatasetId,
   buildReferenceSources,
-  downloadBlob,
   downloadJson,
   evidenceStatusBadgeVariant,
   getErrorMessage,
@@ -774,22 +773,6 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     }
   }, [selectedSuite])
 
-  const handleExportLtrTraining = useCallback(async () => {
-    if (!selectedSuite?.id) return
-    try {
-      const blob = await evidenceApi.exportSuiteLtrTrainingBundleZip(String(selectedSuite.id), {
-        include_archived_items: false,
-        max_items: 2000,
-      })
-      const safeTs = safeIsoForFilename(new Date().toISOString())
-      const name = (selectedSuite.name || 'evidence-suite').replaceAll(/[\\/:*?"<>|]+/g, '_').slice(0, 64)
-      downloadBlob(`${name}.${safeTs}.ltr_training.zip`, blob)
-      toast.success('已导出 LTR 训练数据')
-    } catch (error: unknown) {
-      toast.error(formatApiError(error, '导出 LTR 训练数据失败'))
-    }
-  }, [selectedSuite])
-
   const handleSyncSuite = useCallback(async () => {
     const isCurrent = sameOwner(suiteOwner)
 
@@ -1113,7 +1096,6 @@ export function useEvidenceSuiteWorkbenchState(datasetIdRaw: string, options?: {
     handleConvertFeedbackToEvidence,
     handleCreateItem,
     handleCreateSuite,
-    handleExportLtrTraining,
     handleExportSuite,
     handleImportQAFaq,
     handlePickPackFile,

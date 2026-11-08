@@ -81,7 +81,7 @@ def with_dataset_scope_filter(
 ) -> dict[str, Any] | None:
     if not dataset_ids:
         return metadata_filter
-    scoped_filter = dict(metadata_filter or {})
+    scoped_filter = dict((metadata_filter if metadata_filter is not None else {}))
     scoped_filter.setdefault("dataset_id", dataset_scope_filter_value(dataset_ids))
     return scoped_filter
 
@@ -91,9 +91,7 @@ def build_vector_filter(
     *,
     embedding_space: str,
     dataset_ids: tuple[UUID, ...] = (),
-) -> dict[str, Any] | None:
-    if not metadata_filter and not embedding_space and not dataset_ids:
-        return None
+) -> dict[str, Any]:
     allowed = {
         "tenant_id",
         "dataset_id",
@@ -112,7 +110,7 @@ def build_vector_filter(
         "partition_keys",
     }
     result: dict[str, Any] = {}
-    for key, value in (metadata_filter or {}).items():
+    for key, value in (metadata_filter if metadata_filter is not None else {}).items():
         if not isinstance(key, str) or "." in key:
             continue
         if key == "page":
@@ -125,7 +123,7 @@ def build_vector_filter(
         result["dataset_id"] = dataset_scope_filter_value(dataset_ids)
     if embedding_space:
         result["embedding_space_hash"] = {"$in": [embedding_space, ""]}
-    return result or None
+    return result
 
 
 def load_runtime_shards(db: Session, *, tenant_id: UUID, dataset_ids: tuple[UUID, ...]) -> tuple[RuntimeShard, ...]:
@@ -214,7 +212,11 @@ def resolve_runtime_scope(
             document_ids=list(scope.document_ids),
             reason="unavailable",
         ) from exc
-    runtime = shards[0].runtime if len(shards) == 1 else embedding_runtime or default_embedding_runtime()
+    runtime = (
+        shards[0].runtime
+        if len(shards) == 1
+        else (embedding_runtime if embedding_runtime is not None else default_embedding_runtime())
+    )
     keyword_filter = None
     vector_filter = None
     if metadata_filter:

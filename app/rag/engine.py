@@ -168,7 +168,7 @@ class RAGEngine(LlmRoutingMixin, DocUtilsMixin):
 
     @staticmethod
     def _active_pipeline_hash(*, status: Any, meta: Any) -> str | None:
-        metadata = meta if isinstance(meta, dict) else {}
+        metadata = {} if meta is None else meta
         ready = (
             bool(metadata.get("active_pipeline_ready"))
             if "active_pipeline_ready" in metadata
@@ -176,8 +176,9 @@ class RAGEngine(LlmRoutingMixin, DocUtilsMixin):
         )
         if not ready:
             return None
-        active_hash = str(metadata.get("active_pipeline_hash") or metadata.get("pipeline_hash") or "").strip()
-        return active_hash or None
+        from app.core.pipeline_versions import get_active_pipeline_hash
+
+        return get_active_pipeline_hash(metadata)
 
     def _apply_active_pipeline_metadata_filter(
         self,
@@ -429,9 +430,7 @@ Requirements:
                 "docs_count": int(docs_count),
                 "citations_count": int(citations_count),
                 "abstain_triggered": bool(abstain_triggered),
-                "retrieval_profile": (str(retrieval_profile).strip().lower() or None)
-                if retrieval_profile is not None
-                else None,
+                "retrieval_profile": (retrieval_profile) if retrieval_profile is not None else None,
             },
         }
 

@@ -3,11 +3,52 @@ Auth schemas for user registration and login.
 """
 
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from fastapi import Header
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic.dataclasses import dataclass
 
 from app.api.schemas.base import OrmModel
+
+
+@dataclass
+class AuthHeaders:
+    """Request header types and defaults shared by application and metrics auth."""
+
+    authorization: Annotated[str | None, Header()] = None
+    x_user_id: Annotated[str | None, Header()] = None
+    x_tenant_id: Annotated[str | None, Header()] = None
+
+
+class JwtIdentity(BaseModel):
+    """Identity claims from an already verified JWT; external subjects remain strings."""
+
+    user_id: str
+    tenant_id: UUID | None = None
+
+    @field_validator("user_id", mode="before")
+    @classmethod
+    def parse_user_id(cls, value):
+        if not value:
+            raise ValueError("JWT subject is required")
+        user_id = str(value).strip()
+        if not user_id:
+            raise ValueError("JWT subject is required")
+        return user_id
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def parse_tenant_id(cls, value):
+        return UUID(str(value).strip()) if value is not None else None
+
+    @classmethod
+    def from_payload(cls, payload, tenant_claim):
+        return cls(
+            user_id=payload.get("sub"),
+            tenant_id=payload.get(tenant_claim) if tenant_claim else None,
+        )
 
 
 class UserPublic(OrmModel):

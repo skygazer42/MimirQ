@@ -173,7 +173,7 @@ def _coerce_policy_float(value: Any, *, minimum: float, maximum: float) -> float
 
 def _normalize_policy_override(name: str, value: Any) -> Any:
     if name == "retrieval_mode":
-        mode = normalize_retrieval_mode(value if value is not None else None)
+        mode = normalize_retrieval_mode(value)
         return mode or _INVALID_POLICY_OVERRIDE
     if name == "retrieval_profile":
         profile = str(value or "").strip().lower()
@@ -438,7 +438,8 @@ def _apply_learned_router_hint(
     hint = predict_learned_router_hint(query=query, model=learned_model)
     confidence = min(1.0, max(0.0, float(hint.get("confidence") or 0.0)))
     meta["confidence"] = round(confidence, 6)
-    meta["rule_id"] = str(hint.get("rule_id") or "")[:40] or None
+    rule_id = hint.get("rule_id")
+    meta["rule_id"] = rule_id[:40] if rule_id is not None else None
     hint_overrides = _sanitize_policy_overrides(hint.get("overrides"))
     gate = float(meta.get("confidence_gate") or 0.0)
     if confidence < gate:
@@ -508,7 +509,7 @@ def route_retrieval_preset(
     intent, reasons = classify_query_intent(query)
 
     mode_norm = normalize_retrieval_mode(retrieval_mode or "hybrid")
-    profile_norm = str(retrieval_profile or "").strip().lower() or None
+    profile_norm = retrieval_profile.strip().lower() if retrieval_profile is not None else None
     overrides = _deterministic_intent_overrides(
         intent=intent,
         mode=mode_norm,

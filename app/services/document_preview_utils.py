@@ -663,7 +663,7 @@ def _preview_owner_binding(
             "dataset_id": dataset_id,
             "document_id": document_id,
         }
-    owner_account_id = (account_id or "").strip()
+    owner_account_id = (account_id if account_id is not None else "").strip()
     if owner_account_id:
         return {"tenant_id": str(tenant_id), "account_id": owner_account_id}
     return None

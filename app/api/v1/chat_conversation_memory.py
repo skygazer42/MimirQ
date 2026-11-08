@@ -80,12 +80,7 @@ def get_conversation_summary_endpoint(
         conversation_id=conversation_id,
     )
 
-    summary = None
-    try:
-        summary = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
-    except Exception:
-        summary = None
-
+    summary = get_conversation_summary(db, tenant_id=tenant_id, conversation_id=conversation_id)
     return {"available": bool(summary), "summary": summary}
 
 

@@ -17,9 +17,11 @@ def detect_evidence_gap(
     required_anchor_fields: list[str] | tuple[str, ...] | None = None,
     min_citations: int = 1,
 ) -> dict[str, Any]:
-    req_source_keys = normalize_source_keys(list(required_source_keys or []))
-    req_anchor_fields = normalize_anchor_fields(list(required_anchor_fields or list(DEFAULT_EVIDENCE_ANCHOR_FIELDS)))
-    citations_norm = [c for c in (citations or []) if isinstance(c, dict)]
+    req_source_keys = normalize_source_keys(list((required_source_keys if required_source_keys is not None else [])))
+    req_anchor_fields = normalize_anchor_fields(
+        list((required_anchor_fields if required_anchor_fields is not None else list(DEFAULT_EVIDENCE_ANCHOR_FIELDS)))
+    )
+    citations_norm = [c for c in (citations if citations is not None else []) if isinstance(c, dict)]
 
     reason_codes: list[str] = []
     citations_total = len(citations_norm)

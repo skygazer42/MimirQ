@@ -347,7 +347,7 @@ def persist_turn(
     source_conversation_id = _dify_turn_source_conversation_id(body)
     source_message_id = _dify_turn_source_message_id(body)
     source_run_id = _dify_turn_source_run_id(body)
-    trace_request_id = str(body.trace_request_id or "").strip() or None
+    trace_request_id = body.trace_request_id
     question = body.query.strip()
     final_answer = body.answer.strip()
     if not question:

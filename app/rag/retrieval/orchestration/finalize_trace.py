@@ -289,13 +289,13 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
         "requested_retrieval_mode": str(payload.requested_retrieval_mode or ""),
         "retrieval_mode": str(payload.request_retrieval_mode or ""),
         "retrieval_mode_auto_routed": bool(payload.retrieval_mode_routed),
-        "retrieval_profile": payload.profile_norm or None,
+        "retrieval_profile": payload.profile_norm,
         "retrieval_profile_requested": (
             str(payload.requested_retrieval_profile).strip().lower()
             if payload.requested_retrieval_profile is not None
             else None
         ),
-        "retrieval_contract_mode": payload.retrieval_contract_mode or None,
+        "retrieval_contract_mode": payload.retrieval_contract_mode,
         "retrieval_contract_policy": dict(payload.retrieval_contract_policy or {}),
         "retrieval_contract_deterministic_recall": bool(payload.contract_deterministic_recall),
         "contract_diagnostics": {

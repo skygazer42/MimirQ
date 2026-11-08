@@ -332,7 +332,7 @@ def verify_evidence_capsule_payload(
     require_sig = bool(settings.EVIDENCE_CAPSULE_REQUIRE_SIGNATURE_ON_PERSIST)
     ok, reason = validate_evidence_capsule(body.capsule, strict=strict, verify_signature=require_sig)
     return EvidenceCapsuleVerifyResponse(
-        capsule_id=(str(body.capsule_id or "").strip() or None),
+        capsule_id=(body.capsule_id),
         valid=bool(ok),
         reason=str(reason),
     )

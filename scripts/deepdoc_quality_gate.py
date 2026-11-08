@@ -508,7 +508,7 @@ async def run_gate(
                 rows.append(
                     {
                         "kind": kind,
-                        "variant": variant or None,
+                        "variant": (variant),
                         "case_id": case.get("id"),
                         "question": question,
                         "ok": 200 <= status < 300,

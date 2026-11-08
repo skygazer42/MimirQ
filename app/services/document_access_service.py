@@ -213,7 +213,7 @@ def get_document_access(
 
     return DocumentAccessInfo(
         mode=mode,
-        owner_id=document.owner_id or None,
+        owner_id=document.owner_id,
         partial_member_list=partial_members,
         partial_group_list=partial_groups,
     )
@@ -280,7 +280,7 @@ def update_document_access(
 
     return DocumentAccessInfo(
         mode=mode,
-        owner_id=document.owner_id or None,
+        owner_id=document.owner_id,
         partial_member_list=partial_members,
         partial_group_list=partial_groups,
     )

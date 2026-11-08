@@ -65,7 +65,7 @@ def assert_document_asset_readable(
     if document.dataset_id is None:
         dataset_service.ensure_member(db, tenant_id, account_id)
     else:
-        dataset = dataset or dataset_service.get_dataset(db, tenant_id, document.dataset_id)
+        dataset = dataset if dataset is not None else dataset_service.get_dataset(db, tenant_id, document.dataset_id)
         dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(
         db,

@@ -212,17 +212,17 @@ def _clean_preview_rule_stats(
     rule_hits: list[int],
 ) -> list[dict[str, object]]:
     rule_stats: list[dict[str, object]] = []
-    for i, rule in enumerate(rules or []):
+    for i, rule in enumerate(rules):
         meta = rule_meta[i] if i < len(rule_meta) and isinstance(rule_meta[i], dict) else {}
         rule_stats.append(
             {
                 "index": i,
-                "pattern": str(getattr(rule, "pattern", "") or ""),
+                "pattern": rule.pattern,
                 "repl": (getattr(rule, "repl", "") if isinstance(getattr(rule, "repl", ""), str) else ""),
-                "flags": int(getattr(rule, "flags", 0) or 0),
+                "flags": rule.flags,
                 "hits": int(rule_hits[i] if i < len(rule_hits) else 0),
-                "source": str(meta.get("source") or "") or None,
-                "pack": str(meta.get("pack") or "") or None,
+                "source": meta.get("source"),
+                "pack": meta.get("pack"),
             }
         )
     return rule_stats
@@ -336,7 +336,7 @@ def _detect_preview_language(text: str, body: CleanPreviewRequest) -> tuple[str 
         return None, None
     try:
         lang = detect_language(text, min_chars=int(body.language_min_chars or 0))
-        language = str(lang.language or "").strip() or None
+        language = lang.language
         confidence = float(lang.confidence or 0.0)
         return language, confidence
     except Exception:
@@ -547,7 +547,7 @@ def _llm_clean_model_config(body: LLMCleanPreviewRequest) -> dict[str, object] |
         model_config["model"] = body.model
     if body.temperature is not None:
         model_config["temperature"] = body.temperature
-    return model_config or None
+    return model_config
 
 
 async def _request_llm_clean_preview(

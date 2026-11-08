@@ -35,11 +35,11 @@ def prepare_hybrid_cache_scope(
     cache_ttl: int,
     semantic_cache_ttl: int,
 ) -> HybridCacheScopeDecision:
-    account_id0 = (account_id or "").strip()
+    account_id0 = (account_id if account_id is not None else "").strip()
     dataset_id0 = str(dataset_scope_ids[0]) if len(dataset_scope_ids) == 1 else None
     pipeline_parts = sorted({str(value or "").strip() for value in runtime_pipeline_values if str(value or "").strip()})
-    pipeline_key = ",".join(pipeline_parts) or (embedding_space or None)
-    doc_ids = [str(document_id) for document_id in (document_ids or [])]
+    pipeline_key = ",".join(pipeline_parts) if pipeline_parts else embedding_space
+    doc_ids = [str(document_id) for document_id in (document_ids if document_ids is not None else [])]
 
     cache_eligible = bool(cache_enabled)
     distributed_singleflight_eligible = bool(distributed_singleflight_enabled)

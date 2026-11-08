@@ -259,7 +259,7 @@ def test_normalize_document_elements_characterizes_markdown_and_derived_image_ou
             "confidence": None,
             "source_backend": None,
             "source_element_id": None,
-            "attributes": None,
+            "attributes": {},
         },
         {
             "id": "paragraph:1:0:image:0",
@@ -290,7 +290,7 @@ def test_normalize_document_elements_characterizes_markdown_and_derived_image_ou
             "confidence": None,
             "source_backend": None,
             "source_element_id": None,
-            "attributes": None,
+            "attributes": {},
         },
         {
             "id": "paragraph:2:1:derived:0",

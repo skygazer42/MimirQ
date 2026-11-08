@@ -44,7 +44,7 @@ def _extract_version(text: str) -> str | None:
     m = _VERSION_RE.search(head)
     if not m:
         return None
-    return (m.group("val") or "").strip()[:40] or None
+    return m.group("val").strip()[:40]
 
 
 def _build_service_blocks(text: str) -> list[_ServiceBlock]:

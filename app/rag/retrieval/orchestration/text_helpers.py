@@ -80,7 +80,7 @@ def guess_retrieval_mode(query: str) -> str:
 
 
 def _iter_citation_dicts(citations: list[dict[str, Any]] | None) -> Iterator[dict[str, Any]]:
-    for citation in (citations or []) if isinstance(citations, list) else []:
+    for citation in (citations if citations is not None else []) if isinstance(citations, list) else []:
         if isinstance(citation, dict):
             yield citation
 
@@ -125,7 +125,7 @@ def build_abstain_followup(
 ) -> dict[str, Any]:
     max_options = max(0, int(max_options or 0))
     options = _abstain_followup_options(citations, max_options=max_options)
-    r = str(reason or "").strip()
+    r = str((reason if reason is not None else "")).strip()
     if r == "citations_lt_min":
         return {
             "type": "refine_query",

@@ -177,7 +177,7 @@ def build_parsing_proof_summary(batch_payload: Any) -> dict[str, Any]:
         mrr = _coerce_float(case_summary.get("mrr"))
         case_id = str(case.get("id") or "").strip()
         row: _CaseSummary = {
-            "id": case_id or None,
+            "id": (case_id),
             "hit_at_k": hit,
             "mrr": mrr,
         }

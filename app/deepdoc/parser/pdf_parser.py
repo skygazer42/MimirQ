@@ -30,7 +30,6 @@ from timeit import default_timer as timer
 import numpy as np
 import pdfplumber  # Extract PDF page info, text characters, coordinates, TOC, etc.
 import trio  # Async concurrency (multi-page async OCR).
-import xgboost as xgb  # Paragraph merge prediction model.
 from PIL import Image
 from pypdf import PdfReader as pdf2_read
 
@@ -122,12 +121,6 @@ def vision_llm_describe_cn_prompt(page=None) -> str:
     return prompt_cn
 
 
-def get_default_resource_dir():
-    """
-    Return the repo-bundled paragraph-concat model directory.
-    """
-    resource_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../resources/models/xgboost"))
-    return resource_dir
 
 
 def clean_markdown_block(text):
@@ -174,40 +167,8 @@ def _ensure_vision_runtime():
     return OCR, LayoutRecognizer, TableStructureRecognizer, Recognizer
 
 
-def _updown_concat_model_candidates(model_dir: str | os.PathLike[str]) -> list[Path]:
-    roots: list[Path] = []
-    for candidate_root in (
-        Path(__file__).resolve().parent.parent / "resources/data_parser/qieci",
-        Path(model_dir),
-    ):
-        resolved = candidate_root.resolve(strict=False)
-        if resolved not in roots:
-            roots.append(resolved)
-
-    candidates: list[Path] = []
-    for root in roots:
-        candidates.extend(
-            [
-                root / "updown_concat_xgb.ubj",
-                root / "updown_concat_xgb.json",
-                root / "updown_concat_xgb.model",
-            ]
-        )
-    return candidates
 
 
-def _load_updown_concat_model(booster: xgb.Booster, model_dir: str | os.PathLike[str]) -> Path:
-    errors: list[str] = []
-    for candidate in _updown_concat_model_candidates(model_dir):
-        if not candidate.exists():
-            continue
-        try:
-            booster.load_model(str(candidate))
-            return candidate
-        except Exception as exc:  # noqa: BLE001
-            errors.append(f"{candidate.name}: {str(exc)[:200]}")
-    joined = "; ".join(errors) or "no compatible model file found"
-    raise RuntimeError(joined)
 
 
 class IntegratedPipelinePdfParser:
@@ -237,24 +198,6 @@ class IntegratedPipelinePdfParser:
             self.layouter = layout_cls("layout")  # Initialize layout recognizer with default model
         self.tbl_det = table_cls()  # Initialize table structure recognizer
 
-        self.updown_cnt_mdl = xgb.Booster()  # Initialize xgboost model for paragraph concatenation prediction
-        self._updown_cnt_model_error = ""
-        try:
-            # Prefer repo-bundled UBJ/JSON artifacts so newer xgboost versions can
-            # still load the paragraph-concatenation model without deprecated
-            # legacy-binary support.
-            model_dir = get_default_resource_dir()
-            _load_updown_concat_model(self.updown_cnt_mdl, model_dir)
-        except Exception as exc:
-            self._updown_cnt_model_error = f"local={str(exc)[:200]}"
-            logging.warning(
-                (
-                    "IntegratedPipelinePdfParser paragraph-concat model unavailable; "
-                    "continuing with heuristic-only merging: %s"
-                ),
-                self._updown_cnt_model_error,
-            )
-            self.updown_cnt_mdl = None
         # Set page starting number
         self.page_from = 0
 
@@ -369,26 +312,6 @@ class IntegratedPipelinePdfParser:
         ]
 
     # Build features between two text blocks to determine if they should be merged
-    def _updown_concat_features(self, up, down):
-        w = max(self.__char_width(up), self.__char_width(down))
-        h = max(self.__height(up), self.__height(down))
-        y_dis = self._y_dis(up, down)
-        LEN = 6
-        # Extract partial content from upper and lower texts and tokenize
-        tks_down = rag_tokenizer.tokenize(down["text"][:LEN]).split()
-        tks_up = rag_tokenizer.tokenize(up["text"][-LEN:]).split()
-        # Construct a concatenated text in the middle and tokenize (considering connectors)
-        tks_all = self._concat_text_middle(up["text"], down["text"], LEN)
-        tks_all = rag_tokenizer.tokenize(tks_all).split()
-        # Build feature vector: includes position info, text features, pattern matching, same row status, etc.
-        return (
-            self._updown_layout_features(up, down, y_dis, h)
-            + self._updown_text_features(up, down)
-            + self._updown_geometry_features(up, down, w)
-            + self._updown_token_features(tks_up, tks_down, tks_all)
-            + [max(down["in_row"], up["in_row"]), abs(down["in_row"] - up["in_row"])]
-            + self._updown_token_noun_features(tks_up, tks_down)
-        )
 
     @staticmethod
     def sort_x_by_page(arr, threashold):
@@ -796,20 +719,6 @@ class IntegratedPipelinePdfParser:
             return None
         return up.get("layoutno", "1") == down.get("layoutno", "2")
 
-    def _predict_downward_concat(self, up, down):
-        if self.updown_cnt_mdl is None:
-            return True
-        fea = self._updown_concat_features(up, down)
-        try:
-            return self.updown_cnt_mdl.predict(xgb.DMatrix([fea]))[0] > 0.5
-        except Exception as exc:
-            self._updown_cnt_model_error = str(exc)[:200]
-            logging.warning(
-                "IntegratedPipelinePdfParser paragraph-concat prediction failed; disabling model: %s",
-                self._updown_cnt_model_error,
-            )
-            self.updown_cnt_mdl = None
-            return False
 
     def _downward_concat_action(self, up, down, offset, concat_between_pages):
         ydis = self._y_dis(up, down)
@@ -823,7 +732,7 @@ class IntegratedPipelinePdfParser:
         same_layout = self._same_text_layout_concat(up, down, offset)
         if same_layout is not None:
             return "concat" if same_layout else "skip"
-        return "concat" if self._predict_downward_concat(up, down) else "skip"
+        return "concat"
 
     def _collect_downward_block(self, boxes, concat_between_pages):
         chunks = []

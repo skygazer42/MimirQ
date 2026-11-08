@@ -429,6 +429,7 @@ def test_delete_document_file_skips_malformed_minio_uri(monkeypatch: pytest.Monk
         dataset_id=uuid.uuid4(),
         file_type="pdf",
         file_path="minio://missing-object",
+        doc_metadata={},
     )
 
     dls._delete_document_file(tenant_id=uuid.uuid4(), document=document)

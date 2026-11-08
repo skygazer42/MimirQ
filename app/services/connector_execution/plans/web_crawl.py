@@ -95,12 +95,10 @@ def _web_crawl_extract_token_part(token: str | None, *, key: str) -> str | None:
 
 def _web_crawl_build_doc_sync_token(*, source_url: str, doc: Document, crawl_token: str | None = None) -> str:
     meta = dict(doc.doc_metadata or {})
-    etag = str(meta.get("source_etag") or "").strip() or None
-    last_modified = (
-        str(meta.get("source_last_modified_raw") or meta.get("source_last_modified_at") or "").strip() or None
-    )
-    body_sha = str(meta.get("file_sha256") or "").strip().lower() or None
-    if not body_sha:
+    etag = meta.get("source_etag")
+    last_modified = meta.get("source_last_modified_raw", meta.get("source_last_modified_at"))
+    body_sha = meta.get("file_sha256")
+    if body_sha is None:
         body_sha = _web_crawl_extract_token_part(crawl_token, key="body_sha256")
 
     token = _web_crawl_content_fingerprint(
@@ -129,7 +127,7 @@ def _web_crawl_source_manifest(urls: list[str], *, sync_tokens: dict[str, str] |
             continue
         out[url] = _web_crawl_content_fingerprint(
             url=url,
-            crawl_sync_token=str(token_map.get(url) or "").strip() or None,
+            crawl_sync_token=token_map.get(url),
         )
     return out
 

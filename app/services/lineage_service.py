@@ -185,11 +185,11 @@ def authorize_answer_lineage_access(
     return len(allowed_ids) == len(citation_doc_ids)
 
 
-def _hash_permission_ids(permissions: Iterable[DocumentPermission] | None, *, max_items: int = 200) -> list[str]:
+def _hash_permission_ids(permissions: Iterable[DocumentPermission], *, max_items: int = 200) -> list[str]:
     rows: list[tuple[str, str]] = []
     seen: set[str] = set()
     limit = max(0, int(max_items or 0))
-    for raw in permissions or []:
+    for raw in permissions:
         account_id = _safe_str(raw.account_id, max_len=255)
         if not account_id:
             continue
@@ -360,9 +360,9 @@ def summarize_chunk_retrieval_usage_from_records(
 
     hits.sort(
         key=lambda item: (
-            -int(item.get("ts_ms") or 0),
+            -item["ts_ms"],
             str(item.get("request_id") or ""),
-            int(item.get("citation_index") or 0),
+            item["citation_index"],
         )
     )
 
@@ -407,8 +407,8 @@ def build_chunk_lineage_payload(
     *,
     chunk: DocumentChunk,
     document: DBDocument,
-    permissions: Iterable[DocumentPermission] | None = None,
-    retrieval_usage: Mapping[str, Any] | None = None,
+    permissions: Iterable[DocumentPermission],
+    retrieval_usage: Mapping[str, Any],
 ) -> dict[str, Any]:
     doc_meta = _safe_dict(document.doc_metadata)
     chunk_meta = _safe_dict(chunk.doc_metadata)
@@ -434,7 +434,7 @@ def build_chunk_lineage_payload(
             "end_char": _to_int(chunk.end_char),
             "vector_id": _safe_str(chunk.vector_id, max_len=255),
             "chunk_role": _safe_str(chunk_meta.get("chunk_role"), max_len=80),
-            "chunk_quality": _safe_dict(chunk_meta.get("chunk_quality")) or None,
+            "chunk_quality": chunk_meta.get("chunk_quality"),
         },
         "document": {
             "document_id": str(document.id),
@@ -459,14 +459,14 @@ def build_chunk_lineage_payload(
             ),
             "permission_count": len(permission_hashes),
             "permission_hashes": permission_hashes,
-            "effective_access": effective_access or None,
-            "source_acl": source_acl or None,
+            "effective_access": effective_access,
+            "source_acl": source_acl,
         },
         "pipeline": {
             "active_pipeline_hash": active_pipeline_hash,
             "version": _extract_pipeline_version(doc_meta, active_pipeline_hash=active_pipeline_hash),
         },
-        "retrieval_usage": dict(retrieval_usage or {}),
+        "retrieval_usage": dict(retrieval_usage),
     }
     return payload
 

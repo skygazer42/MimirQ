@@ -211,7 +211,7 @@ class DeterministicQueryExpansions:
 class KGQueryScope:
     tenant_id: UUID | None
     account_id: str | None
-    document_ids: tuple[UUID, ...] = ()
+    document_ids: tuple[UUID, ...] | None = None
     dataset_id: UUID | None = None
     dataset_ids: tuple[UUID, ...] = ()
 

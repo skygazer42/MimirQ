@@ -36,12 +36,8 @@ class LotusAvailability:
     reason: str | None = None
 
 
-def lotus_available() -> LotusAvailability:
-    """
-    Backwards-compatible guard used by the tables API.
-
-    This returns whether semantic ops are *runnable* in the current environment.
-    """
+def get_lotus_availability() -> LotusAvailability:
+    """Return semantic-operation configuration eligibility and its reason without a provider probe."""
     if not settings.TABLE_LOTUS_ENABLED:
         return LotusAvailability(ok=False, reason="TABLE_LOTUS_ENABLED=false")
     if not (settings.LLM_API_KEY or "").strip():
@@ -286,4 +282,4 @@ def sem_filter(
         return df.loc[keep_idx]
 
 
-__all__ = ["LotusAvailability", "lotus_available", "sem_filter"]
+__all__ = ["LotusAvailability", "get_lotus_availability", "sem_filter"]

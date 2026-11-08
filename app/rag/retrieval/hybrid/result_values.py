@@ -24,7 +24,7 @@ def candidate_metadata_from_doc(meta: dict[str, Any], *, chunk_id: Any = None) -
         "page": meta.get("page"),
         "page_number": meta.get("page_number"),
         "chunk_index": meta.get("chunk_index"),
-        "chunk_id": meta.get("chunk_id") or chunk_id,
+        "chunk_id": (meta.get("chunk_id", chunk_id)),
         "img_id": meta.get("img_id"),
         "image_id": meta.get("image_id"),
         "image_url": meta.get("image_url"),

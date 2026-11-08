@@ -78,7 +78,7 @@ def _enabled() -> bool:
 
 
 def _norm_provider(value: str | None) -> str:
-    s = str(value or "").strip().lower()
+    s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
     s = (s[:40] or "").strip("_")
     if not s:
@@ -91,7 +91,7 @@ def _norm_provider(value: str | None) -> str:
 
 
 def _norm_outcome(value: str | None, *, allowed: set[str], fallback: str) -> str:
-    s = str(value or "").strip().lower()
+    s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
     s = (s[:24] or "").strip("_")
     if not s:

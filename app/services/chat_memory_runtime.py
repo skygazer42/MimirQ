@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.chat import Conversation, Message
 from app.rag.core.logging import get_logger
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 
 logger = get_logger("services.chat_memory_runtime")
 
@@ -23,7 +23,7 @@ def _retrieve_long_term_messages(
     """Rank matching recent conversation messages in the database without a local index."""
     if not query.strip() or top_k <= 0:
         return []
-    terms = list(dict.fromkeys(token.lower() for token in tokenize_for_bm25(query) if token))[:32]
+    terms = list(dict.fromkeys(token.lower() for token in tokenize_lexical_text(query) if token))[:32]
     if not terms:
         return []
     max_messages = settings.LONG_TERM_MEMORY_MAX_MESSAGES

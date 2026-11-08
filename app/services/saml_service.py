@@ -452,7 +452,7 @@ def exchange_saml_response(
     token, expires_in = create_access_token(
         str(user.id),
         tenant_id=str(tenant_id) if tenant_id else None,
-        extra_claims=extra_claims or None,
+        extra_claims=extra_claims,
     )
     return SamlExchangeResponse(
         user=UserPublic.model_validate(user),

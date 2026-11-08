@@ -35,8 +35,8 @@ def create_run(
     run = IngestionRun(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
-        kind=(kind or "unknown")[:80],
-        requested_by=(requested_by[:255] if requested_by else None),
+        kind=kind[:80],
+        requested_by=requested_by[:255] if requested_by is not None else None,
         status="running",
         config=dict(config),
         stats=_init_run_stats({}),
@@ -288,7 +288,7 @@ def _failure_reason(error_message: object) -> str:
 
 
 def _init_run_stats(stats: dict[str, Any] | None) -> dict[str, Any]:
-    base = dict(stats or {})
+    base = dict((stats if stats is not None else {}))
     base.setdefault("v", "1")
     base.setdefault("total_documents", 0)
     base.setdefault("status_counts", {})
@@ -472,7 +472,7 @@ def _update_progress_and_finalize_run(
 
 def _bounded_reason_counts(reasons: list[object] | tuple[object, ...] | None) -> dict[str, int]:
     counts: dict[str, int] = {}
-    for reason in reasons or []:
+    for reason in reasons if reasons is not None else []:
         key = _failure_reason(reason)
         _bump_counter(counts, key, +1)
     if len(counts) > 25:

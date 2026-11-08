@@ -135,21 +135,63 @@ def evaluate_parse_quality_gate(
     )
 
     watermark_removed = max(
-        0, int(_first_int(watermark.get("removed_count"), source.get("watermark_removed_count")) or 0)
+        0,
+        int(
+            (
+                removed_count_value
+                if (
+                    removed_count_value := _first_int(
+                        watermark.get("removed_count"), source.get("watermark_removed_count")
+                    )
+                )
+                is not None
+                else 0
+            )
+        ),
     )
     watermark_input = max(
         0,
         int(
-            _first_int(watermark.get("input_count"), watermark.get("total_count"), source.get("watermark_input_count"))
-            or 0
+            (
+                input_count_value
+                if (
+                    input_count_value := _first_int(
+                        watermark.get("input_count"), watermark.get("total_count"), source.get("watermark_input_count")
+                    )
+                )
+                is not None
+                else 0
+            )
         ),
     )
     watermark_ratio = (float(watermark_removed) / float(watermark_input)) if watermark_input > 0 else None
 
     reading_changed = bool(_coerce_bool(reading_order.get("changed")) is True)
-    reading_items = max(0, int(_first_int(reading_order.get("items"), source.get("reading_order_items")) or 0))
+    reading_items = max(
+        0,
+        int(
+            (
+                items_value
+                if (items_value := _first_int(reading_order.get("items"), source.get("reading_order_items")))
+                is not None
+                else 0
+            )
+        ),
+    )
     reading_column_pages = max(
-        0, int(_first_int(reading_order.get("column_pages"), source.get("reading_order_column_pages")) or 0)
+        0,
+        int(
+            (
+                column_pages_value
+                if (
+                    column_pages_value := _first_int(
+                        reading_order.get("column_pages"), source.get("reading_order_column_pages")
+                    )
+                )
+                is not None
+                else 0
+            )
+        ),
     )
 
     low_confidence_spans = _low_confidence_span_count(source)
@@ -242,7 +284,7 @@ def evaluate_parse_quality_gate(
 
 
 def apply_parse_quality_gate_metadata(meta: Mapping[str, Any] | None) -> dict[str, Any]:
-    out = dict(meta or {})
+    out = dict((meta if meta is not None else {}))
     decision = evaluate_parse_quality_gate(out)
     gate = decision.to_metadata()
     out["parse_quality_gate"] = gate

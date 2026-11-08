@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.rag.preprocessing.tokenization import tokenize_for_bm25
+from app.rag.preprocessing.tokenization import tokenize_lexical_text
 from app.rag.retrieval.hybrid.common import (
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     _log_retriever_fallback,
@@ -121,10 +121,10 @@ class LexicalDBMixin:
         return scoped
 
     @classmethod
-    def _lexical_dataset_scope(cls, metadata_filter: dict[str, Any] | None) -> tuple[list[UUID] | None, str | None]:
+    def _lexical_dataset_scope(cls, metadata_filter: dict[str, Any] | None) -> tuple[list[UUID], str | None]:
         dataset_uuids = cls._collect_lexical_dataset_scope(metadata_filter)
         dataset_str = str(dataset_uuids[0]) if dataset_uuids else None
-        return (dataset_uuids or None), dataset_str
+        return dataset_uuids, dataset_str
 
     @staticmethod
     def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
@@ -149,7 +149,7 @@ class LexicalDBMixin:
 
         candidates: list[str] = []
         seen: set[str] = set()
-        for token in tokenize_for_bm25(text):
+        for token in tokenize_lexical_text(text):
             term = str(token or "").strip()
             if len(term) < 2:
                 continue

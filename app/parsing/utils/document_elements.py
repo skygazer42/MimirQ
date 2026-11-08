@@ -45,11 +45,6 @@ def _normalize_string(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
-def _clean_optional_string(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None
-
-
 def _get_metadata(item: Any) -> dict[str, Any]:
     if isinstance(item, Mapping):
         meta = item.get("metadata")
@@ -219,7 +214,7 @@ def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
         safe_value = _json_safe(value)
         if safe_value is not None:
             attrs[str(key)] = safe_value
-    return attrs or None
+    return attrs
 
 
 def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | None) -> str | None:
@@ -324,7 +319,7 @@ def _normalize_markdown_image_elements(
         position = positioned[index] if index < len(positioned) else {}
         attrs = {
             "src": ref["src"],
-            "alt": ref["alt"] or None,
+            "alt": ref["alt"],
             "source_content_type": "markdown_image",
         }
         text_value = ref["alt"] or Path(ref["src"]).name or "Image"
@@ -337,7 +332,7 @@ def _normalize_markdown_image_elements(
                 "kind": "image",
                 "page": position.get("page") or parent_page,
                 "pages": None,
-                "visual_kind": visual_kind or None,
+                "visual_kind": visual_kind,
                 "text": text_value,
                 "bbox": position.get("bbox"),
                 "confidence": None,
@@ -379,7 +374,7 @@ def _extract_derived_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | Non
         safe_value = _json_safe(value)
         if safe_value is not None:
             attrs[str(key)] = safe_value
-    return attrs or None
+    return attrs
 
 
 def _resolve_source_fields(
@@ -387,12 +382,12 @@ def _resolve_source_fields(
     *,
     attributes: Mapping[str, Any] | None,
 ) -> tuple[str | None, str | None]:
-    source_backend = _clean_optional_string(raw.get("source_backend"))
+    source_backend = raw.get("source_backend")
     if source_backend is None and isinstance(attributes, Mapping):
-        source_backend = _clean_optional_string(attributes.get("source_backend"))
-    source_element_id = _clean_optional_string(raw.get("source_element_id"))
+        source_backend = attributes.get("source_backend")
+    source_element_id = raw.get("source_element_id")
     if source_element_id is None and isinstance(attributes, Mapping):
-        source_element_id = _clean_optional_string(attributes.get("source_element_id"))
+        source_element_id = attributes.get("source_element_id")
     return source_backend, source_element_id
 
 
@@ -458,8 +453,8 @@ def _normalize_single_derived_element(
         "kind": kind,
         "page": page,
         "pages": pages,
-        "visual_kind": visual_kind or None,
-        "text": text or None,
+        "visual_kind": visual_kind,
+        "text": text,
         "bbox": bbox,
         "confidence": confidence,
         "source_backend": source_backend,
@@ -496,12 +491,12 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
         pages = _extract_pages(meta)
         bbox = _extract_bbox(meta)
         attributes = _extract_attributes(meta)
-        source_backend = _clean_optional_string(meta.get("source_backend"))
+        source_backend = meta.get("source_backend")
         if source_backend is None and isinstance(attributes, Mapping):
-            source_backend = _clean_optional_string(attributes.get("source_backend"))
-        source_element_id = _clean_optional_string(meta.get("source_element_id"))
+            source_backend = attributes.get("source_backend")
+        source_element_id = meta.get("source_element_id")
         if source_element_id is None and isinstance(attributes, Mapping):
-            source_element_id = _clean_optional_string(attributes.get("source_element_id"))
+            source_element_id = attributes.get("source_element_id")
         visual_kind = _infer_visual_kind(kind=kind, text=text, attributes=attributes)
         if visual_kind:
             attrs = dict(attributes or {})
@@ -525,8 +520,8 @@ def normalize_document_elements(items: Iterable[Document | Mapping[str, Any]] | 
                 "kind": kind,
                 "page": page,
                 "pages": pages,
-                "visual_kind": visual_kind or None,
-                "text": text or None,
+                "visual_kind": visual_kind,
+                "text": text,
                 "bbox": bbox,
                 "confidence": confidence,
                 "source_backend": source_backend,

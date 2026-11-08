@@ -203,9 +203,8 @@ async def _enqueue_kg_extraction_response(
     try:
         from app.tasks.queue import enqueue_kg_extraction
 
-        raw_pipeline_hash = effective.pipeline_hash or (document.doc_metadata or {}).get("pipeline_hash") or None
-        pipeline_hash_for_job = (str(raw_pipeline_hash).strip() or None) if raw_pipeline_hash is not None else None
-        pipeline_job_label = pipeline_hash_for_job or "unversioned"
+        pipeline_hash_for_job = effective.pipeline_hash
+        pipeline_job_label = "unversioned" if pipeline_hash_for_job is None else pipeline_hash_for_job
         frozen_extract_relations = (
             effective.extract_relations
             if isinstance(effective.extract_relations, bool)

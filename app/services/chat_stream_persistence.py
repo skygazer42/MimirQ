@@ -92,9 +92,9 @@ def dispatch_chat_stream_persistence(
     )
 
     should_update_summary = (
-        bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED)
-        and bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE)
-        and bool(options.enable_summary_memory)
+        settings.PERSISTENT_SUMMARY_MEMORY_ENABLED
+        and settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE
+        and options.enable_summary_memory
         and bool(options.conversation_id)
     )
     if should_update_summary:
@@ -127,9 +127,9 @@ async def persist_chat_stream_turn_background(
     options: ChatStreamPersistInput,
 ) -> None:
     should_update_summary = (
-        bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED)
-        and bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE)
-        and bool(options.enable_summary_memory)
+        settings.PERSISTENT_SUMMARY_MEMORY_ENABLED
+        and settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE
+        and options.enable_summary_memory
     )
 
     def _persist_sync() -> bool:
@@ -138,7 +138,7 @@ async def persist_chat_stream_turn_background(
 
             db2 = SessionLocal()
             try:
-                metrics2 = dict(options.metrics or {})
+                metrics2 = dict(options.metrics)
                 store_chat_response_cache_if_needed(
                     cache_eligible=options.cache_eligible,
                     cache_hit=options.cache_hit,

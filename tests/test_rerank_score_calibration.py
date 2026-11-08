@@ -63,7 +63,7 @@ def test_post_rerank_score_calibration_can_reorder_using_retrieval_signal(monkey
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ENABLED", True, raising=False)
     monkeypatch.setattr(settings, "EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA", 0.2, raising=False)
 
-    doc_id = "doc"
+    doc_id = "00000000-0000-0000-0000-000000000001"
     d1 = Document(page_content="a", id="a", metadata={"document_id": doc_id, "chunk_id": "a", "score": 0.95})
     d2 = Document(page_content="b", id="b", metadata={"document_id": doc_id, "chunk_id": "b", "score": 0.20})
     monkeypatch.setattr(orch_mod, "hybrid_retriever", _FakeRetriever(docs=[d1, d2]), raising=True)

@@ -41,7 +41,7 @@ class _LazySummaryMeta(TypedDict):
     errors: int
 
 
-def _should_run_community_detection(*, config: SearchConfig, query_mode: str) -> tuple[bool, list[str]]:
+def _evaluate_community_detection_gate(*, config: SearchConfig, query_mode: str) -> tuple[bool, list[str]]:
     """
     Gate community detection so normal KG search stays fast by default.
 
@@ -62,7 +62,7 @@ def _should_run_community_detection(*, config: SearchConfig, query_mode: str) ->
     return True, ["enabled"]
 
 
-def _should_skip_expand_for_latency(
+def _evaluate_expansion_skip_policy(
     *,
     config: SearchConfig,
     query_mode: str,
@@ -120,7 +120,7 @@ def _community_scope(*, config: SearchConfig, community_id: str, query: str, rep
     return {
         "tenant_id": str(config.tenant_id) if config.tenant_id else None,
         "dataset_id": str(config.dataset_id) if config.dataset_id else None,
-        "document_ids": [str(doc_id) for doc_id in (config.document_ids or [])],
+        "document_ids": None if config.document_ids is None else [str(doc_id) for doc_id in config.document_ids],
         "community_id": community_id,
         "query": query,
         "report_payload": report,
@@ -157,7 +157,8 @@ async def _generate_lazy_summary(
     max_entries: int,
     meta: _LazySummaryMeta,
 ) -> "BaseLLMClient":
-    llm_client = llm_client or await create_llm_client(scenario="kg_community_summary")
+    if llm_client is None:
+        llm_client = await create_llm_client(scenario="kg_community_summary")
     summary = await lazy_summarize(
         community_report=report,
         query=query,
@@ -349,7 +350,7 @@ async def _community_summary_pass(
     community_meta: dict[str, Any] = {"enabled": False, "used": False, "reason_codes": []}
     community_reports: list[dict[str, Any]] = []
     global_summary = ""
-    should_run, why = _should_run_community_detection(config=config, query_mode=query_mode)
+    should_run, why = _evaluate_community_detection_gate(config=config, query_mode=query_mode)
     community_meta["enabled"] = bool(settings.KG_COMMUNITY_ENABLED)
     community_meta["reason_codes"] = list(why)
     if not should_run:
@@ -530,7 +531,7 @@ async def _search_impl(config: SearchConfig) -> dict[str, Any]:
 
     # expand
     t0 = time.perf_counter()
-    skip_expand, expand_skipped_reason = _should_skip_expand_for_latency(
+    skip_expand, expand_skipped_reason = _evaluate_expansion_skip_policy(
         config=config,
         query_mode=query_mode,
         recalled_event_count=len(recall_result.event_ids or []),

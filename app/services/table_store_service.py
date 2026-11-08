@@ -180,7 +180,7 @@ def _jsonify_value(v: Any) -> Any:
 
 
 def _stable_row_hash(row: dict[str, Any], *, exclude_keys: set[str] | None = None) -> str:
-    excluded = set(exclude_keys or set())
+    excluded = set((exclude_keys if exclude_keys else set()))
     payload: dict[str, Any] = {}
     for key in sorted(row.keys()):
         key_s = str(key)
@@ -564,16 +564,16 @@ def _write_single_sheet(
         table_id=table_id,
         document_id=context.document_id,
         sheet_index=options.sheet_index,
-        sheet_name=(options.sheet_name if options.sheet_name else None),
+        sheet_name=options.sheet_name,
         sql_table=sql_table,
         row_count=rows,
         col_count=cols,
         truncated=options.truncated,
         columns=_df_columns(df),
         sample_rows=_df_sample_rows(df, sample_rows=options.sample_rows),
-        row_source_table=(options.row_source_table.strip() if options.row_source_table else None),
-        row_source_sync_token=(options.row_source_sync_token.strip() if options.row_source_sync_token else None),
-        row_source_pk_hash_col=(options.row_source_pk_hash_col.strip() if options.row_source_pk_hash_col else None),
+        row_source_table=options.row_source_table,
+        row_source_sync_token=options.row_source_sync_token,
+        row_source_pk_hash_col=options.row_source_pk_hash_col,
     )
     return [asset]
 
@@ -974,8 +974,8 @@ def _db_snapshot_write_options(
         sheet_name=sheet_name,
         truncated=False,
         sample_rows=sample_rows,
-        row_source_table=str(snap.get("source_table") or "").strip() or None,
-        row_source_sync_token=str(snap.get("source_sync_token") or "").strip() or None,
+        row_source_table=snap.get("source_table"),
+        row_source_sync_token=snap.get("source_sync_token"),
         row_source_pk_hash_col=pk_hash_col,
     )
 
@@ -1067,9 +1067,9 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
                 truncated=bool(t.get("truncated") or False),
                 columns=list(t.get("columns") or []),
                 sample_rows=list(t.get("sample_rows") or []),
-                row_source_table=(str(t.get("row_source_table") or "").strip() or None),
-                row_source_sync_token=(str(t.get("row_source_sync_token") or "").strip() or None),
-                row_source_pk_hash_col=(str(t.get("row_source_pk_hash_col") or "").strip() or None),
+                row_source_table=t.get("row_source_table"),
+                row_source_sync_token=t.get("row_source_sync_token"),
+                row_source_pk_hash_col=t.get("row_source_pk_hash_col"),
             )
         )
     return out
@@ -1095,12 +1095,18 @@ def evaluate_planner_execution_mismatch(
     executed_sql: str,
 ) -> TablePlannerExecutionMismatch:
     planner = planner_diagnostics if isinstance(planner_diagnostics, dict) else {}
-    expected_fp = str(expected_sql_fingerprint or planner.get("sql_fingerprint") or "").strip()
-    actual_fp = fingerprint_sql(str(executed_sql or ""), length=16)
+    expected_fp = expected_sql_fingerprint
+    if expected_fp is not None:
+        expected_fp = expected_fp.strip()
+    if not expected_fp:
+        expected_fp = planner.get("sql_fingerprint")
+        if expected_fp is not None:
+            expected_fp = expected_fp.strip()
+    actual_fp = fingerprint_sql(executed_sql, length=16)
     mismatch_reasons: list[str] = []
 
     expected_tables = [str(v).strip() for v in (planner.get("selected_tables") or []) if str(v).strip()]
-    actual_tables = _extract_sql_table_refs(str(executed_sql or ""))
+    actual_tables = _extract_sql_table_refs(executed_sql)
 
     if expected_fp and actual_fp and expected_fp != actual_fp:
         mismatch_reasons.append("sql_fingerprint_mismatch")
@@ -1111,8 +1117,8 @@ def evaluate_planner_execution_mismatch(
             mismatch_reasons.append("sql_table_set_mismatch")
 
     return {
-        "expected_sql_fingerprint": expected_fp or None,
-        "actual_sql_fingerprint": actual_fp or None,
+        "expected_sql_fingerprint": expected_fp,
+        "actual_sql_fingerprint": actual_fp,
         "expected_tables": expected_tables,
         "actual_tables": actual_tables,
         "mismatch": bool(mismatch_reasons),
@@ -1163,7 +1169,7 @@ def _normalize_table_query_sql(raw_sql: str, *, limit: int) -> str:
 
 def _query_allowed_tables(*, sql_table: str, allowed_sql_tables: list[str] | None) -> set[str]:
     allowed_tables = {sql_table}
-    for raw in allowed_sql_tables or []:
+    for raw in allowed_sql_tables if allowed_sql_tables is not None else []:
         name = str(raw or "").strip()
         if name:
             allowed_tables.add(name)

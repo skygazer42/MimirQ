@@ -67,7 +67,7 @@ def _iter_lines(text: str) -> list[_Line]:
     return out
 
 
-def _is_adornment(plain: str) -> str | None:
+def _detect_adornment_character(plain: str) -> str | None:
     s = (plain or "").strip()
     if len(s) < 3:
         return None
@@ -94,11 +94,11 @@ def _iter_headings(text: str) -> list[RstHeading]:
         ln = lines[i]
 
         # Overline + title + underline
-        ch_over = _is_adornment(ln.plain)
+        ch_over = _detect_adornment_character(ln.plain)
         if ch_over and i + 2 < len(lines):
             title_ln = lines[i + 1]
             under_ln = lines[i + 2]
-            ch_under = _is_adornment(under_ln.plain)
+            ch_under = _detect_adornment_character(under_ln.plain)
             title = title_ln.plain.strip()
             if title and ch_under == ch_over and len(under_ln.plain.strip()) >= len(title):
                 headings.append(
@@ -117,7 +117,7 @@ def _iter_headings(text: str) -> list[RstHeading]:
         title = ln.plain.strip()
         if title and i + 1 < len(lines):
             under_ln = lines[i + 1]
-            ch_under = _is_adornment(under_ln.plain)
+            ch_under = _detect_adornment_character(under_ln.plain)
             if ch_under and len(under_ln.plain.strip()) >= len(title):
                 headings.append(
                     RstHeading(

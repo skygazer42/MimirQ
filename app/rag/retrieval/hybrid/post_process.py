@@ -157,7 +157,11 @@ class PostProcessMixin:
         if not account_id:
             account_id = None
         dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
-        runtime = embedding_runtime or self._resolve_embedding_runtime(tenant_id=tenant_filter)
+        runtime = (
+            embedding_runtime
+            if embedding_runtime is not None
+            else self._resolve_embedding_runtime(tenant_id=tenant_filter)
+        )
         return tenant_filter, account_id, dataset_filters, str(runtime.embedding_space_hash or "").strip()
 
     def _load_enrichment_chunks_by_id(
@@ -1272,7 +1276,7 @@ class PostProcessMixin:
         for result in results:
             meta = result.get("metadata") or {}
             doc_id = str(meta.get("document_id") or "").strip()
-            pipeline_key = self._doc_pipeline_key(meta, document_id=doc_id or None)
+            pipeline_key = self._doc_pipeline_key(meta, document_id=(doc_id))
             if doc_id and pipeline_key:
                 desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
         return desired_pipeline_by_doc

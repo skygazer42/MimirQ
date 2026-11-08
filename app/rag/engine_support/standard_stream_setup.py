@@ -320,7 +320,7 @@ async def route_query(runtime: StandardStreamState) -> None:
     runtime.data.retrieval_contract_mode_effective = normalization.retrieval_contract_mode
     runtime.data.contract_req = effective_options.get("retrieval_contract_mode") or settings.RETRIEVAL_CONTRACT_MODE
     runtime.data.profile_applied = normalization.profile_applied
-    runtime.data.profile_norm = normalization.profile_norm or ""
+    runtime.data.profile_norm = normalization.profile_norm
     runtime.data.retrieval_profile = normalization.profile_norm
     runtime.data.retriever_update = dict(retriever_update)
     runtime.data.mode_used = str(retriever_update["retrieval_mode"] or "hybrid")

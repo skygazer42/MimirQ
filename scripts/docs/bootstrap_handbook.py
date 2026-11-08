@@ -352,7 +352,7 @@ def phase2_backend_stubs() -> None:
     stubs = [
         ("platform", "平台与账号", "Auth、Groups、RBAC、SCIM、Usage、Audit。"),
         ("parsing", "解析与切块", "Parsing Workspace、解析器运维；链到 `docs/guides`。"),
-        ("retrieval", "检索与 RAG", "检索配置、RAGViz、LTR；链到 retrieval 相关 guides。"),
+        ("retrieval", "检索与 RAG", "检索配置、RAGViz；链到 retrieval 相关 guides。"),
         ("chat", "对话与模板", "Chat、Prompt / RAG 配置模板。"),
         ("evidence", "证据与可解释性", "Evidence Workbench、Capsules、Reports。"),
         ("kg", "知识图谱", "KG API 与 Web 图谱页。"),

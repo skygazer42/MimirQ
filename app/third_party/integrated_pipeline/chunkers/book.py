@@ -104,7 +104,10 @@ def _parse_pdf(filename, binary, from_page, to_page, lang, callback, parser_conf
     if isinstance(layout_recognizer, bool):
         layout_recognizer = "DeepDOC" if layout_recognizer else "Plain Text"
 
+    from app.core.model_execution import reject_retired_provider
+
     name = layout_recognizer.strip().lower()
+    reject_retired_provider(name.replace(" ", "_"), capability="parser")
     parser = PARSERS.get(name, by_plaintext)
     callback(0.1, "Start to parse.")
     sections, tbls, pdf_parser = parser(
@@ -120,7 +123,7 @@ def _parse_pdf(filename, binary, from_page, to_page, lang, callback, parser_conf
     )
     if not sections and not tbls:
         return [], [], None
-    if name in ["tcadp", "docling", "mineru"]:
+    if name in ["docling", "mineru"]:
         parser_config["chunk_token_num"] = 0
 
     sample_texts = [s if isinstance(s, str) else s[0] for s in sections]

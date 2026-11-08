@@ -11,7 +11,7 @@ def _meta(chunk: Any) -> dict[str, Any]:
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip()
+    return "" if value is None else str(value).strip()
 
 
 def _metadata_value(meta: dict[str, Any], key: str) -> Any:
@@ -250,7 +250,7 @@ def _golden_draft_item(
         extra["answer_key_points"] = answer_key_points
     return {
         "question": question,
-        "expected_answer": _text(getattr(chunk, "content", None)) or None,
+        "expected_answer": chunk.content,
         "reference_sources": [_reference_source(chunk, meta)],
         "tags": _tags(plugin_id, meta, golden_rules),
         "extra": extra,

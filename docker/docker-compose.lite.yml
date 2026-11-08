@@ -5,7 +5,7 @@ x-backend-build: &backend_build
   dockerfile: docker/Dockerfile
   network: ${DOCKER_BUILD_NETWORK:-default}
   args:
-    REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements-chroma.txt}
+    REQUIREMENTS_FILE: ${BACKEND_REQUIREMENTS_FILE:-requirements.txt}
     # Optional build metadata (exposed via /api/v1/meta)
     MIMIRQ_BUILD_SHA: ${MIMIRQ_BUILD_SHA:-}
     MIMIRQ_BUILD_TIME: ${MIMIRQ_BUILD_TIME:-}
@@ -18,10 +18,12 @@ x-backend-env: &backend_env
   UVICORN_WORKERS: ${BACKEND_WORKERS:-1}
   # Force container-to-container endpoints (do not depend on host-local `.env` defaults like localhost).
   DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@mimirq-postgres:5432/${POSTGRES_DB:-mimirq}
-  # Lite defaults: local vector store and no object storage (lower resource usage).
-  VECTOR_BACKEND: ${VECTOR_BACKEND_LITE:-chroma}
-  FAISS_STORE_PATH: ${FAISS_STORE_PATH_DOCKER:-/data/vector_faiss}
-  CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}
+  # Shared persistent vector storage; document object storage remains disabled.
+  VECTOR_BACKEND: ${VECTOR_BACKEND_LITE:-milvus}
+  MILVUS_HOST: mimirq-milvus
+  MILVUS_PORT: ${MILVUS_PORT_DOCKER:-19530}
+  MILVUS_USER: ${MILVUS_USER_DOCKER:-}
+  MILVUS_PASSWORD: ${MILVUS_PASSWORD_DOCKER:-}
   MINIO_ENABLED: ${MINIO_ENABLED_LITE_DOCKER:-false}
   MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_LITE_DOCKER:-false}
   # CORS (frontend)
@@ -31,8 +33,7 @@ x-backend-env: &backend_env
   REDIS_URL: ${REDIS_URL_DOCKER:-redis://mimirq-redis:6379/0}
   TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-4}
-  # Lite keeps the same Redis-backed idempotency/admission defaults, but remains a
-  # single-host profile because local Chroma/FAISS backends are not a multi-node baseline.
+  # API and worker share Milvus and Redis-backed idempotency/admission.
   UPLOAD_DEDUP_ENABLED: ${UPLOAD_DEDUP_ENABLED_DOCKER:-true}
   RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER:-true}
   RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER:-3}
@@ -74,7 +75,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI 后端（lite：Chroma/FAISS，无 Milvus/MinIO）
+  # FastAPI 后端（共享 Milvus，关闭文档对象存储）
   mimirq-api:
     build: *backend_build
     restart: unless-stopped
@@ -93,6 +94,8 @@ services:
         condition: service_healthy
       mimirq-redis:
         condition: service_healthy
+      mimirq-milvus:
+        condition: service_healthy
     env_file:
       - ../.env
     environment:
@@ -100,7 +103,6 @@ services:
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
-      - vector_data:/app/vector_chroma
 
   # Arq worker（后台处理文档解析/索引）
   mimirq-worker:
@@ -118,6 +120,8 @@ services:
         condition: service_healthy
       mimirq-postgres:
         condition: service_healthy
+      mimirq-milvus:
+        condition: service_healthy
     env_file:
       - ../.env
     environment:
@@ -125,10 +129,26 @@ services:
       TABLE_STORE_DIR: /data/uploads/table_store
     volumes:
       - upload_data:/data/uploads
-      - vector_data:/app/vector_chroma
     command: arq app.tasks.worker.WorkerSettings
+
+  mimirq-etcd:
+    extends:
+      file: docker-compose.yml
+      service: mimirq-etcd
+
+  mimirq-minio:
+    extends:
+      file: docker-compose.yml
+      service: mimirq-minio
+
+  mimirq-milvus:
+    extends:
+      file: docker-compose.yml
+      service: mimirq-milvus
 
 volumes:
   postgres_data:
   upload_data:
-  vector_data:
+  etcd_data:
+  minio_data:
+  milvus_data:

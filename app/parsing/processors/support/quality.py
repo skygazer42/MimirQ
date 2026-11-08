@@ -76,9 +76,9 @@ def _seal_candidate_from_document(doc: Document) -> dict[str, Any] | None:
     page = _seal_segment_page(meta)
     return {
         "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content or "").strip(),
-        "score": score if score is not None else None,
+        "score": score,
         "kind": str(primary.get("seal_kind") or meta.get("seal_kind") or "unknown").strip() or "unknown",
-        "page": page if page is not None else None,
+        "page": page,
         "candidate_count": _seal_segment_candidate_count(meta),
     }
 
@@ -110,7 +110,7 @@ def _format_seal_summary(candidates: list[dict[str, Any]]) -> dict[str, Any] | N
 
 def _build_seal_summary(documents: list[Document] | None) -> dict[str, Any] | None:
     candidates: list[dict[str, Any]] = []
-    for doc in documents or []:
+    for doc in documents if documents is not None else []:
         candidate = _seal_candidate_from_document(doc)
         if candidate is not None:
             candidates.append(candidate)
@@ -152,7 +152,7 @@ def _low_confidence_span(meta: dict[str, Any], *, text: str, confidence: float) 
 
 def _iter_ocr_quality_candidates(documents: list[Document] | None) -> list[tuple[dict[str, Any], str]]:
     candidates: list[tuple[dict[str, Any], str]] = []
-    for doc in documents or []:
+    for doc in documents if documents is not None else []:
         meta = dict(getattr(doc, "metadata", None) or {})
         derived = meta.get("derived_elements")
         if isinstance(derived, list):
@@ -318,30 +318,10 @@ def _positive_governance_counts(stats: GovernanceStats) -> dict[str, int]:
     return {key: value for key, raw in effects_map.items() if (value := _safe_governance_int(raw)) > 0}
 
 
-def _positive_string_count_map(raw_counts: Any) -> dict[str, int] | None:
-    if not isinstance(raw_counts, dict) or not raw_counts:
-        return None
-    out: dict[str, int] = {}
-    for raw_key, raw_value in raw_counts.items():
-        if raw_key is None:
-            continue
-        key = str(raw_key).strip()
-        value = _safe_governance_int(raw_value)
-        if key and value > 0:
-            out[key] = value
-    return out or None
-
-
-def _string_count_map(raw_counts: Any) -> dict[str, int] | None:
-    if not isinstance(raw_counts, dict) or not raw_counts:
-        return None
-    return {str(key): int(value) for key, value in raw_counts.items()}
-
-
 def _clean_governance_rule_packs(rule_packs: list[str] | None) -> list[str]:
     cleaned: list[str] = []
     seen: set[str] = set()
-    for raw in rule_packs or []:
+    for raw in rule_packs if rule_packs is not None else []:
         if not isinstance(raw, str):
             continue
         key = raw.strip().lower()

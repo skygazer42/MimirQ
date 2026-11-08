@@ -9,7 +9,6 @@ Supports:
 This mirrors `app/services/prompt_resolver.py` but targets retrieval/rerank knobs.
 """
 
-import hashlib
 import json
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -19,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.rag_config_template import RagConfigTemplate
 from app.rag.core.hashing import stable_hash
+from app.services.prompt_resolver import _stable_unit_interval
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Query
@@ -27,13 +27,6 @@ FeedbackRewardHook = Callable[
     [Session, UUID, str, Sequence[RagConfigTemplate]],
     dict[str, Any] | Sequence[Any] | None,
 ]
-
-
-def _stable_unit_interval(seed: str) -> float:
-    """Map a seed to a stable pseudo-random number in [0, 1) for A/B routing."""
-    raw = hashlib.sha256(seed.encode("utf-8")).digest()
-    num = int.from_bytes(raw[:8], "big", signed=False)
-    return (num % 1_000_000) / 1_000_000.0
 
 
 def build_rag_config_patch_hash(patch: Any) -> str:
@@ -268,8 +261,8 @@ def _resolver_debug_payload(
     strategy: str,
     decision: str,
     chosen: RagConfigTemplate | None,
-    epsilon: float | None = None,
-    reward_snapshot: dict[str, Any] | None = None,
+    epsilon: float | None,
+    reward_snapshot: dict[str, Any] | None,
     weights: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     debug: dict[str, Any] = {
@@ -306,7 +299,7 @@ def _resolve_experiment_variants(
     feedback_reward_hook: FeedbackRewardHook | None,
     return_debug_metadata: bool,
 ) -> RagConfigTemplate | None | tuple[RagConfigTemplate | None, dict[str, Any] | None]:
-    exp = str(ab_experiment_key or "").strip()
+    exp = ab_experiment_key.strip()
     if not exp:
         return _return_with_optional_debug(chosen=None, debug=None, return_debug_metadata=return_debug_metadata)
 
@@ -405,8 +398,8 @@ def resolve_rag_config_template(
     tenant_id: UUID,
     rag_config_template_id: UUID | None = None,
     template_key: str | None = None,
-    ab_experiment_key: str | None = None,
-    ab_user_key: str | None = None,
+    ab_experiment_key: str | None,
+    ab_user_key: str | None,
     routing_mode: str = "weighted",
     adaptive_epsilon: float = 0.1,
     feedback_reward_snapshot: dict[str, Any] | None = None,
@@ -449,7 +442,7 @@ def resolve_rag_config_template(
     )
 
     if template_key:
-        key = str(template_key or "").strip()
+        key = template_key.strip()
         if key:
             chosen = (
                 query.filter(RagConfigTemplate.template_key == key)

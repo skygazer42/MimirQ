@@ -1418,7 +1418,7 @@ async def _normalize_kg_job_options_or_result(
     from app.rag.kg.extraction_job_options import normalize_kg_extraction_job_options
 
     if effective_options is None:
-        return None, (str(pipeline_hash or "").strip() or None)
+        return None, pipeline_hash
     try:
         frozen_options = normalize_kg_extraction_job_options(effective_options)
     except ValueError:
@@ -1432,9 +1432,7 @@ async def _normalize_kg_job_options_or_result(
             stage="failed",
             done=0,
         )
-    queued_pipeline_hash = str(frozen_options.get("pipeline_hash") or "").strip() or (
-        str(pipeline_hash or "").strip() or None
-    )
+    queued_pipeline_hash = frozen_options["pipeline_hash"]
     return frozen_options, queued_pipeline_hash
 
 
@@ -1529,18 +1527,15 @@ def _resolve_kg_job_state(
     from app.core.pipeline_versions import get_active_pipeline_hash
     from app.rag.kg.extraction_job_options import kg_extraction_job_options_fingerprint
 
-    doc_pipeline_hash = (
-        get_active_pipeline_hash(doc.doc_metadata or {}) or (doc.doc_metadata or {}).get("pipeline_hash") or None
-    )
-    selected_pipeline_hash = (
-        requested_pipeline_hash
-        or (str(doc_pipeline_hash).strip() if doc_pipeline_hash is not None else None)
-        or "unknown"
-    )
+    doc_pipeline_hash = get_active_pipeline_hash(doc.doc_metadata)
+    selected_pipeline_hash = doc_pipeline_hash if requested_pipeline_hash is None else requested_pipeline_hash
+    if frozen_options is not None:
+        selected_pipeline_hash = frozen_options["pipeline_hash"]
+    pipeline_label = "unversioned" if selected_pipeline_hash is None else selected_pipeline_hash
     if frozen_options is None:
         return {
             "selected_pipeline_hash": selected_pipeline_hash,
-            "pipeline_scope_required": bool(requested_pipeline_hash or doc_pipeline_hash),
+            "pipeline_scope_required": selected_pipeline_hash is not None,
             "replace_existing": replace_existing,
             "prune_orphan_entities": prune_orphan_entities,
             "extract_relations": extract_relations,
@@ -1553,17 +1548,17 @@ def _resolve_kg_job_state(
                     _kg_lock_flag(extract_skills),
                 )
             ),
-            "document_key": f"{document_id}:{selected_pipeline_hash}",
+            "document_key": f"{document_id}:{pipeline_label}",
         }
     return {
         "selected_pipeline_hash": selected_pipeline_hash,
-        "pipeline_scope_required": bool(requested_pipeline_hash or doc_pipeline_hash),
+        "pipeline_scope_required": True,
         "replace_existing": bool(frozen_options["replace_existing"]),
         "prune_orphan_entities": bool(frozen_options["prune_orphan_entities"]),
         "extract_relations": frozen_options["extract_relations"],
         "extract_skills": frozen_options["extract_skills"],
         "options_key": kg_extraction_job_options_fingerprint(frozen_options),
-        "document_key": f"{document_id}:{selected_pipeline_hash}",
+        "document_key": f"{document_id}:{pipeline_label}",
     }
 
 
@@ -1581,7 +1576,8 @@ async def _acquire_kg_document_coordination(
     selected_pipeline_hash: str,
     options_key: str,
 ) -> tuple[Any, str, str] | dict[str, Any]:
-    lock_key = f"lock:kg:{tenant_id}:{document_id}:{selected_pipeline_hash}:{options_key}"
+    pipeline_label = "unversioned" if selected_pipeline_hash is None else selected_pipeline_hash
+    lock_key = f"lock:kg:{tenant_id}:{document_id}:{pipeline_label}:{options_key}"
     lock_val = make_lock_value(requested_by)
     lock_ttl = _task_job_lock_ttl_sec()
     try:
@@ -1642,9 +1638,13 @@ def _scope_kg_chunks(
     document_key: str,
     pipeline_scope_required: bool,
 ) -> list[Any]:
-    scoped_pipeline_hash = str(selected_pipeline_hash or "").strip() or None
-    if not scoped_pipeline_hash:
-        return chunks
+    from app.core.pipeline_versions import get_active_pipeline_hash
+
+    scoped_pipeline_hash = selected_pipeline_hash
+    if scoped_pipeline_hash is None:
+        if not pipeline_scope_required:
+            return chunks
+        return [chunk for chunk in chunks if get_active_pipeline_hash(chunk.doc_metadata) is None]
 
     def _chunk_matches(chunk: Any) -> bool:
         metadata = getattr(chunk, "doc_metadata", None)

@@ -84,6 +84,13 @@ afterEach(() => {
 })
 
 describe('persisted RAG settings', () => {
+  it.each(['ltr', 'xgboost_ltr'])('keeps retired %s visible without silently changing the model', (provider) => {
+    const view = mountRag({ reranker_provider: provider })
+    expect(normalizeRerankerProvider(provider)).toBe('ltr')
+    expect(view.container.querySelector('[role="combobox"]')?.textContent).not.toContain('大模型重排')
+    expect(view.onPatch).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['aliyun', 'dashscope', '通义千问重排'],
     ['late_interaction', 'colbert', 'ColBERT（离线验证）'],

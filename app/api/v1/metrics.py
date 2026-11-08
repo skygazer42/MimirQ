@@ -6,9 +6,10 @@ import hashlib
 import hmac
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from app.api.dependencies.auth import get_current_account_id
+from app.api.schemas.auth import AuthHeaders
 from app.core.config import settings
 from app.core.metrics import render_metrics
 
@@ -39,13 +40,11 @@ def _token_matches(*, provided_token: str, expected_token: str) -> bool:
 
 async def require_metrics_access(
     request: Request,
-    authorization: Annotated[str | None, Header()] = None,
-    x_user_id: Annotated[str | None, Header()] = None,
-    x_tenant_id: Annotated[str | None, Header()] = None,
+    headers: Annotated[AuthHeaders, Depends()],
 ) -> None:
     expected_token = str(settings.METRICS_BEARER_TOKEN or "").strip()
     if expected_token:
-        auth = str(authorization or "").strip()
+        auth = str(headers.authorization or "").strip()
         if not auth:
             raise HTTPException(status_code=401, detail="Authorization header required")
         if not auth.lower().startswith("bearer "):
@@ -58,9 +57,7 @@ async def require_metrics_access(
 
     await get_current_account_id(
         request=request,
-        authorization=authorization,
-        x_user_id=x_user_id,
-        x_tenant_id=x_tenant_id,
+        headers=headers,
     )
 
 

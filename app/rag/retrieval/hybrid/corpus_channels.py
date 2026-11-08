@@ -90,7 +90,7 @@ def search_sparse(
     raw_query = request.query.strip()
     if not raw_query or not policy.enabled:
         return CorpusChannelOutcome(records=[], status=skipped_sparse_status(policy))
-    snapshot = corpus_index.scope_documents(request.scope)
+    snapshot = corpus_index.load_corpus_snapshot(request.scope)
     status = sparse_provider_status(policy)
     provider = str(status.get("effective_provider") or "deterministic").strip().lower() or "deterministic"
     reason = str(status.get("reason") or "none")
@@ -198,20 +198,20 @@ def search_colbert(request: CorpusChannelRequest, *, corpus_index: CorpusIndex) 
     raw_query = request.query.strip()
     if not raw_query or not settings.COLBERT_RETRIEVAL_ENABLED:
         return CorpusChannelOutcome(records=[], status={})
-    snapshot = corpus_index.scope_documents(request.scope)
+    snapshot = corpus_index.load_corpus_snapshot(request.scope)
     if not snapshot.documents:
         return CorpusChannelOutcome(records=[], status={})
     from app.rag.retrieval.colbert_ann import (
         ColbertAnnIndexStore,
         build_colbert_provider_config,
         get_dense_embedder,
-        resolve_colbert_ann_provider_capability,
+        resolve_colbert_retrieval_capability,
         topk_cosine_scores,
     )
 
     artifacts = corpus_index.artifacts.colbert
     max_docs = artifacts._resolve_colbert_max_docs()
-    readiness = resolve_colbert_ann_provider_capability(
+    readiness = resolve_colbert_retrieval_capability(
         colbert_enabled=settings.COLBERT_RETRIEVAL_ENABLED,
         requested_provider=artifacts._colbert_provider_name(),
         docs_count=len(snapshot.documents),
@@ -249,5 +249,5 @@ def search_colbert(request: CorpusChannelRequest, *, corpus_index: CorpusIndex) 
             records=_colbert_results(scored, index.doc_ids, snapshot.documents, request), status=status
         )
     except Exception as exc:
-        _log_retriever_fallback("_search_colbert_ann", exc)
+        _log_retriever_fallback("_search_colbert_dense", exc)
         return CorpusChannelOutcome(records=[], status=status, failure=exc)

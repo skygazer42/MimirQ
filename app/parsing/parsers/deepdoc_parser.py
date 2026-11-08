@@ -273,7 +273,7 @@ def _normalize_pdf_section(section: Any) -> tuple[str, str, dict[str, Any] | Non
                 native_kind = normalized
         if tag and tag not in text:
             text = f"{text}{tag}"
-        return text, native_kind, (extra_attrs or None)
+        return text, native_kind, (extra_attrs)
 
     if isinstance(section, str):
         return section.strip(), "text", None

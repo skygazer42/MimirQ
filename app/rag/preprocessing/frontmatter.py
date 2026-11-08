@@ -267,7 +267,7 @@ def extract_markdown_title(text: str, *, max_lines: int = 60) -> str | None:
         if not title:
             continue
         title = " ".join(title.split())
-        return title[:200] or None
+        return title[:200]
 
     return None
 

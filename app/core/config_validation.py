@@ -15,7 +15,7 @@ from uuid import UUID
 from email_validator import EmailNotValidError, validate_email
 
 from app.core.env import is_production_env
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider, reject_retired_rerank_providers
 from app.rag.retrieval.contract import (
     VALID_RETRIEVAL_CONTRACT_MODES,
     normalize_retrieval_contract_mode,
@@ -767,7 +767,6 @@ def validate_minio(settings: Settings) -> None:
 
 
 def validate_object_storage(settings: Settings) -> None:
-    is_production = is_production_env()
     object_storage_provider = normalize_object_storage_provider_name(settings.OBJECT_STORAGE_PROVIDER)
     settings.OBJECT_STORAGE_PROVIDER = object_storage_provider
     object_storage_profiles = parse_object_storage_region_profiles(settings.OBJECT_STORAGE_REGION_PROFILES)
@@ -797,11 +796,6 @@ def validate_object_storage(settings: Settings) -> None:
         )
     for region, raw_profile in object_storage_profiles.items():
         _validate_object_storage_region_profile(region, raw_profile, base_object_storage, object_storage_provider)
-
-    _raise_if(
-        is_production and settings.FAISS_ALLOW_DANGEROUS_DESERIALIZATION,
-        "FAISS_ALLOW_DANGEROUS_DESERIALIZATION is not allowed in production",
-    )
 
 
 def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
@@ -942,15 +936,19 @@ def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
 
 
 def validate_embedding_and_migration(settings: Settings) -> None:
-    reject_retired_model_provider(settings.EMBEDDING_PROVIDER, capability="embedding")
+    reject_retired_provider(settings.EMBEDDING_PROVIDER, capability="embedding")
+    reject_retired_provider(settings.DEFAULT_PARSER_BACKEND, capability="parser")
+    reject_retired_provider(settings.EVIDENCE_POST_RERANK_PROVIDER, capability="reranker")
+    if settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED:
+        reject_retired_rerank_providers(settings.EVIDENCE_POST_RERANK_PIPELINE)
     if settings.EMBEDDING_SHADOW_ENABLED:
-        reject_retired_model_provider(settings.EMBEDDING_SHADOW_PROVIDER, capability="embedding")
+        reject_retired_provider(settings.EMBEDDING_SHADOW_PROVIDER, capability="embedding")
     if settings.IMAGE_EMBEDDING_ENABLED:
         raise ValueError(
             "IMAGE_EMBEDDING_ENABLED has been retired; image uploads, OCR and vision APIs remain supported"
         )
-    reject_retired_model_provider(settings.KG_EXTRACTION_BACKEND, capability="kg_extraction")
-    reject_retired_model_provider(settings.KG_EXTRACT_LONG_DOC_BACKEND, capability="kg_extraction")
+    reject_retired_provider(settings.KG_EXTRACTION_BACKEND, capability="kg_extraction")
+    reject_retired_provider(settings.KG_EXTRACT_LONG_DOC_BACKEND, capability="kg_extraction")
     if settings.KG_GLINER_ENABLED:
         raise ValueError("KG_GLINER_ENABLED has been retired; use llm or heuristic extraction")
     _require_int_min(settings.EMBEDDING_CACHE_TTL_SEC or 0, 0, "EMBEDDING_CACHE_TTL_SEC must be >= 0")
@@ -1519,11 +1517,11 @@ def validate_sparse_and_colbert_providers(settings: Settings) -> None:
     settings.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
     for field in ("COLBERT_RERANK_PROVIDER", "COLBERT_RETRIEVAL_PROVIDER"):
         provider = str(getattr(settings, field) or "deterministic").strip().lower()
-        reject_retired_model_provider(provider, capability="colbert")
+        reject_retired_provider(provider, capability="colbert")
         if provider != "deterministic":
             raise ValueError(f"{field} must be deterministic")
         setattr(settings, field, provider)
-    reject_retired_model_provider(settings.GOVERNANCE_KEYWORDS_PROVIDER, capability="keyword")
+    reject_retired_provider(settings.GOVERNANCE_KEYWORDS_PROVIDER, capability="keyword")
 
 
 def validate_checkpoint_memory_reranker(settings: Settings) -> None:
@@ -1539,7 +1537,7 @@ def validate_checkpoint_memory_reranker(settings: Settings) -> None:
     if settings.MEMORY_STORE_TYPE not in valid_memory_stores:
         raise ValueError(f"MEMORY_STORE_TYPE ({settings.MEMORY_STORE_TYPE}) must be one of {valid_memory_stores}")
 
-    reject_retired_model_provider(settings.RERANKER_PROVIDER, capability="reranker")
+    reject_retired_provider(settings.RERANKER_PROVIDER, capability="reranker")
     # Validate reranker provider
     # Keep this aligned with app.rag.reranker.factory.get_reranker().
     valid_reranker_providers = {
@@ -1552,7 +1550,6 @@ def validate_checkpoint_memory_reranker(settings: Settings) -> None:
         "aliyun",
         "colbert",
         "late_interaction",
-        "ltr",
         "long_context",
         "mmr",
         "kg_pagerank",

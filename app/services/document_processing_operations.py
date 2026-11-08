@@ -226,7 +226,7 @@ def _apply_retry_parser_backend_override(
     raw_path: str,
     parser_backend: str | None,
 ) -> None:
-    requested_parser_backend = str(parser_backend or "").strip().lower()
+    requested_parser_backend = str((parser_backend if parser_backend is not None else "")).strip().lower()
     if not requested_parser_backend:
         return
     filename = str(document.filename or raw_path)
@@ -331,7 +331,7 @@ def _prepare_retry_metadata(
         meta,
         content_sha256=get_content_sha256(meta),
         pipeline_hash=pipeline_hash,
-        parser_backend_resolved=str(meta.get("parser_backend_resolved") or "").strip() or None,
+        parser_backend_resolved=meta.get("parser_backend_resolved"),
     )
 
     preserve_existing_versions = bool(meta.get("active_pipeline_ready")) and pipeline_hash != active_pipeline_hash

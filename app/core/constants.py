@@ -180,7 +180,6 @@ class PDFBackends:
     TEXTIN = "textin"
     MARKITDOWN = "markitdown"
     DOCLING = "docling"
-    TCADP = "tcadp"
 
     ALL: frozenset[str] = frozenset(
         {
@@ -193,7 +192,6 @@ class PDFBackends:
             "textin",
             "markitdown",
             "docling",
-            "tcadp",
         }
     )
 

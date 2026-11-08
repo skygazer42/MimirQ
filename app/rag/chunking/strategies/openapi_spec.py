@@ -45,10 +45,10 @@ def _extract_version(text: str) -> str | None:
     head = (text or "")[:8000]
     m = _OPENAPI_RE.search(head)
     if m:
-        return (m.group("val") or "").strip()[:40] or None
+        return m.group("val").strip()[:40]
     m = _SWAGGER_RE.search(head)
     if m:
-        return (m.group("val") or "").strip()[:40] or None
+        return m.group("val").strip()[:40]
     return None
 
 

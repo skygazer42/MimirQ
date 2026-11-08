@@ -42,20 +42,20 @@ class ChatTurnPersistInput:
 def build_chat_message_metadata(
     *,
     request_id: str,
-    original_question: str | None,
-    metrics: dict[str, Any] | None,
-    citations: list[dict[str, Any]] | None,
+    original_question: str,
+    metrics: dict[str, Any],
+    citations: list[Any],
 ) -> dict[str, Any]:
-    out = dict(metrics or {})
-    out["request_id"] = str(request_id)
+    out = dict(metrics)
+    out["request_id"] = request_id
 
     rewritten = str((out.get("query_for_retrieval") or "")).strip()
-    question = str(original_question or "").strip()
+    question = original_question.strip()
     out["rewritten_query"] = rewritten if rewritten and rewritten != question else None
 
     retrieved_docs: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for item in citations or []:
+    for item in citations:
         if not isinstance(item, dict):
             continue
         document_id = item.get("document_id")
@@ -116,7 +116,7 @@ def _add_structured_memory_metadata(
     enabled: bool,
     log_context: str,
 ) -> None:
-    if not enabled or not bool(settings.STRUCTURED_MEMORY_ENABLED):
+    if not enabled or not settings.STRUCTURED_MEMORY_ENABLED:
         return
     try:
         message_metadata["structured_memory"] = extract_structured_memory_for_turn(
@@ -149,7 +149,7 @@ def persist_chat_turn_sync(
     options: ChatTurnPersistInput,
 ) -> None:
     message_metadata = build_chat_message_metadata(
-        request_id=str(options.request_id),
+        request_id=options.request_id,
         original_question=options.question,
         metrics=options.metrics,
         citations=options.citations if isinstance(options.citations, list) else [],
@@ -169,7 +169,7 @@ def persist_chat_turn_sync(
         role="assistant",
         content=options.content,
         citations=options.citations,
-        token_count=num_tokens_from_string(options.content or ""),
+        token_count=num_tokens_from_string(options.content),
         message_metadata=message_metadata,
     )
     db.add(assistant_message)
@@ -181,12 +181,12 @@ def persist_chat_turn_sync(
         action=options.audit_action,
         resource_type="conversation",
         resource_id=str(options.conversation_id),
-        request_id=str(options.request_id),
+        request_id=options.request_id,
         ip=options.ip,
         user_agent=options.user_agent,
         details=build_chat_audit_details(
             question=options.question,
-            document_count=int(options.document_count or 0),
+            document_count=options.document_count,
             dataset_id=options.dataset_id_used,
             cache_hit=options.cache_hit,
         ),

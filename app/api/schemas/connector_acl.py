@@ -52,8 +52,7 @@ class SourcePrincipal(BaseModel):
             raise ValueError("id is required")
 
         if self.display is not None:
-            d = self.display.strip()
-            self.display = d or None
+            self.display = self.display.strip()
         return self
 
     def key(self) -> str:

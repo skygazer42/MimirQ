@@ -13,7 +13,7 @@ Why this matters for a retrieval-only “evidence” platform:
 ## Channels
 
 The `HybridRetriever` merges up to four channels:
-- `vector`: dense embedding search (Milvus/Chroma/etc.)
+- `vector`: dense embedding search (Milvus/Qdrant/pgvector)
 - `bm25`: in-memory BM25 over scoped corpus
 - `lexical_db`: Postgres FTS / pg_trgm fallback
 - `sparse`: optional SPLADE-style retrieval

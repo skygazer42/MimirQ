@@ -576,12 +576,12 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
 
     if kind == "group":
         name = row.name
-        external_id = row.external_id or ""
+        external_id = row.external_id
         base.update(
             {
-                "name": (name or None) if include_sensitive else None,
+                "name": name if include_sensitive else None,
                 "name_hash": _hash16(name) if name else None,
-                "external_id": (external_id or None) if include_sensitive else None,
+                "external_id": external_id if include_sensitive else None,
                 "external_id_hash": _hash16(external_id) if external_id else None,
                 "updated_at": _dt_to_json(row.updated_at),
             }
@@ -593,7 +593,7 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
         base.update(
             {
                 "group_id": str(row.group_id),
-                "user_id": (user_id or None) if include_sensitive else None,
+                "user_id": user_id if include_sensitive else None,
                 "user_id_hash": _hash16(user_id) if user_id else None,
             }
         )
@@ -601,13 +601,13 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
 
     if kind == "dataset":
         name = row.name
-        owner_id = row.owner_id or ""
+        owner_id = row.owner_id
         base.update(
             {
-                "name": (name or None) if include_sensitive else None,
+                "name": name if include_sensitive else None,
                 "name_hash": _hash16(name) if name else None,
                 "permission": row.permission.value,
-                "owner_id": (owner_id or None) if include_sensitive else None,
+                "owner_id": owner_id if include_sensitive else None,
                 "owner_id_hash": _hash16(owner_id) if owner_id else None,
                 "updated_at": _dt_to_json(row.updated_at),
             }
@@ -619,7 +619,7 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
         base.update(
             {
                 "dataset_id": str(row.dataset_id),
-                "account_id": (account_id or None) if include_sensitive else None,
+                "account_id": account_id if include_sensitive else None,
                 "account_id_hash": _hash16(account_id) if account_id else None,
             }
         )
@@ -635,14 +635,14 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
         return base
 
     if kind == "document":
-        owner_id = row.owner_id or ""
-        access_mode = (row.access_mode or "").strip() or None
+        owner_id = row.owner_id
+        access_mode = row.access_mode
         dataset_id = row.dataset_id
         base.update(
             {
                 "dataset_id": (str(dataset_id) if dataset_id is not None else None),
                 "access_mode": access_mode,
-                "owner_id": (owner_id or None) if include_sensitive else None,
+                "owner_id": owner_id if include_sensitive else None,
                 "owner_id_hash": _hash16(owner_id) if owner_id else None,
                 "updated_at": _dt_to_json(row.updated_at),
             }
@@ -654,7 +654,7 @@ def _export_access_graph_row(*, kind: str, row: Any, include_sensitive: bool) ->
         base.update(
             {
                 "document_id": str(row.document_id),
-                "account_id": (account_id or None) if include_sensitive else None,
+                "account_id": account_id if include_sensitive else None,
                 "account_id_hash": _hash16(account_id) if account_id else None,
             }
         )

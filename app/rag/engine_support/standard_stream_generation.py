@@ -168,7 +168,7 @@ async def prepare_vision_generation(runtime: StandardStreamState) -> None:
                 "image_blocks": runtime.data.blocks_meta,
                 "max_images": int(runtime.data.max_images),
                 "max_image_bytes": int(runtime.data.max_bytes),
-                "model": str(settings.VISION_LLM_MODEL or "").strip() or None,
+                "model": settings.VISION_LLM_MODEL,
             }
         )
         if runtime.data.blocks:
@@ -699,7 +699,7 @@ async def enqueue_online_evaluation(runtime: StandardStreamState) -> None:
             request_id=str(runtime.data.request_id),
             answer=str(runtime.data.full_response or ""),
             contexts=[str(getattr(d, "page_content", "") or "") for d in (runtime.data.docs or [])],
-            retrieval_mode=str(runtime.data.mode_used or "") or None,
+            retrieval_mode=runtime.data.mode_used,
             citations_count=len(runtime.data.citations or []),
         )
     except Exception as exc:

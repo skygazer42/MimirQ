@@ -93,7 +93,7 @@ K8s readiness 建议用 `/api/v1/health/ready`。
 
 1. Postgres：`DATABASE_URL`
 2. Redis：`REDIS_URL`（若启用了 `TASK_QUEUE_ENABLED=true`）
-3. 向量库：`VECTOR_BACKEND` + Milvus/Chroma 连接信息
+3. 向量库：`VECTOR_BACKEND` + Milvus/Qdrant/pgvector 连接信息
 4. MinIO：`MINIO_ENABLED=true` 时检查 `MINIO_ENDPOINT` 等
 5. 数据库 schema：用管理员身份读取 `GET /api/v1/health/details`；若 `database.status=schema_outdated`，先执行 `python scripts/alembic_cli.py upgrade head`，确认迁移成功后再放量
 

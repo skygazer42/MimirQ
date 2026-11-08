@@ -89,7 +89,7 @@ def build_ruleset_suggestions(
 ) -> dict[str, Any]:
     return {
         "schema": _SCHEMA,
-        "ruleset": str(getattr(ruleset, "name", "") or "") or None,
+        "ruleset": ruleset.name if ruleset is not None else None,
         "glossary_suggestions": _build_glossary_suggestions(rows, ruleset=ruleset, top_k=top_k),
         "pattern_suggestions": _build_pattern_suggestions(rows, top_k=top_k),
         "intent_suggestions": _build_intent_suggestions(rows, top_k=top_k),

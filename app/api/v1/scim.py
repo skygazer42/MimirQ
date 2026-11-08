@@ -443,8 +443,10 @@ def create_group(
     ext_raw = payload.get("externalId", None)
     external_id = None
     if ext_raw is not None:
-        external_id = str(ext_raw or "").strip() or None
-        if external_id is not None and len(external_id) > 255:
+        if not isinstance(ext_raw, str):
+            return _scim_error(status_code=400, detail="externalId must be a string", scim_type="invalidValue")
+        external_id = ext_raw
+        if len(external_id) > 255:
             return _scim_error(status_code=400, detail="externalId too long (max=255)", scim_type="invalidValue")
 
     try:
@@ -658,8 +660,8 @@ def _audit_scim(
     ip = None
     user_agent = None
     if http_request is not None:
-        request_id = str(getattr(http_request.state, "request_id", "") or "").strip() or None
-        user_agent = (http_request.headers.get("User-Agent") or "").strip() or None
+        request_id = getattr(http_request.state, "request_id", None)
+        user_agent = http_request.headers.get("User-Agent")
         with contextlib.suppress(Exception):
             parsed_ip = _extract_client_ip(http_request)
             ip = str(parsed_ip) if parsed_ip is not None else None

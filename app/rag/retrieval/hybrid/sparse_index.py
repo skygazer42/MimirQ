@@ -100,7 +100,7 @@ class SparseIndexMixin:
                 provider_config=provider_config,
                 corpus_fingerprint=self._sparse_corpus_fingerprint(corpus_docs),
                 vectors=vectors,
-                version_token=str(version_token or "").strip(),
+                version_token=str((version_token if version_token is not None else "")).strip(),
             )
             return "ok"
         except Exception as exc:
@@ -126,7 +126,7 @@ class SparseIndexMixin:
                 cache_key=cache_key,
                 provider_config=provider_config,
                 expected_fingerprint=self._sparse_corpus_fingerprint(corpus_docs),
-                expected_version_token=str(version_token or "").strip(),
+                expected_version_token=str((version_token if version_token is not None else "")).strip(),
             )
             if loaded:
                 return loaded, "hit"
@@ -309,7 +309,7 @@ class SparseIndexMixin:
                 self._build_sparse_index(
                     cache_key=cache_key,
                     docs=corpus_docs,
-                    version_token=str(version_token or "").strip(),
+                    version_token=str((version_token if version_token is not None else "")).strip(),
                 )
                 return
 
@@ -370,34 +370,6 @@ class SparseIndexMixin:
             h.update(b"\n")
         return h.hexdigest()[:24]
 
-    def _sync_sparse_index_after_bm25_upsert(
-        self,
-        *,
-        cache_key: str,
-        tenant_id: UUID,
-        dataset_scope_ids: tuple[UUID, ...],
-        merged_docs: list[Document],
-        upsert_docs: list[Document],
-    ) -> None:
-        if not self._effective_sparse_enabled():
-            return
-
-        try:
-            with self._get_sparse_build_lock(cache_key):
-                sparse_version_token = self._resolve_candidate_cache_corpus_token(
-                    tenant_id=tenant_id,
-                    document_ids=None,
-                    dataset_ids=dataset_scope_ids,
-                )
-                self._upsert_sparse_index_incremental(
-                    cache_key=cache_key,
-                    corpus_docs=merged_docs,
-                    upsert_docs=upsert_docs,
-                    version_token=sparse_version_token,
-                )
-        except Exception as exc:
-            logger.warning("Sparse index update failed for scope %s: %s", cache_key, str(exc)[:200])
-
     def _remove_sparse_vectors_for_deleted_chunks(self, *, scope_key: str, removed_ids: set[str]) -> None:
         if not removed_ids or not self._effective_sparse_enabled():
             return
@@ -447,7 +419,7 @@ class SparseIndexMixin:
                 cache_key=cache_key,
                 provider_config=provider_config,
                 expected_fingerprint=fp,
-                expected_version_token=str(version_token or "").strip(),
+                expected_version_token=str((version_token if version_token is not None else "")).strip(),
             )
             if loaded:
                 self._sparse_doc_vectors[cache_key] = loaded
@@ -694,7 +666,7 @@ class SparseIndexMixin:
         if not self._effective_sparse_enabled():
             return []
 
-        tenant_uuid, dataset_scope_ids, cache_key, docs = self._bm25_scope_docs(
+        tenant_uuid, dataset_scope_ids, cache_key, docs = self._resolve_derived_corpus_snapshot(
             tenant_id=tenant_id,
             document_ids=document_ids,
             metadata_filter=metadata_filter,

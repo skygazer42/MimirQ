@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from app.core.model_execution import reject_retired_model_provider
+from app.core.model_execution import reject_retired_provider
 from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -44,8 +44,8 @@ _SPARSE_REASON_VALUES = frozenset(
 
 
 def normalize_sparse_provider_name(provider: str | None) -> str:
-    reject_retired_model_provider(provider, capability="sparse")
-    raw = str(provider or "").strip().lower()
+    reject_retired_provider(provider, capability="sparse")
+    raw = str((provider if provider is not None else "")).strip().lower()
     if not raw:
         return "deterministic"
     return _SPARSE_PROVIDER_ALIASES.get(raw, raw)
@@ -65,7 +65,7 @@ def resolve_sparse_provider_capability(
     - Expose explicit fallback reasons for audit/debug/metrics.
     - Never require callers to guess whether runtime fell back to deterministic.
     """
-    requested_raw = str(requested_provider or "").strip().lower()
+    requested_raw = str((requested_provider if requested_provider is not None else "")).strip().lower()
     requested_norm = normalize_sparse_provider_name(requested_raw)
     default_norm = normalize_sparse_provider_name(default_provider)
     if default_norm not in VALID_SPARSE_PROVIDERS:
@@ -170,7 +170,7 @@ class DeterministicSparseEncoder:
         synonyms: dict[str, set[str]] | None = None,
         synonym_weight: float = 0.9,
     ) -> None:
-        self._synonyms = synonyms or {}
+        self._synonyms = synonyms if synonyms is not None else {}
         self._syn_w = float(synonym_weight)
 
     def encode(self, text: str) -> SparseVector:
@@ -203,12 +203,14 @@ def get_sparse_encoder(
     p = normalize_sparse_provider_name(provider)
     if p not in VALID_SPARSE_PROVIDERS:
         raise ValueError(f"Unsupported sparse provider: {provider}")
+    if synonyms is not None:
+        return DeterministicSparseEncoder(synonyms=synonyms)
     key = f"deterministic:{synonyms_raw}"
     with _ENCODER_LOCK:
         cached = _ENCODER_CACHE.get(key)
         if cached is not None:
             return cached
-        inst = DeterministicSparseEncoder(synonyms=synonyms or parse_synonyms(synonyms_raw))
+        inst = DeterministicSparseEncoder(synonyms=parse_synonyms(synonyms_raw))
         _ENCODER_CACHE[key] = inst
         return inst
 
@@ -275,7 +277,7 @@ class SparseIndexStore:
             return None
         if str(obj.get("corpus_fingerprint") or "") != str(expected_fingerprint or ""):
             return None
-        expected_token = str(expected_version_token or "").strip()
+        expected_token = str((expected_version_token if expected_version_token is not None else "")).strip()
         stored_token = str(obj.get("version_token") or "").strip()
         if expected_token and stored_token != expected_token:
             return None
@@ -309,7 +311,7 @@ class SparseIndexStore:
             "provider": str(provider_config.get("provider") or ""),
             "provider_config": dict(provider_config),
             "corpus_fingerprint": str(corpus_fingerprint or ""),
-            "version_token": str(version_token or "").strip(),
+            "version_token": str((version_token if version_token is not None else "")).strip(),
             "doc_count": len(vectors or {}),
             "vectors": {
                 k: (v.weights if isinstance(v, SparseVector) else _coerce_sparse_vector(v).weights)

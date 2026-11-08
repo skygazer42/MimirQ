@@ -39,7 +39,6 @@
 | Knowledge Graph (KG) | 图谱构建、查询、诊断 | `/kg` | [../guides/knowledge_graph.md](../guides/knowledge_graph.md) |
 | Evidence Workbench | 证据工作台 | `/evidence` | [../guides/explainability_workflows.md](../guides/explainability_workflows.md) |
 | Evidence Capsules | 证据胶囊 | `/evidence`（capsules 相关路径） | — |
-| LTR | 学习排序模型注册与激活 | `/ltr` | — |
 | Settings | 运行时配置读写 | `/settings` | — |
 | Governance | 数据治理策略 | `/governance` | — |
 | Evaluations | RAGAS / 回归 / queryset 等评测 | `/evaluations` | [../guides/regression_gate.md](../guides/regression_gate.md) |

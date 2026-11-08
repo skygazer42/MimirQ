@@ -87,7 +87,7 @@ def record_ingest_dead_letter(
 
     now = _now_utc()
     stage = infer_failed_stage(failed_stage=failed_stage, current_stage=document.current_stage)
-    code = normalize_ingest_error_code(error_code or error_message)
+    code = normalize_ingest_error_code((error_code if error_code else error_message))
     message = _safe_str(error_message, max_len=4000)
     if not message:
         message = None
@@ -112,7 +112,7 @@ def record_ingest_dead_letter(
             .first()
         )
 
-    payload = dict(original_payload or {})
+    payload = dict((original_payload if original_payload is not None else {}))
     payload.setdefault("document_id", str(document_id) if document_id is not None else None)
     payload.setdefault(
         "task_id",

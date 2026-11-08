@@ -13,14 +13,14 @@ class TenantMemberOut(BaseModel):
 
     id: UUID
     tenant_id: UUID
-    user_id: str | None = None
-    username: str | None = None
-    email: str | None = None
+    user_id: str
+    username: str
+    email: str
     role: str = Field(default=UserRoles.VIEWER, description=_TENANT_ROLE_DESCRIPTION)
     is_active: bool = True
     is_current: bool = False
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
 
 
 class TenantMemberListResponse(BaseModel):

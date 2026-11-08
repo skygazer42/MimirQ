@@ -10,25 +10,30 @@ from app.rag.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+_CACHE_SCHEMA = "mimirq.local_parse_cache.v2"
+
 
 @dataclass(frozen=True)
 class ParseCacheEntry:
     created_at_epoch: float
     file_sha256: str
-    parser_backend: str
+    parser_backend: str | None
     resolved_backend: str
     resolved_chunk_strategy: str
     documents: list[dict[str, Any]] | None
     chunks: list[dict[str, Any]] | None
 
 
-def build_parse_cache_key(*, file_sha256: str, parser_backend: str, config_hash: str) -> str:
-    payload = "|".join(
-        [
-            str(file_sha256 or "").strip().lower(),
-            str(parser_backend or "").strip().lower(),
-            str(config_hash or "").strip(),
-        ]
+def build_parse_cache_key(*, file_sha256: str, parser_backend: str | None, config_hash: str) -> str:
+    payload = json.dumps(
+        {
+            "schema": _CACHE_SCHEMA,
+            "file_sha256": file_sha256.strip().lower(),
+            "parser_backend": None if parser_backend is None else parser_backend.strip().lower(),
+            "config_hash": config_hash.strip(),
+        },
+        sort_keys=True,
+        separators=(",", ":"),
     )
     return hashlib.sha256(payload.encode("utf-8", "ignore")).hexdigest()
 
@@ -56,6 +61,8 @@ class LocalParseCacheStore:
             payload = json.loads(path.read_text(encoding="utf-8"))
             entry = ParseCacheEntry(**payload)
         except Exception:
+            return None, None
+        if not isinstance(entry.resolved_chunk_strategy, str) or not entry.resolved_chunk_strategy.strip():
             return None, None
 
         now = float(time.time() if now_epoch is None else now_epoch)

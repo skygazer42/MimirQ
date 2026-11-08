@@ -142,7 +142,7 @@ def _unused_followup_result(
         "query": query,
         "used": False,
         "reason_codes": [reason_code],
-        "selected_terms": list(selected_terms or []),
+        "selected_terms": list((selected_terms if selected_terms is not None else [])),
         "terms_considered": int(terms_considered),
         "docs_considered": int(docs_considered),
     }
@@ -261,7 +261,7 @@ def build_contextual_followup_query(
     if not base:
         return _unused_followup_result(query="", reason_code="empty_query")
 
-    docs_list = [d for d in (docs or []) if d is not None]
+    docs_list = [d for d in (docs if docs is not None else []) if d is not None]
     max_docs_n = max(0, int(max_docs or 0))
     max_terms_n = max(0, int(max_terms or 0))
     min_chars = max(2, int(min_term_chars or 0))

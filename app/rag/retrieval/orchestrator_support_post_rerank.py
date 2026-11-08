@@ -4,6 +4,7 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_provider, reject_retired_rerank_providers
 from app.rag.reranker.types import RerankCandidate
 
 
@@ -80,6 +81,10 @@ def post_rerank_settings(
     cache_backend_fn: Callable[[], Any],
     corpus_cache_token_fn: Callable[[dict[str, Any]], str | None],
 ) -> dict[str, Any]:
+    provider = str(settings.EVIDENCE_POST_RERANK_PROVIDER or "none").strip().lower()
+    reject_retired_provider(provider, capability="reranker")
+    if settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED:
+        reject_retired_rerank_providers(settings.EVIDENCE_POST_RERANK_PIPELINE)
     cache_enabled = bool(settings.EVIDENCE_POST_RERANK_CACHE_ENABLED)
     try:
         calibration_alpha = float(settings.EVIDENCE_POST_RERANK_SCORE_CALIBRATION_ALPHA or 0.7)
@@ -90,7 +95,7 @@ def post_rerank_settings(
         "enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
         "pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
         "pipeline_raw": settings.EVIDENCE_POST_RERANK_PIPELINE,
-        "provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or "ltr").strip().lower(),
+        "provider": provider,
         "top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
         "cache_enabled": cache_enabled,
         "cache_backend": cache_backend_fn(),
@@ -200,7 +205,7 @@ def _stage_top_n(
     except (TypeError, ValueError, AttributeError):
         stage_n = 0
     if stage_n <= 0:
-        stage_n = int(previous_n or top_n)
+        stage_n = int((previous_n if previous_n else top_n))
     if previous_n is not None:
         stage_n = min(stage_n, int(previous_n))
     return min(stage_n, docs_count)
@@ -484,9 +489,6 @@ def run_post_rerank_stage(
         return result
 
     provider = str(settings_meta["provider"] or "")
-    if provider in {"none", "off", "false", "0"}:
-        result["post_rerank_skip_reason"] = "provider_off"
-        return result
 
     top_n = int(settings_meta["top_n"] or 0)
     if top_n <= 0:
@@ -513,6 +515,10 @@ def run_post_rerank_stage(
             )
             if _apply_pipeline_result(result=result, pipeline_result=pipeline_result):
                 return result
+
+        if provider in {"none", "off", "false", "0"}:
+            result["post_rerank_skip_reason"] = "provider_off"
+            return result
 
         single_result = single_mode_fn(
             state=state,
