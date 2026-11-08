@@ -43,9 +43,7 @@ MAGIC_PDF_SERVICE_HOSTNAMES = {"mimirq-magicpdf"}
 
 
 def magicpdf_service_configured(configured_url: str | None = None) -> bool:
-    return bool(
-        (configured_url if configured_url is not None else getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
-    )
+    return bool((configured_url if configured_url is not None else settings.MAGIC_PDF_API_URL).strip())
 
 
 def _has_required_magicpdf_models(models_dir: Path) -> bool:
@@ -201,9 +199,9 @@ def _build_local_metadata(
 
 class MagicPDFParser:
     def __init__(self) -> None:
-        self._cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-        self._api_url = (getattr(settings, "MAGIC_PDF_API_URL", "") or "").strip()
-        self._request_timeout_sec = float(getattr(settings, "MAGIC_PDF_REQUEST_TIMEOUT_SEC", 600) or 600)
+        self._cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+        self._api_url = settings.MAGIC_PDF_API_URL.strip()
+        self._request_timeout_sec = float(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600)
         self._session = requests.Session()
 
     @staticmethod
@@ -228,7 +226,7 @@ class MagicPDFParser:
         return file_path.parent / ".magicpdf" / run_id
 
     def _resolve_method(self) -> str:
-        method = (getattr(settings, "MAGIC_PDF_METHOD", "") or "auto").strip().lower()
+        method = (settings.MAGIC_PDF_METHOD or "auto").strip().lower()
         if method not in {"auto", "ocr", "txt"}:
             raise ValueError("MAGIC_PDF_METHOD must be one of: auto, ocr, txt")
         return method
@@ -245,11 +243,11 @@ class MagicPDFParser:
         files = {"file": (file_path.name, file_bytes, content_type)}
         data = {
             "method": self._resolve_method(),
-            "debug": str(bool(getattr(settings, "MAGIC_PDF_DEBUG", False))).lower(),
-            "device_mode": (getattr(settings, "MAGIC_PDF_DEVICE_MODE", "") or "cuda").strip().lower() or "cuda",
-            "keep_artifacts": str(bool(getattr(settings, "MAGIC_PDF_KEEP_ARTIFACTS", False))).lower(),
+            "debug": str(settings.MAGIC_PDF_DEBUG).lower(),
+            "device_mode": (settings.MAGIC_PDF_DEVICE_MODE or "cuda").strip().lower() or "cuda",
+            "keep_artifacts": str(settings.MAGIC_PDF_KEEP_ARTIFACTS).lower(),
         }
-        lang = (getattr(settings, "MAGIC_PDF_LANG", "") or "").strip()
+        lang = settings.MAGIC_PDF_LANG.strip()
         if lang:
             data["lang"] = lang
         if document_id:
@@ -382,7 +380,7 @@ class MagicPDFParser:
         We generate a minimal config per-run and point the subprocess at it via
         the `MINERU_TOOLS_CONFIG_JSON` env var.
         """
-        configured = (getattr(settings, "MINERU_TOOLS_CONFIG_JSON", "") or "").strip()
+        configured = settings.MINERU_TOOLS_CONFIG_JSON.strip()
         if not configured:
             configured = (os.environ.get("MINERU_TOOLS_CONFIG_JSON") or "").strip()
         if configured:
@@ -397,7 +395,7 @@ class MagicPDFParser:
         if cfg_path.exists():
             return cfg_path
 
-        models_dir = resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
+        models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
         if models_dir is None:
             expected = ", ".join(MAGIC_PDF_REQUIRED_MODEL_FILES)
             raise RuntimeError(
@@ -405,7 +403,7 @@ class MagicPDFParser:
                 "or set MAGIC_PDF_MODELS_DIR to a directory containing: "
                 f"{expected}"
             )
-        device_mode = (getattr(settings, "MAGIC_PDF_DEVICE_MODE", "") or "cpu").strip().lower()
+        device_mode = (settings.MAGIC_PDF_DEVICE_MODE or "cpu").strip().lower()
         if device_mode not in {"cpu", "cuda"}:
             device_mode = "cpu"
 
@@ -422,7 +420,7 @@ class MagicPDFParser:
             # Keep formula recognition off by default to avoid heavy Unimernet deps and
             # version coupling issues with `transformers` generation APIs. Enable explicitly
             # via MAGIC_PDF_FORMULA_ENABLED=true when the runtime has the required deps.
-            "formula-config": {"enable": bool(getattr(settings, "MAGIC_PDF_FORMULA_ENABLED", False))},
+            "formula-config": {"enable": settings.MAGIC_PDF_FORMULA_ENABLED},
             # Keep table recognition off by default for the local fallback. The
             # dedicated Docling/ETL4LLM/Marker paths cover table-heavy documents
             # and avoid forcing extra MagicPDF table weights for basic local
@@ -450,9 +448,9 @@ class MagicPDFParser:
 
         cli = self._ensure_cli()
         method = self._resolve_method()
-        lang = (getattr(settings, "MAGIC_PDF_LANG", "") or "").strip() or None
-        debug = bool(getattr(settings, "MAGIC_PDF_DEBUG", False))
-        timeout_sec = float(getattr(settings, "MAGIC_PDF_TIMEOUT_SEC", 600) or 600)
+        lang = settings.MAGIC_PDF_LANG.strip() or None
+        debug = settings.MAGIC_PDF_DEBUG
+        timeout_sec = float(settings.MAGIC_PDF_TIMEOUT_SEC or 600)
 
         artifact_root = self._build_artifact_root(file_path, document_id)
         artifact_root = artifact_root.absolute()
