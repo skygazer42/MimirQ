@@ -214,7 +214,7 @@ class ParsingStage:
                 tenant_id=tenant_id,
                 payload=payload,
                 cancel_check=cancel_check_worker,
-                timeout_sec=float(getattr(settings, "TASK_JOB_TIMEOUT_SEC", 60 * 30) or 60 * 30),
+                timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
             )
         except SubprocessCancelled as exc:
             self._cleanup_artifact_root(artifact_root)
@@ -315,9 +315,7 @@ class ParsingStage:
         effective_parser_backend: str | None,
     ) -> tuple[str | None, bool, list[Document]]:
         parse_cache_key: str | None = None
-        if not bool(getattr(settings, "PARSE_CACHE_ENABLED", False)) or not bool(
-            getattr(settings, "MINIO_ENABLED", False)
-        ):
+        if not bool(settings.PARSE_CACHE_ENABLED) or not bool(settings.MINIO_ENABLED):
             return parse_cache_key, False, []
 
         try:
@@ -332,14 +330,14 @@ class ParsingStage:
                 file_sha256=file_sha,
                 resolved_backend=backend_key,
                 config_hash=(pipeline_hash or "unknown"),
-                version=str(getattr(settings, "PARSE_CACHE_VERSION", "v1") or "v1"),
+                version=str(settings.PARSE_CACHE_VERSION or "v1"),
             )
             cached, age_ms = get_parse_cache(
                 tenant_id=str(tenant_id),
                 dataset_id=str(dataset_id),
                 cache_key=parse_cache_key,
-                ttl_sec=int(getattr(settings, "PARSE_CACHE_TTL_SEC", 0) or 0),
-                max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
+                ttl_sec=int(settings.PARSE_CACHE_TTL_SEC or 0),
+                max_bytes=int(settings.PARSE_CACHE_MAX_BYTES or 0),
             )
             documents = self._documents_from_items(list(getattr(cached, "documents", None) or []))
             if not documents:
@@ -450,8 +448,8 @@ class ParsingStage:
                     markdown=joined,
                     documents=documents,
                     pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-                    detect_language=bool(getattr(settings, "GOVERNANCE_DETECT_LANGUAGE", False)),
-                    language_min_chars=int(getattr(settings, "GOVERNANCE_LANGUAGE_MIN_CHARS", 40) or 40),
+                    detect_language=bool(settings.GOVERNANCE_DETECT_LANGUAGE),
+                    language_min_chars=int(settings.GOVERNANCE_LANGUAGE_MIN_CHARS or 40),
                 ).to_dict()
             except Exception as exc:
                 logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
@@ -496,7 +494,7 @@ class ParsingStage:
                 dataset_id=str(dataset_id),
                 cache_key=parse_cache_key,
                 entry=entry,
-                max_bytes=int(getattr(settings, "PARSE_CACHE_MAX_BYTES", 0) or 0),
+                max_bytes=int(settings.PARSE_CACHE_MAX_BYTES or 0),
             )
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
@@ -662,10 +660,10 @@ class InlineAssetStage:
                 content,
                 origin_path=origin_path,
                 api_url=formula_url,
-                timeout_sec=float(getattr(settings, "FORMULA_OCR_TIMEOUT_SEC", 60) or 60),
-                max_images=int(getattr(settings, "FORMULA_OCR_MAX_IMAGES", 12) or 12),
-                max_image_bytes=int(getattr(settings, "FORMULA_OCR_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
-                max_latex_chars=int(getattr(settings, "FORMULA_OCR_MAX_LATEX_CHARS", 2000) or 2000),
+                timeout_sec=float(settings.FORMULA_OCR_TIMEOUT_SEC or 60),
+                max_images=int(settings.FORMULA_OCR_MAX_IMAGES or 12),
+                max_image_bytes=int(settings.FORMULA_OCR_MAX_IMAGE_BYTES or 5_000_000),
+                max_latex_chars=int(settings.FORMULA_OCR_MAX_LATEX_CHARS or 2000),
             )
             stats.formulas_added_total += int(added or 0)
             stats.formula_backend = "formula_http"
@@ -689,9 +687,9 @@ class InlineAssetStage:
             content, added, audit = add_chart_data_blocks(
                 content,
                 origin_path=origin_path,
-                max_images=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGES", 8) or 8),
-                max_image_bytes=int(getattr(settings, "CHART_TO_DATA_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
-                timeout_sec=float(getattr(settings, "CHART_TO_DATA_TIMEOUT_SEC", 20) or 20),
+                max_images=int(settings.CHART_TO_DATA_MAX_IMAGES or 8),
+                max_image_bytes=int(settings.CHART_TO_DATA_MAX_IMAGE_BYTES or 5_000_000),
+                timeout_sec=float(settings.CHART_TO_DATA_TIMEOUT_SEC or 20),
             )
             stats.charts_added_total += int(added or 0)
             stats.chart_backend = "chart_http"
@@ -711,18 +709,15 @@ class InlineAssetStage:
         if not enabled:
             return content
         try:
-            if (
-                bool(getattr(settings, "IMAGE_CAPTION_VLM_ENABLED", False))
-                and str(getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or "").strip()
-            ):
+            if bool(settings.IMAGE_CAPTION_VLM_ENABLED) and str(settings.IMAGE_CAPTION_VLM_API_URL or "").strip():
                 content, added, audit = add_vlm_image_captions(
                     content,
                     origin_path=origin_path,
-                    api_url=str(getattr(settings, "IMAGE_CAPTION_VLM_API_URL", "") or ""),
-                    timeout_sec=float(getattr(settings, "IMAGE_CAPTION_VLM_TIMEOUT_SEC", 60) or 60),
-                    max_images=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGES", 20) or 20),
-                    max_image_bytes=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_IMAGE_BYTES", 5_000_000) or 5_000_000),
-                    max_caption_chars=int(getattr(settings, "IMAGE_CAPTION_VLM_MAX_CAPTION_CHARS", 200) or 200),
+                    api_url=str(settings.IMAGE_CAPTION_VLM_API_URL or ""),
+                    timeout_sec=float(settings.IMAGE_CAPTION_VLM_TIMEOUT_SEC or 60),
+                    max_images=int(settings.IMAGE_CAPTION_VLM_MAX_IMAGES or 20),
+                    max_image_bytes=int(settings.IMAGE_CAPTION_VLM_MAX_IMAGE_BYTES or 5_000_000),
+                    max_caption_chars=int(settings.IMAGE_CAPTION_VLM_MAX_CAPTION_CHARS or 200),
                 )
                 stats.captions_added_total += int(added or 0)
                 stats.caption_backend = "vlm_http"
@@ -789,13 +784,11 @@ class InlineAssetStage:
         start_index: int = 0,
         image_caption_enabled: bool = False,
     ) -> InlineAssetResult:
-        upload_enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+        upload_enabled = bool(settings.MINIO_ENABLED)
         caption_enabled = bool(image_caption_enabled)
-        formula_url = str(getattr(settings, "FORMULA_OCR_API_URL", "") or "").strip()
-        formula_enabled = bool(getattr(settings, "FORMULA_OCR_ENABLED", False)) and bool(formula_url)
-        chart_enabled = bool(getattr(settings, "CHART_TO_DATA_ENABLED", False)) and bool(
-            str(getattr(settings, "CHART_TO_DATA_API_URL", "") or "").strip()
-        )
+        formula_url = str(settings.FORMULA_OCR_API_URL or "").strip()
+        formula_enabled = bool(settings.FORMULA_OCR_ENABLED) and bool(formula_url)
+        chart_enabled = bool(settings.CHART_TO_DATA_ENABLED) and bool(str(settings.CHART_TO_DATA_API_URL or "").strip())
         inline_cache: dict[str, str] = {}
         asset_idx = int(start_index or 0)
         processed_docs: list[Document] = []
