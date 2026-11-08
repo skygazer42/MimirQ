@@ -225,14 +225,14 @@ def compress_context_docs_with_llm(
 ) -> list[Document]:
     if not docs:
         return []
-    if not bool(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_ENABLED", False)):
+    if not settings.RAG_CONTEXT_LLM_COMPRESSION_ENABLED:
         return list(docs)
 
     query_text = str(query or "").strip()
     if not query_text:
         return list(docs)
 
-    ratio = float(getattr(settings, "RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO", 0.5) or 0.5)
+    ratio = settings.RAG_CONTEXT_LLM_COMPRESSION_TARGET_RATIO or 0.5
     ratio = min(max(ratio, 0.1), 1.0)
 
     out: list[Document] = []
@@ -276,27 +276,27 @@ def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     # 2) Drop duplicates before applying caps so we don't "waste" per-doc budget on repeats.
     cleaned = _apply_exact_dedup(cleaned)
 
-    dedup_enabled = bool(getattr(settings, "RETRIEVAL_DEDUP_ENABLED", False))
+    dedup_enabled = settings.RETRIEVAL_DEDUP_ENABLED
     if dedup_enabled:
         cleaned = _apply_jaccard_dedup(
             cleaned,
-            threshold=float(getattr(settings, "RETRIEVAL_DEDUP_JACCARD_THRESHOLD", 0.0) or 0.0),
-            max_compare=int(getattr(settings, "RETRIEVAL_DEDUP_MAX_COMPARE", 0) or 0),
+            threshold=settings.RETRIEVAL_DEDUP_JACCARD_THRESHOLD,
+            max_compare=settings.RETRIEVAL_DEDUP_MAX_COMPARE,
         )
 
     # 3) Per-doc cap (reuse retrieval knob; prompt context needs the same diversity guard after injections).
-    max_per_doc = int(getattr(settings, "RETRIEVAL_MAX_CHUNKS_PER_DOC", 0) or 0)
+    max_per_doc = settings.RETRIEVAL_MAX_CHUNKS_PER_DOC
     cleaned = _apply_per_doc_cap(cleaned, max_per_doc=max_per_doc)
 
     # 4) Optional lost-in-middle mitigation via deterministic interleaving.
-    if bool(getattr(settings, "RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED", False)):
+    if settings.RAG_CONTEXT_LOST_IN_MIDDLE_REORDER_ENABLED:
         cleaned = _apply_lost_in_middle_reorder(cleaned)
 
     # 5) Optional token-budget-aware trim for pre-prompt context packing.
-    if bool(getattr(settings, "RAG_CONTEXT_TOKEN_BUDGET_TRIM_ENABLED", False)):
+    if settings.RAG_CONTEXT_TOKEN_BUDGET_TRIM_ENABLED:
         cleaned = _apply_token_budget_trim(
             cleaned,
-            max_total_tokens=int(getattr(settings, "RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS", 0) or 0),
+            max_total_tokens=settings.RAG_CONTEXT_DENOISE_MAX_TOTAL_TOKENS,
         )
 
     return cleaned
