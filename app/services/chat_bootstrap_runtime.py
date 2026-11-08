@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.chat import ChatRAGConfig, ChatRequest
 from app.core.config import settings
-from app.core.model_execution import RetiredModelProviderError
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
 from app.models.rag_config_template import RagConfigTemplate
@@ -111,27 +110,22 @@ def _resolve_dataset_rag_defaults(
     dataset_rag_defaults_applied_fields: list[str] = []
     dataset_defaults_meta: dict[str, Any] | None = None
     dataset_id_used: UUID | None = scope_dataset_id
-    try:
-        if dataset_id_used is None:
-            dataset_id_used = resolve_single_dataset_id_for_documents(
-                db,
-                tenant_id=tenant_id,
-                document_ids=document_ids,
-            )
-        if dataset_id_used is None:
-            return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
-        ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
-        dataset_defaults_meta = ds_meta
-        raw_defaults = ds_meta.get("rag_defaults")
-        effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
-            rag_config=effective_rag_config,
-            request_fields_set=_rag_fields_set(request),
-            raw_dataset_defaults=raw_defaults,
+    if dataset_id_used is None:
+        dataset_id_used = resolve_single_dataset_id_for_documents(
+            db,
+            tenant_id=tenant_id,
+            document_ids=document_ids,
         )
-    except RetiredModelProviderError:
-        raise
-    except Exception:
-        return request.rag_config, [], None, scope_dataset_id
+    if dataset_id_used is None:
+        return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
+    ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=dataset_id_used)
+    dataset_defaults_meta = ds_meta
+    raw_defaults = ds_meta.get("rag_defaults")
+    effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+        rag_config=effective_rag_config,
+        request_fields_set=_rag_fields_set(request),
+        raw_dataset_defaults=raw_defaults,
+    )
     return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
 
 

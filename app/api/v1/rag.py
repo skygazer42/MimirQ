@@ -19,7 +19,6 @@ from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.chat import ChatRAGConfig, HistoryMessage
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.model_execution import RetiredModelProviderError
 from app.rag.core.logging import get_logger
 from app.services import dataset_service
 from app.services.dataset_defaults import load_dataset_metadata, resolve_single_dataset_id_for_documents
@@ -265,24 +264,18 @@ def _resolve_dataset_defaults_rag_config(
 
     dataset_rag_defaults_applied_fields: list[str] = []
     dataset_defaults_meta: dict[str, Any] | None = None
-    try:
-        ds_id = scope_dataset_id
-        if ds_id is None and scope_document_ids:
-            ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
-        if ds_id is not None:
-            ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
-            dataset_defaults_meta = ds_meta if isinstance(ds_meta, dict) else None
-            raw_defaults = ds_meta.get("rag_defaults") if isinstance(ds_meta, dict) else None
-            effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
-                rag_config=effective_rag_config,
-                request_fields_set=rag_fields_set,
-                raw_dataset_defaults=raw_defaults,
-            )
-    except RetiredModelProviderError:
-        raise
-    except Exception:
-        dataset_rag_defaults_applied_fields = []
-        dataset_defaults_meta = None
+    ds_id = scope_dataset_id
+    if ds_id is None and scope_document_ids:
+        ds_id = resolve_single_dataset_id_for_documents(db, tenant_id=tenant_id, document_ids=scope_document_ids)
+    if ds_id is not None:
+        ds_meta = load_dataset_metadata(db, tenant_id=tenant_id, dataset_id=ds_id)
+        dataset_defaults_meta = ds_meta
+        raw_defaults = ds_meta.get("rag_defaults")
+        effective_rag_config, dataset_rag_defaults_applied_fields = merge_rag_config_with_dataset_defaults(
+            rag_config=effective_rag_config,
+            request_fields_set=rag_fields_set,
+            raw_dataset_defaults=raw_defaults,
+        )
     return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, rag_fields_set
 
 
@@ -857,7 +850,7 @@ async def retrieve_preview(
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+    # Apply dataset defaults only when all documents share one dataset_id.
     #
     # For this debug endpoint, we default to a recall-first profile when the caller omits rag_config,
     # so retrieval tuning starts from a "must-recall" baseline.
@@ -1216,7 +1209,7 @@ async def retrieve_evidence(
     from app.rag.pipelines.langgraph import build_rag_state
     from app.rag.retrieval.orchestrator import run_retrieval
 
-    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+    # Apply dataset defaults only when all documents share one dataset_id.
     request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
@@ -1481,7 +1474,7 @@ async def prompt_preview(
         db=db, tenant_id=tenant_id, account_id=account_id, document_ids=body.document_ids, dataset_id=body.dataset_id
     )
 
-    # Dataset-level default RAG config (best-effort): apply only when all docs share one dataset_id.
+    # Apply dataset defaults only when all documents share one dataset_id.
     request_fields_set = set(body.model_fields_set or set())
     (
         effective_rag_config,
