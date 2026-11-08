@@ -1,6 +1,6 @@
 # Phase 0 / Phase 1A 进度
 
-状态：暂停源码施工，等待总指挥协调并发写入；未修改源码、测试或暂存区，未提交。
+状态：本轮列举位置的审查、回归与修复完成。历史暂停记录保留；八组 Desktop 验收及逐处定性见文末与 classification.md。全库 Phase 1A 扩展扫描不宣称清零。
 
 ## 并发裁决
 
@@ -133,3 +133,28 @@ batch precheck 原 800 附近：precheck_only 是必需扫描，commit 失败 ro
 新增 test_service_commit_failure_boundaries.py 8 例。最初发现 tmp_path 权限/Windows 路径长度及 prompt monkeypatch 目标问题，已修正测试装配；不把这些环境/装配错误当红证据。最终临时恢复本组 HEAD 旧源码：新用例 8 failed；另 3 个原有 retry_queue 测试同样失败，4 个通过；恢复全部源码后新测试+KG复杂度+Ragas契约 17 passed（8.20s）。三个既有失败分别为 test_retry_document_processing_fails_closed_when_queue_handoff_fails / test_retry_document_processing_hash_ignores_parser_backend_resolved_drift / test_retry_document_processing_local_fallback_preserves_then_consumes_retry_cleanup，均因 app.api.v1.document_processing 无 settings 属性；本切片不修无关别名。
 
 服务组 ruff 仅剩 baseline confluence I001，其他无新增；格式检查由 batch 新增长行触发，已仅格式化该文件新块。hash 与每文件 log -3 记录在 service-hashes-before/after.json。Note 三门禁以 Node 24 原生 TypeScript 执行，134 notes tree/format、0 archive 全通过（宿主 ESM 类型提示无关）。
+
+## 第四提交：worker/KG 完成边界与收尾验收
+
+第三提交 fec9a000d（12 files, +643/-19）。最后一组 tasks/jobs.py 原 795 是有 Best-effort job-level audit summary 注释的审计，保留旁路但 direct rollback+warning traceback；原 1838 的 invalidate_dataset_cache_namespace 写 dataset.updated_at 轮转持久化 corpus token，是 KG 完成的一部分，不能把 commit 失败当成功，现在 rollback+raise，队列收到错误。已提交事件不会被这次 rollback 撤销，不虚构跨事务原子性。
+
+KG routes 原 1618/1671/1993 及同类 1879/1940 主提交原本已重抛，不是吞主提交；删除嵌套 rollback 吞错后，rollback 失败同样传播，并通过 Python __context__ 保留原始 commit 异常。test_worker_and_kg_commit_boundaries.py 修复前 7 failed / 5 passed（5个正常rollback时的原始传播用例原本已通过），修复后该组+Desktop补充 22 passed。
+
+Desktop KG cleanup 的关系清理和 audit 两分支补充临时旧行为证明：2 failed（kg-relations-red.txt），恢复后均通过。precheck 再加初次提交成功、后台 worker 失败的 required/optional 两例，旧源码4 failed（含原2个首次commit失败用例），修复版本通过（precheck-late-red.txt）。
+
+最终新增回归 46 passed，17.73s（new-regressions-final.txt）。完整限定15文件组合 141 passed / 2 skipped / 5 failed，32.87s（final-pytest.txt）。2 skipped 均文档版本数据库集成开关未开启，未启动数据库、模型、解析服务或容器。5个失败全部已用旧源码复现：
+- tests/test_document_processing_retry_queue_contract.py::test_retry_document_processing_fails_closed_when_queue_handoff_fails
+- tests/test_document_processing_retry_queue_contract.py::test_retry_document_processing_hash_ignores_parser_backend_resolved_drift
+- tests/test_document_processing_retry_queue_contract.py::test_retry_document_processing_local_fallback_preserves_then_consumes_retry_cleanup
+  以上三例引用不存在的 document_processing.settings；service-red.txt 记录旧版本同失败。
+- tests/test_task_locks.py::test_document_job_propagates_failed_processor_result
+- tests/test_task_locks.py::test_document_job_downloads_generic_object_storage_source
+  以上两例测试替身仅接受 kwargs，生产 processor 用5个位置参数调用；task-existing-failures.txt 记录旧worker同样2 failed。
+
+全app ruff check仍为基线8个connector I001，format 1216 files already formatted；新测试和本组源码7文件check/format通过。所有任务指令使用授权解释器并在worktree cwd运行；带tmp_path的测试指定工作区短路径 --basetemp，避免系统临时目录权限和Windows长路径假失败。
+
+已核对 owner-call-sites.json：datasets审计8处、ingestion_runs审计4处、document_versions审计2处、RAG usage两个入口各1处，无遗留旧局部usage提交。dataset_service create/update主commit已有rollback+raise，未误改成审计降级。32个函数/边界逐处表见 classification.md；本轮指定点无跳过，扩展扫描候选单列 follow-up-findings.md，不能把本轮完成解读成全库commit吞错清零。没有触碰1B settings默认值切片。
+
+采用 requesting-code-review 技能的独立只读代理审查：没有阻碍提交的正确性问题；确认主写入传播、可选与必需precheck分流、异常链和真实函数测试。限制：MagicMock Session故障注入，不覆盖真实数据库expire/transport行为；policy suggestion失败完整外层流程未增加用例。新notes的tree/format/archive三门禁通过。
+
+最终模式计数（包含Desktop已提交修复影响，不仅是本代理diff）：except Exception 2206、suppress 236、or{}[] 3058、三参getattr单行近似892、isinstance3970、settings.X or1518。仅作词法参考。四组提交的最终stat以git show为准；最后提交SHA在交付回报列明，本文不自引用自身尚未生成的SHA。

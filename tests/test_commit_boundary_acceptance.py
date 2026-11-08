@@ -100,13 +100,17 @@ def test_document_version_database_cleanup_failure_returns_500(monkeypatch):
     db.rollback.assert_called_once()
 
 
-def test_kg_document_audit_failure_is_observable(monkeypatch, caplog):
+@pytest.mark.parametrize("phase", ["audit", "relations"])
+def test_kg_document_degradation_is_observable(phase, monkeypatch, caplog):
     from app.rag.kg.api import routes
     from app.services import indexer
 
     db = MagicMock()
-    failure = RuntimeError("KG audit commit failed")
-    db.commit.side_effect = failure
+    failure = RuntimeError("KG cleanup boundary failed")
+    if phase == "audit":
+        db.commit.side_effect = failure
+    else:
+        db.flush.side_effect = failure
     monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
     monkeypatch.setattr(routes, "filter_allowed_document_ids", lambda *a: None)
     factory = MagicMock()

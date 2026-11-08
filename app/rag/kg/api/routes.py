@@ -1616,10 +1616,7 @@ def create_kg_entity_alias(
     try:
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     return KGEntityAliasItem.model_validate(alias_row)
@@ -1669,10 +1666,7 @@ def delete_kg_entity_alias(
     try:
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     # Return the current alias set after deletion.
@@ -1878,10 +1872,7 @@ def create_kg_predicate_ontology(
         db.commit()
         db.refresh(row)
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     return KGPredicateOntologyItem.model_validate(row)
@@ -1939,10 +1930,7 @@ def update_kg_predicate_ontology(
         db.commit()
         db.refresh(row)
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     return KGPredicateOntologyItem.model_validate(row)
@@ -1991,10 +1979,7 @@ def delete_kg_predicate_ontology(
     try:
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(KG_API_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
         raise
 
     # Return updated list for convenience in the UI.

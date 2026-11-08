@@ -1,0 +1,404 @@
+......................................................................FF [ 48%]
+.......................................ss............................FFF [ 97%]
+....                                                                     [100%]
+================================== FAILURES ===================================
+____________ test_document_job_propagates_failed_processor_result _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022067064EC0>
+tmp_path = WindowsPath('C:/Users/jiahuanl/.codex/worktrees/style-task3-chat-tags/MimirQ/.ptf2/test_document_job_propagates_f0')
+
+    @pytest.mark.asyncio
+    async def test_document_job_propagates_failed_processor_result(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+    ) -> None:  # noqa: ANN001
+        from types import SimpleNamespace
+
+        from app.tasks import jobs
+
+        tenant_id = uuid4()
+        document_id = uuid4()
+        source = tmp_path / "document.txt"
+        source.write_text("content", encoding="utf-8")
+        document = SimpleNamespace(
+            id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=None,
+            doc_metadata={},
+            file_path=str(source),
+        )
+        db = _ValueDB(document)
+
+        async def _acquire(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return None
+
+        async def _lock(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return True
+
+        async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return None
+
+        observed_processor_db: list[object] = []
+
+        async def _process(**_kwargs):  # noqa: ANN003, ANN202
+            observed_processor_db.append(_kwargs.get("db"))
+            return {"status": "failed", "reason": "retry_cleanup_deferred"}
+
+        monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+        monkeypatch.setattr(jobs.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+        monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
+        monkeypatch.setattr(jobs, "tenant_acquire", _acquire, raising=True)
+        monkeypatch.setattr(jobs, "dataset_acquire", _acquire, raising=True)
+        monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _lock, raising=True)
+        monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
+        monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
+        monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
+        monkeypatch.setattr(jobs.document_processor, "process_document", _process, raising=True)
+
+>       result = await jobs.process_document_job(
+            {"job_try": 1, "redis": object()},
+            str(tenant_id),
+            str(document_id),
+            "member-1",
+        )
+
+tests\test_task_locks.py:728:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\tasks\jobs.py:1035: in process_document_job
+    result = await _run_document_job_processor(
+app\tasks\jobs.py:647: in _run_document_job_processor
+    return await _run_document_processing_without_blocking_event_loop(
+app\tasks\jobs.py:76: in _run_document_processing_without_blocking_event_loop
+    return await run_coroutine_in_thread(
+app\core\async_bridge.py:65: in run_coroutine_in_thread
+    return await run_blocking_in_thread(
+app\core\async_bridge.py:47: in run_blocking_in_thread
+    return await asyncio.shield(worker_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\async_bridge.py:63: in run
+    return asyncio.run(factory())
+                       ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>       lambda: document_processor.process_document(
+            file_path,
+            document_id,
+            tenant_id,
+            parser_backend,
+            chunk_strategy,
+        ),
+        on_cancelled_worker_error=_log_cancelled_document_processing_error,
+    )
+E   TypeError: test_document_job_propagates_failed_processor_result.<locals>._process() takes 0 positional arguments but 5 were given
+
+app\tasks\jobs.py:77: TypeError
+__________ test_document_job_downloads_generic_object_storage_source __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022067066690>
+tmp_path = WindowsPath('C:/Users/jiahuanl/.codex/worktrees/style-task3-chat-tags/MimirQ/.ptf2/test_document_job_downloads_ge0')
+
+    @pytest.mark.asyncio
+    async def test_document_job_downloads_generic_object_storage_source(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path,
+    ) -> None:  # noqa: ANN001
+        from types import SimpleNamespace
+
+        from app.tasks import jobs
+
+        tenant_id = uuid4()
+        document_id = uuid4()
+        dataset_id = uuid4()
+        document = SimpleNamespace(
+            id=document_id,
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            doc_metadata={"source_storage_backend": "object_storage", "source_storage_provider": "s3"},
+            file_type="pdf",
+            file_path="s3://bucket/documents/t/d/source.pdf",
+        )
+        db = _ValueDB(document)
+        downloaded: list[str] = []
+        processed: list[object] = []
+
+        class _Store:
+            def download_object_to_path(self, *, object_name, destination, max_bytes):  # noqa: ANN001
+                downloaded.append(object_name)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(b"pdf-data")
+                return destination
+
+        async def _acquire(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return None
+
+        async def _lock(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return True
+
+        async def _release(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+            return None
+
+        async def _process(**kwargs):  # noqa: ANN003, ANN202
+            processed.append(kwargs["file_path"])
+            return {"status": "success"}
+
+        monkeypatch.setattr(jobs, "SessionLocal", lambda: db, raising=True)
+        monkeypatch.setattr(jobs.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
+        monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *_args, **_kwargs: object(), raising=True)
+        monkeypatch.setattr(jobs, "tenant_acquire", _acquire, raising=True)
+        monkeypatch.setattr(jobs, "dataset_acquire", _acquire, raising=True)
+        monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", _lock, raising=True)
+        monkeypatch.setattr(jobs, "release_lock", _release, raising=True)
+        monkeypatch.setattr(jobs, "dataset_release", _release, raising=True)
+        monkeypatch.setattr(jobs, "tenant_release", _release, raising=True)
+        monkeypatch.setattr(
+            jobs,
+            "resolve_document_object_reference",
+            lambda *_args, **_kwargs: (_Store(), SimpleNamespace(bucket="bucket", object_name="documents/t/d/source.pdf")),
+            raising=True,
+        )
+        monkeypatch.setattr(jobs.document_processor, "process_document", _process, raising=True)
+
+>       result = await jobs.process_document_job(
+            {"job_try": 1, "redis": object()},
+            str(tenant_id),
+            str(document_id),
+            "member-1",
+        )
+
+tests\test_task_locks.py:802:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\tasks\jobs.py:1035: in process_document_job
+    result = await _run_document_job_processor(
+app\tasks\jobs.py:647: in _run_document_job_processor
+    return await _run_document_processing_without_blocking_event_loop(
+app\tasks\jobs.py:76: in _run_document_processing_without_blocking_event_loop
+    return await run_coroutine_in_thread(
+app\core\async_bridge.py:65: in run_coroutine_in_thread
+    return await run_blocking_in_thread(
+app\core\async_bridge.py:47: in run_blocking_in_thread
+    return await asyncio.shield(worker_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\threads.py:25: in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\concurrent\futures\thread.py:59: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\async_bridge.py:63: in run
+    return asyncio.run(factory())
+                       ^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+>       lambda: document_processor.process_document(
+            file_path,
+            document_id,
+            tenant_id,
+            parser_backend,
+            chunk_strategy,
+        ),
+        on_cancelled_worker_error=_log_cancelled_document_processing_error,
+    )
+E   TypeError: test_document_job_downloads_generic_object_storage_source.<locals>._process() takes 0 positional arguments but 5 were given
+
+app\tasks\jobs.py:77: TypeError
+____ test_retry_document_processing_fails_closed_when_queue_handoff_fails _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022069EA9F70>
+tmp_path = WindowsPath('C:/Users/jiahuanl/.codex/worktrees/style-task3-chat-tags/MimirQ/.ptf2/test_retry_document_processing0')
+
+    @pytest.mark.asyncio
+    async def test_retry_document_processing_fails_closed_when_queue_handoff_fails(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        documents_module = document_processing
+        source = tmp_path / "retry.txt"
+        source.write_text("hello", encoding="utf-8")
+        document = SimpleNamespace(
+            id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            dataset_id=uuid.uuid4(),
+            file_path=str(source),
+            file_type="txt",
+            filename="retry.txt",
+            status="failed",
+            processing_progress=100,
+            current_stage="failed",
+            failed_stage="parse",
+            error_code="boom",
+            next_retry_at=None,
+            error_message="old-error",
+            chunk_count=12,
+            total_characters=34,
+            doc_metadata={
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline_hash": "stable-pipeline",
+                "active_pipeline_hash": "stable-pipeline",
+                "active_pipeline_ready": True,
+                "ingest_checkpoint": {"version": "1", "stage": "parsed"},
+                "parsed_content_persisted": {"cleaned": {"text": "old parsed text"}},
+                "task_id": "old-task",
+                "kg_task_id": "old-kg-task",
+            },
+        )
+        db = _DB(document)
+        cleanup_calls: list[str] = []
+
+        async def _no_task(**_kwargs):  # noqa: ANN003, ANN202
+            return None
+
+>       monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'app.api.v1.document_processing' has no attribute 'settings'
+
+tests\test_document_processing_retry_queue_contract.py:202: AttributeError
+__ test_retry_document_processing_hash_ignores_parser_backend_resolved_drift __
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022069EAB2C0>
+tmp_path = WindowsPath('C:/Users/jiahuanl/.codex/worktrees/style-task3-chat-tags/MimirQ/.ptf2/test_retry_document_processing1')
+
+    @pytest.mark.asyncio
+    async def test_retry_document_processing_hash_ignores_parser_backend_resolved_drift(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        documents_module = document_processing
+        source = tmp_path / "retry-stable.txt"
+        source.write_text("hello", encoding="utf-8")
+        document = SimpleNamespace(
+            id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            dataset_id=uuid.uuid4(),
+            file_path=str(source),
+            file_type="txt",
+            filename="retry-stable.txt",
+            status="completed",
+            processing_progress=100,
+            current_stage="completed",
+            failed_stage=None,
+            error_code=None,
+            next_retry_at=None,
+            error_message=None,
+            chunk_count=12,
+            total_characters=34,
+            doc_metadata={
+                "content_sha256": "sha-stable",
+                "file_sha256": "sha-stable",
+                "parser_backend": "auto",
+                "parser_backend_requested": "auto",
+                "parser_backend_resolved": "mineru",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline_hash": "stable-pipeline",
+                "active_pipeline_hash": "stable-pipeline",
+                "active_pipeline_ready": True,
+            },
+        )
+        db = _DB(document)
+
+        async def _task(**_kwargs):  # noqa: ANN003, ANN202
+            return "task-123"
+
+>       monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", True, raising=False)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'app.api.v1.document_processing' has no attribute 'settings'
+
+tests\test_document_processing_retry_queue_contract.py:296: AttributeError
+_ test_retry_document_processing_local_fallback_preserves_then_consumes_retry_cleanup _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022069EABE30>
+tmp_path = WindowsPath('C:/Users/jiahuanl/.codex/worktrees/style-task3-chat-tags/MimirQ/.ptf2/test_retry_document_processing2')
+
+    @pytest.mark.asyncio
+    async def test_retry_document_processing_local_fallback_preserves_then_consumes_retry_cleanup(
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        from app.parsing.processors import processor
+
+        documents_module = document_processing
+        source = tmp_path / "retry-local.txt"
+        source.write_text("hello", encoding="utf-8")
+        document = SimpleNamespace(
+            id=uuid.uuid4(),
+            tenant_id=uuid.uuid4(),
+            dataset_id=uuid.uuid4(),
+            file_path=str(source),
+            file_type="txt",
+            filename="retry-local.txt",
+            status="failed",
+            processing_progress=100,
+            current_stage="failed",
+            failed_stage="parse",
+            error_code="boom",
+            next_retry_at=None,
+            error_message="old-error",
+            chunk_count=12,
+            total_characters=34,
+            doc_metadata={
+                "parser_backend": "auto",
+                "chunk_strategy": "langchain_recursive",
+                "pipeline_hash": "stable-pipeline",
+                "active_pipeline_hash": "stable-pipeline",
+                "active_pipeline_ready": True,
+                "ingest_checkpoint": {"version": "1", "stage": "parsed"},
+                "parsed_content_persisted": {"cleaned": {"text": "old parsed text"}},
+                "img_ids": ["old-image"],
+            },
+        )
+        db = _DB(document)
+        background_tasks = BackgroundTasks()
+        cleanup_calls: list[str] = []
+        processing_calls: list[dict[str, object]] = []
+
+        class _Indexer:
+            def __init__(self, _db) -> None:  # noqa: ANN001
+                pass
+
+            def delete_chunk_indexes(self, **_kwargs) -> None:  # noqa: ANN003
+                cleanup_calls.append("chunks")
+
+            def delete_event_indexes(self, **_kwargs) -> None:  # noqa: ANN003
+                cleanup_calls.append("events")
+
+        async def _process(file_path, document_id, tenant_id, parser_backend, chunk_strategy):  # noqa: ANN001, ANN202
+            processing_calls.append(
+                {
+                    "file_path": file_path,
+                    "document_id": document_id,
+                    "tenant_id": tenant_id,
+                    "parser_backend": parser_backend,
+                    "chunk_strategy": chunk_strategy,
+                    "retry_cleanup_before": dict(document.doc_metadata.get("retry_cleanup") or {}),
+                }
+            )
+            processor.DocumentProcessorService()._apply_pending_retry_cleanup(
+                db,
+                db_document=document,
+                tenant_id=tenant_id,
+                document_id=document_id,
+            )
+
+        async def _no_task(**_kwargs):  # noqa: ANN003, ANN202
+            return None
+
+>       monkeypatch.setattr(documents_module.settings, "TASK_QUEUE_ENABLED", False, raising=False)
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: module 'app.api.v1.document_processing' has no attribute 'settings'
+
+tests\test_document_processing_retry_queue_contract.py:409: AttributeError
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_document_versions_integration.py:69: Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)
+SKIPPED [1] tests\test_document_versions_integration.py:195: Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)
+FAILED tests/test_task_locks.py::test_document_job_propagates_failed_processor_result
+FAILED tests/test_task_locks.py::test_document_job_downloads_generic_object_storage_source
+FAILED tests/test_document_processing_retry_queue_contract.py::test_retry_document_processing_fails_closed_when_queue_handoff_fails
+FAILED tests/test_document_processing_retry_queue_contract.py::test_retry_document_processing_hash_ignores_parser_backend_resolved_drift
+FAILED tests/test_document_processing_retry_queue_contract.py::test_retry_document_processing_local_fallback_preserves_then_consumes_retry_cleanup
+5 failed, 141 passed, 2 skipped in 32.87s

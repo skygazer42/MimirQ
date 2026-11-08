@@ -794,8 +794,8 @@ async def evidence_reference_sources_repair_job(  # noqa: ANN001
             )
             db.commit()
         except Exception:  # noqa: BLE001
-            with contextlib.suppress(Exception):  # noqa: BLE001
-                db.rollback()
+            db.rollback()
+            logger.warning("Evidence repair completed but job audit failed", exc_info=True)
 
         return await _job_result(
             ctx,
@@ -1836,10 +1836,9 @@ async def _finalize_kg_job_success(
         try:
             cache_invalidation = invalidate_dataset_cache_namespace(db, tenant_id=tid, dataset_id=doc.dataset_id)
             db.commit()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to invalidate dataset cache after KG extraction: %s", str(exc)[:200])
-            with contextlib.suppress(Exception):
-                db.rollback()
+        except Exception:  # noqa: BLE001 - cache token persistence is part of KG completion
+            db.rollback()
+            raise
     return await _extract_kg_job_result(
         ctx,
         started_at=started_at,

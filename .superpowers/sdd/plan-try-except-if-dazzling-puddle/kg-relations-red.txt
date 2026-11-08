@@ -1,0 +1,68 @@
+FF                                                                       [100%]
+================================== FAILURES ===================================
+______________ test_kg_document_degradation_is_observable[audit] ______________
+
+phase = 'audit'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F6D71AA6F0>
+caplog = <_pytest.logging.LogCaptureFixture object at 0x000001F6D71AA870>
+
+    @pytest.mark.parametrize("phase", ["audit", "relations"])
+    def test_kg_document_degradation_is_observable(phase, monkeypatch, caplog):
+        from app.rag.kg.api import routes
+        from app.services import indexer
+
+        db = MagicMock()
+        failure = RuntimeError("KG cleanup boundary failed")
+        if phase == "audit":
+            db.commit.side_effect = failure
+        else:
+            db.flush.side_effect = failure
+        monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
+        monkeypatch.setattr(routes, "filter_allowed_document_ids", lambda *a: None)
+        factory = MagicMock()
+        factory.return_value.delete_event_indexes.return_value = {"events_deleted": 2}
+        monkeypatch.setattr(indexer, "Indexer", factory)
+        with caplog.at_level(logging.WARNING):
+            result = routes.delete_kg_for_document(uuid4(), tenant_id=uuid4(), account_id="owner", db=db)
+        assert result.events_deleted == 2
+        db.rollback.assert_called_once()
+>       assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)
+E       assert False
+E        +  where False = any(<generator object test_kg_document_degradation_is_observable.<locals>.<genexpr> at 0x000001F6F8484E10>)
+
+tests\test_commit_boundary_acceptance.py:123: AssertionError
+____________ test_kg_document_degradation_is_observable[relations] ____________
+
+phase = 'relations'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001F6F867F470>
+caplog = <_pytest.logging.LogCaptureFixture object at 0x000001F6F867F920>
+
+    @pytest.mark.parametrize("phase", ["audit", "relations"])
+    def test_kg_document_degradation_is_observable(phase, monkeypatch, caplog):
+        from app.rag.kg.api import routes
+        from app.services import indexer
+
+        db = MagicMock()
+        failure = RuntimeError("KG cleanup boundary failed")
+        if phase == "audit":
+            db.commit.side_effect = failure
+        else:
+            db.flush.side_effect = failure
+        monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
+        monkeypatch.setattr(routes, "filter_allowed_document_ids", lambda *a: None)
+        factory = MagicMock()
+        factory.return_value.delete_event_indexes.return_value = {"events_deleted": 2}
+        monkeypatch.setattr(indexer, "Indexer", factory)
+        with caplog.at_level(logging.WARNING):
+            result = routes.delete_kg_for_document(uuid4(), tenant_id=uuid4(), account_id="owner", db=db)
+        assert result.events_deleted == 2
+        db.rollback.assert_called_once()
+>       assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)
+E       assert False
+E        +  where False = any(<generator object test_kg_document_degradation_is_observable.<locals>.<genexpr> at 0x000001F6F8485D80>)
+
+tests\test_commit_boundary_acceptance.py:123: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_commit_boundary_acceptance.py::test_kg_document_degradation_is_observable[audit]
+FAILED tests/test_commit_boundary_acceptance.py::test_kg_document_degradation_is_observable[relations]
+2 failed, 8 deselected in 11.63s

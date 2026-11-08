@@ -16,6 +16,8 @@ Confluence page identity and connector metadata are required writes: commit fail
 
 Batch precheck has two contracts. `precheck_only` requires a persisted scan and propagates failure. Optional precheck-first ingestion rolls back, logs the failure and returns no scan instead of returning an unpersisted pending object. The precheck worker rolls back before compensation and preserves the original exception if the compensating commit also fails.
 
+KG completion includes the dataset corpus revision commit. Failure rolls back and propagates to the queue instead of returning a successful job with a cache token that was not persisted. The evidence repair job's separate audit remains fail-open with a traceback warning. Alias and predicate primary commits already propagate; their rollback errors now also propagate with the commit error retained in Python's exception context.
+
 This complements [dataset audit degradation](2026-11-08-dataset-audit-degradation.md) and [document mutation contracts](2026-11-05-document-mutation-contracts.md): audit, QA statistics and optional usage counters are distinct from authoritative document/version writes. The acceptance tests also prove document version KG cleanup failure produces an HTTP 500.
 
 ## Alternatives considered
@@ -28,3 +30,5 @@ This complements [dataset audit degradation](2026-11-08-dataset-audit-degradatio
 Successful audit degradation does not guarantee an audit row exists; warnings now expose that loss. Primary operation commits retain their existing propagation behavior. Background failure-state persistence can still fail, but its exception and the original failure remain visible. No retry, replacement store or fabricated success value is introduced.
 
 The API regression suite fails in 11 cases before these changes and passes afterward. Desktop acceptance tests fail in 9 cases under temporary restoration of the old silent branches and pass with the source restored. Full commands and outputs are recorded in the plan progress ledger; tests use injected Session failures without database, parser or model services.
+
+The service regressions also prove the required/optional precheck policy when the initial scan record is committed but its worker subsequently fails. Tests inject Session failures into real production entry points; they do not prove live SQLAlchemy expiration or database transport behavior. The existing retry-queue and task-lock test fixture failures are reproduced against the old source and remain outside this change.

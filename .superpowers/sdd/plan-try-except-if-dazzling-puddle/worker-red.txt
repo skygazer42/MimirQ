@@ -1,0 +1,268 @@
+.....FFFFFFF                                                             [100%]
+================================== FAILURES ===================================
+_ test_kg_authoritative_commit_and_rollback_failures_propagate[True-alias_create] _
+
+operation = 'alias_create', rollback_fails = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022FABD73F50>
+
+    @pytest.mark.parametrize(
+        "operation", ["alias_create", "alias_delete", "predicate_create", "predicate_update", "predicate_delete"]
+    )
+    @pytest.mark.parametrize("rollback_fails", [False, True])
+    def test_kg_authoritative_commit_and_rollback_failures_propagate(operation, rollback_fails, monkeypatch):
+        from app.rag.kg.api import routes
+
+        db = MagicMock()
+        original = RuntimeError("KG primary commit failed")
+        cleanup = RuntimeError("KG rollback failed")
+        db.commit.side_effect = original
+        if rollback_fails:
+            db.rollback.side_effect = cleanup
+        monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
+        monkeypatch.setattr(routes, "_resolve_entity_id_via_redirects", lambda **k: k["entity_id"])
+        if operation == "alias_create":
+            db.query.return_value.filter_by.return_value.first.side_effect = [SimpleNamespace(id=uuid4()), None]
+        args = dict(tenant_id=uuid4(), account_id="owner", db=db)
+        with pytest.raises(RuntimeError) as raised:
+            if operation == "alias_create":
+                routes.create_kg_entity_alias(uuid4(), routes.KGEntityAliasCreateRequest(alias="Alias"), **args)
+            elif operation == "alias_delete":
+                routes.delete_kg_entity_alias(uuid4(), uuid4(), **args)
+            elif operation == "predicate_create":
+                routes.create_kg_predicate_ontology(routes.KGPredicateOntologyCreateRequest(predicate="uses"), **args)
+            elif operation == "predicate_update":
+                routes.update_kg_predicate_ontology(uuid4(), routes.KGPredicateOntologyUpdateRequest(), **args)
+            else:
+                routes.delete_kg_predicate_ontology(uuid4(), **args)
+>       assert raised.value is (cleanup if rollback_fails else original)
+E       AssertionError: assert RuntimeError('KG primary commit failed') is RuntimeError('KG rollback failed')
+E        +  where RuntimeError('KG primary commit failed') = <ExceptionInfo RuntimeError('KG primary commit failed') tblen=5>.value
+
+tests\test_worker_and_kg_commit_boundaries.py:40: AssertionError
+_ test_kg_authoritative_commit_and_rollback_failures_propagate[True-alias_delete] _
+
+operation = 'alias_delete', rollback_fails = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022FABD5DDF0>
+
+    @pytest.mark.parametrize(
+        "operation", ["alias_create", "alias_delete", "predicate_create", "predicate_update", "predicate_delete"]
+    )
+    @pytest.mark.parametrize("rollback_fails", [False, True])
+    def test_kg_authoritative_commit_and_rollback_failures_propagate(operation, rollback_fails, monkeypatch):
+        from app.rag.kg.api import routes
+
+        db = MagicMock()
+        original = RuntimeError("KG primary commit failed")
+        cleanup = RuntimeError("KG rollback failed")
+        db.commit.side_effect = original
+        if rollback_fails:
+            db.rollback.side_effect = cleanup
+        monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
+        monkeypatch.setattr(routes, "_resolve_entity_id_via_redirects", lambda **k: k["entity_id"])
+        if operation == "alias_create":
+            db.query.return_value.filter_by.return_value.first.side_effect = [SimpleNamespace(id=uuid4()), None]
+        args = dict(tenant_id=uuid4(), account_id="owner", db=db)
+        with pytest.raises(RuntimeError) as raised:
+            if operation == "alias_create":
+                routes.create_kg_entity_alias(uuid4(), routes.KGEntityAliasCreateRequest(alias="Alias"), **args)
+            elif operation == "alias_delete":
+                routes.delete_kg_entity_alias(uuid4(), uuid4(), **args)
+            elif operation == "predicate_create":
+                routes.create_kg_predicate_ontology(routes.KGPredicateOntologyCreateRequest(predicate="uses"), **args)
+            elif operation == "predicate_update":
+                routes.update_kg_predicate_ontology(uuid4(), routes.KGPredicateOntologyUpdateRequest(), **args)
+            else:
+                routes.delete_kg_predicate_ontology(uuid4(), **args)
+>       assert raised.value is (cleanup if rollback_fails else original)
+E       AssertionError: assert RuntimeError('KG primary commit failed') is RuntimeError('KG rollback failed')
+E        +  where RuntimeError('KG primary commit failed') = <ExceptionInfo RuntimeError('KG primary commit failed') tblen=5>.value
+
+tests\test_worker_and_kg_commit_boundaries.py:40: AssertionError
+_ test_kg_authoritative_commit_and_rollback_failures_propagate[True-predicate_create] _
+
+operation = 'predicate_create', rollback_fails = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022FABD45190>
+
+    @pytest.mark.parametrize(
+        "operation", ["alias_create", "alias_delete", "predicate_create", "predicate_update", "predicate_delete"]
+    )
+    @pytest.mark.parametrize("rollback_fails", [False, True])
+    def test_kg_authoritative_commit_and_rollback_failures_propagate(operation, rollback_fails, monkeypatch):
+        from app.rag.kg.api import routes
+
+        db = MagicMock()
+        original = RuntimeError("KG primary commit failed")
+        cleanup = RuntimeError("KG rollback failed")
+        db.commit.side_effect = original
+        if rollback_fails:
+            db.rollback.side_effect = cleanup
+        monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
+        monkeypatch.setattr(routes, "_resolve_entity_id_via_redirects", lambda **k: k["entity_id"])
+        if operation == "alias_create":
+            db.query.return_value.filter_by.return_value.first.side_effect = [SimpleNamespace(id=uuid4()), None]
+        args = dict(tenant_id=uuid4(), account_id="owner", db=db)
+        with pytest.raises(RuntimeError) as raised:
+            if operation == "alias_create":
+                routes.create_kg_entity_alias(uuid4(), routes.KGEntityAliasCreateRequest(alias="Alias"), **args)
+            elif operation == "alias_delete":
+                routes.delete_kg_entity_alias(uuid4(), uuid4(), **args)
+            elif operation == "predicate_create":
+                routes.create_kg_predicate_ontology(routes.KGPredicateOntologyCreateRequest(predicate="uses"), **args)
+            elif operation == "predicate_update":
+                routes.update_kg_predicate_ontology(uuid4(), routes.KGPredicateOntologyUpdateRequest(), **args)
+            else:
+                routes.delete_kg_predicate_ontology(uuid4(), **args)
+>       assert raised.value is (cleanup if rollback_fails else original)
+E       AssertionError: assert RuntimeError('KG primary commit failed') is RuntimeError('KG rollback failed')
+E        +  where RuntimeError('KG primary commit failed') = <ExceptionInfo RuntimeError('KG primary commit failed') tblen=5>.value
+
+tests\test_worker_and_kg_commit_boundaries.py:40: AssertionError
+_ test_kg_authoritative_commit_and_rollback_failures_propagate[True-predicate_update] _
+
+operation = 'predicate_update', rollback_fails = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022FABDB13A0>
+
+    @pytest.mark.parametrize(
+        "operation", ["alias_create", "alias_delete", "predicate_create", "predicate_update", "predicate_delete"]
+    )
+    @pytest.mark.parametrize("rollback_fails", [False, True])
+    def test_kg_authoritative_commit_and_rollback_failures_propagate(operation, rollback_fails, monkeypatch):
+        from app.rag.kg.api import routes
+
+        db = MagicMock()
+        original = RuntimeError("KG primary commit failed")
+        cleanup = RuntimeError("KG rollback failed")
+        db.commit.side_effect = original
+        if rollback_fails:
+            db.rollback.side_effect = cleanup
+        monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
+        monkeypatch.setattr(routes, "_resolve_entity_id_via_redirects", lambda **k: k["entity_id"])
+        if operation == "alias_create":
+            db.query.return_value.filter_by.return_value.first.side_effect = [SimpleNamespace(id=uuid4()), None]
+        args = dict(tenant_id=uuid4(), account_id="owner", db=db)
+        with pytest.raises(RuntimeError) as raised:
+            if operation == "alias_create":
+                routes.create_kg_entity_alias(uuid4(), routes.KGEntityAliasCreateRequest(alias="Alias"), **args)
+            elif operation == "alias_delete":
+                routes.delete_kg_entity_alias(uuid4(), uuid4(), **args)
+            elif operation == "predicate_create":
+                routes.create_kg_predicate_ontology(routes.KGPredicateOntologyCreateRequest(predicate="uses"), **args)
+            elif operation == "predicate_update":
+                routes.update_kg_predicate_ontology(uuid4(), routes.KGPredicateOntologyUpdateRequest(), **args)
+            else:
+                routes.delete_kg_predicate_ontology(uuid4(), **args)
+>       assert raised.value is (cleanup if rollback_fails else original)
+E       AssertionError: assert RuntimeError('KG primary commit failed') is RuntimeError('KG rollback failed')
+E        +  where RuntimeError('KG primary commit failed') = <ExceptionInfo RuntimeError('KG primary commit failed') tblen=5>.value
+
+tests\test_worker_and_kg_commit_boundaries.py:40: AssertionError
+_ test_kg_authoritative_commit_and_rollback_failures_propagate[True-predicate_delete] _
+
+operation = 'predicate_delete', rollback_fails = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022FABE813D0>
+
+    @pytest.mark.parametrize(
+        "operation", ["alias_create", "alias_delete", "predicate_create", "predicate_update", "predicate_delete"]
+    )
+    @pytest.mark.parametrize("rollback_fails", [False, True])
+    def test_kg_authoritative_commit_and_rollback_failures_propagate(operation, rollback_fails, monkeypatch):
+        from app.rag.kg.api import routes
+
+        db = MagicMock()
+        original = RuntimeError("KG primary commit failed")
+        cleanup = RuntimeError("KG rollback failed")
+        db.commit.side_effect = original
+        if rollback_fails:
+            db.rollback.side_effect = cleanup
+        monkeypatch.setattr(routes, "_ensure_enabled", lambda: None)
+        monkeypatch.setattr(routes, "_resolve_entity_id_via_redirects", lambda **k: k["entity_id"])
+        if operation == "alias_create":
+            db.query.return_value.filter_by.return_value.first.side_effect = [SimpleNamespace(id=uuid4()), None]
+        args = dict(tenant_id=uuid4(), account_id="owner", db=db)
+        with pytest.raises(RuntimeError) as raised:
+            if operation == "alias_create":
+                routes.create_kg_entity_alias(uuid4(), routes.KGEntityAliasCreateRequest(alias="Alias"), **args)
+            elif operation == "alias_delete":
+                routes.delete_kg_entity_alias(uuid4(), uuid4(), **args)
+            elif operation == "predicate_create":
+                routes.create_kg_predicate_ontology(routes.KGPredicateOntologyCreateRequest(predicate="uses"), **args)
+            elif operation == "predicate_update":
+                routes.update_kg_predicate_ontology(uuid4(), routes.KGPredicateOntologyUpdateRequest(), **args)
+            else:
+                routes.delete_kg_predicate_ontology(uuid4(), **args)
+>       assert raised.value is (cleanup if rollback_fails else original)
+E       AssertionError: assert RuntimeError('KG primary commit failed') is RuntimeError('KG rollback failed')
+E        +  where RuntimeError('KG primary commit failed') = <ExceptionInfo RuntimeError('KG primary commit failed') tblen=5>.value
+
+tests\test_worker_and_kg_commit_boundaries.py:40: AssertionError
+__________ test_kg_cache_token_commit_failure_cannot_return_success ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022FABDB2BA0>
+
+    def test_kg_cache_token_commit_failure_cannot_return_success(monkeypatch):
+        from app.services import corpus_cache_tokens
+        from app.tasks import jobs
+
+        db = MagicMock()
+        failure = RuntimeError("cache token commit failed")
+        db.commit.side_effect = failure
+        monkeypatch.setattr(jobs, "_transition_document_index_channel_best_effort", lambda *a, **k: None)
+        monkeypatch.setattr(corpus_cache_tokens, "invalidate_dataset_cache_namespace", lambda *a, **k: {})
+        monkeypatch.setattr(jobs, "_extract_kg_job_result", AsyncMock(return_value={"ok": True}))
+>       with pytest.raises(RuntimeError) as raised:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests\test_worker_and_kg_commit_boundaries.py:55: Failed
+------------------------------ Captured log call ------------------------------
+WARNING  tasks.jobs:jobs.py:1840 Failed to invalidate dataset cache after KG extraction: cache token commit failed
+____________ test_evidence_job_audit_commit_failure_is_observable _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022FAEE92030>
+caplog = <_pytest.logging.LogCaptureFixture object at 0x0000022FAEE921E0>
+
+    def test_evidence_job_audit_commit_failure_is_observable(monkeypatch, caplog):
+        from app.tasks import jobs
+
+        db = MagicMock()
+        failure = RuntimeError("job audit commit failed")
+        db.commit.side_effect = failure
+        monkeypatch.setattr(jobs, "SessionLocal", lambda: db)
+        monkeypatch.setattr(jobs, "_task_queue_redis_or_retry", lambda *a, **k: MagicMock())
+        monkeypatch.setattr(jobs, "tenant_acquire", AsyncMock(return_value="semaphore"))
+        monkeypatch.setattr(jobs, "tenant_release", AsyncMock())
+        monkeypatch.setattr(jobs, "release_lock", AsyncMock())
+        monkeypatch.setattr(jobs, "_acquire_task_lock_or_retry", AsyncMock(return_value=True))
+        monkeypatch.setattr(jobs, "repair_evidence_suite_reference_sources", lambda *a, **k: {})
+        monkeypatch.setattr(jobs, "_job_result", AsyncMock(side_effect=lambda *a, **k: k))
+        with caplog.at_level(logging.WARNING):
+            result = asyncio.run(
+                jobs.evidence_reference_sources_repair_job(
+                    {},
+                    tenant_id=str(uuid4()),
+                    suite_id=str(uuid4()),
+                    requested_by="owner",
+                    apply=True,
+                    allow_approved=False,
+                    include_archived_items=False,
+                    max_items=1,
+                    max_refs_per_item=1,
+                    max_changes=1,
+                )
+            )
+        assert result["ok"] is True
+        db.rollback.assert_called_once()
+>       assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)
+E       assert False
+E        +  where False = any(<generator object test_evidence_job_audit_commit_failure_is_observable.<locals>.<genexpr> at 0x0000022FAEE60FB0>)
+
+tests\test_worker_and_kg_commit_boundaries.py:104: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_worker_and_kg_commit_boundaries.py::test_kg_authoritative_commit_and_rollback_failures_propagate[True-alias_create]
+FAILED tests/test_worker_and_kg_commit_boundaries.py::test_kg_authoritative_commit_and_rollback_failures_propagate[True-alias_delete]
+FAILED tests/test_worker_and_kg_commit_boundaries.py::test_kg_authoritative_commit_and_rollback_failures_propagate[True-predicate_create]
+FAILED tests/test_worker_and_kg_commit_boundaries.py::test_kg_authoritative_commit_and_rollback_failures_propagate[True-predicate_update]
+FAILED tests/test_worker_and_kg_commit_boundaries.py::test_kg_authoritative_commit_and_rollback_failures_propagate[True-predicate_delete]
+FAILED tests/test_worker_and_kg_commit_boundaries.py::test_kg_cache_token_commit_failure_cannot_return_success
+FAILED tests/test_worker_and_kg_commit_boundaries.py::test_evidence_job_audit_commit_failure_is_observable
+7 failed, 5 passed in 16.51s

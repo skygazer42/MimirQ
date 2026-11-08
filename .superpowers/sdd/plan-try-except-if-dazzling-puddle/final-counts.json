@@ -1,0 +1,8 @@
+{
+  "except": 2206,
+  "suppress": 236,
+  "or_collection": 3058,
+  "getattr_3": 892,
+  "isinstance": 3970,
+  "settings_or": 1518
+}

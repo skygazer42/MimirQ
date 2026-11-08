@@ -98,12 +98,16 @@ def test_retry_cleanup_commit_failure_is_deferred_with_traceback(caplog):
 
 
 @pytest.mark.parametrize("precheck_only", [False, True])
-def test_batch_precheck_commit_failure_never_returns_unpersisted_run(precheck_only, tmp_path, monkeypatch, caplog):
+@pytest.mark.parametrize("failure_stage", ["commit", "worker"])
+def test_batch_precheck_failure_never_returns_success(failure_stage, precheck_only, tmp_path, monkeypatch, caplog):
     from app.services import document_batch_ingestion as module
 
     db = MagicMock()
     failure = RuntimeError("precheck run commit failed")
-    db.commit.side_effect = failure
+    if failure_stage == "commit":
+        db.commit.side_effect = failure
+    else:
+        monkeypatch.setattr(module, "_run_precheck_scan_job", MagicMock(side_effect=failure))
     monkeypatch.setattr(module.settings, "UPLOAD_DIR", str(tmp_path))
     monkeypatch.setattr(module, "_link_precheck_staging_tree", lambda *a, **k: True)
     request = module._run_precheck_scan(
