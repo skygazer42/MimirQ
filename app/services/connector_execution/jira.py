@@ -47,7 +47,11 @@ from app.services.connector_execution.shared.external import (
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_jira_project_run,
+)
+from app.services.connector_execution.shared.runtime import (
     mark_connector_run_running as _mark_jira_project_run_running,
 )
 from app.services.connector_sync_state import normalize_boundary_ids

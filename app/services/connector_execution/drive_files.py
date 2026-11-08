@@ -42,9 +42,17 @@ from app.services.connector_execution.shared.external import (
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_drive_files_run,
+)
+from app.services.connector_execution.shared.runtime import (
     get_active_connector_run as _get_drive_files_run,
+)
+from app.services.connector_execution.shared.runtime import (
     mark_connector_run_failed as _mark_drive_files_run_failed,
+)
+from app.services.connector_execution.shared.runtime import (
     mark_connector_run_running as _mark_drive_files_run_running,
 )
 from app.services.connector_sync_state import get_resume_cursor, normalize_source_manifest, slice_items_from_cursor

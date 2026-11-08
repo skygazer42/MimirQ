@@ -16,6 +16,8 @@ from app.services.connector_execution.shared.common import _finalize_connector_s
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
     get_active_connector_run as _get_db_catalog_run,
 )
 

@@ -44,9 +44,17 @@ from app.services.connector_execution.shared.external import (
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_github_repo_run,
+)
+from app.services.connector_execution.shared.runtime import (
     get_active_connector_run as _get_github_repo_run,
+)
+from app.services.connector_execution.shared.runtime import (
     mark_connector_run_failed as _mark_github_repo_run_failed,
+)
+from app.services.connector_execution.shared.runtime import (
     mark_connector_run_running as _mark_github_repo_run_running,
 )
 

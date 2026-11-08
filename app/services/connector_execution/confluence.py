@@ -37,7 +37,11 @@ from app.services.connector_execution.shared.external import (
 from app.services.connector_execution.shared.runtime import (
     _now,
     _sync_connector_config_from_run,
+)
+from app.services.connector_execution.shared.runtime import (
     finalize_cancelled_connector_run as _finalize_cancelled_confluence_space_run,
+)
+from app.services.connector_execution.shared.runtime import (
     mark_connector_run_failed as _mark_confluence_space_run_failed,
 )
 from app.services.connector_sync_state import normalize_boundary_ids
