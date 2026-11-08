@@ -86,7 +86,7 @@ def _safe_rag_config_template(raw: Any) -> dict[str, Any] | None:
     if ph:
         out["patch_hash"] = ph
 
-    return out or None
+    return out
 
 
 def _read_jsonl_tail_bytes(path: Path, *, max_bytes: int) -> tuple[bytes | None, bool]:
