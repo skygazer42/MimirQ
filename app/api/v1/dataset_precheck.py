@@ -177,9 +177,13 @@ def _mark_precheck_scan_run_failed(
     row.updated_at = failed_at
     try:
         db.commit()
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         db.rollback()
-        logger.debug("Ignoring precheck enqueue failure status update failure: %s", exc)
+        logger.warning(
+            "Failed to persist precheck enqueue failure state: scan_run_id=%s",
+            row.id,
+            exc_info=True,
+        )
 
 
 def _collect_precheck_sample_names(raw: dict[str, object]) -> set[str]:
@@ -242,8 +246,13 @@ def _run_precheck_scan_background(
                 row.status = "failed"
                 row.error_message = str(exc)[:200]
                 db.commit()
-        except Exception as update_exc:
-            logger.debug("Ignoring precheck background failure status update failure: %s", update_exc)
+        except Exception:
+            db.rollback()
+            logger.warning(
+                "Failed to persist precheck background failure state: scan_run_id=%s",
+                scan_run_id,
+                exc_info=True,
+            )
     finally:
         unregister_local_scan_run_active(
             kind="precheck",
