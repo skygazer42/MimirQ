@@ -76,11 +76,11 @@ class MinIOService:
     def describe_backend(self) -> dict[str, Any]:
         return {
             "provider": "minio",
-            "enabled": bool(getattr(settings, "MINIO_ENABLED", False)),
-            "endpoint": str(getattr(settings, "MINIO_ENDPOINT", "") or ""),
-            "bucket": str(getattr(settings, "MINIO_BUCKET_NAME", "") or ""),
-            "secure": bool(getattr(settings, "MINIO_USE_SSL", False)),
-            "documents_enabled": bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)),
+            "enabled": settings.MINIO_ENABLED,
+            "endpoint": settings.MINIO_ENDPOINT,
+            "bucket": settings.MINIO_BUCKET_NAME,
+            "secure": settings.MINIO_USE_SSL,
+            "documents_enabled": settings.MINIO_DOCUMENTS_ENABLED,
         }
 
     def build_object_uri(self, bucket: str, object_name: str) -> str:
@@ -89,7 +89,7 @@ class MinIOService:
     def _get_client(self) -> Minio:
         """Lazily initialize the MinIO client."""
         with self._state_lock:
-            if not bool(getattr(settings, "MINIO_ENABLED", False)):
+            if not settings.MINIO_ENABLED:
                 raise RuntimeError("MinIO is disabled (MINIO_ENABLED=false)")
 
             if self._client is None:
@@ -111,7 +111,7 @@ class MinIOService:
         - When MINIO_ENABLED=true, this also ensures the configured bucket exists.
         - Never raises: returns a structured status dict.
         """
-        enabled = bool(getattr(settings, "MINIO_ENABLED", False))
+        enabled = settings.MINIO_ENABLED
         if not enabled:
             return {"enabled": False, "status": "disabled"}
 
@@ -453,7 +453,7 @@ class MinIOService:
         """
         Upload a document source file to MinIO and return a `minio://` URI.
         """
-        if not bool(getattr(settings, "MINIO_DOCUMENTS_ENABLED", False)):
+        if not settings.MINIO_DOCUMENTS_ENABLED:
             raise RuntimeError("MinIO document storage is disabled (MINIO_DOCUMENTS_ENABLED=false)")
 
         t0 = time.perf_counter()
