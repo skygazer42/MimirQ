@@ -92,7 +92,7 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
 
     sig.update(
         {
-            "reranker_model": str(settings.RERANKER_MODEL),
+            "reranker_model": str(settings.RERANKER_MODEL or ""),
             "reranker_api_base": str(settings.RERANKER_API_BASE),
         }
     )
