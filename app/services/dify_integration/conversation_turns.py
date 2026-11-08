@@ -78,7 +78,7 @@ def _find_dify_trace_conversation(
         .filter(
             Message.tenant_id == tenant_id,
             Conversation.tenant_id == tenant_id,
-            Conversation.owner_account_id == account_id.strip(),
+            Conversation.owner_account_id == account_id,
             _external_conversation_metadata_text("source") == "dify",
             _external_conversation_metadata_text("source_conversation_id") == source_conversation_id,
         )
@@ -92,7 +92,7 @@ def _conversation_owner_matches_account(conversation: Conversation | None, *, ac
     if conversation is None:
         return False
     owner_account_id = str(conversation.owner_account_id or "").strip()
-    return bool(owner_account_id) and owner_account_id == account_id.strip()
+    return bool(owner_account_id) and owner_account_id == account_id
 
 
 def _load_dify_trace_conversation(

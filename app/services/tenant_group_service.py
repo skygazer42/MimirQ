@@ -40,10 +40,6 @@ def resolve_account_group_ids(db: Session, *, tenant_id: UUID, account_id: str) 
     Cache is stored on `request.state` to avoid repeated DB queries across multiple
     permission checks in the same API request.
     """
-    account_id = account_id.strip()
-    if not account_id:
-        return set()
-
     state = get_request_state()
     cache: dict[tuple[UUID, str], set[UUID]] | None = (
         getattr(state, "_mimirq_group_ids_cache", None) if state is not None else None

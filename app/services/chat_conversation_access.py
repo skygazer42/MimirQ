@@ -32,7 +32,7 @@ def resolve_conversation_owner_account_id(conv: Conversation) -> str | None:
 
 def _ensure_conversation_owner(account_id: str, conv: Conversation) -> None:
     owner_account_id = resolve_conversation_owner_account_id(conv)
-    if not owner_account_id or owner_account_id != account_id.strip():
+    if not owner_account_id or owner_account_id != account_id:
         raise HTTPException(status_code=403, detail=CONVERSATION_NOT_ACCESSIBLE_DETAIL)
 
 

@@ -160,10 +160,7 @@ def _task_account_id(task: dict[str, Any]) -> str:
 
 
 def _read_scope_matches(task: dict[str, Any], *, tenant_id: str, dataset_id: str, account_id: str) -> bool:
-    return (
-        _scope_matches(task, tenant_id=tenant_id, dataset_id=dataset_id)
-        and _task_account_id(task) == str(account_id or "").strip()
-    )
+    return _scope_matches(task, tenant_id=tenant_id, dataset_id=dataset_id) and _task_account_id(task) == account_id
 
 
 def _parse_iso_datetime(value: Any) -> datetime | None:

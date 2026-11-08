@@ -142,8 +142,7 @@ def authorize_answer_lineage_access(
     if _can_read_observability(member):
         return True
 
-    normalized_account_id = str(account_id or "").strip()
-    owns_trace = str(trace_record.get("account_id") or "").strip() == normalized_account_id
+    owns_trace = str(trace_record.get("account_id") or "").strip() == account_id
     if not owns_trace:
         conversation_raw = _safe_str(trace_record.get("conversation_id"), max_len=120)
         if not conversation_raw:
@@ -164,7 +163,7 @@ def authorize_answer_lineage_access(
         )
         if conversation is None:
             return False
-        owns_trace = resolve_conversation_owner_account_id(conversation) == normalized_account_id
+        owns_trace = resolve_conversation_owner_account_id(conversation) == account_id
     if not owns_trace:
         return False
 

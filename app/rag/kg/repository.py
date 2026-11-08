@@ -54,7 +54,7 @@ def _allowed_document_ids_subquery_for_dataset(
     _ds, q = build_dataset_documents_query(
         session,
         tenant_id=tenant_id,
-        account_id=str(account_id or "").strip(),
+        account_id=account_id,
         dataset_id=dataset_id,
     )
     return q.with_entities(DBDocument.id).subquery()
@@ -801,7 +801,7 @@ class EventRepository:
         return _allowed_document_ids_subquery_for_dataset(
             self.session,
             tenant_id=tenant_id,
-            account_id=str(account_id or "").strip(),
+            account_id=account_id,
             dataset_id=dataset_id,
         )
 

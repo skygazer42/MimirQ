@@ -87,12 +87,8 @@ def _should_sync(*, tenant_id: UUID, account_id: str, ttl_sec: float) -> bool:
     if ttl_sec <= 0:
         return True
 
-    uid = account_id.strip()
-    if not uid:
-        return False
-
     now = time.monotonic()
-    key = (str(tenant_id), uid)
+    key = (str(tenant_id), account_id)
     with _sync_lock:
         last = _last_sync_ts.get(key)
         if last is not None and (now - last) < ttl_sec:
@@ -155,7 +151,7 @@ def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload
         group_ids = {group.id for group in existing + to_create}
 
         # 2) Ensure memberships exist (add-only; no removals in this wave).
-        uid = account_id.strip()
+        uid = account_id
         rows = (
             db.query(TenantGroupMember.group_id)
             .filter(

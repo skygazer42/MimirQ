@@ -91,7 +91,7 @@ def _find_conversation_by_external_id(
         db.query(Conversation)
         .filter(
             Conversation.tenant_id == tenant_id,
-            Conversation.owner_account_id == account_id.strip(),
+            Conversation.owner_account_id == account_id,
             Conversation.id.in_(conversation_ids),
         )
         .all()
