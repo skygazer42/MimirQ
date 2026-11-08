@@ -27,6 +27,8 @@ This complements [dataset audit degradation](2026-11-08-dataset-audit-degradatio
 
 ## Consequences
 
+Applying a suggested ingestion policy remains an optional convenience after the scan is committed. Its own helper already caught application failures before the outer precheck boundary was split. That helper now rolls back failed suggestions and logs their tracebacks, while the batch response retains the committed scan ID. An existing-policy 409 remains a normal no-op. Mandatory scan/dataset refresh failures outside this suggestion boundary still propagate.
+
 Successful audit degradation does not guarantee an audit row exists; warnings now expose that loss. Primary operation commits retain their existing propagation behavior. Background failure-state persistence can still fail, but its exception and the original failure remain visible. No retry, replacement store or fabricated success value is introduced.
 
 The API regression suite fails in 11 cases before these changes and passes afterward. Desktop acceptance tests fail in 9 cases under temporary restoration of the old silent branches and pass with the source restored. Full commands and outputs are recorded in the plan progress ledger; tests use injected Session failures without database, parser or model services.

@@ -45,6 +45,7 @@ def batch_context(tmp_path, monkeypatch):
         monkeypatch.setattr(module.dataset_service, "resolve_writable_dataset", lambda *a: dataset)
         monkeypatch.setattr(module, "enforce_tenant_upload_quotas", lambda *a, **k: None)
         monkeypatch.setattr(module, "_link_precheck_staging_tree", lambda *a, **k: True)
+        apply_policy = module._apply_precheck_policy_suggestion
         monkeypatch.setattr(module, "_apply_precheck_policy_suggestion", lambda **k: None)
         monkeypatch.setattr(module, "SessionLocal", MagicMock)
         staged = dict(
@@ -93,7 +94,9 @@ def batch_context(tmp_path, monkeypatch):
                 )
             )
 
-        yield SimpleNamespace(module=module, engine=engine, db=db, dataset=dataset, invoke=invoke)
+        yield SimpleNamespace(
+            module=module, engine=engine, db=db, dataset=dataset, invoke=invoke, apply_policy=apply_policy
+        )
     engine.dispose()
 
 
@@ -145,3 +148,27 @@ def test_refresh_failure_propagates_from_batch_precheck(phase, batch_context, mo
     with pytest.raises(RuntimeError) as raised:
         ctx.invoke()
     assert raised.value is failure
+
+
+@pytest.mark.parametrize("http_error", [False, True])
+def test_optional_policy_failure_rolls_back_and_retains_scan_link(http_error, batch_context, monkeypatch, caplog):
+    from fastapi import HTTPException
+
+    ctx = batch_context
+    failure = HTTPException(status_code=500, detail="policy failed") if http_error else RuntimeError("policy failed")
+    run_ids = []
+
+    def scan_job(**kwargs):
+        run_ids.append(kwargs["scan_run_id"])
+
+    def apply_policy(*args, **kwargs):
+        ctx.dataset.dataset_metadata = {"uncommitted_policy": True}
+        raise failure
+
+    monkeypatch.setattr(ctx.module, "_run_precheck_scan_job", scan_job)
+    monkeypatch.setattr(ctx.module, "_apply_precheck_policy_suggestion", ctx.apply_policy)
+    monkeypatch.setattr(ctx.module, "apply_ingestion_policy_suggestion", apply_policy)
+    response = ctx.invoke()
+    assert response.precheck_scan_run_id == run_ids[0]
+    assert ctx.dataset.dataset_metadata == {}
+    assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)

@@ -93,12 +93,15 @@ def _apply_precheck_policy_suggestion(
         )
     except HTTPException as exc:
         if exc.status_code != 409:
+            db.rollback()
             logger.warning(
                 "Precheck-first policy apply failed: %s",
                 str(exc.detail)[:200],
+                exc_info=True,
             )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200])
+        db.rollback()
+        logger.warning("Precheck-first policy apply failed: %s", str(exc)[:200], exc_info=True)
 
 
 def _build_batch_document(

@@ -201,3 +201,8 @@ _run_precheck_scan 分开创建提交与可选执行边界：创建提交失败�
 独立只读审查核对181条、99字段，未发现阻塞问题；限制是代表性运行测试未逐一执行181条路径，eval None仅为故障注入。最终复扫全app剩1341个候选 = 范围外1339 + retrieval保留逻辑OR2；本轮限定直接Settings字面量兜底已收尾，Phase1B全库仍未完成，不扩大到其余候选。
 
 Phase1B所有实际复现命令已单列 phase1b-commands.txt；提交前再次核对21文件hash与验证时一致。只有本代理自有改动；新提交仍为8309eec52，没有触发外部写入停工条件。
+
+## 后续裁决：证据精简与可选建议边界
+原始证据迁移提交4c50ff154：52 files +18/-23118；51份文件共926959字节复制到外部legacy并逐份验证SHA256（含未提交policy红输出），不改写历史。
+实际_apply_precheck_policy_suggestion自身已有catch，8309并未使其通常异常直接传播；本轮选择保留可选便利功能契约，HTTP非409及普通异常现在rollback+warning(exc_info)，已有策略409仍正常no-op，外层继续返回已提交scan_run并保留响应链接。真实SQLA响应测试2新例先failed/4passed，修改后相关16passed，2文件Ruffcheck/format通过。note Consequences已明确。
+
