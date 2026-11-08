@@ -889,20 +889,20 @@ class PostProcessMixin:
         window_raw = (
             self.context_neighbor_window
             if self.context_neighbor_window is not None
-            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_WINDOW", 0)
+            else settings.RAG_CONTEXT_NEIGHBOR_WINDOW
         )
         max_added_raw = (
             self.context_neighbor_max_added
             if self.context_neighbor_max_added is not None
-            else getattr(settings, "RAG_CONTEXT_NEIGHBOR_MAX_ADDED", 0)
+            else settings.RAG_CONTEXT_NEIGHBOR_MAX_ADDED
         )
         return {
             "window": max(0, int(window_raw or 0)),
             "max_added": max(0, int(max_added_raw or 0)),
-            "sibling_enabled": bool(getattr(settings, "RAG_CONTEXT_SIBLING_EXPAND_ENABLED", False)),
+            "sibling_enabled": bool(settings.RAG_CONTEXT_SIBLING_EXPAND_ENABLED),
             "short_doc_max_chunks": max(
                 0,
-                int(getattr(settings, "RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS", 0) or 0),
+                int(settings.RAG_CONTEXT_SIBLING_SHORT_DOC_MAX_CHUNKS or 0),
             ),
         }
 
@@ -1156,7 +1156,7 @@ class PostProcessMixin:
         """
         if not results:
             return results
-        if not bool(getattr(settings, "RAG_CONTEXT_STITCHING_ENABLED", False)):
+        if not bool(settings.RAG_CONTEXT_STITCHING_ENABLED):
             return results
 
         stitchable_by_doc, singleton_groups = self._split_stitchable_results(results)
@@ -1185,12 +1185,12 @@ class PostProcessMixin:
         """
         if not results:
             return results
-        if not bool(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_ENABLED", False)):
+        if not bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED):
             return results
 
         mode = self._parent_child_merge_mode()
-        min_children = max(1, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN", 2) or 2))
-        max_parents = max(0, int(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS", 20) or 20))
+        min_children = max(1, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN or 2))
+        max_parents = max(0, int(settings.RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS or 20))
         child_groups, parent_results, child_chunk_ids_by_group = self._group_parent_child_results(results)
 
         if not child_groups:
@@ -1234,7 +1234,7 @@ class PostProcessMixin:
 
     @staticmethod
     def _parent_child_merge_mode() -> str:
-        mode = str(getattr(settings, "RAG_PARENT_CHILD_AUTO_MERGE_MODE", "replace") or "replace").strip().lower()
+        mode = str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or "replace").strip().lower()
         return mode if mode in {"replace", "append"} else "replace"
 
     def _group_parent_child_results(
