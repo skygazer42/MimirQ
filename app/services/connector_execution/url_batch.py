@@ -39,7 +39,6 @@ def _get_url_batch_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> Connect
 
 
 def _mark_url_batch_run_running(db: Session, *, run: ConnectorRun) -> None:
-
     run.status = "running"
     if run.started_at is None:
         run.started_at = _now()
@@ -50,7 +49,6 @@ def _mark_url_batch_run_running(db: Session, *, run: ConnectorRun) -> None:
 
 
 def _build_url_batch_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
-
     access = cfg.get("access") if isinstance(cfg.get("access"), dict) else None
     access_mode = str(access.get("mode") or "inherit").strip().lower() if isinstance(access, dict) else "inherit"
     return {
@@ -150,7 +148,6 @@ async def _ingest_url_batch_url(
     url: str,
     settings_map: dict[str, Any],
 ) -> str:
-
     body = UrlUploadRequest(
         url=url,
         dataset_id=run.dataset_id,
@@ -213,7 +210,6 @@ def _persist_url_batch_progress(
     failed: int,
     created_doc_ids: list[str],
 ) -> None:
-
     stats = dict(run.stats or {})
     stats.update(
         {
@@ -240,7 +236,6 @@ async def _process_url_batch_urls(
     settings_map: dict[str, Any],
     state: dict[str, Any],
 ) -> dict[str, Any]:
-
     processed_refs = set(state.get("processed_refs") or set())
     created_doc_ids = list(state.get("created_doc_ids") or [])
     created = int(state.get("created") or 0)
@@ -289,7 +284,6 @@ async def _process_url_batch_urls(
 
 
 def _finalize_cancelled_url_batch_run(db: Session, *, run: ConnectorRun) -> None:
-
     if run.finished_at is None:
         run.finished_at = _now()
     run.stats = _finalize_connector_stats(dict(run.stats or {}))
@@ -306,7 +300,6 @@ def _finalize_url_batch_run_success(
     failed: int,
     created_doc_ids: list[str],
 ) -> None:
-
     stats = dict(run.stats or {})
     stats["document_ids"] = [str(doc_id) for doc_id in created_doc_ids]
     run.stats = _finalize_connector_stats(stats)
@@ -318,7 +311,6 @@ def _finalize_url_batch_run_success(
 
 
 def _mark_url_batch_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
-
     with contextlib.suppress(Exception):
         run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
@@ -331,7 +323,6 @@ def _mark_url_batch_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, ex
 
 
 async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
-
     db = SessionLocal()
     run: ConnectorRun | None = None
     try:

@@ -35,7 +35,6 @@ def _get_db_catalog_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> Connec
 
 
 def _mark_db_catalog_run_running(db: Session, *, run: ConnectorRun) -> None:
-
     run.status = "running"
     run.started_at = _now()
     run.error_message = None
@@ -149,7 +148,6 @@ def _attach_db_catalog_schema_doc(
     connector_id: str,
     stats: dict[str, Any],
 ) -> None:
-
     try:
         import time
 
@@ -292,7 +290,6 @@ def _emit_db_catalog_completion_audit(
 
 
 def _finalize_db_catalog_run_success(db: Session, *, run: ConnectorRun, stats: dict[str, Any]) -> None:
-
     run.stats = _finalize_connector_stats(stats)
     run.status = "completed"
     run.finished_at = _now()
@@ -349,7 +346,6 @@ def _emit_db_catalog_failure_audit(
 
 
 def _mark_db_catalog_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
-
     with contextlib.suppress(Exception):
         run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
         if run is not None:
