@@ -114,7 +114,7 @@ def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: MinI
 
 def _list_minio_bucket_objects(client: Minio, *, bucket_name: str, prefix: str | None) -> list[dict[str, str]]:
     listed_objects: list[dict[str, str]] = []
-    for obj in client.list_objects(bucket_name=bucket_name, prefix=(prefix or None), recursive=True):
+    for obj in client.list_objects(bucket_name=bucket_name, prefix=prefix, recursive=True):
         name = str(getattr(obj, "object_name", "") or "").strip()
         if not name:
             continue

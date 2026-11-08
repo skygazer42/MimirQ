@@ -305,7 +305,7 @@ async def _ingest_drive_file_source(
         url=dl_url,
         dataset_id=run.dataset_id,
         filename=settings_map.get("filename"),
-        fetch_headers=settings_map.get("auth_headers") or None,
+        fetch_headers=settings_map.get("auth_headers"),
         user_agent=settings_map.get("user_agent"),
         parser_backend=str(settings_map.get("parser_backend") or "auto"),
         chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),

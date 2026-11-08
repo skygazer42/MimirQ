@@ -144,7 +144,7 @@ async def _ingest_url_batch_url(
         url=url,
         dataset_id=run.dataset_id,
         filename=settings_map.get("filename"),
-        fetch_headers=settings_map.get("auth_headers") or None,
+        fetch_headers=settings_map.get("auth_headers"),
         user_agent=settings_map.get("user_agent"),
         parser_backend=settings_map.get("parser_backend"),
         chunk_strategy=settings_map.get("chunk_strategy"),

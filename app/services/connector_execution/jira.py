@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 from urllib.parse import quote, urlparse
 from uuid import UUID
 
@@ -54,6 +54,13 @@ from app.services.connector_sync_state import normalize_boundary_ids
 from app.services.document_ingestion_sources import _normalize_datetime_utc_iso
 
 JIRA_UPDATED_SOURCE = "connector:jira:updated"
+
+
+class JiraIssueInfo(TypedDict):
+    issue_id: str
+    issue_key: str
+    issue_url: str
+    updated: str | None
 
 
 @dataclass(frozen=True)
@@ -1026,11 +1033,11 @@ def _build_jira_project_search_jql(
     return " AND ".join(jql_parts) + " ORDER BY updated ASC"
 
 
-def _build_jira_issue_info(*, base_url: str, issue: dict[str, Any]) -> dict[str, str | None]:
-    issue_key = str(issue.get("key") or "").strip() if isinstance(issue, dict) else ""
-    issue_id = str(issue.get("id") or "").strip() if isinstance(issue, dict) else ""
+def _build_jira_issue_info(*, base_url: str, issue: dict[str, Any]) -> JiraIssueInfo:
+    issue_key = str(issue.get("key") or "").strip()
+    issue_id = str(issue.get("id") or "").strip()
     issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
-    updated = _jira_extract_issue_updated(issue if isinstance(issue, dict) else {}) or None
+    updated = _jira_extract_issue_updated(issue)
     return {
         "issue_id": issue_id,
         "issue_key": issue_key,
@@ -1047,12 +1054,12 @@ def _resolve_jira_issue_acl(
     requested_by: str,
     run: ConnectorRun,
     issue: dict[str, Any],
-    issue_info: dict[str, str | None],
+    issue_info: JiraIssueInfo,
     settings_map: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, int]:
     effective_access = settings_map.get("access")
     acl_provenance: dict[str, Any] | None = None
-    issue_url = str(issue_info.get("issue_url") or "").strip()
+    issue_url = issue_info["issue_url"]
 
     if not settings_map.get("enable_source_acl") or not issue_url:
         return (effective_access if isinstance(effective_access, dict) else None), None, 0
@@ -1340,8 +1347,8 @@ def _jira_attachment_connector_metadata(
     *,
     base_url: str,
     project_key: str,
-    issue_id: str | None,
-    issue_key: str | None,
+    issue_id: str,
+    issue_key: str,
     issue_url: str,
     attachment_id: str,
     filename: str,
@@ -1354,8 +1361,8 @@ def _jira_attachment_connector_metadata(
         "doc_kind": "attachment",
         "base_url": str(base_url or "").strip(),
         "project_key": str(project_key or "").strip().upper(),
-        "issue_id": (str(issue_id or "").strip() or None),
-        "issue_key": (str(issue_key or "").strip() or None),
+        "issue_id": issue_id,
+        "issue_key": issue_key,
         "issue_url": str(issue_url or "").strip(),
         "attachment_id": str(attachment_id or "").strip(),
         "filename": str(filename or "").strip(),
@@ -1369,8 +1376,8 @@ def _jira_linked_artifact_connector_metadata(
     *,
     base_url: str,
     project_key: str,
-    issue_id: str | None,
-    issue_key: str | None,
+    issue_id: str,
+    issue_key: str,
     issue_url: str,
     link_url: str,
     run_id: str,
@@ -1381,8 +1388,8 @@ def _jira_linked_artifact_connector_metadata(
         "doc_kind": "linked_artifact",
         "base_url": str(base_url or "").strip(),
         "project_key": str(project_key or "").strip().upper(),
-        "issue_id": (str(issue_id or "").strip() or None),
-        "issue_key": (str(issue_key or "").strip() or None),
+        "issue_id": issue_id,
+        "issue_key": issue_key,
         "issue_url": str(issue_url or "").strip(),
         "link_url": str(link_url or "").strip(),
         "run_id": str(run_id or "").strip(),
@@ -1412,16 +1419,16 @@ def _patch_jira_linked_artifact_document_metadata(
     *,
     link_doc: DBDocument,
     run: ConnectorRun,
-    issue_info: dict[str, str | None],
+    issue_info: JiraIssueInfo,
     link_url: str,
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
 ) -> None:
     meta_link = dict(link_doc.doc_metadata or {})
-    updated = str(issue_info.get("updated") or "").strip()
-    issue_id = str(issue_info.get("issue_id") or "").strip() or None
-    issue_key = str(issue_info.get("issue_key") or "").strip() or None
-    issue_url = str(issue_info.get("issue_url") or "").strip()
+    updated = issue_info["updated"]
+    issue_id = issue_info["issue_id"]
+    issue_key = issue_info["issue_key"]
+    issue_url = issue_info["issue_url"]
 
     if updated:
         lm_iso = _normalize_datetime_utc_iso(updated) or updated
@@ -1457,14 +1464,14 @@ async def _ingest_single_jira_linked_artifact(
     run: ConnectorRun,
     tenant_id: UUID,
     requested_by: str,
-    issue_info: dict[str, str | None],
+    issue_info: JiraIssueInfo,
     link_url: str,
     effective_access: dict[str, Any] | None,
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
 ) -> UUID:
     fetch_headers = (
-        settings_map.get("auth_headers") or None
+        settings_map.get("auth_headers")
         if _jira_should_send_auth_headers(
             base_url=str(settings_map.get("base_url") or ""),
             url=link_url,
@@ -1513,7 +1520,7 @@ async def _ingest_single_jira_linked_artifact(
             tenant_id=tenant_id,
             run_id=run.id,
             document_id=link_doc.id,
-            source_ref=link_url[:1000] or None,
+            source_ref=link_url[:1000],
             status="created",
         )
     )
@@ -1533,13 +1540,13 @@ async def _ingest_jira_issue_linked_artifacts(
     tenant_id: UUID,
     requested_by: str,
     issue: dict[str, Any],
-    issue_info: dict[str, str | None],
+    issue_info: JiraIssueInfo,
     effective_access: dict[str, Any] | None,
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
     progress: dict[str, Any],
 ) -> dict[str, Any]:
-    issue_url = str(issue_info.get("issue_url") or "").strip()
+    issue_url = issue_info["issue_url"]
     if (
         not settings_map.get("include_linked_artifacts")
         or not issue_url
@@ -1653,7 +1660,7 @@ def _patch_jira_attachment_document_metadata(
     *,
     att_doc: DBDocument,
     run: ConnectorRun,
-    issue_info: dict[str, str | None],
+    issue_info: JiraIssueInfo,
     attachment_ref: dict[str, str],
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
@@ -1662,10 +1669,10 @@ def _patch_jira_attachment_document_metadata(
     filename = str(attachment_ref.get("filename") or "").strip()
     download_url = str(attachment_ref.get("download_url") or "").strip()
     meta_att = dict(att_doc.doc_metadata or {})
-    updated = str(issue_info.get("updated") or "").strip()
-    issue_id = str(issue_info.get("issue_id") or "").strip() or None
-    issue_key = str(issue_info.get("issue_key") or "").strip() or None
-    issue_url = str(issue_info.get("issue_url") or "").strip()
+    updated = issue_info["updated"]
+    issue_id = issue_info["issue_id"]
+    issue_key = issue_info["issue_key"]
+    issue_url = issue_info["issue_url"]
 
     if updated:
         lm_iso = _normalize_datetime_utc_iso(updated) or updated
@@ -1703,7 +1710,7 @@ async def _ingest_single_jira_attachment(
     run: ConnectorRun,
     tenant_id: UUID,
     requested_by: str,
-    issue_info: dict[str, str | None],
+    issue_info: JiraIssueInfo,
     attachment_ref: dict[str, str],
     effective_access: dict[str, Any] | None,
     acl_provenance: dict[str, Any] | None,
@@ -1716,7 +1723,7 @@ async def _ingest_single_jira_attachment(
         url=download_url,
         dataset_id=run.dataset_id,
         filename=filename,
-        fetch_headers=settings_map.get("auth_headers") or None,
+        fetch_headers=settings_map.get("auth_headers"),
         user_agent=settings_map.get("user_agent"),
         parser_backend=str(settings_map.get("parser_backend") or "auto"),
         chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
@@ -1754,7 +1761,7 @@ async def _ingest_single_jira_attachment(
             tenant_id=tenant_id,
             run_id=run.id,
             document_id=att_doc.id,
-            source_ref=(attachment_id or download_url)[:1000] or None,
+            source_ref=(attachment_id or download_url)[:1000],
             status="created",
         )
     )
@@ -1768,13 +1775,13 @@ async def _ingest_jira_issue_attachments(
     tenant_id: UUID,
     requested_by: str,
     issue: dict[str, Any],
-    issue_info: dict[str, str | None],
+    issue_info: JiraIssueInfo,
     effective_access: dict[str, Any] | None,
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
     progress: dict[str, Any],
 ) -> dict[str, Any]:
-    issue_url = str(issue_info.get("issue_url") or "").strip()
+    issue_url = issue_info["issue_url"]
     if (
         not settings_map.get("include_attachments")
         or not issue_url
@@ -2123,10 +2130,10 @@ async def _process_jira_project_issue(
         base_url=base_url,
         issue=issue if isinstance(issue, dict) else {},
     )
-    issue_key = str(issue_info.get("issue_key") or "")
-    issue_id = str(issue_info.get("issue_id") or "")
-    issue_url = str(issue_info.get("issue_url") or "")
-    updated = str(issue_info.get("updated") or "")
+    issue_key = issue_info["issue_key"]
+    issue_id = issue_info["issue_id"]
+    issue_url = issue_info["issue_url"]
+    updated = issue_info["updated"]
     label = issue_url or issue_key or issue_id or "jira_issue"
 
     if effective_mode == "incremental" and _should_skip_timestamp_boundary_item(
@@ -2231,10 +2238,10 @@ async def _process_jira_project_issue(
                 "connector_id": "jira_project",
                 "base_url": base_url,
                 "project_key": project_key,
-                "issue_id": (issue_id or None),
-                "issue_key": (issue_key or None),
+                "issue_id": issue_id,
+                "issue_key": issue_key,
                 "issue_url": issue_url,
-                "last_modified": (updated or None),
+                "last_modified": updated,
                 "run_id": str(run.id),
                 "mode": effective_mode,
             }
@@ -2253,7 +2260,7 @@ async def _process_jira_project_issue(
                 tenant_id=tenant_id,
                 run_id=run.id,
                 document_id=doc.id,
-                source_ref=(issue_key or issue_id or issue_url)[:1000] or None,
+                source_ref=(issue_key or issue_id or issue_url)[:1000],
                 status="created",
             )
         )

@@ -34,6 +34,8 @@ Dify HTTP 锁适配器和两处检索数据库判断直接读取相同的 SDK �
 
 Connector execution 的 active run 查询、running 转换、cancelled 收尾和 best-effort failed 记录由 `app.services.connector_execution.shared.runtime` 持有。各 connector 以原私有名导入同一函数，保留 tenant 谓词、documents eager-load、终态过滤、commit/refresh、stats finalize、错误截断以及 config sync 的原顺序；不同的 connector 业务循环和非同体失败流程继续留在各模块。
 
+Connector 执行链直接传递自身构造的认证头、来源引用和 provenance 字段，不再把空字典或空文本改写成 `None`。Confluence 的页面信息由 listing parser 产生，Jira 的 `JiraIssueInfo` 明确区分三个必有字符串和一个真实可空的更新时间；消费端按键读取必有字段。第三方 listing、时间戳提取和 SDK prefix 仍保留各自真实的可空边界。
+
 ## Alternatives considered
 
 - 统一删除反射和转型能得到更整齐的代码，但 SQL Row、raw JSON、SDK 数值和混合异常确实有不同来源；仅收窄已经证明的完整实体与内部记录。

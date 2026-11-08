@@ -160,7 +160,7 @@ def _advance_timestamp_boundary(
     item_timestamp: str | None,
     item_id: str,
 ) -> tuple[str | None, set[str]]:
-    current_ts = str(item_timestamp or "").strip() or None
+    current_ts = item_timestamp
     current_id = str(item_id or "").strip()
     if not current_ts:
         return last_timestamp, set(boundary_ids or set())
@@ -364,8 +364,8 @@ def _confluence_attachment_connector_metadata(
     *,
     base_url: str,
     space_key: str,
-    page_id: str | None,
-    page_title: str | None,
+    page_id: str,
+    page_title: str,
     page_url: str,
     attachment_id: str,
     filename: str,
@@ -384,8 +384,8 @@ def _confluence_attachment_connector_metadata(
         "doc_kind": "attachment",
         "base_url": base_url,
         "space_key": space_key,
-        "page_id": (str(page_id or "").strip() or None),
-        "page_title": (str(page_title or "").strip() or None),
+        "page_id": page_id,
+        "page_title": page_title,
         "page_url": str(page_url or "").strip(),
         "attachment_id": str(attachment_id or "").strip(),
         "filename": str(filename or "").strip(),
@@ -800,10 +800,10 @@ def _patch_confluence_page_document_metadata(
             "connector_id": "confluence_space",
             "base_url": settings_map.get("base_url"),
             "space_key": settings_map.get("space_key"),
-            "page_id": (page_id or None),
-            "page_title": (title or None),
+            "page_id": page_id,
+            "page_title": title,
             "page_url": page_url,
-            "last_modified": (last_modified or None),
+            "last_modified": last_modified,
             "run_id": str(run.id),
             "mode": settings_map.get("effective_mode"),
             "ingest_method": settings_map.get("ingest_method"),
@@ -835,7 +835,7 @@ async def _ingest_confluence_page_webui(
         url=page_url,
         dataset_id=run.dataset_id,
         filename=filename,
-        fetch_headers=settings_map.get("auth_headers") or None,
+        fetch_headers=settings_map.get("auth_headers"),
         user_agent=settings_map.get("user_agent"),
         parser_backend=str(settings_map.get("parser_backend") or "auto"),
         chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
@@ -972,7 +972,7 @@ def _track_confluence_run_document(
             tenant_id=tenant_id,
             run_id=run.id,
             document_id=document_id,
-            source_ref=(source_ref or "")[:1000] or None,
+            source_ref=source_ref[:1000],
             status="created",
         )
     )
@@ -1023,7 +1023,7 @@ async def _ingest_confluence_page(
         page_id=page_id,
         title=title,
         page_url=page_url,
-        last_modified=str(page_info.get("last_modified") or "") or None,
+        last_modified=page_info.get("last_modified"),
         acl_provenance=acl_provenance,
         settings_map=settings_map,
     )
@@ -1053,8 +1053,8 @@ def _patch_confluence_attachment_document_metadata(
         meta_att["connector"] = _confluence_attachment_connector_metadata(
             base_url=str(settings_map.get("base_url") or ""),
             space_key=str(settings_map.get("space_key") or ""),
-            page_id=(page_id or None),
-            page_title=(title or None),
+            page_id=page_id,
+            page_title=title,
             page_url=page_url,
             attachment_id=attachment_id,
             filename=filename,
@@ -1096,7 +1096,7 @@ async def _ingest_single_confluence_attachment(
         url=download_url,
         dataset_id=run.dataset_id,
         filename=filename,
-        fetch_headers=settings_map.get("auth_headers") or None,
+        fetch_headers=settings_map.get("auth_headers"),
         user_agent=settings_map.get("user_agent"),
         parser_backend=str(settings_map.get("parser_backend") or "auto"),
         chunk_strategy=str(settings_map.get("chunk_strategy") or "langchain_recursive"),
@@ -1360,7 +1360,7 @@ def _confluence_page_skipped_by_boundary(page_info: dict[str, str | None], setti
         return False
     return _should_skip_timestamp_boundary_item(
         item_id=str(page_info.get("page_id") or ""),
-        item_timestamp=str(page_info.get("last_modified") or "") or None,
+        item_timestamp=page_info.get("last_modified"),
         cursor_timestamp=str(settings_map.get("cursor_last_modified") or ""),
         boundary_ids=set(settings_map.get("cursor_last_modified_ids") or set()),
     )
