@@ -174,7 +174,7 @@ def _audit_kg_extraction(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action=action,
                 resource_type="document",
                 resource_id=str(document_id),

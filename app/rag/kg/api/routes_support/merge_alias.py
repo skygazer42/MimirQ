@@ -222,7 +222,7 @@ def _create_merge_action(
     return action_model(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        actor_id=str(account_id or "").strip() or None,
+        actor_id=account_id,
         action_type="merge",
         status="applied",
         payload={
@@ -257,7 +257,7 @@ def _add_resolution_audit_log(
             audit_log_model(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action=action,
                 resource_type=resource_type,
                 resource_id=resource_id,
@@ -291,7 +291,7 @@ def _ensure_merge_redirect(
             tenant_id=tenant_id,
             to_entity_id=target_id,
             action_id=action_id,
-            created_by=str(account_id or "").strip() or None,
+            created_by=account_id,
             extra_data={"reason": "merge"},
             created_at=datetime.now(UTC).replace(tzinfo=None),
         )

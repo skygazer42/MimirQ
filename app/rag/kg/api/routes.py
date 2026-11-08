@@ -1360,7 +1360,7 @@ def get_kg_event_detail(
         KGEventEntityItem(
             entity=KGEntityItem.model_validate(ent),
             weight=float(getattr(assoc, "weight", 1.0) or 1.0),
-            role=(getattr(assoc, "role", None) or None),
+            role=assoc.role,
             extra_data=build_event_entity_provenance(
                 document_id=(
                     getattr(assoc, "extra_data", None).get("document_id")
@@ -1587,7 +1587,7 @@ def create_kg_entity_alias(
         canonical_entity_id=resolved_id,
         alias=alias_text[:500],
         normalized_alias=norm[:500],
-        created_by=str(account_id or "").strip() or None,
+        created_by=account_id,
         extra_data={"method": "manual"},
         created_at=datetime.now(UTC).replace(tzinfo=None),
         updated_at=datetime.now(UTC).replace(tzinfo=None),
@@ -1599,7 +1599,7 @@ def create_kg_entity_alias(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.entity.alias.create",
                 resource_type="kg_entity",
                 resource_id=str(resolved_id),
@@ -1657,7 +1657,7 @@ def delete_kg_entity_alias(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.entity.alias.delete",
                 resource_type="kg_entity",
                 resource_id=str(resolved_id),
@@ -1865,7 +1865,7 @@ def create_kg_predicate_ontology(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.ontology.predicate.upsert",
                 resource_type="kg_predicate_ontology",
                 resource_id=str(getattr(row, "id", "")),
@@ -1926,7 +1926,7 @@ def update_kg_predicate_ontology(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.ontology.predicate.update",
                 resource_type="kg_predicate_ontology",
                 resource_id=str(predicate_id),
@@ -1979,7 +1979,7 @@ def delete_kg_predicate_ontology(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.ontology.predicate.delete",
                 resource_type="kg_predicate_ontology",
                 resource_id=str(predicate_id),
@@ -2206,7 +2206,7 @@ def _create_split_action(
     return action_model(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        actor_id=str(account_id or "").strip() or None,
+        actor_id=account_id,
         action_type="split",
         status="applied",
         payload={
@@ -2362,7 +2362,7 @@ def undo_kg_entity_resolution_action(
 
     action.status = "reverted"
     action.reversed_at = datetime.now(UTC).replace(tzinfo=None)
-    action.reversed_by = str(account_id or "").strip() or None
+    action.reversed_by = account_id
 
     _add_resolution_audit_log(
         db,
@@ -2449,7 +2449,7 @@ def delete_kg_for_document(
             AuditLog(
                 id=uuid.uuid4(),
                 tenant_id=tenant_id,
-                actor_id=str(account_id or "").strip() or None,
+                actor_id=account_id,
                 action="kg.document.delete",
                 resource_type="document",
                 resource_id=str(document_id),
