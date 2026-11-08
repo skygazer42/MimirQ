@@ -1,4 +1,4 @@
-# Agent Note: Retrieval Settings defaults belong to their declarations
+# Agent Note: Settings defaults belong to their declarations
 
 Status: implemented
 
@@ -10,9 +10,11 @@ Retrieval consumers repeated Settings defaults using truthiness. Explicit zero v
 
 The bounded retrieval slice reads declared non-Optional Settings directly. Its 181 replacements cover 99 fields whose types and default expressions are verified against `config.py`. The slice includes `rag/retrieval`, the KG diagnostics snapshot in evaluations, and PDF preprocessing's sample-page setting. No declaration, environment example or deployment default changes.
 
+Subsequent directory batches use the same declaration checks. Optional strings choose the literal default only for None; configured empty strings remain provided values. Configuration-validation presence checks and settings-to-settings precedence chains retain their original boolean meaning. Resource ceilings without a confirmed safe zero contract remain unchanged pending commander review. A zero redirect budget is safe and means no redirect hops, retaining the existing [0,20] bound.
+
 Existing request override precedence, domain minimums/maximums and text normalization remain. Boolean combinations expressing forced multi-query experiments or policy enablement remain logical OR operations. This extends [direct value contracts](2026-11-07-direct-value-contracts.md) and follows [undeclared Settings probes](2026-11-08-remove-undeclared-settings-probes.md); it does not introduce probes or fields.
 
-The global scan exceeds the agreed 60-location threshold. Candidates outside this slice, including Optional and getattr forms, remain listed for later boundary decisions. No `is None` branch is added here because every changed field already excludes None and owns its default.
+The first global scan exceeded the agreed 60-location threshold. The follow-up directory batches classify the remaining candidates in groups of at most 300. No `is None` branch is added for non-Optional fields; Optional/getattr forms are handled only after checking their actual declaration.
 
 ## Alternatives considered
 

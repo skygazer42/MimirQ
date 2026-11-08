@@ -121,7 +121,7 @@ class OnlineQualitySummaryResponse(BaseModel):
 
 
 def _queryset_health_history_path() -> str:
-    return str(settings.QUERYSET_HEALTH_HISTORY_PATH or "")
+    return str(settings.QUERYSET_HEALTH_HISTORY_PATH)
 
 
 def _filter_queryset_health_rows(rows: list[Any], *, profile_hash: str | None) -> list[Any]:
@@ -787,7 +787,7 @@ def diff_queryset_health_runs(
     from app.services.queryset_health_diff_service import diff_queryset_health_snapshots
     from app.services.queryset_health_service import load_queryset_health_history
 
-    path_str = str(settings.QUERYSET_HEALTH_HISTORY_PATH or "")
+    path_str = str(settings.QUERYSET_HEALTH_HISTORY_PATH)
     path = Path(path_str)
     rows = load_queryset_health_history(path)
 

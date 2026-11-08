@@ -14,3 +14,11 @@
 | 可选策略建议边界 | 2 failed, 4 passed | 16 passed | `test_optional_policy_failure_rolls_back_and_retains_scan_link` 无异常堆栈/事务恢复 |
 
 已记录的既有失败：retry-queue 三例引用不存在的 `document_processing.settings`；task-lock 两例测试替身参数签名过期；retrieval 四例引用已退出的 `generate_alias_queries`、`get_vector_store`、`_candidate_metadata_from_doc`。具体用例名在 progress.md 各组条目。未据此扩大源码修改范围。
+
+## api
+
+红：3 failed in 3.93s；绿：3 passed in 2.39s。
+
+- `tests/test_settings_api_defaults.py::test_dify_signature_preserves_zero_boost_budget_and_optional_model[None]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+- `tests/test_settings_api_defaults.py::test_dify_signature_preserves_zero_boost_budget_and_optional_model[]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+- `tests/test_settings_api_defaults.py::test_zero_redirect_budget_disallows_all_redirect_hops`：声明值被旧消费端默认值替换，或必需值被静默伪造。

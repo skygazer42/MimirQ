@@ -598,8 +598,8 @@ def get_pipeline_capabilities(
     """
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    default_parser_backend = normalize_parser_backend(settings.DEFAULT_PARSER_BACKEND or "auto") or "auto"
-    default_chunk_strategy = (settings.DEFAULT_CHUNK_STRATEGY or "langchain_recursive").strip().lower()
+    default_parser_backend = normalize_parser_backend(settings.DEFAULT_PARSER_BACKEND) or "auto"
+    default_chunk_strategy = (settings.DEFAULT_CHUNK_STRATEGY).strip().lower()
 
     pdf_backends = [_pipeline_parser_backend_info(name) for name in sorted(ParserFactory.SUPPORTED_PDF_BACKENDS)]
 

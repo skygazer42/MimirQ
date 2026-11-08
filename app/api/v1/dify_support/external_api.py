@@ -921,18 +921,16 @@ def _require_dify_actor(
     if not any(_token_matches(provided, expected) for expected in expected_tokens):
         raise HTTPException(status_code=401, detail="Invalid Dify API key")
 
-    raw_tenant = str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID or "").strip()
+    raw_tenant = str(settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID).strip()
     if not raw_tenant:
         if api.is_production_env():
             raise HTTPException(
                 status_code=503,
                 detail="Dify external knowledge tenant is not configured",
             )
-        raw_tenant = str(
-            request.headers.get(str(settings.TENANT_HEADER or "X-Tenant-ID")) or settings.DEFAULT_TENANT_ID
-        ).strip()
+        raw_tenant = str(request.headers.get(str(settings.TENANT_HEADER)) or settings.DEFAULT_TENANT_ID).strip()
     tenant_id = _coerce_uuid(raw_tenant, label="Dify tenant id")
-    account_id = str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or "system:dify").strip()
+    account_id = str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID).strip()
     if not account_id:
         raise HTTPException(status_code=503, detail="Dify external knowledge account is not configured")
     return _DifyActor(tenant_id=tenant_id, account_id=account_id)

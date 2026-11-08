@@ -1865,7 +1865,7 @@ def _cleanup_dataset_table_store(tenant_id: UUID, dataset_id: UUID) -> None:
     try:
         from app.services.path_safety import resolve_under_base
 
-        root = Path(str(settings.TABLE_STORE_DIR or "./uploads/table_store"))
+        root = Path(str(settings.TABLE_STORE_DIR))
         ds_dir = (root / str(tenant_id) / str(dataset_id)).resolve(strict=False)
         safe_dir = resolve_under_base(ds_dir, base=root)
         if safe_dir is not None and safe_dir.exists():
@@ -1878,7 +1878,7 @@ def _cleanup_dataset_precheck_artifacts(tenant_id: UUID, precheck_run_ids: list[
     try:
         from app.services.path_safety import resolve_under_base
 
-        upload_root = Path(settings.UPLOAD_DIR or "./uploads")
+        upload_root = Path(settings.UPLOAD_DIR)
         tenant_root = upload_root / str(tenant_id)
         for run_id in precheck_run_ids:
             with contextlib.suppress(Exception):
@@ -3208,7 +3208,7 @@ def _dataset_bundle_artifacts_payload(
         "exported_at": _dt_to_json(exported_at),
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id),
-        "vector_backend": str(settings.VECTOR_BACKEND or ""),
+        "vector_backend": str(settings.VECTOR_BACKEND),
         "kg_enabled": bool(settings.KG_ENABLED),
         "documents": artifacts_docs,
     }

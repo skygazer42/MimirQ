@@ -949,7 +949,7 @@ def list_evidence_suite_hardcase_candidates(
     )
 
     enabled = bool(settings.ENABLE_METRICS_LOG)
-    path_str = str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl")
+    path_str = str(settings.METRICS_LOG_PATH)
     now = _now_utc()
 
     if not enabled:

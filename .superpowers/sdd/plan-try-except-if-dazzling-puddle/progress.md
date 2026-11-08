@@ -206,3 +206,6 @@ Phase1B所有实际复现命令已单列 phase1b-commands.txt；提交前再次�
 原始证据迁移提交4c50ff154：52 files +18/-23118；51份文件共926959字节复制到外部legacy并逐份验证SHA256（含未提交policy红输出），不改写历史。
 实际_apply_precheck_policy_suggestion自身已有catch，8309并未使其通常异常直接传播；本轮选择保留可选便利功能契约，HTTP非409及普通异常现在rollback+warning(exc_info)，已有策略409仍正常no-op，外层继续返回已提交scan_run并保留响应链接。真实SQLA响应测试2新例先failed/4passed，修改后相关16passed，2文件Ruffcheck/format通过。note Consequences已明确。
 
+## 后续批次 api
+
+候选 228；direct 175、Optional显式None 1、保留逻辑/来源链 21、安全裁决未改 31；源码 23 文件。声明与逐处裁决见 phase1b-remaining-classification.md，安全项见 phase1b-review-decisions.md。红：3 failed in 3.93s；绿：3 passed in 2.39s。原始输出/完整命令/源码前后hash/逐文件git log及AST证明位于仓库外 `C:/Users/jiahuanl/Documents/Codex/2026-11-08/opencode-omo-slim-orch-opus5-5/outputs/mimirq-evidence/api/`。Ruff check/format 与完整模块AST对照通过；不改变Settings声明或环境默认值。

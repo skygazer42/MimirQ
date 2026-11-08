@@ -42,7 +42,7 @@ async def require_metrics_access(
     request: Request,
     headers: Annotated[AuthHeaders, Depends()],
 ) -> None:
-    expected_token = str(settings.METRICS_BEARER_TOKEN or "").strip()
+    expected_token = str(settings.METRICS_BEARER_TOKEN).strip()
     if expected_token:
         auth = str(headers.authorization or "").strip()
         if not auth:

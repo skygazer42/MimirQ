@@ -449,7 +449,7 @@ def _apply_rag_runtime_settings(env_vars: dict[str, str], updated_keys: set[str]
             ("SHOW_IMAGE_IN_ANSWER", _parse_bool),
             (
                 "IMAGE_APPEND_MAX",
-                lambda value: _parse_int(value, default=settings.IMAGE_APPEND_MAX or 3),
+                lambda value: _parse_int(value, default=settings.IMAGE_APPEND_MAX),
             ),
         ),
     )
@@ -474,7 +474,7 @@ def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[st
             ("CHAT_RESPONSE_CACHE_ENABLED", _parse_bool),
             (
                 "CHAT_RESPONSE_CACHE_TTL_SEC",
-                lambda value: _parse_int(value, default=settings.CHAT_RESPONSE_CACHE_TTL_SEC or 300),
+                lambda value: _parse_int(value, default=settings.CHAT_RESPONSE_CACHE_TTL_SEC),
             ),
             (
                 "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
@@ -589,7 +589,7 @@ def _apply_magicpdf_runtime_settings(env_vars: dict[str, str], updated_keys: set
             ),
             (
                 "MAGIC_PDF_MAX_CONCURRENT_JOBS",
-                lambda value: _parse_int(value, default=settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1),
+                lambda value: _parse_int(value, default=settings.MAGIC_PDF_MAX_CONCURRENT_JOBS),
             ),
             ("MAGIC_PDF_CLI", str),
             ("MAGIC_PDF_METHOD", str),
@@ -672,7 +672,7 @@ def _apply_dify_runtime_settings(env_vars: dict[str, str], updated_keys: set[str
             ("DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON", str),
             (
                 "DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX",
-                lambda value: _parse_int(value, default=settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5),
+                lambda value: _parse_int(value, default=settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX),
             ),
         ),
     )
@@ -840,7 +840,7 @@ def get_settings(
             endpoint=settings.MINIO_ENDPOINT,
             access_key=mask_secret(settings.MINIO_ACCESS_KEY),
             secret_key=mask_secret(settings.MINIO_SECRET_KEY),
-            bucket_name=settings.MINIO_BUCKET_NAME or "mimirq",
+            bucket_name=settings.MINIO_BUCKET_NAME,
             use_ssl=settings.MINIO_USE_SSL,
             documents_enabled=settings.MINIO_DOCUMENTS_ENABLED,
             image_max_bytes=settings.MINIO_IMAGE_MAX_BYTES,
@@ -855,8 +855,8 @@ def get_settings(
             default_chunk_strategy=settings.DEFAULT_CHUNK_STRATEGY,
             bm25_index_enabled=settings.BM25_INDEX_ENABLED,
             enable_reranker=settings.ENABLE_RERANKER,
-            reranker_provider=settings.RERANKER_PROVIDER or "llm",
-            reranker_top_n=settings.RERANKER_TOP_N or 20,
+            reranker_provider=settings.RERANKER_PROVIDER,
+            reranker_top_n=settings.RERANKER_TOP_N,
             show_image_in_answer=settings.SHOW_IMAGE_IN_ANSWER,
             image_append_max=settings.IMAGE_APPEND_MAX,
         ),
@@ -886,8 +886,8 @@ def get_settings(
         ),
         etl4llm=Etl4LlmConfig(
             api_url=settings.ETL4LLM_API_URL,
-            timeout_sec=settings.ETL4LLM_TIMEOUT_SEC or 120,
-            mode=settings.ETL4LLM_MODE or "partition",
+            timeout_sec=settings.ETL4LLM_TIMEOUT_SEC,
+            mode=settings.ETL4LLM_MODE,
             force_ocr=settings.ETL4LLM_FORCE_OCR,
             enable_formula=settings.ETL4LLM_ENABLE_FORMULA,
             extract_images=settings.ETL4LLM_EXTRACT_IMAGES,
@@ -895,46 +895,46 @@ def get_settings(
         ),
         marker=MarkerConfig(
             api_url=settings.MARKER_API_URL,
-            timeout_sec=settings.MARKER_TIMEOUT_SEC or 600,
+            timeout_sec=settings.MARKER_TIMEOUT_SEC,
         ),
         docling=DoclingConfig(
             api_url=settings.DOCLING_API_URL,
             api_key=mask_secret(settings.DOCLING_API_KEY),
-            request_timeout_sec=settings.DOCLING_REQUEST_TIMEOUT_SEC or 600,
-            health_timeout_sec=settings.DOCLING_HEALTH_TIMEOUT_SEC or 5,
+            request_timeout_sec=settings.DOCLING_REQUEST_TIMEOUT_SEC,
+            health_timeout_sec=settings.DOCLING_HEALTH_TIMEOUT_SEC,
             http_trust_env=settings.DOCLING_HTTP_TRUST_ENV,
             ocr_enabled=settings.DOCLING_OCR_ENABLED,
         ),
         paddle_vl=PaddleVLConfig(
             api_url=settings.PADDLE_VL_API_URL,
-            timeout_sec=settings.PADDLE_VL_TIMEOUT_SEC or 600,
-            pipeline_version=settings.PADDLE_VL_PIPELINE_VERSION or "v1.5",
-            mode=settings.PADDLE_VL_MODE or "doc_parser",
+            timeout_sec=settings.PADDLE_VL_TIMEOUT_SEC,
+            pipeline_version=settings.PADDLE_VL_PIPELINE_VERSION,
+            mode=settings.PADDLE_VL_MODE,
         ),
         textin=TextInConfig(
-            api_url=settings.TEXTIN_API_URL or "https://api.textin.com/ai/service/v1/pdf_to_markdown",
+            api_url=settings.TEXTIN_API_URL,
             app_id=settings.TEXTIN_APP_ID,
             secret_code=mask_secret(settings.TEXTIN_SECRET_CODE),
-            timeout_sec=settings.TEXTIN_TIMEOUT_SEC or 180,
-            parse_mode=settings.TEXTIN_PARSE_MODE or "auto",
-            table_flavor=settings.TEXTIN_TABLE_FLAVOR or "html",
+            timeout_sec=settings.TEXTIN_TIMEOUT_SEC,
+            parse_mode=settings.TEXTIN_PARSE_MODE,
+            table_flavor=settings.TEXTIN_TABLE_FLAVOR,
             apply_document_tree=settings.TEXTIN_APPLY_DOCUMENT_TREE,
             markdown_details=settings.TEXTIN_MARKDOWN_DETAILS,
-            get_image=settings.TEXTIN_GET_IMAGE or "none",
-            dpi=settings.TEXTIN_DPI or 144,
+            get_image=settings.TEXTIN_GET_IMAGE,
+            dpi=settings.TEXTIN_DPI,
             page_count=settings.TEXTIN_PAGE_COUNT,
         ),
         magicpdf=MagicPDFConfig(
             api_url=settings.MAGIC_PDF_API_URL,
-            request_timeout_sec=settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600,
-            max_concurrent_jobs=settings.MAGIC_PDF_MAX_CONCURRENT_JOBS or 1,
-            cli=settings.MAGIC_PDF_CLI or "magic-pdf",
-            method=settings.MAGIC_PDF_METHOD or "auto",
+            request_timeout_sec=settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC,
+            max_concurrent_jobs=settings.MAGIC_PDF_MAX_CONCURRENT_JOBS,
+            cli=settings.MAGIC_PDF_CLI,
+            method=settings.MAGIC_PDF_METHOD,
             lang=settings.MAGIC_PDF_LANG,
             debug=settings.MAGIC_PDF_DEBUG,
-            timeout_sec=settings.MAGIC_PDF_TIMEOUT_SEC or 600,
+            timeout_sec=settings.MAGIC_PDF_TIMEOUT_SEC,
             models_dir=settings.MAGIC_PDF_MODELS_DIR,
-            device_mode=settings.MAGIC_PDF_DEVICE_MODE or "cpu",
+            device_mode=settings.MAGIC_PDF_DEVICE_MODE,
             keep_artifacts=settings.MAGIC_PDF_KEEP_ARTIFACTS,
         ),
         observability=ObservabilityConfig(
@@ -968,7 +968,7 @@ def get_settings(
             tenant_id=settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID,
             account_id=str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or SYSTEM_DIFY_ACCOUNT_ID),
             knowledge_map_json=settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON,
-            top_k_max=settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5,
+            top_k_max=settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX,
             endpoint_path="/api/v1/integrations/dify/retrieval",
         ),
     )
@@ -1700,7 +1700,7 @@ def _build_magicpdf_parser_status(
 ) -> dict[str, object]:
     enabled = settings.MAGIC_PDF_ENABLED
     api_url = settings.MAGIC_PDF_API_URL.strip()
-    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+    cli = (settings.MAGIC_PDF_CLI).strip() or "magic-pdf"
     cli_ok = bool(resolve_cli_command(cli))
     models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     if not enabled:
@@ -1730,8 +1730,8 @@ async def _build_parser_statuses(
     resolve_cli_command: Callable[[str], str | None],
     resolve_magicpdf_models_dir: Callable[[str], str | None],
 ) -> dict[str, dict[str, object]]:
-    pandoc_cli = (settings.PANDOC_CLI or "pandoc").strip() or "pandoc"
-    libreoffice_cli = (settings.LIBREOFFICE_CLI or "soffice").strip() or "soffice"
+    pandoc_cli = (settings.PANDOC_CLI).strip() or "pandoc"
+    libreoffice_cli = (settings.LIBREOFFICE_CLI).strip() or "soffice"
     parsers: dict[str, dict[str, object]] = {
         "basic": {"enabled": True, "available": True, "message": "built-in"},
         "markitdown": _build_import_parser_status(
@@ -1838,7 +1838,7 @@ def _get_milvus_status() -> dict[str, object]:
 
 
 def _get_vector_status() -> dict[str, object]:
-    backend = (settings.VECTOR_BACKEND or "milvus").strip().lower()
+    backend = (settings.VECTOR_BACKEND).strip().lower()
     if backend == "milvus":
         return _get_milvus_status()
 

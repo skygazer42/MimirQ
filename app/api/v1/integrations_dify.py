@@ -856,7 +856,7 @@ _dify_external_warmup_state: dict[str, Any] = {
 def _dify_singleflight_wait_timeout_sec() -> float:
     return max(
         1e-3,
-        float(settings.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC or 0.0),
+        float(settings.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_WAIT_TIMEOUT_SEC),
     )
 
 
@@ -910,7 +910,7 @@ async def _set_dify_response_cache_redis_payload(
     *,
     ttl_sec: int,
 ) -> bool:
-    max_value_bytes = max(0, int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0))
+    max_value_bytes = max(0, int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES))
     return await set_best_effort_json_cache_value(
         key,
         {
@@ -1039,7 +1039,7 @@ def _dify_warmup_lease_ttl_sec(*, knowledge_count: int, timeout_sec: float) -> i
 
 def _dify_warmup_can_use_retrieval_slot() -> bool:
     try:
-        limit = int(settings.RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY or 0)
+        limit = int(settings.RAG_RETRIEVAL_OFFLOAD_MAX_CONCURRENCY)
     except (TypeError, ValueError):
         limit = 1
     return limit <= 0 or limit > 1
@@ -1145,29 +1145,29 @@ def _resolve_dify_response_cache_corpus_token(
 
 def _dify_response_cache_settings_signature() -> dict[str, Any]:
     return {
-        "internal_top_k_min": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN or 20),
-        "internal_top_k_multiplier": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER or 4),
-        "internal_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX or 50),
+        "internal_top_k_min": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MIN),
+        "internal_top_k_multiplier": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MULTIPLIER),
+        "internal_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX),
         "primary_scope_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED),
-        "primary_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS or 1),
-        "primary_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE or 0.0),
+        "primary_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS),
+        "primary_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE),
         "compact_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_HIGH_CONFIDENCE_ENABLED),
-        "compact_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE or 0.0),
-        "compact_relative_score_floor": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR or 0.0),
-        "compact_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS or 1),
-        "fast_candidate_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX or 3),
-        "fast_response_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX or 2),
-        "fast_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS or 1400),
-        "fast_total_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS or 2200),
+        "compact_min_top_score": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE),
+        "compact_relative_score_floor": float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR),
+        "compact_min_records": int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS),
+        "fast_candidate_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CANDIDATE_TOP_K_MAX),
+        "fast_response_top_k_max": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_RESPONSE_TOP_K_MAX),
+        "fast_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_CONTENT_MAX_CHARS),
+        "fast_total_content_max_chars": int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_TOTAL_CONTENT_MAX_CHARS),
         "enable_reranker": bool(settings.ENABLE_RERANKER),
         "dify_reranker_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED),
-        "reranker_provider": str(settings.RERANKER_PROVIDER or ""),
-        "reranker_model": str(settings.RERANKER_MODEL or ""),
-        "reranker_top_n": int(settings.RERANKER_TOP_N or 20),
+        "reranker_provider": str(settings.RERANKER_PROVIDER),
+        "reranker_model": str("" if settings.RERANKER_MODEL is None else settings.RERANKER_MODEL),
+        "reranker_top_n": int(settings.RERANKER_TOP_N),
         "metadata_anchor_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED),
         "metadata_anchor_preflight_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED),
-        "metadata_anchor_max_scan": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN or 80),
-        "metadata_anchor_total_budget_ms": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS or 0),
+        "metadata_anchor_max_scan": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN),
+        "metadata_anchor_total_budget_ms": int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS),
         "metadata_anchor_text_scan_enabled": bool(
             settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_TEXT_SCAN_ENABLED
         ),
@@ -1178,17 +1178,15 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
             settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_EXTENDED_SCOPE_MAX_DATASETS
         ),
         "mixed_intent_supplement_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUPPLEMENT_ENABLED),
-        "mixed_intent_max_subqueries": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES or 4),
-        "mixed_intent_subquery_top_k": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K or 0),
+        "mixed_intent_max_subqueries": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES),
+        "mixed_intent_subquery_top_k": int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_SUBQUERY_TOP_K),
         "kg_on_demand_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_ON_DEMAND_ENABLED),
         "kg_query_expansion_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_QUERY_EXPANSION_ENABLED),
         "kg_chunk_injection_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_ENABLED),
-        "kg_chunk_injection_max_chunks_default": int(
-            settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS or 3
-        ),
+        "kg_chunk_injection_max_chunks_default": int(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_INJECTION_MAX_CHUNKS),
         "kg_chunk_boost_default": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_ENABLED),
-        "kg_chunk_boost_weight_default": float(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT or 0.0),
-        "kg_chunk_boost_max_promoted_default": int(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED or 2),
+        "kg_chunk_boost_weight_default": float(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_WEIGHT),
+        "kg_chunk_boost_max_promoted_default": int(settings.DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED),
     }
 
 
@@ -1410,7 +1408,7 @@ def _resolve_knowledge_policy_plugin_refs(knowledge_id: str) -> tuple[str, ...]:
 
 def _apply_policy_fallback_candidate_multiplier(candidate_top_k: int, *, multiplier: int) -> int:
     try:
-        configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX or 50)
+        configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_INTERNAL_TOP_K_MAX)
     except (TypeError, ValueError):
         configured_max = 50
     return _service_apply_policy_fallback_candidate_multiplier(
@@ -1539,7 +1537,7 @@ def _plan_query_dataset_scope(
 
 
 def _load_knowledge_map() -> dict[str, Any]:
-    raw = str(settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON or "").strip()
+    raw = str(settings.DIFY_EXTERNAL_KNOWLEDGE_MAP_JSON).strip()
     if not raw:
         return {}
     try:
@@ -1555,7 +1553,7 @@ def _resolve_dify_warmup_knowledge_ids(knowledge_map: dict[str, Any] | None = No
     raw_ids = _split_items(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_KNOWLEDGE_IDS)
     candidates = raw_ids if raw_ids else [str(key).strip() for key in (knowledge_map or _load_knowledge_map()).keys()]
     try:
-        max_ids = int(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS or 0)
+        max_ids = int(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS)
     except (TypeError, ValueError):
         max_ids = 8
     if max_ids <= 0:
@@ -1579,7 +1577,7 @@ def _resolve_knowledge_dataset_ids(knowledge_id: str, *, query: str = "") -> lis
 
 
 def _dify_knowledge_resolution_mode() -> str:
-    mode = str(settings.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE or "mapped_only")
+    mode = str(settings.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE)
     return mode.strip().lower() or "mapped_only"
 
 
@@ -2237,7 +2235,7 @@ def _mixed_intent_retrieval_queries(
         1,
         min(
             5,
-            int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES or 4),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_MIXED_INTENT_MAX_SUBQUERIES),
         ),
     )
     out: list[str] = []
@@ -3072,9 +3070,9 @@ def _compact_records_for_response(
             policy_plugin_refs=refs,
         ),
         compact_high_confidence_items=_compact_high_confidence_for_response,
-        default_min_top_score=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE or 0.7),
-        default_relative_score_floor=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR or 0.65),
-        default_min_items=int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS or 1),
+        default_min_top_score=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_TOP_SCORE),
+        default_relative_score_floor=float(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_RELATIVE_SCORE_FLOOR),
+        default_min_items=int(settings.DIFY_EXTERNAL_KNOWLEDGE_COMPACT_MIN_RECORDS),
     )
 
 
@@ -3319,7 +3317,7 @@ def _final_rerank_provider(records: list[dict[str, Any]]) -> str | None:
         return None
     if not _dify_external_reranker_enabled():
         return None
-    provider = str(settings.RERANKER_PROVIDER or "llm").strip().lower()
+    provider = str(settings.RERANKER_PROVIDER).strip().lower()
     return None if provider in {"none", "off", "false", "0"} else provider
 
 
@@ -4364,10 +4362,10 @@ def _records_meet_primary_scope(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
-    min_records = max(1, int(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS or 1))
+    min_records = max(1, int(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_RECORDS))
     if len(records) < min_records:
         return False
-    min_top_score = float(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE or 0.0)
+    min_top_score = float(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_MIN_TOP_SCORE)
     if min_top_score <= 0:
         return True
     top_score = max(
@@ -4983,7 +4981,7 @@ def _metadata_anchor_fallback_records_from_rows(
         1,
         min(
             max(1, int(top_k or 1)),
-            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS or 4),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_RECORDS),
         ),
     )
     return merged[:limit]
@@ -5829,7 +5827,7 @@ def _prepare_metadata_anchor_db_fallback(
         1,
         min(
             500,
-            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN or 80),
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_MAX_SCAN),
         ),
     )
     started = time.perf_counter()
@@ -6022,11 +6020,11 @@ async def _retrieve_dataset_citations(
     )
     overfetch_multiplier = max(
         1,
-        int(settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER or 1),
+        int(settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MULTIPLIER),
     )
     overfetch_max_k = max(
         0,
-        int(settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K or 0),
+        int(settings.DIFY_EXTERNAL_KNOWLEDGE_RETRIEVAL_OVERFETCH_MAX_K),
     )
     if overfetch_max_k <= 0:
         overfetch_max_k = evidence_top_k
@@ -6044,7 +6042,7 @@ async def _retrieve_dataset_citations(
         visible_evidence_only=True,
         metadata_filter=metadata_filter,
         enable_reranker=reranker_enabled,
-        reranker_provider=str(settings.RERANKER_PROVIDER or "llm") if reranker_enabled else "none",
+        reranker_provider=str(settings.RERANKER_PROVIDER) if reranker_enabled else "none",
         reranker_top_n=reranker_top_n,
         lexical_db_hybrid_fallback_only=bool(settings.DIFY_EXTERNAL_KNOWLEDGE_LEXICAL_DB_HYBRID_FALLBACK_ONLY),
         lexical_db_hybrid_metadata_exact_fallback_enabled=bool(
@@ -6117,17 +6115,17 @@ def _resolve_dify_warmup_tenant_id() -> UUID | None:
 
 
 def _resolve_dify_warmup_query() -> str:
-    query = str(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY or "").strip()
+    query = str(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY).strip()
     return query or _DIFY_WARMUP_DEFAULT_QUERY
 
 
 def _resolve_dify_warmup_top_k() -> int:
     try:
-        configured_top_k = int(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K or 1)
+        configured_top_k = int(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K)
     except (TypeError, ValueError):
         configured_top_k = 1
     try:
-        configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5)
+        configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX)
     except (TypeError, ValueError):
         configured_max = 5
     return max(1, min(configured_top_k, max(1, configured_max)))
@@ -6143,7 +6141,7 @@ def _resolve_dify_warmup_timeout_sec() -> float:
 
 def _resolve_dify_warmup_start_delay_sec() -> float:
     try:
-        delay_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC or 0.0)
+        delay_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC)
     except (TypeError, ValueError):
         delay_sec = 1.0
     return max(0.0, min(60.0, delay_sec))
@@ -6201,7 +6199,7 @@ async def warmup_dify_external_knowledge(
     _set_dify_external_warmup_status(enabled=True, status="running", attempted=len(knowledge_ids))
 
     factory = db_factory or SessionLocal
-    account_id = str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID or "system:dify").strip()
+    account_id = str(settings.DIFY_EXTERNAL_KNOWLEDGE_ACCOUNT_ID).strip()
     query = _resolve_dify_warmup_query()
     top_k = _resolve_dify_warmup_top_k()
     score_threshold = 0.0
@@ -6635,8 +6633,8 @@ def _primary_scope_dataset_ids(scope_plan: DatasetScopePlan, *, primary_scope_en
 
 
 def _dify_response_cache_settings() -> tuple[int, int, bool, bool]:
-    ttl_sec = max(0, int(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC or 0))
-    max_entries = max(0, int(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES or 0))
+    ttl_sec = max(0, int(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_TTL_SEC))
+    max_entries = max(0, int(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_MAX_ENTRIES))
     enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RESPONSE_CACHE_ENABLED) and ttl_sec > 0 and max_entries > 0
     singleflight_enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_SINGLEFLIGHT_ENABLED)
     return ttl_sec, max_entries, enabled, singleflight_enabled
@@ -6655,7 +6653,7 @@ def _build_dify_external_retrieval_context(
     primary_scope_enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_PRIMARY_SCOPE_ENABLED)
     primary_dataset_ids = _primary_scope_dataset_ids(scope_plan, primary_scope_enabled=primary_scope_enabled)
     expansion_dataset_ids = list(scope_plan.expansion_dataset_ids if primary_scope_enabled else ())
-    configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX or 5)
+    configured_max = int(settings.DIFY_EXTERNAL_KNOWLEDGE_TOP_K_MAX)
     top_k = max(1, min(int(body.retrieval_setting.top_k), configured_max))
     latency_profile = _resolve_dify_latency_profile(body.retrieval_setting)
     fast_latency_profile = latency_profile == "fast"
@@ -7133,12 +7131,12 @@ async def _apply_metadata_anchor_preflight(ctx: _DifyExternalRetrievalContext) -
         existing_records=[],
         metadata_filter=ctx.metadata_filter,
         statement_timeout_ms_override=(
-            int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS or 0)
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_STATEMENT_TIMEOUT_MS)
             if ctx.fast_latency_profile
             else None
         ),
         max_elapsed_ms=(
-            int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS or 0)
+            int(settings.DIFY_EXTERNAL_KNOWLEDGE_FAST_METADATA_PREFLIGHT_MAX_ELAPSED_MS)
             if ctx.fast_latency_profile
             else None
         ),
@@ -7500,7 +7498,7 @@ async def _execute_dify_external_retrieval(ctx: _DifyExternalRetrievalContext) -
     ctx.metadata_anchor_db_fallback_enabled = bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED)
     ctx.metadata_anchor_total_budget_ms = max(
         0,
-        int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS or 0),
+        int(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_TOTAL_BUDGET_MS),
     )
     await _apply_metadata_anchor_preflight(ctx)
     await _apply_mixed_intent_preflight(ctx)

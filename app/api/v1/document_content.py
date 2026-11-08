@@ -72,7 +72,7 @@ def _read_local_text_source_fallback(
         return None
 
     path = Path(raw_path)
-    upload_root = Path(settings.UPLOAD_DIR or "./uploads")
+    upload_root = Path(settings.UPLOAD_DIR)
     safe_path = resolve_under_base(path, base=upload_root / str(tenant_id))
     if safe_path is None or not safe_path.exists() or not safe_path.is_file():
         return None

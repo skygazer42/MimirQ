@@ -77,16 +77,16 @@ def _profile_from_mode(mode: str) -> str:
 
 
 def _retrieval_knobs_appear_omitted(config: Any) -> bool:
-    default_top_k = int(settings.RETRIEVAL_TOP_K or 10)
-    default_score_threshold = float(settings.SIMILARITY_THRESHOLD or 0.0)
-    default_reranker_provider = str(settings.RERANKER_PROVIDER or "").strip().lower()
+    default_top_k = int(settings.RETRIEVAL_TOP_K)
+    default_score_threshold = float(settings.SIMILARITY_THRESHOLD)
+    default_reranker_provider = str(settings.RERANKER_PROVIDER).strip().lower()
     return (
         int(config.top_k or 0) == int(default_top_k)
         and abs(float(config.score_threshold or 0.0) - float(default_score_threshold)) <= 1e-9
         and str(config.retrieval_mode or "").strip().lower() == "hybrid"
         and bool(config.enable_reranker) is bool(settings.ENABLE_RERANKER)
         and str(config.reranker_provider or "").strip().lower() == default_reranker_provider
-        and int(config.reranker_top_n or 0) == int(settings.RERANKER_TOP_N or 20)
+        and int(config.reranker_top_n or 0) == int(settings.RERANKER_TOP_N)
         and bool(config.enable_weight_rerank) is True
     )
 
@@ -94,7 +94,7 @@ def _retrieval_knobs_appear_omitted(config: Any) -> bool:
 def _default_profile_for_omitted_knobs(config: Any) -> str:
     if not _retrieval_knobs_appear_omitted(config):
         return ""
-    return str(settings.CHAT_DEFAULT_RETRIEVAL_PROFILE or "").strip().lower()
+    return str(settings.CHAT_DEFAULT_RETRIEVAL_PROFILE).strip().lower()
 
 
 def _apply_profile_value_overrides(config: Any, applied: dict[str, Any]) -> None:

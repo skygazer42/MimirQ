@@ -56,7 +56,7 @@ class EvidenceCapsuleVerifyResponse(BaseModel):
 
 
 def _store_dir() -> Path:
-    root = Path(str(settings.EVIDENCE_CAPSULE_STORE_DIR or "./runs/evidence_capsules"))
+    root = Path(str(settings.EVIDENCE_CAPSULE_STORE_DIR))
     return root.resolve()
 
 

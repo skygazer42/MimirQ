@@ -488,7 +488,7 @@ def _load_competition_weights() -> dict[str, float] | None:
     if not bool(settings.PARSE_COMPETITION_MATRIX_ENABLED):
         return None
 
-    raw = str(settings.PARSE_COMPETITION_MATRIX_WEIGHTS_JSON or "").strip()
+    raw = str(settings.PARSE_COMPETITION_MATRIX_WEIGHTS_JSON).strip()
     if raw:
         try:
             obj = json.loads(raw)
@@ -511,7 +511,7 @@ def _magicpdf_fallback_available() -> bool:
         return False
     if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True
-    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+    cli = (settings.MAGIC_PDF_CLI).strip() or "magic-pdf"
     models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     return bool(resolve_cli_command(cli) and models_dir)
 
@@ -532,17 +532,17 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="deepseek_ocr",
-        enabled=bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY or "").strip()),
+        enabled=bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY).strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="qianfan_ocr",
-        enabled=bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL or "").strip()),
+        enabled=bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL).strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="etl4llm",
-        enabled=bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL or "").strip()),
+        enabled=bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL).strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
@@ -552,7 +552,7 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="docling",
-        enabled=bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL or "").strip()),
+        enabled=bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL).strip()),
     )
 
     # MagicPDF prefers service mode; local CLI remains a fallback.
@@ -884,7 +884,7 @@ async def _resolve_workspace_source_path(
         store.download_object_to_path,
         object_name=ref.object_name,
         destination=temp_path,
-        max_bytes=int(settings.MAX_FILE_SIZE or 0),
+        max_bytes=int(settings.MAX_FILE_SIZE),
     )
     return temp_path
 
@@ -1132,9 +1132,9 @@ async def _run_workspace_pdf_fallbacks(
     markdown: str,
     pdf_quality: dict[str, Any] | None,
 ) -> tuple[str, ParsingQualityGate, Any, str, str, dict[str, int] | None, list[dict[str, Any]]]:
-    min_chars = max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120))
-    min_parse_score = max(0.0, float(settings.PARSE_FALLBACK_MIN_PARSE_SCORE or 0.55))
-    max_retries = max(0, int(settings.PARSE_FALLBACK_MAX_RETRIES or 1))
+    min_chars = max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS))
+    min_parse_score = max(0.0, float(settings.PARSE_FALLBACK_MIN_PARSE_SCORE))
+    max_retries = max(0, int(settings.PARSE_FALLBACK_MAX_RETRIES))
     matrix_weights = _load_competition_weights()
     fallback_attempts: list[dict[str, Any]] = []
     cross_page_merge_stats = _workspace_cross_page_merge_stats(artifact_docs)
@@ -1285,12 +1285,12 @@ def _apply_workspace_vlm_correction(
         corrected_pages, audit = maybe_correct_markdown_pages(
             pages,
             enabled=True,
-            api_url=str(settings.VLM_CORRECTION_API_URL or ""),
+            api_url=str(settings.VLM_CORRECTION_API_URL),
             timeout_sec=float(settings.VLM_CORRECTION_TIMEOUT_SEC or 60),
             max_pages=int(settings.VLM_CORRECTION_MAX_PAGES or 3),
             max_chars=int(settings.VLM_CORRECTION_MAX_CHARS or 40_000),
             pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
-            min_table_quality=float(settings.VLM_CORRECTION_MIN_TABLE_QUALITY or 0.6),
+            min_table_quality=float(settings.VLM_CORRECTION_MIN_TABLE_QUALITY),
             meta={"tenant_id": str(tenant_id), "document_id": str(document_id)},
         )
         vlm_audit = audit.to_dict()
@@ -1311,7 +1311,7 @@ def _apply_workspace_vlm_correction(
         gate_after = _compute_parsing_quality_gate(
             markdown,
             pdf_quality=pdf_quality,
-            min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120)),
+            min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS)),
             is_pdf=True,
         )
         next_evidence = dict(gate_after.evidence or {})
@@ -1491,11 +1491,11 @@ def _apply_workspace_quality_metadata(
             "attempts": fallback_attempts,
             "min_content_chars": max(
                 0,
-                int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120),
+                int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS),
             ),
             "max_retries": max(
                 0,
-                int(settings.PARSE_FALLBACK_MAX_RETRIES or 1),
+                int(settings.PARSE_FALLBACK_MAX_RETRIES),
             ),
         }
     next_meta.update(artifact_stats)
@@ -1793,7 +1793,7 @@ async def _run_workspace_parse_pipeline(
     gate = _compute_parsing_quality_gate(
         markdown,
         pdf_quality=pdf_quality,
-        min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS or 120)),
+        min_content_chars=max(0, int(settings.PARSE_FALLBACK_MIN_CONTENT_CHARS)),
         is_pdf=(file_ext == ".pdf"),
     )
     (

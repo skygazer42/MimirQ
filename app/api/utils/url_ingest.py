@@ -162,13 +162,13 @@ def _validate_blocked_host(host: str) -> None:
 
 
 def _validate_host_allowlist(host: str) -> None:
-    allowed_hosts = _parse_csv(settings.URL_INGEST_ALLOWED_HOSTS or "")
+    allowed_hosts = _parse_csv(settings.URL_INGEST_ALLOWED_HOSTS)
     if allowed_hosts and not _host_in_allowlist(host, allowed_hosts):
         raise HTTPException(status_code=400, detail=_URL_HOST_NOT_ALLOWED_DETAIL)
 
 
 def _validate_port_allowlist(port: int) -> None:
-    allowed_ports_raw = settings.URL_INGEST_ALLOWED_PORTS or ""
+    allowed_ports_raw = settings.URL_INGEST_ALLOWED_PORTS
     if not allowed_ports_raw.strip():
         return
     try:
@@ -322,7 +322,7 @@ class _DownloadOptions:
 
 
 def _effective_max_bytes(max_bytes: int | None) -> int:
-    max_bytes_eff = max_bytes if max_bytes is not None else settings.URL_INGEST_MAX_BYTES or 0
+    max_bytes_eff = max_bytes if max_bytes is not None else settings.URL_INGEST_MAX_BYTES
     if max_bytes_eff <= 0:
         return settings.MAX_FILE_SIZE or 50_000_000
     return max_bytes_eff
@@ -337,7 +337,7 @@ def _build_download_headers(*, user_agent: str | None, extra_headers: dict[str, 
 
 def _download_options(options: URLDownloadOptions | None) -> _DownloadOptions:
     raw = options or URLDownloadOptions()
-    max_redirects = settings.URL_INGEST_MAX_REDIRECTS or 5
+    max_redirects = settings.URL_INGEST_MAX_REDIRECTS
     return _DownloadOptions(
         max_bytes=_effective_max_bytes(raw.max_bytes),
         timeout_sec=float(raw.timeout_sec if raw.timeout_sec is not None else settings.URL_INGEST_TIMEOUT_SEC),

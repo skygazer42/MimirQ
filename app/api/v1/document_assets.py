@@ -159,7 +159,7 @@ async def _resolve_document_asset_request_context(request: Request) -> tuple[UUI
 
 
 def _asset_cache_control_value() -> str:
-    max_age = max(0, int(settings.ASSET_CACHE_MAX_AGE_SEC or 0))
+    max_age = max(0, int(settings.ASSET_CACHE_MAX_AGE_SEC))
     return _asset_cache_control(max_age=max_age)
 
 

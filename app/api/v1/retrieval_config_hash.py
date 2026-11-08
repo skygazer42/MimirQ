@@ -50,9 +50,9 @@ class RetrievalConfigHashResponse(BaseModel):
 
 def _runtime_flags() -> dict[str, Any]:
     return {
-        "vector_backend": str(settings.VECTOR_BACKEND or "milvus"),
-        "fusion_strategy": str(settings.RETRIEVAL_FUSION_STRATEGY or "linear"),
-        "reranker_provider_default": str(settings.RERANKER_PROVIDER or "llm"),
+        "vector_backend": str(settings.VECTOR_BACKEND),
+        "fusion_strategy": str(settings.RETRIEVAL_FUSION_STRATEGY),
+        "reranker_provider_default": str(settings.RERANKER_PROVIDER),
         "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
         "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
         "sparse_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
@@ -60,11 +60,11 @@ def _runtime_flags() -> dict[str, Any]:
         "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
         "hierarchy_recall_enabled": bool(settings.HIERARCHY_RECALL_ENABLED),
         "hierarchy_family_collapse": bool(settings.HIERARCHY_RECALL_FAMILY_COLLAPSE),
-        "hierarchy_family_aggregation": str(settings.HIERARCHY_RECALL_FAMILY_AGGREGATION or "combined"),
+        "hierarchy_family_aggregation": str(settings.HIERARCHY_RECALL_FAMILY_AGGREGATION),
         "hierarchy_tree_dedup": bool(settings.HIERARCHY_RECALL_TREE_DEDUP),
-        "hierarchy_parent_depth": int(settings.HIERARCHY_RECALL_PARENT_DEPTH or 0),
-        "hierarchy_sibling_window": int(settings.HIERARCHY_RECALL_SIBLING_WINDOW or 0),
-        "hierarchy_overfetch_factor": int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR or 4),
+        "hierarchy_parent_depth": int(settings.HIERARCHY_RECALL_PARENT_DEPTH),
+        "hierarchy_sibling_window": int(settings.HIERARCHY_RECALL_SIBLING_WINDOW),
+        "hierarchy_overfetch_factor": int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR),
     }
 
 
@@ -80,7 +80,7 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
         else bool(rag_config.hierarchy_family_collapse)
     )
     hierarchy_family_aggregation = (
-        str(settings.HIERARCHY_RECALL_FAMILY_AGGREGATION or "combined").strip().lower()
+        str(settings.HIERARCHY_RECALL_FAMILY_AGGREGATION).strip().lower()
         if rag_config.hierarchy_family_aggregation is None
         else str(rag_config.hierarchy_family_aggregation or "").strip().lower()
     )
@@ -90,17 +90,17 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
         else bool(rag_config.hierarchy_tree_dedup)
     )
     hierarchy_parent_depth = (
-        int(settings.HIERARCHY_RECALL_PARENT_DEPTH or 0)
+        int(settings.HIERARCHY_RECALL_PARENT_DEPTH)
         if rag_config.hierarchy_parent_depth is None
         else int(rag_config.hierarchy_parent_depth or 0)
     )
     hierarchy_sibling_window = (
-        int(settings.HIERARCHY_RECALL_SIBLING_WINDOW or 0)
+        int(settings.HIERARCHY_RECALL_SIBLING_WINDOW)
         if rag_config.hierarchy_sibling_window is None
         else int(rag_config.hierarchy_sibling_window or 0)
     )
     hierarchy_overfetch_factor = (
-        int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR or 4)
+        int(settings.HIERARCHY_RECALL_OVERFETCH_FACTOR)
         if rag_config.hierarchy_overfetch_factor is None
         else int(rag_config.hierarchy_overfetch_factor or 0)
     )

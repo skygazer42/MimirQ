@@ -103,10 +103,10 @@ def _redact_table_text(text: str) -> str:
     if not s:
         return s
 
-    secrets_mode = (settings.GOVERNANCE_SECRETS_MODE or "mask").strip().lower()
-    secrets_mask = settings.GOVERNANCE_SECRETS_MASK or "[SECRET]"
-    pii_mode = (settings.GOVERNANCE_PII_MODE or "mask").strip().lower()
-    pii_mask = settings.GOVERNANCE_PII_MASK or "[REDACTED]"
+    secrets_mode = (settings.GOVERNANCE_SECRETS_MODE).strip().lower()
+    secrets_mask = settings.GOVERNANCE_SECRETS_MASK
+    pii_mode = (settings.GOVERNANCE_PII_MODE).strip().lower()
+    pii_mask = settings.GOVERNANCE_PII_MASK
 
     secrets_mode = secrets_mode if secrets_mode in {"mask", "token"} else "mask"
     pii_mode = pii_mode if pii_mode in {"mask", "token"} else "mask"
@@ -470,7 +470,7 @@ def _table_asset_by_id_or_404(
 def _ensure_table_ask_enabled() -> None:
     if not tag_enabled():
         raise HTTPException(status_code=400, detail="TABLE_NL2SQL_ENABLED=false")
-    has_llm_key = bool((settings.LLM_API_KEY or "").strip())
+    has_llm_key = bool((settings.LLM_API_KEY).strip())
     deterministic_ok = (settings.TABLE_NL2SQL_DETERMINISTIC_ONLY) or (
         settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
     )
@@ -548,7 +548,7 @@ def _generate_table_answer(
 def _ensure_lotus_sem_filter_enabled() -> None:
     if not (settings.TABLE_LOTUS_ENABLED):
         raise HTTPException(status_code=400, detail="TABLE_LOTUS_ENABLED=false")
-    if not (settings.LLM_API_KEY or "").strip():
+    if not (settings.LLM_API_KEY).strip():
         raise HTTPException(status_code=400, detail="LLM_API_KEY is not configured")
 
 

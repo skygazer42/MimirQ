@@ -39,7 +39,7 @@ class _ReadyCache(TypedDict):
 
 
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
-_READY_CACHE_TTL_SEC = max(0.0, settings.READY_CACHE_TTL_SEC or 2.0)
+_READY_CACHE_TTL_SEC = max(0.0, settings.READY_CACHE_TTL_SEC)
 _ready_cache: _ReadyCache = {"ts": 0.0, "payload": None, "status": 200, "key": None}
 _redis_client_slot = LazyRedisClient(
     url=lambda: settings.REDIS_URL,
@@ -100,7 +100,7 @@ def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
 
 def _ready_cache_key() -> tuple[object, ...]:
     return (
-        (settings.VECTOR_BACKEND or "milvus").lower(),
+        (settings.VECTOR_BACKEND).lower(),
         settings.TASK_QUEUE_ENABLED,
         settings.DB_CREATE_ALL_ON_STARTUP,
         settings.DB_RUNTIME_MIGRATIONS_ENABLED,
@@ -112,15 +112,15 @@ def _ready_cache_key() -> tuple[object, ...]:
         settings.RAG_RUNTIME_WARMUP_ENABLED,
         settings.RAG_RUNTIME_WARMUP_REQUIRED_FOR_READY,
         # Include endpoints so the cache doesn't hide hot-reloaded settings changes.
-        settings.REDIS_URL or "",
-        settings.MILVUS_HOST or "",
-        settings.MILVUS_PORT or 0,
-        settings.MINIO_ENDPOINT or "",
-        settings.OBJECT_STORAGE_PROVIDER or "",
-        settings.OBJECT_STORAGE_ENDPOINT or "",
-        settings.OBJECT_STORAGE_BUCKET_NAME or "",
-        settings.DATA_REGION or "",
-        settings.OBJECT_STORAGE_REGION_PROFILES or "",
+        settings.REDIS_URL,
+        settings.MILVUS_HOST,
+        settings.MILVUS_PORT,
+        settings.MINIO_ENDPOINT,
+        settings.OBJECT_STORAGE_PROVIDER,
+        settings.OBJECT_STORAGE_ENDPOINT,
+        settings.OBJECT_STORAGE_BUCKET_NAME,
+        settings.DATA_REGION,
+        settings.OBJECT_STORAGE_REGION_PROFILES,
     )
 
 
@@ -145,7 +145,7 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
     db_status, db_ok = check_database(SessionLocal, require_schema_current=not application_manages_schema)
     ok &= db_ok
 
-    vector_backend = (settings.VECTOR_BACKEND or "milvus").lower()
+    vector_backend = (settings.VECTOR_BACKEND).lower()
     milvus_get_count = milvus_store.get_collection_count if vector_backend == "milvus" else None
     vector_status, milvus_status, vector_ok = check_vector(
         settings,

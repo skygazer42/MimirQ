@@ -197,7 +197,7 @@ def _require_scim_actor(request: Request, authorization: Annotated[str | None, H
 def _scim_page(*, start_index: int, count: int) -> tuple[int, int, int]:
     start = max(1, start_index)
     page_size = max(1, count or 200)
-    max_page_size = settings.SCIM_PAGE_SIZE_MAX or 200
+    max_page_size = settings.SCIM_PAGE_SIZE_MAX
     if max_page_size > 0:
         page_size = min(page_size, max_page_size)
     skip = start - 1
