@@ -35,8 +35,8 @@ from app.rag.core.logging import get_logger
 logger = get_logger("rag.core.interrupt")
 
 # Configuration
-HUMAN_REVIEW_ENABLED = getattr(settings, "HUMAN_REVIEW_ENABLED", False)
-INTERRUPT_TIMEOUT_SEC = getattr(settings, "INTERRUPT_TIMEOUT_SEC", 3600)  # 1 hour
+HUMAN_REVIEW_ENABLED = settings.HUMAN_REVIEW_ENABLED
+INTERRUPT_TIMEOUT_SEC = settings.INTERRUPT_TIMEOUT_SEC  # 1 hour
 
 
 class InterruptStatus(str, Enum):

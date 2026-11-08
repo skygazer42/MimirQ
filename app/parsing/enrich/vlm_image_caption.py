@@ -397,7 +397,7 @@ def add_vlm_image_captions(
     max_bytes = int(
         max_image_bytes
         if isinstance(max_image_bytes, int) and max_image_bytes > 0
-        else int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+        else settings.MAX_INLINE_IMAGE_BYTES or 10_000_000
     )
     max_bytes = max(100_000, max_bytes)
 
