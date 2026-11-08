@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.errors import ConfigError
+from app.rag.core.logging import get_logger
 from app.rag.kg.api.routes_support.common import (
     KG_EXTRACTION_ALREADY_QUEUED_DETAIL,
     KG_PIPELINE_CHUNKS_NOT_FOUND_DETAIL,
@@ -31,6 +32,8 @@ from app.rag.kg.pipeline import extract_events
 from app.rag.kg.schemas import KGExtractResponse
 from app.rag.pipeline_plugins.registry import derive_registered_stage_plugin_ref
 from app.services import dataset_service
+
+logger = get_logger(__name__)
 
 
 def _get_extraction_document(db: Session, *, tenant_id: UUID, document_id: UUID, account_id: str) -> DBDocument:
@@ -183,8 +186,13 @@ def _audit_kg_extraction(
         )
         db.commit()
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
+        logger.warning(
+            "KG extraction completed but audit logging failed: action=%s document_id=%s",
+            action,
+            document_id,
+            exc_info=True,
+        )
 
 
 async def _enqueue_kg_extraction_response(
