@@ -121,6 +121,13 @@ def _create_ingestion_run_if_missing(
         )
         return ingestion_run.id
     except Exception:
+        db.rollback()
+        logger.warning(
+            "Document ingestion run creation failed; continuing without run tracking: tenant_id=%s kind=%s",
+            tenant_id,
+            ingestion_kind_norm,
+            exc_info=True,
+        )
         return None
 
 
@@ -1103,6 +1110,12 @@ def _create_single_ingestion_run(
             expected_documents=1,
         )
     except Exception:
+        db.rollback()
+        logger.warning(
+            "Single-upload ingestion run creation failed; continuing without run tracking: tenant_id=%s",
+            tenant_id,
+            exc_info=True,
+        )
         return None
 
 
@@ -1127,8 +1140,16 @@ def _attach_document_to_ingestion_run(
         db.commit()
         db.refresh(document)
     except Exception:
+        db.rollback()
+        logger.warning(
+            "Document persisted but ingestion-run metadata update failed: tenant_id=%s document_id=%s run_id=%s",
+            tenant_id,
+            document.id,
+            ingestion_run.id,
+            exc_info=True,
+        )
         meta0 = dict(document.doc_metadata or {})
-    with contextlib.suppress(Exception):
+    try:
         ingestion_run_service.add_document(
             db,
             tenant_id=tenant_id,
@@ -1137,6 +1158,15 @@ def _attach_document_to_ingestion_run(
             source_ref=(identity.source_path or document.filename),
             initial_status=str(document.status or "created"),
             doc_meta=meta0,
+        )
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Document persisted but ingestion-run attachment failed: tenant_id=%s document_id=%s run_id=%s",
+            tenant_id,
+            document.id,
+            ingestion_run.id,
+            exc_info=True,
         )
 
 
@@ -1305,15 +1335,14 @@ async def _ingest_file_impl(
             ingest_lock=ingest_lock,
         )
         if duplicate is not None:
-            with contextlib.suppress(Exception):
-                _attach_document_to_ingestion_run(
-                    db=db,
-                    ingestion_run=ingestion_run,
-                    tenant_id=tenant_id,
-                    identity=identity,
-                    document=duplicate,
-                    created=False,
-                )
+            _attach_document_to_ingestion_run(
+                db=db,
+                ingestion_run=ingestion_run,
+                tenant_id=tenant_id,
+                identity=identity,
+                document=duplicate,
+                created=False,
+            )
             return duplicate
 
         stored_path = await source_persistence.store_document_source(
@@ -1360,29 +1389,27 @@ async def _ingest_file_impl(
                 db=db,
             )
             _retain_ingest_lock_if_task_handed_off(exc.document, ingest_lock=ingest_lock)
-            with contextlib.suppress(Exception):
-                _attach_document_to_ingestion_run(
-                    db=db,
-                    ingestion_run=ingestion_run,
-                    tenant_id=tenant_id,
-                    identity=identity,
-                    document=exc.document,
-                    created=False,
-                )
-            return exc.document
-        except Exception:
-            if not persistence_started:
-                await source_persistence.cleanup_unpersisted_source(stored_path, document_metadata=doc_metadata)
-            raise
-        with contextlib.suppress(Exception):
             _attach_document_to_ingestion_run(
                 db=db,
                 ingestion_run=ingestion_run,
                 tenant_id=tenant_id,
                 identity=identity,
-                document=db_document,
-                created=True,
+                document=exc.document,
+                created=False,
             )
+            return exc.document
+        except Exception:
+            if not persistence_started:
+                await source_persistence.cleanup_unpersisted_source(stored_path, document_metadata=doc_metadata)
+            raise
+        _attach_document_to_ingestion_run(
+            db=db,
+            ingestion_run=ingestion_run,
+            tenant_id=tenant_id,
+            identity=identity,
+            document=db_document,
+            created=True,
+        )
         with contextlib.suppress(Exception):
             reconcile_document_index_channels(
                 db,

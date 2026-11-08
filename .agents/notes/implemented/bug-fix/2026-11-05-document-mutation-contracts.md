@@ -18,6 +18,8 @@ chunk 写入权限包装继续动态调用 `document_access_service.assert_docum
 
 QA 生成先提交新 chunks，再刷新 Document 的 `chunk_count` 与 `total_characters` 投影。统计提交失败只回滚这笔投影事务，不把已经成功的 QA 生成响应改成失败；原静默分支改为结构化 warning，明确依赖、失败原因和重算建议，并保留异常堆栈。
 
+单文件、URL 与 HTML 入库的 ingestion run 是可选追踪，不阻断已授权的主文档持久化。创建 run 或写入 document 的 run metadata 失败时，owner 先 rollback 使 Session 恢复可用，再记录 tenant、document/run 标识并继续；run attachment 的意外异常同样在 owner 内 rollback 与告警。三个上传调用点不再各自用 `contextlib.suppress` 重复吞掉同一失败。
+
 ## Alternatives considered
 
 为 `Indexer` 新增 `sync_chunk_corpus` 包装可以少改两个调用点，但会重新引入没有实现的接口归属。直接使用保留的活动方法能明确 BM25 所有者，也保留该方法既有的元数据和检索失效政策。
@@ -28,7 +30,7 @@ QA 生成先提交新 chunks，再刷新 Document 的 `chunk_count` 与 `total_c
 
 ## Consequences
 
-批量操作可进入原有成员、ACL 和逐项结果逻辑；chunk 的 BM25 更新可到达现行实现，零索引追加计算正确。租户、dataset、文档、chunk、活动 pipeline、批次上限、重复输入和 mixed-outcome 规则保持。向量与 BM25 顺序、严格模式阻断时机、缓存与配额、channel 原子 SQL、计数和时间戳、savepoint、提交和回滚、错误清空与 summary 复制政策保持。版本删除的后段数据库清理失败现在表现为请求失败；前段 chunk 删除已经提交，因此调用方需要按失败响应触发运维修复，而不能把它当作未执行。派生索引、QA 统计投影和审计失败仍不逆转已提交的主操作，但日志提供明确的降级证据。
+批量操作可进入原有成员、ACL 和逐项结果逻辑；chunk 的 BM25 更新可到达现行实现，零索引追加计算正确。租户、dataset、文档、chunk、活动 pipeline、批次上限、重复输入和 mixed-outcome 规则保持。向量与 BM25 顺序、严格模式阻断时机、缓存与配额、channel 原子 SQL、计数和时间戳、savepoint、提交和回滚、错误清空与 summary 复制政策保持。版本删除的后段数据库清理失败现在表现为请求失败；前段 chunk 删除已经提交，因此调用方需要按失败响应触发运维修复，而不能把它当作未执行。派生索引、QA 统计投影、ingestion run 追踪和审计失败仍不逆转已提交的主操作，但 Session rollback 与日志提供明确的降级证据。
 
 活跃笔记检索中，[活动索引写入所有者](../simplification/2026-11-05-active-indexing-owner.md) 与 BM25 方法归属部分重叠，沿用其活动实现并互链；[共享标量转换](../simplification/2026-11-03-shared-scalar-coercion-owner.md) 和[语料缓存事务](2026-11-03-corpus-cache-invalidation-transaction.md) 的边界和事务决定保持。检索命中的质量评分、混合排名和预览笔记属于其他生产者，不被替代。没有过时提案或可完全吸收的笔记。
 
