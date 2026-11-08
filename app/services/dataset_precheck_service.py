@@ -72,7 +72,7 @@ def _assert_artifact_path_under_tenant(*, tenant_id: UUID, path: Path) -> None:
 
 
 def _upload_root() -> Path:
-    raw = getattr(settings, "UPLOAD_DIR", _DEFAULT_UPLOAD_DIR) or _DEFAULT_UPLOAD_DIR
+    raw = settings.UPLOAD_DIR or _DEFAULT_UPLOAD_DIR
     return Path(raw).resolve(strict=False)
 
 

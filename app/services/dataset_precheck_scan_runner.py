@@ -525,7 +525,7 @@ def _now_utc() -> datetime:
 
 
 def _upload_root_path() -> Path:
-    upload_dir = getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK
+    upload_dir = settings.UPLOAD_DIR or UPLOAD_DIR_FALLBACK
     return Path(upload_dir).resolve(strict=False)
 
 
@@ -1078,7 +1078,7 @@ def _build_scan_options(*, cfg: dict[str, Any]) -> _ScanOptions:
         text_high_replacement_ratio_threshold=float(thresholds["text_high_replacement_ratio_threshold"]),
         pdf_low_density_ratio_threshold=float(thresholds["pdf_low_density_ratio_threshold"]),
         directory_stats_limit=directory_stats_limit,
-        allowed_exts=set(getattr(settings, "allowed_extensions_list", []) or []),
+        allowed_exts=set(settings.allowed_extensions_list),
     )
 
 
@@ -1164,12 +1164,7 @@ def _build_empty_scan_summary(
 
 
 def _prepare_artifact_paths(*, tenant_id: UUID, scan_run_id: UUID) -> tuple[Path, Path, Path, Path]:
-    artifact_root = (
-        Path(getattr(settings, "UPLOAD_DIR", UPLOAD_DIR_FALLBACK) or UPLOAD_DIR_FALLBACK)
-        / str(tenant_id)
-        / "precheck"
-        / str(scan_run_id)
-    )
+    artifact_root = Path(settings.UPLOAD_DIR or UPLOAD_DIR_FALLBACK) / str(tenant_id) / "precheck" / str(scan_run_id)
     artifact_root.mkdir(parents=True, exist_ok=True)
     jsonl_path = (artifact_root / "files.jsonl").resolve(strict=False)
     samples_path = (artifact_root / "samples.json").resolve(strict=False)
