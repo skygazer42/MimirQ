@@ -1,4 +1,3 @@
-import contextlib
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -37,6 +36,7 @@ from app.services.rag_config_template_defaults import (
 from app.services.rag_config_template_resolver import (
     build_adaptive_routing_reward_writeback,
     build_rag_config_patch_hash,
+    record_rag_config_template_usage,
     resolve_rag_config_template,
 )
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
@@ -197,15 +197,6 @@ def _build_rag_template_meta(
     return rag_config_template_meta
 
 
-def _update_template_usage(db: Session, chosen: RagConfigTemplate) -> None:
-    try:
-        chosen.usage_count = int(chosen.usage_count or 0) + 1
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
-
-
 def _resolve_rag_template_runtime(
     *,
     db: Session,
@@ -256,7 +247,7 @@ def _resolve_rag_template_runtime(
             effective_rag_config_ab_experiment_key=effective_rag_config_ab_experiment_key,
             request_id=request_id,
         )
-        _update_template_usage(db, chosen)
+        record_rag_config_template_usage(db, chosen)
         return effective_rag_config, rag_config_template_meta
     except RetiredModelProviderError:
         raise

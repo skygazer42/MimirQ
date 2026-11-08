@@ -10,7 +10,9 @@ Chat bootstrap accepted `Any` for requests and RAG templates, then used `getattr
 
 The bootstrap runtime uses `ChatRequest`, `ChatRAGConfig`, and `RagConfigTemplate` at the existing internal boundary. It reads their declared fields directly and consumes dataset metadata as the dictionary returned by `load_dataset_metadata`. Nullable template counters still normalize `None` to zero. Cache key resolution types its database dependency as `Session`, matching `resolve_corpus_cache_token`.
 
-Cache payload parsing remains a serialized Redis boundary: dictionary and citation shape checks, best-effort cache failure handling, and singleflight follower behavior stay in place. Optional memory lookup, template usage rollback, transaction order, cache keys, tenant/account/document scope, lease timing, timeout, and cancellation behavior are unchanged.
+Cache payload parsing remains a serialized Redis boundary: dictionary and citation shape checks, best-effort cache failure handling, and singleflight follower behavior stay in place. Optional memory lookup, cache keys, tenant/account/document scope, lease timing, timeout, and cancellation behavior are unchanged.
+
+RAG 配置模板的 `usage_count` 是模型声明的 best-effort analytics。`rag_config_template_resolver.record_rag_config_template_usage` 统一聊天和预览入口的加一、commit、失败 rollback 与 warning；模板选择和配置应用结果不因计数失败而回退。两个消费者直接读取 resolver 返回的 `RagConfigTemplate` 字段，不再以 `getattr` 补造缺失字段。
 
 聊天指标上下文按字段的业务顺序直接补充，不把值和启用标记组装成三元组再交给转发函数。两种配额结果来自现有配额服务，包含 enabled 字段；可选结果缺失仍以 None 表达，已有结果直接读取其真实字段，不把内部漏字段转成关闭。十三个 setdefault 写入的键、顺序和原值优先规则保持，输入指标仍复制后再补充。
 
@@ -42,7 +44,7 @@ LangChain 的外部事件指标由 _annotate_cache_metrics 校验并返回字典
 
 ## Consequences
 
-Valid API requests and ORM rows use explicit declared types. An internal caller that omits a required request or template field now fails visibly instead of being treated as a disabled option or empty value. Wire formats and cache key inputs do not change.
+Valid API requests and ORM rows use explicit declared types. An internal caller that omits a required request or template field now fails visibly instead of being treated as a disabled option or empty value. Wire formats and cache key inputs do not change. 模板计数失败仍不改变已选配置，但日志会暴露 template_id；成功请求不保证 analytics 计数落盘。
 
 ## Verification
 
@@ -55,3 +57,5 @@ Ruff check and Ruff format --check passed for all four target files and the dire
 编排与持久化证据位于 E:/MimirQ/.superpowers/chat-stream-owned-inputs-20261107/。三个完整源码模块按已核实变更逐项 AST 对照，五处私有调用均满足新上下文和显式错误参数契约；原数据类、HTTP 路由、请求模型与异常生产者保持。实际 schema 声明布尔字段，超时异常提供 Retry-After，原测试源码不修改。Ruff、格式、Python 3.11 语法及笔记门禁完成；这些静态证据不代替真实流、数据库、模型或 Redis 验收，Python 测试不运行。
 
 抽取式执行字段读取的证据位于 E:/MimirQ/.superpowers/chat-execution-declared-fields-20261107/。50 个字段都存在于已提交的 ChatRAGConfig；整个执行模块 AST 仅包含对应读取变化，原签名、状态构造、模式分支、检索／模型调用与资源控制流保持。Ruff、格式和笔记门禁通过，Python 测试源码保持且不执行；自动模型审查因缺少 TruffleHog 未运行。
+
+2026-11-08 的模板计数 owner 增量运行三个暂存源码文件的 Python 3.14 编译、限定差异/空白检查和 Note 门禁。当前环境未安装 Ruff；依用户指令未新增或运行 Python 测试，也未执行数据库、聊天或 RAG 预览运行时。

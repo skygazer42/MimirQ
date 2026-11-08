@@ -30,7 +30,11 @@ from app.services.document_access import (
 )
 from app.services.rag_config_template_apply import apply_rag_config_patch
 from app.services.rag_config_template_defaults import merge_rag_config_template_defaults_with_dataset
-from app.services.rag_config_template_resolver import build_rag_config_patch_hash, resolve_rag_config_template
+from app.services.rag_config_template_resolver import (
+    build_rag_config_patch_hash,
+    record_rag_config_template_usage,
+    resolve_rag_config_template,
+)
 from app.services.rag_defaults import merge_rag_config_with_dataset_defaults
 from app.services.rag_runtime_limiter import run_blocking_retrieval_call_with_managed_session
 
@@ -326,25 +330,21 @@ def _resolve_preview_rag_template_meta(
             if chosen:
                 effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
                     rag_config=effective_rag_config,
-                    patch=getattr(chosen, "config_patch", None),
+                    patch=chosen.config_patch,
                     request_fields_set=rag_fields_set,
                 )
                 rag_config_template_meta = {
                     "template_id": str(chosen.id),
-                    "template_key": getattr(chosen, "template_key", None),
-                    "version": int(getattr(chosen, "version", 0) or 0),
-                    "ab_experiment_key": getattr(chosen, "ab_experiment_key", None),
-                    "ab_variant": getattr(chosen, "ab_variant", None),
-                    "patch_hash": build_rag_config_patch_hash(getattr(chosen, "config_patch", None)),
+                    "template_key": chosen.template_key,
+                    "version": int(chosen.version or 0),
+                    "ab_experiment_key": chosen.ab_experiment_key,
+                    "ab_variant": chosen.ab_variant,
+                    "patch_hash": build_rag_config_patch_hash(chosen.config_patch),
                     "patch_applied_fields": rag_config_template_patch_applied_fields,
                 }
                 if resolver_debug:
                     rag_config_template_meta["resolver_debug"] = resolver_debug
-                try:
-                    chosen.usage_count = int(getattr(chosen, "usage_count", 0) or 0) + 1
-                    db.commit()
-                except Exception:
-                    db.rollback()
+                record_rag_config_template_usage(db, chosen)
     except RetiredModelProviderError:
         raise
     except Exception:

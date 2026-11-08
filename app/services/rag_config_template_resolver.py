@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.rag_config_template import RagConfigTemplate
 from app.rag.core.hashing import stable_hash
+from app.rag.core.logging import get_logger
 from app.services.prompt_resolver import _stable_unit_interval
 
 if TYPE_CHECKING:
@@ -27,6 +28,20 @@ FeedbackRewardHook = Callable[
     [Session, UUID, str, Sequence[RagConfigTemplate]],
     dict[str, Any] | Sequence[Any] | None,
 ]
+logger = get_logger(__name__)
+
+
+def record_rag_config_template_usage(db: Session, template: RagConfigTemplate) -> None:
+    try:
+        template.usage_count = int(template.usage_count or 0) + 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "RAG config template selected but usage counter update failed: template_id=%s",
+            template.id,
+            exc_info=True,
+        )
 
 
 def build_rag_config_patch_hash(patch: Any) -> str:
