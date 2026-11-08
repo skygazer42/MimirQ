@@ -11,7 +11,7 @@ import re
 import shutil
 import uuid
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -125,6 +125,36 @@ _DATASET_SCAN_PENDING_STALE_AFTER = timedelta(minutes=15)
 _DATASET_SCAN_RUNNING_STALE_AFTER = timedelta(hours=2)
 _DATASET_SCAN_PENDING_HARD_STALE_AFTER = timedelta(hours=2)
 _DATASET_SCAN_RUNNING_HARD_STALE_AFTER = timedelta(hours=24)
+
+
+def _commit_dataset_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    action: str,
+    dataset_id: UUID,
+    details: Mapping[str, object],
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=action,
+            resource_type="dataset",
+            resource_id=str(dataset_id),
+            details=dict(details),
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Dataset operation committed but audit logging failed: action=%s dataset_id=%s",
+            action,
+            dataset_id,
+            exc_info=True,
+        )
 
 
 def _dataset_scan_now() -> datetime:
@@ -1147,22 +1177,17 @@ def create_dataset(
     )
 
     # Best-effort audit log (commit separately; never block response).
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.create",
-        resource_type="dataset",
-        resource_id=str(dataset.id),
+        dataset_id=dataset.id,
         details={
             "name": str(dataset.name or "")[:255],
             "permission": str(dataset.permission or ""),
         },
     )
-    try:
-        db.commit()
-    except Exception as exc:
-        logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return _dataset_out(db, tenant_id, dataset)
 
@@ -1545,23 +1570,18 @@ def update_dataset(
         dataset_metadata=meta if metadata_changed else None,
     )
 
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.update",
-        resource_type="dataset",
-        resource_id=str(updated.id),
+        dataset_id=updated.id,
         details={
             "changed": bool(payload.model_fields_set),
             "name": str(updated.name or "")[:255],
             "permission": str(updated.permission or ""),
         },
     )
-    try:
-        db.commit()
-    except Exception as exc:
-        logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     return _dataset_out(db, tenant_id, updated)
 
@@ -1664,17 +1684,14 @@ def import_dataset_config(
         db.commit()
         db.refresh(ds)
 
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.config.import",
-        resource_type="dataset",
-        resource_id=str(ds.id),
+        dataset_id=ds.id,
         details={"replace": bool(replace)},
     )
-    with contextlib.suppress(Exception):
-        db.commit()
 
     return _dataset_out(db, tenant_id, ds)
 
@@ -1708,22 +1725,19 @@ def put_dataset_retrieval_audit(
     db.commit()
     db.refresh(dataset)
 
-    with contextlib.suppress(Exception):
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.retrieval_audit.put",
-            resource_type="dataset",
-            resource_id=str(dataset.id),
-            details={
-                "status": str(audit.status or ""),
-                "gate_count": len(audit.gates),
-                "plugin_ref_count": len(audit.plugin_refs),
-                "failure_categories": dict(audit.failure_categories or {}),
-            },
-        )
-        db.commit()
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.retrieval_audit.put",
+        dataset_id=dataset.id,
+        details={
+            "status": str(audit.status or ""),
+            "gate_count": len(audit.gates),
+            "plugin_ref_count": len(audit.plugin_refs),
+            "failure_categories": dict(audit.failure_categories or {}),
+        },
+    )
 
     return audit
 
@@ -1777,17 +1791,14 @@ def clone_dataset(
         dataset_metadata=copied_metadata,
     )
 
-    audit_log_event(
+    _commit_dataset_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="dataset.clone",
-        resource_type="dataset",
-        resource_id=str(created.id),
+        dataset_id=created.id,
         details={"source_dataset_id": str(src.id)},
     )
-    with contextlib.suppress(Exception):
-        db.commit()
 
     return _dataset_out(db, tenant_id, created)
 
@@ -1935,29 +1946,23 @@ def _record_dataset_purge_audit(
     eligible: int,
     counts: dict[str, int],
 ) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.purge",
-            resource_type="dataset",
-            resource_id=str(dataset_id),
-            details={
-                "dry_run": bool(dry_run),
-                "max_delete": int(max_delete or 0),
-                "eligible": int(eligible or 0),
-                "deleted": int(counts.get("deleted", 0)),
-                "not_found": int(counts.get("not_found", 0)),
-                "denied": int(counts.get("denied", 0)),
-                "conflicts": int(counts.get("conflicts", 0)),
-                "errors": int(counts.get("errors", 0)),
-            },
-        )
-        db.commit()
-    except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.purge",
+        dataset_id=dataset_id,
+        details={
+            "dry_run": bool(dry_run),
+            "max_delete": int(max_delete or 0),
+            "eligible": int(eligible or 0),
+            "deleted": int(counts.get("deleted", 0)),
+            "not_found": int(counts.get("not_found", 0)),
+            "denied": int(counts.get("denied", 0)),
+            "conflicts": int(counts.get("conflicts", 0)),
+            "errors": int(counts.get("errors", 0)),
+        },
+    )
 
 
 def _dataset_purge_response(dataset_id: UUID, dry_run: bool, max_delete: int, eligible: int, counts: dict[str, int]):
@@ -2979,30 +2984,22 @@ def _record_dataset_documents_export_audit(
     export_format: str,
     gzip: bool,
 ) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.documents.export",
-            resource_type="dataset",
-            resource_id=str(dataset_id),
-            details={
-                "limit": int(limit or 0),
-                "returned": int(rows_count),
-                "cursor_after_created_at": (after_created_at.isoformat() if after_created_at else None),
-                "cursor_after_id": (str(after_id) if after_id else None),
-                "include_sensitive": bool(include_sensitive),
-                "export_format": export_format,
-                "gzip": bool(gzip),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.documents.export",
+        dataset_id=dataset_id,
+        details={
+            "limit": int(limit or 0),
+            "returned": int(rows_count),
+            "cursor_after_created_at": (after_created_at.isoformat() if after_created_at else None),
+            "cursor_after_id": (str(after_id) if after_id else None),
+            "include_sensitive": bool(include_sensitive),
+            "export_format": export_format,
+            "gzip": bool(gzip),
+        },
+    )
 
 
 def _safe_dataset_export_name(ds: Dataset) -> str:
@@ -3083,27 +3080,19 @@ def _record_dataset_bundle_export_audit(
     include_sensitive: bool,
     exported_at: datetime,
 ) -> None:
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=account_id,
-            action="dataset.export_bundle",
-            resource_type="dataset",
-            resource_id=str(dataset_id),
-            details={
-                "limit": int(limit or 0),
-                "returned": int(docs_count),
-                "include_sensitive": bool(include_sensitive),
-                "exported_at": exported_at.isoformat(),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+    _commit_dataset_audit(
+        db,
+        tenant_id=tenant_id,
+        account_id=account_id,
+        action="dataset.export_bundle",
+        dataset_id=dataset_id,
+        details={
+            "limit": int(limit or 0),
+            "returned": int(docs_count),
+            "include_sensitive": bool(include_sensitive),
+            "exported_at": exported_at.isoformat(),
+        },
+    )
 
 
 def _dataset_bundle_summary_payload(ds: Dataset, tenant_id: UUID, exported_at: datetime) -> dict[str, Any]:
