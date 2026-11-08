@@ -96,3 +96,18 @@
 datasets.py 指定 7 处、dataset_precheck.py 2 处、ingestion_runs.py 4 处、rag.py usage_count、KG routes.py/extraction.py 尚待下一组逐处回归。已初读 ingestion_runs 四处均为审计（export/compare 有本地 best-effort 注释）；extraction.py :184 同样为审计，datasets :1957 为 purge 审计。尚未声称完成 Phase 1A 全部主写入调查或完成路由 5xx 回归；本批经契约核实是合法旁路清理。
 
 补充验证：catalog 鉴权 + 本轮回归 11 passed，9.78s（catalog-green.txt）。提交前 HEAD 2a67d0ba6；4c1cb4531 之后仅 document_batch_ingestion 并发提交，不碰本批。提交标题按真实审计降级语义使用 expose audit commit failures，而非声称所有 commit 均重抛。
+
+第一组已提交：a1a8db2c6 fix(table-api): expose audit commit failures；7 files changed, 182 insertions(+), 11 deletions(-)，其中源码 2 文件、测试 1 文件、台账与证据 4 文件。提交后 datasets.py 出现他人 WIP，本代理未修改或暂存它，后续先检查归属。Phase 1A 仍为部分完成。
+
+Phase 1E complete: commit `9b8eb9127`（基于并行 `a1a8db2c6`）。`datasets.py` 新增单一 `_commit_dataset_audit` owner，迁移 create/update/config import/retrieval audit/clone/purge/documents export/bundle export 八处旁路；统一 event+commit、失败 rollback 和 warning，主业务结果不改写。暂存 blob 通过 Python 3.14 编译、限定差异/空白及 132 篇 Note 门禁；未运行 Python 测试或数据库/API/导出运行时。并行 table-api 路径无重叠。
+
+## 独占恢复检查未通过
+总指挥要求起步 HEAD 为 9b8eb9127 或本会话提交；实际起步 HEAD 为 11d964252 fix: expose KG document cleanup degradation。新增非本会话提交包含 6eeb24312 ingestion-run 审计、283882cf5 precheck 状态、fbf93015c RAG usage、efee8832b KG extraction audit、11d964252 KG cleanup。按本轮明确停止条件暂停，未修改源码或测试、未运行回退 patch、未暂存或提交。当前仅 progress.md 有未提交修改。需要总指挥确认 Desktop 实际停止，并认可新的验收起点后继续。
+
+## 独占起点 11d964252：Desktop 八组验收
+
+八组提交的当前函数已审查：datasets 8 个调用点、ingestion_runs 4 个调用点与 document_versions/extraction/deletion 审计遵循 audit_log_service.py:4 fail-open 契约，回滚并记录 traceback；RAG usage 是选中配置后的可选计数，QA stats 是已提交 chunks 的投影，允许可观测降级。版本 KG 数据库清理失败 rollback 后重抛。precheck 补偿提交失败有 warning+exc_info，但后台入口仍需单独补主异常观察与事务恢复。KG 文档关系删除已有本地 Best-effort 注释，后续事件删除由 Indexer 持有主事务。未将计数、审计误报为权威主写入。
+
+新增 tests/test_commit_boundary_acceptance.py，9 个运行时用例覆盖八组提交（含文档审计与真实删除路由 500）。临时 patch 仅恢复旧的静默分支和版本 cleanup 的吞错分支；同一套测试 9 failed，9.34s（desktop-acceptance-red.txt），finally 按原字节恢复全部 8 文件并核对 hash 相等。未提交回退。当前版本初次 9 passed，5.96s；恢复后与现有测试组合结果见 desktop-restored-green.txt。
+
+Ruff 审查发现 Desktop 的 routes.py 遗留 F401 contextlib，删除该导入；其余十个文件 check 和全部十一文件 format 通过。routes.py 修改前 hash 19fd6c18c03a28fbd1bbc5a74116add178f9e15d，修改后见本次 hash 命令。此提交不调整其事务语义。所有验证仍仅借用指定解释器，未启动外部服务。

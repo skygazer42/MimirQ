@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import gzip
 import time
 import uuid
