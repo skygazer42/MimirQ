@@ -517,7 +517,7 @@ def _media_element_attributes(
 
 
 def _append_seal_documents(docs: list[Document], *, file_path: Path) -> list[Document]:
-    if not bool(getattr(settings, "SEAL_RECOGNITION_ENABLED", False)):
+    if not bool(settings.SEAL_RECOGNITION_ENABLED):
         return docs
     try:
         from app.parsing.enrich import seal_recognition

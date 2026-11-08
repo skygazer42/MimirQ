@@ -30,8 +30,8 @@ from .base_parser import BaseAdvancedParser
 logger = get_logger(__name__)
 
 # Configuration
-DOCLING_ENABLED = getattr(settings, "DOCLING_ENABLED", False)
-DOCLING_OCR_ENABLED = getattr(settings, "DOCLING_OCR_ENABLED", True)
+DOCLING_ENABLED = settings.DOCLING_ENABLED
+DOCLING_OCR_ENABLED = settings.DOCLING_OCR_ENABLED
 DOCLING_TABLE_MODE = getattr(settings, "DOCLING_TABLE_MODE", "markdown")
 DOCLING_EXTRACT_IMAGES = getattr(settings, "DOCLING_EXTRACT_IMAGES", False)
 

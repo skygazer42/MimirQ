@@ -470,10 +470,10 @@ class DocumentParserService:
         pattern = re.compile(r"!\[[^\]]*\]\((data:image\/[a-zA-Z0-9+\/;=,:.-]+)\)")
         matches = list(pattern.finditer(markdown_text))
 
-        max_inline_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+        max_inline_images = max(0, int(settings.MAX_INLINE_IMAGES or 0))
         if max_inline_images and len(matches) > max_inline_images:
             matches = matches[:max_inline_images]
-        max_image_bytes = int(getattr(settings, "MAX_INLINE_IMAGE_BYTES", 10_000_000) or 10_000_000)
+        max_image_bytes = int(settings.MAX_INLINE_IMAGE_BYTES or 10_000_000)
         max_image_bytes = max(1_000_000, max_image_bytes)
 
         saved = []

@@ -964,7 +964,7 @@ def _base_citation(
         "rerank_elapsed_sec": meta.get("rerank_elapsed_sec"),
         "rerank_model_used": meta.get("rerank_model_used"),
         "retrieval_mode": retrieval_mode,
-        "vector_backend": getattr(settings, "VECTOR_BACKEND", "unknown"),
+        "vector_backend": settings.VECTOR_BACKEND,
         "retrieval_elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
         "hit_type": ctx.hit_type,
     }

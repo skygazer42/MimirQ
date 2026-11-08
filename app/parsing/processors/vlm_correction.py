@@ -54,7 +54,7 @@ def _build_correction_prompt(markdown: str) -> str:
 
 
 async def _correct_markdown_with_vision_async(*, markdown: str, image_bytes: bytes) -> str:
-    timeout = float(getattr(settings, "VISION_LLM_TIMEOUT_SEC", 120) or 120)
+    timeout = float(settings.VISION_LLM_TIMEOUT_SEC or 120)
     async with httpx.AsyncClient(timeout=timeout) as http_client:
         return (
             await _describe_with_vision_llm(

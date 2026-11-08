@@ -417,7 +417,7 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
                 "count": int(len(payload.clause_fastlane_queries)),
             },
             "lightweight_subquery": {
-                "enabled": bool(getattr(settings, "RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED", False)),
+                "enabled": bool(settings.RETRIEVAL_LIGHTWEIGHT_SUBQUERY_ENABLED),
                 "used": bool(payload.lightweight_subqueries),
                 "count": int(len(payload.lightweight_subqueries)),
             },
@@ -479,14 +479,14 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
                 if isinstance(payload.retriever_update.get("fusion_min_scores"), dict)
                 else None
             ),
-            "rrf_k": int(getattr(settings, "RETRIEVAL_RRF_K", 60) or 60),
+            "rrf_k": int(settings.RETRIEVAL_RRF_K or 60),
             "query_parallelism": int(payload.retrieval_parallelism),
             "query_count": int(len(payload.retrieval_plan)),
             "query_variants": variants,
             "per_query": per_query_trace[:8],
             "errors": payload.retrieval_errors[:5],
             "elapsed_sec": round(float(payload.retrieval_elapsed or 0.0), 3),
-            "vector_backend": str(getattr(settings, "VECTOR_BACKEND", "") or ""),
+            "vector_backend": str(settings.VECTOR_BACKEND or ""),
             "retrieval_degraded": bool(payload.retrieval_degraded),
             "retrieval_degraded_reasons": list(payload.retrieval_degraded_reason_codes or []),
             "channel_health": dict(payload.retrieval_channel_health),
