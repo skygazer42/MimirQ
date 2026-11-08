@@ -101,7 +101,7 @@ def _legacy_capsule_path(*, capsule_id: str) -> Path:
 
 def _capsule_envelope(*, capsule: dict[str, Any], tenant_id: UUID, capsule_id: str, account_id: str) -> dict[str, Any]:
     bound_tenant_id = str(tenant_id)
-    bound_owner_account_id = str(account_id or "").strip()
+    bound_owner_account_id = account_id
     existing_tenant_id = str(capsule.get("tenant_id") or "").strip()
     if existing_tenant_id and existing_tenant_id != bound_tenant_id:
         raise HTTPException(status_code=400, detail="capsule_tenant_id_mismatch")

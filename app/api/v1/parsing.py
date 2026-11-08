@@ -605,8 +605,7 @@ def _get_or_create_workspace_dataset(db: Session, tenant_id: UUID, account_id: s
     # Dataset names are unique per tenant, so a constant name would conflict across users
     # when auth uses dynamic account ids (e.g. smoke tests, JWT users). Use a stable
     # owner-scoped suffix to avoid collisions while keeping the name readable.
-    owner_raw = str(account_id or "").strip()
-    owner_tag = hashlib.blake2b(owner_raw.encode("utf-8"), digest_size=4).hexdigest() if owner_raw else "anon"
+    owner_tag = hashlib.blake2b(account_id.encode("utf-8"), digest_size=4).hexdigest()
     dataset_name = f"Parsing Workspace [{owner_tag}]"
 
     try:
@@ -682,7 +681,7 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
     owner_id = str(doc.owner_id or "").strip()
-    if owner_id and owner_id != str(account_id or "").strip():
+    if owner_id and owner_id != account_id:
         raise HTTPException(status_code=404, detail="Document not found")
 
     return doc
@@ -696,7 +695,7 @@ def _filter_parsing_workspace_documents(query):
 def _parsing_workspace_visibility_clause(*, workspace_dataset_id: UUID, account_id: str):
     return or_(
         DBDocument.dataset_id == workspace_dataset_id,
-        DBDocument.owner_id == str(account_id or "").strip(),
+        DBDocument.owner_id == account_id,
     )
 
 

@@ -649,7 +649,7 @@ def list_ragas_runs(
 
     query = db.query(RagasEvaluationRun).filter(
         RagasEvaluationRun.tenant_id == tenant_id,
-        RagasEvaluationRun.account_id == str(account_id or "").strip(),
+        RagasEvaluationRun.account_id == account_id,
     )
     if conversation_id:
         query = query.filter(RagasEvaluationRun.conversation_id == conversation_id)
@@ -680,7 +680,7 @@ def get_ragas_run(
         .filter(
             RagasEvaluationRun.id == run_id,
             RagasEvaluationRun.tenant_id == tenant_id,
-            RagasEvaluationRun.account_id == str(account_id or "").strip(),
+            RagasEvaluationRun.account_id == account_id,
         )
         .first()
     )

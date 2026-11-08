@@ -50,7 +50,7 @@ async def request_rtbf_cascade(
         tenant_id=tenant_id,
         subject_account_id=str(body.subject_account_id or "").strip(),
         dry_run=bool(body.dry_run),
-        actor_id=str(account_id or "").strip() or "system:rtbf",
+        actor_id=account_id,
         max_docs=int(body.max_docs or 0),
         max_retries=int(body.max_retries or 0),
     )

@@ -198,7 +198,7 @@ def delete_tenant_member(
     uid = user_id.strip()
     if not uid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="缺少成员 ID")
-    if uid == account_id.strip():
+    if uid == account_id:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除当前用户")
 
     active_admins = _lock_active_admin_members(db, tenant_id)

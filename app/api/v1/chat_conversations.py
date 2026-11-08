@@ -390,11 +390,10 @@ def list_conversations(
 ):
     """List conversations."""
     dataset_service.ensure_member(db, tenant_id, account_id)
-    normalized_account_id = str(account_id or "").strip()
     search_term = str(q or "").strip()
     query = db.query(Conversation).filter(
         Conversation.tenant_id == tenant_id,
-        Conversation.owner_account_id == normalized_account_id,
+        Conversation.owner_account_id == account_id,
     )
     if search_term:
         query = _apply_conversation_search(
