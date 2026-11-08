@@ -1,5 +1,7 @@
 # 后端去过度防御进度（Phase 0 / 1A / 1B）
 
+原始证据已迁出仓库：`C:/Users/jiahuanl/Documents/Codex/2026-11-08/opencode-omo-slim-orch-opus5-5/outputs/mimirq-evidence/`。本文历史 JSON/TXT 文件名均相对于该目录的 `legacy/`；后续批次各用独立子目录。迁移逐文件校验 SHA-256，不改写历史。仓库仅保留本台账、定性表、延期/后续清单与 `red-green-summary.md`。
+
 状态：Phase 1A 列举位置及审查修正完成；Phase 1B 限定切片的 181 处修改已验证，其余 1339 候选按范围裁决列入后续清单。历史暂停记录保留，不宣称全库清零。
 
 ## 并发裁决

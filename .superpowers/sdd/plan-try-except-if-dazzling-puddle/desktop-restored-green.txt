@@ -1,5 +1,0 @@
-..................................ss                                     [100%]
-=========================== short test summary info ===========================
-SKIPPED [1] tests\test_document_versions_integration.py:69: Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)
-SKIPPED [1] tests\test_document_versions_integration.py:195: Integration tests disabled (set MIMIRQ_INTEGRATION_TESTS=1)
-34 passed, 2 skipped in 11.11s
