@@ -1937,3 +1937,26 @@
 每个源码批次的工作树和暂存 blob 均通过 Python 3.11 AST 解析与源码编译。完整模块 AST 对照只允许相应的异常包装退出、选择器／提示词条件调整、实际字段读取及日志 ID 快照；其余结构与各批当前 HEAD 相同。核对已安装 SQLAlchemy rollback 的属性过期实现和 LangChain 模板构造器源码，没有执行这些业务路径。136 篇 Note 的目录／链接、格式及归档门禁通过。
 
 覆盖清单从 5,267 项调整到 5,341 项：97 个已跟踪新增路径补登记，23 个不再跟踪的路径从清单移除；旧结论仍归属于其原验证版本。清单完整性检查比较 `git ls-files` 与全部 CSV path，检查重复路径、必填列及状态枚举。本轮 Python 测试不新增、不修改、不运行；真实 API、数据库故障注入、检索、提示词生成、模型、前端与生产构建均未执行，不能据此宣称当前全仓运行验收完成。
+
+## 2026-11-08：检索状态与活动版本过滤续作
+
+本轮从 `6dfa89395` 继续，保留并行的 `9db01feda` 设置修正及其测试来源。
+
+| 提交 | 实际改动 |
+|---|---|
+| `f915be3b8` | 迭代开关、次数及候选预算错误直接暴露；保留次数下限、20／50／80 候选规则与标准分数转换失败处理。|
+| `e24274895` | 删除单次吞错转发函数，状态构造在原阶段直接调用策略 normalizer。|
+| `cda332a4c` | 普通引擎及 LangGraph 的活动版本过滤失败直接传播，原查询和组装语句保持。|
+| `aa583ae15` | 两份相同版本规则移入 `app.rag.core.pipeline_scope`，图模块直接导入，引擎调用名使用静态绑定。|
+| `5ad92c4ac` | 必有 profile 结果按键读取，可选覆盖只读取一次；保留动态输入解析和阈值正零规范化。|
+
+使用现有 Python 3.12.14／Ruff 0.15.9 环境完成以下限定检查：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/api/v1/rag.py app/rag/core/pipeline_scope.py app/rag/engine.py app/rag/pipelines/langgraph.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/api/v1/rag.py app/rag/core/pipeline_scope.py app/rag/engine.py app/rag/pipelines/langgraph.py
+```
+
+各批源码及暂存 blob 通过 Python 3.11 AST 解析与源码编译。全模块对照分别限定配置／状态读取、意图 owner 调用、两处捕获退出、共享函数迁移和 profile 结果消费；其余 AST 与各批前置 HEAD 相同。共享函数额外核对两份原始函数体、参数、租户／文档谓词、ready/hash 规则与原位置的延迟导入，静态绑定保留现有流式调用及实例替换入口。137 篇 Note 的目录／链接、格式和归档门禁通过。
+
+覆盖清单从 5,341 项补到 5,344 项，包括新增模块、对应 Note 和外部 `9db01feda` 新增的一个测试。清单与已跟踪路径精确对齐，无重复或缺失项；原验证归属保留。按用户要求未新增、修改或运行 Python 测试，未执行 Session、数据库查询、权限集成、检索、SDK、模型、浏览器或前端构建；本轮静态检查不证明上述运行时已验收。
