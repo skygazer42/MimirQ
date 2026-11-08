@@ -2,6 +2,8 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_float as _coerce_float
+
 
 def _normalize_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
@@ -9,18 +11,6 @@ def _normalize_text(value: Any) -> str:
 
 def _normalize_kind(value: Any) -> str:
     return str(value or "").strip().lower()
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        number = float(value)
-        if number != number:
-            return None
-        return number
-    except Exception:
-        return None
 
 
 def _field_aliases(field_name: str, spec: Mapping[str, Any] | None, prompt: str | None = None) -> list[str]:

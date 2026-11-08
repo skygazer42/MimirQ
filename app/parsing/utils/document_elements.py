@@ -5,6 +5,9 @@ from typing import Any, TypedDict
 
 from langchain_core.documents import Document
 
+from app.parsing.utils.scalars import coerce_float as _coerce_float
+from app.parsing.utils.scalars import coerce_int as _coerce_int
+
 _KNOWN_KINDS = {"heading", "paragraph", "list", "table", "image", "equation", "seal"}
 _POSITION_TAG_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-9.]+##")
 _POSITION_TAG_DETAIL_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
@@ -36,27 +39,6 @@ _SKIP_ATTRIBUTE_KEYS = {
 class _MarkdownImageRef(TypedDict):
     alt: str
     src: str
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        number = float(value)
-        if number != number:
-            return None
-        return number
-    except Exception:
-        return None
 
 
 def _normalize_string(value: Any) -> str:

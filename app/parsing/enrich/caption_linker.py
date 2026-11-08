@@ -2,17 +2,10 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_int as _coerce_int
+
 _FIGURE_CAPTION_RE = re.compile(r"^\s*(图|figure|fig\.)\s*[\d一二三四五六七八九十]+", re.IGNORECASE)
 _TABLE_CAPTION_RE = re.compile(r"^\s*(表|table)\s*[\d一二三四五六七八九十]+", re.IGNORECASE)
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
 
 
 def _bbox(value: Any) -> dict[str, int] | None:

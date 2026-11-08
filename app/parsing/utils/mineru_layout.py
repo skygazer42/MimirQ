@@ -4,28 +4,9 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_float as _as_float
+from app.parsing.utils.scalars import coerce_int as _as_int
 from app.rag.core.logging import get_logger
-
-
-def _as_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
-
-
-def _as_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        out = float(value)
-        if out != out:
-            return None
-        return out
-    except Exception:
-        return None
 
 
 def _as_lines(value: Any) -> list[str]:

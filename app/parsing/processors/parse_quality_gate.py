@@ -2,27 +2,8 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.parsing.processors.parse_quality_schema import ParseQualityGateDecision
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        out = float(value)
-        if out != out:
-            return None
-        return out
-    except Exception:
-        return None
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
+from app.parsing.utils.scalars import coerce_float as _coerce_float
+from app.parsing.utils.scalars import coerce_int as _coerce_int
 
 
 def _coerce_bool(value: Any) -> bool | None:

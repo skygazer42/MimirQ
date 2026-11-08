@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.parsing.enrich.document_noise_rules import classify_document_noise_text
+from app.parsing.utils.scalars import coerce_float as _coerce_float
+from app.parsing.utils.scalars import coerce_int as _coerce_int
 
 _SPACE_RE = re.compile(r"\s+")
 _COMMON_SHORT_REPEAT_TEXT = {"项目", "名称", "序号", "日期", "金额", "备注", "合计", "小计"}
@@ -32,27 +34,6 @@ class WatermarkRemovalResult:
             "reasons": dict(self.reasons),
             "warnings": list(self.warnings),
         }
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        out = float(value)
-        if out != out:
-            return None
-        return out
-    except Exception:
-        return None
 
 
 def _text_value(element: Mapping[str, Any]) -> str:

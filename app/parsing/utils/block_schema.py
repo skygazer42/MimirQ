@@ -1,6 +1,7 @@
 import re
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_float as _coerce_float
 from app.rag.core.logging import get_logger
 
 POSITION_TAG_RE = re.compile(r"@@([0-9-]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)\t([0-9.]+)##")
@@ -30,18 +31,6 @@ def clean_position_tags(text: Any) -> str:
 
 def normalize_block_kind(kind: Any) -> str:
     return _KIND_ALIASES.get(str(kind or "").strip().lower(), "paragraph")
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        number = float(value)
-        if number != number:
-            return None
-        return number
-    except Exception:
-        return None
 
 
 def parse_position_tags(text: Any) -> list[dict[str, Any]]:

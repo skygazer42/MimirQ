@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from app.parsing.artifact_stats import POSITION_TAG_RE
+from app.parsing.utils.scalars import coerce_float as _coerce_float
+from app.parsing.utils.scalars import coerce_int as _coerce_int
 from app.rag.core.logging import get_logger
 
 _READING_ORDER_SCHEMA = "mimirq.reading_order_score.v1"
@@ -16,27 +18,6 @@ class _ReadingOrderItem(TypedDict):
     y0: float
     x1: float
     y1: float
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        out = float(value)
-        if out != out:
-            return None
-        return out
-    except Exception:
-        return None
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
 
 
 def _item_meta(item: Any) -> Mapping[str, Any]:

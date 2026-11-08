@@ -2,20 +2,13 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_int as _coerce_int
+
 _CN_TOP_RE = re.compile(r"^\s*[一二三四五六七八九十百]+[、.．]")
 _CN_SECOND_RE = re.compile(r"^\s*[（(][一二三四五六七八九十百]+[)）]")
 _NUMERIC_RE = re.compile(r"^\s*(\d+(?:\.\d+)*)(?:[.)）]|\s+)")
 _CHAPTER_RE = re.compile(r"^\s*chapter\s+\d+\b", re.IGNORECASE)
 _SECTION_RE = re.compile(r"^\s*section\s+(\d+(?:\.\d+)*)\b", re.IGNORECASE)
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
 
 
 def _heading_level(element: Mapping[str, Any]) -> int | None:

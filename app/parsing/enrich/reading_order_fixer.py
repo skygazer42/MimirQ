@@ -3,6 +3,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.parsing.utils.scalars import coerce_float as _coerce_float
+from app.parsing.utils.scalars import coerce_int as _coerce_int
+
 
 @dataclass(frozen=True, slots=True)
 class ReadingOrderFixResult:
@@ -24,27 +27,6 @@ class ReadingOrderFixResult:
             "column_pages": int(self.column_pages),
             "warnings": list(self.warnings),
         }
-
-
-def _coerce_float(value: Any) -> float | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        out = float(value)
-        if out != out:
-            return None
-        return out
-    except Exception:
-        return None
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
 
 
 def _bbox_value(element: Mapping[str, Any], key: str) -> float | None:

@@ -5,6 +5,7 @@ from langchain_core.documents import Document
 
 from app.parsing.enrich.table_cell_schema import TableCell, TableExtraction
 from app.parsing.enrich.table_renderers import render_table_csv, render_table_html, render_table_markdown
+from app.parsing.utils.scalars import coerce_int as _coerce_int
 
 
 def _is_table_doc(doc: Document) -> bool:
@@ -12,15 +13,6 @@ def _is_table_doc(doc: Document) -> bool:
     return (
         str(meta.get("content_type") or meta.get("element_kind") or meta.get("doc_type_kwd") or "").lower() == "table"
     )
-
-
-def _coerce_int(value: Any) -> int | None:
-    try:
-        if value is None or isinstance(value, bool):
-            return None
-        return int(value)
-    except Exception:
-        return None
 
 
 def _bbox(meta: Mapping[str, Any]) -> Mapping[str, Any]:
