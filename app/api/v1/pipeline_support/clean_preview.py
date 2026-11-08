@@ -30,7 +30,11 @@ from app.rag.preprocessing.cleaning import CleaningResult, RegexRule
 from app.rag.preprocessing.code_blocks import strip_fenced_code_line_numbers
 from app.rag.preprocessing.diagnostics import GovernanceIssue as GovernanceAnalysisIssue
 from app.rag.preprocessing.diagnostics import analyze_governance
-from app.rag.preprocessing.frontmatter import extract_markdown_frontmatter, extract_markdown_title
+from app.rag.preprocessing.frontmatter import (
+    extract_markdown_frontmatter,
+    extract_markdown_title,
+    normalize_frontmatter_tags,
+)
 from app.rag.preprocessing.html_xpath import extract_text_from_html
 from app.rag.preprocessing.images import strip_images
 from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_preview
@@ -122,27 +126,6 @@ def _analyze_governance_preview(
     return _governance_issue_models(issues), dict(patch or {})
 
 
-def _normalize_frontmatter_tags(raw_tags: object) -> list[str] | None:
-    if isinstance(raw_tags, list):
-        cleaned: list[str] = []
-        seen: set[str] = set()
-        for item in raw_tags:
-            if item is None:
-                continue
-            value = str(item).strip()
-            key = value.casefold()
-            if not value or key in seen:
-                continue
-            seen.add(key)
-            cleaned.append(value[:64])
-        return cleaned[:50] or None
-
-    if isinstance(raw_tags, str) and raw_tags.strip():
-        parts = [part.strip() for part in raw_tags.replace(";", ",").split(",") if part.strip()]
-        return parts[:50] or None
-    return None
-
-
 def _extract_clean_preview_frontmatter(
     input_text: str,
     body: CleanPreviewRequest,
@@ -166,7 +149,7 @@ def _extract_clean_preview_frontmatter(
         if isinstance(raw_title, str) and raw_title.strip():
             title = raw_title.strip()[:200]
         raw_tags = next((frontmatter.get(key) for key in _FRONTMATTER_TAG_KEYS if frontmatter.get(key)), None)
-        tags = _normalize_frontmatter_tags(raw_tags)
+        tags = normalize_frontmatter_tags(raw_tags)
 
     if body.strip_frontmatter:
         input_text = fm.stripped_text or ""

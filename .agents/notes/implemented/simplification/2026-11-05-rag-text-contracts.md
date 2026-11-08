@@ -16,6 +16,8 @@ Store 工厂直接读取两个已声明的 Settings 字段，保留原 bool、�
 
 结构化输出生成器继续持有实际 LLM 状态，仅补充构造函数 None 返回注解。其 schema、运行时 Union、提示词、解析、模型调用与既有失败策略保持。Pipeline 与 trace 的数据合同原文符合约定，保留原字段、隐私限制和 Pydantic 行为。
 
+Frontmatter 标签的字符串拆分、列表清理、大小写去重与长度／数量上限由 `app.rag.preprocessing.frontmatter.normalize_frontmatter_tags` 持有。治理 processor 和 API clean preview 调用同一函数；空标签仍表示为 `None`，原 title 提取、frontmatter strip 和 preview metadata 形状不变。
+
 ## Alternatives considered
 
 保留内部重复转换可以接受更宽的私有输入，但实际调用链只传入上述构造结果，原始输入已经有明确归属。去掉边界转换则会改变未知 JSON、候选和配置值的处理，因此继续保留。

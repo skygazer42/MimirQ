@@ -123,6 +123,25 @@ def _parse_inline_list(value: str) -> list[str] | None:
     return out
 
 
+def normalize_frontmatter_tags(raw_tags: object) -> list[str] | None:
+    if isinstance(raw_tags, str) and raw_tags.strip():
+        parts = [part.strip() for part in raw_tags.replace(";", ",").split(",") if part.strip()]
+        return parts[:50] or None
+    if not isinstance(raw_tags, list):
+        return None
+
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for item in raw_tags:
+        value = str(item).strip() if item is not None else ""
+        key = value.casefold()
+        if not value or key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(value[:64])
+    return cleaned[:50] or None
+
+
 def _find_frontmatter_end(lines: list[str], *, max_chars: int) -> int | None:
     offset = 0
     for i in range(1, len(lines)):
@@ -257,4 +276,5 @@ __all__ = [
     "FrontmatterExtractResult",
     "extract_markdown_frontmatter",
     "extract_markdown_title",
+    "normalize_frontmatter_tags",
 ]

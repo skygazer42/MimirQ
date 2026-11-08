@@ -24,6 +24,7 @@ from app.rag.preprocessing.frontmatter import (
 from app.rag.preprocessing.frontmatter import (
     extract_markdown_title as extract_markdown_title_fn,
 )
+from app.rag.preprocessing.frontmatter import normalize_frontmatter_tags as normalize_frontmatter_tags_fn
 from app.rag.preprocessing.images import strip_images
 from app.rag.preprocessing.keyword import extract_keywords as extract_keywords_fn
 from app.rag.preprocessing.language import detect_language as detect_language_fn
@@ -208,24 +209,6 @@ def _global_common_lines(
     )
 
 
-def _normalize_frontmatter_tags(raw_tags: object) -> list[str] | None:
-    if isinstance(raw_tags, str) and raw_tags.strip():
-        parts = [part.strip() for part in raw_tags.replace(";", ",").split(",") if part.strip()]
-        return parts[:50] or None
-    if not isinstance(raw_tags, list):
-        return None
-    cleaned: list[str] = []
-    seen: set[str] = set()
-    for item in raw_tags:
-        value = str(item).strip() if item is not None else ""
-        key = value.casefold()
-        if not value or key in seen:
-            continue
-        seen.add(key)
-        cleaned.append(value[:64])
-    return cleaned[:50] or None
-
-
 def _extract_frontmatter(
     state: _DocumentState,
     options: GovernanceCleanOptions,
@@ -258,7 +241,7 @@ def _extract_frontmatter(
             or state.frontmatter_data.get("category")
             or state.frontmatter_data.get("keywords")
         )
-        state.tags = _normalize_frontmatter_tags(raw_tags)
+        state.tags = normalize_frontmatter_tags_fn(raw_tags)
     totals.frontmatter_docs += 1
     if state.frontmatter_changed:
         totals.frontmatter_stripped_docs += 1
