@@ -53,9 +53,9 @@ def _best_effort_client_ip(request: Request) -> str | None:
 
 
 def _resolve_header_mode_user(*, x_user_id: str | None, request: Request | None) -> str:
-    if not x_user_id:
+    user_id = x_user_id.strip() if x_user_id else ""
+    if not user_id:
         raise HTTPException(status_code=401, detail="X-User-ID header required")
-    user_id = x_user_id
     if request is not None:
         request.state.user_id = user_id
     set_request_user_id(user_id)
@@ -192,14 +192,13 @@ async def get_current_account_id_from_headers(
         return _resolve_header_mode_user(x_user_id=x_user_id, request=request)
 
     payload = await _decode_or_cached_jwt_payload(token=_bearer_token_or_401(authorization), request=request)
-    user_id = payload.get("sub")
+    user_id = str(payload.get("sub") or "").strip()
     if not user_id:
         logger.warning("Token missing 'sub' claim")
         raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
     jwt_tenant_id = _get_jwt_tenant_id(payload)
     _enforce_tenant_header_match(jwt_tenant_id=jwt_tenant_id, x_tenant_id=x_tenant_id)
-    user_id = str(user_id)
     _set_authenticated_context(user_id=user_id, jwt_tenant_id=jwt_tenant_id, request=request)
     optional_db_work_enabled = settings.JWT_GROUPS_SYNC_ENABLED or settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED
     if jwt_tenant_id and optional_db_work_enabled:
