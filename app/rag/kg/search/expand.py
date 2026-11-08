@@ -218,17 +218,17 @@ def _extend_seed_entities_with_relations(
 ) -> None:
     if not _relation_expansion_enabled(config) or not seed_entities:
         return
-    max_neighbors = max(0, int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS or 0))
+    max_neighbors = max(0, int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS))
     if max_neighbors <= 0:
         return
     tenant_uuid = _tenant_uuid(tenant_id)
     if tenant_uuid is None:
         return
-    min_confidence = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE or 0.0)
-    max_edges = max(0, int(settings.KG_SEARCH_RELATION_MAX_EDGES or 0)) or 500
-    weight_factor = float(settings.KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR or 0.7)
-    bucket_low = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX or 0.4)
-    bucket_mid = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX or 0.7)
+    min_confidence = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
+    max_edges = max(0, int(settings.KG_SEARCH_RELATION_MAX_EDGES)) or 500
+    weight_factor = float(settings.KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR)
+    bucket_low = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX)
+    bucket_mid = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX)
     rel_rows = relation_repo.list_relations_for_entities(
         seed_entities,
         tenant_id=tenant_uuid,
@@ -514,7 +514,7 @@ def _expand_sync(config: SearchConfig, recall_result: RecallResult) -> ExpandRes
         tenant_id = config.tenant_id or settings.DEFAULT_TENANT_ID
         include_skills = bool(config.include_skill_entities)
         state = _build_expand_state(recall_result, include_skills=include_skills)
-        max_candidates = max(0, int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES or 0))
+        max_candidates = max(0, int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES))
         _run_expand_hops(
             config=config,
             recall_result=recall_result,

@@ -185,7 +185,7 @@ async def rerank(
         }
         recall_order = _rank_order(recall_scores, input_order, len(event_ids))
         sim_order = _rank_order(_similarity_scores(events, query_vec), input_order, len(event_ids))
-        phrase_boost_weight = max(0.0, float(settings.KG_SEARCH_EXACT_PHRASE_RERANK_BOOST or 0.0))
+        phrase_boost_weight = max(0.0, float(settings.KG_SEARCH_EXACT_PHRASE_RERANK_BOOST))
         events_by_id = {event_id(event): event for event in events}
         document_labels = _load_document_labels(session, events)
         fused = _fused_scores(

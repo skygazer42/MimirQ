@@ -84,8 +84,8 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "retrieval_fusion_strategy": settings.RETRIEVAL_FUSION_STRATEGY,
                 "retrieval_rrf_k": (settings.RETRIEVAL_RRF_K if settings.RETRIEVAL_FUSION_STRATEGY == "rrf" else None),
                 "retrieval_dedup_enabled": bool(settings.RETRIEVAL_DEDUP_ENABLED),
-                "retrieval_max_chunks_per_doc": int(settings.RETRIEVAL_MAX_CHUNKS_PER_DOC or 0),
-                "retrieval_min_distinct_docs": int(settings.RETRIEVAL_MIN_DISTINCT_DOCS or 0),
+                "retrieval_max_chunks_per_doc": int(settings.RETRIEVAL_MAX_CHUNKS_PER_DOC),
+                "retrieval_min_distinct_docs": int(settings.RETRIEVAL_MIN_DISTINCT_DOCS),
                 "vector_backend": settings.VECTOR_BACKEND,
                 "model_route": runtime.data.model_route,
                 "llm_provider_fallback_used": bool(runtime.data.llm_invocation_meta.get("fallback_used")),
@@ -144,10 +144,10 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                     runtime.data.vision_generation_meta.get("returned_images") or 0
                 ),
                 "vision_generation_model": runtime.data.vision_generation_meta.get("model"),
-                "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0),
-                "context_limit_total_tokens": int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS or 0),
-                "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0),
-                "context_limit_per_chunk_tokens": int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK or 0),
+                "context_limit_total_chars": int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS),
+                "context_limit_total_tokens": int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS),
+                "context_limit_per_chunk_chars": int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK),
+                "context_limit_per_chunk_tokens": int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK),
                 "answer_chars": runtime.data.answer_chars,
                 "answer_tokens": runtime.data.answer_tokens,
                 # Stable, numeric, PII-safe cost attribution.
@@ -159,8 +159,8 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "cost_embedding_query_tokens": int(runtime.data.embed_query_tokens),
                 "cost_embedding_query_chars": int(runtime.data.embed_query_chars),
                 "cost_embedding_query_count": len(runtime.data.retrieval_per_query or []),
-                "cost_embedding_provider": str(settings.EMBEDDING_PROVIDER or ""),
-                "cost_embedding_model": str(settings.EMBEDDING_MODEL or ""),
+                "cost_embedding_provider": str(settings.EMBEDDING_PROVIDER),
+                "cost_embedding_model": str(settings.EMBEDDING_MODEL),
                 "cost_retrieval_elapsed_sec": round(float(runtime.data.retrieval_elapsed or 0.0), 3),
                 "cost_rerank_elapsed_sec": (
                     round(float(runtime.data.rerank_elapsed_sec), 3)
@@ -181,8 +181,8 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 else None,
                 "claim_nli_verifier": {
                     "enabled": bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-                    "provider": str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-                    "model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+                    "provider": str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+                    "model_name": str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
                 },
                 "claim_evidence": runtime.data.claim_evidence,
                 "sentence_citations_count": len(runtime.data.claim_evidence or []),
@@ -208,12 +208,12 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "evidence_span_missing_citations": int(runtime.data.evidence_span_missing_citations or 0),
                 "context_evidence_enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
                 "context_evidence_max_sentences_per_chunk": (
-                    int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0)
+                    int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK)
                     if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
                     else None
                 ),
                 "context_evidence_min_sentence_chars": (
-                    int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0)
+                    int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS)
                     if bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED)
                     else None
                 ),

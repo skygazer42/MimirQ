@@ -102,7 +102,7 @@ class DocUtilsMixin:
         if not docs_by_query:
             return []
 
-        k0 = int(rrf_k or 0) or int(settings.RETRIEVAL_RRF_K or 60)
+        k0 = int(rrf_k or 0) or int(settings.RETRIEVAL_RRF_K)
         k0 = max(1, k0)
 
         score_map: dict[str, float] = {}

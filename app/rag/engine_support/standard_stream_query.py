@@ -84,10 +84,10 @@ async def configure_corrective_retrieval(runtime: StandardStreamState) -> None:
     runtime.data.decompose_used = bool(runtime.data.sub_questions)
 
     runtime.data.corrective_enabled = bool(settings.RAG_CORRECTIVE_ENABLED)
-    runtime.data.corrective_max_attempts = max(1, min(int(settings.RAG_CORRECTIVE_MAX_ATTEMPTS or 2), 3))
-    runtime.data.corrective_min_faithfulness = float(settings.RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE or 0.75)
+    runtime.data.corrective_max_attempts = max(1, min(int(settings.RAG_CORRECTIVE_MAX_ATTEMPTS), 3))
+    runtime.data.corrective_min_faithfulness = float(settings.RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE)
     runtime.data.corrective_second_profile = (
-        str(settings.RAG_CORRECTIVE_SECOND_PASS_PROFILE or "recall50").strip().lower() or "recall50"
+        str(settings.RAG_CORRECTIVE_SECOND_PASS_PROFILE).strip().lower() or "recall50"
     )
     if runtime.data.corrective_second_profile not in {
         "recall20",
@@ -102,8 +102,8 @@ async def configure_corrective_retrieval(runtime: StandardStreamState) -> None:
     runtime.data.corrective_second_mq_count = max(
         0,
         min(
-            int(settings.RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT or 5),
-            int(settings.MULTI_QUERY_COUNT_CAP or 8),
+            int(settings.RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT),
+            int(settings.MULTI_QUERY_COUNT_CAP),
         ),
     )
     runtime.data.corrective_reason_codes: list[str] = []

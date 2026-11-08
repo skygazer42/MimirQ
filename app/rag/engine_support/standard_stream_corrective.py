@@ -149,7 +149,7 @@ def _initialize_retry_fusion(runtime: StandardStreamState) -> None:
         runtime.data.corrective_second_enable_mq or runtime.data.multi_query_used
     )
     try:
-        retry_budget = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET or 0)
+        retry_budget = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET)
     except Exception:
         retry_budget = 0
     runtime.data.mq_diversify_budget = max(0, min(retry_budget, int(runtime.data.top_k or 0)))
@@ -358,8 +358,8 @@ def _evaluate_retry_abstention(runtime: StandardStreamState) -> None:
     runtime.data.abstain_reason = None
     if not runtime.data.abstain_enabled:
         return
-    min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
-    min_top_relevance = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+    min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS))
+    min_top_relevance = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE)
     if min_citations > 0 and len(runtime.data.citations) < min_citations:
         runtime.data.abstain_triggered = True
         runtime.data.abstain_reason = "citations_lt_min"

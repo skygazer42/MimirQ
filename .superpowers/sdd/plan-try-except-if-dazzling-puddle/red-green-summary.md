@@ -32,3 +32,11 @@ SCIM安全补充：`test_unresolved_scim_zero_cap_keeps_existing_page_limit` 先
 - `tests/test_settings_validation_defaults.py::test_invalid_zero_is_validated_instead_of_substituted[RETRIEVAL_OVERFETCH_MULTIPLIER]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
 - `tests/test_settings_validation_defaults.py::test_invalid_zero_is_validated_instead_of_substituted[RETRIEVAL_COMPACT_MIN_RECORDS]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
 - `tests/test_settings_validation_defaults.py::test_invalid_zero_is_validated_instead_of_substituted[HIERARCHY_RECALL_OVERFETCH_FACTOR]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+
+## rag_kg_engine
+
+红：3 failed in 7.33s；绿：3 passed in 5.84s。
+
+- `tests/test_settings_rag_engine_defaults.py::test_zero_adaptive_threshold_is_not_replaced[200.0-None]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+- `tests/test_settings_rag_engine_defaults.py::test_zero_adaptive_threshold_is_not_replaced[0.0-recall50]`：声明值被旧消费端默认值替换，或必需值被静默伪造。
+- `tests/test_settings_rag_engine_defaults.py::test_kg_zero_concurrency_uses_existing_minimum`：声明值被旧消费端默认值替换，或必需值被静默伪造。

@@ -448,3 +448,202 @@
 | `app/core/config_validation.py:1483` | `source chain` | `—` | retain | logical OR / configuration-source precedence, not a literal default |
 | `app/core/config_validation.py:1180` | `KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY` | `str` | direct | declared non-Optional default owns the value |
 | `app/core/config_validation.py:976` | `VECTOR_BACKEND` | `Literal['milvus', 'memory', 'qdrant', 'pgvector']` | direct | declared non-Optional default owns the value |
+
+## rag_kg_engine
+
+| 原位置 | 字段 | 类型 | 裁决 | 理由 |
+|---|---|---|---|---|
+| `app/rag/engine_support/doc_utils.py:105` | `RETRIEVAL_RRF_K` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:100` | `LLM_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:109` | `LLM_TEMPERATURE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:110` | `LLM_STRUCTURED_TEMPERATURE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:194` | `ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:195` | `ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:48` | `LLM_MOCK_RESPONSE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:164` | `MODEL_COMPLEXITY_THRESHOLD` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:87` | `LLM_API_BASE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:199` | `ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:205` | `ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/llm_routing.py:209` | `ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_corrective.py:362` | `RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_corrective.py:152` | `MULTI_QUERY_DIVERSIFY_BUDGET` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_corrective.py:361` | `RAG_ABSTAIN_MIN_CITATIONS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:183` | `RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:644` | `RAG_CONTEXT_MAX_CHARS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:645` | `RAG_CONTEXT_MAX_TOTAL_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:646` | `RAG_CONTEXT_MAX_TOKENS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:647` | `RAG_CONTEXT_MAX_TOTAL_TOKENS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:182` | `RAG_ABSTAIN_MIN_CITATIONS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:818` | `RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:819` | `RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:291` | `FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_evidence.py:676` | `EVIDENCE_POST_RERANK_PIPELINE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:745` | `VECTOR_BACKEND` | `Literal['milvus', 'memory', 'qdrant', 'pgvector']` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:749` | `SPARSE_RETRIEVAL_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:752` | `COLBERT_RETRIEVAL_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:754` | `COLBERT_RETRIEVAL_MAX_DOCS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:756` | `RAG_PARENT_CHILD_AUTO_MERGE_MODE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:766` | `EVIDENCE_POST_RERANK_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:767` | `EVIDENCE_POST_RERANK_TOP_N` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:813` | `RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:35` | `RAG_TEMPORAL_INTENT_MAX_DOCS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_evidence.py:301` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:302` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:303` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_evidence.py:446` | `RAG_ABSTAIN_MIN_CITATIONS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:447` | `RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:539` | `RAG_CONTEXT_MAX_KG_TOKENS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:59` | `RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:60` | `RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:209` | `RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:210` | `RAG_OUT_OF_SCOPE_HYDE_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:297` | `FAITHFULNESS_SCORE_MAX_CLAIMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:737` | `COLBERT_RERANK_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_evidence.py:298` | `RAG_CLAIM_VERIFIER_MODE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:87` | `RETRIEVAL_MAX_CHUNKS_PER_DOC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:88` | `RETRIEVAL_MIN_DISTINCT_DOCS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:147` | `RAG_CONTEXT_MAX_TOTAL_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:148` | `RAG_CONTEXT_MAX_TOTAL_TOKENS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:149` | `RAG_CONTEXT_MAX_CHARS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:150` | `RAG_CONTEXT_MAX_TOKENS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:162` | `EMBEDDING_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:163` | `EMBEDDING_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:184` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:185` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:211` | `RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_finalization.py:216` | `RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:22` | `RAG_CLAIM_CHECK_MAX_CLAIMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:155` | `VISION_RAG_GENERATION_MAX_IMAGES` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_generation.py:156` | `VISION_RAG_GENERATION_MAX_IMAGE_BYTES` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/engine_support/standard_stream_generation.py:311` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:312` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:313` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_generation.py:410` | `FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_generation.py:628` | `EMBEDDING_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:629` | `EMBEDDING_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:640` | `VECTOR_BACKEND` | `Literal['milvus', 'memory', 'qdrant', 'pgvector']` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:256` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:257` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:258` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_generation.py:420` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:421` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:422` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_generation.py:23` | `RAG_CLAIM_VERIFIER_MODE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:385` | `RAG_CLAIM_NLI_VERIFIER_PROVIDER` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:386` | `RAG_CLAIM_NLI_VERIFIER_MODEL` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:387` | `RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/engine_support/standard_stream_generation.py:416` | `FAITHFULNESS_SCORE_MAX_CLAIMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:550` | `SENTENCE_CITATIONS_INLINE_MAX_ITEMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:551` | `SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:437` | `SENTENCE_CITATIONS_INLINE_STYLE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:487` | `SENTENCE_CITATIONS_INLINE_MAX_ITEMS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_generation.py:491` | `SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_query.py:88` | `RAG_CORRECTIVE_MIN_FAITHFULNESS_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_query.py:87` | `RAG_CORRECTIVE_MAX_ATTEMPTS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_query.py:105` | `RAG_CORRECTIVE_SECOND_PASS_MULTI_QUERY_COUNT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_query.py:106` | `MULTI_QUERY_COUNT_CAP` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_query.py:90` | `RAG_CORRECTIVE_SECOND_PASS_PROFILE` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_retrieval.py:44` | `RETRIEVAL_QUERY_PARALLELISM` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_retrieval.py:150` | `MULTI_QUERY_DIVERSIFY_BUDGET` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_retrieval.py:258` | `RAG_KG_CHUNK_INJECTION_MAX_CHUNKS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_retrieval.py:263` | `RAG_KG_CHUNK_INJECTION_MAX_CHUNKS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_retrieval.py:419` | `RAG_KG_CHUNK_BOOST_WEIGHT` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_retrieval.py:424` | `RAG_KG_CHUNK_BOOST_MAX_PROMOTED` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/engine_support/standard_stream_retrieval.py:532` | `LLM_API_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/api/routes_support/extraction.py:82` | `KG_EXTRACT_PROMPT_TEMPLATE_ID` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/api/routes_support/extraction.py:112` | `KG_EXTRACT_PROMPT_TEMPLATE_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/api/routes_support/extraction.py:117` | `KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/api/routes_support/extraction.py:229` | `KG_EXTRACTION_BACKEND` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/api/routes_support/projection.py:239` | `KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/api/routes_support/projection.py:469` | `KG_API_MAX_DOCUMENT_IDS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:994` | `KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:2379` | `KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/extraction/extractor.py:2469` | `KG_RELATION_MAX_RELATIONS_PER_CHUNK` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/extraction/extractor.py:4191` | `KG_EXTRACT_CHUNK_TIMEOUT_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:4193` | `KG_EXTRACT_CHUNK_RETRY_BACKOFF_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:3851` | `KG_SKILL_MAX_SKILLS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:4143` | `KG_EXTRACT_LONG_DOC_MIN_CHUNKS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:4189` | `KG_EXTRACT_MAX_CONCURRENCY` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:2465` | `KG_RELATION_ALLOWED_PREDICATES` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:4215` | `KG_EXTRACT_MAX_EVENTS_PER_CHUNK` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/kg/extraction/extractor.py:4216` | `KG_EXTRACT_MAX_ENTITIES_PER_EVENT` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/kg/extraction/extractor.py:4217` | `KG_EXTRACT_EMBED_BATCH_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:4220` | `KG_EXTRACT_MIN_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:4221` | `KG_EXTRACT_CHUNK_MAX_RETRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:996` | `KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/extractor.py:4219` | `KG_EXTRACT_CONTEXT_WINDOW_CHUNKS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/extraction/processor.py:27` | `KG_EXTRACT_CONTEXT_MAX_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/models.py:22` | `DEFAULT_TENANT_ID` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:431` | `KG_SEARCH_QUERY_MODE_DEFAULT` | `str` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:406` | `KG_SEARCH_MULTI_DATASET_MAX_CONCURRENCY` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/kg/pipeline.py:458` | `KG_SEARCH_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:459` | `KG_SEARCH_CACHE_MAX_ENTRIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:473` | `KG_COMMUNITY_MAX_EVENTS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:474` | `KG_COMMUNITY_MAX_ENTITIES_PER_EVENT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:475` | `KG_COMMUNITY_MIN_EDGE_WEIGHT` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:476` | `KG_SEARCH_RELATION_MIN_CONFIDENCE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:477` | `KG_SEARCH_RELATION_MAX_EDGES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:478` | `KG_SEARCH_RELATION_MAX_NEIGHBORS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:479` | `KG_SEARCH_MAX_RERANK_CANDIDATES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:480` | `KG_SEARCH_EXPAND_BUDGET_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:483` | `KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:486` | `KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:487` | `KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:488` | `KG_SEARCH_SERVING_MIN_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/pipeline.py:489` | `KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/quality/kg_completeness_scorer.py:252` | `KG_QUALITY_LOW_CONFIDENCE_THRESHOLD` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/repository.py:1078` | `KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS` | `int` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/kg/search/expand.py:227` | `KG_SEARCH_RELATION_MIN_CONFIDENCE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/expand.py:229` | `KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/expand.py:230` | `KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/expand.py:231` | `KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/expand.py:221` | `KG_SEARCH_RELATION_MAX_NEIGHBORS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/expand.py:228` | `KG_SEARCH_RELATION_MAX_EDGES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/expand.py:517` | `KG_SEARCH_MAX_RERANK_CANDIDATES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/query_mode.py:101` | `KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/query_mode.py:98` | `KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS` | `int` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/kg/search/query_mode.py:128` | `KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/query_mode.py:145` | `KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/query_mode.py:122` | `KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS` | `int` | direct | zero rejected by existing positive configuration validation |
+| `app/rag/kg/search/ranking/pagerank.py:187` | `KG_SEARCH_EXACT_PHRASE_RERANK_BOOST` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/ranking/rrf.py:188` | `KG_SEARCH_EXACT_PHRASE_RERANK_BOOST` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:883` | `KG_SEARCH_RELATION_MIN_CONFIDENCE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:885` | `KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:886` | `KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:887` | `KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:228` | `KG_SEARCH_MAX_RERANK_CANDIDATES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:233` | `KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:484` | `KG_SEARCH_RELATION_MIN_CONFIDENCE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:877` | `KG_SEARCH_RELATION_MAX_NEIGHBORS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:426` | `KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:884` | `KG_SEARCH_RELATION_MAX_EDGES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:1115` | `KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:1116` | `KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:1117` | `KG_SEARCH_SERVING_MIN_SCORE` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:422` | `KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/recall.py:423` | `KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/recall.py:424` | `KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/recall.py:425` | `KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:650` | `KG_SEARCH_GRAPH_EMBEDDINGS_DIM` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:651` | `KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:652` | `KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:653` | `KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/recall.py:654` | `KG_SEARCH_GRAPH_EMBEDDINGS_SEED` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/relation_scoring.py:118` | `KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:469` | `KG_SEARCH_TIMEOUT_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:298` | `KG_SEARCH_LATENCY_SLO_MS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:400` | `KG_COMMUNITY_MAX_EVENTS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/searcher.py:502` | `KG_SEARCH_EXPAND_BUDGET_SEC` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:112` | `KG_LAZY_COMMUNITY_SUMMARY_TOP_N` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:113` | `KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS` | `int` | direct | existing positive max() minimum prevents disabling the bound |
+| `app/rag/kg/search/searcher.py:114` | `KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:115` | `KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/searcher.py:410` | `KG_COMMUNITY_MAX_ENTITIES_PER_EVENT` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/searcher.py:411` | `KG_COMMUNITY_MIN_EDGE_WEIGHT` | `float` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:412` | `KG_COMMUNITY_LABEL_PROPAGATION_ITERS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:413` | `KG_COMMUNITY_MAX_COMMUNITIES` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/searcher.py:414` | `KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/searcher.py:415` | `KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/searcher.py:416` | `KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS` | `int` | decision | security/resource ceiling zero semantics requires commander review |
+| `app/rag/kg/search/tracker.py:18` | `KG_SEARCH_NODE_TEXT_MAX_CHARS` | `int` | direct | declared non-Optional default owns the value |
+| `app/rag/kg/search/tracker.py:72` | `KG_SEARCH_MAX_CLUES` | `int` | direct | declared non-Optional default owns the value |

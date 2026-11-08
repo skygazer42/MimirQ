@@ -1075,7 +1075,7 @@ class EventRepository:
                 raise ValueError(ACCOUNT_ID_REQUIRED_WHEN_DATASET_ID_PROVIDED_ERROR)
             try:
                 tenant_uuid = UUID(str(tenant_id))
-                max_enum_docs = max(1, int(settings.KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS or 1))
+                max_enum_docs = max(1, int(settings.KG_SEARCH_DATASET_SCOPE_MAX_ENUM_DOCS))
                 allowed_doc_ids, overflowed = self._allowed_document_ids_for_dataset_limited(
                     tenant_id=tenant_uuid,
                     dataset_id=dataset_id,

@@ -15,7 +15,7 @@ def _uuid_from_text(prefix: str, text: str) -> str:
 
 def _truncate_text(text: Any) -> str:  # noqa: ANN401
     s = "" if text is None else str(text)
-    max_chars = max(0, int(settings.KG_SEARCH_NODE_TEXT_MAX_CHARS or 0))
+    max_chars = max(0, int(settings.KG_SEARCH_NODE_TEXT_MAX_CHARS))
     if max_chars <= 0 or len(s) <= max_chars:
         return s
     return s[:max_chars]
@@ -69,7 +69,7 @@ class Tracker:
         self.clues: list[dict[str, Any]] = []
         self.clues_dropped: int = 0
         self._clues_enabled: bool = bool(settings.KG_SEARCH_CLUES_ENABLED)
-        self._max_clues: int = max(0, int(settings.KG_SEARCH_MAX_CLUES or 0))
+        self._max_clues: int = max(0, int(settings.KG_SEARCH_MAX_CLUES))
 
     def extend_clues(self, clues: list[dict[str, Any]]) -> None:
         if not self._clues_enabled:

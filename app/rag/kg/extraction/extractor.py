@@ -991,10 +991,8 @@ def _load_resolved_chunks(
 def _prepare_chunk_budget(
     resolved_chunks: list[DocumentChunk],
 ) -> tuple[int, str, list[DocumentChunk], dict[object, dict[str, int | str]], set[object]]:
-    max_chunks_per_document = max(0, int(settings.KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT or 0))
-    chunk_budget_strategy = (
-        str(settings.KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY or "uniform").strip().lower() or "uniform"
-    )
+    max_chunks_per_document = max(0, int(settings.KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT))
+    chunk_budget_strategy = str(settings.KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY).strip().lower() or "uniform"
     if max_chunks_per_document <= 0:
         return max_chunks_per_document, chunk_budget_strategy, resolved_chunks, {}, set()
 
@@ -2462,7 +2460,7 @@ async def _populate_relation_extraction_results(context: _RelationPostIndexConte
         db=context.session,
         tenant_id=context.state.tenant_id,
         fallback_default=_DEFAULT_RELATION_PREDICATES,
-        raw_override=str(settings.KG_RELATION_ALLOWED_PREDICATES or "").strip(),
+        raw_override=str(settings.KG_RELATION_ALLOWED_PREDICATES).strip(),
     )
     max_relations_per_chunk = max(
         0,
@@ -3848,7 +3846,7 @@ async def _run_skill_post_index_pass(context: _SkillPostIndexContext) -> dict[st
     try:
         max_skills_per_chunk = max(
             0,
-            int(settings.KG_SKILL_MAX_SKILLS_PER_CHUNK or 3),
+            int(settings.KG_SKILL_MAX_SKILLS_PER_CHUNK),
         )
         if max_skills_per_chunk <= 0:
             raise RuntimeError("KG_SKILL_MAX_SKILLS_PER_CHUNK must be > 0 when skills are enabled")
@@ -4140,7 +4138,7 @@ class EventExtractor:
         auto_backend_reason: str | None = None
         if requested_backend is None:
             long_doc_backend = settings.KG_EXTRACT_LONG_DOC_BACKEND.strip().lower()
-            long_doc_min_chunks = max(0, int(settings.KG_EXTRACT_LONG_DOC_MIN_CHUNKS or 0))
+            long_doc_min_chunks = max(0, int(settings.KG_EXTRACT_LONG_DOC_MIN_CHUNKS))
             if long_doc_backend and long_doc_min_chunks > 0 and len(resolved_chunks) >= long_doc_min_chunks:
                 requested_backend = long_doc_backend
                 auto_backend_reason = f"long_doc_chunk_threshold:{len(resolved_chunks)}"
@@ -4186,11 +4184,11 @@ class EventExtractor:
         )
         max_concurrency = max(
             1,
-            int(settings.KG_EXTRACT_MAX_CONCURRENCY or 0) or int(config.max_concurrency or 3),
+            int(settings.KG_EXTRACT_MAX_CONCURRENCY) or int(config.max_concurrency or 3),
         )
-        chunk_timeout_sec = float(settings.KG_EXTRACT_CHUNK_TIMEOUT_SEC or 0)
+        chunk_timeout_sec = float(settings.KG_EXTRACT_CHUNK_TIMEOUT_SEC)
         chunk_timeout_sec = max(0.0, chunk_timeout_sec)
-        retry_backoff_sec = float(settings.KG_EXTRACT_CHUNK_RETRY_BACKOFF_SEC or 0.5)
+        retry_backoff_sec = float(settings.KG_EXTRACT_CHUNK_RETRY_BACKOFF_SEC)
         retry_backoff_sec = max(0.0, retry_backoff_sec)
         extract_relations_enabled = (
             bool(settings.KG_RELATION_ENABLED) if config.extract_relations is None else bool(config.extract_relations)
@@ -4212,13 +4210,13 @@ class EventExtractor:
             prompt_template_content=prompt_template_content,
             chosen_template_id=chosen_template_id,
             max_concurrency=max_concurrency,
-            max_events_per_chunk=max(1, int(settings.KG_EXTRACT_MAX_EVENTS_PER_CHUNK or 6)),
-            max_entities_per_event=max(1, int(settings.KG_EXTRACT_MAX_ENTITIES_PER_EVENT or 30)),
-            embed_batch_size=max(1, int(settings.KG_EXTRACT_EMBED_BATCH_SIZE or 128)),
+            max_events_per_chunk=max(1, int(settings.KG_EXTRACT_MAX_EVENTS_PER_CHUNK)),
+            max_entities_per_event=max(1, int(settings.KG_EXTRACT_MAX_ENTITIES_PER_EVENT)),
+            embed_batch_size=max(1, int(settings.KG_EXTRACT_EMBED_BATCH_SIZE)),
             chunk_timeout_sec=chunk_timeout_sec,
-            context_window=max(0, min(int(settings.KG_EXTRACT_CONTEXT_WINDOW_CHUNKS or 0), 20)),
-            min_chars=max(0, int(settings.KG_EXTRACT_MIN_CHARS or 0)),
-            chunk_max_retries=max(0, int(settings.KG_EXTRACT_CHUNK_MAX_RETRIES or 0)),
+            context_window=max(0, min(int(settings.KG_EXTRACT_CONTEXT_WINDOW_CHUNKS), 20)),
+            min_chars=max(0, int(settings.KG_EXTRACT_MIN_CHARS)),
+            chunk_max_retries=max(0, int(settings.KG_EXTRACT_CHUNK_MAX_RETRIES)),
             retry_backoff_sec=retry_backoff_sec,
             replace_existing=bool(config.replace_existing),
             skip_unchanged=bool(settings.KG_EXTRACT_SKIP_UNCHANGED_CHUNKS) and bool(config.replace_existing),

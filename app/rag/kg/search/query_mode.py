@@ -95,10 +95,10 @@ def _apply_local_budget(
 ) -> tuple[int, int, float]:
     max_events_out = min(
         max_events_out,
-        max(1, int(settings.KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS or 40)),
+        max(1, int(settings.KG_SEARCH_QUERY_MODE_LOCAL_MAX_EVENTS)),
     )
     final_entity_count_out = min(final_entity_count_out, 20)
-    bonus = float(settings.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS or 0.05)
+    bonus = float(settings.KG_SEARCH_QUERY_MODE_LOCAL_ENTITY_WEIGHT_BONUS)
     entity_weight_threshold_out = min(1.0, entity_weight_threshold_out + max(0.0, bonus))
     reason_codes.append("local_focus_budget")
     return max_events_out, final_entity_count_out, entity_weight_threshold_out
@@ -119,13 +119,13 @@ def _apply_global_budget(
     if is_low_confidence_fallback:
         max_events_out = min(
             max_events_out,
-            max(1, int(settings.KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS or 80)),
+            max(1, int(settings.KG_SEARCH_QUERY_MODE_LOW_CONFIDENCE_GLOBAL_MAX_EVENTS)),
         )
         reason_codes.append("low_confidence_global_budget")
         return max_events_out, max_entities_out, final_entity_count_out
     max_events_out = max(
         max_events_out,
-        max(1, int(settings.KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS or 120)),
+        max(1, int(settings.KG_SEARCH_QUERY_MODE_GLOBAL_MIN_EVENTS)),
     )
     max_entities_out = max(max_entities_out, 40)
     final_entity_count_out = max(final_entity_count_out, 25)
@@ -142,7 +142,7 @@ def _apply_drift_budget(
 ) -> tuple[int, int, int]:
     max_events_out = max(
         max_events_out,
-        max(1, int(settings.KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS or 140)),
+        max(1, int(settings.KG_SEARCH_QUERY_MODE_DRIFT_MIN_EVENTS)),
     )
     max_entities_out = max(max_entities_out, 45)
     final_entity_count_out = max(final_entity_count_out, 30)

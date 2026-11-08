@@ -466,7 +466,7 @@ def _resolve_allowed_documents(
     account_id: str,
     db: Session,
 ) -> list[UUID]:
-    eff_limit = max(0, int(settings.KG_API_MAX_DOCUMENT_IDS or 500))
+    eff_limit = max(0, int(settings.KG_API_MAX_DOCUMENT_IDS))
     if document_ids:
         # Deduplicate while preserving original order.
         seen: set[UUID] = set()

@@ -109,9 +109,9 @@ def _effective_rerank_strategy(*, config: SearchConfig, query_mode: str) -> Rera
 def _lazy_community_summary_settings() -> _LazySummarySettings:
     return {
         "enabled": bool(settings.KG_LAZY_COMMUNITY_SUMMARY_ENABLED),
-        "top_n": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_TOP_N or 3)),
-        "max_tokens": max(1, int(settings.KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS or 300)),
-        "ttl_sec": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC or 86400)),
+        "top_n": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_TOP_N)),
+        "max_tokens": max(1, int(settings.KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS)),
+        "ttl_sec": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC)),
         "max_entries": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES or 1024)),
     }
 
@@ -295,7 +295,7 @@ def _rerank_stats(
     )
     stats.setdefault("budget", budget_meta)
     total_elapsed_ms_for_slo = float(time.perf_counter() - t_total) * 1000.0
-    latency_slo_ms = max(0, int(settings.KG_SEARCH_LATENCY_SLO_MS or 0))
+    latency_slo_ms = max(0, int(settings.KG_SEARCH_LATENCY_SLO_MS))
     stats.setdefault(
         "slo",
         {
@@ -408,9 +408,9 @@ async def _build_community_outputs(
         events=list(rerank_result.items or []),
         event_entities=ev_to_ents,
         max_entities_per_event=int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_EVENT or 12),
-        min_edge_weight=float(settings.KG_COMMUNITY_MIN_EDGE_WEIGHT or 2.0),
-        label_propagation_iters=int(settings.KG_COMMUNITY_LABEL_PROPAGATION_ITERS or 25),
-        max_communities=int(settings.KG_COMMUNITY_MAX_COMMUNITIES or 12),
+        min_edge_weight=float(settings.KG_COMMUNITY_MIN_EDGE_WEIGHT),
+        label_propagation_iters=int(settings.KG_COMMUNITY_LABEL_PROPAGATION_ITERS),
+        max_communities=int(settings.KG_COMMUNITY_MAX_COMMUNITIES),
         max_entities_per_community=int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY or 12),
         max_events_per_community=int(settings.KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY or 6),
         global_summary_max_chars=int(settings.KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS or 3200),
@@ -466,7 +466,7 @@ def _log_community_metrics(
 
 
 async def search(config: SearchConfig) -> dict[str, Any]:
-    timeout_sec = float(settings.KG_SEARCH_TIMEOUT_SEC or 0.0)
+    timeout_sec = float(settings.KG_SEARCH_TIMEOUT_SEC)
     if timeout_sec <= 0:
         return await _search_impl(config)
 
@@ -499,7 +499,7 @@ async def _search_impl(config: SearchConfig) -> dict[str, Any]:
     t0 = time.perf_counter()
     recall_result = await recall(config)
     recall_elapsed = time.perf_counter() - t0
-    expand_budget_sec = max(0.0, float(settings.KG_SEARCH_EXPAND_BUDGET_SEC or 0.0))
+    expand_budget_sec = max(0.0, float(settings.KG_SEARCH_EXPAND_BUDGET_SEC))
     budget_meta: dict[str, Any] = {
         "expand_budget_sec": float(expand_budget_sec),
         "recall_elapsed_sec": round(float(recall_elapsed), 3),

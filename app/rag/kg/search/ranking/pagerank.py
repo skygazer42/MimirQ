@@ -184,7 +184,7 @@ async def rerank(
         key_weights = _key_weight_map(key_final)
         key_entity_ids = _key_entity_ids(key_final)
         assoc_map = repo.get_entities_for_events(event_ids, tenant_id=config.tenant_id)
-        phrase_boost_weight = max(0.0, float(settings.KG_SEARCH_EXACT_PHRASE_RERANK_BOOST or 0.0))
+        phrase_boost_weight = max(0.0, float(settings.KG_SEARCH_EXACT_PHRASE_RERANK_BOOST))
         base_scores = _base_scores(
             events=events,
             event_scores=event_scores,

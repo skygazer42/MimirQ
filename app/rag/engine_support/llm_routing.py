@@ -45,7 +45,7 @@ class LlmRoutingMixin:
             # Lazy import to keep default startup lightweight.
             from langchain_core.language_models.fake import FakeStreamingListLLM
 
-            response = str(settings.LLM_MOCK_RESPONSE or "Hello from mock LLM.")
+            response = str(settings.LLM_MOCK_RESPONSE)
             return FakeStreamingListLLM(responses=[response])
 
         return build_chat_model_from_config(
@@ -84,7 +84,7 @@ class LlmRoutingMixin:
         if ("/" in route_model) != ("/" in default_model):
             return False
 
-        api_base = str(settings.LLM_API_BASE or "").casefold()
+        api_base = str(settings.LLM_API_BASE).casefold()
         if "siliconflow" in api_base and "/" not in route_model:
             return False
         return True
@@ -97,7 +97,7 @@ class LlmRoutingMixin:
         if route == "fast" and settings.LLM_MODEL_FAST:
             return str(settings.LLM_MODEL_FAST)
         value = getattr(llm, "model_name", None) or getattr(llm, "model", None) or settings.LLM_MODEL
-        return str(value or settings.LLM_MODEL or "gpt-5.4-mini")
+        return str(value or settings.LLM_MODEL)
 
     def _maybe_override_llm_for_request(
         self,
@@ -106,8 +106,8 @@ class LlmRoutingMixin:
         model_route: str,
         structured_output: bool,
     ) -> tuple[Any, dict[str, Any]]:
-        base_temperature = float(settings.LLM_TEMPERATURE or 0.0)
-        target_temperature = float(settings.LLM_STRUCTURED_TEMPERATURE or 0.0)
+        base_temperature = float(settings.LLM_TEMPERATURE)
+        target_temperature = float(settings.LLM_STRUCTURED_TEMPERATURE)
         meta = {
             "structured_temperature": target_temperature,
             "base_temperature": base_temperature,
@@ -161,7 +161,7 @@ class LlmRoutingMixin:
             pattern_matches = 0
 
         if pattern_matches > 0:
-            threshold = float(settings.MODEL_COMPLEXITY_THRESHOLD or 160)
+            threshold = float(settings.MODEL_COMPLEXITY_THRESHOLD)
             bonus_per_match = max(0.0, threshold * 0.35)
             score += float(min(pattern_matches, 6)) * bonus_per_match
 
@@ -191,22 +191,22 @@ class LlmRoutingMixin:
         if not bool(settings.ADAPTIVE_RETRIEVAL_ROUTING_ENABLED):
             return {}
 
-        simple_threshold = float(settings.ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD or 80.0)
-        complex_threshold = float(settings.ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD or 200.0)
+        simple_threshold = float(settings.ADAPTIVE_RETRIEVAL_SIMPLE_THRESHOLD)
+        complex_threshold = float(settings.ADAPTIVE_RETRIEVAL_COMPLEX_THRESHOLD)
 
         if complexity_score < simple_threshold:
             return {
-                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K or 10)),
+                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_SIMPLE_TOP_K)),
                 "enable_multi_query": False,
             }
 
         if complexity_score >= complex_threshold:
             return {
-                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K or 40)),
+                "top_k": max(1, int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_TOP_K)),
                 "enable_multi_query": True,
                 "multi_query_count": max(
                     1,
-                    int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT or 5),
+                    int(settings.ADAPTIVE_RETRIEVAL_COMPLEX_MQ_COUNT),
                 ),
                 "retrieval_profile": "recall50",
             }

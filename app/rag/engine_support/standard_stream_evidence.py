@@ -56,8 +56,8 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
                 runtime.data.docs, runtime.data.temporal_recency_meta = runtime.module.apply_recency_boost(
                     runtime.data.docs,
                     updated_ts_by_document_id=runtime.data.updated_ts,
-                    boost_max=float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX or 0.0),
-                    window_days=int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS or 180),
+                    boost_max=float(settings.RETRIEVAL_GOVERNANCE_LATEST_BOOST_MAX),
+                    window_days=int(settings.RETRIEVAL_GOVERNANCE_LATEST_WINDOW_DAYS),
                 )
             else:
                 runtime.data.temporal_recency_meta = {
@@ -179,8 +179,8 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
             runtime.data.top_rel = 0.0
 
     if runtime.data.abstain_enabled:
-        runtime.data.min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0))
-        runtime.data.min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0)
+        runtime.data.min_citations = max(0, int(settings.RAG_ABSTAIN_MIN_CITATIONS))
+        runtime.data.min_top_rel = float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE)
 
         if runtime.data.min_citations > 0 and len(runtime.data.citations) < runtime.data.min_citations:
             runtime.data.abstain_triggered = True
@@ -206,8 +206,8 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
             dataset_id=dataset_id,
             ruleset_name=ruleset_name,
             hyde_query=runtime.data.hyde_text if bool(runtime.data.hyde_used and runtime.data.hyde_text) else None,
-            vector_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD or 0.35),
-            hyde_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_HYDE_THRESHOLD or 0.4),
+            vector_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD),
+            hyde_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_HYDE_THRESHOLD),
         ),
     )
     runtime.data.abstain_triggered = bool(runtime.data.out_of_scope_guard.get("abstain_triggered"))
@@ -294,12 +294,12 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
             runtime.data.faithfulness_meta = runtime.module.compute_faithfulness_score(
                 answer=str(runtime.data.full_response or ""),
                 evidence_text=runtime.data.evidence_text,
-                max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS or 24)),
-                verifier_mode=(str(settings.RAG_CLAIM_VERIFIER_MODE or "token_overlap").strip().lower()),
+                max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
+                verifier_mode=(str(settings.RAG_CLAIM_VERIFIER_MODE).strip().lower()),
                 verifier_enable_contradiction_check=bool(settings.RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK),
                 use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-                nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-                nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+                nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+                nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
                 nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
             )
         runtime.data.confidence_meta = runtime.module.compute_confidence_score(
@@ -443,8 +443,8 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                     "abstain_reason": runtime.data.abstain_reason,
                     "abstain_followup": runtime.data.abstain_followup,
                     "followup_questions": runtime.data.followup_questions,
-                    "abstain_min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS or 0),
-                    "abstain_min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE or 0.0),
+                    "abstain_min_citations": int(settings.RAG_ABSTAIN_MIN_CITATIONS),
+                    "abstain_min_top_relevance_score": float(settings.RAG_ABSTAIN_MIN_TOP_RELEVANCE_SCORE),
                     "visible_evidence_only_enabled": bool(runtime.data.strict_visible),
                     "visible_evidence_only_requested": bool(runtime.data.visible_evidence_only),
                     "evidence_span_strict_enabled": bool(runtime.data.evidence_span_strict_enabled),
@@ -536,7 +536,7 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
                         f"[Event {runtime.data.idx}] {runtime.data.title}\n{runtime.data.summary}"
                     )
                 runtime.data.kg_context = "\n\n".join(runtime.data.parts)
-                runtime.data.max_kg_tokens = max(0, int(settings.RAG_CONTEXT_MAX_KG_TOKENS or 0))
+                runtime.data.max_kg_tokens = max(0, int(settings.RAG_CONTEXT_MAX_KG_TOKENS))
                 if runtime.data.max_kg_tokens:
                     runtime.data.kg_context = runtime.module.truncate(
                         runtime.data.kg_context,
@@ -641,10 +641,10 @@ async def build_chunk_context(runtime: StandardStreamState) -> None:
         runtime.data.context_docs = denoise_context_docs(runtime.data.docs)
     except Exception:  # noqa: BLE001
         runtime.data.context_docs = runtime.data.docs
-    runtime.data.max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK or 0))
-    runtime.data.max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS or 0))
-    runtime.data.max_per_chunk_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK or 0))
-    runtime.data.max_total_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS or 0))
+    runtime.data.max_per_chunk_chars = max(0, int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK))
+    runtime.data.max_total_chars = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS))
+    runtime.data.max_per_chunk_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOKENS_PER_CHUNK))
+    runtime.data.max_total_tokens = max(0, int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS))
     runtime.data.total_chars = 0
     runtime.data.total_tokens = 0
     runtime.data.context_parts = []
@@ -673,7 +673,7 @@ async def join_context_sections(runtime: StandardStreamState) -> None:
 def _post_rerank_pipeline_summary() -> list[dict[str, Any]]:
     summary = []
     try:
-        raw_pipeline = str(settings.EVIDENCE_POST_RERANK_PIPELINE or "").strip()
+        raw_pipeline = str(settings.EVIDENCE_POST_RERANK_PIPELINE).strip()
         pipeline = json.loads(raw_pipeline) if raw_pipeline else []
         if not isinstance(pipeline, list):
             return summary
@@ -734,7 +734,7 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
             "reranker_provider": str(runtime.data.rerank_provider or ""),
             "reranker_tier": runtime.module.describe_reranker_provider(
                 str(runtime.data.rerank_provider or ""),
-                provider_name=str(settings.COLBERT_RERANK_PROVIDER or "deterministic"),
+                provider_name=str(settings.COLBERT_RERANK_PROVIDER),
             ).get("tier"),
             "reranker_top_n": int(runtime.data.rerank_top_n),
             "visible_evidence_only": bool(runtime.data.visible_evidence_only),
@@ -742,18 +742,18 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
             "must_recall_requested": bool(runtime.data.must_recall),
             "must_recall_expected_source_keys": list(runtime.data.must_recall_expected_source_keys or []),
             "must_recall_required_anchor_fields": list(runtime.data.must_recall_required_anchor_fields or []),
-            "vector_backend": str(settings.VECTOR_BACKEND or ""),
+            "vector_backend": str(settings.VECTOR_BACKEND),
             "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
             "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
             "sparse_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
-            "sparse_provider": str(settings.SPARSE_RETRIEVAL_PROVIDER or ""),
+            "sparse_provider": str(settings.SPARSE_RETRIEVAL_PROVIDER),
             "sparse_index_persist_enabled": bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED),
             "colbert_enabled": bool(settings.COLBERT_RETRIEVAL_ENABLED),
-            "colbert_provider": str(settings.COLBERT_RETRIEVAL_PROVIDER or ""),
+            "colbert_provider": str(settings.COLBERT_RETRIEVAL_PROVIDER),
             "colbert_index_persist_enabled": bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED),
-            "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0),
+            "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS),
             "parent_child_auto_merge_enabled": bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED),
-            "parent_child_auto_merge_mode": str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or ""),
+            "parent_child_auto_merge_mode": str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE),
             "kg_query_expansion_enabled": bool(runtime.data.kg_query_expansion_enabled),
             "kg_chunk_injection_enabled": bool(runtime.data.kg_chunk_injection_enabled),
             "kg_chunk_injection_max_chunks": int(runtime.data.kg_chunk_injection_max_chunks_i or 0),
@@ -763,8 +763,8 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
             "kg_chunk_boost_promoted": int(runtime.data.kg_chunk_boost_meta.get("promoted", 0) or 0),
             "kg_chunk_boost_top_changed": bool(runtime.data.kg_chunk_boost_meta.get("top_changed")),
             "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
-            "evidence_post_rerank_provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or ""),
-            "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
+            "evidence_post_rerank_provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER),
+            "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N),
             "evidence_post_rerank_pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
             "evidence_post_rerank_pipeline": runtime.data.pipe_summary,
             "multi_query": {
@@ -810,13 +810,13 @@ async def build_rag_trace_payload(runtime: StandardStreamState) -> None:
         "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context or ""),
         **runtime.module.compute_context_cliff_metrics(
             context_tokens=runtime.module.num_tokens_from_string(runtime.data.context or ""),
-            threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS or 2500),
+            threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS),
         ),
         "citations_count": len(runtime.data.citations),
         "context_evidence": {
             "enabled": bool(settings.RAG_CONTEXT_EVIDENCE_ENABLED),
-            "max_sentences_per_chunk": int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK or 0),
-            "min_sentence_chars": int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS or 0),
+            "max_sentences_per_chunk": int(settings.RAG_CONTEXT_EVIDENCE_MAX_SENTENCES_PER_CHUNK),
+            "min_sentence_chars": int(settings.RAG_CONTEXT_EVIDENCE_MIN_SENTENCE_CHARS),
         },
         "query_expansion": {
             "alias_enabled": bool(runtime.data.alias_enabled),

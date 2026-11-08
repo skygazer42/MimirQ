@@ -115,7 +115,7 @@ def relation_evidence(rel: "KgRelation", *, settings: "Settings") -> tuple[float
         evidence_source = str(refs.get("evidence_source") or "").strip().casefold() if isinstance(refs, dict) else ""
         if evidence_source != "mention":
             return 1.0, evidence_source
-        mention_mult = float(settings.KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER or 0.7)
+        mention_mult = float(settings.KG_SEARCH_RELATION_MENTION_EVIDENCE_MULTIPLIER)
         return max(0.0, min(1.0, float(mention_mult))), evidence_source
     except Exception:
         return 1.0, ""

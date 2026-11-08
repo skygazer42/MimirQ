@@ -41,7 +41,7 @@ async def extend_queries_and_prepare_plan(runtime: StandardStreamState) -> None:
     runtime.data.docs_by_query: list[list[Document]] = []
     runtime.data.docs_by_query_kinds: list[str] = []
     runtime.data.t_retrieval_start = time.time()
-    runtime.data.retrieval_parallelism = max(1, int(settings.RETRIEVAL_QUERY_PARALLELISM or 1))
+    runtime.data.retrieval_parallelism = max(1, int(settings.RETRIEVAL_QUERY_PARALLELISM))
     runtime.data.retrieval_plan: list[tuple[str, str, Any]] = []
 
 
@@ -147,7 +147,7 @@ async def execute_retrieval_plan(runtime: StandardStreamState) -> AsyncGenerator
 
 async def initialize_fusion(runtime: StandardStreamState) -> None:
     try:
-        runtime.data.mq_budget_raw = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET or 0)
+        runtime.data.mq_budget_raw = int(settings.MULTI_QUERY_DIVERSIFY_BUDGET)
     except Exception:
         runtime.data.mq_budget_raw = 0
     runtime.data.mq_diversify_budget = max(0, min(int(runtime.data.mq_budget_raw or 0), int(runtime.data.top_k or 0)))
@@ -255,12 +255,12 @@ async def initialize_kg_enrichment(runtime: StandardStreamState) -> None:
     )
     try:
         runtime.data.kg_chunk_injection_max_chunks_i = (
-            int(settings.RAG_KG_CHUNK_INJECTION_MAX_CHUNKS or 5)
+            int(settings.RAG_KG_CHUNK_INJECTION_MAX_CHUNKS)
             if runtime.data.kg_chunk_injection_max_chunks is None
             else int(runtime.data.kg_chunk_injection_max_chunks or 0)
         )
     except Exception:
-        runtime.data.kg_chunk_injection_max_chunks_i = int(settings.RAG_KG_CHUNK_INJECTION_MAX_CHUNKS or 5)
+        runtime.data.kg_chunk_injection_max_chunks_i = int(settings.RAG_KG_CHUNK_INJECTION_MAX_CHUNKS)
     runtime.data.kg_chunk_injection_max_chunks_i = max(
         0, min(int(runtime.data.kg_chunk_injection_max_chunks_i or 0), 50)
     )
@@ -416,12 +416,12 @@ async def boost_kg_and_select_images(runtime: StandardStreamState) -> None:
             else bool(runtime.data.enable_kg_chunk_boost)
         )
         runtime.data.kg_boost_weight = (
-            float(settings.RAG_KG_CHUNK_BOOST_WEIGHT or 0.25)
+            float(settings.RAG_KG_CHUNK_BOOST_WEIGHT)
             if runtime.data.kg_chunk_boost_weight is None
             else float(runtime.data.kg_chunk_boost_weight or 0.0)
         )
         runtime.data.kg_boost_max_promoted = (
-            int(settings.RAG_KG_CHUNK_BOOST_MAX_PROMOTED or 3)
+            int(settings.RAG_KG_CHUNK_BOOST_MAX_PROMOTED)
             if runtime.data.kg_chunk_boost_max_promoted is None
             else int(runtime.data.kg_chunk_boost_max_promoted or 0)
         )
@@ -529,7 +529,7 @@ async def retrieve_tag_context(runtime: StandardStreamState) -> AsyncGenerator[d
                 bool(settings.CHAT_TAG_ENABLED)
                 and bool(settings.TABLE_NL2SQL_ENABLED)
                 and bool(settings.TABLE_LLM_ALLOW_RESULT_EGRESS)
-                and bool(str(settings.LLM_API_KEY or "").strip())
+                and bool(str(settings.LLM_API_KEY).strip())
             ):
                 yield {"type": "event", "data": {"message": "检测到表格资产，正在尝试表格查询（TAG）..."}}
             runtime.data.tag_docs, runtime.data.tag_meta = build_chat_tag_context_docs(

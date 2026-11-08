@@ -19,8 +19,8 @@ async def prepare_generation(runtime: StandardStreamState) -> AsyncGenerator[dic
     runtime.data.pii_on = bool(runtime.module.pii_redaction_enabled())
 
     runtime.data.claim_check_configured = bool(settings.RAG_CLAIM_CHECK_ENABLED) or bool(runtime.data.strict_visible)
-    runtime.data.claim_check_max_claims = max(1, int(settings.RAG_CLAIM_CHECK_MAX_CLAIMS or 24))
-    runtime.data.claim_verifier_mode = str(settings.RAG_CLAIM_VERIFIER_MODE or "token_overlap").strip().lower()
+    runtime.data.claim_check_max_claims = max(1, int(settings.RAG_CLAIM_CHECK_MAX_CLAIMS))
+    runtime.data.claim_verifier_mode = str(settings.RAG_CLAIM_VERIFIER_MODE).strip().lower()
     if runtime.data.claim_verifier_mode not in {"token_overlap", "semantic_heuristic", "strict"}:
         runtime.data.claim_verifier_mode = "token_overlap"
     runtime.data.claim_verifier_enable_contradiction_check = bool(
@@ -153,7 +153,7 @@ async def prepare_vision_generation(runtime: StandardStreamState) -> None:
             runtime.data.vision_generation_meta.update(skip_meta)
             return
         runtime.data.max_images = max(0, int(settings.VISION_RAG_GENERATION_MAX_IMAGES or 2))
-        runtime.data.max_bytes = max(1, int(settings.VISION_RAG_GENERATION_MAX_IMAGE_BYTES or 3_000_000))
+        runtime.data.max_bytes = max(1, int(settings.VISION_RAG_GENERATION_MAX_IMAGE_BYTES))
         runtime.data.blocks, runtime.data.blocks_meta = await runtime.module.build_vision_image_blocks(
             image_docs=runtime.data.image_docs,
             tenant_id=runtime.data.tenant_id,
@@ -253,8 +253,8 @@ def _verify_text_claims(runtime: StandardStreamState) -> None:
             verifier_mode=runtime.data.claim_verifier_mode,
             verifier_enable_contradiction_check=runtime.data.claim_verifier_enable_contradiction_check,
             use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-            nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-            nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+            nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+            nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
             nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
         )
         if verification.supported:
@@ -308,8 +308,8 @@ def _verify_structured_claims(runtime: StandardStreamState) -> None:
         verifier_mode=runtime.data.claim_verifier_mode,
         verifier_enable_contradiction_check=runtime.data.claim_verifier_enable_contradiction_check,
         use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-        nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-        nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+        nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+        nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
         nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
     )
     if isinstance(runtime.data.scrub_meta, dict):
@@ -382,8 +382,8 @@ async def apply_output_guard_and_init_evidence(runtime: StandardStreamState) -> 
                 verifier_mode=runtime.data.claim_verifier_mode,
                 verifier_enable_contradiction_check=runtime.data.claim_verifier_enable_contradiction_check,
                 use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-                nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-                nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+                nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+                nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
                 nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
             )
         except Exception:
@@ -413,12 +413,12 @@ async def score_evidence_and_confidence(runtime: StandardStreamState) -> AsyncGe
         runtime.data.faithfulness_meta = runtime.module.compute_faithfulness_score(
             answer=str(runtime.data.full_response or ""),
             evidence_text=runtime.data.evidence_text,
-            max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS or 24)),
+            max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
             verifier_mode=runtime.data.claim_verifier_mode,
             verifier_enable_contradiction_check=bool(runtime.data.claim_verifier_enable_contradiction_check),
             use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
-            nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER or "none"),
-            nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL or ""),
+            nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
+            nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
             nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
         )
     if runtime.data.source_identification_answer_used:
@@ -434,7 +434,7 @@ async def score_evidence_and_confidence(runtime: StandardStreamState) -> AsyncGe
     runtime.data.sentence_citations_inline_used = False
     runtime.data.sentence_citations_inline_count = 0
     runtime.data.sentence_citations_inline_style = (
-        str(settings.SENTENCE_CITATIONS_INLINE_STYLE or "appendix").strip().lower() or "appendix"
+        str(settings.SENTENCE_CITATIONS_INLINE_STYLE).strip().lower() or "appendix"
     )
     if runtime.data.sentence_citations_inline_style not in {"appendix", "inline"}:
         runtime.data.sentence_citations_inline_style = "appendix"
@@ -484,11 +484,11 @@ async def render_claim_citations(runtime: StandardStreamState) -> None:
                 runtime.data.claim_evidence,
                 max_items=max(
                     0,
-                    int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS or 8),
+                    int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS),
                 ),
                 max_evidence_per_claim=max(
                     1,
-                    int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM or 2),
+                    int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM),
                 ),
             )
             if runtime.data.inline_text:
@@ -547,8 +547,8 @@ async def flush_response_and_init_costs(runtime: StandardStreamState) -> AsyncGe
     ):
         runtime.data.suffix_md, runtime.data.rendered_count = runtime.module.render_sentence_citations_markdown(
             runtime.data.claim_evidence,
-            max_items=max(0, int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS or 8)),
-            max_evidence_per_claim=max(1, int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM or 2)),
+            max_items=max(0, int(settings.SENTENCE_CITATIONS_INLINE_MAX_ITEMS)),
+            max_evidence_per_claim=max(1, int(settings.SENTENCE_CITATIONS_INLINE_MAX_EVIDENCE_PER_CLAIM)),
         )
         if runtime.data.suffix_md:
             runtime.data.suffix_md_safe = (
@@ -625,8 +625,8 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
             "source": runtime.data.llm_source,
         },
         "embeddings": {
-            "provider": str(settings.EMBEDDING_PROVIDER or ""),
-            "model": str(settings.EMBEDDING_MODEL or ""),
+            "provider": str(settings.EMBEDDING_PROVIDER),
+            "model": str(settings.EMBEDDING_MODEL),
             "query_count": len(runtime.data.retrieval_per_query or []),
             "query_chars": int(runtime.data.embed_query_chars),
             "query_tokens": int(runtime.data.embed_query_tokens),
@@ -637,7 +637,7 @@ async def measure_rerank_and_record_metrics(runtime: StandardStreamState) -> Non
             "rerank_elapsed_sec": round(float(runtime.data.rerank_elapsed_sec), 3)
             if runtime.data.rerank_elapsed_sec is not None
             else None,
-            "vector_backend": str(settings.VECTOR_BACKEND or ""),
+            "vector_backend": str(settings.VECTOR_BACKEND),
             "query_count": len(runtime.data.retrieval_per_query or []),
         },
     }

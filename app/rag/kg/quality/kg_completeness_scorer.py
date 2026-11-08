@@ -249,7 +249,7 @@ def build_kg_quality_report(
         tenant_id=tenant_id,
         document_ids=document_ids,
         pipeline_hash=pipeline_hash,
-        low_confidence_threshold=float(settings.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD or 0.30),
+        low_confidence_threshold=float(settings.KG_QUALITY_LOW_CONFIDENCE_THRESHOLD),
     )
 
     return {

@@ -225,12 +225,12 @@ def _build_recall_limits(config: SearchConfig) -> _RecallLimits:
     )
     mode_reason_codes = [str(item) for item in (mode_overrides.get("reason_codes") or []) if str(item).strip()]
     max_events = int(mode_overrides.get("max_events") or config.recall.max_events)
-    max_candidates = max(0, int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES or 0))
+    max_candidates = max(0, int(settings.KG_SEARCH_MAX_RERANK_CANDIDATES))
     if max_candidates > 0:
         max_events = min(max_events, max_candidates)
     target_max_events = max(1, int(max_events or 1))
     serving_enabled = bool(settings.KG_SEARCH_SERVING_LAYER_ENABLED)
-    serving_candidate_multiplier = max(1, int(settings.KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER or 3))
+    serving_candidate_multiplier = max(1, int(settings.KG_SEARCH_SERVING_CANDIDATE_MULTIPLIER))
     candidate_max_events = target_max_events
     if serving_enabled:
         candidate_max_events = target_max_events * serving_candidate_multiplier
@@ -422,8 +422,8 @@ def _graph_embedding_settings(config: SearchConfig) -> _GraphEmbeddingSettings:
         max_events=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS or 200)),
         max_entities=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES or 400)),
         max_relations=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS or 1500)),
-        top_k=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K or 20)),
-        min_similarity=float(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY or 0.35),
+        top_k=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K)),
+        min_similarity=float(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY),
     )
 
 
@@ -481,7 +481,7 @@ def _graph_relation_edges(
     if not bool(settings.KG_RELATION_ENABLED):
         return []
     try:
-        min_conf = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE or 0.0)
+        min_conf = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
     except Exception:
         min_conf = 0.0
     ent_list = sorted(kept_entity_ids)[: min(len(kept_entity_ids), 300)]
@@ -647,11 +647,11 @@ def _apply_graph_embedding_recall(
             ),
         )
         params = graph_embeddings_mod.WalkHashParams(
-            dim=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_DIM or 64),
-            num_walks=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS or 8),
-            walk_length=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH or 20),
-            window_size=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE or 5),
-            seed=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_SEED or 42),
+            dim=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_DIM),
+            num_walks=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_NUM_WALKS),
+            walk_length=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WALK_LENGTH),
+            window_size=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE),
+            seed=int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_SEED),
         )
         hits = graph_embeddings_mod.recall_similar_entity_nodes(
             adjacency=adjacency,
@@ -874,17 +874,17 @@ def _apply_relation_expansion(
     relation_debug = _base_relation_debug(mode_norm, mode_overrides)
     if not _relation_expansion_enabled(config) or not key_query_related:
         return [], relation_debug
-    max_neighbors = max(0, int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS or 0))
+    max_neighbors = max(0, int(settings.KG_SEARCH_RELATION_MAX_NEIGHBORS))
     if max_neighbors <= 0:
         return [], relation_debug
     tenant_uuid = _tenant_uuid(tenant_id)
     if tenant_uuid is None:
         return [], relation_debug
-    min_confidence = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE or 0.0)
-    max_edges = max(0, int(settings.KG_SEARCH_RELATION_MAX_EDGES or 0)) or 500
-    weight_factor = float(settings.KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR or 0.7)
-    bucket_low = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX or 0.4)
-    bucket_mid = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX or 0.7)
+    min_confidence = float(settings.KG_SEARCH_RELATION_MIN_CONFIDENCE)
+    max_edges = max(0, int(settings.KG_SEARCH_RELATION_MAX_EDGES)) or 500
+    weight_factor = float(settings.KG_SEARCH_RELATION_NEIGHBOR_WEIGHT_FACTOR)
+    bucket_low = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_LOW_MAX)
+    bucket_mid = float(settings.KG_SEARCH_RELATION_CONF_BUCKET_MID_MAX)
     relation_debug.update(
         {
             "enabled": True,
@@ -1112,9 +1112,9 @@ def _apply_serving_budget(
         [events_by_id[event_id] for event_id in merged_event_ids if event_id in events_by_id],
         event_scores,
         enabled=limits.serving_enabled,
-        max_events_per_chunk=int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK or 0),
-        max_events_per_document=int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT or 0),
-        min_score=float(settings.KG_SEARCH_SERVING_MIN_SCORE or 0.0),
+        max_events_per_chunk=int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_CHUNK),
+        max_events_per_document=int(settings.KG_SEARCH_SERVING_MAX_EVENTS_PER_DOCUMENT),
+        min_score=float(settings.KG_SEARCH_SERVING_MIN_SCORE),
         bypass=_should_bypass_serving_layer(
             mode=str(limits.mode_norm),
             reason_codes=[str(item) for item in (mode_overrides.get("reason_codes") or []) if str(item).strip()],
