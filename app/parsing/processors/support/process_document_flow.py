@@ -1010,15 +1010,15 @@ def _parsed_joined_text(documents: list[Document] | None) -> str:
 
 
 def _magicpdf_available() -> bool:
-    if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+    if not bool(settings.MAGIC_PDF_ENABLED):
         return False
     from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
     from app.parsing.utils.cli import resolve_cli_command
 
-    if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+    if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True
-    cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-    return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", "")))
+    cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+    return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR))
 
 
 def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
@@ -1030,32 +1030,20 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
         ),
         (
             "deepseek_ocr",
-            lambda: (
-                bool(getattr(settings, "DEEPSEEK_OCR_ENABLED", False))
-                and bool((getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip())
-            ),
+            lambda: (bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY or "").strip())),
         ),
         (
             "qianfan_ocr",
-            lambda: (
-                bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-                and bool((getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip())
-            ),
+            lambda: (bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL or "").strip())),
         ),
         (
             "etl4llm",
-            lambda: (
-                bool(getattr(settings, "ETL4LLM_ENABLED", False))
-                and bool((getattr(settings, "ETL4LLM_API_URL", "") or "").strip())
-            ),
+            lambda: (bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL or "").strip())),
         ),
         ("deepdoc", lambda: settings.DEEPDOC_ENABLED),
         (
             "docling",
-            lambda: (
-                bool(getattr(settings, "DOCLING_ENABLED", False))
-                and bool((getattr(settings, "DOCLING_API_URL", "") or "").strip())
-            ),
+            lambda: (bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL or "").strip())),
         ),
         ("magicpdf", _magicpdf_available),
         ("markitdown", lambda: settings.MARKITDOWN_ENABLED),
@@ -2873,10 +2861,10 @@ def _apply_common_chunk_postprocess(
 ) -> dict[str, Any]:
     filtered_chunks = _filter_short_chunks(
         chunks,
-        min_chars=max(0, int(getattr(settings, "CHUNK_MIN_CHARS", 0) or 0)),
+        min_chars=max(0, int(settings.CHUNK_MIN_CHARS or 0)),
         document_id=document_id,
     )
-    dedup_enabled = bool(getattr(settings, "CHUNK_DEDUP_ENABLED", False))
+    dedup_enabled = bool(settings.CHUNK_DEDUP_ENABLED)
     dedup_dropped = 0
     if dedup_enabled and filtered_chunks:
         filtered_chunks, dedup_dropped = _run_chunk_dedup_stage(
@@ -2902,8 +2890,8 @@ def _apply_common_chunk_postprocess(
             enabled=bool(pipeline_effective.table_store_sidecar_exclusive_routing),
             sidecar_tables_imported=table_sidecar_tables_imported,
         )
-    max_chunks_per_document = max(0, int(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT", 0) or 0))
-    truncation_strategy = str(getattr(settings, "MAX_CHUNKS_PER_DOCUMENT_STRATEGY", "head") or "head")
+    max_chunks_per_document = max(0, int(settings.MAX_CHUNKS_PER_DOCUMENT or 0))
+    truncation_strategy = str(settings.MAX_CHUNKS_PER_DOCUMENT_STRATEGY or "head")
     filtered_chunks, truncation_info = _truncate_chunks_for_document(
         filtered_chunks,
         document_id=document_id,
