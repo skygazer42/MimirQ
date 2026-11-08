@@ -36,10 +36,14 @@ def _original_results_map(
     return original_map
 
 
+def _metadata_header_path(metadata: dict[str, Any]) -> str | None:
+    header_path = str(metadata.get("header_path") or metadata.get("header_context") or "").strip()
+    return header_path if header_path else None
+
+
 def _row_header_path(row: Any) -> tuple[dict[str, Any], str | None]:
     stored_meta = dict(getattr(row, "doc_metadata", None) or {})
-    header_path = str(stored_meta.get("header_path") or stored_meta.get("header_context") or "").strip()
-    return stored_meta, header_path or None
+    return stored_meta, _metadata_header_path(stored_meta)
 
 
 def _sibling_metadata(
@@ -147,7 +151,7 @@ def expand_document_siblings(
         meta = result.get("metadata") or {}
         doc_key = str(meta.get("document_id") or "").strip()
         anchor_cid = _result_chunk_id(result)
-        anchor_header_path = str(meta.get("header_path") or meta.get("header_context") or "").strip() or None
+        anchor_header_path = _metadata_header_path(meta)
         anchor_score = float(result.get("score") or 0.0) if result.get("score") is not None else 0.0
 
         if not doc_key or doc_key not in short_doc_ids:

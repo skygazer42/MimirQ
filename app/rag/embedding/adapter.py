@@ -160,7 +160,8 @@ class LangChainEmbeddingsAdapter(Embeddings):
         self._model = model
         self._normalize = normalize
         self._dimension = model.dimension
-        self._cache_space_hash = str(cache_space_hash or "").strip() or None
+        normalized_cache_space_hash = str(cache_space_hash if cache_space_hash is not None else "").strip()
+        self._cache_space_hash = normalized_cache_space_hash if normalized_cache_space_hash else None
 
     def _cache_key(self, text: str) -> str:
         if self._cache_space_hash:

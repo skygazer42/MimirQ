@@ -293,12 +293,15 @@ class _RankingRun(DedupDiversityMixin, FusionMixin, RetrievalPolicyMixin):
             rerank_meta["skip_reason"] = "no_candidates"
             return merged_results
         try:
+            tenant_id = str(self.tenant_id or "").strip()
+            if not tenant_id:
+                tenant_id = None
             start = time.time()
             result = reranker.rerank(
                 query=query,
                 candidates=candidates,
                 top_n=candidates_n,
-                tenant_id=str(self.tenant_id or "").strip() or None,
+                tenant_id=tenant_id,
                 query_type=None,
             )
             rerank_elapsed = result.elapsed_sec or (time.time() - start)

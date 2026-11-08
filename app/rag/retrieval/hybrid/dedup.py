@@ -103,8 +103,11 @@ class DedupDiversityMixin:
         if stats is None:
             return
         stats.clear()
+        retrieval_profile = str(self.retrieval_profile or "").strip().lower()
+        if not retrieval_profile:
+            retrieval_profile = None
         stats["enabled"] = bool(enabled)
-        stats["retrieval_profile"] = str(self.retrieval_profile or "").strip().lower() or None
+        stats["retrieval_profile"] = retrieval_profile
         stats["input_results"] = int(input_count)
 
     @staticmethod
