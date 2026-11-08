@@ -4,7 +4,7 @@ import contextlib
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.models.connector import ConnectorRun
@@ -13,25 +13,15 @@ from app.services.connector_execution.shared.artifacts import (
     _upsert_db_row_sidecar_document,
 )
 from app.services.connector_execution.shared.common import _finalize_connector_stats, _safe_error_str
-from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+    get_active_connector_run as _get_db_catalog_run,
+)
 
 if TYPE_CHECKING:
     from app.connectors.db.catalog_runner import CatalogStore
     from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
-
-
-def _get_db_catalog_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
-    run = (
-        db.query(ConnectorRun)
-        .options(selectinload(ConnectorRun.documents))
-        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-        .first()
-    )
-    if not run:
-        return None
-    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
-        return None
-    return run
 
 
 def _mark_db_catalog_run_running(db: Session, *, run: ConnectorRun) -> None:

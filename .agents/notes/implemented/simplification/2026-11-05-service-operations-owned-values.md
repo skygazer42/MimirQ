@@ -32,6 +32,8 @@ Status: implemented
 
 Dify HTTP 锁适配器和两处检索数据库判断直接读取相同的 SDK 属性，保留原调用绑定、PostgreSQL advisory 锁键及 SQL、非 PostgreSQL 提前返回、检索过滤／排序和 finally 关闭。API 适配器仍持有原回调入口，未引入新的服务导入时点或通用数据库包装层。
 
+Connector execution 的 active run 查询、running 转换、cancelled 收尾和 best-effort failed 记录由 `app.services.connector_execution.shared.runtime` 持有。各 connector 以原私有名导入同一函数，保留 tenant 谓词、documents eager-load、终态过滤、commit/refresh、stats finalize、错误截断以及 config sync 的原顺序；不同的 connector 业务循环和非同体失败流程继续留在各模块。
+
 ## Alternatives considered
 
 - 统一删除反射和转型能得到更整齐的代码，但 SQL Row、raw JSON、SDK 数值和混合异常确实有不同来源；仅收窄已经证明的完整实体与内部记录。

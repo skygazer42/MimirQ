@@ -34,7 +34,12 @@ from app.services.connector_execution.shared.external import (
     _is_http_or_https_url,
     _resolve_tenant_group_ids_by_external_id,
 )
-from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+    finalize_cancelled_connector_run as _finalize_cancelled_confluence_space_run,
+    mark_connector_run_failed as _mark_confluence_space_run_failed,
+)
 from app.services.connector_sync_state import normalize_boundary_ids
 from app.services.document_ingestion_sources import _normalize_datetime_utc_iso
 
@@ -1643,15 +1648,6 @@ def _soft_delete_missing_confluence_pages(
     return disabled
 
 
-def _finalize_cancelled_confluence_space_run(db: Session, *, run: ConnectorRun) -> None:
-    if run.finished_at is None:
-        run.finished_at = _now()
-    run.stats = _finalize_connector_stats(dict(run.stats or {}))
-    db.commit()
-    with contextlib.suppress(Exception):
-        _sync_connector_config_from_run(db, run=run)
-
-
 def _emit_confluence_source_acl_delta_sync_audit(
     db: Session,
     *,
@@ -1726,18 +1722,6 @@ def _finalize_confluence_space_run_success(
     db.commit()
     with contextlib.suppress(Exception):
         _sync_connector_config_from_run(db, run=run)
-
-
-def _mark_confluence_space_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
-    with contextlib.suppress(Exception):
-        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
-        if run is not None:
-            run.status = "failed"
-            run.finished_at = _now()
-            run.error_message = str(exc)[:200]
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
 
 
 def _prepare_confluence_space_run(db: Session, *, run: ConnectorRun) -> dict[str, Any]:

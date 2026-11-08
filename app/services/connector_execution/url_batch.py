@@ -2,7 +2,7 @@ import contextlib
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.api.schemas.document_ingestion import UrlUploadRequest
 from app.core.database import SessionLocal
@@ -21,21 +21,13 @@ from app.services.connector_execution.shared.common import (
     build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import _build_auth_headers
-from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
-
-
-def _get_url_batch_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
-    run = (
-        db.query(ConnectorRun)
-        .options(selectinload(ConnectorRun.documents))
-        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-        .first()
-    )
-    if not run:
-        return None
-    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
-        return None
-    return run
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+    finalize_cancelled_connector_run as _finalize_cancelled_url_batch_run,
+    get_active_connector_run as _get_url_batch_run,
+    mark_connector_run_failed as _mark_url_batch_run_failed,
+)
 
 
 def _mark_url_batch_run_running(db: Session, *, run: ConnectorRun) -> None:
@@ -283,15 +275,6 @@ async def _process_url_batch_urls(
     }
 
 
-def _finalize_cancelled_url_batch_run(db: Session, *, run: ConnectorRun) -> None:
-    if run.finished_at is None:
-        run.finished_at = _now()
-    run.stats = _finalize_connector_stats(dict(run.stats or {}))
-    db.commit()
-    with contextlib.suppress(Exception):
-        _sync_connector_config_from_run(db, run=run)
-
-
 def _finalize_url_batch_run_success(
     db: Session,
     *,
@@ -308,18 +291,6 @@ def _finalize_url_batch_run_success(
     db.commit()
     with contextlib.suppress(Exception):
         _sync_connector_config_from_run(db, run=run)
-
-
-def _mark_url_batch_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
-    with contextlib.suppress(Exception):
-        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
-        if run is not None:
-            run.status = "failed"
-            run.finished_at = _now()
-            run.error_message = str(exc)[:200]
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
 
 
 async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:

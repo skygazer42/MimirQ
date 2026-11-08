@@ -1,12 +1,14 @@
 """Small shared runtime operations used by connector workers."""
 
+import contextlib
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.models.connector import ConnectorRun
 from app.models.connector_config import ConnectorConfig
+from app.services.connector_execution.shared.common import _finalize_connector_stats
 from app.services.connector_sync_state import build_saved_state_snapshot
 
 
@@ -44,3 +46,47 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
         run_status=status,
         recorded_at=run.finished_at or run.started_at or _now(),
     )
+
+
+def get_active_connector_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
+    run = (
+        db.query(ConnectorRun)
+        .options(selectinload(ConnectorRun.documents))
+        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
+        .first()
+    )
+    if not run:
+        return None
+    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+        return None
+    return run
+
+
+def mark_connector_run_running(db: Session, *, run: ConnectorRun) -> None:
+    run.status = "running"
+    run.started_at = _now()
+    run.error_message = None
+    run.stats = dict(run.stats or {})
+    db.commit()
+    db.refresh(run)
+
+
+def finalize_cancelled_connector_run(db: Session, *, run: ConnectorRun) -> None:
+    if run.finished_at is None:
+        run.finished_at = _now()
+    run.stats = _finalize_connector_stats(dict(run.stats or {}))
+    db.commit()
+    with contextlib.suppress(Exception):
+        _sync_connector_config_from_run(db, run=run)
+
+
+def mark_connector_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
+    with contextlib.suppress(Exception):
+        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
+        if run is not None:
+            run.status = "failed"
+            run.finished_at = _now()
+            run.error_message = str(exc)[:200]
+            db.commit()
+            with contextlib.suppress(Exception):
+                _sync_connector_config_from_run(db, run=run)

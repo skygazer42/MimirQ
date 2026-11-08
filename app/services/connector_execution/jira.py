@@ -44,7 +44,12 @@ from app.services.connector_execution.shared.external import (
     _is_link_href_allowed,
     _resolve_tenant_group_ids_by_external_id,
 )
-from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+    finalize_cancelled_connector_run as _finalize_cancelled_jira_project_run,
+    mark_connector_run_running as _mark_jira_project_run_running,
+)
 from app.services.connector_sync_state import normalize_boundary_ids
 from app.services.document_ingestion_sources import _normalize_datetime_utc_iso
 
@@ -1962,19 +1967,6 @@ def _persist_jira_project_progress(
     db.commit()
 
 
-def _finalize_cancelled_jira_project_run(
-    db: Session,
-    *,
-    run: ConnectorRun,
-) -> None:
-    if run.finished_at is None:
-        run.finished_at = _now()
-    run.stats = _finalize_connector_stats(dict(run.stats or {}))
-    db.commit()
-    with contextlib.suppress(Exception):
-        _sync_connector_config_from_run(db, run=run)
-
-
 def _finalize_jira_project_run(
     db: Session,
     *,
@@ -2373,15 +2365,6 @@ def _get_jira_project_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> Conn
         .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
         .first()
     )
-
-
-def _mark_jira_project_run_running(db: Session, *, run: ConnectorRun) -> None:
-    run.status = "running"
-    run.started_at = _now()
-    run.error_message = None
-    run.stats = dict(run.stats or {})
-    db.commit()
-    db.refresh(run)
 
 
 def _mark_jira_project_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:

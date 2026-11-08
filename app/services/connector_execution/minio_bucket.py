@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.api.schemas.document_ingestion import UrlUploadRequest
 from app.core.database import SessionLocal
@@ -28,7 +28,14 @@ from app.services.connector_execution.shared.common import (
     _finalize_connector_stats,
     build_ingestion_options,
 )
-from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+    finalize_cancelled_connector_run as _finalize_cancelled_minio_bucket_run,
+    get_active_connector_run as _get_minio_bucket_run,
+    mark_connector_run_failed as _mark_minio_bucket_run_failed,
+    mark_connector_run_running as _mark_minio_bucket_run_running,
+)
 from app.services.connector_sync_state import get_resume_cursor, normalize_source_manifest
 
 if TYPE_CHECKING:
@@ -36,29 +43,6 @@ if TYPE_CHECKING:
     from minio.datatypes import Object
 
     from app.storage.object.minio import MinIOService
-
-
-def _get_minio_bucket_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
-    run = (
-        db.query(ConnectorRun)
-        .options(selectinload(ConnectorRun.documents))
-        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-        .first()
-    )
-    if not run:
-        return None
-    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
-        return None
-    return run
-
-
-def _mark_minio_bucket_run_running(db: Session, *, run: ConnectorRun) -> None:
-    run.status = "running"
-    run.started_at = _now()
-    run.error_message = None
-    run.stats = dict(run.stats or {})
-    db.commit()
-    db.refresh(run)
 
 
 def _normalize_minio_include_set(values: object) -> set[str]:
@@ -435,15 +419,6 @@ async def _process_minio_bucket_objects(
     }
 
 
-def _finalize_cancelled_minio_bucket_run(db: Session, *, run: ConnectorRun) -> None:
-    if run.finished_at is None:
-        run.finished_at = _now()
-    run.stats = _finalize_connector_stats(dict(run.stats or {}))
-    db.commit()
-    with contextlib.suppress(Exception):
-        _sync_connector_config_from_run(db, run=run)
-
-
 def _reconcile_removed_minio_bucket_paths(
     db: Session,
     *,
@@ -506,18 +481,6 @@ def _finalize_minio_bucket_run_success(
     db.commit()
     with contextlib.suppress(Exception):
         _sync_connector_config_from_run(db, run=run)
-
-
-def _mark_minio_bucket_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
-    with contextlib.suppress(Exception):
-        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
-        if run is not None:
-            run.status = "failed"
-            run.finished_at = _now()
-            run.error_message = str(exc)[:200]
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
 
 
 async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:

@@ -4,7 +4,7 @@ import contextlib
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.api.schemas.document_ingestion import UrlUploadRequest
 from app.core.database import SessionLocal
@@ -34,7 +34,14 @@ from app.services.connector_execution.shared.common import (
     build_ingestion_options,
 )
 from app.services.connector_execution.shared.external import _build_auth_headers
-from app.services.connector_execution.shared.runtime import _now, _sync_connector_config_from_run
+from app.services.connector_execution.shared.runtime import (
+    _now,
+    _sync_connector_config_from_run,
+    finalize_cancelled_connector_run as _finalize_cancelled_web_crawl_run,
+    get_active_connector_run as _get_web_crawl_run,
+    mark_connector_run_failed as _mark_web_crawl_run_failed,
+    mark_connector_run_running as _mark_web_crawl_run_running,
+)
 
 if TYPE_CHECKING:
     from app.services.web_crawler import WebCrawlResult
@@ -73,29 +80,6 @@ def _build_web_crawl_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         ),
         "auth_headers": _build_auth_headers(cfg),
     }
-
-
-def _get_web_crawl_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> ConnectorRun | None:
-    run = (
-        db.query(ConnectorRun)
-        .options(selectinload(ConnectorRun.documents))
-        .filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id)
-        .first()
-    )
-    if not run:
-        return None
-    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
-        return None
-    return run
-
-
-def _mark_web_crawl_run_running(db: Session, *, run: ConnectorRun) -> None:
-    run.status = "running"
-    run.started_at = _now()
-    run.error_message = None
-    run.stats = dict(run.stats or {})
-    db.commit()
-    db.refresh(run)
 
 
 def _web_crawl_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
@@ -275,15 +259,6 @@ async def _process_web_crawl_urls(
     }
 
 
-def _finalize_cancelled_web_crawl_run(db: Session, *, run: ConnectorRun) -> None:
-    if run.finished_at is None:
-        run.finished_at = _now()
-    run.stats = _finalize_connector_stats(dict(run.stats or {}))
-    db.commit()
-    with contextlib.suppress(Exception):
-        _sync_connector_config_from_run(db, run=run)
-
-
 def _reconcile_removed_web_crawl_urls(
     db: Session,
     *,
@@ -344,18 +319,6 @@ def _finalize_web_crawl_run_success(
     db.commit()
     with contextlib.suppress(Exception):
         _sync_connector_config_from_run(db, run=run)
-
-
-def _mark_web_crawl_run_failed(db: Session, *, run_id: UUID, tenant_id: UUID, exc: Exception) -> None:
-    with contextlib.suppress(Exception):
-        run = db.query(ConnectorRun).filter(ConnectorRun.id == run_id, ConnectorRun.tenant_id == tenant_id).first()
-        if run is not None:
-            run.status = "failed"
-            run.finished_at = _now()
-            run.error_message = str(exc)[:200]
-            db.commit()
-            with contextlib.suppress(Exception):
-                _sync_connector_config_from_run(db, run=run)
 
 
 async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
