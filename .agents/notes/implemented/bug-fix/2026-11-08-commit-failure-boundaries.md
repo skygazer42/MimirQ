@@ -1,0 +1,26 @@
+# Agent Note: Commit failures follow the owning transaction boundary
+
+Status: implemented
+
+## Problem
+
+Audit-only commits and compensating failure-state writes silently lost persistence errors. Background scan handlers attempted compensation on a failed transaction without first rolling it back, and could lose the original scan exception from the logs.
+
+## Decision
+
+The API audit branches retain the documented fail-open contract in `audit_log_service.py`. They roll back failed audit transactions and log warnings with exception tracebacks. A rollback failure propagates; there is no nested suppression that reports an unusable Session as healthy.
+
+Profile and precheck background handlers log the original scan exception and roll back before querying the run for compensation. Failed compensation is separately rolled back and logged. Their existing background isolation policy remains; enqueue callers still return their explicit 503 when enqueue fails.
+
+This complements [dataset audit degradation](2026-11-08-dataset-audit-degradation.md) and [document mutation contracts](2026-11-05-document-mutation-contracts.md): audit, QA statistics and optional usage counters are distinct from authoritative document/version writes. The acceptance tests also prove document version KG cleanup failure produces an HTTP 500.
+
+## Alternatives considered
+
+- Propagate every audit commit failure: this would turn already committed operations into apparent failures and contradict the existing audit contract.
+- Keep silent compensation and rely on failed-state rows: the compensating transaction can itself fail, so rows alone cannot make the original failure observable.
+
+## Consequences
+
+Successful audit degradation does not guarantee an audit row exists; warnings now expose that loss. Primary operation commits retain their existing propagation behavior. Background failure-state persistence can still fail, but its exception and the original failure remain visible. No retry, replacement store or fabricated success value is introduced.
+
+The API regression suite fails in 11 cases before these changes and passes afterward. Desktop acceptance tests fail in 9 cases under temporary restoration of the old silent branches and pass with the source restored. Full commands and outputs are recorded in the plan progress ledger; tests use injected Session failures without database, parser or model services.

@@ -232,6 +232,8 @@ def _run_precheck_scan_background(
     try:
         run_dataset_precheck_scan(db, tenant_id=tenant_id, dataset_id=dataset_id, scan_run_id=scan_run_id)
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Dataset precheck scan failed: scan_run_id=%s", scan_run_id)
+        db.rollback()
         try:
             row = (
                 db.query(DBDatasetPrecheckScanRun)

@@ -426,10 +426,8 @@ def purge_audit_logs(
         )
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning("Audit purge completed but its audit record failed", exc_info=True)
 
     return AuditLogPurgeResponse(
         dry_run=params.dry_run,
@@ -516,10 +514,8 @@ def _delete_audit_logs_by_id(
         )
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug("Ignoring non-critical audit delete fallback failure: %s", exc)
+        db.rollback()
+        logger.warning("Audit deletion completed but its audit record failed", exc_info=True)
 
     return AuditLogDeleteResponse(
         requested=len(unique_ids),
@@ -796,10 +792,8 @@ def _audit_access_graph_export(
         )
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning("Access graph export audit failed", exc_info=True)
 
 
 def _build_access_graph_headers(next_cursor: dict[str, Any] | None) -> dict[str, str]:
@@ -1030,9 +1024,7 @@ def access_graph_summary(
         )
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_AUDIT_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning("Access graph summary audit failed", exc_info=True)
 
     return payload

@@ -111,3 +111,15 @@ Phase 1E complete: commit `9b8eb9127`（基于并行 `a1a8db2c6`）。`datasets.
 新增 tests/test_commit_boundary_acceptance.py，9 个运行时用例覆盖八组提交（含文档审计与真实删除路由 500）。临时 patch 仅恢复旧的静默分支和版本 cleanup 的吞错分支；同一套测试 9 failed，9.34s（desktop-acceptance-red.txt），finally 按原字节恢复全部 8 文件并核对 hash 相等。未提交回退。当前版本初次 9 passed，5.96s；恢复后与现有测试组合结果见 desktop-restored-green.txt。
 
 Ruff 审查发现 Desktop 的 routes.py 遗留 F401 contextlib，删除该导入；其余十个文件 check 和全部十一文件 format 通过。routes.py 修改前 hash 19fd6c18c03a28fbd1bbc5a74116add178f9e15d，修改后见本次 hash 命令。此提交不调整其事务语义。所有验证仍仅借用指定解释器，未启动外部服务。
+
+## 第二提交：剩余 API 审计与后台补偿
+
+上一提交 773f70281（6 files, +392/-1）；routes.py 修改后 hash 3fc6d5644fef2c2a397066ae214422acdec6335e；恢复后的组合测试 34 passed / 2 integration skips。
+
+本组 audit.py 原 427/517/797/1031、evidence.py 原 243、evaluations.py 原 1912 均为已完成操作后的独立审计；主删除服务使用 commit=True，失败不会到达审计分支。沿 audit_log_service.py:4 保留 fail-open，删除嵌套 rollback 吞错，增加 warning+exc_info。
+
+datasets.py 原 226（现 _mark_dataset_profile_scan_run_failed）是 enqueue 失败后的补偿；调用者仍 raise 503，不当成功。补偿失败保留 rollback，debug 改带堆栈 warning。原 1957/3000/3101 已由 9b8eb9127 的 _commit_dataset_audit 覆盖，非剩余主写入。
+
+datasets.py 原 2416 与 precheck 原 244 是后台顶层失败状态补偿：先记录原异常、rollback 恢复事务，再更新 failed 行；补偿失败独立 rollback/warning。precheck 原 179 已由 Desktop 处理且有 acceptance 测试。
+
+新增 test_api_commit_failure_boundaries.py：修复前 11 failed（均缺少目标异常观察/事务恢复），修复后与 Desktop/scan queue 现有测试 42 passed，9.35s；6 文件 Ruff check/format 均通过。新增分支为零，仅修正已有 catch 的责任；原始异常在补偿失败前已经日志记录。每文件 log -3 与 hash 记录在 api-hashes-before/after.json。新决定 note 记录审计与补偿边界，引用既有两篇 owner note。

@@ -254,9 +254,9 @@ def _mark_dataset_profile_scan_run_failed(
     row.updated_at = failed_at
     try:
         db.commit()
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - compensation must preserve the enqueue failure
         db.rollback()
-        logger.debug("Ignoring dataset profile enqueue failure status update failure: %s", exc)
+        logger.warning("Failed to persist profile enqueue failure state: scan_run_id=%s", row.id, exc_info=True)
 
 
 def _dataset_pipeline_out(ds: Dataset) -> DocumentPipelineOptions | None:
@@ -2405,6 +2405,8 @@ def _run_deep_scan_background(
             scan_run_id=scan_run_id,
         )
     except Exception as exc:  # noqa: BLE001
+        logger.exception("Dataset profile scan failed: scan_run_id=%s", scan_run_id)
+        db.rollback()
         try:
             row = (
                 db.query(DBDatasetProfileScanRun)
@@ -2419,8 +2421,9 @@ def _run_deep_scan_background(
                 row.status = "failed"
                 row.error_message = str(exc)[:200]
                 db.commit()
-        except Exception as exc:
-            logger.debug(_DATASET_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+        except Exception:  # noqa: BLE001 - background failure-state compensation
+            db.rollback()
+            logger.warning("Failed to persist profile scan failure state: scan_run_id=%s", scan_run_id, exc_info=True)
     finally:
         unregister_local_scan_run_active(
             kind="profile",

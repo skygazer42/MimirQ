@@ -1911,10 +1911,8 @@ def purge_ragas_regression_runs(
         )
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning("Regression purge completed but its audit record failed", exc_info=True)
 
     return {
         "dry_run": bool(dry_run),

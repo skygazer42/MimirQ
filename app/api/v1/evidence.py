@@ -242,10 +242,8 @@ def _audit_reference_repair_enqueue(
         )
         db.commit()
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug("Ignoring non-critical evidence router fallback failure: %s", exc)
+        db.rollback()
+        logger.warning("Reference repair enqueue audit failed", exc_info=True)
 
 
 def _configure_async_repair_response(response: Response | None, *, task_id: str | None) -> None:
