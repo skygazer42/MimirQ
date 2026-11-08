@@ -288,7 +288,7 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
         return [
             _build_canonicalized_entity(
                 name=raw_name,
-                normalized_name=str(ent.get("normalized_name") or "").strip() or None,
+                normalized_name=str(ent.get("normalized_name") or "").strip(),
                 ent_type=ent_type,
                 description=description,
                 role=role,
@@ -302,7 +302,7 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
         return [
             _build_canonicalized_entity(
                 name=raw_name,
-                normalized_name=str(ent.get("normalized_name") or "").strip() or None,
+                normalized_name=str(ent.get("normalized_name") or "").strip(),
                 ent_type=ent_type,
                 description=description,
                 role=role,
@@ -315,7 +315,7 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
         return [
             _build_canonicalized_entity(
                 name=raw_name,
-                normalized_name=str(ent.get("normalized_name") or "").strip() or None,
+                normalized_name=str(ent.get("normalized_name") or "").strip(),
                 ent_type=ent_type,
                 description=description,
                 role=role,
@@ -2530,13 +2530,14 @@ def _relation_refs_for_chunk(
     source_val = meta_dict.get("source")
     if isinstance(source_val, str) and source_val.strip():
         refs["source"] = source_val.strip()
-    pipeline_hash_val = meta_dict.get("pipeline_hash") or meta_dict.get("active_pipeline_hash")
-    if isinstance(pipeline_hash_val, str) and pipeline_hash_val.strip():
-        refs["pipeline_hash"] = pipeline_hash_val.strip()[:200]
+    pipeline_hash: str | None = None
+    pipeline_hash_value = meta_dict.get("pipeline_hash") or meta_dict.get("active_pipeline_hash")
+    if isinstance(pipeline_hash_value, str) and pipeline_hash_value.strip():
+        pipeline_hash = pipeline_hash_value.strip()[:200]
+        refs["pipeline_hash"] = pipeline_hash
     refs["chunk_key"] = chunk_key_by_id.get(chunk.id) or str(chunk.chunk_index)
     refs["content_hash"] = chunk_hash_by_id.get(chunk.id) or ""
     refs["content_len"] = int(chunk_len_by_id.get(chunk.id, 0) or 0)
-    pipeline_hash = str(refs.get("pipeline_hash") or "").strip() or None
     return refs, pipeline_hash
 
 
@@ -4135,7 +4136,7 @@ class EventExtractor:
         requested_backend = str(config.extraction_backend or "").strip().lower() or None
         auto_backend_reason: str | None = None
         if requested_backend is None:
-            long_doc_backend = str(settings.KG_EXTRACT_LONG_DOC_BACKEND or "").strip().lower() or None
+            long_doc_backend = settings.KG_EXTRACT_LONG_DOC_BACKEND.strip().lower()
             long_doc_min_chunks = max(0, int(settings.KG_EXTRACT_LONG_DOC_MIN_CHUNKS or 0))
             if long_doc_backend and long_doc_min_chunks > 0 and len(resolved_chunks) >= long_doc_min_chunks:
                 requested_backend = long_doc_backend
