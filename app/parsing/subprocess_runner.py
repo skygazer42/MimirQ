@@ -57,7 +57,7 @@ def _start_subprocess_worker_fallback(
 
 
 def _get_subprocess_workdir(*, _tenant_id: UUID) -> Path:
-    root = Path(getattr(settings, "UPLOAD_DIR", "uploads"))
+    root = Path(settings.UPLOAD_DIR)
     return (root / str(_tenant_id) / ".subprocess").resolve(strict=False)
 
 
@@ -173,7 +173,7 @@ def _read_log_tail(path: Path, *, max_bytes: int = 16_000) -> str:
 
 def _write_payload_file(*, payload_path: Path, payload: dict[str, Any]) -> None:
     payload_json = json.dumps(payload, ensure_ascii=False, default=str)
-    max_payload_bytes = int(getattr(settings, "SUBPROCESS_PAYLOAD_MAX_BYTES", 0) or 0)
+    max_payload_bytes = settings.SUBPROCESS_PAYLOAD_MAX_BYTES
     if max_payload_bytes > 0:
         payload_bytes = payload_json.encode("utf-8", errors="ignore")
         if len(payload_bytes) > max_payload_bytes:
@@ -262,7 +262,7 @@ async def _monitor_subprocess_worker(
     log_path: Path,
 ) -> None:
     start = time.monotonic()
-    max_log_bytes = int(getattr(settings, "SUBPROCESS_LOG_MAX_BYTES", 0) or 0)
+    max_log_bytes = settings.SUBPROCESS_LOG_MAX_BYTES
     while True:
         poll = getattr(process, "poll", None)
         if callable(poll):
@@ -294,7 +294,7 @@ def _load_worker_result(*, process: Any, result_path: Path, log_path: Path) -> d
             log_tail=_read_log_tail(log_path),
         )
 
-    max_result_bytes = int(getattr(settings, "SUBPROCESS_RESULT_MAX_BYTES", 0) or 0)
+    max_result_bytes = settings.SUBPROCESS_RESULT_MAX_BYTES
     if max_result_bytes > 0:
         try:
             size = int(result_path.stat().st_size)

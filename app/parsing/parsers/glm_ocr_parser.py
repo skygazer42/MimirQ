@@ -55,10 +55,10 @@ class GlmOCRParser:
     STANDARD_MARKDOWN_NAME = "result.md"
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "GLM_OCR_ENABLED", False))
-        self._api_url = (getattr(settings, "GLM_OCR_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "GLM_OCR_TIMEOUT_SEC", 600) or 600)
-        self._pipeline_version = (getattr(settings, "GLM_OCR_PIPELINE_VERSION", "") or "").strip()
+        self._enabled = settings.GLM_OCR_ENABLED
+        self._api_url = settings.GLM_OCR_API_URL.strip()
+        self._timeout_sec = float(settings.GLM_OCR_TIMEOUT_SEC or 600)
+        self._pipeline_version = settings.GLM_OCR_PIPELINE_VERSION.strip()
 
         if not self._enabled:
             raise RuntimeError("GLM-OCR is disabled (GLM_OCR_ENABLED=false).")

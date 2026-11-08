@@ -54,10 +54,10 @@ class QianfanOCRParser:
     """
 
     def __init__(self) -> None:
-        self._enabled = bool(getattr(settings, "QIANFAN_OCR_ENABLED", False))
-        self._api_url = (getattr(settings, "QIANFAN_OCR_API_URL", "") or "").strip()
-        self._timeout_sec = float(getattr(settings, "QIANFAN_OCR_TIMEOUT_SEC", 1800) or 1800)
-        self._layout_as_thought = bool(getattr(settings, "QIANFAN_OCR_LAYOUT_AS_THOUGHT", False))
+        self._enabled = settings.QIANFAN_OCR_ENABLED
+        self._api_url = settings.QIANFAN_OCR_API_URL.strip()
+        self._timeout_sec = float(settings.QIANFAN_OCR_TIMEOUT_SEC or 1800)
+        self._layout_as_thought = settings.QIANFAN_OCR_LAYOUT_AS_THOUGHT
 
         if not self._enabled:
             raise RuntimeError("Qianfan-OCR is disabled (QIANFAN_OCR_ENABLED=false).")
