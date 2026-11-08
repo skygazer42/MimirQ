@@ -136,7 +136,7 @@ def _resolve_model_dir(model_dir: str | None = None) -> Path | None:
         path = Path(explicit)
         return path if _has_required_model_files(path) else None
 
-    configured = str(getattr(settings, "SEAL_RECOGNITION_MODEL_DIR", "") or "").strip()
+    configured = settings.SEAL_RECOGNITION_MODEL_DIR.strip()
     if configured:
         path = Path(configured)
         return path if _has_required_model_files(path) else None
@@ -262,7 +262,7 @@ def detect_seal_regions(image: PILImage.Image, *, max_regions: int | None = None
         key=lambda item: (item.detection_score, (item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])),
         reverse=True,
     )
-    limit = max(1, int(max_regions or getattr(settings, "SEAL_RECOGNITION_MAX_REGIONS_PER_PAGE", 3) or 3))
+    limit = max(1, int(max_regions or settings.SEAL_RECOGNITION_MAX_REGIONS_PER_PAGE or 3))
     return regions[:limit]
 
 
@@ -277,9 +277,7 @@ def _detect_and_recognize_seal_candidates(
         return [], 0
 
     threshold_value = float(
-        threshold
-        if threshold is not None
-        else getattr(settings, "SEAL_RECOGNITION_THRESHOLD", _DEFAULT_THRESHOLD) or _DEFAULT_THRESHOLD
+        threshold if threshold is not None else settings.SEAL_RECOGNITION_THRESHOLD or _DEFAULT_THRESHOLD
     )
     regions = detect_seal_regions(image)
     region_count = len(regions)
@@ -355,7 +353,7 @@ def extract_seal_documents_from_pdf(
     source: str,
     parser_backend: str = "deepdoc",
 ) -> list[Document]:
-    if not bool(getattr(settings, "SEAL_RECOGNITION_ENABLED", False)):
+    if not settings.SEAL_RECOGNITION_ENABLED:
         return []
     if _resolve_model_dir() is None:
         return []
@@ -365,8 +363,8 @@ def extract_seal_documents_from_pdf(
     except Exception:
         return []
 
-    dpi = max(72, int(getattr(settings, "SEAL_RECOGNITION_PDF_DPI", 144) or 144))
-    max_pages = max(0, int(getattr(settings, "SEAL_RECOGNITION_MAX_PAGES", 0) or 0))
+    dpi = max(72, settings.SEAL_RECOGNITION_PDF_DPI or 144)
+    max_pages = max(0, settings.SEAL_RECOGNITION_MAX_PAGES)
     scale = float(dpi) / 72.0
     docs: list[Document] = []
 
