@@ -368,7 +368,7 @@ def _top_relevance_score(metrics: dict[str, Any]) -> float:
     raw = metrics.get("top_relevance_score")
     try:
         return float(raw) if raw is not None else 0.0
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0.0
 
 
@@ -378,10 +378,7 @@ def _build_iterative_fallback_state(
     fallback_profile: str,
     fallback_mode: str,
 ) -> dict[str, Any]:
-    try:
-        base_k = int(state.get("top_k") or 0)
-    except Exception:
-        base_k = 0
+    base_k = state["top_k"]
     if fallback_profile == "recall20":
         fallback_k = max(base_k, 20)
     elif fallback_profile == "recall50":
@@ -408,12 +405,8 @@ async def _maybe_apply_iterative_retrieval_fallback(
     abstain_triggered: bool,
     has_evidence: bool,
 ) -> _IterativeRetrievalResult:
-    try:
-        iterative_enabled = bool(settings.EVIDENCE_ITERATIVE_RETRIEVE_ENABLED)
-        max_passes = max(1, int(settings.EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES))
-    except Exception:
-        iterative_enabled = False
-        max_passes = 1
+    iterative_enabled = settings.EVIDENCE_ITERATIVE_RETRIEVE_ENABLED
+    max_passes = max(1, settings.EVIDENCE_ITERATIVE_RETRIEVE_MAX_PASSES)
 
     result: _IterativeRetrievalResult = {
         "citations": citations,

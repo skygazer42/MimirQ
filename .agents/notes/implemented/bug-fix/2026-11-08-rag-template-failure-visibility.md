@@ -8,6 +8,8 @@ Status: implemented
 
 数据集默认配置读取也在整个查询和合并流程外捕获所有异常。一次数据库或配置合并故障会被表示为没有数据集默认值，提示词与模板继承因此一起丢失。
 
+迭代检索又在执行前把非法 Settings 转换成关闭功能，并把缺失或错误的内部 `top_k` 归零。调用方无法区分正常关闭与配置／状态损坏。
+
 提示词预览与 LangGraph 生成链在所选模板解析失败后静默改用引擎默认模板，响应中的模板来源因此可能与实际使用内容不一致。提示词 schema 允许空字符串，但消费者以真值判断再次把它解释为没有选择模板。
 
 ## Decision
@@ -21,6 +23,8 @@ Status: implemented
 聊天和预览的数据集默认配置准备函数同样直接传播查询和合并错误。实际无共同数据集仍返回未应用默认值；原始 metadata 的存在性和字典校验由 `load_dataset_metadata` 持有，消费端不再重复猜测它的返回类型。原始 `rag_defaults` 的 schema 解析继续由现有合并模块处理，本次不重定义历史 JSON 的准入规则。
 
 提示词预览与 `_build_generation_chain` 仅在内容为 `None` 时使用引擎默认模板；已选择的空字符串也直接进入 `ChatPromptTemplate.from_template`。预览把模板解析纳入已有的渲染错误入口，使用原有 `400 / Prompt render failed` 响应；生成链把解析错误交给既有调用方，不再使用另一份模板继续。两处都直接消费 schema/状态字段中的文本，不用 `str` 掩盖错误类型。
+
+迭代检索直接读取声明为 bool/int 的配置，次数仍按原规则至少为一。备用状态直接读取实际 `build_rag_state` 产生且经 profile 处理的整数 `top_k`，缺字段或非法值不能伪装成零预算；20／50／80 候选下限与初次结果选择规则保持。相关性分数属于原始检索 metrics，标准数值转换失败仍按原规则返回零，只捕获 TypeError、ValueError 和 OverflowError。
 
 本决定接续[聊天运行时类型契约](../simplification/2026-11-03-chat-runtime-typed-contracts.md)和[模型退出边界](../architecture/2026-11-05-retire-in-process-models.md)。前者的实际模型字段和 analytics 归属、后者的最终模型选择校验继续有效；这里把其他真实模板解析错误也交还调用方。
 
