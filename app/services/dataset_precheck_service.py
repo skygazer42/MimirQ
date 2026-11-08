@@ -407,7 +407,7 @@ def upsert_precheck_sample_review_for_row(
     review = {
         "review_disposition": str(disposition),
         "reviewed_at": datetime.now(UTC).isoformat(),
-        "reviewed_by": str(account_id or "").strip() or None,
+        "reviewed_by": account_id,
     }
     reviews[str(file_name)] = review
     path.write_text(json.dumps(reviews, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -296,7 +296,7 @@ def _ensure_dify_trace_conversation(
         now = datetime.now(UTC)
         conversation = Conversation(
             tenant_id=tenant_id,
-            owner_account_id=account_id.strip() or None,
+            owner_account_id=account_id,
             title=_dify_trace_title(question),
             title_source="auto",
             document_ids=[],

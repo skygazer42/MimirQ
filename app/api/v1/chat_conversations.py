@@ -307,7 +307,7 @@ def create_conversation(
 
     conversation = Conversation(
         tenant_id=tenant_id,
-        owner_account_id=str(account_id or "").strip() or None,
+        owner_account_id=account_id,
         title=requested_title or None,
         title_source=CONVERSATION_TITLE_SOURCE_MANUAL if requested_title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,

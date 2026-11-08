@@ -147,7 +147,7 @@ def _create_external_conversation(
     title = request.title
     conversation = Conversation(
         tenant_id=tenant_id,
-        owner_account_id=account_id.strip() or None,
+        owner_account_id=account_id,
         title=title,
         title_source=CONVERSATION_TITLE_SOURCE_MANUAL if title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=dataset_id,

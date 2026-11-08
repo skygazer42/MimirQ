@@ -234,7 +234,7 @@ def _create_conversation(
     conversation = Conversation(
         id=uuid4(),
         tenant_id=tenant_id,
-        owner_account_id=account_id.strip() or None,
+        owner_account_id=account_id,
         title_source=CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
         document_ids=allowed_doc_ids,
