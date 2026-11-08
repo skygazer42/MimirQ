@@ -869,7 +869,7 @@ def _normalize_region(region: str | None = None) -> str:
 
 
 def _load_vector_region_backends() -> dict[str, str]:
-    raw = getattr(settings, "VECTOR_REGION_BACKENDS", "") or ""
+    raw = settings.VECTOR_REGION_BACKENDS or ""
     if isinstance(raw, Mapping):
         source = dict(raw)
     else:
@@ -902,12 +902,12 @@ def _resolve_vector_backend(*, backend: str | None = None, region: str | None = 
 
 def _embedding_client_cache_token() -> str:
     provider = EmbeddingProviders.PROVIDER_MAP.get(
-        str(getattr(settings, "EMBEDDING_PROVIDER", "openai_compatible") or "openai_compatible").strip().lower(),
+        str(settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower(),
         "openai_compatible",
     )
-    model = str(getattr(settings, "EMBEDDING_MODEL", "") or "text-embedding-3-small").strip()
-    api_base = str(getattr(settings, "EMBEDDING_API_BASE", "") or getattr(settings, "LLM_API_BASE", "") or "").strip()
-    api_key = str(getattr(settings, "EMBEDDING_API_KEY", "") or getattr(settings, "LLM_API_KEY", "") or "").strip()
+    model = str(settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
+    api_base = str(settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "").strip()
+    api_key = str(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or "").strip()
     dimension = str(getattr(settings, "EMBEDDING_DIMENSION", "") or "").strip()
     api_key_hash = stable_hash(api_key, length=16) if api_key else ""
     return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}|{dimension}", length=24)
