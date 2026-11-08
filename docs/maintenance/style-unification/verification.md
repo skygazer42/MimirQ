@@ -1914,3 +1914,26 @@
 未启动真实服务、模型、数据库、迁移或浏览器，也未执行Python业务。真实页面验证仍受此前自动审批拒绝启动本地Next服务的限制，没有更换入口绕过。源码检查、受控DOM用例和构建各自只证明其实际范围。
 
 本轮本地证据位于ragvia-consolidation-20261106：final-static-and-tests.json、vitest-final.json、gates-final.json、python-static.json、production-build.json、build-source-manifest.json、coverage-update.json，以及management-integration-report.json和knowledge-integration-report.md。远程发布、分支清理及原工作区保留结果另以最终交付记录核对，不创建恢复分支或归档ref。
+
+## 2026-11-08：RAG 配置准备和反馈引用续作
+
+本轮基于 `9f30f485f` 继续，源码提交如下；分支其他历史提交和工作树改动保留各自归属。
+
+| 提交 | 实际改动 |
+|---|---|
+| `7eedc5e48` | 聊天、预览的模板查询／补丁错误向上传播，复杂选择器改为普通逻辑或。|
+| `e2e4a858c` | 两处数据集默认配置查询／合并错误向上传播；消费实际 loader 的字典返回契约。|
+| `bff05b1c1` | 使用次数失败日志读取写入前保存的 ID，避免 rollback 后重新加载 ORM 字段。|
+| `f460121c4` | 生成和预览使用已选提示词，包括空字符串；预览解析进入原 400 渲染错误入口。|
+| `f2f527856` | 反馈引用解析仅捕获标准转换异常，直接读取真实可选用户消息的 content。|
+
+五个实际生产文件为 `app/api/v1/rag.py`、`app/services/chat_bootstrap_runtime.py`、`app/services/rag_config_template_resolver.py`、`app/rag/pipelines/langgraph.py`、`app/services/evidence_feedback_materialization.py`。使用现有 `E:/MimirQ/.venv/Scripts/python.exe`（Python 3.12.14，Ruff 0.15.9）运行以下限定检查：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/api/v1/rag.py app/services/chat_bootstrap_runtime.py app/services/rag_config_template_resolver.py app/rag/pipelines/langgraph.py app/services/evidence_feedback_materialization.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/api/v1/rag.py app/services/chat_bootstrap_runtime.py app/services/rag_config_template_resolver.py app/rag/pipelines/langgraph.py app/services/evidence_feedback_materialization.py
+```
+
+每个源码批次的工作树和暂存 blob 均通过 Python 3.11 AST 解析与源码编译。完整模块 AST 对照只允许相应的异常包装退出、选择器／提示词条件调整、实际字段读取及日志 ID 快照；其余结构与各批当前 HEAD 相同。核对已安装 SQLAlchemy rollback 的属性过期实现和 LangChain 模板构造器源码，没有执行这些业务路径。136 篇 Note 的目录／链接、格式及归档门禁通过。
+
+覆盖清单从 5,267 项调整到 5,341 项：97 个已跟踪新增路径补登记，23 个不再跟踪的路径从清单移除；旧结论仍归属于其原验证版本。清单完整性检查比较 `git ls-files` 与全部 CSV path，检查重复路径、必填列及状态枚举。本轮 Python 测试不新增、不修改、不运行；真实 API、数据库故障注入、检索、提示词生成、模型、前端与生产构建均未执行，不能据此宣称当前全仓运行验收完成。
