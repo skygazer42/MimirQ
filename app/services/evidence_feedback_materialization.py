@@ -12,12 +12,12 @@ from app.models.feedback import MessageFeedback
 def _safe_uuid_text(value: Any) -> str | None:
     if value is None:
         return None
+    text = str(value).strip()
+    if not text:
+        return None
     try:
-        text = str(value).strip()
-        if not text:
-            return None
         return str(UUID(text))
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -29,11 +29,11 @@ def _safe_text(value: Any, *, max_len: int = 2000) -> str | None:
 
 
 def _safe_int(value: Any, *, min_value: int | None = None) -> int | None:
+    if value is None:
+        return None
     try:
-        if value is None:
-            return None
         out = int(value)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return None
     if min_value is not None and out < min_value:
         return None
@@ -135,7 +135,8 @@ def materialize_feedback_case(
     dataset_id = _safe_uuid_text(meta.get("dataset_id")) or _safe_uuid_text(conversation.dataset_id)
     request_id = str(meta.get("request_id") or "").strip()
 
-    question = str(getattr(user_message, "content", "") or "").strip() or "(missing user question)"
+    question = user_message.content if user_message is not None else ""
+    question = question.strip() or "(missing user question)"
     reference_sources = normalize_reference_sources(assistant.citations)
     if not reference_sources and isinstance(trace_payload, dict):
         reference_sources = normalize_reference_sources(trace_payload.get("citations"))
