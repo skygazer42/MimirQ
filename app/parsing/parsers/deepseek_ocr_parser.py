@@ -117,14 +117,14 @@ class DeepSeekOCRParser:
     """
 
     def __init__(self) -> None:
-        self._api_key = (getattr(settings, "SILICONFLOW_API_KEY", "") or "").strip()
-        self._api_base = (getattr(settings, "SILICONFLOW_API_BASE", "") or "https://api.siliconflow.cn/v1").strip()
-        self._model = (getattr(settings, "DEEPSEEK_OCR_MODEL", "") or "deepseek-ai/DeepSeek-OCR").strip()
+        self._api_key = settings.SILICONFLOW_API_KEY.strip()
+        self._api_base = (settings.SILICONFLOW_API_BASE or "https://api.siliconflow.cn/v1").strip()
+        self._model = (settings.DEEPSEEK_OCR_MODEL or "deepseek-ai/DeepSeek-OCR").strip()
 
-        self._timeout_sec = float(getattr(settings, "DEEPSEEK_OCR_TIMEOUT_SEC", 120) or 120)
-        self._max_tokens = int(getattr(settings, "DEEPSEEK_OCR_MAX_TOKENS", 4096) or 4096)
-        self._temperature = float(getattr(settings, "DEEPSEEK_OCR_TEMPERATURE", 0.1) or 0.1)
-        self._pdf_dpi = int(getattr(settings, "DEEPSEEK_OCR_PDF_DPI", 200) or 200)
+        self._timeout_sec = float(settings.DEEPSEEK_OCR_TIMEOUT_SEC or 120)
+        self._max_tokens = settings.DEEPSEEK_OCR_MAX_TOKENS or 4096
+        self._temperature = settings.DEEPSEEK_OCR_TEMPERATURE or 0.1
+        self._pdf_dpi = settings.DEEPSEEK_OCR_PDF_DPI or 200
 
         base = self._api_base.rstrip("/")
         # Allow users to pass either ".../v1" or the full ".../v1/chat/completions".
@@ -228,12 +228,12 @@ class DeepSeekOCRParser:
 
     @staticmethod
     def _page_image_config(total_pages: int) -> tuple[bool, int, str, int]:
-        include_page_images = bool(getattr(settings, "DEEPSEEK_OCR_INCLUDE_PAGE_IMAGES", True))
-        max_page_images = int(getattr(settings, "DEEPSEEK_OCR_PAGE_IMAGE_MAX_PAGES", 0) or 0)
-        page_image_format = (getattr(settings, "DEEPSEEK_OCR_PAGE_IMAGE_FORMAT", "jpg") or "jpg").strip().lower()
+        include_page_images = settings.DEEPSEEK_OCR_INCLUDE_PAGE_IMAGES
+        max_page_images = settings.DEEPSEEK_OCR_PAGE_IMAGE_MAX_PAGES
+        page_image_format = (settings.DEEPSEEK_OCR_PAGE_IMAGE_FORMAT or "jpg").strip().lower()
         if page_image_format not in {"png", "jpg", "jpeg"}:
             page_image_format = "jpg"
-        concurrency = int(getattr(settings, "DEEPSEEK_OCR_CONCURRENCY", 1) or 1)
+        concurrency = settings.DEEPSEEK_OCR_CONCURRENCY or 1
         concurrency = max(1, min(concurrency, max(1, total_pages)))
         return include_page_images, max_page_images, page_image_format, concurrency
 
@@ -261,8 +261,7 @@ class DeepSeekOCRParser:
         """
         images_dir.mkdir(parents=True, exist_ok=True)
 
-        max_images = int(getattr(settings, "ZIP_MAX_IMAGES", 0) or 0)
-        max_images = max(0, max_images)
+        max_images = max(0, settings.ZIP_MAX_IMAGES)
 
         written = 0
         for xref in self._unique_xrefs(doc):
@@ -386,7 +385,7 @@ class DeepSeekOCRParser:
 
         images_dir_resolved = images_dir.resolve(strict=False)
         refs = _referenced_image_refs(markdown_text)
-        max_images = max(0, int(getattr(settings, "MAX_INLINE_IMAGES", 0) or 0))
+        max_images = max(0, settings.MAX_INLINE_IMAGES)
         if max_images:
             refs = refs[:max_images]
         for ref in refs:
