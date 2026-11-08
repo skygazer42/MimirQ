@@ -26,7 +26,7 @@ MILVUS_SEARCH_EXPR_FALLBACK_TOTAL = Counter(
 
 
 def _enabled() -> bool:
-    return bool(getattr(settings, "PROMETHEUS_ENABLED", False))
+    return settings.PROMETHEUS_ENABLED
 
 
 _SAFE_LABEL_RE = re.compile(r"[^a-z0-9._:-]+")

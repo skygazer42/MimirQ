@@ -257,7 +257,7 @@ def _apply_metadata_exact_anchor_doc_ordering(
 
     phrase_boost_weight = max(
         0.0,
-        float(getattr(settings, "RETRIEVAL_EXACT_PHRASE_RERANK_BOOST", 0.35) or 0.0),
+        settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST,
     )
     rows, annotated, promoted = _annotate_anchor_docs(
         query=query,

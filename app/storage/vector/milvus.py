@@ -741,11 +741,11 @@ def _milvus_iterator_close_callable(iterator: Any) -> Any:
 
 
 def _effective_milvus_write_batch_size(texts: list[str]) -> int:
-    base = max(1, int(getattr(settings, "VECTOR_WRITE_BATCH_SIZE", 256) or 256))
-    if not bool(getattr(settings, "VECTOR_WRITE_ADAPTIVE_BATCHING_ENABLED", True)):
+    base = max(1, settings.VECTOR_WRITE_BATCH_SIZE or 256)
+    if not settings.VECTOR_WRITE_ADAPTIVE_BATCHING_ENABLED:
         return base
 
-    max_chars_per_batch = int(getattr(settings, "VECTOR_WRITE_BATCH_MAX_CHARS", 200_000) or 200_000)
+    max_chars_per_batch = settings.VECTOR_WRITE_BATCH_MAX_CHARS or 200_000
     if max_chars_per_batch <= 0 or not texts:
         return base
 
@@ -1552,7 +1552,7 @@ class MilvusVectorStore:
         if tenant_id:
             expr_parts.append(f'tenant_id == "{str(tenant_id)}"')
         if document_ids:
-            max_doc_ids = int(getattr(settings, "MILVUS_EXPR_MAX_DOC_IDS", 0) or 0)
+            max_doc_ids = settings.MILVUS_EXPR_MAX_DOC_IDS
             if max_doc_ids > 0 and len(document_ids) > max_doc_ids:
                 # Fallback to tenant-only expr; caller/retriever can still post-filter by doc_ids.
                 logger.info(

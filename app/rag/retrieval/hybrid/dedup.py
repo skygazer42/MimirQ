@@ -209,9 +209,9 @@ class DedupDiversityMixin:
 
     @staticmethod
     def _resolve_near_dedup_runtime() -> tuple[bool, int, int, Any | None]:
-        near_enabled = bool(getattr(settings, "RETRIEVAL_NEAR_DEDUP_ENABLED", False))
-        near_thr = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD", 0) or 0))
-        near_max_compare = max(0, int(getattr(settings, "RETRIEVAL_NEAR_DEDUP_MAX_COMPARE", 0) or 0))
+        near_enabled = settings.RETRIEVAL_NEAR_DEDUP_ENABLED
+        near_thr = max(0, settings.RETRIEVAL_NEAR_DEDUP_HAMMING_THRESHOLD)
+        near_max_compare = max(0, settings.RETRIEVAL_NEAR_DEDUP_MAX_COMPARE)
         distance_func = None
         if near_enabled:
             try:
