@@ -104,6 +104,8 @@ def test_batch_precheck_failure_never_returns_success(failure_stage, precheck_on
 
     db = MagicMock()
     failure = RuntimeError("precheck run commit failed")
+    created_runs = []
+    db.add.side_effect = created_runs.append
     if failure_stage == "commit":
         db.commit.side_effect = failure
     else:
@@ -124,7 +126,8 @@ def test_batch_precheck_failure_never_returns_success(failure_stage, precheck_on
                 asyncio.run(request)
             assert raised.value is failure
         else:
-            assert asyncio.run(request) is None
+            result = asyncio.run(request)
+            assert result is (created_runs[0] if failure_stage == "worker" else None)
             assert any(r.exc_info and r.exc_info[1] is failure for r in caplog.records)
     db.rollback.assert_called_once()
 

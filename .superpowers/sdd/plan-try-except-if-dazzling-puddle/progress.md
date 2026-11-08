@@ -158,3 +158,15 @@ Desktop KG cleanup 的关系清理和 audit 两分支补充临时旧行为证明
 采用 requesting-code-review 技能的独立只读代理审查：没有阻碍提交的正确性问题；确认主写入传播、可选与必需precheck分流、异常链和真实函数测试。限制：MagicMock Session故障注入，不覆盖真实数据库expire/transport行为；policy suggestion失败完整外层流程未增加用例。新notes的tree/format/archive三门禁通过。
 
 最终模式计数（包含Desktop已提交修复影响，不仅是本代理diff）：except Exception 2206、suppress 236、or{}[] 3058、三参getattr单行近似892、isinstance3970、settings.X or1518。仅作词法参考。四组提交的最终stat以git show为准；最后提交SHA在交付回报列明，本文不自引用自身尚未生成的SHA。
+
+## 审查修正：保留 precheck 失败记录链接
+
+总指挥审查确认 c243d0033 之前四提交整体通过，指出 optional precheck 执行失败时不能丢已提交 run。核实发现普通 precheck-first 最终 _build_batch_response 也未传 precheck_scan_run_id；现一并补上。
+
+_run_precheck_scan 分开创建提交与可选执行边界：创建提交失败仅 optional 返回 None；提交后的 worker 失败 rollback+warning 并返回持久化 scan_run，precheck_only 仍重抛。第一次与执行后的 db.refresh(scan_run) 均在降级捕获之外；ingest_batch 的 db.refresh(dataset) 删除 suppress。数据库无法 refresh 是真实故障，向上抛出，不新加缓存/默认值。
+
+新测试 test_precheck_scan_response_contract.py 使用真实 SQLAlchemy Session/SQLite 与最小映射，实际 worker 独立 Session 将 run 标为 failed 并 commit；after_soft_rollback 证明 request Session 中 run 已 expired，随后序列化响应仍返回该 UUID，实际 SELECT 可见 failed 状态。证明的是事务恢复与惰性载入契约，不是数据库不可用时的成功保证。另3例验证 initial scan / completed scan / dataset refresh 失败全部冒泡。
+
+修复前4 failed（修正响应 UUID JSON 比较后又临时恢复旧源码重证）；修复后结果见 precheck-review-green.txt。旧 service 回归更新为 optional worker 失败保留已创建 run、创建提交失败返回 None，避免把原先错误断言当产品契约。源码修改前 hash 1cdd2a24b713983dcd88fdd0691dcc90f3ec19e6，修改后5c78167eafe40677044d1c7aa05851c5de004a5d；动手前git log -3无外部新提交。
+
+审查修正验证：指定解释器 -m pytest -q -p no:cacheprovider --basetemp=.ptreviewg2 tests/test_precheck_scan_response_contract.py tests/test_service_commit_failure_boundaries.py tests/test_dataset_scan_queue_contracts.py：36 passed，4.92s；3文件 Ruff check / format通过。上一收尾提交 c243d0033（22 files, +1792/-32）。

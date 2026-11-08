@@ -1,0 +1,151 @@
+FFFF                                                                     [100%]
+================================== FAILURES ===================================
+_________ test_failed_persisted_scan_remains_linked_in_batch_response _________
+
+batch_context = namespace(module=<module 'app.services.document_batch_ingestion' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-t..._contract.Dataset object at 0x0000017D5A261640>, invoke=<function batch_context.<locals>.invoke at 0x0000017D5A638680>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000017D373B4890>
+
+    def test_failed_persisted_scan_remains_linked_in_batch_response(batch_context, monkeypatch):
+        ctx = batch_context
+        run_ids = []
+        expired_on_rollback = []
+
+        def scan_job(**kwargs):
+            run_ids.append(kwargs["scan_run_id"])
+            with Session(ctx.engine) as worker:
+                run = worker.get(Scan, kwargs["scan_run_id"])
+                run.status = "failed"
+                worker.commit()
+            raise RuntimeError("scan failed after run creation")
+
+        def observe_rollback(session, transaction):
+            expired_on_rollback.extend(
+                inspect(row).expired for row in session.identity_map.values() if isinstance(row, Scan)
+            )
+
+        event.listen(ctx.db, "after_soft_rollback", observe_rollback)
+        monkeypatch.setattr(ctx.module, "_run_precheck_scan_job", scan_job)
+        response = ctx.invoke()
+>       assert response.model_dump(mode="json")["precheck_scan_run_id"] == str(run_ids[0])
+E       AssertionError: assert None == 'b21d2539-518c-4d29-b334-d7b1c4bba785'
+E        +  where 'b21d2539-518c-4d29-b334-d7b1c4bba785' = str(UUID('b21d2539-518c-4d29-b334-d7b1c4bba785'))
+
+tests\test_precheck_scan_response_contract.py:121: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  services.document_batch_ingestion:document_batch_ingestion.py:793 Precheck-first ingest failed; continuing without precheck: scan failed after run creation
+Traceback (most recent call last):
+  File "C:\Users\jiahuanl\.codex\worktrees\style-task3-chat-tags\MimirQ\app\services\document_batch_ingestion.py", line 773, in _run_precheck_scan
+    await asyncio.to_thread(
+  File "C:\Users\jiahuanl\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jiahuanl\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\jiahuanl\.codex\worktrees\style-task3-chat-tags\MimirQ\tests\test_precheck_scan_response_contract.py", line 111, in scan_job
+    raise RuntimeError("scan failed after run creation")
+RuntimeError: scan failed after run creation
+______ test_refresh_failure_propagates_from_batch_precheck[initial_scan] ______
+
+phase = 'initial_scan'
+batch_context = namespace(module=<module 'app.services.document_batch_ingestion' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-t..._contract.Dataset object at 0x0000017D5A6323F0>, invoke=<function batch_context.<locals>.invoke at 0x0000017D5A735620>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000017D5A5ED8B0>
+
+    @pytest.mark.parametrize("phase", ["initial_scan", "completed_scan", "dataset"])
+    def test_refresh_failure_propagates_from_batch_precheck(phase, batch_context, monkeypatch):
+        ctx = batch_context
+        failure = RuntimeError("refresh unavailable")
+        refresh = ctx.db.refresh
+        scan_refreshes = 0
+
+        def fail_refresh(row, *args, **kwargs):
+            nonlocal scan_refreshes
+            if isinstance(row, Scan):
+                scan_refreshes += 1
+                if (phase == "initial_scan" and scan_refreshes == 1) or (phase == "completed_scan" and scan_refreshes == 2):
+                    raise failure
+            elif phase == "dataset":
+                raise failure
+            return refresh(row, *args, **kwargs)
+
+        monkeypatch.setattr(ctx.db, "refresh", fail_refresh)
+        monkeypatch.setattr(ctx.module, "_run_precheck_scan_job", lambda **k: None)
+>       with pytest.raises(RuntimeError) as raised:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests\test_precheck_scan_response_contract.py:145: Failed
+------------------------------ Captured log call ------------------------------
+WARNING  services.document_batch_ingestion:document_batch_ingestion.py:793 Precheck-first ingest failed; continuing without precheck: refresh unavailable
+Traceback (most recent call last):
+  File "C:\Users\jiahuanl\.codex\worktrees\style-task3-chat-tags\MimirQ\app\services\document_batch_ingestion.py", line 772, in _run_precheck_scan
+    db.refresh(scan_run)
+  File "C:\Users\jiahuanl\.codex\worktrees\style-task3-chat-tags\MimirQ\tests\test_precheck_scan_response_contract.py", line 138, in fail_refresh
+    raise failure
+RuntimeError: refresh unavailable
+_____ test_refresh_failure_propagates_from_batch_precheck[completed_scan] _____
+
+phase = 'completed_scan'
+batch_context = namespace(module=<module 'app.services.document_batch_ingestion' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-t..._contract.Dataset object at 0x0000017D5B71E5A0>, invoke=<function batch_context.<locals>.invoke at 0x0000017D5A737880>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000017D5B71EFC0>
+
+    @pytest.mark.parametrize("phase", ["initial_scan", "completed_scan", "dataset"])
+    def test_refresh_failure_propagates_from_batch_precheck(phase, batch_context, monkeypatch):
+        ctx = batch_context
+        failure = RuntimeError("refresh unavailable")
+        refresh = ctx.db.refresh
+        scan_refreshes = 0
+
+        def fail_refresh(row, *args, **kwargs):
+            nonlocal scan_refreshes
+            if isinstance(row, Scan):
+                scan_refreshes += 1
+                if (phase == "initial_scan" and scan_refreshes == 1) or (phase == "completed_scan" and scan_refreshes == 2):
+                    raise failure
+            elif phase == "dataset":
+                raise failure
+            return refresh(row, *args, **kwargs)
+
+        monkeypatch.setattr(ctx.db, "refresh", fail_refresh)
+        monkeypatch.setattr(ctx.module, "_run_precheck_scan_job", lambda **k: None)
+>       with pytest.raises(RuntimeError) as raised:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests\test_precheck_scan_response_contract.py:145: Failed
+________ test_refresh_failure_propagates_from_batch_precheck[dataset] _________
+
+phase = 'dataset'
+batch_context = namespace(module=<module 'app.services.document_batch_ingestion' from 'C:\\Users\\jiahuanl\\.codex\\worktrees\\style-t..._contract.Dataset object at 0x0000017D5B720410>, invoke=<function batch_context.<locals>.invoke at 0x0000017D5A737740>)
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000017D5B748BF0>
+
+    @pytest.mark.parametrize("phase", ["initial_scan", "completed_scan", "dataset"])
+    def test_refresh_failure_propagates_from_batch_precheck(phase, batch_context, monkeypatch):
+        ctx = batch_context
+        failure = RuntimeError("refresh unavailable")
+        refresh = ctx.db.refresh
+        scan_refreshes = 0
+
+        def fail_refresh(row, *args, **kwargs):
+            nonlocal scan_refreshes
+            if isinstance(row, Scan):
+                scan_refreshes += 1
+                if (phase == "initial_scan" and scan_refreshes == 1) or (phase == "completed_scan" and scan_refreshes == 2):
+                    raise failure
+            elif phase == "dataset":
+                raise failure
+            return refresh(row, *args, **kwargs)
+
+        monkeypatch.setattr(ctx.db, "refresh", fail_refresh)
+        monkeypatch.setattr(ctx.module, "_run_precheck_scan_job", lambda **k: None)
+>       with pytest.raises(RuntimeError) as raised:
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE <class 'RuntimeError'>
+
+tests\test_precheck_scan_response_contract.py:145: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_precheck_scan_response_contract.py::test_failed_persisted_scan_remains_linked_in_batch_response
+FAILED tests/test_precheck_scan_response_contract.py::test_refresh_failure_propagates_from_batch_precheck[initial_scan]
+FAILED tests/test_precheck_scan_response_contract.py::test_refresh_failure_propagates_from_batch_precheck[completed_scan]
+FAILED tests/test_precheck_scan_response_contract.py::test_refresh_failure_propagates_from_batch_precheck[dataset]
+4 failed in 8.76s

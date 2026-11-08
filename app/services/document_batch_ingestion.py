@@ -767,17 +767,30 @@ async def _run_precheck_scan(
             summary={},
             artifacts={},
         )
-        db.add(scan_run)
-        db.commit()
+        try:
+            db.add(scan_run)
+            db.commit()
+        except Exception:  # noqa: BLE001 - optional precheck creation may fail independently
+            db.rollback()
+            if precheck_only:
+                raise
+            logger.warning("Precheck run creation failed; continuing without precheck", exc_info=True)
+            return None
         db.refresh(scan_run)
-        await asyncio.to_thread(
-            _run_precheck_scan_job,
-            tenant_id=tenant_id,
-            dataset_id=dataset.id,
-            scan_run_id=scan_run.id,
-        )
-        with contextlib.suppress(Exception):
-            db.refresh(scan_run)
+        try:
+            await asyncio.to_thread(
+                _run_precheck_scan_job,
+                tenant_id=tenant_id,
+                dataset_id=dataset.id,
+                scan_run_id=scan_run.id,
+            )
+        except Exception as exc:  # noqa: BLE001 - optional scan failure retains its persisted run
+            db.rollback()
+            if precheck_only:
+                raise
+            logger.warning("Precheck-first scan failed; retaining its run: %s", str(exc)[:200], exc_info=True)
+            return scan_run
+        db.refresh(scan_run)
         if not precheck_only:
             _apply_precheck_policy_suggestion(
                 db=db,
@@ -786,12 +799,6 @@ async def _run_precheck_scan(
                 tenant_id=tenant_id,
             )
         return scan_run
-    except Exception as exc:  # noqa: BLE001
-        db.rollback()
-        if precheck_only:
-            raise
-        logger.warning("Precheck-first ingest failed; continuing without precheck: %s", str(exc)[:200], exc_info=True)
-        return None
     finally:
         with contextlib.suppress(Exception):
             shutil.rmtree(staging_root)
@@ -1054,8 +1061,7 @@ async def ingest_batch(
                 precheck_only=precheck_only,
             )
         if not precheck_only and dataset is not None:
-            with contextlib.suppress(Exception):
-                db.refresh(dataset)
+            db.refresh(dataset)
             dataset_meta = (dataset.dataset_metadata or {}) if dataset is not None else {}
             policy = _refresh_batch_policy(dataset)
             dataset_default_pb, dataset_default_cs = ingestion_plan.dataset_upload_defaults(dataset_meta)
@@ -1122,7 +1128,12 @@ async def ingest_batch(
             successful=successful,
             failed=failed,
         )
-        return _build_batch_response(files=files, successful=successful, failed=failed)
+        return _build_batch_response(
+            files=files,
+            successful=successful,
+            failed=failed,
+            precheck_scan_run_id=str(scan_run.id) if scan_run is not None else None,
+        )
     governance_profile_cache: dict[str, Any] = {}
     direct_results = await _gather_with_concurrency_limit(
         [
