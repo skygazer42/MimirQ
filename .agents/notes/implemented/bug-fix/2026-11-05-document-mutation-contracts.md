@@ -16,6 +16,8 @@ chunk 写入权限包装继续动态调用 `document_access_service.assert_docum
 
 文档版本删除把 DB chunk 删除继续作为第一笔权威提交；随后 KG 关系和事件索引的数据库清理必须提交成功，失败时 rollback 并向上抛出，不再伪造 204。向量和 BM25 属于可重建的派生索引，仍允许主清理继续，但每次失败都以带堆栈的 warning 暴露。激活与删除在主变更提交后共用本模块的审计 helper；审计仍是旁路，失败 rollback、记录 action 与 document_id 后不改变主操作结果。
 
+QA 生成先提交新 chunks，再刷新 Document 的 `chunk_count` 与 `total_characters` 投影。统计提交失败只回滚这笔投影事务，不把已经成功的 QA 生成响应改成失败；原静默分支改为结构化 warning，明确依赖、失败原因和重算建议，并保留异常堆栈。
+
 ## Alternatives considered
 
 为 `Indexer` 新增 `sync_chunk_corpus` 包装可以少改两个调用点，但会重新引入没有实现的接口归属。直接使用保留的活动方法能明确 BM25 所有者，也保留该方法既有的元数据和检索失效政策。
@@ -26,7 +28,7 @@ chunk 写入权限包装继续动态调用 `document_access_service.assert_docum
 
 ## Consequences
 
-批量操作可进入原有成员、ACL 和逐项结果逻辑；chunk 的 BM25 更新可到达现行实现，零索引追加计算正确。租户、dataset、文档、chunk、活动 pipeline、批次上限、重复输入和 mixed-outcome 规则保持。向量与 BM25 顺序、严格模式阻断时机、缓存与配额、channel 原子 SQL、计数和时间戳、savepoint、提交和回滚、错误清空与 summary 复制政策保持。版本删除的后段数据库清理失败现在表现为请求失败；前段 chunk 删除已经提交，因此调用方需要按失败响应触发运维修复，而不能把它当作未执行。派生索引和审计失败仍不逆转主操作，但日志提供明确的降级证据。
+批量操作可进入原有成员、ACL 和逐项结果逻辑；chunk 的 BM25 更新可到达现行实现，零索引追加计算正确。租户、dataset、文档、chunk、活动 pipeline、批次上限、重复输入和 mixed-outcome 规则保持。向量与 BM25 顺序、严格模式阻断时机、缓存与配额、channel 原子 SQL、计数和时间戳、savepoint、提交和回滚、错误清空与 summary 复制政策保持。版本删除的后段数据库清理失败现在表现为请求失败；前段 chunk 删除已经提交，因此调用方需要按失败响应触发运维修复，而不能把它当作未执行。派生索引、QA 统计投影和审计失败仍不逆转已提交的主操作，但日志提供明确的降级证据。
 
 活跃笔记检索中，[活动索引写入所有者](../simplification/2026-11-05-active-indexing-owner.md) 与 BM25 方法归属部分重叠，沿用其活动实现并互链；[共享标量转换](../simplification/2026-11-03-shared-scalar-coercion-owner.md) 和[语料缓存事务](2026-11-03-corpus-cache-invalidation-transaction.md) 的边界和事务决定保持。检索命中的质量评分、混合排名和预览笔记属于其他生产者，不被替代。没有过时提案或可完全吸收的笔记。
 

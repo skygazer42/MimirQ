@@ -761,8 +761,17 @@ def _update_document_chunk_stats(
         document.chunk_count = int(count or 0)
         document.total_characters = int(total_chars or 0)
         db.commit()
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        logger.warning(
+            _DOCUMENT_QA_DEGRADED_LOG_MSG,
+            "qa_document_stats",
+            "database",
+            "stats_commit_failed",
+            "recalculate document chunk statistics; generated QA chunks are already committed",
+            str(exc)[:200],
+            exc_info=True,
+        )
 
 
 __all__ = [
