@@ -312,44 +312,38 @@ def _resolve_preview_rag_template_meta(
 
     rag_config_template_meta: dict[str, Any] | None = None
     rag_config_template_patch_applied_fields: list[str] = []
-    try:
-        if (
-            effective_rag_config_template_id
-            or (effective_rag_config_template_key or "").strip()
-            or (effective_rag_config_ab_experiment_key or "").strip()
-        ):
-            chosen, resolver_debug = resolve_rag_config_template(
-                db=db,
-                tenant_id=tenant_id,
-                rag_config_template_id=effective_rag_config_template_id,
-                template_key=effective_rag_config_template_key,
-                ab_experiment_key=effective_rag_config_ab_experiment_key,
-                ab_user_key=account_id,
-                return_debug_metadata=True,
+    if (
+        effective_rag_config_template_id
+        or (effective_rag_config_template_key or "").strip()
+        or (effective_rag_config_ab_experiment_key or "").strip()
+    ):
+        chosen, resolver_debug = resolve_rag_config_template(
+            db=db,
+            tenant_id=tenant_id,
+            rag_config_template_id=effective_rag_config_template_id,
+            template_key=effective_rag_config_template_key,
+            ab_experiment_key=effective_rag_config_ab_experiment_key,
+            ab_user_key=account_id,
+            return_debug_metadata=True,
+        )
+        if chosen:
+            effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+                rag_config=effective_rag_config,
+                patch=chosen.config_patch,
+                request_fields_set=rag_fields_set,
             )
-            if chosen:
-                effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
-                    rag_config=effective_rag_config,
-                    patch=chosen.config_patch,
-                    request_fields_set=rag_fields_set,
-                )
-                rag_config_template_meta = {
-                    "template_id": str(chosen.id),
-                    "template_key": chosen.template_key,
-                    "version": int(chosen.version or 0),
-                    "ab_experiment_key": chosen.ab_experiment_key,
-                    "ab_variant": chosen.ab_variant,
-                    "patch_hash": build_rag_config_patch_hash(chosen.config_patch),
-                    "patch_applied_fields": rag_config_template_patch_applied_fields,
-                }
-                if resolver_debug:
-                    rag_config_template_meta["resolver_debug"] = resolver_debug
-                record_rag_config_template_usage(db, chosen)
-    except RetiredModelProviderError:
-        raise
-    except Exception:
-        rag_config_template_meta = None
-        rag_config_template_patch_applied_fields = []
+            rag_config_template_meta = {
+                "template_id": str(chosen.id),
+                "template_key": chosen.template_key,
+                "version": int(chosen.version or 0),
+                "ab_experiment_key": chosen.ab_experiment_key,
+                "ab_variant": chosen.ab_variant,
+                "patch_hash": build_rag_config_patch_hash(chosen.config_patch),
+                "patch_applied_fields": rag_config_template_patch_applied_fields,
+            }
+            if resolver_debug:
+                rag_config_template_meta["resolver_debug"] = resolver_debug
+            record_rag_config_template_usage(db, chosen)
     return (
         effective_rag_config,
         rag_config_template_meta,

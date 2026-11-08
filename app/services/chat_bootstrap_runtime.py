@@ -209,50 +209,37 @@ def _resolve_rag_template_runtime(
     effective_rag_config_template_key: str | None,
     effective_rag_config_ab_experiment_key: str | None,
 ) -> tuple[ChatRAGConfig, dict[str, Any] | None]:
-    try:
-        if not (
-            effective_rag_config_template_id
-            if effective_rag_config_template_id
-            else normalized_value
-            if (
-                normalized_value := (
-                    effective_rag_config_template_key if effective_rag_config_template_key is not None else ""
-                ).strip()
-            )
-            else (
-                effective_rag_config_ab_experiment_key if effective_rag_config_ab_experiment_key is not None else ""
-            ).strip()
-        ):
-            return effective_rag_config, None
-        chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
-            db=db,
-            tenant_id=tenant_id,
-            rag_config_template_id=effective_rag_config_template_id,
-            template_key=effective_rag_config_template_key,
-            ab_experiment_key=effective_rag_config_ab_experiment_key,
-            ab_user_key=account_id,
-            return_debug_metadata=True,
-        )
-        if not chosen:
-            return effective_rag_config, None
-        effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
-            rag_config=effective_rag_config,
-            patch=chosen.config_patch,
-            request_fields_set=rag_fields_set,
-        )
-        rag_config_template_meta = _build_rag_template_meta(
-            chosen=chosen,
-            rag_config_template_resolver_debug=rag_config_template_resolver_debug,
-            rag_config_template_patch_applied_fields=rag_config_template_patch_applied_fields,
-            effective_rag_config_ab_experiment_key=effective_rag_config_ab_experiment_key,
-            request_id=request_id,
-        )
-        record_rag_config_template_usage(db, chosen)
-        return effective_rag_config, rag_config_template_meta
-    except RetiredModelProviderError:
-        raise
-    except Exception:
+    if not (
+        effective_rag_config_template_id
+        or (effective_rag_config_template_key or "").strip()
+        or (effective_rag_config_ab_experiment_key or "").strip()
+    ):
         return effective_rag_config, None
+    chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
+        db=db,
+        tenant_id=tenant_id,
+        rag_config_template_id=effective_rag_config_template_id,
+        template_key=effective_rag_config_template_key,
+        ab_experiment_key=effective_rag_config_ab_experiment_key,
+        ab_user_key=account_id,
+        return_debug_metadata=True,
+    )
+    if not chosen:
+        return effective_rag_config, None
+    effective_rag_config, rag_config_template_patch_applied_fields = apply_rag_config_patch(
+        rag_config=effective_rag_config,
+        patch=chosen.config_patch,
+        request_fields_set=rag_fields_set,
+    )
+    rag_config_template_meta = _build_rag_template_meta(
+        chosen=chosen,
+        rag_config_template_resolver_debug=rag_config_template_resolver_debug,
+        rag_config_template_patch_applied_fields=rag_config_template_patch_applied_fields,
+        effective_rag_config_ab_experiment_key=effective_rag_config_ab_experiment_key,
+        request_id=request_id,
+    )
+    record_rag_config_template_usage(db, chosen)
+    return effective_rag_config, rag_config_template_meta
 
 
 def _build_history_for_llm(
