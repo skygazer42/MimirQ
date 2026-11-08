@@ -286,7 +286,7 @@ class ParserFactory:
                 "[pdf] Docling service available (requires selection)",
             ),
             (
-                bool(getattr(settings, "MAGIC_PDF_ENABLED", False)),
+                settings.MAGIC_PDF_ENABLED,
                 "[pdf] MagicPDF parser available (requires selection)",
             ),
         )
@@ -317,19 +317,17 @@ class ParserFactory:
 
     @staticmethod
     def _magicpdf_runtime_ready() -> bool:
-        if not bool(getattr(settings, "MAGIC_PDF_ENABLED", False)):
+        if not settings.MAGIC_PDF_ENABLED:
             return False
         try:
             from app.parsing.parsers.magic_pdf_parser import magicpdf_service_configured, resolve_magicpdf_models_dir
             from app.parsing.utils.cli import resolve_cli_command
 
-            if magicpdf_service_configured(getattr(settings, "MAGIC_PDF_API_URL", "")):
+            if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
                 return True
 
-            cli = (getattr(settings, "MAGIC_PDF_CLI", "") or "magic-pdf").strip() or "magic-pdf"
-            return bool(
-                resolve_cli_command(cli) and resolve_magicpdf_models_dir(getattr(settings, "MAGIC_PDF_MODELS_DIR", ""))
-            )
+            cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
+            return bool(resolve_cli_command(cli) and resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR))
         except Exception as exc:
             logger.debug("MagicPDF runtime availability check failed: %s", exc)
             return False
@@ -394,16 +392,14 @@ class ParserFactory:
 
     def _resolve_auto_non_pdf_backend(self, file_ext: str) -> str:
         if file_ext in {EPUB_EXTENSION, RTF_EXTENSION, ODT_EXTENSION}:
-            return "pandoc" if bool(getattr(settings, "PANDOC_ENABLED", False)) else "markitdown"
+            return "pandoc" if settings.PANDOC_ENABLED else "markitdown"
         if file_ext in {XLSX_EXTENSION, ".xls"}:
             return "excel"
         if file_ext in {".doc", ".ppt"}:
-            pandoc_with_libreoffice = bool(getattr(settings, "PANDOC_ENABLED", False)) and bool(
-                getattr(settings, "LIBREOFFICE_ENABLED", False)
-            )
+            pandoc_with_libreoffice = settings.PANDOC_ENABLED and settings.LIBREOFFICE_ENABLED
             return "pandoc" if pandoc_with_libreoffice else "markitdown"
         if file_ext in {DOCX_EXTENSION, PPTX_EXTENSION, HTML_EXTENSION, ".htm"}:
-            return "pandoc" if bool(getattr(settings, "PANDOC_ENABLED", False)) else "markitdown"
+            return "pandoc" if settings.PANDOC_ENABLED else "markitdown"
         return "markitdown"
 
     def _validate_non_pdf_backend(self, *, backend: str, file_ext: str) -> None:
@@ -492,13 +488,13 @@ class ParserFactory:
 
     @staticmethod
     def _validate_docling_backend() -> None:
-        if not getattr(settings, "DOCLING_ENABLED", False):
+        if not settings.DOCLING_ENABLED:
             raise ValueError("Docling parser is not enabled. Please set DOCLING_ENABLED=True.")
-        if not (getattr(settings, "DOCLING_API_URL", "") or "").strip():
+        if not settings.DOCLING_API_URL.strip():
             raise ValueError("Docling parser requires DOCLING_API_URL for the external service.")
 
     def _validate_magicpdf_backend(self) -> None:
-        if not getattr(settings, "MAGIC_PDF_ENABLED", False):
+        if not settings.MAGIC_PDF_ENABLED:
             raise ValueError("MagicPDF parser is not enabled. Please set MAGIC_PDF_ENABLED=True.")
         if not self._magicpdf_runtime_ready():
             raise ValueError(
@@ -863,7 +859,7 @@ class ParserFactory:
             return self._try_docx_lightweight_fallback(file_path, backend)
 
     def _try_docx_pandoc_fallback(self, file_path: Path) -> tuple[list[Document], str] | None:
-        if not bool(getattr(settings, "PANDOC_ENABLED", False)):
+        if not settings.PANDOC_ENABLED:
             return None
         try:
             return self._get_pandoc_parser().parse(file_path), "pandoc"
@@ -937,12 +933,12 @@ class ParserFactory:
         return None, "markitdown"
 
     def _parse_pptx_markitdown_fallback(self, file_path: Path) -> tuple[list[Document], str]:
-        if bool(getattr(settings, "PANDOC_ENABLED", False)):
+        if settings.PANDOC_ENABLED:
             return self._get_pandoc_parser().parse(file_path), "pandoc"
         return self._parse_pptx_file(file_path), "pptx"
 
     def _parse_extended_office_fallback(self, file_path: Path) -> tuple[list[Document] | None, str]:
-        if bool(getattr(settings, "PANDOC_ENABLED", False)):
+        if settings.PANDOC_ENABLED:
             return self._get_pandoc_parser().parse(file_path), "pandoc"
         return None, "markitdown"
 
