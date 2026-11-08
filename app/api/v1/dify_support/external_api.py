@@ -1,8 +1,6 @@
 """Dify external API schemas, auth, and conversation trace helpers."""
 
 import hashlib
-import hmac
-import re
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -22,6 +20,7 @@ from app.core.config import settings
 from app.models.chat import Conversation, Message
 from app.rag.core.logging import get_logger
 from app.services.dify_integration.anchor_strength import _dify_kg_bool, _dify_kg_float, _dify_kg_int
+from app.services.dify_integration.auth import _coerce_uuid, _extract_bearer_token, _split_items, _token_matches
 from app.services.dify_integration.common import _clamp_score
 from app.services.dify_integration.scoring import _diagnostic_query_hash
 from app.services.external_conversation_ingest import _mimirq_citations_for_storage
@@ -30,7 +29,6 @@ from app.types.dify_integration import DifyKGFlags as _DifyKGFlags
 
 logger = get_logger("app.api.v1.integrations_dify")
 
-_TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
 _DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS = 160
 _DIFY_TRACE_QUERY_PATH_MAX_CHARS = 120
 _DIFY_TRACE_CITATION_METADATA_KEYS = (
@@ -902,41 +900,6 @@ def _dify_trace_request_id(request: Request, body: DifyExternalKnowledgeRequest)
         request.headers.get("x-request-id"),
         getattr(request.state, "request_id", None),
     )
-
-
-def _split_items(raw: object) -> list[str]:
-    return [part for part in _TOKEN_SPLIT_RE.split(str(raw or "").strip()) if part]
-
-
-def _token_matches(provided_token: str, expected_token: str) -> bool:
-    expected = str(expected_token or "").strip()
-    provided = str(provided_token or "").strip()
-    if not expected or not provided:
-        return False
-    if expected.lower().startswith("sha256:"):
-        digest = expected.split(":", 1)[1].strip().lower()
-        if not digest:
-            return False
-        provided_digest = hashlib.sha256(provided.encode("utf-8", "ignore")).hexdigest()
-        return hmac.compare_digest(provided_digest, digest)
-    return hmac.compare_digest(provided, expected)
-
-
-def _extract_bearer_token(authorization: str | None) -> str:
-    raw = str(authorization or "").strip()
-    if not raw.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail="Invalid Dify Authorization header")
-    token = raw[7:].strip()
-    if not token:
-        raise HTTPException(status_code=401, detail="Invalid Dify Authorization header")
-    return token
-
-
-def _coerce_uuid(value: object, *, label: str) -> UUID:
-    try:
-        return UUID(str(value or "").strip())
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=f"Invalid {label}") from exc
 
 
 def _require_dify_actor(

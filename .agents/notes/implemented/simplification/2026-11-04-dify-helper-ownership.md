@@ -16,6 +16,8 @@ Dify 的 API 辅助包和服务包各自保存记录去重、评分、锚点和�
 
 客户端 IP 提取仍由 HTTP 适配器处理。`external_api._api()` 的既有回调绑定保留。原始引用、元数据和数据库行的解析仍在原来的输入边界；已声明为 `UUID` 的内部 fallback 和整数、布尔配置直接按其类型使用。
 
+Dify API support 的 token 切分、常量时间比较、Bearer 解析和必需 UUID 转换直接导入 `app.services.dify_integration.auth` 的同体 leaf。HTTP request/header 适配、`_require_dify_actor` 以及通过 `_api()` 解析的生产环境回调继续由 API 层持有，因此现有依赖注入、错误码、错误文案和测试替换点不变。
+
 证据适配器的 `ChatRAGConfig` 来自现有聊天 schema；证据请求模型与检索入口当前由 `app.api.v1.rag` 持有，适配器在调用时导入这两个实际定义，与现行 Dify 入口使用同一检索边界。这样保留鉴权、配额、范围选择、检索策略和加载时点。原先引用的两个类型模块和检索服务没有纳入 Git，不能成为干净检出的依赖；它们也不作为本轮业务服务迁移的来源。
 
 知识范围服务显式传入 policy_helpers 的既有映射与策略生产者，filter 和 fallback 回调用标准 partial 绑定其已有 leaf 及 planner 的倍率解析。候选倍率上限按原 API 的 INTERNAL_TOP_K_MAX、整数解析与原异常回退传入。没有给纯 helper 添加默认回调，也没有在服务中反向依赖 API、复制通用包装或改变原 API 的回调绑定。
