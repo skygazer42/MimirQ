@@ -1,4 +1,3 @@
-import contextlib
 from datetime import datetime
 from typing import Annotated, Any, TypedDict
 from uuid import UUID
@@ -33,6 +32,8 @@ _DEFAULT_HTTP_EXCEPTION_RESPONSES = {
 DOC_NOT_FOUND_DETAIL = "Document not found"
 PIPELINE_HASH_TOO_LONG_DETAIL = "pipeline_hash too long"
 
+logger = get_logger(__name__)
+
 router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
@@ -59,6 +60,36 @@ def _normalize_pipeline_hash(pipeline_hash: str, *, required_detail: str) -> str
     if len(pipeline_hash_norm) > 64:
         raise HTTPException(status_code=400, detail=PIPELINE_HASH_TOO_LONG_DETAIL)
     return pipeline_hash_norm
+
+
+def _commit_document_version_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    account_id: str,
+    action: str,
+    document_id: UUID,
+    details: dict[str, object],
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=account_id,
+            action=action,
+            resource_type="document",
+            resource_id=str(document_id),
+            details=details,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Document version mutation committed but audit logging failed: action=%s document_id=%s",
+            action,
+            document_id,
+            exc_info=True,
+        )
 
 
 def _load_version_signatures(
@@ -439,7 +470,7 @@ def activate_document_version(
             try:
                 total_chars += int(metadata.get("content_len") or 0)
             except Exception:
-                get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
+                logger.debug("Skipping item after non-critical exception", exc_info=True)
                 continue
     except Exception:
         total_chars = 0
@@ -457,21 +488,16 @@ def activate_document_version(
     db.commit()
     db.refresh(document)
 
-    audit_log_event(
+    _commit_document_version_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="document.version.activate",
-        resource_type="document",
-        resource_id=str(document_id),
+        document_id=document_id,
         details={
             "pipeline_hash": pipeline_hash_norm,
         },
     )
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
     return document
 
 
@@ -485,11 +511,12 @@ def delete_document_version(
     db: Annotated[Session, Depends(get_db)],
 ) -> Response:
     """
-    Delete a non-active document pipeline version (best-effort cleanup).
+    Delete a non-active document pipeline version.
 
     Notes:
-    - This deletes DB chunks for the requested pipeline_hash and best-effort removes
-      vectors/BM25 index entries for that version.
+    - This deletes DB chunks and KG state for the requested pipeline_hash.
+    - Vector/BM25 index cleanup is best-effort and logs failures for later repair.
+    - Database cleanup failures propagate instead of returning a successful 204.
     - The currently-active version cannot be deleted (use activate to switch first).
     - This endpoint is intended for ops/debug cleanup; it does not re-run processing.
     """
@@ -524,18 +551,32 @@ def delete_document_version(
     if not chunk_ids:
         raise HTTPException(status_code=404, detail="Document version not found (no chunks for this pipeline_hash)")
 
-    with contextlib.suppress(Exception):
+    try:
         Indexer(db).delete_document_chunk_vectors(
             document_id=document_id,
             tenant_id=tenant_id,
             metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
         )
-    with contextlib.suppress(Exception):
+    except Exception:
+        logger.warning(
+            "Document version vector cleanup failed: document_id=%s pipeline_hash=%s",
+            document_id,
+            pipeline_hash_norm,
+            exc_info=True,
+        )
+    try:
         from app.rag.retriever import hybrid_retriever
 
         hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
             tenant_id=tenant_id,
             metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
+        )
+    except Exception:
+        logger.warning(
+            "Document version BM25 cleanup failed: document_id=%s pipeline_hash=%s",
+            document_id,
+            pipeline_hash_norm,
+            exc_info=True,
         )
 
     db.query(DocumentChunk).filter(
@@ -569,23 +610,18 @@ def delete_document_version(
         )
         db.commit()
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
+        raise
 
-    audit_log_event(
+    _commit_document_version_audit(
         db,
         tenant_id=tenant_id,
-        actor_id=account_id,
+        account_id=account_id,
         action="document.version.delete",
-        resource_type="document",
-        resource_id=str(document_id),
+        document_id=document_id,
         details={
             "pipeline_hash": pipeline_hash_norm,
             "deleted_chunk_count": len(chunk_ids),
         },
     )
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
     return Response(status_code=204)
