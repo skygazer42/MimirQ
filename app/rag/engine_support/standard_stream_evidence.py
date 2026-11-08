@@ -189,19 +189,22 @@ async def evaluate_abstention(runtime: StandardStreamState) -> AsyncGenerator[di
             runtime.data.abstain_triggered = True
             runtime.data.abstain_reason = "top_relevance_lt_min"
 
+    tenant_id = str(runtime.data.tenant_id or "").strip()
+    dataset_id = str(runtime.data.dataset_id or "").strip()
+    ruleset_name = settings.RAG_OUT_OF_SCOPE_RULESET.strip()
     runtime.data.out_of_scope_guard = runtime.module.maybe_apply_out_of_scope_live_guard(
         query=runtime.data.query_for_retrieval,
         enabled=bool(settings.RAG_OUT_OF_SCOPE_LIVE_GUARD_ENABLED),
         candidate=bool(runtime.data.abstain_triggered or not runtime.data.citations),
         current_triggered=bool(runtime.data.abstain_triggered),
         current_reason=runtime.data.abstain_reason,
-        tenant_id=(str(runtime.data.tenant_id or "").strip() or None),
-        dataset_id=(str(runtime.data.dataset_id or "").strip() or None),
+        tenant_id=tenant_id,
+        dataset_id=dataset_id,
         verifier=lambda: runtime.module.run_default_out_of_scope_live_guard(
             query=runtime.data.query_for_retrieval,
-            tenant_id=str(runtime.data.tenant_id or ""),
-            dataset_id=str(runtime.data.dataset_id or ""),
-            ruleset_name=(str(settings.RAG_OUT_OF_SCOPE_RULESET or "").strip() or None),
+            tenant_id=tenant_id,
+            dataset_id=dataset_id,
+            ruleset_name=ruleset_name,
             hyde_query=runtime.data.hyde_text if bool(runtime.data.hyde_used and runtime.data.hyde_text) else None,
             vector_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_VECTOR_THRESHOLD or 0.35),
             hyde_similarity_threshold=float(settings.RAG_OUT_OF_SCOPE_HYDE_THRESHOLD or 0.4),
