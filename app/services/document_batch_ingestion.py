@@ -307,8 +307,17 @@ def _finalize_batch_ingestion_run(
             db.commit()
             db.refresh(doc)
         except Exception:
+            db.rollback()
+            logger.warning(
+                "Batch document persisted but ingestion-run metadata update failed: "
+                "tenant_id=%s document_id=%s run_id=%s",
+                tenant_id,
+                doc.id,
+                ingestion_run.id,
+                exc_info=True,
+            )
             meta0 = dict(doc.doc_metadata or {})
-        with contextlib.suppress(Exception):
+        try:
             ingestion_run_service.add_document(
                 db,
                 tenant_id=tenant_id,
@@ -318,7 +327,17 @@ def _finalize_batch_ingestion_run(
                 initial_status=str(result.get("status") or doc.status or "created"),
                 doc_meta=meta0,
             )
-    with contextlib.suppress(Exception):
+        except Exception:
+            db.rollback()
+            logger.warning(
+                "Batch document persisted but ingestion-run attachment failed: "
+                "tenant_id=%s document_id=%s run_id=%s",
+                tenant_id,
+                doc.id,
+                ingestion_run.id,
+                exc_info=True,
+            )
+    try:
         ingestion_run_service.close_intake(
             db,
             tenant_id=tenant_id,
@@ -326,6 +345,14 @@ def _finalize_batch_ingestion_run(
             attempted_inputs=len(files),
             rejected_inputs=len(failed),
             rejection_reasons=[result.get("error") for result in failed],
+        )
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Batch ingestion-run intake close failed: tenant_id=%s run_id=%s",
+            tenant_id,
+            ingestion_run.id,
+            exc_info=True,
         )
 
 
@@ -985,6 +1012,12 @@ async def ingest_batch(
                 expected_documents=len(files),
             )
         except Exception:
+            db.rollback()
+            logger.warning(
+                "Batch ingestion run creation failed; continuing without run tracking: tenant_id=%s",
+                tenant_id,
+                exc_info=True,
+            )
             ingestion_run = None
     if precheck_first or precheck_only:
         if dataset is None:
