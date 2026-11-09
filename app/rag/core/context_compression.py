@@ -21,7 +21,7 @@ def compress_context_docs(
     out: list[Document] = []
     q = str(query or "").strip()
     for doc in docs:
-        raw = str(getattr(doc, "page_content", "") or "").strip()
+        raw = str(doc.page_content or "").strip()
         if not raw:
             continue
 
@@ -40,8 +40,8 @@ def compress_context_docs(
         out.append(
             Document(
                 page_content=content,
-                metadata=dict(getattr(doc, "metadata", None) or {}),
-                id=getattr(doc, "id", None),
+                metadata=dict(doc.metadata or {}),
+                id=doc.id,
             )
         )
     return out

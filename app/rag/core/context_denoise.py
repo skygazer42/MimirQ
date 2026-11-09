@@ -168,7 +168,7 @@ def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> 
     out: list[Document] = []
     used = 0
     for doc in docs:
-        content = str(getattr(doc, "page_content", "") or "").strip()
+        content = str(doc.page_content or "").strip()
         if not content:
             continue
         n = num_tokens_from_string(content)
@@ -239,11 +239,11 @@ def compress_context_docs_with_llm(
     for doc in docs:
         if doc is None:
             continue
-        text = str(getattr(doc, "page_content", "") or "").strip()
+        text = str(doc.page_content or "").strip()
         if not text:
             continue
         compressed = _compress_text_with_llm(text=text, query=query_text, target_ratio=ratio)
-        out.append(Document(page_content=compressed, metadata=dict(doc.metadata or {}), id=getattr(doc, "id", None)))
+        out.append(Document(page_content=compressed, metadata=dict(doc.metadata or {}), id=doc.id))
     return out
 
 
@@ -265,10 +265,10 @@ def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     for d in docs:
         if d is None:
             continue
-        text = _clean_chunk_text(getattr(d, "page_content", "") or "")
+        text = _clean_chunk_text(d.page_content or "")
         if not text:
             continue
-        cleaned.append(Document(page_content=text, metadata=dict(d.metadata or {}), id=getattr(d, "id", None)))
+        cleaned.append(Document(page_content=text, metadata=dict(d.metadata or {}), id=d.id))
 
     if not cleaned:
         return []
