@@ -14,6 +14,8 @@ Status: implemented
 
 四个周期报告各自复制相同的写入事务，失败时只在 rollback 也失败后打印 debug；陈旧报告还压掉 rollback 异常。底层 audit_log_event 在构造或 db.add 失败时无日志返回，外层即使 commit 成功也无法观察这次审计缺失。
 
+保留任务 CLI 只检查结果的 failed 字段，知识资产的 denied／conflicts／errors、数据集文档／版本的嵌套错误和数据集消失的 ok=False 都被遗漏，仍打印全局 ok=True 并以零退出。数据集摘要自身的 ok 也不随已有部分失败计数变化。
+
 ## Decision
 
 `audit_log_retention` 的四个计划／候选查询入口直接传播失败。只有查询成功且候选为空时才返回零；原租户、过滤条件、时间范围、排序和 max_delete 上限保持。
@@ -38,11 +40,14 @@ Status: implemented
 
 报告消费端直接读取完整 builder／Pydantic DTO 中必有的字段，排序、计数和 Counter 累加使用其实际字符串、整数、浮点数和列表；样本仍取新切片并保持原上限。陈旧报告直接使用自己的十字段查询投影及已归一化预算，保留外部 metadata 时间解析、来源优先级和真实缺失字段的业务含义。两份 CLI 使用 argparse 已产生的原生值，UUID 回调只转换真实 ValueError，真实主键单列查询不再静默丢弃记录。参数声明、默认值、互斥、资源关闭、主顺序、JSON 和退出码逻辑保持。
 
+保留任务 CLI 在各任务的已知结果边界累计失败。知识资产读取 denied、conflicts、errors；语义缓存读取既有 failed；数据集保留任务按已有 ok、文档 errors／conflicts 和版本 errors 更新该记录的 ok。真实 dataset_not_found 先以 ok=False 短路，不读取不存在的嵌套摘要。内部 DB 批次返回原始记录列表与失败布尔值，main 逐租户累积，后续成功不覆盖已有失败；顶层 JSON 与非零退出码反映任一任务的失败。记录字段和服务协议不增加 CLI 专用字段，真实 not_found、零候选、未启用策略和正常 dry-run 保持成功含义。
+
 ## Alternatives considered
 
 - 失败后返回零并写日志可以维持成功响应，但零是有效业务结果，API 无法据此区分故障并会把请求报告为完成。
 - 给所有 helper 增加 result/error 包装可以显式返回失败，但会新增一套返回模型和调用协议；现有 API／作业已经有异常入口，直接传播保留原成功返回契约。
 - 不识别状态时改用 either 可以容忍旧调用方，但会改变本次清理范围；CLI 已明确提供默认值与 choices，内部无效值直接失败更符合调用意图。
+- 给全部服务增加 CLI 专用的 failed 字段能统一汇总入口，但会扩展服务／API 返回协议；在已知任务调用处读取原有计数和状态即可保留原记录结构。
 
 ## Consequences
 
@@ -65,3 +70,5 @@ Status: implemented
 报告写入增量先证明四份事务 AST 仅 action／resource_type 字面量不同，再核对提取后调用实参与展开顺序。全模块对照限定共享提交政策、两个 warning 边界和底层排队失败日志；事件构造、detail 字段、错误标志、所有查询、业务汇总和外部输入解析保持。没有增加重试或另一个写入目的地，未调用业务、日志服务、Session 或任何外部系统。
 
 原生值增量核对七个索引报告字段在 HEAD 与工作树中的实际生成表达式、证据审计 DTO 与空结果字典、十字段陈旧报告生产者、真实非空 UUID 主键和 argparse 声明。全模块对照限定取值／转型与两份 CLI 的声明契约，来源时间戳解析和所有 SQL 谓词保持；仅私有摘要 helper 退出一个失去用途的 dataset_id 参数并同步唯一调用方，未新增包装层、运行时模型或文件。静态核对不包含实际 CLI 或报告执行。
+
+保留 CLI 汇总增量核对三种实际摘要 builder、dataset_not_found 的短响应、私有 DB 批次唯一调用者和跨租户执行顺序。全模块 AST 对照限定状态累计、数据集已有 ok 的更新和内部返回签名；原 service kwargs、结果顺序、asyncio.run、Session 关闭、查询与选项保持。未运行 Python 测试、CLI 或维护任务，静态证据不能证明真实删除／缓存故障的运行表现。

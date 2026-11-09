@@ -205,6 +205,9 @@ def _run_dataset_jobs(
                 now=ran_at,
             )
         )
+        result["ok"] = result["ok"] and not (
+            result["documents"]["errors"] or result["documents"]["conflicts"] or result["versions"]["errors"]
+        )
         results.append(result)
     return results
 
@@ -217,8 +220,9 @@ def _run_db_jobs(
     tenant_id: UUID,
     dry_run: bool,
     ran_at: datetime,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], bool]:
     results: list[dict[str, Any]] = []
+    failed = False
     common = {
         "tenant_id": tenant_id,
         "retention_days": args.retention_days,
@@ -232,28 +236,28 @@ def _run_db_jobs(
     if args.regression_runs:
         results.append(deps.run_regression_run_retention(db, **common))
     if args.knowledge_assets:
-        results.append(
-            asyncio.run(
-                deps.run_knowledge_asset_retention(
-                    db,
-                    **common,
-                    dataset_id=args.dataset_id,
-                    lifecycle_state=args.lifecycle_state,
-                )
-            )
-        )
-    if args.dataset_retention:
-        results.extend(
-            _run_dataset_jobs(
-                args,
-                deps,
+        knowledge_result = asyncio.run(
+            deps.run_knowledge_asset_retention(
                 db,
-                tenant_id=tenant_id,
-                dry_run=dry_run,
-                ran_at=ran_at,
+                **common,
+                dataset_id=args.dataset_id,
+                lifecycle_state=args.lifecycle_state,
             )
         )
-    return results
+        results.append(knowledge_result)
+        failed = any(knowledge_result[key] for key in ("denied", "conflicts", "errors"))
+    if args.dataset_retention:
+        dataset_results = _run_dataset_jobs(
+            args,
+            deps,
+            db,
+            tenant_id=tenant_id,
+            dry_run=dry_run,
+            ran_at=ran_at,
+        )
+        results.extend(dataset_results)
+        failed = failed or any(not result["ok"] for result in dataset_results)
+    return results, failed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -272,36 +276,36 @@ def main(argv: list[str] | None = None) -> int:
     tenant_ids = _tenant_ids(args, deps)
     ran_at = datetime.now(UTC)
     results: list[dict[str, Any]] = []
+    failed = False
 
     for tenant_id in tenant_ids:
         if args.semantic_cache:
-            results.append(
-                _run_semantic_cache_job(
-                    args,
-                    deps,
-                    tenant_id=tenant_id,
-                    dry_run=dry_run,
-                )
+            result = _run_semantic_cache_job(
+                args,
+                deps,
+                tenant_id=tenant_id,
+                dry_run=dry_run,
             )
+            results.append(result)
+            failed = failed or result["failed"]
         if not _db_job_selected(args):
             continue
 
         db = deps.SessionLocal()
         try:
-            results.extend(
-                _run_db_jobs(
-                    args,
-                    deps,
-                    db,
-                    tenant_id=tenant_id,
-                    dry_run=dry_run,
-                    ran_at=ran_at,
-                )
+            job_results, job_failed = _run_db_jobs(
+                args,
+                deps,
+                db,
+                tenant_id=tenant_id,
+                dry_run=dry_run,
+                ran_at=ran_at,
             )
+            results.extend(job_results)
+            failed = failed or job_failed
         finally:
             db.close()
 
-    failed = any(item.get("failed") for item in results if isinstance(item, dict))
     print(json.dumps({"ok": not failed, "ran_at": ran_at.isoformat(), "results": results}, ensure_ascii=False))
     return 1 if failed else 0
 
