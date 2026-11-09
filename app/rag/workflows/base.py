@@ -181,9 +181,15 @@ class BaseWorkflow(ABC):
         """
         return "question" in state or "query" in state
 
-    def get_question(self, state: dict[str, Any]) -> str:
+    @staticmethod
+    def get_question(state: dict[str, Any]) -> str:
         """Extract question from state."""
-        return state.get("question") or state.get("query") or ""
+        question = state.get("question")
+        if question is None:
+            question = state["query"]
+        if not isinstance(question, str):
+            raise TypeError("workflow question must be a string")
+        return question
 
     def create_result(
         self,

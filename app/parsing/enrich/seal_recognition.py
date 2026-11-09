@@ -131,7 +131,7 @@ def _has_required_model_files(path: Path) -> bool:
 
 
 def _resolve_model_dir(model_dir: str | None = None) -> Path | None:
-    explicit = str(model_dir or "").strip()
+    explicit = model_dir.strip() if model_dir is not None else None
     if explicit:
         path = Path(explicit)
         return path if _has_required_model_files(path) else None

@@ -23,6 +23,7 @@ from app.services.connector_execution.shared.artifacts import (
     _normalize_connector_string_list,
 )
 from app.services.connector_execution.shared.common import (
+    _optional_source_text,
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
@@ -68,22 +69,23 @@ def _minio_connector_config_id(run_stats: dict[str, Any]) -> UUID | None:
 
 
 def _minio_source_scope_hash(*, bucket_name: str, prefix: str | None, include_set: set[str]) -> str:
+    prefix_text = _optional_source_text(prefix)
     scope_parts = [
-        f"bucket={str(bucket_name or '').strip()}",
-        f"prefix={str(prefix or '').strip()}",
+        f"bucket={bucket_name.strip()}",
+        f"prefix={prefix_text if prefix_text is not None else ''}",
         f"include={','.join(sorted(include_set or set()))}",
     ]
     return hashlib.sha256("|".join(scope_parts).encode("utf-8")).hexdigest()[:16]
 
 
 def _minio_object_token(obj: Object) -> str:
-    etag = str(getattr(obj, "etag", "") or "").strip()
+    etag = _optional_source_text(obj.etag)
 
     last_modified_raw = getattr(obj, "last_modified", None)
     if isinstance(last_modified_raw, datetime):
         last_modified = last_modified_raw.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     else:
-        last_modified = str(last_modified_raw or "").strip()
+        last_modified = _optional_source_text(last_modified_raw)
 
     parts: list[str] = []
     if etag:
@@ -103,7 +105,7 @@ def _minio_object_token(obj: Object) -> str:
 def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: MinIOService) -> dict[str, Any]:
     bucket = cfg.get("bucket") if isinstance(cfg.get("bucket"), str) else None
     prefix = cfg.get("prefix") if isinstance(cfg.get("prefix"), str) else None
-    bucket_name = str(bucket or minio_service._bucket_name or "").strip()
+    bucket_name = _optional_source_text(bucket, minio_service._bucket_name)
     if not bucket_name:
         raise RuntimeError("minio bucket is required")
 
@@ -123,7 +125,7 @@ def _build_minio_bucket_run_settings(cfg: dict[str, Any], *, minio_service: MinI
 def _list_minio_bucket_objects(client: Minio, *, bucket_name: str, prefix: str | None) -> list[dict[str, str]]:
     listed_objects: list[dict[str, str]] = []
     for obj in client.list_objects(bucket_name=bucket_name, prefix=prefix, recursive=True):
-        name = str(getattr(obj, "object_name", "") or "").strip()
+        name = obj.object_name.strip()
         if not name:
             continue
         listed_objects.append({"name": name, "token": _minio_object_token(obj)})
@@ -147,7 +149,7 @@ def _build_minio_bucket_execution_plan(
     scope_hash: str,
 ) -> dict[str, Any]:
     existing_manifest = normalize_source_manifest(state.get("source_manifest"))
-    existing_scope_hash = str(state.get("source_scope_hash") or "").strip()
+    existing_scope_hash = _optional_source_text(state.get('source_scope_hash'))
     if existing_scope_hash and existing_scope_hash != scope_hash:
         existing_manifest = {}
 
@@ -165,7 +167,7 @@ def _build_minio_bucket_execution_plan(
     objects_to_process: list[tuple[str, str]] = []
 
     for raw in listed_objects:
-        name = str(raw.get("name") or "").strip()
+        name = raw['name'].strip()
         if not name:
             continue
 
@@ -228,7 +230,7 @@ def _initialize_minio_bucket_run_stats(*, run: ConnectorRun, plan: dict[str, Any
             "removed_documents_disabled": 0,
             "updated_documents_disabled": 0,
             "source_manifest": dict(plan.get("source_manifest_state") or {}),
-            "source_scope_hash": str(plan.get("scope_hash") or ""),
+            "source_scope_hash": plan['scope_hash'],
         }
     )
     return stats
@@ -237,7 +239,7 @@ def _initialize_minio_bucket_run_stats(*, run: ConnectorRun, plan: dict[str, Any
 def _minio_bucket_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
     with contextlib.suppress(Exception):
         db.refresh(run)
-    return str(run.status or "").lower() == "cancelled"
+    return run.status.lower() == "cancelled"
 
 
 async def _ingest_minio_bucket_object(
@@ -253,7 +255,7 @@ async def _ingest_minio_bucket_object(
     source_manifest_state: dict[str, str],
 ) -> dict[str, Any]:
     url = client.presigned_get_object(
-        bucket_name=str(settings_map.get("bucket_name") or ""),
+        bucket_name=settings_map['bucket_name'],
         object_name=object_name,
         expires=int(settings_map.get("expiry") or 3600),
     )
@@ -348,7 +350,7 @@ def _persist_minio_bucket_progress(
             "removed_documents_disabled": int(removed_documents_disabled),
             "updated_documents_disabled": int(updated_documents_disabled),
             "source_manifest": dict(source_manifest_state),
-            "source_scope_hash": str(plan.get("scope_hash") or ""),
+            "source_scope_hash": plan['scope_hash'],
             "document_ids": [str(doc_id) for doc_id in created_doc_ids],
         }
     )
@@ -375,10 +377,10 @@ async def _process_minio_bucket_objects(
     updated_documents_disabled = 0
     source_manifest_state = dict(plan.get("source_manifest_state") or {})
     cursor_in = int(plan.get("cursor_in") or 0)
-    mode = str(plan.get("mode") or "")
+    mode = plan['mode']
 
     for idx, item in enumerate(plan.get("objects_to_process") or []):
-        object_name, object_token = item if isinstance(item, tuple) else (str(item or ""), "unknown")
+        object_name, object_token = item
         if _minio_bucket_run_cancelled(db, run=run):
             break
 
@@ -476,7 +478,7 @@ def _finalize_minio_bucket_run_success(
             "removed_documents_disabled": int(progress.get("removed_documents_disabled") or 0),
             "updated_documents_disabled": int(progress.get("updated_documents_disabled") or 0),
             "source_manifest": dict(progress.get("source_manifest_state") or {}),
-            "source_scope_hash": str(plan.get("scope_hash") or ""),
+            "source_scope_hash": plan['scope_hash'],
             "document_ids": [str(doc_id) for doc_id in (progress.get("created_doc_ids") or [])],
         }
     )
@@ -513,7 +515,7 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
         connector_config_id = _minio_connector_config_id(dict(run.stats or {}))
         listed_objects = _list_minio_bucket_objects(
             client,
-            bucket_name=str(settings_map.get("bucket_name") or ""),
+            bucket_name=settings_map['bucket_name'],
             prefix=(settings_map.get("prefix") if isinstance(settings_map.get("prefix"), str) else None),
         )
         plan = _build_minio_bucket_execution_plan(
@@ -522,7 +524,7 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
             listed_objects=listed_objects,
             include_set=set(settings_map.get("include_set") or set()),
             max_objects=int(settings_map.get("max_objects") or 50),
-            scope_hash=str(settings_map.get("scope_hash") or ""),
+            scope_hash=settings_map['scope_hash'],
         )
         run.stats = _initialize_minio_bucket_run_stats(run=run, plan=plan)
         db.commit()

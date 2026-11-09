@@ -234,7 +234,7 @@ def _get_tenant_qps_limiter() -> RateLimiter | RedisRateLimiter:
     _, rps, burst, _ = _tenant_qps_quota_config()
 
     key_prefix = settings.TENANT_QPS_QUOTA_REDIS_PREFIX.strip() or "tq"
-    ttl = max(30, settings.TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC or 600)
+    ttl = max(30, settings.TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC)
 
     cfg = (use_redis, redis_url, rps, burst, key_prefix, ttl)
     if _tenant_qps_limiter is not None and _tenant_qps_cfg == cfg:
@@ -434,7 +434,7 @@ def check_tenant_embedding_char_quota(db: Session, *, tenant_id: UUID) -> dict[s
     """
     enabled = settings.TENANT_EMBED_CHAR_QUOTA_ENABLED
     limit_chars = settings.TENANT_EMBED_CHAR_QUOTA_LIMIT
-    window_hours = settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS or 24
+    window_hours = settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS
     mode = (settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
 
     if not enabled or limit_chars <= 0:
@@ -485,7 +485,7 @@ def enforce_tenant_embedding_char_quota(
     """
     enabled = settings.TENANT_EMBED_CHAR_QUOTA_ENABLED
     limit = settings.TENANT_EMBED_CHAR_QUOTA_LIMIT
-    window_hours = max(1, settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS or 24)
+    window_hours = max(1, settings.TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS)
     mode = (settings.TENANT_EMBED_CHAR_QUOTA_MODE or "block").lower()
     add = max(0, additional_chars)
     if not enabled or limit <= 0:

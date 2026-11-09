@@ -113,21 +113,14 @@ def resolve_language_aware_model_id(
 
     lang = str((language if language is not None else "")).strip().lower()
     if not lang and text:
-        try:
-            lang = (
-                str(detect_language(str((text if text is not None else "")), min_chars=1).language or "")
-                .strip()
-                .lower()
-            )
-        except Exception:
-            lang = ""
+        lang = detect_language(text, min_chars=1).language.strip().lower()
 
     mapping = {
         "zh": settings.EMBEDDING_MODEL_ZH.strip(),
         "en": settings.EMBEDDING_MODEL_EN.strip(),
         "mixed": settings.EMBEDDING_MODEL_MIXED.strip(),
     }
-    candidate = mapping.get(lang, "")
+    candidate = mapping.get(lang)
     if candidate and candidate in get_supported_model_ids():
         return candidate
     return base_model_id

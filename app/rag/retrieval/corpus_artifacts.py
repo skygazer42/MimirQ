@@ -118,7 +118,7 @@ class SparseCorpusIndex:
             if doc is None or doc.id is None:
                 continue
             doc_ids.append(str(doc.id))
-            texts.append(str(doc.page_content or ""))
+            texts.append(doc.page_content)
         vectors = encoder.encode_batch(texts)
         out: dict[str, SparseVector] = {}
         for idx, doc_id in enumerate(doc_ids):
@@ -197,7 +197,7 @@ class SparseCorpusIndex:
             if not doc_id:
                 continue
             doc_ids.append(doc_id)
-            texts.append(str(doc.page_content or ""))
+            texts.append(doc.page_content)
         return (doc_ids, texts)
 
     @classmethod
@@ -530,7 +530,7 @@ class ColbertCorpusIndex:
         for d in docs or []:
             if d is None or d.id is None:
                 continue
-            pairs.append((str(d.id), str(d.page_content or "")))
+            pairs.append((str(d.id), d.page_content))
         pairs.sort(key=lambda x: x[0])
         return ([p[0] for p in pairs], [p[1] for p in pairs])
 
@@ -627,7 +627,7 @@ class ColbertCorpusIndex:
             if not cid:
                 continue
             up_ids.append(cid)
-            up_texts.append(str(d.page_content or ""))
+            up_texts.append(d.page_content)
         return (up_ids, up_texts)
 
     def _colbert_incremental_vectors(
@@ -780,7 +780,7 @@ class ColbertCorpusIndex:
         try:
             return (
                 index is not None
-                and str(index.corpus_fingerprint or "") == str(expected_fp or "")
+                and index.corpus_fingerprint == expected_fp
                 and (dict(index.provider_config or {}) == dict(provider_config))
             )
         except (TypeError, ValueError, AttributeError):

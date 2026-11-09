@@ -49,8 +49,8 @@ class GraphRequest(BaseModel):
 def _adjacency(edges: list[EdgeIn]) -> dict[str, dict[str, float]]:
     graph: dict[str, dict[str, float]] = defaultdict(dict)
     for edge in edges:
-        source = str(edge.source or "").strip()
-        target = str(edge.target or "").strip()
+        source = edge.source.strip()
+        target = edge.target.strip()
         if not source or not target or source == target:
             continue
         weight = float(edge.weight or 1.0)
@@ -150,7 +150,7 @@ def _pagerank(
 @router.post("/k_hop_neighbors")
 def k_hop_neighbors(body: GraphRequest) -> dict:
     graph = _adjacency(body.edges)
-    start = str(body.start_id or "").strip()
+    start = body.start_id.strip() if body.start_id is not None else None
     return {
         "schema": _SCHEMA,
         "neighbors": _k_hop_neighbors(graph, start_id=start, max_hops=int(body.max_hops)),
@@ -160,8 +160,10 @@ def k_hop_neighbors(body: GraphRequest) -> dict:
 @router.post("/shortest_path")
 def shortest_path(body: GraphRequest) -> dict:
     graph = _adjacency(body.edges)
-    start = str(body.start_id or "").strip()
-    target = str(body.target_id or "").strip()
+    start = body.start_id.strip() if body.start_id is not None else None
+    target = body.target_id.strip() if body.target_id is not None else None
+    if not start or not target:
+        return {"schema": _SCHEMA, "path": [], "path_length": 0}
     path = _shortest_path(graph, start_id=start, target_id=target)
     return {
         "schema": _SCHEMA,
@@ -173,8 +175,8 @@ def shortest_path(body: GraphRequest) -> dict:
 @router.post("/paths_between")
 def paths_between(body: GraphRequest) -> dict:
     graph = _adjacency(body.edges)
-    start = str(body.start_id or "").strip()
-    target = str(body.target_id or "").strip()
+    start = body.start_id.strip() if body.start_id is not None else None
+    target = body.target_id.strip() if body.target_id is not None else None
     paths = _all_paths_between(graph, start_id=start, target_id=target, max_hops=int(body.max_hops))
     return {"schema": _SCHEMA, "paths": paths}
 
@@ -204,14 +206,16 @@ def community_of(body: GraphRequest) -> dict:
     return {
         "schema": _SCHEMA,
         "node_id": body.node_id,
-        "community_id": labels.get(str(body.node_id or "").strip()),
+        "community_id": labels.get(body.node_id.strip() if body.node_id is not None else None),
     }
 
 
 @router.post("/connected_component")
 def connected_component(body: GraphRequest) -> dict:
     graph = _adjacency(body.edges)
-    start = str(body.start_id or "").strip()
+    start = body.start_id.strip() if body.start_id is not None else None
+    if not start:
+        return {"schema": _SCHEMA, "component": []}
     component = [start]
     seen = {start}
     q: deque[str] = deque([start])

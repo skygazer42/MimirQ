@@ -37,8 +37,10 @@ OPTIONAL_DEPENDENCY_STRATEGIES: set[str] = {
 
 
 def decorate_chunk_strategy_note(name: str, notes: str | None) -> str | None:
-    strategy = str(name or "").strip().lower()
-    note = str(notes or "").strip()
+    strategy = name.strip().lower()
+    if notes is None:
+        return None
+    note = notes.strip()
     if not note:
         return None
     if strategy in MAINSTREAM_RAG_STRATEGIES:

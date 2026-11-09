@@ -67,7 +67,7 @@ def _raw_item_count(value: Any) -> int:
 
 
 def _looks_like_heading_style(style_name: str) -> bool:
-    s = (style_name or "").strip()
+    s = (style_name).strip()
     if not s:
         return False
     s_lower = s.lower()
@@ -75,7 +75,7 @@ def _looks_like_heading_style(style_name: str) -> bool:
 
 
 def _heading_level(style_name: str) -> int:
-    m = _HEADING_LEVEL_RE.search((style_name or "").strip())
+    m = _HEADING_LEVEL_RE.search((style_name).strip())
     if not m:
         return 2
     try:
@@ -86,12 +86,12 @@ def _heading_level(style_name: str) -> int:
 
 
 def _looks_like_list_style(style_name: str) -> bool:
-    s = (style_name or "").strip().lower()
+    s = (style_name).strip().lower()
     return "list" in s or "bullet" in s or "列表" in s
 
 
 def _list_marker(style_name: str) -> str:
-    s = (style_name or "").strip().lower()
+    s = (style_name).strip().lower()
     if "number" in s or "编号" in s or "序号" in s:
         return "1."
     return "-"
@@ -312,8 +312,8 @@ def _filter_records_by_elements(
 ) -> list[dict[str, Any]]:
     if not changed:
         return records
-    kept_ids = {str(element.get("id") or "") for element in elements}
-    return [record for record in records if str(record["element"].get("id") or "") in kept_ids]
+    kept_ids = {element["id"] for element in elements}
+    return [record for record in records if record["element"]["id"] in kept_ids]
 
 
 def _prepare_section_content(
@@ -343,8 +343,8 @@ def _prepare_section_content(
 
     reading_order_fix = fix_reading_order_elements([record["element"] for record in section_records])
     if reading_order_fix.elements:
-        records_by_id = {str(record["element"].get("id") or ""): record for record in section_records}
-        fixed_records = [records_by_id.get(str(element.get("id") or "")) for element in reading_order_fix.elements]
+        records_by_id = {record["element"]["id"]: record for record in section_records}
+        fixed_records = [records_by_id.get(element["id"]) for element in reading_order_fix.elements]
         if all(record is not None for record in fixed_records) and len(fixed_records) == len(section_records):
             section_records = [record for record in fixed_records if record is not None]
 
@@ -508,7 +508,7 @@ def _media_element_attributes(
     if table_profile is not None:
         attributes.update(table_profile.to_metadata())
     if isinstance(caption, dict):
-        attributes["caption_text"] = str(caption.get("text") or "")
+        attributes["caption_text"] = caption["text"]
         attributes["caption_source_element_id"] = caption.get("source_element_id")
     if positions:
         attributes["position_tag"] = positions[0]["tag"]

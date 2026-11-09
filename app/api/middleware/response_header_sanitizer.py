@@ -30,7 +30,7 @@ class ResponseHeaderSanitizerMiddleware(BaseHTTPMiddleware):
         cleaned: list[str] = []
         seen: set[str] = set()
         for item in raw:
-            name = (item or "").strip()
+            name = (item).strip()
             if not name:
                 continue
             key = name.lower()

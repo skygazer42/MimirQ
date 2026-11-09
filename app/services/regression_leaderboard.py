@@ -108,22 +108,22 @@ def _build_run_retrieval_config_hash(*, rag_params: dict[str, Any]) -> str | Non
             "reranker_provider": str(rp.get("reranker_provider") or ""),
             "reranker_top_n": int(rp.get("reranker_top_n") or 0),
             "visible_evidence_only": False,
-            "vector_backend": str(settings.VECTOR_BACKEND or ""),
+            "vector_backend": settings.VECTOR_BACKEND,
             "bm25_enabled": bool(settings.BM25_INDEX_ENABLED),
             "lexical_enabled": bool(settings.LEXICAL_DB_TRGM_ENABLED),
             "sparse_enabled": bool(settings.SPARSE_RETRIEVAL_ENABLED),
-            "sparse_provider": str(settings.SPARSE_RETRIEVAL_PROVIDER or ""),
+            "sparse_provider": settings.SPARSE_RETRIEVAL_PROVIDER,
             "sparse_index_persist_enabled": bool(settings.SPARSE_RETRIEVAL_INDEX_PERSIST_ENABLED),
             "colbert_enabled": bool(settings.COLBERT_RETRIEVAL_ENABLED),
-            "colbert_provider": str(settings.COLBERT_RETRIEVAL_PROVIDER or ""),
+            "colbert_provider": settings.COLBERT_RETRIEVAL_PROVIDER,
             "colbert_index_persist_enabled": bool(settings.COLBERT_RETRIEVAL_INDEX_PERSIST_ENABLED),
             "colbert_max_docs": int(settings.COLBERT_RETRIEVAL_MAX_DOCS or 0),
             "parent_child_auto_merge_enabled": bool(settings.RAG_PARENT_CHILD_AUTO_MERGE_ENABLED),
-            "parent_child_auto_merge_mode": str(settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE or ""),
+            "parent_child_auto_merge_mode": settings.RAG_PARENT_CHILD_AUTO_MERGE_MODE,
             "kg_query_expansion_enabled": bool(settings.RAG_KG_QUERY_EXPANSION_ENABLED),
             "kg_chunk_injection_enabled": bool(settings.RAG_KG_CHUNK_INJECTION_ENABLED),
             "evidence_post_rerank_enabled": bool(settings.EVIDENCE_POST_RERANK_ENABLED),
-            "evidence_post_rerank_provider": str(settings.EVIDENCE_POST_RERANK_PROVIDER or ""),
+            "evidence_post_rerank_provider": settings.EVIDENCE_POST_RERANK_PROVIDER,
             "evidence_post_rerank_top_n": int(settings.EVIDENCE_POST_RERANK_TOP_N or 0),
             "evidence_post_rerank_pipeline_enabled": bool(settings.EVIDENCE_POST_RERANK_PIPELINE_ENABLED),
             "evidence_post_rerank_pipeline": _safe_post_rerank_pipeline_summary(settings.EVIDENCE_POST_RERANK_PIPELINE),
@@ -150,7 +150,7 @@ def build_regression_run_leaderboard(
 
     The function is intentionally tolerant of partially-populated run rows.
     """
-    metric_key = str(metric_key or "").strip() or "retrieval_mrr"
+    metric_key = metric_key.strip() or "retrieval_mrr"
     limit = max(1, min(int(limit or 0), 500))
 
     items: list[dict[str, Any]] = []
@@ -164,8 +164,8 @@ def build_regression_run_leaderboard(
 
         items.append(
             {
-                "run_id": str(r.id or ""),
-                "status": str(r.status or ""),
+                "run_id": str(r.id),
+                "status": r.status,
                 "created_at": r.created_at,
                 "finished_at": r.finished_at,
                 "metric_key": metric_key,

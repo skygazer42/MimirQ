@@ -64,7 +64,7 @@ def store_chat_response_cache_if_needed(
     metrics: dict[str, Any],
     structured_data: object | None,
 ) -> bool | None:
-    if not (cache_eligible and (not cache_hit) and cache_key and (content or "").strip()):
+    if not (cache_eligible and (not cache_hit) and cache_key and content.strip()):
         return None
 
     cache_payload = jsonable_encoder(
@@ -182,7 +182,7 @@ async def prepare_non_streaming_chat_cache_state(
             singleflight_hit=False,
             singleflight_leader=False,
             singleflight_key=None,
-            full_response=str(cached.get("content") or ""),
+            full_response=cached["content"],
             citations_data=(cached.get("citations") if isinstance(cached.get("citations"), list) else []),
             metrics_data=metrics_data,
             structured_data=cached.get("structured_data"),
@@ -215,7 +215,7 @@ async def prepare_non_streaming_chat_cache_state(
                 )
             except InflightResponseLeaderCancelledError:
                 continue
-            full_response = str(shared_payload.get("content") or "")
+            full_response = shared_payload["content"]
             citations_data = (
                 shared_payload.get("citations") if isinstance(shared_payload.get("citations"), list) else []
             )
@@ -242,7 +242,7 @@ async def prepare_non_streaming_chat_cache_state(
             )
             if not distributed_leader:
                 resolve_inflight_chat_response(singleflight_key, shared_payload)
-                full_response = str(shared_payload.get("content") or "")
+                full_response = shared_payload["content"]
                 citations_data = (
                     shared_payload.get("citations") if isinstance(shared_payload.get("citations"), list) else []
                 )

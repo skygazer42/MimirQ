@@ -118,7 +118,8 @@ def load_image_for_ocr(meta: dict[str, Any], *, _tenant_id: str) -> tuple[PILIma
     """
     if not isinstance(meta, dict):
         return None, False
-    if str(meta.get("doc_type_kwd") or "").lower() != "image":
+    doc_type = meta.get("doc_type_kwd")
+    if not isinstance(doc_type, str) or doc_type.lower() != "image":
         return None, False
 
     for loader in (
@@ -154,7 +155,7 @@ def ocr_image(image: PILImage.Image, *, _max_chars: int = 2000) -> str:
     except Exception:
         return ""
 
-    text0 = (text or "").strip()
+    text0 = text.strip()
     if not text0:
         return ""
     if len(text0) > max_chars_i:
@@ -322,7 +323,7 @@ def _decode_with_pyzbar(image: PILImage.Image) -> tuple[list[str], str]:
         from pyzbar.pyzbar import decode  # type: ignore[import-untyped]
 
         for item in decode(image) or []:
-            raw_type = str(getattr(item, "type", "") or "").strip().upper()
+            raw_type = item.type.strip().upper()
             raw_data = getattr(item, "data", b"")
             try:
                 text = raw_data.decode("utf-8", "ignore").strip()
@@ -348,7 +349,7 @@ def _decode_with_opencv_qr(image: PILImage.Image) -> tuple[list[str], str]:
         arr = np.array(image.convert("RGB"))
         for candidate in (arr, cv2.resize(arr, None, fx=6, fy=6, interpolation=cv2.INTER_NEAREST)):
             text, _points, _straight = detector.detectAndDecode(candidate)
-            text = str(text or "").strip()
+            text = text.strip()
             if text:
                 return [text], "qr"
     except Exception as exc:

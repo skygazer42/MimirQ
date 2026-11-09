@@ -31,7 +31,7 @@ class DeterministicTestEmbedding(BaseEmbeddingModel):
         vector[bucket] += sign * weight
 
     def _encode_one(self, text: str) -> list[float]:
-        normalized = unicodedata.normalize("NFKC", str(text or "")).casefold()[:4096]
+        normalized = unicodedata.normalize("NFKC", text).casefold()[:4096]
         vector = [0.0] * int(self.dimension or 256)
         features = 0
 

@@ -13,11 +13,11 @@ class _KeywordScore(TypedDict):
 
 
 def _tokenize(text: str) -> list[str]:
-    return _TOKEN_RE.findall(text or "")
+    return _TOKEN_RE.findall(text)
 
 
 def _is_abbreviation(token: str) -> bool:
-    compact = str(token or "").strip()
+    compact = token.strip()
     if not compact:
         return False
     if len(compact) <= 4:
@@ -87,7 +87,10 @@ def mine_query_patterns(
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        query = str(row.get("original_query") or "").strip()
+        raw_query = row.get("original_query")
+        if raw_query is None:
+            continue
+        query = str(raw_query).strip()
         if not query:
             continue
         _record_query_tokens(query=query, token_counts=token_counts, token_doc_counts=token_doc_counts)
@@ -96,14 +99,16 @@ def mine_query_patterns(
         if signals:
             multi_intent_queries.append(
                 {
-                    "interaction_id": str(row.get("interaction_id") or ""),
+                    "interaction_id": row["interaction_id"],
                     "query": query,
                     "signals": signals,
                 }
             )
 
         for filename in row.get("final_context_filenames") or []:
-            name = str(filename or "").strip()
+            if filename is None:
+                continue
+            name = str(filename).strip()
             if name:
                 doc_counts[name] += 1
 

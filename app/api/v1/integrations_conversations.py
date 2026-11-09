@@ -33,7 +33,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _wants_async_ingest(value: str | None) -> bool:
-    return (value or "").strip().lower() in {"1", "true", "yes", "y", "on", "async"}
+    return value is not None and value.strip().lower() in {"1", "true", "yes", "y", "on", "async"}
 
 
 def _run_external_conversation_ingest_background(

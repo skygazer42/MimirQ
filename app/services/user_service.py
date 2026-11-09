@@ -135,7 +135,7 @@ def _registration_tenant(
         db.add(tenant)
         db.flush()
 
-    if (tenant.status or "").strip().lower() != "active":
+    if tenant.status.strip().lower() != "active":
         raise AuthorizationError("Workspace is inactive; contact an administrator")
     has_members = db.query(TenantMember.id).filter(TenantMember.tenant_id == tenant_id).first() is not None
     if initial_owner and has_members:

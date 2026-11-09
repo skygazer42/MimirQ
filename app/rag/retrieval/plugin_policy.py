@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any, Literal, TypedDict
 
 from app.rag.retrieval.planner import (
@@ -53,8 +54,8 @@ class RetrievalPolicySignalScores:
         return self.boost_field + self.query_expansion + self.rerank_feature
 
 
-def _normalize_policy_match_text(value: Any) -> str:
-    text = str(value or "").strip().casefold()
+def _normalize_policy_match_text(value: str) -> str:
+    text = value.strip().casefold()
     return "".join(char for char in text if char.isalnum())
 
 
@@ -68,7 +69,9 @@ def _policy_string_list(value: Any) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
     for item in value:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -94,7 +97,9 @@ def _metadata_terms(value: Any) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in raw_items:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -199,7 +204,7 @@ def _slot_binding_query_matches(
 
     for raw_mapping in policy.get("query_expansion_values") or ():
         mapping = _as_dict(raw_mapping)
-        field = str(mapping.get("metadata") or "").strip()
+        field = _stringified_metadata_text(mapping, "metadata")
         if field not in slot_fields:
             continue
         actual_values = actual_values_by_field.get(field) or set()
@@ -225,7 +230,9 @@ def _anchor_binding_record_info(
     metadata_layers_for_record: MetadataLayersForRecord,
     policy_resolver: PolicyResolver,
 ) -> _AnchorBindingRecordInfo | None:
-    plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+    plugin_ref = plugin_ref_for_record(record)
+    if plugin_ref is not None:
+        plugin_ref = plugin_ref.strip()
     if not plugin_ref:
         return None
     policy = policy_resolver(plugin_ref)
@@ -384,7 +391,9 @@ def record_retrieval_policy_bonus(
     metadata_layers_for_record: MetadataLayersForRecord,
     policy_resolver: PolicyResolver,
 ) -> float:
-    plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+    plugin_ref = plugin_ref_for_record(record)
+    if plugin_ref is not None:
+        plugin_ref = plugin_ref.strip()
     if not plugin_ref:
         return 0.0
     policy = policy_resolver(plugin_ref)
@@ -415,7 +424,9 @@ def evaluate_records_retrieval_policy(
     rerank_feature_record_count = 0
     anchor_mismatch_record_count = 0
     for record in records or ():
-        plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+        plugin_ref = plugin_ref_for_record(record)
+        if plugin_ref is not None:
+            plugin_ref = plugin_ref.strip()
         if not plugin_ref:
             continue
         policy = policy_resolver(plugin_ref)
@@ -482,7 +493,9 @@ def filter_records_by_retrieval_policy_alignment(
     aligned: list[dict[str, Any]] = []
     evaluated = False
     for record in records or ():
-        plugin_ref = str(plugin_ref_for_record(record) or "").strip()
+        plugin_ref = plugin_ref_for_record(record)
+        if plugin_ref is not None:
+            plugin_ref = plugin_ref.strip()
         if not plugin_ref:
             continue
         policy = policy_resolver(plugin_ref)

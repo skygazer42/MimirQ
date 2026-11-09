@@ -4,7 +4,7 @@ from typing import Any
 
 def markdown_to_blocks(markdown: str) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
-    for raw in str(markdown or "").splitlines():
+    for raw in markdown.splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -20,21 +20,27 @@ def write_clean_markdown(path: str | Path, *, title: str | None, blocks: list[di
     target.parent.mkdir(parents=True, exist_ok=True)
 
     lines: list[str] = []
-    title_text = str(title or "").strip()
+    title_text = str(title).strip() if title is not None else None
     if title_text:
         lines.extend([f"# {title_text}", ""])
 
     for block in blocks or []:
         if not isinstance(block, dict):
             continue
-        block_type = str(block.get("type") or "").strip().lower()
+        raw_type = block.get("type")
+        block_type = raw_type.strip().lower() if isinstance(raw_type, str) else None
         if block_type == "image":
-            alt = str(block.get("alt") or "").strip()
-            img_path = str(block.get("path") or "").strip()
+            alt_value = block.get("alt")
+            alt = str(alt_value).strip() if alt_value is not None else ""
+            path_value = block.get("path")
+            img_path = str(path_value).strip() if path_value is not None else None
             if img_path:
                 lines.extend([f"![{alt}]({img_path})", ""])
             continue
-        text = str(block.get("text") or "").strip()
+        value = block.get("text")
+        if value is None:
+            continue
+        text = str(value).strip()
         if text:
             lines.extend([text, ""])
 

@@ -72,8 +72,8 @@ def _iter_entries(text: str) -> list[_Entry]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        ts = (m.group("ts") or "").strip() if "ts" in m.groupdict() else None
-        level = (m.group("level") or "").strip().upper() if "level" in m.groupdict() else None
+        ts = (m.group("ts")).strip() if "ts" in m.groupdict() else None
+        level = (m.group("level")).strip().upper() if "level" in m.groupdict() else None
         if not ts:
             ts = None
         if not level:
@@ -234,7 +234,7 @@ class LogEventsChunker(BaseChunker):
             )
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
         base_meta = dict(doc.metadata or {})

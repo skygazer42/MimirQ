@@ -22,7 +22,7 @@ def get_parser_capability(name: str) -> ParserExport | None:
 
 
 def get_parser_backend_capabilities(backend: str | None) -> dict[str, Any]:
-    requested = str(backend or "").strip().lower() or "auto"
+    requested = backend.strip().lower() or "auto" if backend is not None else "auto"
     normalized = normalize_parser_backend(requested) or requested
     family = get_parser_backend_family(normalized)
     if family is None:

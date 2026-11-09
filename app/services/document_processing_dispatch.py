@@ -285,7 +285,7 @@ async def dispatch_retry_document(
         )
         return
     temp_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
-    temp_path = temp_dir / f"{document.id}.{uuid.uuid4().hex}.{(document.file_type or '').lower()}"
+    temp_path = temp_dir / f"{document.id}.{uuid.uuid4().hex}.{(document.file_type).lower()}"
     background_tasks.add_task(
         _process_stored_retry,
         source=source,

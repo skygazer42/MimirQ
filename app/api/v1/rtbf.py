@@ -48,7 +48,7 @@ async def request_rtbf_cascade(
     return await run_rtbf_cascade(
         db,
         tenant_id=tenant_id,
-        subject_account_id=str(body.subject_account_id or "").strip(),
+        subject_account_id=body.subject_account_id.strip(),
         dry_run=bool(body.dry_run),
         actor_id=account_id,
         max_docs=int(body.max_docs or 0),
@@ -63,4 +63,4 @@ async def get_rtbf_status(
     _tenant_id: Annotated[UUID, Depends(get_tenant_id)],
     _account_id: Annotated[str, Depends(get_current_account_id)],
 ) -> RTBFStatusResponse:
-    return RTBFStatusResponse(ticket_id=str(ticket_id or "").strip())
+    return RTBFStatusResponse(ticket_id=ticket_id.strip())

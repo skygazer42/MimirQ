@@ -20,7 +20,7 @@ def _bounded_reason_codes(items: list[str], *, max_items: int = 8) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in items:
-        text = str(raw or "").strip().lower()
+        text = raw.strip().lower()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -41,7 +41,9 @@ def _normalize_partition_keys(raw: Any, *, max_items: int = 8) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in values:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text:
             continue
         key = text.casefold()
@@ -55,7 +57,7 @@ def _normalize_partition_keys(raw: Any, *, max_items: int = 8) -> list[str]:
 
 
 def classify_composite_query(query: str) -> tuple[str, list[str]]:
-    q = str(query or "").strip()
+    q = query.strip()
     if not q:
         return "single", ["empty_query"]
     if _COMPARE_RE.search(q):
@@ -76,7 +78,7 @@ def build_router_layers(
 ) -> dict[str, Any]:
     """Build routing diagnostics; orchestration retains its six-reason trace budget."""
     explicit_partition_keys = _normalize_partition_keys(partition_keys)
-    explicit_entity_key = str(entity_key or "").strip()
+    explicit_entity_key = entity_key.strip() if entity_key is not None else None
 
     entity_reason_codes: list[str] = []
     entity_keys: list[str] = []
@@ -99,7 +101,8 @@ def build_router_layers(
     }
 
     intent_payload = dict(intent_meta or {})
-    if not str(intent_payload.get("intent") or "").strip():
+    intent = intent_payload.get("intent")
+    if intent is None or not intent.strip():
         intent_payload = route_intent(query)
     intent_layer = {
         "decision": str(intent_payload.get("intent") or "general"),

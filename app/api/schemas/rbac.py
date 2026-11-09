@@ -49,10 +49,10 @@ class TenantAccessOut(BaseModel):
 class TenantMemberUpdateRequest(BaseModel):
     role: str = Field(..., description=_TENANT_ROLE_DESCRIPTION)
 
-    @field_validator("role", mode="before")
+    @field_validator("role", mode="after")
     @classmethod
-    def _normalize_role(cls, v: object) -> str:
-        return str(v or "").strip().lower()
+    def _normalize_role(cls, v: str) -> str:
+        return v.strip().lower()
 
     @field_validator("role")
     @classmethod

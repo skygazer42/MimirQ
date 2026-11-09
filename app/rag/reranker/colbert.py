@@ -27,12 +27,12 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]+|[\u4e00-\u9fff]{2,}")
 
 
 def _tokenize(text: str) -> list[str]:
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw:
         return []
     toks: list[str] = []
     for m in _TOKEN_RE.finditer(raw):
-        t = (m.group(0) or "").strip()
+        t = (m.group(0)).strip()
         if not t:
             continue
         toks.append(t.casefold() if t.isascii() else t)
@@ -69,7 +69,7 @@ _EMBEDDER_CACHE: dict[str, TokenEmbedder] = {}
 
 def get_token_embedder(*, provider_name: str, deterministic_dim: int = 16) -> TokenEmbedder:
     reject_retired_provider(provider_name, capability="colbert")
-    provider = str(provider_name or "").strip().lower() or "deterministic"
+    provider = provider_name.strip().lower() or "deterministic"
     if provider != "deterministic":
         raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
     key = f"deterministic:{int(deterministic_dim or 0)}"
@@ -84,7 +84,7 @@ def get_token_embedder(*, provider_name: str, deterministic_dim: int = 16) -> To
 
 def check_colbert_provider_readiness(*, provider_name: str) -> dict[str, Any]:
     reject_retired_provider(provider_name, capability="colbert")
-    provider = str(provider_name or "").strip().lower() or "deterministic"
+    provider = provider_name.strip().lower() or "deterministic"
     if provider != "deterministic":
         raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
     return {"provider": provider, "ready": True, "reason": "none", "dependency_ok": True}
@@ -130,7 +130,7 @@ class ColBERTReranker(BaseReranker):
         deterministic_dim: int = 16,
         embedder: TokenEmbedder | None = None,
     ) -> None:
-        provider = str(provider_name or "").strip().lower() or "deterministic"
+        provider = provider_name.strip().lower() or "deterministic"
         reject_retired_provider(provider, capability="colbert")
         if provider != "deterministic":
             raise ValueError(f"Unsupported ColBERT provider: {provider_name}")
@@ -176,10 +176,10 @@ class ColBERTReranker(BaseReranker):
 
         scores: list[tuple[str, float]] = []
         for c in candidates:
-            cid = str(c.id or "").strip()
+            cid = c.id.strip()
             if not cid:
                 continue
-            d_tokens = _tokenize(c.text or "")
+            d_tokens = _tokenize(c.text)
             d_emb = self._embedder.encode(d_tokens)
             s = late_interaction_score(query_emb=q_emb, doc_emb=d_emb)
             scores.append((cid, s))

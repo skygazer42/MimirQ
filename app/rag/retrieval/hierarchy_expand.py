@@ -21,9 +21,8 @@ from app.rag.core.logging import get_logger
 FetchByHierarchyKey = Callable[[set[tuple[str, str]]], dict[tuple[str, str], Document]]
 
 
-def _sig(value: Any) -> str:
-    s = str(value or "").strip()
-    return s
+def _sig(value: Any) -> str | None:
+    return str(value).strip() if value is not None else None
 
 
 def _doc_key(doc: Document) -> str:
@@ -35,7 +34,7 @@ def _doc_key(doc: Document) -> str:
     cid = getattr(doc, "id", None) or meta.get("chunk_id")
     if cid:
         return str(cid)
-    content = (doc.page_content or "").strip()
+    content = (doc.page_content).strip()
     digest = hashlib.blake2b(content.encode("utf-8", "ignore"), digest_size=16).hexdigest() if content else "empty"
     return f"content:{digest}"
 
@@ -141,7 +140,7 @@ def _collect_parent_chains(
         for anchor in anchors:
             anchor_key = _doc_key(anchor)
             doc_id = _anchor_doc_id(anchor)
-            parent_key = current_parent_by_anchor.get(anchor_key) or ""
+            parent_key = current_parent_by_anchor[anchor_key]
             if not doc_id or not parent_key:
                 continue
             pending.add((doc_id, parent_key))
@@ -211,8 +210,8 @@ def _collect_sibling_pending_pairs(
     for anchor in anchors:
         anchor_key = _doc_key(anchor)
         doc_id = _anchor_doc_id(anchor)
-        prev_key = current_prev.get(anchor_key) or ""
-        next_key = current_next.get(anchor_key) or ""
+        prev_key = current_prev[anchor_key]
+        next_key = current_next[anchor_key]
         if doc_id and prev_key:
             pending.add((doc_id, prev_key))
             prev_keys_by_anchor.setdefault(anchor_key, []).append(prev_key)
@@ -337,7 +336,7 @@ def _append_anchor_expansion(
 ) -> None:
     anchor_meta = getattr(anchor, "metadata", None) or {}
     doc_id = _sig(anchor_meta.get("document_id"))
-    anchor_chunk_id = _sig(getattr(anchor, "id", None) or anchor_meta.get("chunk_id") or "")
+    anchor_chunk_id = _sig(anchor.id if anchor.id is not None else anchor_meta.get("chunk_id"))
     anchor_score = _score(anchor_meta)
     for parent_key in reversed(parent_keys):
         _add_hierarchy_doc(

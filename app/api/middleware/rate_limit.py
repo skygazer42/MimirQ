@@ -163,7 +163,7 @@ class RedisRateLimiter:
         key_prefix: str = "rl",
         key_ttl_sec: int = 600,
     ) -> None:
-        self.redis_url = str(redis_url or "").strip()
+        self.redis_url = redis_url.strip()
         self.namespace = str(namespace or "default").strip() or "default"
         self.requests_per_second = float(requests_per_second)
         self.burst_size = int(self.requests_per_second * 2) if burst_size is None else int(burst_size)
@@ -265,41 +265,49 @@ def _client_ip_from_request(request: Request) -> str:
     return "unknown"
 
 
-def _tenant_id_from_request(request: Request) -> str:
+def _tenant_id_from_request(request: Request) -> str | None:
     tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
-    tenant_id = request.headers.get(tenant_header, "").strip()
+    tenant_id = request.headers.get(tenant_header)
+    if tenant_id is not None:
+        tenant_id = tenant_id.strip()
     if not tenant_id and tenant_header.lower() != "x-tenant-id":
-        tenant_id = request.headers.get("X-Tenant-ID", "").strip()
+        tenant_id = request.headers.get("X-Tenant-ID")
+        if tenant_id is not None:
+            tenant_id = tenant_id.strip()
     return tenant_id
 
 
-def _jwt_bearer_token(request: Request) -> str:
-    auth = request.headers.get("Authorization", "").strip()
-    if not auth.lower().startswith("bearer "):
-        return ""
+def _jwt_bearer_token(request: Request) -> str | None:
+    auth = request.headers.get("Authorization")
+    if auth is None or not auth.strip().lower().startswith("bearer "):
+        return None
+    auth = auth.strip()
     return auth[7:].strip()
 
 
-def _tenant_id_from_jwt_payload(payload: dict[str, Any]) -> str:
+def _tenant_id_from_jwt_payload(payload: dict[str, Any]) -> str | None:
     claim = settings.JWT_TENANT_CLAIM.strip()
     if not claim:
-        return ""
+        return None
     raw = payload.get(claim)
-    return str(raw).strip() if raw else ""
+    return str(raw).strip() if raw is not None else None
 
 
-async def _jwt_identity_from_request(request: Request) -> tuple[str, str]:
+async def _jwt_identity_from_request(request: Request) -> tuple[str | None, str | None]:
     token = _jwt_bearer_token(request)
     if not token:
-        return "", ""
+        return None, None
     try:
         payload = await jwt_verify.decode_access_token(token)
     except Exception:  # noqa: BLE001
-        return "", ""
-    return (payload.get("sub") or "").strip(), _tenant_id_from_jwt_payload(payload)
+        return None, None
+    subject = payload.get("sub")
+    if subject is not None:
+        subject = subject.strip()
+    return subject, _tenant_id_from_jwt_payload(payload)
 
 
-def _rate_limit_key(*, tenant_id: str, user_id: str, client_ip: str) -> str:
+def _rate_limit_key(*, tenant_id: str | None, user_id: str | None, client_ip: str) -> str:
     if user_id:
         return f"tenant:{tenant_id}:user:{user_id}" if tenant_id else f"user:{user_id}"
     return f"tenant:{tenant_id}:ip:{client_ip}" if tenant_id else f"ip:{client_ip}"
@@ -312,10 +320,14 @@ async def get_client_key(request: Request) -> str:
     # Prefer a trusted user id:
     # - AUTH_MODE=jwt: JWT subject (ignore X-User-ID to avoid spoofing rate-limit keys)
     # - AUTH_MODE=header: X-User-ID (dev-only)
-    user_id = getattr(request.state, "user_id", "").strip()
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is not None:
+        user_id = user_id.strip()
 
     if not user_id and settings.AUTH_MODE == "header":
-        user_id = request.headers.get("X-User-ID", "").strip()
+        user_id = request.headers.get("X-User-ID")
+        if user_id is not None:
+            user_id = user_id.strip()
     elif not user_id:
         user_id, token_tenant_id = await _jwt_identity_from_request(request)
         tenant_id = token_tenant_id or tenant_id
@@ -383,7 +395,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         seen: set[str] = set()
         ordered: list[str] = []
         for p in prefixes:
-            val = (p or "").strip()
+            val = (p).strip()
             if not val:
                 continue
             if val in seen:

@@ -87,7 +87,7 @@ async def update_conversation_summary(
     # Reverse to chronological order for summarization.
     rows = list(reversed(rows))
 
-    msgs = [{"role": str(role or ""), "content": str(content or "")} for role, content, _ts in rows]
+    msgs = [{"role": role, "content": content} for role, content, _ts in rows]
 
     from app.rag.engine import get_rag_engine
     from app.rag.memory.short_term import summarize_messages
@@ -96,7 +96,7 @@ async def update_conversation_summary(
     llm = engine.models.get("fast") or engine.models.get("default") or engine.models.get("heavy")
 
     summary = await summarize_messages(msgs, llm=llm, max_summary_tokens=max_summary_tokens)
-    summary = (summary or "").strip()
+    summary = summary.strip()
     if not summary:
         summary = "(empty summary)"
 

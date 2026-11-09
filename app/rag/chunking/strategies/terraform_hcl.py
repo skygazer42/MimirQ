@@ -61,8 +61,8 @@ def _find_matching_brace(text: str, start: int) -> int | None:
 
 
 def _parse_labels(kind: str, rest: str) -> list[str]:
-    kind = (kind or "").strip().lower()
-    rest = rest or ""
+    kind = (kind).strip().lower()
+    rest = rest
     quoted = [m.group(1) for m in _QUOTED_RE.finditer(rest)]
     if quoted:
         return quoted[:3]
@@ -72,12 +72,12 @@ def _parse_labels(kind: str, rest: str) -> list[str]:
 
 def _iter_blocks(text: str) -> list[_Block]:
     blocks: list[_Block] = []
-    for m in _BLOCK_START_RE.finditer(text or ""):
+    for m in _BLOCK_START_RE.finditer(text):
         end = _find_matching_brace(text, m.start())
         if end is None:
             continue
-        kind = (m.group("kind") or "").strip().lower()
-        rest = (m.group("rest") or "").strip()
+        kind = (m.group("kind")).strip().lower()
+        rest = (m.group("rest")).strip()
         labels = _parse_labels(kind, rest)
         blocks.append(_Block(start=m.start(), end=end, kind=kind, labels=labels, index=len(blocks)))
     return blocks
@@ -153,7 +153,7 @@ class TerraformHCLChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

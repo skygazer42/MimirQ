@@ -1,6 +1,7 @@
 """Plugin-policy and response-compaction support for ``HybridRetriever``."""
 
 from functools import lru_cache
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 from app.core.config import settings
@@ -93,18 +94,18 @@ class RetrievalPolicyMixin:
         return layers
 
     @staticmethod
-    def _result_plugin_ref(result: dict[str, Any]) -> str:
+    def _result_plugin_ref(result: dict[str, Any]) -> str | None:
         for metadata in RetrievalPolicyMixin._result_metadata_layers(result):
             for key in _PIPELINE_PLUGIN_METADATA_KEYS:
-                value = str(metadata.get(key) or "").strip()
+                value = _stringified_metadata_text(metadata, key)
                 if value:
                     return value
-        return ""
+        return None
 
     @staticmethod
     @lru_cache(maxsize=128)
     def _retrieval_policy_for_plugin_ref(plugin_ref: str) -> dict[str, Any]:
-        ref = str(plugin_ref or "").strip()
+        ref = plugin_ref.strip()
         if not ref.startswith("plugin:"):
             return {}
         try:

@@ -30,7 +30,7 @@ logger = get_logger("parsing.glm_ocr")
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "glmocr"
     return text
 
@@ -112,7 +112,7 @@ class GlmOCRParser:
 
         resp = self._post_multipart(file_path=file_path)
         if resp.status_code >= 400:
-            raise RuntimeError(f"GLM-OCR HTTP {resp.status_code}: {str(resp.text or '')[:500]}")
+            raise RuntimeError(f"GLM-OCR HTTP {resp.status_code}: {resp.text[:500]}")
 
         markdown_text = ""
         extra_meta: dict[str, Any] = {}
@@ -131,7 +131,7 @@ class GlmOCRParser:
                 markdown_text = _extract_markdown_from_json(data)
             if not markdown_text:
                 # Fallback: treat as text.
-                markdown_text = str(resp.text or "")
+                markdown_text = resp.text
 
         # If object storage is disabled, strip local image references to avoid dead links.
         if not settings.MINIO_ENABLED and markdown_text:

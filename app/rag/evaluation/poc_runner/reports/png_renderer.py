@@ -24,7 +24,7 @@ def _draw_metric_section(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y
             width=2,
             fill=(248, 250, 252),
         )
-        draw.text((x0 + 12, y0 + 10), str(card.get("key") or ""), fill=(71, 85, 105))
+        draw.text((x0 + 12, y0 + 10), str(card["key"]), fill=(71, 85, 105))
         draw.text((x0 + 12, y0 + 36), str(card.get("value")), fill=(15, 23, 42))
     if feedback_card:
         fy = card_y + 2 * (card_height + gap)
@@ -35,7 +35,7 @@ def _draw_metric_section(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y
             width=2,
             fill=(239, 246, 255),
         )
-        draw.text((card_x + 12, fy + 10), str(feedback_card.get("key") or ""), fill=(30, 64, 175))
+        draw.text((card_x + 12, fy + 10), str(feedback_card["key"]), fill=(30, 64, 175))
         draw.text((card_x + 12, fy + 32), str(feedback_card.get("value")), fill=(15, 23, 42))
         return fy + 78
     return card_y + 2 * (card_height + gap) + 12
@@ -57,7 +57,7 @@ def _draw_heatmap(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
     max_retrieval = max([int(row.get("retrieval_hit_count") or 0) for row in heatmap_rows] or [1])
     max_negative = max(1, max([int(row.get("negative_feedback_count") or 0) for row in heatmap_rows] or [1]))
     for row in heatmap_rows[:12]:
-        filename = str(row.get("filename") or "")
+        filename = str(row["filename"])
         retrieval = int(row.get("retrieval_hit_count") or 0)
         negative = int(row.get("negative_feedback_count") or 0)
         draw.text((base_x, y), filename[:42], fill=(31, 41, 55))
@@ -115,11 +115,11 @@ def _draw_scatter(draw: ImageDraw.ImageDraw, report: dict[str, Any], *, y: int) 
         yy = float(point.get("y") or 0.0)
         cx = chart_left + 28 + int(((x - min_x) / span_x) * (chart_width - 56))
         cy = chart_top + 24 + int(((max_y - yy) / span_y) * (chart_height - 48))
-        color = color_map.get(str(point.get("group") or ""), (15, 23, 42))
-        radius = 6 if str(point.get("kind") or "") == "document" else 5
+        color = color_map.get(point.get("group"), (15, 23, 42))
+        radius = 6 if point.get("kind") == "document" else 5
         draw.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=color)
-        if str(point.get("group") or "") == "out_of_scope_candidate":
-            draw.text((cx + 8, cy - 6), str(point.get("label") or "")[:20], fill=(127, 29, 29))
+        if point.get("group") == "out_of_scope_candidate":
+            draw.text((cx + 8, cy - 6), str(point["label"])[:20], fill=(127, 29, 29))
 
 
 def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
@@ -136,7 +136,7 @@ def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
     )
     draw.text((24, y), title, fill=(17, 24, 39))
     y += 36
-    draw.text((24, y), f"generated_at: {((report.get('meta') or {}).get('generated_at') or '')}", fill=(75, 85, 99))
+    draw.text((24, y), f"generated_at: {report['meta']['generated_at']}", fill=(75, 85, 99))
     y += 40
 
     y = _draw_metric_section(draw, report, y=y)
@@ -158,9 +158,10 @@ def render_dataset_analysis_png(report: dict[str, Any]) -> bytes:
         draw.text((32, y), str(category), fill=(17, 24, 39))
         y += 24
         for row in list(rows or [])[:3]:
+            query = row.get("original_query")
             draw.text(
                 (48, y),
-                f"{row.get('interaction_id')}: {str(row.get('original_query') or '')[:110]}",
+                f"{row.get('interaction_id')}: {(str(query) if query is not None else '')[:110]}",
                 fill=(55, 65, 81),
             )
             y += 22

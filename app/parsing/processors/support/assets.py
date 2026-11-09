@@ -118,7 +118,7 @@ def _apply_inline_asset_audit_patch(
             meta_patch[count_key] = getattr(inline_result, count_attr)
             backend_value = getattr(inline_result, backend_attr) if backend_attr else None
             if backend_key and backend_value:
-                meta_patch[backend_key] = str(backend_value or "")
+                meta_patch[backend_key] = backend_value
             audit_value = getattr(inline_result, audit_attr)
             if isinstance(audit_value, dict):
                 meta_patch[audit_key] = dict(audit_value)
@@ -130,7 +130,8 @@ def _apply_inline_asset_audit_patch(
 
 
 def _chunk_has_asset(meta: dict[str, Any]) -> bool:
-    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+    raw_type = meta.get("doc_type_kwd")
+    doc_type = raw_type.lower() if isinstance(raw_type, str) else None
     if doc_type in {"image", "table"}:
         return True
     if meta.get("image") is not None:

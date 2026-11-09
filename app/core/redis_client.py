@@ -34,7 +34,7 @@ class LazyRedisClient:
 
     def _resolve_url(self) -> str:
         value = self._url() if callable(self._url) else self._url
-        resolved = value or ""
+        resolved = value
         return resolved.strip() if self._strip_url else resolved
 
     def get(self) -> "Redis | None":

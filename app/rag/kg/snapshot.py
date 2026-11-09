@@ -77,7 +77,7 @@ def _detail_items(snapshot: dict[str, Any], key: str) -> list[dict[str, Any]]:
             normalized.get("props_hash") or canonical_json_hash({k: v for k, v in normalized.items() if k != "id"})
         )
         out.append(normalized)
-    out.sort(key=lambda x: str(x.get("id") or ""))
+    out.sort(key=lambda x: x["id"])
     return out
 
 
@@ -97,8 +97,8 @@ def _changed_items(
     for item_id in sorted(set(a_items) & set(b_items)):
         before = a_items[item_id]
         after = b_items[item_id]
-        before_hash = str(before.get("props_hash") or "")
-        after_hash = str(after.get("props_hash") or "")
+        before_hash = before["props_hash"]
+        after_hash = after["props_hash"]
         if before_hash == after_hash:
             continue
         changed.append(

@@ -59,7 +59,7 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
     extends = None
     raw_extends = payload.extends
     if raw_extends is not None:
-        ref = str(raw_extends or "").strip()
+        ref = raw_extends.strip()
         if ref:
             # Keep it safe for logs/storage/JSON; existence is resolved later.
             if "\x7f" in ref or any(ord(ch) < 32 for ch in ref):
@@ -68,7 +68,7 @@ def validate_and_normalize_payload(payload: GovernanceProfilePayload) -> Governa
 
     cleaned_formats: list[str] = []
     for fmt in payload.input_formats or []:
-        v = str(fmt or "").strip().lower()
+        v = fmt.strip().lower()
         if v in {"markdown", "html"} and v not in cleaned_formats:
             cleaned_formats.append(v)
     if not cleaned_formats:

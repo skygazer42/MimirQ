@@ -168,7 +168,7 @@ def _decode_tail_bytes(raw: bytes) -> str | None:
 def _parse_jsonl_records(text: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for line in text.splitlines():
-        line = (line or "").strip()
+        line = line.strip()
         if not line:
             continue
         try:
@@ -697,7 +697,7 @@ def _hash_for_analytics(text: str) -> str:
     hash at read time so analytics remain PII-safe.
     """
 
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = (text).encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
@@ -1141,7 +1141,7 @@ def _detect_query_analytics_anomalies(
         )
         if anomaly
     ]
-    return sorted(anomalies, key=lambda x: str(x.get("metric") or ""))
+    return sorted(anomalies, key=lambda x: x["metric"])
 
 
 @dataclass
@@ -1599,7 +1599,7 @@ def _now_utc() -> datetime:
 
 def _first_event(records: list[dict[str, Any]], event: str) -> dict[str, Any] | None:
     for r in records:
-        if str(r.get("event") or "") == event:
+        if r.get('event') == event:
             return r
     return None
 
@@ -1789,7 +1789,7 @@ def _sanitize_trace_bundle_record(record: dict[str, Any]) -> dict[str, Any]:
 
 def _matching_trace_bundle_records(records: list[dict[str, Any]], *, request_id: str) -> list[dict[str, Any]]:
     matched = [
-        _sanitize_trace_bundle_record(record) for record in records if str(record.get("request_id") or "") == request_id
+        _sanitize_trace_bundle_record(record) for record in records if record.get('request_id') == request_id
     ]
     return sorted(matched, key=lambda x: int(x.get("ts_ms") or 0))
 
@@ -1809,7 +1809,7 @@ def build_rag_trace_bundle(
     """
 
     enabled = bool(settings.ENABLE_METRICS_LOG)
-    request_id = str(request_id or "").strip()
+    request_id = request_id.strip()
     if not request_id:
         return None
 

@@ -181,7 +181,7 @@ class ParsingStage:
     def _documents_from_items(items: list[Any] | None) -> list[Document]:
         return [
             Document(
-                page_content=str(item.get("page_content") or ""),
+                page_content=item["page_content"],
                 metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
                 id=item.get("id") if isinstance(item.get("id"), str) else None,
             )
@@ -215,7 +215,7 @@ class ParsingStage:
                 tenant_id=tenant_id,
                 payload=payload,
                 cancel_check=cancel_check_worker,
-                timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+                timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
             )
         except SubprocessCancelled as exc:
             self._cleanup_artifact_root(artifact_root)
@@ -321,11 +321,15 @@ class ParsingStage:
 
         try:
             metadata = dict(db_document.doc_metadata or {})
-            file_sha = str(metadata.get("file_sha256") or "").strip().lower()
-            pipeline_hash = str(metadata.get("pipeline_hash") or metadata.get("active_pipeline_hash") or "").strip()
-            backend_key = (
-                str((effective_parser_backend if effective_parser_backend is not None else "")).strip().lower()
-            )
+            file_sha = metadata.get("file_sha256")
+            pipeline_hash = metadata.get("pipeline_hash")
+            if pipeline_hash is None or pipeline_hash == "":
+                pipeline_hash = metadata.get("active_pipeline_hash")
+            if not all(isinstance(value, str) for value in (file_sha, pipeline_hash, effective_parser_backend)):
+                return parse_cache_key, False, [], None
+            file_sha = file_sha.strip().lower()
+            pipeline_hash = pipeline_hash.strip()
+            backend_key = effective_parser_backend.strip().lower()
             if not file_sha or not backend_key or not pipeline_hash:
                 return parse_cache_key, False, [], None
 
@@ -479,8 +483,11 @@ class ParsingStage:
 
         try:
             metadata = dict(db_document.doc_metadata or {})
-            file_sha = str(metadata.get("file_sha256") or "").strip().lower()
-            pipeline_hash = str(metadata.get("pipeline_hash") or metadata.get("active_pipeline_hash") or "").strip()
+            file_sha = metadata["file_sha256"].strip().lower()
+            pipeline_hash = metadata.get("pipeline_hash")
+            if pipeline_hash is None or pipeline_hash == "":
+                pipeline_hash = metadata.get("active_pipeline_hash")
+            pipeline_hash = pipeline_hash.strip()
             entry = RemoteParseCacheEntry(
                 created_at=dt.datetime.now(dt.UTC).replace(microsecond=0).isoformat(),
                 file_sha256=file_sha,
@@ -488,7 +495,7 @@ class ParsingStage:
                 config_hash=pipeline_hash,
                 documents=[
                     {
-                        "page_content": str(doc.page_content or ""),
+                        "page_content": str(doc.page_content),
                         "metadata": dict(doc.metadata or {}),
                         "id": str(doc.id) if isinstance(getattr(doc, "id", None), str) else None,
                     }
@@ -621,7 +628,8 @@ class InlineAssetStage:
             item = dict(raw_element)
             if item.get("page") is None and page_hint is not None:
                 item["page"] = page_hint
-            if not str(item.get("id") or "").strip():
+            item_id = item.get("id")
+            if item_id is None or not str(item_id).strip():
                 page_part = item.get("page") if item.get("page") is not None else "na"
                 item["id"] = f"{prefix}:{page_part}:{len(derived)}"
             derived.append(item)
@@ -713,11 +721,11 @@ class InlineAssetStage:
         if not enabled:
             return content
         try:
-            if bool(settings.IMAGE_CAPTION_VLM_ENABLED) and str(settings.IMAGE_CAPTION_VLM_API_URL or "").strip():
+            if bool(settings.IMAGE_CAPTION_VLM_ENABLED) and str(settings.IMAGE_CAPTION_VLM_API_URL).strip():
                 content, added, audit = add_vlm_image_captions(
                     content,
                     origin_path=origin_path,
-                    api_url=str(settings.IMAGE_CAPTION_VLM_API_URL or ""),
+                    api_url=str(settings.IMAGE_CAPTION_VLM_API_URL),
                     timeout_sec=float(settings.IMAGE_CAPTION_VLM_TIMEOUT_SEC or 60),
                     max_images=int(settings.IMAGE_CAPTION_VLM_MAX_IMAGES or 20),
                     max_image_bytes=int(settings.IMAGE_CAPTION_VLM_MAX_IMAGE_BYTES or 5_000_000),
@@ -790,16 +798,16 @@ class InlineAssetStage:
     ) -> InlineAssetResult:
         upload_enabled = bool(settings.MINIO_ENABLED)
         caption_enabled = bool(image_caption_enabled)
-        formula_url = str(settings.FORMULA_OCR_API_URL or "").strip()
+        formula_url = str(settings.FORMULA_OCR_API_URL).strip()
         formula_enabled = bool(settings.FORMULA_OCR_ENABLED) and bool(formula_url)
-        chart_enabled = bool(settings.CHART_TO_DATA_ENABLED) and bool(str(settings.CHART_TO_DATA_API_URL or "").strip())
+        chart_enabled = bool(settings.CHART_TO_DATA_ENABLED) and bool(str(settings.CHART_TO_DATA_API_URL).strip())
         inline_cache: dict[str, str] = {}
         asset_idx = int(start_index or 0)
         processed_docs: list[Document] = []
         stats = _InlineAssetStats()
 
         for doc in documents:
-            content = doc.page_content or ""
+            content = doc.page_content
             original_meta = dict(doc.metadata or {})
             origin_for_doc = self._resolve_origin_path(origin_path, original_meta)
 
@@ -873,7 +881,7 @@ def normalize_documents(*, items: list[Document]) -> list[Document]:
         return items
     out: list[Document] = []
     for doc in items:
-        raw = doc.page_content or ""
+        raw = doc.page_content
         normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
         canon = canonicalize_markdown(normalized)
         meta = dict(doc.metadata or {})
@@ -907,7 +915,7 @@ def chunk_documents(
     if chunk_overlap >= chunk_size:
         raise ValueError("chunk_overlap must be less than chunk_size")
     params = dict((chunk_strategy_params if chunk_strategy_params is not None else {}))
-    plugin_ref = str(chunk_python_plugin or "").strip()
+    plugin_ref = chunk_python_plugin.strip()
     if plugin_ref:
         return ChunkingResult(
             chunks=_plugin_chunks(
@@ -922,7 +930,7 @@ def chunk_documents(
         )
 
     # Separator chunking needs preset/custom mapping (preview supports this too).
-    if (chunk_strategy or "").strip().lower() == "separator":
+    if (chunk_strategy).strip().lower() == "separator":
         chunker = _build_separator_chunker(
             params=params,
             chunk_size=chunk_size,
@@ -991,7 +999,7 @@ def _chunking_float(value: object) -> float | None:
 
 
 def _decode_separator_value(raw_value: object) -> str:
-    separator = str(raw_value or "") or "\n\n"
+    separator = str(raw_value) or "\n\n" if raw_value is not None else "\n\n"
     try:
         import json as _json  # local import to keep module deps minimal
 
@@ -1008,7 +1016,8 @@ def _build_separator_chunker(
     chunk_size: int,
     chunk_overlap: int,
 ) -> SeparatorChunker:
-    preset = str(params.get("separator_preset") or "").strip() or "paragraph"
+    raw_preset = params.get("separator_preset")
+    preset = str(raw_preset).strip() or "paragraph" if raw_preset is not None else "paragraph"
     if preset != "custom":
         separator = SeparatorChunker.PRESET_SEPARATORS.get(preset)
         if separator is None:
@@ -1094,7 +1103,7 @@ def deduplicate_chunks(*, chunks: list[Document], enabled: bool) -> ChunkDedupRe
 
 
 def _chunk_digest_metadata(chunk: Document) -> tuple[str, dict[str, Any]]:
-    raw = chunk.page_content or ""
+    raw = chunk.page_content
     normalized = normalize_text(raw, normalize_line_endings=True, remove_control_chars=True)
     digest = hashlib.sha256(normalized.strip().encode("utf-8", "ignore")).hexdigest()
 
@@ -1106,7 +1115,8 @@ def _chunk_digest_metadata(chunk: Document) -> tuple[str, dict[str, Any]]:
 
 
 def _dedup_chunk_has_asset(meta: dict[str, Any]) -> bool:
-    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+    raw_type = meta.get("doc_type_kwd")
+    doc_type = raw_type.lower() if isinstance(raw_type, str) else None
     return (
         doc_type in {"image", "table"}
         or meta.get("image") is not None
@@ -1203,9 +1213,11 @@ class ChunkAssetStage:
 
     @staticmethod
     def _needs_image_inspection(meta: dict[str, Any], *, image_ocr_enabled: bool, ocr_remaining: int | None) -> bool:
+        visual_kind = meta.get("visual_kind")
+        image_code_text = meta.get("image_code_text")
         return (
-            not str(meta.get("visual_kind") or "").strip()
-            or not str(meta.get("image_code_text") or "").strip()
+            not (isinstance(visual_kind, str) and visual_kind.strip())
+            or not (isinstance(image_code_text, str) and image_code_text.strip())
             or (bool(image_ocr_enabled) and (ocr_remaining is None or ocr_remaining > 0))
         )
 
@@ -1220,7 +1232,7 @@ class ChunkAssetStage:
         if not enabled:
             return ""
         try:
-            return str(deps.derive_image_caption(chunk.page_content or "", meta) or "")
+            return deps.derive_image_caption(chunk.page_content, meta)
         except Exception as exc:
             _log_processor_fallback("run", exc)
             return ""
@@ -1229,23 +1241,24 @@ class ChunkAssetStage:
     def _apply_code_info(meta: dict[str, Any], code_info: Any) -> str:
         if not isinstance(code_info, dict):
             return ""
-        image_code_text = str(code_info.get("text") or "").strip()
+        image_code_text = code_info.get("text", "").strip()
         if image_code_text:
             meta["image_code_text"] = image_code_text
             raw_values = code_info.get("values")
             if isinstance(raw_values, list):
                 meta["image_code_values"] = [str(item).strip() for item in raw_values if str(item).strip()]
-        visual_kind = str(code_info.get("visual_kind") or "").strip().lower()
+        visual_kind = code_info.get("visual_kind", "").strip().lower()
         if visual_kind:
             meta["visual_kind"] = visual_kind
         return image_code_text
 
     @staticmethod
     def _ensure_visual_kind(meta: dict[str, Any], img: Any, deps: _ChunkAssetDeps) -> None:
-        if str(meta.get("visual_kind") or "").strip():
+        existing = meta.get("visual_kind")
+        if isinstance(existing, str) and existing.strip():
             return
         try:
-            visual_kind = str(deps.infer_visual_kind_from_pixels(img) or "").strip().lower()
+            visual_kind = deps.infer_visual_kind_from_pixels(img).strip().lower()
         except Exception as exc:
             _log_processor_fallback("run", exc)
             visual_kind = ""
@@ -1263,7 +1276,7 @@ class ChunkAssetStage:
     ) -> tuple[str, int | None]:
         if not image_ocr_enabled or (ocr_remaining is not None and ocr_remaining <= 0):
             return "", ocr_remaining
-        ocr_text = str(deps.ocr_image(img, _max_chars=int(image_ocr_max_chars)) or "")
+        ocr_text = deps.ocr_image(img, _max_chars=int(image_ocr_max_chars))
         if ocr_remaining is None:
             return ocr_text, None
         return ocr_text, (ocr_remaining - 1)
@@ -1343,7 +1356,7 @@ class ChunkAssetStage:
                 meta[pii_key] = {str(key): int(value) for key, value in pii_hits.items() if int(value or 0) > 0}
             if meta is not None and secrets_key and secret_hits:
                 meta[secrets_key] = {str(key): int(value) for key, value in secret_hits.items() if int(value or 0) > 0}
-            return str(redacted or "")
+            return redacted
         except Exception as exc:
             _log_processor_fallback("run", exc)
             if bool(options.pii_anonymize) or bool(options.secrets_redact):
@@ -1364,7 +1377,8 @@ class ChunkAssetStage:
         deps: _ChunkAssetDeps,
         runtime: _ChunkAssetRuntime,
     ) -> _ImageUnderstandingResult:
-        if str(meta.get("doc_type_kwd") or "").strip().lower() != "image":
+        doc_type = meta.get("doc_type_kwd")
+        if not isinstance(doc_type, str) or doc_type.strip().lower() != "image":
             return _ImageUnderstandingResult()
 
         meta.setdefault("chunk_role", "image")
@@ -1407,15 +1421,12 @@ class ChunkAssetStage:
     ) -> str:
         if not (info.caption or info.ocr_text or info.image_code_text):
             return content
-        return str(
-            deps.append_image_understanding_text(
+        return deps.append_image_understanding_text(
                 content,
                 caption=info.caption,
                 ocr_text=info.ocr_text,
                 code_text=info.image_code_text,
             )
-            or ""
-        )
 
     @staticmethod
     def _populate_content_metadata(
@@ -1439,10 +1450,10 @@ class ChunkAssetStage:
             meta.setdefault("chunk_type", classify_chunk_type(content=content_norm, meta=meta))
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
-        if force_hashes or not str(meta.get("content_hash") or "").strip():
+        if force_hashes or not isinstance(meta.get("content_hash"), str) or not meta["content_hash"].strip():
             meta["content_hash"] = hashlib.sha256(content_norm.strip().encode("utf-8", "ignore")).hexdigest()
             meta.setdefault("content_hash_algo", "sha256")
-        if force_hashes or not str(meta.get("simhash64") or "").strip():
+        if force_hashes or not isinstance(meta.get("simhash64"), str) or not meta["simhash64"].strip():
             try:
                 meta["simhash64"] = simhash64_hex(simhash64(content_norm))
                 meta.setdefault("simhash_algo", "simhash64_sha1")
@@ -1509,7 +1520,8 @@ class ChunkAssetStage:
         runtime: _ChunkAssetRuntime,
         deps: _ChunkAssetDeps,
     ) -> None:
-        if str(parent_meta.get("doc_type_kwd") or "").strip().lower() != "image" or not ocr_text:
+        doc_type = parent_meta.get("doc_type_kwd")
+        if not isinstance(doc_type, str) or doc_type.strip().lower() != "image" or not ocr_text:
             return
 
         ocr_norm = normalize_text(ocr_text, normalize_line_endings=True, remove_control_chars=True).strip()
@@ -1601,7 +1613,7 @@ class ChunkAssetStage:
                 runtime=runtime,
             )
             content = self._append_understanding_text(
-                content=chunk.page_content or "",
+                content=chunk.page_content,
                 info=info,
                 deps=deps,
             )

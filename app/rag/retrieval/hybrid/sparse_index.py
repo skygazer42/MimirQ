@@ -70,7 +70,7 @@ class SparseIndexMixin:
             if doc is None or doc.id is None:
                 continue
             doc_ids.append(str(doc.id))
-            texts.append(str(doc.page_content or ""))
+            texts.append(doc.page_content)
 
         vectors = encoder.encode_batch(texts)
         out: dict[str, SparseVector] = {}
@@ -155,7 +155,7 @@ class SparseIndexMixin:
             if not doc_id:
                 continue
             doc_ids.append(doc_id)
-            texts.append(str(doc.page_content or ""))
+            texts.append(doc.page_content)
         return doc_ids, texts
 
     @classmethod
@@ -660,7 +660,7 @@ class SparseIndexMixin:
         - Uses the same BM25-scoped in-memory corpus as the sparse index source.
         - Uses a deterministic encoder by default (no model downloads).
         """
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query:
             return []
         if not self._effective_sparse_enabled():

@@ -49,8 +49,7 @@ def _to_float(value: Any) -> float:
 
 
 def _clean_text(value: Any) -> str | None:
-    text = str(value or "").strip()
-    return text or None
+    return None if value is None else str(value).strip()
 
 
 def build_cost_event(

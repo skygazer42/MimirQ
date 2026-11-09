@@ -78,7 +78,7 @@ def relation_multiplier(predicate: str, *, from_is_subject: bool) -> float:
     - 0.0 means "do not expand this edge" (e.g., unknown predicate).
     - Fallback (unknown but non-empty) is intentionally modest to reduce drift.
     """
-    pred = (predicate or "").strip()
+    pred = (predicate).strip()
     if not pred:
         return 0.0
 
@@ -95,11 +95,11 @@ def relation_multiplier(predicate: str, *, from_is_subject: bool) -> float:
 
 
 def relation_direction(rel: "KgRelation", entity_ids: set[str]) -> tuple[str | None, str | None, str | None]:
-    subject_id = str(rel.subject_entity_id or "")
-    object_id = str(rel.object_entity_id or "")
+    subject_id = str(rel.subject_entity_id)
+    object_id = str(rel.object_entity_id)
     if not subject_id or not object_id:
         return None, None, None
-    predicate = str(rel.predicate or "").strip()
+    predicate = rel.predicate.strip()
     if not predicate or predicate.casefold() == "unknown":
         return None, None, None
     if subject_id in entity_ids:

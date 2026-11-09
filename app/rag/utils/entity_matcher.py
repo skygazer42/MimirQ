@@ -15,7 +15,9 @@ def _normalize_candidates(candidates: Iterable[object] | None) -> list[str]:
     rows: list[str] = []
     seen: set[str] = set()
     for raw in candidates or []:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text:
             continue
         key = text.casefold()
@@ -58,7 +60,7 @@ def find_entity_matches(
     - after each match, replace the matched span in the working copy so shorter
       surfaces cannot "steal" substrings inside a longer matched entity
     """
-    source = str(text or "")
+    source = text
     if not source:
         return []
 

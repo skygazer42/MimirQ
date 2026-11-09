@@ -56,7 +56,7 @@ def _sanitize_timeline_details(details: Any, *, _depth: int = 0) -> dict[str, An
 
     out: dict[str, Any] = {}
     for key, value in details.items():
-        key_norm = str(key or "").strip()
+        key_norm = str(key).strip()
         if not key_norm:
             continue
         key_l = key_norm.lower()
@@ -166,7 +166,7 @@ def get_document_timeline(
         items.append(
             DocumentTimelineItem(
                 id=str(row.id),
-                action=row.action or "",
+                action=row.action,
                 created_at=row.created_at,
                 source="audit",
                 actor_id=row.actor_id,

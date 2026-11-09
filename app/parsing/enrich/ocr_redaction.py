@@ -5,7 +5,9 @@ from app.rag.preprocessing.secrets import redact_secrets
 
 
 def _normalize_mode(raw: Any, *, allowed: set[str], default: str) -> str:
-    mode = str(raw or "").strip().lower()
+    if not isinstance(raw, str):
+        return default
+    mode = raw.strip().lower()
     return mode if mode in allowed else default
 
 

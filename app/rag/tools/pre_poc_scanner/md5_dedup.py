@@ -7,11 +7,12 @@ def find_exact_md5_duplicates(rows: list[dict[str, Any]]) -> dict[str, Any]:
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        digest = str(row.get("md5") or "").strip().lower()
-        path = str(row.get("path") or "").strip()
+        raw_digest, raw_path = row.get("md5"), row.get("path")
+        digest = str(raw_digest).strip().lower() if raw_digest is not None else None
+        path = str(raw_path).strip() if raw_path is not None else None
         if not digest or not path:
             continue
-        grouped[digest].append(dict(row))
+        grouped[digest].append({**row, "path": path})
 
     groups_out: list[dict[str, Any]] = []
     duplicate_files = 0
@@ -23,16 +24,16 @@ def find_exact_md5_duplicates(rows: list[dict[str, Any]]) -> dict[str, Any]:
             key=lambda row: (
                 -int(row.get("size_bytes") or 0),
                 -int(row.get("mtime") or 0),
-                str(row.get("path") or ""),
+                row["path"],
             ),
         )
         keep = members_sorted[0]
-        duplicates = sorted(str(row.get("path") or "") for row in members_sorted[1:] if str(row.get("path") or ""))
+        duplicates = sorted(row["path"] for row in members_sorted[1:])
         duplicate_files += 1 + len(duplicates)
         groups_out.append(
             {
                 "md5": digest,
-                "keep_path": str(keep.get("path") or ""),
+                "keep_path": keep["path"],
                 "duplicate_paths": duplicates,
                 "count": len(members_sorted),
             }

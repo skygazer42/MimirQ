@@ -42,7 +42,7 @@ def _load_retry_cleanup_request(
     request = metadata.get("retry_cleanup")
     if request is None:
         return "missing", None
-    if not isinstance(request, dict) or str(request.get("version") or "") != "1":
+    if not isinstance(request, dict) or request.get("version") != "1":
         logger.error("Refusing unknown retry cleanup intent for document %s", document_id)
         return "invalid", None
     return "ok", request
@@ -53,14 +53,22 @@ def _validate_retry_cleanup_scope(
     *,
     request: dict[str, Any],
     document_id: UUID,
-) -> tuple[str, str, bool] | None:
-    pipeline_hash = str(metadata.get("pipeline_hash") or "").strip()
-    scope = str(request.get("scope") or "").strip()
-    target_key = str(request.get("doc_pipeline_key") or "").strip()
-    if str(request.get("pipeline_hash") or "").strip() != pipeline_hash or scope not in {"document", "pipeline"}:
+) -> tuple[str, str | None, bool] | None:
+    pipeline_hash = metadata.get("pipeline_hash")
+    requested_hash = request.get("pipeline_hash")
+    scope = request.get("scope")
+    target_key = request.get("doc_pipeline_key")
+    if any(value is not None and not isinstance(value, str) for value in (pipeline_hash, requested_hash, scope, target_key)):
+        logger.error("Refusing malformed retry cleanup intent for document %s", document_id)
+        return None
+    pipeline_hash = pipeline_hash.strip() if pipeline_hash is not None else None
+    requested_hash = requested_hash.strip() if requested_hash is not None else None
+    scope = scope.strip() if scope is not None else None
+    target_key = target_key.strip() if target_key is not None else None
+    if not pipeline_hash or requested_hash != pipeline_hash or scope not in {"document", "pipeline"}:
         logger.error("Refusing stale retry cleanup intent for document %s", document_id)
         return None
-    if scope == "pipeline" and target_key != f"{document_id}:{pipeline_hash}":
+    if scope == "pipeline" and (not pipeline_hash or target_key != f"{document_id}:{pipeline_hash}"):
         logger.error("Refusing invalid scoped retry cleanup intent for document %s", document_id)
         return None
     return scope, target_key, scope == "pipeline"
@@ -277,11 +285,12 @@ def apply_pending_retry_cleanup(
     return "applied"
 
 
-def checkpoint_stage(metadata: dict[str, Any]) -> str:
+def checkpoint_stage(metadata: dict[str, Any]) -> str | None:
     checkpoint = metadata.get("ingest_checkpoint")
     if not isinstance(checkpoint, dict):
-        return ""
-    return str(checkpoint.get("stage") or "").strip().lower()
+        return None
+    stage = checkpoint.get("stage")
+    return stage.strip().lower() if isinstance(stage, str) else None
 
 
 def _checkpoint_matches_current_document(
@@ -292,14 +301,24 @@ def _checkpoint_matches_current_document(
     checkpoint = metadata.get("ingest_checkpoint")
     if not (
         isinstance(checkpoint, dict)
-        and str(checkpoint.get("version") or "") == "1"
-        and str(checkpoint.get("stage") or "").strip().lower() == str(expected_stage or "").strip().lower()
+        and checkpoint.get("version") == "1"
+        and isinstance(checkpoint.get("stage"), str)
+        and checkpoint["stage"].strip().lower() == expected_stage.strip().lower()
     ):
         return False
-    pipeline_hash = str(metadata.get("pipeline_hash") or "").strip()
-    file_sha256 = str(metadata.get("file_sha256") or "").strip().lower()
-    checkpoint_pipeline_hash = str(checkpoint.get("pipeline_hash") or "").strip()
-    checkpoint_file_sha256 = str(checkpoint.get("file_sha256") or "").strip().lower()
+    pipeline_hash = metadata.get("pipeline_hash")
+    file_sha256 = metadata.get("file_sha256")
+    checkpoint_pipeline_hash = checkpoint.get("pipeline_hash")
+    checkpoint_file_sha256 = checkpoint.get("file_sha256")
+    if any(
+        value is not None and not isinstance(value, str)
+        for value in (pipeline_hash, file_sha256, checkpoint_pipeline_hash, checkpoint_file_sha256)
+    ):
+        return False
+    pipeline_hash = pipeline_hash.strip() if pipeline_hash is not None else None
+    file_sha256 = file_sha256.strip().lower() if file_sha256 is not None else None
+    checkpoint_pipeline_hash = checkpoint_pipeline_hash.strip() if checkpoint_pipeline_hash is not None else None
+    checkpoint_file_sha256 = checkpoint_file_sha256.strip().lower() if checkpoint_file_sha256 is not None else None
     if pipeline_hash and checkpoint_pipeline_hash and pipeline_hash != checkpoint_pipeline_hash:
         return False
     if file_sha256 and checkpoint_file_sha256 and file_sha256 != checkpoint_file_sha256:
@@ -329,10 +348,10 @@ def upsert_ingest_checkpoint(
     out = dict((metadata if metadata is not None else {}))
     checkpoint = {
         "version": "1",
-        "stage": str(stage or "").strip() or "unknown",
-        "source": str(source or "").strip() or "unknown",
-        "file_sha256": str(out.get("file_sha256") or "").strip().lower(),
-        "pipeline_hash": str(out.get("pipeline_hash") or "").strip(),
+        "stage": stage.strip() or "unknown",
+        "source": source.strip() or "unknown",
+        "file_sha256": out["file_sha256"].strip().lower() if out.get("file_sha256") is not None else None,
+        "pipeline_hash": out["pipeline_hash"].strip() if out.get("pipeline_hash") is not None else None,
     }
     if isinstance(extra, dict):
         for key, value in extra.items():
@@ -354,9 +373,9 @@ def record_ingest_gate_outcome(
     existing = out.get("ingest_gate_outcomes")
     gate_outcomes = dict(existing) if isinstance(existing, dict) else {}
     entry: dict[str, Any] = {
-        "gate": str(gate or "").strip() or "unknown",
-        "outcome": str(outcome or "").strip() or "degraded",
-        "reason": str(reason or "").strip() or "unknown",
+        "gate": gate.strip() or "unknown",
+        "outcome": outcome.strip() or "degraded",
+        "reason": reason.strip() or "unknown",
         "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
     }
     if isinstance(details, dict):
@@ -375,9 +394,11 @@ def _document_questions_enabled(metadata: dict[str, Any] | None) -> bool:
             value = meta.get(key)
             if isinstance(value, bool):
                 return value
-            if str(value or "").strip().lower() in {"1", "true", "yes", "on"}:
+            if value is None:
+                continue
+            if str(value).strip().lower() in {"1", "true", "yes", "on"}:
                 return True
-            if str(value or "").strip().lower() in {"0", "false", "no", "off"}:
+            if str(value).strip().lower() in {"0", "false", "no", "off"}:
                 return False
     return bool(settings.DOCUMENT_QUESTIONS_ENABLED)
 
@@ -414,9 +435,9 @@ def audit_ingest_gate(
         resource_type="document",
         resource_id=str(db_document.id),
         details={
-            "gate": str(gate or "").strip() or "unknown",
-            "outcome": str(outcome or "").strip() or "degraded",
-            "reason": str(reason or "").strip() or "unknown",
+            "gate": gate.strip() or "unknown",
+            "outcome": outcome.strip() or "degraded",
+            "reason": reason.strip() or "unknown",
             **(dict((details if details is not None else {})) if isinstance(details, dict) else {}),
         },
     )
@@ -440,7 +461,7 @@ def maybe_enrich_document_questions(
     source_parts: list[str] = []
     remaining = 4000
     for doc in documents:
-        content = str(getattr(doc, "page_content", "") or "").strip()
+        content = doc.page_content.strip()
         if not content:
             continue
         source_parts.append(content[:remaining])
@@ -483,18 +504,18 @@ def maybe_enrich_document_questions(
 
 def _kg_prompt_template_id() -> UUID | None:
     try:
-        raw_template_id = (settings.KG_EXTRACT_PROMPT_TEMPLATE_ID or "").strip()
+        raw_template_id = (settings.KG_EXTRACT_PROMPT_TEMPLATE_ID).strip()
         return UUID(raw_template_id) if raw_template_id else None
     except Exception:
         return None
 
 
 def _kg_python_plugin_ref(pipeline_effective: PipelineEffective) -> str:
-    plugin_ref = str(pipeline_effective.kg_python_plugin or "").strip()
+    plugin_ref = pipeline_effective.kg_python_plugin.strip()
     if plugin_ref:
         return plugin_ref
     return derive_registered_stage_plugin_ref(
-        str(pipeline_effective.chunk_python_plugin or "").strip(),
+        pipeline_effective.chunk_python_plugin.strip(),
         "kg",
     )
 
@@ -662,7 +683,10 @@ def resolve_ingestion_run_update_criticality(
 ) -> str:
     meta = dict(db_doc.doc_metadata or {})
     for key in ("ingestion_run_update_criticality", "ingestion_run_status_criticality"):
-        raw = str(meta.get(key) or "").strip().lower()
+        raw = meta.get(key)
+        if not isinstance(raw, str):
+            continue
+        raw = raw.strip().lower()
         if raw in {"best_effort", "required"}:
             return raw
     if status_norm in {"completed", "failed", "quarantined", "cancelled"}:
@@ -700,15 +724,15 @@ def persist_retry_boundary_failure(
     )
     meta["ingest_resume_required"] = {
         "required": True,
-        "reason": str(reason or "").strip() or "retry_required",
+        "reason": reason.strip() or "retry_required",
         "checkpoint_stage": checkpoint_stage(meta),
         "recorded_at": dt.datetime.now(dt.UTC).isoformat(),
     }
     db_doc.status = "failed"
     db_doc.processing_progress = 0
     db_doc.current_stage = "finalizing"
-    db_doc.error_message = str(reason or "").strip() or "retry_required"
+    db_doc.error_message = reason.strip() or "retry_required"
     db_doc.doc_metadata = meta
     db.commit()
     db.refresh(db_doc)
-    raise CheckpointedRetryRequiredError(str(reason or "").strip() or "retry_required") from error
+    raise CheckpointedRetryRequiredError(reason.strip() or "retry_required") from error

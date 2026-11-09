@@ -72,7 +72,7 @@ def _find_trace_by_request_id(
     request_id: str,
     list_rag_traces_fn: "Callable[..., RagTraceListResponse]" = list_rag_traces,
 ) -> dict[str, Any] | None:
-    rid = str(request_id or "").strip()
+    rid = request_id.strip()
     if not rid:
         return None
     try:
@@ -86,7 +86,7 @@ def _find_trace_by_request_id(
     except Exception:
         return None
     for item in traces.items:
-        if str(item.request_id or "") != rid:
+        if item.request_id != rid:
             continue
         return _coerce_mapping(item)
     return None
@@ -121,17 +121,20 @@ def _augment_feedback_extra_with_snapshots(
     return payload
 
 
-def _safe_text(value: Any, *, max_len: int = 4000) -> str:
-    text = str(value or "").strip()
+def _safe_text(value: Any, *, max_len: int = 4000) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return ""
     return text[: max(0, int(max_len or 0))]
 
 
 def _normalize_feedback_category(value: Any) -> str | None:
-    category = _safe_text(value, max_len=32).lower()
+    category = _safe_text(value, max_len=32)
     if not category:
         return None
+    category = category.lower()
     if category == "generation_error":
         category = "wrong_answer"
     if category not in {"retrieval_miss", "wrong_answer", "out_of_scope", "other"}:
@@ -172,12 +175,12 @@ def _previous_user_question(
     messages: list[Message],
     conversation_id: UUID,
     assistant_created_at: datetime | None,
-) -> str:
+) -> str | None:
     candidates: list[Message] = []
     for msg in messages:
         if msg.conversation_id != conversation_id:
             continue
-        if str(msg.role or "").lower() != "user":
+        if msg.role.lower() != "user":
             continue
         created_at = msg.created_at
         if (
@@ -191,14 +194,14 @@ def _previous_user_question(
         key=lambda item: item.created_at or datetime.min.replace(tzinfo=timezone.utc),
         reverse=True,
     )
-    return _safe_text(candidates[0].content if candidates else "", max_len=4000)
+    return _safe_text(candidates[0].content, max_len=4000) if candidates else None
 
 
 def _load_feedback_message(db: Session, *, tenant_id: UUID, message_id: UUID) -> Message:
     msg = db.query(Message).filter(Message.id == message_id, Message.tenant_id == tenant_id).first()
     if not msg:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
-    if (msg.role or "").lower() != "assistant":
+    if msg.role.lower() != "assistant":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only assistant messages can be rated")
     return msg
 
@@ -316,7 +319,7 @@ def _apply_feedback_row_update(
     row.reason = reason
     row.tags = tags
     row.expected_answer = expected_answer
-    if normalized_category is not None and str(row.category_source or "").lower() != "reviewer":
+    if normalized_category is not None and row.category_source != "reviewer":
         row.category = normalized_category
         row.category_source = "user"
     row.query_hash = query_hash
@@ -344,7 +347,7 @@ def _build_feedback_query(
                 Conversation.id == MessageFeedback.conversation_id,
                 Conversation.tenant_id == MessageFeedback.tenant_id,
             ),
-        ).filter(Conversation.owner_account_id == str(owner_account_id or "").strip())
+        ).filter(Conversation.owner_account_id == owner_account_id.strip())
     if conversation_id:
         query = query.filter(MessageFeedback.conversation_id == conversation_id)
     if message_id:
@@ -397,7 +400,9 @@ def upsert_message_feedback(
         conversation_id=msg.conversation_id,
     )
     meta = _feedback_message_meta(msg)
-    request_id = str(meta.get("request_id") or "").strip()
+    request_id = meta.get("request_id")
+    if request_id is not None:
+        request_id = request_id.strip()
     dataset_id = _feedback_dataset_id(meta=meta, conv=conv)
     extra_payload = _feedback_extra_payload(
         extra=extra,
@@ -564,7 +569,7 @@ def list_message_feedback_enriched(
         msg = message_map.get(fb.message_id)
         conv = conversation_map.get(fb.conversation_id)
         fb.conversation_title = conv.title if conv is not None else None
-        content = str(getattr(msg, "content", "") or "").strip()
+        content = msg.content.strip() if msg is not None else None
         fb.message_content = content[:4000] if content else None
         fb.message_created_at = getattr(msg, "created_at", None)
         items.append(fb)
@@ -602,7 +607,7 @@ def patch_message_feedback(
         payload["archived"] = bool(archived)
         if archived:
             payload["archived_at"] = datetime.now(timezone.utc).isoformat()
-            payload["archived_by"] = str(account_id or "")
+            payload["archived_by"] = account_id
         else:
             payload.pop("archived_at", None)
             payload.pop("archived_by", None)
@@ -614,7 +619,9 @@ def patch_message_feedback(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Feedback category is only valid for ratings 1-2",
             )
-        source = _safe_text(category_source, max_len=32).lower() or "reviewer"
+        source = _safe_text(category_source, max_len=32)
+        source = source.lower() if source is not None else None
+        source = source or "reviewer"
         if source not in {"user", "llm_auto", "reviewer"}:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid feedback category source")
         row.category = normalized_category
@@ -714,8 +721,8 @@ def build_feedback_loop_candidates(
                 "eval_case_status": extra.get("eval_case_status"),
                 "archived": bool(extra.get("archived")),
                 "dataset_id": dataset_id,
-                "conversation_id": str(fb.conversation_id or ""),
-                "message_id": str(fb.message_id or ""),
+                "conversation_id": str(fb.conversation_id),
+                "message_id": str(fb.message_id),
                 "original_query": _previous_user_question(
                     messages=conversation_messages,
                     conversation_id=fb.conversation_id,

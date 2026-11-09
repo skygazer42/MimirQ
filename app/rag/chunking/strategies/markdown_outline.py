@@ -218,7 +218,7 @@ class MarkdownOutlineChunker(BaseChunker):
             out.append(Document(page_content=split_doc.page_content, metadata=meta))
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
         base_meta = dict(doc.metadata or {})

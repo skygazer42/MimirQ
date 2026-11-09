@@ -33,6 +33,7 @@ from app.services.dify_integration.common import (
     _SERVICE_ANCHOR_QUERY_TRAILING_CHARS,
     _SOURCE_RECORD_ID_KEYS,
     _SOURCE_RECORD_SCOPE_KEYS,
+    _first_nonempty_str,
     _iter_record_metadata_layers,
     _metadata_terms,
     _normalize_match_term,
@@ -49,7 +50,7 @@ def _is_cjk_char(char: str) -> bool:
 
 
 def _contains_cjk(value: str) -> bool:
-    return any(_is_cjk_char(char) for char in str(value or ""))
+    return any(_is_cjk_char(char) for char in value)
 
 
 def _is_anchor_word_char(char: str) -> bool:
@@ -59,7 +60,7 @@ def _is_anchor_word_char(char: str) -> bool:
 def _iter_anchor_word_segments(value: str) -> list[str]:
     segments: list[str] = []
     current: list[str] = []
-    for char in str(value or ""):
+    for char in value:
         if _is_anchor_word_char(char):
             current.append(char)
             continue
@@ -72,7 +73,7 @@ def _iter_anchor_word_segments(value: str) -> list[str]:
 
 
 def _strip_trailing_service_anchor_admin(value: str, *, admin_aliases: tuple[str, ...]) -> str:
-    text = str(value or "").strip()
+    text = value.strip()
     for marker in _SERVICE_ANCHOR_ADMIN_MARKERS:
         for alias in admin_aliases:
             suffix = f"{marker}{alias}"
@@ -82,18 +83,18 @@ def _strip_trailing_service_anchor_admin(value: str, *, admin_aliases: tuple[str
 
 
 def _rstrip_service_anchor_query_noise(value: str) -> str:
-    return str(value or "").rstrip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS).strip()
+    return value.rstrip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS).strip()
 
 
 def _clamp_hint_value(value: str, *, limit: int = _MAX_HINT_VALUE_CHARS) -> str:
-    text = str(value or "").strip()
+    text = value.strip()
     if len(text) <= limit:
         return text
     return f"{text[:limit].rstrip()}..."
 
 
 def _field_line_parts(line: str) -> tuple[str, str] | None:
-    text = str(line or "").strip()
+    text = line.strip()
     if not text:
         return None
     colon_positions = [index for index in (text.find("："), text.find(":")) if index >= 0]
@@ -117,8 +118,8 @@ def _response_hint_string_list(
         return ()
     out: list[str] = []
     seen: set[str] = set()
-    for item in raw:
-        text = str(item or "").strip()
+    for item in _metadata_terms(raw):
+        text = item.strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -128,7 +129,7 @@ def _response_hint_string_list(
 
 def _response_hint_text(response_hints: dict[str, Any], key: str, *, default: str) -> str:
     value = response_hints.get(key) if isinstance(response_hints, dict) else None
-    text = str(value or "").strip()
+    text = _first_nonempty_str(value)
     return text or default
 
 
@@ -156,7 +157,7 @@ def _structured_fields_from_content(content: str, *, response_hints: dict[str, A
     if not labels:
         return {}
     fields: dict[str, str] = {}
-    for line in str(content or "").splitlines():
+    for line in content.splitlines():
         parts = _field_line_parts(line)
         if parts is None:
             continue
@@ -196,7 +197,7 @@ def _near_question_anchor_match(query_term: str, candidate: str) -> bool:
 
 
 def _cjk_bigrams(value: str) -> set[str]:
-    text = "".join(char for char in str(value or "") if _CJK_RE.match(char))
+    text = "".join(char for char in value if _CJK_RE.match(char))
     if len(text) < 2:
         return set()
     return {text[index : index + 2] for index in range(0, len(text) - 1)}
@@ -222,7 +223,7 @@ def _query_is_short_question_anchor_candidate(query: str, *, policy_plugin_refs:
 
 
 def _query_has_mixed_intent(query: str) -> bool:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return False
     if any(marker in text for marker in _MIXED_INTENT_QUERY_MARKERS):
@@ -231,12 +232,12 @@ def _query_has_mixed_intent(query: str) -> bool:
 
 
 def _query_has_explicit_question_form(query: str) -> bool:
-    text = str(query or "").strip()
+    text = query.strip()
     return bool(text) and any(marker in text for marker in _EXPLICIT_QUESTION_FORM_MARKERS)
 
 
 def _query_has_quoted_anchor_candidate(query: str) -> bool:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return False
     for match in _QUOTED_ANCHOR_RE.finditer(text):
@@ -247,7 +248,9 @@ def _query_has_quoted_anchor_candidate(query: str) -> bool:
 
 def _quoted_anchor_match_text(match: re.Match[str]) -> str:
     for group in match.groups():
-        text = str(group or "").strip()
+        if group is None:
+            continue
+        text = group.strip()
         if text:
             return text
     return ""
@@ -256,7 +259,7 @@ def _quoted_anchor_match_text(match: re.Match[str]) -> str:
 def _quoted_query_anchor_display_terms(query: str) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
-    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
+    for match in _QUOTED_ANCHOR_RE.finditer(query):
         text = match.group(0).strip()
         normalized = _normalize_match_term(_quoted_anchor_match_text(match))
         if len(normalized) >= 4 and normalized not in seen:
@@ -268,7 +271,7 @@ def _quoted_query_anchor_display_terms(query: str) -> tuple[str, ...]:
 def _quoted_query_anchor_terms(query: str) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
-    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
+    for match in _QUOTED_ANCHOR_RE.finditer(query):
         normalized = _normalize_match_term(_quoted_anchor_match_text(match))
         if len(normalized) >= 4 and normalized not in seen:
             seen.add(normalized)
@@ -277,7 +280,7 @@ def _quoted_query_anchor_terms(query: str) -> tuple[str, ...]:
 
 
 def _strip_mixed_intent_noise(value: str, *, terms: tuple[str, ...]) -> str:
-    text = str(value or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    text = value.strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
     previous = None
     while previous != text:
         previous = text
@@ -289,7 +292,7 @@ def _strip_mixed_intent_noise(value: str, *, terms: tuple[str, ...]) -> str:
 
 
 def _strip_mixed_intent_subject_instruction_tail(value: str) -> str:
-    text = str(value or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    text = value.strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
     previous = None
     while previous != text:
         previous = text
@@ -298,15 +301,15 @@ def _strip_mixed_intent_subject_instruction_tail(value: str) -> str:
 
 
 def _record_policy_slot_coverage_text(record: dict[str, Any]) -> str:
-    parts: list[str] = [str(record.get("title") or ""), str(record.get("content") or "")]
+    parts: list[str] = [record['title'], record['content']]
     for metadata in _iter_record_metadata_layers(record):
         for value in metadata.values():
-            parts.extend(str(term or "") for term in _metadata_terms(value))
+            parts.extend(term for term in _metadata_terms(value))
     return _normalize_match_term("\n".join(part for part in parts if part))
 
 
 def _mixed_intent_segment_parts(segment: str) -> tuple[str, ...]:
-    text = str(segment or "").strip()
+    text = segment.strip()
     if not text:
         return ()
     return tuple(part.strip() for part in _MIXED_INTENT_LIST_SPLIT_RE.split(text) if part.strip())
@@ -443,9 +446,9 @@ def _answer_hints_from_fields(
     if group is not None:
         labels = _response_hint_string_list(group, "hint_labels")
         bits = [f"{label}：{fields[label]}" for label in labels if fields.get(label)]
-        question = str(query or "").strip()
-        question_label = str(group.get("question_from_query_label") or "").strip()
-        answer_label = str(group.get("answer_label") or "").strip()
+        question = query.strip()
+        question_label = _first_nonempty_str(group.get("question_from_query_label"))
+        answer_label = _first_nonempty_str(group.get("answer_label"))
         if question and question_label and answer_label and bits:
             return [f"{question_label}：{question}", f"{answer_label}：{'；'.join(bits)}"]
         return bits
@@ -468,7 +471,7 @@ def _find_numbered_marker(
         f"({number})",
         f"（{number}）",
     ]
-    named_marker = str((named_markers or {}).get(str(number)) or "").strip()
+    named_marker = _first_nonempty_str((named_markers or {}).get(str(number)))
     if named_marker:
         markers.append(named_marker)
     best_index = -1
@@ -489,9 +492,9 @@ def _extract_numbered_option_terms(
     max_terms: int = 4,
     named_markers: dict[str, Any] | None = None,
 ) -> list[str]:
-    normalized = " ".join(str(text or "").split())
+    normalized = " ".join(text.split())
     named_marker_values = {
-        str(value or "").strip() for value in (named_markers or {}).values() if str(value or "").strip()
+        str(value).strip() for value in (named_markers or {}).values() if value is not None and str(value).strip()
     }
     terms: list[str] = []
     cursor = 0
@@ -519,7 +522,7 @@ def _enumerated_answer_hints(content: str, *, query: str = "", response_hints: d
     enumeration = _response_hint_dict(response_hints, "enumeration")
     if enumeration.get("enabled") is not True:
         return []
-    text = str(content or "").strip()
+    text = content.strip()
     if not text:
         return []
     named_markers = _response_hint_dict(enumeration, "named_markers")
@@ -527,7 +530,7 @@ def _enumerated_answer_hints(content: str, *, query: str = "", response_hints: d
     if first_marker_index < 0:
         return []
     prefix = " ".join(text.split())[:first_marker_index][-90:]
-    query_text = str(query or "").strip()
+    query_text = query.strip()
     intro_terms = _response_hint_string_list(enumeration, "intro_terms")
     query_terms = _response_hint_string_list(enumeration, "query_terms")
     if not intro_terms:
@@ -544,7 +547,7 @@ def _enumerated_answer_hints(content: str, *, query: str = "", response_hints: d
     terms_text = separator.join(terms)
     template = str(enumeration.get("message_template") or "Preserve these option names: {terms}")
     message = template.format(terms=terms_text)
-    message_prefix = str(enumeration.get("prefix") or "").strip()
+    message_prefix = _first_nonempty_str(enumeration.get("prefix"))
     return [f"{message_prefix}：{message}" if message_prefix else message]
 
 
@@ -557,12 +560,12 @@ def _content_starts_with_response_hint(content: str, *, response_hints: dict[str
     )
     if answer_prefix:
         prefixes.append(answer_prefix)
-    normalized = str(content or "").lstrip()
+    normalized = content.lstrip()
     return any(normalized.startswith(prefix) for prefix in prefixes if prefix)
 
 
 def _is_specific_intent_term(term: str) -> bool:
-    text = str(term or "").strip()
+    text = term.strip()
     return len(text) >= _MIN_SPECIFIC_INTENT_CHARS
 
 
@@ -615,11 +618,11 @@ def _metadata_term_anchor_bonus(
 def _record_plugin_ref(record: dict[str, Any], *, fallback_plugin_refs: tuple[str, ...] = ()) -> str:
     for metadata in _iter_record_metadata_layers(record):
         for key in ("chunk_python_plugin", "governance_python_plugin"):
-            value = str(metadata.get(key) or "").strip()
+            value = _first_nonempty_str(metadata.get(key))
             if value:
                 return value
     for fallback in fallback_plugin_refs or ():
-        value = str(fallback or "").strip()
+        value = fallback.strip()
         if value:
             return value
     return ""
@@ -638,13 +641,13 @@ def _record_final_rerank_candidate_id(record: dict[str, Any], *, index: int, use
     metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
     candidates = [
         _record_source_identity_key(record),
-        str(metadata.get("chunk_id") or "").strip(),
-        str(metadata.get("document_id") or "").strip(),
-        str(record.get("title") or "").strip(),
+        _first_nonempty_str(metadata.get("chunk_id")),
+        _first_nonempty_str(metadata.get("document_id")),
+        record['title'].strip(),
     ]
     base = next((item for item in candidates if item), "")
     if not base:
-        payload = f"{record.get('title') or ''}\n{record.get('content') or ''}"
+        payload = f"{record['title']}\n{record['content']}"
         base = hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
     candidate_id = base
     suffix = 1
@@ -670,21 +673,21 @@ def _record_source_identity_key(record: dict[str, Any]) -> str:
     for metadata in _iter_record_metadata_layers(record):
         identity = metadata.get("_record_identity")
         if isinstance(identity, dict):
-            key = str(identity.get("key") or "").strip()
+            key = _first_nonempty_str(identity.get("key"))
             if key:
                 return key
 
     for metadata in _iter_record_metadata_layers(record):
-        source_record_id = ""
+        source_record_id = None
         for key in _SOURCE_RECORD_ID_KEYS:
-            source_record_id = str(metadata.get(key) or "").strip()
+            source_record_id = _first_nonempty_str(metadata.get(key))
             if source_record_id:
                 break
         if not source_record_id:
             continue
         scope_parts: list[str] = []
         for key in _SOURCE_RECORD_SCOPE_KEYS:
-            value = str(metadata.get(key) or "").strip()
+            value = _first_nonempty_str(metadata.get(key))
             if value:
                 scope_parts.append(f"{key}={value}")
         scope = "|".join(scope_parts)

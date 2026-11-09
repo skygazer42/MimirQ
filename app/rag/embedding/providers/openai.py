@@ -64,8 +64,7 @@ class OpenAICompatibleEmbedding(BaseEmbeddingModel):
 
     def _effective_batch_size(self) -> int:
         configured = max(1, settings.EMBEDDING_API_BATCH_SIZE)
-        base_url = str(self.base_url or "").lower()
-        if "dashscope.aliyuncs.com" in base_url:
+        if self.base_url is not None and "dashscope.aliyuncs.com" in self.base_url.lower():
             return min(configured, _DASHSCOPE_OPENAI_COMPAT_BATCH_CAP)
         return configured
 

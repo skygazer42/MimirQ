@@ -50,7 +50,7 @@ def _as_uuid(value: Any) -> UUID | None:
 
 def build_drift_slice_keys(*, document_file_type: object, document_metadata: object) -> DriftSliceKeys:
     meta = document_metadata if isinstance(document_metadata, dict) else {}
-    file_type = str(document_file_type or "").strip().lower() or "unknown"
+    file_type = "unknown" if document_file_type is None else str(document_file_type).strip().lower() or "unknown"
     # Align with dataset profile slice taxonomy.
     language = extract_language_bucket(meta)
     quality_bucket = quality_bucket_from_governance_quality(meta.get("governance_quality"))

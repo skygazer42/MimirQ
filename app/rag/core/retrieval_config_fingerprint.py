@@ -43,7 +43,7 @@ def _normalize_value(value: Any) -> Any:
 def _normalize_mapping(value: dict[Any, Any]) -> dict[str, Any] | None:
     normalized: dict[str, Any] = {}
     for raw_key, raw_value in value.items():
-        key = str(raw_key or "").strip()
+        key = raw_key.strip()
         if not key or key in _BANNED_KEYS:
             continue
         item = _normalize_value(raw_value)
@@ -85,7 +85,7 @@ def build_retrieval_config_fingerprint(
 
     digest = stable_json_hash(cleaned, length=32)
     return {
-        "schema": str(schema or "").strip() or "mimirq.retrieval_config.v1",
+        "schema": schema.strip() or "mimirq.retrieval_config.v1",
         "hash": digest,
         "config": cleaned,
     }

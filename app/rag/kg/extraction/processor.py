@@ -24,7 +24,7 @@ def _build_context(sections: list[DocumentChunk]) -> str:
             prefix += f" p{page}"
         prefix += "]"
         context_parts.append(f"{prefix} {chunk.content}")
-    max_chars = int(settings.KG_EXTRACT_CONTEXT_MAX_CHARS or 8000)
+    max_chars = int(settings.KG_EXTRACT_CONTEXT_MAX_CHARS)
     max_chars = max(1000, min(max_chars, 200_000))
     return "\n\n".join(context_parts)[:max_chars]
 
@@ -111,29 +111,41 @@ def _render_prompt(
     )
 
 
-def _coerce_entity_input(ent: Any) -> tuple[str, str, str, Any, Any, str, dict[str, Any]]:
+def _coerce_entity_input(ent: Any) -> tuple[str, str, str | None, Any, Any, str | None, dict[str, Any]] | None:
     if isinstance(ent, dict):
         source_span = ent.get("source_span") if isinstance(ent.get("source_span"), dict) else {}
+        name = ent.get("name")
+        if not isinstance(name, str):
+            return None
+        if any(
+            ent.get(field) is not None and not isinstance(ent[field], str)
+            for field in ("type", "description", "role", "evidence_quote")
+        ):
+            return None
+        if source_span.get("source") is not None and not isinstance(source_span["source"], str):
+            return None
         return (
-            ent.get("name") or "",
+            name.strip(),
             ent.get("type") or "unknown",
-            ent.get("description") or "",
+            ent.get("description"),
             ent.get("role"),
             ent.get("weight"),
-            ent.get("evidence_quote") or "",
+            ent.get("evidence_quote"),
             source_span,
         )
-    return (str(ent), "unknown", "", None, None, "", {})
+    if not isinstance(ent, str):
+        return None
+    return (ent.strip(), "unknown", None, None, None, None, {})
 
 
 def _build_entity_payload(
     *,
     name: str,
     entity_type: str,
-    description: str,
+    description: str | None,
     role: Any,
     weight: Any,
-    evidence_quote: str,
+    evidence_quote: str | None,
     source_span: dict[str, Any],
 ) -> tuple[tuple[str, str], dict[str, Any]] | None:
     if not name:
@@ -146,11 +158,11 @@ def _build_entity_payload(
             "name": name.strip(),
             "normalized_name": normalized_name,
             "type": normalized_type,
-            "description": description.strip(),
-            "role": str(role or "").strip() or None,
+            "description": description.strip() if description is not None else None,
+            "role": (role.strip() or None) if role is not None else None,
             "weight": weight if isinstance(weight, (int, float)) else None,
-            "evidence_quote": str(evidence_quote or "").strip() or None,
-            "evidence_source": str(source_span.get("source") or "").strip() or None,
+            "evidence_quote": (evidence_quote.strip() or None) if evidence_quote is not None else None,
+            "evidence_source": (source_span["source"].strip() or None) if source_span.get("source") is not None else None,
             "evidence_start_char": source_span.get("start_char")
             if isinstance(source_span.get("start_char"), int)
             else None,
@@ -160,7 +172,9 @@ def _build_entity_payload(
 
 
 def _merge_entity_payload(existing: dict[str, Any], *, incoming: dict[str, Any]) -> None:
-    if len(incoming["description"]) > len(existing["description"]):
+    if incoming["description"] is not None and (
+        existing["description"] is None or len(incoming["description"]) > len(existing["description"])
+    ):
         existing["description"] = incoming["description"]
     if existing["evidence_quote"] is None:
         existing["evidence_quote"] = incoming["evidence_quote"]
@@ -169,9 +183,14 @@ def _merge_entity_payload(existing: dict[str, Any], *, incoming: dict[str, Any])
 
 
 def _collect_event_entities(entities_raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(entities_raw, list):
+        return []
     entity_map: dict[tuple[str, str], dict[str, Any]] = {}
     for ent in entities_raw or []:
-        name, entity_type, description, role, weight, evidence_quote, source_span = _coerce_entity_input(ent)
+        fields = _coerce_entity_input(ent)
+        if fields is None:
+            continue
+        name, entity_type, description, role, weight, evidence_quote, source_span = fields
         built = _build_entity_payload(
             name=name,
             entity_type=entity_type,
@@ -193,16 +212,16 @@ def _collect_event_entities(entities_raw: Any) -> list[dict[str, Any]]:
 
 
 def _build_event_payload(raw: dict[str, Any], *, chunk_id: str) -> dict[str, Any]:
-    title = (raw.get("title") or "").strip()
-    summary = (raw.get("summary") or "").strip()
+    title = raw["title"].strip()
+    summary = raw["summary"].strip()
     if not title:
         title = summary[:50] or "Event"
     return {
         "title": title,
         "summary": summary or title,
         "content": summary or title,
-        "schema_version": str(raw.get("schema_version") or "").strip() or None,
-        "event_schema": str(raw.get("event_schema") or "").strip() or None,
+        "schema_version": (raw["schema_version"].strip() or None) if raw.get("schema_version") is not None else None,
+        "event_schema": (raw["event_schema"].strip() or None) if raw.get("event_schema") is not None else None,
         "entities": _collect_event_entities(raw.get("entities") or []),
         "chunk_id": chunk_id,
     }
@@ -245,11 +264,20 @@ class EventProcessor:
 
         result = await self.llm_client.chat_with_schema(messages, response_schema=schema, temperature=0.2)
         events_data = result.get("events", []) if isinstance(result, dict) else []
+        if not isinstance(events_data, list):
+            return []
 
         events: list[dict[str, Any]] = []
         chunk_id = str(sections[0].id)
         for raw in events_data:
             if not isinstance(raw, dict):
+                continue
+            if not all(isinstance(raw.get(field), str) for field in ("title", "summary")):
+                continue
+            if any(
+                raw.get(field) is not None and not isinstance(raw[field], str)
+                for field in ("schema_version", "event_schema")
+            ):
                 continue
             events.append(_build_event_payload(raw, chunk_id=chunk_id))
 

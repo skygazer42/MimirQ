@@ -27,6 +27,7 @@ from app.parsing.backends import require_resolved_parser_backend
 if TYPE_CHECKING:
     from app.parsing.processors.processor import DocumentProcessorService
     from app.services.table_store_service import TableAsset
+    from app.services.tenant_quota_service import TenantQuotaExceededError
     from app.types.indexing import IndexingOptions
 from app.parsing.preprocess.file_preprocessor import preprocess_file
 from app.parsing.preprocess.image_preprocess import preprocess_image_document
@@ -137,7 +138,7 @@ async def run_post_completion_kg(*args: Any, **kwargs: Any) -> Any:
 
 def record_stage_duration(stage_durations_ms: dict[str, int], stage: str, elapsed_ms: float) -> None:
     try:
-        key = str(stage or "").strip()
+        key = stage.strip()
         if not key:
             return
         ms = int(round(float(elapsed_ms)))
@@ -337,9 +338,13 @@ async def _resume_from_indexed_checkpoint(
     if resolved_backend is None or not isinstance(resolved_chunk_strategy, str) or not resolved_chunk_strategy.strip():
         return None
     checkpoint = dict(meta0.get("ingest_checkpoint") or {})
-    doc_pipeline_key = str(
-        checkpoint.get("doc_pipeline_key") or f"{document_id}:{str(meta0.get('pipeline_hash') or '').strip()}"
-    ).strip()
+    doc_pipeline_key = checkpoint.get("doc_pipeline_key")
+    if doc_pipeline_key is not None:
+        doc_pipeline_key = doc_pipeline_key.strip()
+    if not doc_pipeline_key:
+        pipeline_hash = meta0.get("pipeline_hash")
+        pipeline_hash = pipeline_hash.strip() if pipeline_hash is not None else None
+        doc_pipeline_key = f"{document_id}:{pipeline_hash}" if pipeline_hash else None
     indexed_chunks_query = db.query(DocumentChunk).filter(
         DocumentChunk.document_id == document_id,
         DocumentChunk.tenant_id == tenant_id,
@@ -361,7 +366,7 @@ async def _resume_from_indexed_checkpoint(
     total_chars = int(
         checkpoint.get("total_characters")
         or meta0.get("indexed_total_characters")
-        or sum(len(str(chunk.content or "")) for chunk in indexed_chunks)
+        or sum(len(chunk.content) for chunk in indexed_chunks)
     )
     meta_patch = dict(db_document.doc_metadata or {})
     meta_patch.pop("ingest_resume_required", None)
@@ -596,7 +601,7 @@ async def _maybe_import_tabular_document(
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
 
-    if table_decision is not None and str(table_decision.route or "").lower() == "rag":
+    if table_decision is not None and table_decision.route.lower() == "rag":
         return None
 
     await raise_if_cancelled(force=True)
@@ -841,10 +846,14 @@ def _resume_parse_result_from_checkpoint(
         resolved_backend = _checkpoint_backend(meta0)
         if resolved_backend is None:
             return None
-        pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
-        file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
-        checkpoint_pipeline = str((checkpoint or {}).get("pipeline_hash") or "").strip()
-        checkpoint_sha = str((checkpoint or {}).get("file_sha256") or "").strip().lower()
+        raw_pipeline = meta0.get("pipeline_hash")
+        raw_sha = meta0.get("file_sha256")
+        raw_checkpoint_pipeline = (checkpoint or {}).get("pipeline_hash")
+        raw_checkpoint_sha = (checkpoint or {}).get("file_sha256")
+        pipeline_hash0 = raw_pipeline.strip() if raw_pipeline is not None else None
+        file_sha0 = raw_sha.strip().lower() if raw_sha is not None else None
+        checkpoint_pipeline = raw_checkpoint_pipeline.strip() if raw_checkpoint_pipeline is not None else None
+        checkpoint_sha = raw_checkpoint_sha.strip().lower() if raw_checkpoint_sha is not None else None
         if (pipeline_hash0 and checkpoint_pipeline != pipeline_hash0) or (
             file_sha0 and checkpoint_sha and checkpoint_sha != file_sha0
         ):
@@ -856,10 +865,10 @@ def _resume_parse_result_from_checkpoint(
         )
         if rec is None:
             return None
-        cleaned_md = str(rec.markdown_content or "").strip()
+        cleaned_md = rec.markdown_content.strip()
         if not cleaned_md:
             return None
-        original_md = str(rec.original_markdown_content or "").strip()
+        original_md = rec.original_markdown_content.strip()
         logger.info(
             "Resuming ingest from parsed checkpoint: tenant=%s document=%s pipeline_hash=%s",
             tenant_id,
@@ -890,8 +899,10 @@ def _resume_parse_result_from_cache(
 ) -> tuple[ParseResult | None, LocalParseCacheStore | None, str | None]:
     try:
         meta0 = dict(db_document.doc_metadata or {})
-        file_sha0 = str(meta0.get("file_sha256") or "").strip().lower()
-        pipeline_hash0 = str(meta0.get("pipeline_hash") or "").strip()
+        raw_sha = meta0.get("file_sha256")
+        raw_pipeline = meta0.get("pipeline_hash")
+        file_sha0 = raw_sha.strip().lower() if raw_sha is not None else None
+        pipeline_hash0 = raw_pipeline.strip() if raw_pipeline is not None else None
         parser_backend_key = parser_backend
         if not (bool(pipeline_effective.parse_cache_enabled) and file_sha0 and pipeline_hash0):
             return None, None, None
@@ -989,7 +1000,7 @@ async def _run_parse_stage(
 
 
 def _parsed_joined_text(documents: list[Document] | None) -> str:
-    return "\n\n".join([(doc.page_content or "") for doc in (documents if documents is not None else [])])
+    return "\n\n".join([(doc.page_content) for doc in (documents if documents is not None else [])])
 
 
 def _magicpdf_available() -> bool:
@@ -1013,20 +1024,20 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
         ),
         (
             "deepseek_ocr",
-            lambda: bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY or "").strip()),
+            lambda: bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY).strip()),
         ),
         (
             "qianfan_ocr",
-            lambda: bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL or "").strip()),
+            lambda: bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL).strip()),
         ),
         (
             "etl4llm",
-            lambda: bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL or "").strip()),
+            lambda: bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL).strip()),
         ),
         ("deepdoc", lambda: settings.DEEPDOC_ENABLED),
         (
             "docling",
-            lambda: bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL or "").strip()),
+            lambda: bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL).strip()),
         ),
         ("magicpdf", _magicpdf_available),
         ("markitdown", lambda: settings.MARKITDOWN_ENABLED),
@@ -1037,7 +1048,7 @@ def _parse_fallback_candidates(*, current_backend: str) -> list[str]:
             candidates.append(candidate)
     filtered: list[str] = []
     for candidate in candidates:
-        candidate_norm = (candidate or "").strip().lower()
+        candidate_norm = candidate.strip().lower()
         if not candidate_norm or candidate_norm == current_backend or candidate_norm in filtered:
             continue
         filtered.append(candidate_norm)
@@ -1168,12 +1179,12 @@ async def handle_tenant_quota_exceeded(
     db_document: DBDocument,
     tenant_id: UUID,
     document_id: UUID,
-    error: Exception,
+    error: "TenantQuotaExceededError",
     with_stage_durations: Any,
     resolved_backend: str | None,
     resolved_chunk_strategy: str | None,
 ) -> dict[str, Any]:
-    quota_key = str(getattr(error, "quota", "") or "").strip() or "quota"
+    quota_key = error.quota
     logger.info(
         "Tenant quota exceeded: tenant=%s document=%s quota=%s",
         tenant_id,
@@ -1510,7 +1521,7 @@ async def _maybe_apply_parse_fallback(
             min_chars=min_chars,
             min_parse_score=min_parse_score,
             max_retries=max_retries,
-            current_backend=str(parsed.resolved_backend or "").strip().lower(),
+            current_backend=parsed.resolved_backend.strip().lower(),
         )
         if attempts:
             meta = dict(db_document.doc_metadata or {})
@@ -1574,7 +1585,7 @@ def _persist_parse_cache_entry(
             parse_cache_key,
             LocalParseCacheEntry(
                 created_at_epoch=time.time(),
-                file_sha256=str((db_document.doc_metadata or {}).get("file_sha256") or "").strip().lower(),
+                file_sha256=db_document.doc_metadata["file_sha256"].strip().lower(),
                 parser_backend=parser_backend,
                 resolved_backend=parsed.resolved_backend,
                 resolved_chunk_strategy=parsed.resolved_chunk_strategy,
@@ -1674,7 +1685,7 @@ async def _maybe_apply_parse_quality_gate(
             outcome=("quarantine" if quarantined else "closed"),
             reason=reason,
             details={
-                "parser_backend": str(resolved_backend or ""),
+                "parser_backend": resolved_backend,
                 "parsed_content_chars": final_chars,
                 "parse_score": round(final_score, 3),
             },
@@ -1701,7 +1712,7 @@ async def _maybe_apply_parse_quality_gate(
                     "reason": reason,
                     "parse_fallback_min_content_chars": min_chars,
                     "parsed_content_chars": final_chars,
-                    "parser_backend": str(resolved_backend or ""),
+                    "parser_backend": resolved_backend,
                 },
             )
             db.commit()
@@ -1892,7 +1903,7 @@ def _maybe_record_pdf_reading_order(
     if parsed.chunks is None or not parsed_documents or not _is_pdf_document(file_path):
         return
     try:
-        joined_for_ro = "\n\n".join([(d.page_content or "") for d in parsed_documents])
+        joined_for_ro = "\n\n".join([(d.page_content) for d in parsed_documents])
         meta_patch = dict(db_document.doc_metadata or {})
         meta_patch["reading_order"] = score_reading_order(joined_for_ro)
         _commit_document_metadata(db, db_document, meta_patch)
@@ -2027,7 +2038,7 @@ async def _prepare_parsed_documents_for_continuation(
 
 
 def _governance_plugin_ref(pipeline_effective: PipelineEffective) -> str:
-    return str(pipeline_effective.governance_python_plugin or "").strip()
+    return pipeline_effective.governance_python_plugin.strip()
 
 
 def _run_governance_stage(
@@ -2481,7 +2492,7 @@ async def _chunk_governed_documents(
         otel_attributes={
             "ingest.stage": "chunk",
             "document.file_type": str(prepared_state.file_path.suffix.lstrip(".") or "unknown").lower(),
-            "chunk.strategy": str(resolved_chunk_strategy or "").strip().lower() or "default",
+            "chunk.strategy": resolved_chunk_strategy.strip().lower() or "default",
         },
     ):
         chunked = chunking_stage(
@@ -2490,7 +2501,7 @@ async def _chunk_governed_documents(
             chunk_size=int(pipeline_effective.chunk_size),
             chunk_overlap=int(pipeline_effective.chunk_overlap),
             chunk_strategy_params=dict(pipeline_effective.chunk_strategy_params or {}),
-            chunk_python_plugin=str(pipeline_effective.chunk_python_plugin or ""),
+            chunk_python_plugin=pipeline_effective.chunk_python_plugin,
             chunk_python_params=dict(pipeline_effective.chunk_python_params or {}),
         )
     chunks = _rebase_chunk_offsets_by_page_index(
@@ -2530,12 +2541,13 @@ def _filter_short_chunks(chunks: list[Document], *, min_chars: int, document_id:
     before = len(chunks)
     filtered: list[Document] = []
     for chunk in chunks:
-        content = (chunk.page_content or "").strip()
+        content = (chunk.page_content).strip()
         if len(content) >= min_chars:
             filtered.append(chunk)
             continue
         meta = chunk.metadata or {}
-        doc_type = str(meta.get("doc_type_kwd") or "").lower()
+        raw_type = meta.get("doc_type_kwd")
+        doc_type = raw_type.lower() if isinstance(raw_type, str) else None
         if (
             doc_type in {"image", "table"}
             or meta.get("image") is not None
@@ -2546,12 +2558,12 @@ def _filter_short_chunks(chunks: list[Document], *, min_chars: int, document_id:
             filtered.append(chunk)
     kept_short_fallback = False
     if not filtered:
-        longest = max(chunks, key=lambda d: len((d.page_content or "").strip()))
+        longest = max(chunks, key=lambda d: len((d.page_content).strip()))
         filtered = [longest]
         kept_short_fallback = True
     dropped = before - len(filtered)
     if kept_short_fallback:
-        kept_len = len((filtered[0].page_content or "").strip()) if filtered else 0
+        kept_len = len((filtered[0].page_content).strip()) if filtered else 0
         logger.info(
             "All chunks shorter than %s chars; kept 1 (%s chars) and dropped %s for document %s",
             min_chars,
@@ -2602,11 +2614,12 @@ def _compute_near_dedup_state(
                 kept_chunks.append(chunk)
                 continue
             content_norm = normalize_text(
-                chunk.page_content or "",
+                chunk.page_content,
                 normalize_line_endings=True,
                 remove_control_chars=True,
             )
-            sh_hex = str(meta.get("simhash64") or "").strip().lower()
+            raw_hash = meta.get("simhash64")
+            sh_hex = str(raw_hash).strip().lower() if raw_hash is not None else None
             if not sh_hex:
                 sh_hex = simhash64_hex(simhash64(content_norm))
                 meta = dict(meta)
@@ -2658,7 +2671,7 @@ def _finalize_near_dedup_result(
         return chunks
     updated_chunks = list(state["kept_chunks"])
     if not updated_chunks:
-        longest = max(chunks, key=lambda d: len((d.page_content or "").strip()), default=None)
+        longest = max(chunks, key=lambda d: len((d.page_content).strip()), default=None)
         if longest is not None:
             updated_chunks = [longest]
     logger.info(
@@ -2746,7 +2759,10 @@ def _truncate_chunks_for_document(
     truncation_info["truncated_dropped"] = max(0, len(chunks) - len(truncated_chunks))
     truncation_info["truncated_asset_total"] = int(details.get("asset_total") or 0)
     truncation_info["truncated_asset_kept"] = int(details.get("asset_kept") or 0)
-    truncation_info["truncated_strategy_used"] = str(details.get("strategy") or "").strip() or str(truncation_strategy)
+    selected_strategy = details.get("strategy")
+    if selected_strategy is not None:
+        selected_strategy = selected_strategy.strip()
+    truncation_info["truncated_strategy_used"] = selected_strategy or truncation_strategy
     logger.info(
         "Truncated chunks for document %s: kept=%s dropped=%s assets=%s/%s strategy=%s (MAX_CHUNKS_PER_DOCUMENT=%s)",
         document_id,
@@ -3062,11 +3078,13 @@ def _apply_chunk_asset_stage_and_metadata(
         )
     add_stage_duration("chunk_assets", (time.perf_counter() - t0) * 1000)
     chunked_items = chunk_asset.chunks
-    pipeline_hash = str((db_document.doc_metadata or {}).get("pipeline_hash") or "").strip()
+    pipeline_hash = (db_document.doc_metadata or {}).get("pipeline_hash")
+    if pipeline_hash is not None:
+        pipeline_hash = pipeline_hash.strip()
     file_type = (
-        str(db_document.file_type or "").strip().lower() or str(prepared_state.file_path.suffix.lstrip(".")).lower()
+        db_document.file_type.strip().lower() or str(prepared_state.file_path.suffix.lstrip(".")).lower()
     )
-    governance_version = str(governance_stats.version or "").strip() if governance_stats is not None else ""
+    governance_version = governance_stats.version.strip() if governance_stats is not None else None
     for chunk in chunked_items:
         meta = dict(chunk.metadata or {})
         if pipeline_hash:
@@ -3128,7 +3146,7 @@ def _run_index_stage(
             tenant_id=tenant_id,
             document_id=document_id,
             file_path=prepared_state.file_path,
-            default_source=str(db_document.filename or "").strip() or str(prepared_state.file_path.name),
+            default_source=db_document.filename.strip() or str(prepared_state.file_path.name),
             chunks=chunks,
             options=prepared_state.index_options,
         )
@@ -3169,6 +3187,9 @@ async def _finalize_indexed_document(
     ):
         checkpoint_meta = with_stage_durations(dict(db_document.doc_metadata or {}))
         checkpoint_meta["indexed_total_characters"] = int(total_chars)
+        checkpoint_pipeline_hash = checkpoint_meta.get("pipeline_hash")
+        if checkpoint_pipeline_hash is not None:
+            checkpoint_pipeline_hash = checkpoint_pipeline_hash.strip()
         checkpoint_meta = upsert_ingest_checkpoint(
             checkpoint_meta,
             stage="indexed",
@@ -3177,8 +3198,8 @@ async def _finalize_indexed_document(
                 "chunk_count": len(chunks),
                 "total_characters": int(total_chars),
                 "doc_pipeline_key": (
-                    f"{document_id}:{str(checkpoint_meta.get('pipeline_hash') or '').strip()}"
-                    if str(checkpoint_meta.get("pipeline_hash") or "").strip()
+                    f"{document_id}:{checkpoint_pipeline_hash}"
+                    if checkpoint_pipeline_hash
                     else None
                 ),
             },
@@ -3186,7 +3207,9 @@ async def _finalize_indexed_document(
         _commit_document_metadata(db, db_document, checkpoint_meta)
         await raise_if_cancelled(force=True)
         meta_patch = dict(db_document.doc_metadata or {})
-        completed_pipeline_hash = str(meta_patch.get("pipeline_hash") or "").strip()
+        completed_pipeline_hash = meta_patch.get("pipeline_hash")
+        if completed_pipeline_hash is not None:
+            completed_pipeline_hash = completed_pipeline_hash.strip()
         if completed_pipeline_hash:
             meta_patch["active_pipeline_hash"] = completed_pipeline_hash
             meta_patch["active_pipeline_ready"] = True

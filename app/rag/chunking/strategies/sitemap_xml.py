@@ -32,10 +32,10 @@ _LOC_RE = re.compile(r"(?is)<loc\b[^>]*>(?P<body>.*?)</loc\s*>")
 
 
 def _extract_loc(block_text: str) -> str | None:
-    m = _LOC_RE.search(block_text or "")
+    m = _LOC_RE.search(block_text)
     if not m:
         return None
-    loc = (m.group("body") or "").strip()
+    loc = (m.group("body")).strip()
     loc = re.sub(r"\s+", " ", loc)
     return loc[:300] or None
 
@@ -122,7 +122,7 @@ class SitemapXMLChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

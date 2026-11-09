@@ -43,8 +43,8 @@ class ClaimVerificationResult:
 def claim_token_set(text: str) -> set[str]:
     """Return the shared claim tokens used for verification and evidence ranking."""
     tokens: set[str] = set()
-    for m in _CLAIM_TOKEN_RE.finditer(text or ""):
-        t = (m.group(0) or "").strip()
+    for m in _CLAIM_TOKEN_RE.finditer(text):
+        t = (m.group(0)).strip()
         if not t:
             continue
         if t.isascii():
@@ -62,7 +62,7 @@ def is_uncertainty_claim(claim: str) -> bool:
 
 
 def _numbers(text: str) -> set[str]:
-    return {str(m.group(0) or "").strip() for m in _NUMBER_RE.finditer(text or "") if str(m.group(0) or "").strip()}
+    return {m.group(0).strip() for m in _NUMBER_RE.finditer(text) if m.group(0).strip()}
 
 
 def _normalize_mode(value: Any) -> str:
@@ -171,8 +171,8 @@ def verify_claim(
     enable_contradiction_check: bool = True,
 ) -> ClaimVerificationResult:
     m = _normalize_mode(mode)
-    c = str(claim or "").strip()
-    e = str(evidence or "").strip()
+    c = claim.strip()
+    e = evidence.strip()
 
     early = _early_result(m, c, e)
     if early is not None:

@@ -37,13 +37,13 @@ _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "preprocess"
     return text
 
 
 def _handwriting_warning(note: str) -> str | None:
-    normalized = str(note or "").strip().lower()
+    normalized = note.strip().lower()
     if normalized == "missing_model_path":
         return "handwriting_cleanup_model_missing"
     if normalized.startswith("model_unavailable:"):
@@ -60,7 +60,7 @@ def _handwriting_warning(note: str) -> str | None:
 
 
 def _watermark_warning(note: str) -> str | None:
-    normalized = str(note or "").strip().lower()
+    normalized = note.strip().lower()
     if normalized == "missing_model_path":
         return "watermark_model_missing"
     if normalized.startswith("model_unavailable:"):
@@ -77,7 +77,7 @@ def _watermark_warning(note: str) -> str | None:
 
 
 def _paddle_warning(note: str) -> str | None:
-    normalized = str(note or "").strip().lower()
+    normalized = note.strip().lower()
     if normalized.startswith("backend_unavailable:"):
         return "paddle_ocr_backend_unavailable"
     if normalized.startswith("predict_failed:"):
@@ -112,8 +112,8 @@ def _run_handwriting_cleanup_stage(
         input_path=current,
         output_path=output_path,
         backend=str(settings.HANDWRITING_CLEANUP_BACKEND or "auto"),
-        model_path=str(settings.HANDWRITING_CLEANUP_MODEL_PATH or ""),
-        api_url=str(settings.HANDWRITING_CLEANUP_API_URL or ""),
+        model_path=str(settings.HANDWRITING_CLEANUP_MODEL_PATH),
+        api_url=str(settings.HANDWRITING_CLEANUP_API_URL),
         timeout_sec=float(settings.HANDWRITING_CLEANUP_TIMEOUT_SEC or 60),
     )
     warning = _handwriting_warning(note)
@@ -386,7 +386,7 @@ def _append_deskew_step(
         return current, False
 
     backend = str(settings.DESKEW_BACKEND or "auto").strip().lower()
-    url = str(settings.DESKEW_PADDLE_URL or "").strip()
+    url = str(settings.DESKEW_PADDLE_URL).strip()
     timeout_sec = float(settings.DESKEW_TIMEOUT_SEC or 60)
     note = "missing_backend_or_url"
     changed = False
@@ -470,12 +470,12 @@ def _append_pdf_watermark_steps(
         )
 
     t1 = time.perf_counter()
-    api_url = str(settings.WATERMARK_REMOVAL_API_URL or "").strip()
+    api_url = str(settings.WATERMARK_REMOVAL_API_URL).strip()
     timeout_sec = float(settings.WATERMARK_TIMEOUT_SEC or 120)
     backend = str(settings.WATERMARK_REMOVAL_BACKEND or "auto").strip().lower() or "auto"
-    model_path = str(settings.WATERMARK_REMOVAL_MODEL_PATH or "")
+    model_path = str(settings.WATERMARK_REMOVAL_MODEL_PATH)
     out_path = artifact_root / f"{input_path.stem}.dewatermark.pdf"
-    if backend in {"local", "auto"} and str(model_path or "").strip():
+    if backend in {"local", "auto"} and model_path.strip():
         changed, note, info = _preprocess_pdf_pages_via_raster(
             input_path=current,
             output_path=out_path,
@@ -533,10 +533,10 @@ def _append_image_watermark_step(
         )
         return current, False
 
-    api_url = str(settings.WATERMARK_REMOVAL_API_URL or "").strip()
+    api_url = str(settings.WATERMARK_REMOVAL_API_URL).strip()
     timeout_sec = float(settings.WATERMARK_TIMEOUT_SEC or 120)
     backend = str(settings.WATERMARK_REMOVAL_BACKEND or "auto").strip().lower() or "auto"
-    model_path = str(settings.WATERMARK_REMOVAL_MODEL_PATH or "")
+    model_path = str(settings.WATERMARK_REMOVAL_MODEL_PATH)
     out_path = artifact_root / f"{input_path.stem}.dewatermark{input_path.suffix.lower()}"
     changed, note, info = cleanup_watermark_document(
         input_path=current,

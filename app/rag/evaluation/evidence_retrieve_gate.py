@@ -28,8 +28,8 @@ logger = get_logger(__name__)
 
 def _case_question(case: Any) -> str:
     if isinstance(case, dict):
-        return str(case.get("question") or "")
-    return str(getattr(case, "question", "") or "")
+        return case["question"]
+    return case.question
 
 
 def _base_retrieval_meta(
@@ -227,7 +227,9 @@ def _parse_quality_metrics(items: list[dict[str, Any]]) -> dict[str, Any]:
             alert_values.append(1 if bool(item.get("parse_quality_alert")) else 0)
         if item.get("parse_quality_gate_blocked") is not None:
             blocked_values.append(1 if bool(item.get("parse_quality_gate_blocked")) else 0)
-        level = str(item.get("parse_risk_level") or "").strip().lower()
+        level = item.get("parse_risk_level")
+        if isinstance(level, str):
+            level = level.strip().lower()
         if level:
             risk_levels.append(level)
         try:

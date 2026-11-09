@@ -25,7 +25,7 @@ _EDIT_ROLES = UserRoles.EDIT_ROLES
 
 def _assert_can_edit(db: Session, tenant_id: UUID, account_id: str) -> None:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").lower()
+    role = member.role.lower()
     if role not in _EDIT_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No permission to manage dataset categories")
 
@@ -74,7 +74,7 @@ def build_category_tree_nodes(items: Iterable[object]) -> list[DatasetCategoryNo
         if cid is None:
             continue
         cid = UUID(str(cid))
-        name = str(_get_item_field(it, "name", "") or "").strip() or "untitled"
+        name = _get_item_field(it, "name").strip() or "untitled"
         parent_id = _get_item_field(it, "parent_id", None)
         parent_uuid = UUID(str(parent_id)) if parent_id else None
         sort_order = int(_get_item_field(it, "sort_order", 0) or 0)

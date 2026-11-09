@@ -29,15 +29,17 @@ def _as_mapping(row: Any) -> dict[str, Any]:
     return out
 
 
-def _safe_str(value: Any, *, max_len: int = 512) -> str:
-    text = str(value or "").strip()
+def _safe_str(value: Any, *, max_len: int = 512) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return ""
     return text[: max(0, int(max_len or 0))] if max_len else text
 
 
 def _stable_query_hash(query: str) -> str:
-    return hashlib.sha256(str(query or "").encode("utf-8", errors="ignore")).hexdigest()
+    return hashlib.sha256(query.encode("utf-8", errors="ignore")).hexdigest()
 
 
 def _bounded_optional_text(value: str | None, *, max_len: int) -> str | None:
@@ -136,7 +138,7 @@ def _build_training_triple(
         return None
     return {
         "schema": FEEDBACK_TRAINING_TRIPLE_SCHEMA_V1,
-        "query_hash": mined.get("query_hash") or "",
+        "query_hash": mined["query_hash"],
         "positive_chunk_ids": positives,
         "negative_chunk_ids": negatives[:20],
         "source_feedback_id": _feedback_id(row),
@@ -146,7 +148,9 @@ def _build_training_triple(
 
 def _build_eval_case_candidate(row: dict[str, Any]) -> dict[str, Any] | None:
     extra = _extra(row)
-    status = _safe_str(row.get("eval_case_status") or extra.get("eval_case_status"), max_len=32).lower()
+    status = _safe_str(row.get("eval_case_status") or extra.get("eval_case_status"), max_len=32)
+    if status is not None:
+        status = status.lower()
     if status in {"promoted", "rejected"} or bool(row.get("archived") or extra.get("archived")):
         return None
     question = _query(row)

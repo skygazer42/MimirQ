@@ -16,7 +16,7 @@ from app.parsing.utils.text import read_text_file
 
 
 def _safe_cell(value: str, *, max_chars: int = 2000) -> str:
-    text = (value or "").replace("\r", " ").replace("\n", " ").strip()
+    text = (value).replace("\r", " ").replace("\n", " ").strip()
     if max_chars > 0 and len(text) > max_chars:
         return text[: max_chars - 1] + "…"
     return text
@@ -104,7 +104,7 @@ class CsvParser:
 
     def parse(self, file_path: Path) -> list[Document]:
         decoded = read_text_file(file_path)
-        raw = decoded.text or ""
+        raw = decoded.text
         sample = raw[:8192]
         dialect, delimiter, has_header = _sniff_csv_format(sample)
         header, rows = _read_csv_rows(

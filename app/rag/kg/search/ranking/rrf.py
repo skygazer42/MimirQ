@@ -198,7 +198,7 @@ async def rerank(
             rrf_k=config.rerank.rrf_k,
             phrase_boost_weight=phrase_boost_weight,
         )
-        key_entity_ids = {str(k.get("entity_id") or "").strip() for k in (key_final or []) if k.get("entity_id")}
+        key_entity_ids = {str(k["entity_id"]).strip() for k in (key_final or []) if k.get("entity_id")}
         assoc_map = _safe_assoc_map(repo, event_ids, config.tenant_id, key_entity_ids)
         extras = _build_extras(
             events=events,

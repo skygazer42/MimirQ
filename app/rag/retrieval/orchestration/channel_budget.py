@@ -7,13 +7,14 @@ Split out of ``app.rag.retrieval.orchestrator`` (see
 import json
 from typing import Any
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.hashing import stable_hash
 from app.rag.retrieval.orchestration.common import _safe_int
 
 _CHANNEL_BUDGET_POLICY_SCHEMA_V1 = "mimirq.channel_budget_policy.v1"
 
 
-def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
+def _safe_post_rerank_pipeline_summary(raw: str) -> list[dict[str, Any]]:
     """
     Parse/normalize the Evidence post-rerank pipeline config into a low-cardinality summary.
 
@@ -22,7 +23,7 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
       without leaking secrets or environment-specific paths.
     - Expected input is JSON from settings.EVIDENCE_POST_RERANK_PIPELINE.
     """
-    text = str(raw or "").strip()
+    text = raw.strip()
     if not text:
         return []
     try:
@@ -46,8 +47,11 @@ def _safe_post_rerank_pipeline_summary(raw: Any) -> list[dict[str, Any]]:
 def _safe_post_rerank_pipeline_item(item: Any) -> dict[str, Any] | None:
     if not isinstance(item, dict):
         return None
-    provider = str(item.get("provider") or "").strip().lower()
+    provider = _stringified_metadata_text(item, "provider")
     if not provider or provider in {"none", "off", "false", "0"}:
+        return None
+    provider = provider.lower()
+    if provider in {"none", "off", "false", "0"}:
         return None
     top_n = _safe_int(item.get("top_n"), minimum=0)
     return {"provider": provider, "top_n": (top_n)}
@@ -59,7 +63,7 @@ def _coerce_channel_budgets(raw: Any) -> dict[str, int]:
     allowed = {"vector", "bm25", "lexical", "sparse"}
     out: dict[str, int] = {}
     for k, v in raw.items():
-        key = str(k or "").strip().lower()
+        key = k.strip().lower()
         if not key or key not in allowed:
             continue
         try:
@@ -76,7 +80,7 @@ def _coerce_channel_min_scores(raw: Any) -> dict[str, float]:
     allowed = {"vector", "bm25", "lexical", "sparse"}
     out: dict[str, float] = {}
     for k, v in raw.items():
-        key = str(k or "").strip().lower()
+        key = k.strip().lower()
         if not key or key not in allowed:
             continue
         try:
@@ -103,7 +107,7 @@ def resolve_channel_budget_policy_overrides(
         meta.update(disabled_meta)
         return {}, meta
 
-    mode_norm = str(retrieval_mode or "").strip().lower() or "hybrid"
+    mode_norm = retrieval_mode.strip().lower() or "hybrid"
     profile_norm = retrieval_profile.strip().lower() if retrieval_profile is not None else None
     selected_key, selected, disabled_meta = _channel_budget_policy_selected(
         profiles,
@@ -140,7 +144,7 @@ def _channel_budget_policy_profiles(policy: dict[str, Any]) -> tuple[dict[str, A
 
 
 def _channel_budget_policy_schema_meta(policy: dict[str, Any]) -> dict[str, Any] | None:
-    schema = str(policy.get("schema") or "").strip()
+    schema = _stringified_metadata_text(policy, "schema")
     if schema and schema != _CHANNEL_BUDGET_POLICY_SCHEMA_V1:
         return {"reason": "schema_mismatch", "schema": schema}
     return None

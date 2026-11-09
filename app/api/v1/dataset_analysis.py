@@ -352,7 +352,7 @@ def get_dataset_analysis_png_task_result_endpoint(
         raise HTTPException(status_code=404, detail="PNG export task not found") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="PNG export task state unavailable") from exc
-    if str(status.get("status") or "") != "done":
+    if status["status"] != "done":
         raise HTTPException(status_code=409, detail="PNG export task is not finished")
     try:
         payload = get_dataset_analysis_png_result(

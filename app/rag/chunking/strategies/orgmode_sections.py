@@ -50,7 +50,7 @@ _ORG_TODO_KEYWORDS = frozenset({"todo", "done", "next", "wait", "cancelled"})
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -61,7 +61,7 @@ def _iter_lines(text: str) -> list[_Line]:
 
 
 def _clean_title(raw: str) -> str:
-    s = (raw or "").strip()
+    s = (raw).strip()
     if not s:
         return ""
 
@@ -86,12 +86,12 @@ def _clean_title(raw: str) -> str:
     if first_rest:
         head = first_rest[0].strip().casefold()
         if head in _ORG_TODO_KEYWORDS and len(first_rest) > 1:
-            s = (first_rest[1] or "").strip()
+            s = (first_rest[1]).strip()
     return s
 
 
 def _parse_heading_line(line: str) -> tuple[int, str] | None:
-    plain = (line or "").rstrip("\r\n")
+    plain = (line).rstrip("\r\n")
     if not plain.strip():
         return None
 
@@ -217,7 +217,7 @@ class OrgModeSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -56,7 +56,7 @@ def _list_rtbf_documents(
     subject_account_id: str,
     max_docs: int = 100,
 ) -> list[dict[str, object]]:
-    subject = str(subject_account_id or "").strip()
+    subject = subject_account_id.strip()
     if not subject:
         return []
 
@@ -142,7 +142,7 @@ def _invalidate_dataset_caches(
 def _rtbf_summary_documents(candidates: list[dict[str, object]], *, dry_run: bool) -> list[dict[str, object]]:
     return [
         {
-            "document_id": str(item.get("document_id") or ""),
+            "document_id": str(item["document_id"]),
             "dataset_id": (str(item.get("dataset_id")) if item.get("dataset_id") is not None else None),
             "filename": item.get("filename"),
             "match_reasons": list(item.get("match_reasons") or []),
@@ -213,7 +213,7 @@ async def _execute_rtbf_cascade(
 ) -> None:
     delete_document_lifecycle = _resolve_delete_document_lifecycle()
     successful_dataset_ids: set[UUID] = set()
-    doc_state_by_id = {str(item.get("document_id") or ""): item for item in summary["documents"]}  # type: ignore[index]
+    doc_state_by_id = {str(item["document_id"]): item for item in summary["documents"]}  # type: ignore[index]
 
     for item in candidates:
         document_id = item.get("document_id")
@@ -297,7 +297,7 @@ async def run_rtbf_cascade(
     now: datetime | None = None,
 ) -> dict[str, object]:
     now0 = now or _now_utc()
-    subject = str(subject_account_id or "").strip()
+    subject = subject_account_id.strip()
     candidates = _list_rtbf_documents(
         db,
         tenant_id=tenant_id,

@@ -271,7 +271,7 @@ def _read_retrieval_candidate_payload(
         if encrypted:
             from app.core.secrets import decrypt_secret
 
-            raw_text = decrypt_secret(raw_text) or ""
+            raw_text = decrypt_secret(raw_text)
         payload = json.loads(raw_text)
     except Exception:  # noqa: BLE001
         return None
@@ -305,7 +305,7 @@ def _write_retrieval_candidate_payload(
                 return False
             from app.core.secrets import encrypt_secret
 
-            raw_text = encrypt_secret(raw_text) or ""
+            raw_text = encrypt_secret(raw_text)
         raw = raw_text.encode("utf-8")
     except Exception:  # noqa: BLE001
         return False

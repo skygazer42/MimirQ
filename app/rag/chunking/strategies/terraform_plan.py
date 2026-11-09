@@ -35,7 +35,7 @@ def _parse_change_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return None
     s = s.lstrip()
@@ -54,7 +54,7 @@ def _parse_change_line(line: str) -> tuple[str, str] | None:
 
 
 def _build_change_blocks(text: str) -> list[_ChangeBlock]:
-    raw = text or ""
+    raw = text
     if not raw:
         return []
 
@@ -78,8 +78,8 @@ def _build_change_blocks(text: str) -> list[_ChangeBlock]:
     blocks: list[_ChangeBlock] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(raw)
-        addr = (addrs[idx] or "").strip()[:300]
-        action = (actions[idx] or "").strip()[:80]
+        addr = (addrs[idx]).strip()[:300]
+        action = (actions[idx]).strip()[:80]
         blocks.append(_ChangeBlock(start=start, end=end, index=idx, address=addr, action=action))
     return blocks
 
@@ -135,7 +135,7 @@ class TerraformPlanChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

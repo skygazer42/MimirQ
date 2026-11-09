@@ -29,7 +29,7 @@ class ZipImageProcessor:
 
         Rejects absolute paths and path traversal. Works cross-platform.
         """
-        name = (member_name or "").replace("\\", "/").lstrip("/")
+        name = (member_name).replace("\\", "/").lstrip("/")
         posix = PurePosixPath(name)
         if not posix.parts:
             raise ValueError("Empty ZIP member name")
@@ -110,7 +110,7 @@ class ZipImageProcessor:
         Normalize markdown/html image path for dictionary lookup.
         Strips quotes/title fragments and leading './'.
         """
-        val = (raw or "").strip()
+        val = (raw).strip()
         if not val:
             return ""
         if val.startswith("<") and ">" in val:

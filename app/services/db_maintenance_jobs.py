@@ -45,7 +45,7 @@ def build_postgres_maintenance_commands(
     if tables:
         cleaned: list[str] = []
         for raw in tables:
-            name = str(raw or "").strip()
+            name = raw.strip()
             if not name:
                 continue
             if not _TABLE_RE.match(name):
@@ -91,7 +91,7 @@ def run_postgres_maintenance(
     commands = build_postgres_maintenance_commands(vacuum=vacuum, analyze=analyze, verbose=verbose, tables=tables)
 
     url = make_url(settings.DATABASE_URL)
-    driver = str(url.drivername or "").lower()
+    driver = url.drivername.lower()
     if not driver.startswith("postgres"):
         return {
             "ok": True,

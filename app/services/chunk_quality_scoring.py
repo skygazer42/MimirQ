@@ -31,7 +31,9 @@ def _as_float_or_none(value: Any) -> float | None:
 
 
 def _grade_bucket(value: Any) -> str:
-    raw = str(value or "").strip().lower()
+    if value is None:
+        return "unknown"
+    raw = str(value).strip().lower()
     if raw in {"good", "ok", "bad"}:
         return raw
     return "unknown"
@@ -141,7 +143,7 @@ def score_chunk_quality(text: str, *, meta: Mapping[str, Any] | None = None) -> 
         "signals": {..}
       }
     """
-    norm = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True).strip()
+    norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True).strip()
 
     labels: list[str] = []
     signals: dict[str, Any] = {}
@@ -189,7 +191,9 @@ def _top_candidate_labels(raw_labels: Any) -> list[str]:
     labels = raw_labels if isinstance(raw_labels, list) else []
     out: list[str] = []
     for raw in labels:
-        text = str(raw or "").strip().lower()
+        if raw is None:
+            continue
+        text = str(raw).strip().lower()
         if not text or text in out:
             continue
         out.append(text[:48])

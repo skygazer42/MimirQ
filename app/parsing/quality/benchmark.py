@@ -27,14 +27,14 @@ def markdown_to_text(markdown: str) -> str:
     """
     Best-effort Markdown -> plain text (bounded, deterministic).
     """
-    raw = str(markdown or "")
+    raw = markdown
     if not raw.strip():
         return ""
 
     out_lines: list[str] = []
     in_fence = False
     for line in raw.splitlines():
-        if _FENCE_RE.match(line or ""):
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
             continue
         if in_fence:
@@ -66,7 +66,7 @@ def normalized_text_similarity(a: str, b: str) -> float:
 
 def extract_markdown_images(markdown: str) -> list[dict[str, str]]:
     out: list[dict[str, str]] = []
-    raw = str(markdown or "")
+    raw = markdown
     if not raw:
         return out
 
@@ -77,7 +77,7 @@ def extract_markdown_images(markdown: str) -> list[dict[str, str]]:
         src = ""
         alt = ""
         for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = (key or "").strip().lower()
+            k = key.strip().lower()
             if k == "src":
                 src = val
             elif k == "alt":
@@ -94,7 +94,7 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
 
     This is intentionally simple; it is used as a fallback when true TEDS is not available.
     """
-    raw = str(markdown or "")
+    raw = markdown
     if not raw.strip():
         return []
 
@@ -109,11 +109,11 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
             return
         rows: list[list[str]] = []
         for line in buf:
-            s = (line or "").strip()
+            s = line.strip()
             if not (s.startswith("|") and s.endswith("|") and s.count("|") >= 2):
                 continue
             parts = [p.strip() for p in s.strip("|").split("|")]
-            if parts and all(re.fullmatch(r"[:\s-]+", p or "") for p in parts):
+            if parts and all(re.fullmatch(r"[:\s-]+", p) for p in parts):
                 # separator line like | --- | --- |
                 continue
             rows.append(parts)
@@ -122,7 +122,7 @@ def extract_pipe_tables(markdown: str) -> list[list[list[str]]]:
         buf = []
 
     for line in lines:
-        s = (line or "").strip()
+        s = line.strip()
         looks_like_row = s.startswith("|") and s.endswith("|") and s.count("|") >= 2
         if looks_like_row:
             buf.append(line)
@@ -137,7 +137,7 @@ def _normalized_table_cells(tables: list[list[list[str]]]) -> list[str]:
     for table in tables or []:
         for row in table:
             for cell in row:
-                normalized = _WS_RE.sub(" ", str(cell or "")).strip().lower()
+                normalized = _WS_RE.sub(" ", cell).strip().lower()
                 if normalized:
                     cells.append(normalized)
     return cells
@@ -178,8 +178,8 @@ def compute_parsing_proxy_metrics(
     """
     Compute proxy metrics for parser benchmarking.
     """
-    pred = str(parsed_markdown or "")
-    gold = str(golden_markdown or "")
+    pred = parsed_markdown
+    gold = golden_markdown
 
     text_sim = normalized_text_similarity(pred, gold)
     pred_tables = extract_pipe_tables(pred)

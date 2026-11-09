@@ -13,7 +13,8 @@ _DEFAULT_CPU_MODEL_LIMIT_MB = 500.0
 
 def _onnx_gpu_enabled() -> bool:
     for name in ("PARSING_SMALL_MODELS_USE_GPU", "DEEPDOC_ONNX_USE_GPU"):
-        if str(os.environ.get(name, "")).strip().lower() in {"1", "true", "yes", "on"}:
+        raw = os.environ.get(name)
+        if raw is not None and raw.strip().lower() in {"1", "true", "yes", "on"}:
             return True
     return False
 

@@ -36,7 +36,7 @@ _KINDS = frozenset({"type", "input", "enum", "interface", "union", "scalar", "di
 
 
 def _take_name_token(text: str) -> str | None:
-    s = str(text or "").lstrip()
+    s = text.lstrip()
     if not s:
         return None
     first = s[0]
@@ -54,7 +54,7 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").strip()
+    raw = line.strip()
     if not raw or raw.startswith("#"):
         return None
 
@@ -88,7 +88,7 @@ def _parse_def_line(line: str) -> tuple[str, str | None] | None:
 def _iter_defs(text: str) -> list[_Def]:
     defs: list[_Def] = []
     offset = 0
-    for raw_line in (text or "").splitlines(keepends=True):
+    for raw_line in (text).splitlines(keepends=True):
         line_start = offset
         offset += len(raw_line)
         plain = raw_line.rstrip("\r\n")
@@ -138,7 +138,7 @@ def looks_like_graphql_schema(text: str) -> bool:
     if len(defs) >= 3:
         return True
     # Heuristic: at least 2 defs + GraphQL-ish punctuation.
-    if len(defs) >= 2 and ("type " in (text or "").lower() or "schema {" in (text or "").lower()):
+    if len(defs) >= 2 and ("type " in (text).lower() or "schema {" in (text).lower()):
         return True
     return False
 
@@ -160,7 +160,7 @@ class GraphQLSchemaChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

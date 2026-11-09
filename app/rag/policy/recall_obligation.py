@@ -168,7 +168,9 @@ def build_must_recall_proof(
     raw_matched = source_eval_obj.get("matched_source_keys")
     if isinstance(raw_matched, list):
         for v in raw_matched:
-            s = str(v or "").strip()
+            if v is None:
+                continue
+            s = str(v).strip()
             if not s:
                 continue
             matched_source_keys.append(s)
@@ -177,7 +179,8 @@ def build_must_recall_proof(
     # Best-effort fallback: derive matched_source_keys from the required->matched map.
     if not matched_source_keys and matched_by_required:
         for key in required_source_keys_norm:
-            s = str(matched_by_required.get(key) or "").strip()
+            matched = matched_by_required.get(key)
+            s = str(matched).strip() if matched is not None else None
             if not s:
                 continue
             matched_source_keys.append(s)
@@ -187,9 +190,9 @@ def build_must_recall_proof(
     proof = {
         "schema": MUST_RECALL_PROOF_SCHEMA_V1,
         "enabled": bool(enabled),
-        "status": str(status or ""),
+        "status": status,
         "passed": bool(passed),
-        "contract_fail_reason_taxonomy": str(contract_fail_reason_taxonomy or ""),
+        "contract_fail_reason_taxonomy": contract_fail_reason_taxonomy,
         "required_source_keys": required_source_keys_norm,
         "matched_source_keys": matched_source_keys,
         "matched_by_required_source_key": dict(matched_by_required),

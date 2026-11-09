@@ -27,7 +27,8 @@ def _iter_raw_modules(value: object) -> Iterator[str]:
     else:
         source = (value,)
     for part in source:
-        yield str(part or "").strip()
+        if part is not None:
+            yield str(part).strip()
 
 
 def normalize_navigation_modules(value: object, *, reject_unknown: bool = False) -> list[str]:

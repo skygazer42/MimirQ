@@ -19,7 +19,7 @@ def limit_blank_lines(text: str, *, max_blank_lines: int) -> str:
     - max_blank_lines=1 keeps at most one blank line between paragraphs (default).
     - max_blank_lines=2 keeps up to two blank lines (stronger separation).
     """
-    raw = text or ""
+    raw = text
     if not raw:
         return raw
 
@@ -41,7 +41,7 @@ def limit_blank_lines(text: str, *, max_blank_lines: int) -> str:
             out.append(line)
             continue
 
-        if not (line or "").strip():
+        if not line.strip():
             blank_run += 1
             if blank_run <= max_blank_lines:
                 out.append("")

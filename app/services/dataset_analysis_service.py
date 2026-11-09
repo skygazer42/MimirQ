@@ -60,7 +60,7 @@ class DatasetAnalysisSourceIncompleteError(MimirQError):
         failed_conversation_ids: list[str] | None = None,
     ) -> None:
         detail = {
-            "dataset_id": str(dataset_id or ""),
+            "dataset_id": dataset_id,
             "failed_conversation_ids": list(failed_conversation_ids or []),
         }
         super().__init__(
@@ -80,7 +80,7 @@ def _coerce_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    text = str(value or "").strip()
+    text = str(value).strip()
     if not text:
         return None
     if text.endswith("Z"):
@@ -410,7 +410,7 @@ def build_dataset_analysis_examples(
     if category:
         top_examples = {str(category): list(top_examples.get(str(category), []))[:example_limit]}
         manual_review = [
-            row for row in bundle["manual_review_candidates"] if str(row.get("category") or "") == str(category)
+            row for row in bundle["manual_review_candidates"] if row["category"] == str(category)
         ][:example_limit]
     else:
         manual_review = list(bundle["manual_review_candidates"])[:example_limit]
@@ -639,7 +639,7 @@ def writeback_dataset_analysis_glossary_candidates(
         "schema": _GLOSSARY_WRITEBACK_SCHEMA,
         "dataset_id": str(dataset_id),
         "dataset_name": dataset_name,
-        "ruleset": str(ruleset_name or "").strip(),
+        "ruleset": ruleset_name.strip(),
         "filters": bundle["meta"]["filters"],
         "candidate_count": int(result["candidate_count"]),
         "added_count": int(result["added_count"]),
@@ -762,7 +762,7 @@ def _complete_dataset_analysis_png_task(
     payload: bytes,
     heartbeat_state: dict[str, Any],
 ) -> None:
-    reason = str(heartbeat_state.get("reason") or "")
+    reason = heartbeat_state["reason"]
     if reason == "shared_state_unavailable":
         _fail_dataset_analysis_png_task(
             task_id=task_id,
@@ -793,7 +793,7 @@ def _handle_dataset_analysis_png_exception(
     heartbeat_state: dict[str, Any],
     exc: Exception,
 ) -> None:
-    reason = str(heartbeat_state.get("reason") or "")
+    reason = heartbeat_state["reason"]
     if reason == "shared_state_unavailable":
         _fail_dataset_analysis_png_task(
             task_id=task_id,
@@ -866,7 +866,7 @@ def _run_dataset_analysis_png_task(
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
         )
-        owner_token = str(started.get("owner_token") or "")
+        owner_token = started["owner_token"]
         heartbeat_thread = _start_dataset_analysis_png_heartbeat(
             task_id=task_id,
             tenant_id=tenant_id,

@@ -32,7 +32,7 @@ class PolicyHeading:
 
 
 def _sha256_hex(text: str) -> str:
-    return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+    return hashlib.sha256((text).encode("utf-8")).hexdigest()
 
 
 def _stable_id24(text: str) -> str:
@@ -99,7 +99,7 @@ def looks_like_policy_manual(text: str) -> bool:
     We require multiple article markers, and at least one extra signal
     (chapter/clause marker, or bracketed titles) to avoid matching generic outlines.
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return False
 
@@ -202,7 +202,7 @@ class PolicyManualStructuredChunker(BaseChunker):
             local_start = sd_meta.pop("start_index", None) or 0
             abs_start = sec_start + int(local_start)
             abs_end = abs_start + len(sd.page_content)
-            child_content = sd.page_content or ""
+            child_content = sd.page_content
             child_content_hash = _sha256_hex(child_content)
             child_clause_id = _stable_id24(f"{doc_id}:{article_number}:{child_content_hash}")
 
@@ -227,7 +227,7 @@ class PolicyManualStructuredChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

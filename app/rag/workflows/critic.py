@@ -39,7 +39,7 @@ _STYLE_RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
 
 
 def _detect_style_issues(answer: str) -> list[dict[str, str]]:
-    raw = str(answer or "").strip()
+    raw = answer.strip()
     if not raw:
         return []
 
@@ -49,7 +49,7 @@ def _detect_style_issues(answer: str) -> list[dict[str, str]]:
         match = pattern.search(raw)
         if match is None:
             continue
-        span = str(match.group(0) or "").strip()
+        span = match.group(0).strip()
         if not span:
             continue
         key = (code, span.casefold() if span.isascii() else span)
@@ -72,8 +72,8 @@ def run_critic_review(
 ) -> CriticReview:
     del question  # Reserved for future relevance-aware checks; keep the helper contract stable.
 
-    raw_answer = str(answer or "").strip()
-    evidence_raw = str(evidence_text or "").strip()
+    raw_answer = answer.strip()
+    evidence_raw = evidence_text.strip()
     claims = split_into_claims(
         raw_answer,
         max_claims=int(max_claims or settings.FAITHFULNESS_SCORE_MAX_CLAIMS),
@@ -83,7 +83,7 @@ def run_critic_review(
     unsupported_claims: list[str] = []
     supported_claims = 0
     for claim in claims:
-        text = str(claim or "").strip()
+        text = claim.strip()
         if not text:
             continue
         verification = verify_claim_with_fallback(
@@ -142,12 +142,20 @@ class CriticWorkflow(BaseWorkflow):
         return WorkflowMode.EVALUATOR
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
-        question = str(state.get("question") or state.get("query") or "").strip()
-        answer = str(state.get("answer") or "").strip()
+        raw_question = state.get("question")
+        if raw_question is None:
+            raw_question = state.get("query")
+        question = raw_question.strip() if raw_question is not None else ""
+        answer = state.get("answer")
+        if answer is not None:
+            answer = answer.strip()
         if not answer:
             return self.create_result(state, success=False, error="critic_answer_missing")
 
-        evidence_text = str(state.get("evidence_text") or state.get("context") or "").strip()
+        evidence_text = state.get("evidence_text")
+        if evidence_text is None:
+            evidence_text = state.get("context")
+        evidence_text = evidence_text.strip() if evidence_text is not None else ""
         citations = list(state.get("citations") or [])
         critique = run_critic_review(
             question=question,

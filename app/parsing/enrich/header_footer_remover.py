@@ -54,7 +54,10 @@ def _page_value(element: Mapping[str, Any]) -> int | None:
 
 
 def _text_value(element: Mapping[str, Any]) -> str:
-    return str(element.get("text") or element.get("element_text") or "").strip()
+    value = element.get("text")
+    if value is None:
+        value = element.get("element_text")
+    return str(value).strip() if value is not None else ""
 
 
 def _normalize_repeated_text(text: str) -> str:

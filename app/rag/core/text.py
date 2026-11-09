@@ -85,7 +85,7 @@ def _split_on_en_conjunctions(text: str) -> list[str]:
     """
     Split text on common English conjunctions without regex.
     """
-    tokens = (text or "").split()
+    tokens = (text).split()
     if len(tokens) < 3:
         return [text] if text else []
 
@@ -115,7 +115,7 @@ def _split_on_en_conjunctions(text: str) -> list[str]:
 
 
 def _clean_decomposed_fragment(text: str) -> str:
-    cleaned = (text or "").strip()
+    cleaned = (text).strip()
     if not cleaned:
         return ""
     cleaned = re.sub(r"^[-*•]\s+", "", cleaned)
@@ -170,7 +170,7 @@ def heuristic_decompose_query(query: str, *, max_subquestions: int = 3) -> list[
     """
 
     max_subquestions = max(0, int(max_subquestions or 0))
-    raw = (query or "").strip()
+    raw = (query).strip()
     if not raw or max_subquestions <= 0:
         return []
 
@@ -191,8 +191,8 @@ def _truncate_with_ellipsis(text: str, *, max_chars: int) -> str:
 
 def _query_terms(query: str, *, max_terms: int) -> list[str]:
     terms: list[str] = []
-    for match in _QUERY_TOKEN_RE.finditer(query or ""):
-        token = (match.group(0) or "").strip()
+    for match in _QUERY_TOKEN_RE.finditer(query):
+        token = (match.group(0)).strip()
         if not token:
             continue
         normalized = token.casefold() if token.isascii() else token
@@ -207,7 +207,7 @@ def _query_terms(query: str, *, max_terms: int) -> list[str]:
 def _evidence_sentences(text: str, *, min_sentence_chars: int) -> list[str]:
     sentences: list[str] = []
     for match in _SENTENCE_RE.finditer(text):
-        sentence = (match.group(0) or "").strip()
+        sentence = (match.group(0)).strip()
         if not sentence:
             continue
         if min_sentence_chars and len(sentence) < min_sentence_chars:
@@ -252,7 +252,7 @@ def extract_evidence_text(
 
     This is a heuristic extractor (no LLM). Returns plain text.
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return ""
 
@@ -266,7 +266,7 @@ def extract_evidence_text(
     if max_sentences <= 0:
         return _truncate_with_ellipsis(raw, max_chars=max_chars)
 
-    q = (query or "").strip()
+    q = (query).strip()
     if not q:
         return _truncate_with_ellipsis(raw, max_chars=max_chars)
 
@@ -292,7 +292,7 @@ def guess_recall_bucket(query: str) -> str:
     Returns one of:
     - schema | procedure | numeric | policy | definition | general
     """
-    q = (query or "").strip()
+    q = (query).strip()
     if not q:
         return "general"
 
@@ -316,7 +316,7 @@ def guess_retrieval_mode(query: str) -> str:
 
     Returns one of: hybrid | keyword | mmr
     """
-    q = (query or "").strip()
+    q = (query).strip()
     if not q:
         return "hybrid"
 
@@ -342,7 +342,7 @@ def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
     - Always rewrite very short follow-ups (likely coreference)
     - Otherwise, rewrite only when we detect coreference-like triggers
     """
-    q = (question or "").strip()
+    q = (question).strip()
     if not q:
         return False
     short_len = max(1, int(short_len or 0))
@@ -352,7 +352,7 @@ def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
 
 
 def _parse_claim_list_item(raw: str) -> str | None:
-    text = (raw or "").lstrip()
+    text = (raw).lstrip()
     if not text:
         return None
 
@@ -397,7 +397,7 @@ def _flush_claim_paragraph(paragraph_lines: list[str], claims: list[str], *, max
     if not paragraph:
         return False
     for match in _SENTENCE_RE.finditer(paragraph):
-        sentence = (match.group(0) or "").strip()
+        sentence = (match.group(0)).strip()
         if not sentence:
             continue
         claims.append(sentence)
@@ -416,14 +416,14 @@ def split_into_claims(text: str, *, max_claims: int = 24) -> list[str]:
     - Preserve original order, drop empty claims, bound to `max_claims`
     """
     max_claims = max(1, int(max_claims or 0))
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return []
 
     claims: list[str] = []
     paragraph_lines: list[str] = []
 
-    for raw_line in (text or "").splitlines():
+    for raw_line in (text).splitlines():
         if _consume_claim_line(raw_line, paragraph_lines=paragraph_lines, claims=claims, max_claims=max_claims):
             break
 
@@ -440,7 +440,7 @@ def _consume_claim_line(
     claims: list[str],
     max_claims: int,
 ) -> bool:
-    line = (raw_line or "").strip()
+    line = (raw_line).strip()
     if not line:
         return _flush_claim_paragraph(paragraph_lines, claims, max_claims=max_claims)
 
@@ -498,7 +498,7 @@ def verify_claim_with_fallback(
         "available": bool(nli_result.available),
         "label": nli_result.label,
         "provider": dict(nli_result.provider_status or {}),
-        "reason_code": str((nli_result.diagnostics or {}).get("reason_code") or ""),
+        "reason_code": nli_result.diagnostics["reason_code"],
     }
     if not bool(nli_result.available) or nli_result.supported is None:
         return result.__class__(supported=result.supported, mode=result.mode, diagnostics=diagnostics)
@@ -613,7 +613,7 @@ def _append_removed_claim_reason(
     contradiction = diagnostics.get("contradiction_type")
     reasons.append(
         {
-            "claim": str(claim or "")[:300],
+            "claim": claim[:300],
             "reason_code": str(diagnostics.get("reason_code") or diagnostics.get("reason") or "unsupported")[:120],
             "contradiction_type": str(contradiction)[:120] if contradiction is not None else None,
         }

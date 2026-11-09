@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.context_expansion import expand_ranked_chunk_results
 from app.rag.retrieval.hybrid.common import (
     _RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY,
@@ -153,7 +154,9 @@ class PostProcessMixin:
         embedding_runtime: DatasetEmbeddingRuntimeConfig | None,
     ) -> tuple[UUID | None, str | None, set[str], str]:
         tenant_filter = self.tenant_id
-        account_id = (self.account_id or "").strip()
+        account_id = self.account_id
+        if account_id is not None:
+            account_id = account_id.strip()
         if not account_id:
             account_id = None
         dataset_filters = {str(dataset_id) for dataset_id in self._explicit_dataset_scope_ids()}
@@ -162,7 +165,7 @@ class PostProcessMixin:
             if embedding_runtime is not None
             else self._resolve_embedding_runtime(tenant_id=tenant_filter)
         )
-        return tenant_filter, account_id, dataset_filters, str(runtime.embedding_space_hash or "").strip()
+        return tenant_filter, account_id, dataset_filters, runtime.embedding_space_hash.strip()
 
     def _load_enrichment_chunks_by_id(
         self,
@@ -389,7 +392,7 @@ class PostProcessMixin:
         ready = (
             bool(doc_meta.get("active_pipeline_ready"))
             if "active_pipeline_ready" in doc_meta
-            else (str(status or "").lower() == "completed")
+            else (status.lower() == "completed")
         )
         if archived_at is not None or disabled_at is not None:
             ready = False
@@ -398,10 +401,12 @@ class PostProcessMixin:
         return bool(ready)
 
     def _document_active_pipeline_key(self, *, doc_meta: dict[str, Any], document_id: str) -> str | None:
-        active_key = str(doc_meta.get("active_doc_pipeline_key") or "").strip()
+        active_key = _stringified_metadata_text(doc_meta, "active_doc_pipeline_key")
         if active_key:
             return active_key
-        active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+        active_hash = _stringified_metadata_text(doc_meta, "active_pipeline_hash") or _stringified_metadata_text(
+            doc_meta, "pipeline_hash"
+        )
         if active_hash:
             return f"{document_id}:{active_hash}"
         return None
@@ -422,7 +427,7 @@ class PostProcessMixin:
             if tenant_filter:
                 q = q.filter(DocumentChunk.tenant_id == tenant_filter)
             for doc_id, content in q.all():
-                first_chunk_by_doc_id[str(doc_id)] = str(content or "")
+                first_chunk_by_doc_id[str(doc_id)] = content
         except Exception as exc:
             logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
         return first_chunk_by_doc_id
@@ -647,13 +652,15 @@ class PostProcessMixin:
         embedding_space: str,
         chunk: DocumentChunk,
     ) -> bool:
-        expected_embedding_space = str(
-            meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) or embedding_space or ""
-        ).strip()
+        expected_embedding_space = _stringified_metadata_text(meta, _RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY)
+        if expected_embedding_space is None:
+            expected_embedding_space = embedding_space.strip()
         if meta.get(_RETRIEVAL_EXPECTED_EMBEDDING_SPACE_KEY) is None and meta.get("score") is None:
             return True
         stored_meta = chunk.doc_metadata if isinstance(chunk.doc_metadata, dict) else {}
-        ck_space = str(meta.get("embedding_space_hash") or stored_meta.get("embedding_space_hash") or "").strip()
+        ck_space = _stringified_metadata_text(meta, "embedding_space_hash") or _stringified_metadata_text(
+            stored_meta, "embedding_space_hash"
+        )
         return not expected_embedding_space or ck_space == expected_embedding_space
 
     def _active_pipeline_allowed(
@@ -680,7 +687,7 @@ class PostProcessMixin:
         cid_str = str(chunk.id)
         result["chunk_id"] = cid_str
         meta["chunk_id"] = cid_str
-        db_content = chunk.content or ""
+        db_content = chunk.content
         if isinstance(db_content, str) and db_content and result.get("content") != db_content:
             result["content"] = db_content
         stored_meta = dict(chunk.doc_metadata or {})
@@ -939,10 +946,10 @@ class PostProcessMixin:
 
     @staticmethod
     def _doc_pipeline_key(meta: dict[str, Any], *, document_id: str | None) -> str | None:
-        pipeline_key = str(meta.get("doc_pipeline_key") or "").strip()
+        pipeline_key = _stringified_metadata_text(meta, "doc_pipeline_key")
         if pipeline_key:
             return pipeline_key
-        pipeline_hash = str(meta.get("pipeline_hash") or "").strip()
+        pipeline_hash = _stringified_metadata_text(meta, "pipeline_hash")
         if pipeline_hash and document_id:
             return f"{document_id}:{pipeline_hash}"
         return None
@@ -1254,8 +1261,10 @@ class PostProcessMixin:
         child_chunk_ids_by_group: dict[tuple[str, str], set[str]] = {}
         for result in results:
             meta = result.get("metadata") or {}
-            role = str(meta.get("chunk_role") or "").strip().lower()
-            doc_id = str(meta.get("document_id") or "").strip()
+            role = _stringified_metadata_text(meta, "chunk_role")
+            if role is not None:
+                role = role.lower()
+            doc_id = _stringified_metadata_text(meta, "document_id")
             family_key = self._resolve_family_collapse_key(meta, result=result)
             if not family_key or not doc_id:
                 continue
@@ -1275,7 +1284,7 @@ class PostProcessMixin:
         desired_pipeline_by_doc: dict[str, str] = {}
         for result in results:
             meta = result.get("metadata") or {}
-            doc_id = str(meta.get("document_id") or "").strip()
+            doc_id = _stringified_metadata_text(meta, "document_id")
             pipeline_key = self._doc_pipeline_key(meta, document_id=(doc_id))
             if doc_id and pipeline_key:
                 desired_pipeline_by_doc.setdefault(doc_id, pipeline_key)
@@ -1449,10 +1458,11 @@ class PostProcessMixin:
         for result in results:
             out.append(result)
             meta = result.get("metadata") or {}
-            if str(meta.get("chunk_role") or "").strip().lower() != "child":
+            role = _stringified_metadata_text(meta, "chunk_role")
+            if role is None or role.lower() != "child":
                 continue
             key = (
-                str(meta.get("document_id") or "").strip(),
+                _stringified_metadata_text(meta, "document_id"),
                 self._resolve_family_collapse_key(meta, result=result),
             )
             if key not in selected or key in inserted:
@@ -1486,12 +1496,14 @@ class PostProcessMixin:
         out: list[dict[str, Any]] = []
         for result in results:
             meta = result.get("metadata") or {}
-            cid = str(result.get("chunk_id") or meta.get("chunk_id") or "")
-            if meta.get("retrieval_role") == "neighbor" and str(meta.get("neighbor_of") or "") in removed_child_ids:
+            cid = _stringified_metadata_text(result, "chunk_id") or _stringified_metadata_text(meta, "chunk_id")
+            if meta.get("retrieval_role") == "neighbor" and _stringified_metadata_text(meta, "neighbor_of") in removed_child_ids:
                 continue
-            role = str(meta.get("chunk_role") or "").strip().lower()
+            role = _stringified_metadata_text(meta, "chunk_role")
+            if role is not None:
+                role = role.lower()
             key = (
-                str(meta.get("document_id") or "").strip(),
+                _stringified_metadata_text(meta, "document_id"),
                 self._resolve_family_collapse_key(meta, result=result),
             )
             if key in selected and role in {"child", "parent"}:

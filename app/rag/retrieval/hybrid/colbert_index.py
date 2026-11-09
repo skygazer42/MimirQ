@@ -80,7 +80,7 @@ class ColbertIndexMixin:
         for d in docs or []:
             if d is None or d.id is None:
                 continue
-            pairs.append((str(d.id), str(d.page_content or "")))
+            pairs.append((str(d.id), d.page_content))
 
         pairs.sort(key=lambda x: x[0])
         return [p[0] for p in pairs], [p[1] for p in pairs]
@@ -190,7 +190,7 @@ class ColbertIndexMixin:
             if not cid:
                 continue
             up_ids.append(cid)
-            up_texts.append(str(d.page_content or ""))
+            up_texts.append(d.page_content)
         return up_ids, up_texts
 
     def _colbert_incremental_vectors(
@@ -405,7 +405,7 @@ class ColbertIndexMixin:
         try:
             return (
                 index is not None
-                and str(index.corpus_fingerprint or "") == str(expected_fp or "")
+                and index.corpus_fingerprint == expected_fp
                 and dict(index.provider_config or {}) == dict(provider_config)
             )
         except (TypeError, ValueError, AttributeError):
@@ -534,7 +534,7 @@ class ColbertIndexMixin:
         )
 
         max_docs, readiness = self._resolve_colbert_readiness(resolve_colbert_retrieval_capability, docs=docs)
-        if str(readiness.get("reason") or "") == "too_many_docs":
+        if readiness.get("reason") == "too_many_docs":
             self._mark_colbert_skipped(
                 reason="too_many_docs",
                 cache_key=cache_key,
@@ -596,7 +596,7 @@ class ColbertIndexMixin:
         - Uses deterministic embeddings and exact NumPy cosine scoring.
         - Persists index artifacts to disk when enabled (best-effort).
         """
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query:
             return []
         if not bool(settings.COLBERT_RETRIEVAL_ENABLED):

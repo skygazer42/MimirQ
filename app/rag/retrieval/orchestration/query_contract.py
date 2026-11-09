@@ -149,7 +149,7 @@ def _resolve_sparse_settings(
     if profile_applied.get("sparse_retrieval_enabled") is not None:
         enabled = bool(profile_applied.get("sparse_retrieval_enabled"))
     if profile_applied.get("sparse_retrieval_provider"):
-        provider = str(profile_applied.get("sparse_retrieval_provider") or "")
+        provider = profile_applied["sparse_retrieval_provider"]
     return enabled, provider
 
 
@@ -175,7 +175,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         score_threshold=_requested_score_threshold(state, payload.defaults),
         retrieval_mode=request_retrieval_mode,
         enable_reranker=bool(state.get("enable_reranker", payload.defaults.enable_reranker)),
-        reranker_provider=str(state.get("reranker_provider", payload.defaults.reranker_provider) or ""),
+        reranker_provider=state.get("reranker_provider", payload.defaults.reranker_provider),
         reranker_top_n=int(
             state.get("reranker_top_n", payload.defaults.reranker_top_n) or payload.defaults.reranker_top_n or 20
         ),
@@ -277,7 +277,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         visible_evidence_only_setting=bool(payload.defaults.visible_evidence_only_setting),
         evidence_span_strict_setting=bool(payload.defaults.evidence_span_strict_setting),
     )
-    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
+    retrieval_contract_mode = retrieval_contract_policy["mode"].strip().lower()
     contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
 
     if is_recall_first_profile(profile_norm):
@@ -296,7 +296,7 @@ def normalize_query_contract(payload: QueryContractNormalizationInput) -> QueryC
         profile_applied=dict(profile_applied),
         profile_norm=profile_norm,
         sparse_enabled=bool(sparse_enabled),
-        sparse_provider=str(sparse_provider or ""),
+        sparse_provider=sparse_provider,
         hierarchy=hierarchy,
         retriever_update=retriever_update,
         state_updates=state_updates,

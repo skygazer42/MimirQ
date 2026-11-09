@@ -121,8 +121,10 @@ def _coerce_float(value: Any) -> float | None:
 
 
 def _parse_spec(*, task: str, model_id: str, raw: Mapping[str, Any], base_dir: Path) -> SmallModelSpec:
-    kind = str(raw.get("kind") or "").strip()
-    if kind not in {"onnx", "hf_transformers"}:
+    kind = raw.get("kind")
+    if isinstance(kind, str):
+        kind = kind.strip()
+    if kind not in ("onnx", "hf_transformers"):
         raise ValueError(f"invalid small-model kind for {task}.{model_id}: {kind!r}")
 
     metadata = raw.get("metadata")
@@ -162,7 +164,8 @@ def load_small_model_manifest(path: str | Path, *, base_dir: str | Path | None =
             continue
         if not isinstance(section, Mapping):
             raise ValueError(f"small-model task section must be a mapping: {task_key}")
-        default_id = str(section.get("default") or "").strip()
+        raw_default = section.get("default")
+        default_id = str(raw_default).strip() if raw_default is not None else None
         models_raw = section.get("models")
         if not default_id or not isinstance(models_raw, Mapping):
             raise ValueError(f"small-model task '{task_key}' requires default and models")

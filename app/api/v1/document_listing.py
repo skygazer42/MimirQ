@@ -117,7 +117,7 @@ def _source_path_prefix_expr(prefix: str | None) -> ColumnElement[bool] | None:
     - The source_path is optional and stored in JSONB metadata as a directory-preserving upload key.
     - Returns None when prefix is empty, so callers can keep query logic simple.
     """
-    val = (prefix or "").strip()
+    val = prefix.strip() if prefix is not None else None
     if not val:
         return None
     if len(val) > 500:

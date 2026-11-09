@@ -38,7 +38,7 @@ _TEXT_SOURCE_FALLBACK_MAX_BYTES = 8_000_000
 
 
 def _normalize_document_ext(value: str) -> str:
-    raw = (value or "").strip().lower()
+    raw = (value).strip().lower()
     if not raw:
         return ""
     if raw.startswith("."):
@@ -52,7 +52,7 @@ def _document_text_source_ext(document: DBDocument) -> str:
         return file_type_ext
 
     for raw_path in (document.filename, document.file_path):
-        ext = Path((raw_path or "")).suffix.lower()
+        ext = Path((raw_path)).suffix.lower()
         if ext in _TEXT_SOURCE_FALLBACK_EXTENSIONS:
             return ext
     return ""
@@ -67,7 +67,7 @@ def _read_local_text_source_fallback(
     if not _document_text_source_ext(document):
         return None
 
-    raw_path = (document.file_path or "").strip()
+    raw_path = (document.file_path).strip()
     if not raw_path or raw_path.startswith("manual://"):
         return None
 
@@ -135,8 +135,8 @@ def _parsed_content_with_fallback(
     row: DocumentParsedContent | None,
     max_chars: int,
 ) -> tuple[str, str, bool, bool, bool]:
-    markdown = (row.markdown_content or "") if row is not None else ""
-    original = (row.original_markdown_content or "") if row is not None else ""
+    markdown = (row.markdown_content) if row is not None else ""
+    original = (row.original_markdown_content) if row is not None else ""
     markdown, markdown_truncated = _truncate_parsed_content_value(markdown, max_chars=max_chars)
     original, original_truncated = _truncate_parsed_content_value(original, max_chars=max_chars)
 
@@ -237,15 +237,15 @@ def download_document_clean_docx(
         .filter(DocumentParsedContent.document_id == document_id, DocumentParsedContent.tenant_id == tenant_id)
         .first()
     )
-    if row is None or not (row.markdown_content or "").strip():
+    if row is None or not (row.markdown_content).strip():
         raise HTTPException(status_code=404, detail="Clean DOCX not available")
 
     title = Path(document.filename or "document").stem
-    markdown = row.markdown_content or ""
+    markdown = row.markdown_content
     blocks = markdown_to_blocks(markdown)
     if blocks:
         first = blocks[0]
-        if str(first.get("type") or "").strip().lower() == "heading" and str(first.get("text") or "").strip() == title:
+        if first["type"].strip().lower() == "heading" and first["text"].strip() == title:
             blocks = blocks[1:]
     payload = render_clean_docx_bytes(title=title, blocks=blocks)
     headers = file_response_headers(f"{title}_Clean.docx", disposition="inline", cache_control=None)

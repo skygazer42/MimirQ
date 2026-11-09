@@ -260,7 +260,7 @@ async def _finalize_batch_document(
         background_tasks=background_tasks,
         source=LocalProcessingSource(file_path),
         tenant_id=document.tenant_id,
-        requested_by=str(document.owner_id or ""),
+        requested_by=document.owner_id,
         pipeline_hash=pipeline_hash,
         parser_backend=resolved_pipeline.resolved_parser_backend,
         chunk_strategy=resolved_pipeline.resolved_chunk_strategy,
@@ -285,7 +285,7 @@ def _finalize_batch_ingestion_run(
     if ingestion_run is None:
         return
     for result in successful:
-        doc_id_raw = str(result.get("document_id") or "").strip()
+        doc_id_raw = result["document_id"].strip()
         if not doc_id_raw:
             continue
         try:
@@ -386,7 +386,7 @@ def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, stag
     linked_any = False
     staging_root_resolved = staging_root.resolve(strict=False)
     for idx, item in enumerate(staged_successful):
-        src_raw = str(item.get("file_path") or "").strip()
+        src_raw = item["file_path"].strip()
         if not src_raw:
             continue
         src = Path(src_raw).resolve(strict=False)
@@ -396,7 +396,7 @@ def _link_precheck_staging_tree(staged_successful: list[dict[str, Any]], *, stag
         try:
             dst.relative_to(staging_root_resolved)
         except Exception:
-            dst = (staging_root / f"FILE_{idx:06d}{str(item.get('file_ext') or '').strip().lower()}").resolve(
+            dst = (staging_root / f"FILE_{idx:06d}{item['file_ext'].strip().lower()}").resolve(
                 strict=False
             )
         dst.parent.mkdir(parents=True, exist_ok=True)
@@ -715,7 +715,7 @@ async def _process_saved_batch_upload(
             await source_persistence.cleanup_unpersisted_source(
                 stored_path, document_metadata=prepared_metadata.doc_metadata
             )
-        if not persistence_started or is_object_storage_uri(stored_path or ""):
+        if not persistence_started or (stored_path is not None and is_object_storage_uri(stored_path)):
             source_persistence.unlink_source(file_path)
         logger.exception("Error processing file %s: %s", identity.filename, str(exc)[:200])
         return _failure_result(filename=identity.filename, source_path=identity.source_path, error=exc)
@@ -858,12 +858,12 @@ def _safe_staging_relpath(item: dict[str, Any], *, idx: int) -> Path:
         parts = [str(item.get("filename") or f"FILE_{idx:06d}")]
     safe_parts: list[str] = []
     for segment in parts:
-        safe_segment = str(segment or "").replace("\\", "/").strip().rsplit("/", 1)[-1]
+        safe_segment = segment.replace("\\", "/").strip().rsplit("/", 1)[-1]
         safe_segment = "".join(ch for ch in safe_segment if ord(ch) >= 32 and ch != "\x7f")
         if not safe_segment or safe_segment in {".", ".."}:
             safe_segment = "item"
         safe_parts.append(safe_segment[:120] if len(safe_segment) > 120 else safe_segment)
-    file_ext = str(item.get("file_ext") or "").strip().lower()
+    file_ext = item["file_ext"].strip().lower()
     if safe_parts and file_ext and not safe_parts[-1].lower().endswith(file_ext):
         safe_parts[-1] = f"{safe_parts[-1]}{file_ext}"
     relpath = Path(*safe_parts) if safe_parts else Path(f"FILE_{idx:06d}{file_ext}")
@@ -1018,8 +1018,8 @@ async def ingest_batch(
                 kind="upload_batch",
                 config={
                     "files": len(files),
-                    "parser_backend_requested": str(parser_backend or "")[:80],
-                    "chunk_strategy_requested": str(chunk_strategy or "")[:80],
+                    "parser_backend_requested": parser_backend[:80],
+                    "chunk_strategy_requested": chunk_strategy[:80],
                     "pipeline": (
                         pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None
                     ),

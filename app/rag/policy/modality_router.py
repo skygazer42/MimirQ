@@ -48,7 +48,7 @@ def classify_query_modality(query: str) -> tuple[str, list[str]]:
     - "image": query asks for an image/figure/diagram/screenshot
     - "text": default (normal RAG)
     """
-    q = str(query or "").strip()
+    q = query.strip()
     if not q:
         return "text", ["empty_query"]
 

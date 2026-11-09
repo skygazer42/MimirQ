@@ -108,12 +108,14 @@ def _effective_kg_extraction_options(
         pipeline_hash=_selected_extraction_pipeline_hash(document, options),
         prompt_template_id=options.prompt_template_id or _default_prompt_template_id(),
         prompt_template_key=(
-            (options.prompt_template_key or "").strip() or settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY.strip() or None
+            (settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY.strip() or None)
+            if options.prompt_template_key is None
+            else options.prompt_template_key
         ),
         prompt_ab_experiment_key=(
-            (options.prompt_ab_experiment_key or "").strip()
-            or settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY.strip()
-            or None
+            (settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY.strip() or None)
+            if options.prompt_ab_experiment_key is None
+            else options.prompt_ab_experiment_key
         ),
         kg_python_plugin=kg_python_plugin,
         kg_python_params=kg_python_params,

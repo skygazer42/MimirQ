@@ -21,7 +21,7 @@ _TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*|[\u4e00-\u9fff]{1,4}")
 
 
 def _token_set(text: str) -> set[str]:
-    return {tok.strip().casefold() for tok in _TOKEN_RE.findall(text or "") if tok.strip()}
+    return {tok.strip().casefold() for tok in _TOKEN_RE.findall(text) if tok.strip()}
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -97,7 +97,7 @@ class RaptorChunker(BaseChunker):
     def _summarize_cluster(self, cluster: list[Document]) -> str:
         parts: list[str] = []
         for doc in cluster:
-            text = (doc.page_content or "").strip()
+            text = (doc.page_content).strip()
             if text:
                 parts.append(text)
         merged = " ".join(parts).strip()
@@ -108,7 +108,7 @@ class RaptorChunker(BaseChunker):
     def _cluster_leafs(self, leafs: list[Document]) -> list[list[Document]]:
         if self.cluster_strategy == "leiden_proxy":
             groups = build_semantic_leiden_proxy_clusters(
-                [doc.page_content or "" for doc in leafs],
+                [doc.page_content for doc in leafs],
                 similarity_threshold=self.similarity_threshold,
             )
             out = [[leafs[idx] for idx in group] for group in groups if group]
@@ -129,7 +129,7 @@ class RaptorChunker(BaseChunker):
                 continue
 
             family_key = stable_hash(
-                f"raptor:{stable_hash(doc.page_content or '', length=None)}:"
+                f"raptor:{stable_hash(doc.page_content, length=None)}:"
                 f"{stable_hash(str(doc.metadata or {}), length=None)}",
                 length=24,
             )
@@ -138,7 +138,7 @@ class RaptorChunker(BaseChunker):
                 meta = dict(leaf.metadata or {})
                 leaf_id = stable_hash(
                     f"{family_key}:leaf:{idx}:{meta.get('start_char')}:{meta.get('end_char')}:"
-                    f"{stable_hash(leaf.page_content or '', length=None)}",
+                    f"{stable_hash(leaf.page_content, length=None)}",
                     length=24,
                 )
                 meta.update(
@@ -167,7 +167,7 @@ class RaptorChunker(BaseChunker):
                 if not cluster:
                     continue
                 cluster_node_keys = ",".join(
-                    str((item.metadata or {}).get("hierarchy_node_key") or "") for item in cluster
+                    item.metadata["hierarchy_node_key"] for item in cluster
                 )
                 summary_id = stable_hash(f"{family_key}:summary:{start}:{cluster_node_keys}", length=24)
                 for leaf in cluster:
@@ -191,7 +191,7 @@ class RaptorChunker(BaseChunker):
                         "raptor_tree_mode": "collapsed",
                         "raptor_cluster_strategy": self.cluster_strategy,
                         "raptor_child_ids": [
-                            str((item.metadata or {}).get("hierarchy_node_key") or "") for item in cluster
+                            item.metadata["hierarchy_node_key"] for item in cluster
                         ],
                         "start_char": first_meta.get("start_char"),
                         "end_char": last_meta.get("end_char"),

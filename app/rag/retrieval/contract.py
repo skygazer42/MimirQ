@@ -40,8 +40,10 @@ class _RetrievalContractPolicy(TypedDict):
     contract_fail_reason_taxonomy: str
 
 
-def normalize_retrieval_contract_mode(value: Any) -> str:
-    raw = str(value or "").strip().lower()
+def normalize_retrieval_contract_mode(value: Any) -> str | None:
+    if value is None:
+        return None
+    raw = str(value).strip().lower()
     return _MODE_ALIASES.get(raw, raw)
 
 
@@ -75,7 +77,7 @@ def resolve_retrieval_contract_policy(
     require_evidence_spans = bool(evidence_span_strict_setting or evidence_strict or must_recall_strict)
 
     return {
-        "mode": normalized_mode or "",
+        "mode": normalized_mode,
         "deterministic_recall": deterministic_recall,
         "must_recall_strict": must_recall_strict,
         "hard_fallback_enabled": hard_fallback_enabled,

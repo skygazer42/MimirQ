@@ -89,7 +89,7 @@ _METADATA_ANCHOR_DB_FALLBACK_TITLE_FIELDS = ("case_title", "source_topic", "titl
 
 
 def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return []
 
@@ -97,7 +97,7 @@ def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
     seen: set[str] = set()
 
     def add(raw: str) -> None:
-        term = str(raw or "").strip()
+        term = raw.strip()
         normalized = _normalize_match_term(term)
         if len(normalized) < 4 or normalized in seen:
             return
@@ -142,7 +142,7 @@ def _metadata_anchor_fallback_record_score(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
-    content = str(record.get("content") or "").strip()
+    content = record['content'].strip()
     if content and record_ranking._record_is_anchor_only_qa(
         record, content=content, policy_plugin_refs=policy_plugin_refs
     ):
@@ -257,7 +257,7 @@ def _metadata_anchor_fallback_candidate_record(
     dataset_id = _coerce_uuid_text(_row_value(row, "dataset_id"))
     if dataset_id not in scoped_dataset_ids:
         return None
-    content = str(_row_value(row, "content") or "").strip()
+    content = _row_value(row, "content").strip()
     if not content:
         return None
     metadata = _metadata_anchor_row_metadata(row, dataset_id=dataset_id)
@@ -1249,6 +1249,6 @@ async def run_with_deadline(
     except TimeoutError:
         logger.info(
             "Dify metadata anchor fallback exceeded request budget query_hash=%s",
-            _diagnostic_query_hash(str(call_kwargs.get("query") or "")),
+            _diagnostic_query_hash(call_kwargs["query"]),
         )
         return []

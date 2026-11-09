@@ -158,7 +158,7 @@ def _build_metric_diffs(
             continue
         metric_diffs.append(_diff_metric(key=key, before=before, after=after))
 
-    metric_diffs.sort(key=lambda d: (-abs(d.get("delta") or 0.0), str(d.get("key") or "")))
+    metric_diffs.sort(key=lambda d: (-abs(d.get("delta") or 0.0), d["key"]))
     return metric_diffs
 
 
@@ -173,7 +173,8 @@ def _slice_bucket_map(obj: Any) -> tuple[dict[str, dict[str, Any]], bool]:
     for item in raw:
         if not isinstance(item, dict):
             continue
-        key = str(item.get("key") or "").strip().lower()
+        raw_key = item.get("key")
+        key = str(raw_key).strip().lower() if raw_key is not None else None
         if key:
             out[key] = item
     return out, truncated
@@ -215,7 +216,7 @@ def _build_slice_rows(
     rows.sort(
         key=lambda row: (
             -max(row["items_before"], row["items_after"]),
-            str(row.get("key") or ""),
+            row["key"],
         )
     )
     if max_slice_buckets > 0 and len(rows) > max_slice_buckets:

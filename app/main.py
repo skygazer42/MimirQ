@@ -67,7 +67,7 @@ from app.services.initial_admin_service import (
 from app.tasks.queue import close_queue, init_queue
 
 logger = logging.getLogger("mimirq")
-_OPENAPI_EXPORT_MODE = str(os.getenv("MIMIRQ_OPENAPI_EXPORT", "") or "").strip().lower() in {
+_OPENAPI_EXPORT_MODE = os.getenv("MIMIRQ_OPENAPI_EXPORT", "").strip().lower() in {
     "1",
     "true",
     "yes",
@@ -82,14 +82,17 @@ _LOCAL_DEV_SCHEMES = {"http", "https"}
 
 
 def _normalize_dev_origin(raw: str) -> str | None:
-    origin = (raw or "").strip().rstrip("/")
+    origin = (raw).strip().rstrip("/")
     return origin if origin else None
 
 
 def _parse_local_dev_origin(origin: str) -> tuple[str, str, int | None] | None:
     parsed = urlparse(origin)
-    scheme = (parsed.scheme or "").lower().strip()
-    host = (parsed.hostname or "").lower().strip()
+    scheme = parsed.scheme.lower().strip()
+    host = parsed.hostname
+    if host is None:
+        return None
+    host = host.lower().strip()
     try:
         port = parsed.port
     except ValueError:
@@ -445,7 +448,7 @@ instrument_fastapi(app)
 if is_production_env() and settings.TRUSTED_HOSTS_ENABLED:
     from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-    allowed_hosts = parse_csv(settings.ALLOWED_HOSTS or "")
+    allowed_hosts = parse_csv(settings.ALLOWED_HOSTS)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 # Request body size limit (DoS guardrail).
@@ -500,7 +503,7 @@ if settings.SECURITY_HEADERS_ENABLED:
 
     hsts_value = ""
     if settings.SECURITY_HEADERS_HSTS_ENABLED:
-        max_age = settings.SECURITY_HEADERS_HSTS_MAX_AGE_SEC or 31536000
+        max_age = settings.SECURITY_HEADERS_HSTS_MAX_AGE_SEC
         max_age = max(0, max_age)
         parts = [f"max-age={max_age}"]
         if settings.SECURITY_HEADERS_HSTS_INCLUDE_SUBDOMAINS:
@@ -515,9 +518,9 @@ if settings.SECURITY_HEADERS_ENABLED:
         x_frame_options=settings.SECURITY_HEADERS_X_FRAME_OPTIONS or "DENY",
         referrer_policy=settings.SECURITY_HEADERS_REFERRER_POLICY or "strict-origin-when-cross-origin",
         strict_transport_security=hsts_value,
-        permissions_policy=settings.SECURITY_HEADERS_PERMISSIONS_POLICY or "",
-        cross_origin_opener_policy=settings.SECURITY_HEADERS_CROSS_ORIGIN_OPENER_POLICY or "",
-        cross_origin_resource_policy=settings.SECURITY_HEADERS_CROSS_ORIGIN_RESOURCE_POLICY or "",
+        permissions_policy=settings.SECURITY_HEADERS_PERMISSIONS_POLICY,
+        cross_origin_opener_policy=settings.SECURITY_HEADERS_CROSS_ORIGIN_OPENER_POLICY,
+        cross_origin_resource_policy=settings.SECURITY_HEADERS_CROSS_ORIGIN_RESOURCE_POLICY,
     )
 
 # Response header sanitization (reduce fingerprinting).

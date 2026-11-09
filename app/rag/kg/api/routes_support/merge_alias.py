@@ -40,7 +40,7 @@ def _offline_alias_suggestions(
 ) -> KGEntityAliasSuggestionsResponse:
     from sqlalchemy import and_  # noqa: WPS433
 
-    norm = str(entity.normalized_name or "").strip()
+    norm = entity.normalized_name.strip()
     prefix = norm[:4] if len(norm) >= 4 else norm
     query = db.query(entity_model).filter(
         and_(
@@ -70,7 +70,7 @@ def _score_alias_candidates(candidates: list[Any], *, norm: str, min_similarity:
 
     scored: list[tuple[float, str, Any]] = []
     for candidate in candidates:
-        candidate_norm = str(getattr(candidate, "normalized_name", "") or "").strip()
+        candidate_norm = candidate.normalized_name.strip()
         if not candidate_norm:
             continue
         sim = float(SequenceMatcher(a=norm, b=candidate_norm).ratio())
@@ -83,8 +83,8 @@ def _score_alias_candidates(candidates: list[Any], *, norm: str, min_similarity:
 def _alias_suggestion_item(candidate: Any, *, similarity: float, reason: str) -> KGEntityAliasSuggestionItem:
     return KGEntityAliasSuggestionItem(
         entity_id=candidate.id,
-        name=str(getattr(candidate, "name", "") or ""),
-        type=str(getattr(candidate, "type", "") or "unknown"),
+        name=candidate.name,
+        type=str(candidate.type or "unknown"),
         similarity=float(similarity),
         reason=reason,
     )
@@ -132,7 +132,7 @@ def _vector_alias_suggestion_item(hit: dict[str, Any]) -> KGEntityAliasSuggestio
         return None
     return KGEntityAliasSuggestionItem(
         entity_id=entity_id,
-        name=str(hit.get("name") or ""),
+        name=hit["name"],
         type=str(hit.get("type") or "unknown"),
         similarity=float(hit.get("similarity", 0.0) or 0.0),
         reason="vector:milvus_similarity",
@@ -147,7 +147,7 @@ def _entity_relation_rows(
     rel_rows.extend(db.query(relation_model).filter_by(tenant_id=tenant_id, object_entity_id=entity_id).all())
     rel_by_id: dict[str, Any] = {}
     for relation in rel_rows:
-        relation_id = str(getattr(relation, "id", "") or "")
+        relation_id = str(relation.id)
         if relation_id:
             rel_by_id[relation_id] = relation
     return list(rel_by_id.values())
@@ -173,7 +173,7 @@ def _merge_targets(
     target_ent = db.query(entity_model).filter_by(tenant_id=tenant_id, id=target_id).first()
     if not source_ent or not target_ent:
         raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
-    if str(getattr(source_ent, "type", "") or "").strip() != str(getattr(target_ent, "type", "") or "").strip():
+    if source_ent.type.strip() != target_ent.type.strip():
         raise HTTPException(status_code=400, detail="Cannot merge entities of different types")
     return KGMergeTargets(source_id=source_id, target_id=target_id, source_entity=source_ent, target_entity=target_ent)
 
@@ -190,7 +190,7 @@ def _merge_affected_rows(
     source_relations = _entity_relation_rows(db, relation_model, tenant_id=tenant_id, entity_id=source_id)
     return KGMergeAffectedRows(
         source_assocs=source_assocs,
-        source_assoc_ids={str(getattr(assoc, "id", "")) for assoc in source_assocs if getattr(assoc, "id", None)},
+        source_assoc_ids={str(assoc.id) for assoc in source_assocs if getattr(assoc, "id", None)},
         assoc_snapshot_by_id={
             str(assoc.id): _event_entity_snapshot(assoc) for assoc in source_assocs if getattr(assoc, "id", None)
         },
@@ -199,7 +199,7 @@ def _merge_affected_rows(
         },
         source_relations=source_relations,
         source_relation_ids={
-            str(getattr(relation, "id", "")) for relation in source_relations if getattr(relation, "id", None)
+            str(relation.id) for relation in source_relations if getattr(relation, "id", None)
         },
         relation_snapshot_by_id={
             str(relation.id): _relation_snapshot(relation)
@@ -304,7 +304,7 @@ def _apply_merge_relation_updates(
 ) -> list[dict[str, Any]]:
     relation_deleted_rows: list[dict[str, Any]] = []
     for relation in affected.source_relations:
-        relation_id = str(getattr(relation, "id", "") or "")
+        relation_id = str(relation.id)
         if getattr(relation, "subject_entity_id", None) == source_id:
             relation.subject_entity_id = target_id
         if getattr(relation, "object_entity_id", None) == source_id:
@@ -349,7 +349,7 @@ def _delete_duplicate_target_assocs(
         keep = _target_assoc_to_keep(rows, affected.source_assoc_ids)
         _merge_duplicate_assoc_fields(keep, rows)
         for row in rows:
-            row_id = str(getattr(row, "id", "") or "")
+            row_id = str(row.id)
             if row is keep or row_id not in affected.source_assoc_ids:
                 continue
             snapshot = affected.assoc_snapshot_by_id.get(row_id) or _event_entity_snapshot(row)
@@ -361,7 +361,7 @@ def _delete_duplicate_target_assocs(
 
 def _target_assoc_to_keep(rows: list[Any], source_assoc_ids: set[str]) -> Any:
     for row in rows:
-        row_id = str(getattr(row, "id", "") or "")
+        row_id = str(row.id)
         if row_id and row_id not in source_assoc_ids:
             return row
     return rows[0]

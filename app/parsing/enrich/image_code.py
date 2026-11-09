@@ -45,7 +45,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
         base_dir = base_dir.parent
     base_dir_resolved = base_dir.resolve(strict=False)
 
-    path_obj = Path(resolved_ref or "")
+    path_obj = Path(resolved_ref)
     if not path_obj.is_absolute():
         path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
     else:
@@ -128,9 +128,9 @@ def _analyze_image_code(
 
     try:
         code_info = decode_image_codes(image)
-        visual_kind = str(code_info.get("visual_kind") or "").strip().lower() if isinstance(code_info, dict) else ""
+        visual_kind = code_info.get("visual_kind", "").strip().lower() if isinstance(code_info, dict) else ""
         if not visual_kind:
-            visual_kind = str(infer_visual_kind_from_pixels(image) or "").strip().lower()
+            visual_kind = infer_visual_kind_from_pixels(image).strip().lower()
     finally:
         try:
             image.close()
@@ -139,7 +139,7 @@ def _analyze_image_code(
 
     if not isinstance(code_info, dict):
         code_info = {}
-    code_text = str(code_info.get("text") or "").strip()
+    code_text = code_info.get("text", "").strip()
     if not code_text and not visual_kind:
         return None, 1, 0
     if max_code_chars > 0 and len(code_text) > max_code_chars:
@@ -150,14 +150,14 @@ def _analyze_image_code(
             "element": {
                 "kind": "image",
                 "visual_kind": visual_kind,
-                "text": code_text or str(alt or "").strip() or f"{visual_kind or 'image'} image",
+                "text": code_text or alt.strip() or f"{visual_kind or 'image'} image",
                 "attributes": {
                     "source_content_type": "image_code" if code_text else "image_understanding",
                     "source_doc_type": "image_code" if code_text else "image",
                     "image_code_text": code_text or None,
                     "image_code_values": list(code_info.get("values") or []),
-                    "image_code_src": str(src or ""),
-                    "image_code_alt": str(alt or ""),
+                    "image_code_src": src,
+                    "image_code_alt": alt,
                     "image_visual_kind_source": "pixel",
                 },
             },

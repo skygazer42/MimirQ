@@ -38,7 +38,7 @@ _CN_PAGE_RE = re.compile(r"(?m)^\s*(?:#+\s*)?第\s*(?P<num>\d{1,4})\s*页\b.*$")
 
 
 def _split_by_hr(text: str) -> list[_Slide]:
-    matches = list(_HR_RE.finditer(text or ""))
+    matches = list(_HR_RE.finditer(text))
     if len(matches) < 2:
         return []
 
@@ -48,12 +48,12 @@ def _split_by_hr(text: str) -> list[_Slide]:
     for m in matches:
         start = cursor
         end = m.start()
-        if end > start and (text[start:end] or "").strip():
+        if end > start and (text[start:end]).strip():
             slides.append(_Slide(start=start, end=end, index=idx))
             idx += 1
         cursor = m.end()
 
-    if cursor < len(text) and (text[cursor:] or "").strip():
+    if cursor < len(text) and (text[cursor:]).strip():
         slides.append(_Slide(start=cursor, end=len(text), index=idx))
 
     return slides if len(slides) >= 2 else []
@@ -61,9 +61,9 @@ def _split_by_hr(text: str) -> list[_Slide]:
 
 def _split_by_markers(text: str) -> list[_Slide]:
     starts: list[int] = []
-    for m in _SLIDE_MARK_RE.finditer(text or ""):
+    for m in _SLIDE_MARK_RE.finditer(text):
         starts.append(m.start())
-    for m in _CN_PAGE_RE.finditer(text or ""):
+    for m in _CN_PAGE_RE.finditer(text):
         starts.append(m.start())
 
     starts = sorted({i for i in starts if 0 <= i < len(text)})
@@ -75,7 +75,7 @@ def _split_by_markers(text: str) -> list[_Slide]:
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
         if end <= start:
             continue
-        if not (text[start:end] or "").strip():
+        if not (text[start:end]).strip():
             continue
         slides.append(_Slide(start=start, end=end, index=idx))
     return slides if len(slides) >= 2 else []
@@ -94,7 +94,7 @@ def looks_like_presentation(text: str) -> bool:
 
 
 def _slide_title(slide_text: str) -> str | None:
-    for ln in (slide_text or "").splitlines():
+    for ln in (slide_text).splitlines():
         t = ln.strip()
         if not t:
             continue
@@ -124,7 +124,7 @@ class PresentationSlidesChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

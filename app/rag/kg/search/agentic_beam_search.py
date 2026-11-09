@@ -42,7 +42,7 @@ class _BeamBudget:
 
 
 def _normalize_entities(topic_entities: list[str]) -> list[str]:
-    return [str(item or "").strip() for item in topic_entities or [] if str(item or "").strip()]
+    return [item.strip() for item in topic_entities or [] if item.strip()]
 
 
 def _neighbor_paths(
@@ -58,7 +58,7 @@ def _neighbor_paths(
             budget.exhausted = True
             break
         budget.consume_call()
-        next_paths.append(path + [str(neighbor or "").strip()])
+        next_paths.append(path + [neighbor.strip()])
     return next_paths
 
 
@@ -130,7 +130,7 @@ def run_agentic_beam_search(
     paths = _beam_paths(seeds, adjacency=adjacency, width=width, depth=depth, budget=budget)
     return {
         "schema": "mimirq.kg_agentic_beam_search.v1",
-        "query": str(query or "").strip(),
+        "query": query.strip(),
         "seed_entities": seeds,
         "paths": paths,
         "reason_codes": budget.reason_codes(paths),

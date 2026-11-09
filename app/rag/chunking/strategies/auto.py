@@ -88,7 +88,7 @@ def _density_metrics(text: str, *, sample_chars: int = 50_000) -> dict[str, floa
 
     These metrics are intentionally lightweight and deterministic.
     """
-    raw = str(text or "")
+    raw = text
     sample = raw[: max(0, int(sample_chars or 0))] if sample_chars else raw
     n = len(sample)
     if n <= 0:
@@ -135,8 +135,8 @@ def _adaptive_chunk_params(
     reason = "base"
 
     # Doc-type nudges (coarse).
-    ft = str(file_type or "").strip().lower()
-    sel = str(selected or "").strip().lower()
+    ft = file_type.strip().lower()
+    sel = selected.strip().lower()
     if ft in {"pdf"} and sel in {"langchain_recursive", "semantic_sentence", "markdown_aware"}:
         # PDFs often have hard line breaks; slightly larger chunks help preserve paragraph context.
         size = round(bs * 1.1)
@@ -182,7 +182,7 @@ def _looks_like_markdown(text: str) -> bool:
 
 
 def _looks_like_json(text: str) -> bool:
-    stripped = (text or "").strip()
+    stripped = (text).strip()
     if not stripped:
         return False
     if stripped[0] not in "{[":
@@ -513,8 +513,8 @@ class AutoChunker(BaseChunker):
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
         meta = doc.metadata or {}
-        file_type = str(meta.get("file_type", "") or "").strip().lower()
-        text = doc.page_content or ""
+        file_type = str(meta.get("file_type") or "").strip().lower()
+        text = doc.page_content
 
         def _json_case() -> bool:
             return file_type in {"json"} or _looks_like_json(text)
@@ -660,8 +660,8 @@ class AutoChunker(BaseChunker):
         for doc in documents:
             chunker, selected = self._select(doc)
             meta_in = doc.metadata or {}
-            file_type = str(meta_in.get("file_type", "") or "").strip().lower()
-            text = doc.page_content or ""
+            file_type = str(meta_in.get("file_type") or "").strip().lower()
+            text = doc.page_content
 
             eff_size, eff_overlap, reason, metrics = _adaptive_chunk_params(
                 base_size=self.chunk_size,

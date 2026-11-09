@@ -140,8 +140,8 @@ def render_regression_run_diff_html(
 ) -> str:
     ts = generated_at.isoformat() if isinstance(generated_at, datetime) else (str(generated_at or "") or "")
 
-    safe_base = "[REDACTED]" if redact else str(base_run_id or "")
-    safe_target = "[REDACTED]" if redact else str(target_run_id or "")
+    safe_base = "[REDACTED]" if redact else base_run_id
+    safe_target = "[REDACTED]" if redact else target_run_id
 
     diff_score = diff.get("diff_score") if isinstance(diff.get("diff_score"), dict) else {}
     score_section = _render_diff_score_section(diff_score)

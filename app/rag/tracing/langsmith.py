@@ -546,7 +546,7 @@ def trace_llm_call(func: F) -> F:
         async with client.atrace(
             name="llm_call",
             run_type="llm",
-            inputs={"model": kwargs.get("model", "unknown"), "prompt_length": len(str(kwargs.get("prompt", "")))},
+            inputs={"model": kwargs.get("model", "unknown"), "prompt_length": len(kwargs["prompt"]) if kwargs.get("prompt") is not None else None},
             tags=["llm"],
         ) as span:
             result = await func(*args, **kwargs)

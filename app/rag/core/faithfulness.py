@@ -24,7 +24,7 @@ def compute_faithfulness_score(
     - faithfulness_score = supported_claims / total_claims (0..1), or None when no claims.
     """
     max_claims = max(1, int(max_claims or 0))
-    raw_answer = str(answer or "").strip()
+    raw_answer = answer.strip()
     if not raw_answer:
         return {
             "score": None,
@@ -44,7 +44,7 @@ def compute_faithfulness_score(
             "method": "claim_support_ratio",
         }
 
-    evidence = str(evidence_text or "")
+    evidence = evidence_text
     supported = 0
     total = len(claims)
     unsupported_claims: list[str] = []

@@ -250,18 +250,16 @@ async def list_pipeline_plugins_endpoint():
 
 
 def _plugin_marker_refs(plugin_ref: str, descriptor: Any) -> set[str]:
-    refs = {str(plugin_ref or "").strip()}
-    raw_refs = getattr(descriptor, "refs", {}) or {}
-    if isinstance(raw_refs, dict):
-        refs.update(str(value or "").strip() for value in raw_refs.values())
+    refs = {plugin_ref.strip()}
+    refs.update(value.strip() for value in descriptor.refs.values())
     return {ref for ref in refs if ref}
 
 
 def _assert_pipeline_plugin_executable(plugin_ref: str, descriptor: Any) -> None:
-    if getattr(descriptor, "published", True) is not True or getattr(descriptor, "executable", True) is not True:
-        plugin_id = str(getattr(descriptor, "id", "") or plugin_ref)
-        version = str(getattr(descriptor, "version", "") or "")
-        status = str(getattr(descriptor, "test_status", "") or "unknown")
+    if descriptor.published is not True or descriptor.executable is not True:
+        plugin_id = descriptor.id
+        version = descriptor.version
+        status = descriptor.test_status
         qualified = f"{plugin_id}@{version}" if version else plugin_id
         raise HTTPException(
             status_code=409,
@@ -274,7 +272,7 @@ def _assert_pipeline_plugin_ready_for_golden(plugin_ref: str, descriptor: Any) -
 
 
 def _resolve_plugin_relative_input_path(plugin_dir: Path, input_path: str) -> Path:
-    raw = str(input_path or "").strip() or "sample.json"
+    raw = input_path.strip() or "sample.json"
     candidate = Path(raw)
     if candidate.is_absolute() or ".." in candidate.parts:
         raise HTTPException(status_code=400, detail="input_path must stay inside the plugin directory")
@@ -353,7 +351,9 @@ def _chunk_marked_by_plugin(meta: dict[str, Any], plugin_refs: set[str]) -> bool
     if not plugin_refs:
         return False
     for key in ("chunk_python_plugin", "governance_python_plugin"):
-        value = str(meta.get(key) or "").strip()
+        value = meta.get(key)
+        if value is not None:
+            value = value.strip()
         if value and value in plugin_refs:
             return True
     return False
@@ -367,7 +367,9 @@ def _active_doc_pipeline_key(document_id: UUID, doc_metadata: dict[str, Any]) ->
 def _chunk_matches_active_pipeline(chunk_meta: dict[str, Any], active_key: str | None) -> bool:
     if not active_key:
         return True
-    chunk_key = str(chunk_meta.get("doc_pipeline_key") or "").strip()
+    chunk_key = chunk_meta.get("doc_pipeline_key")
+    if chunk_key is not None:
+        chunk_key = chunk_key.strip()
     return not chunk_key or chunk_key == active_key
 
 
@@ -421,21 +423,21 @@ def _build_plugin_golden_draft_response(
     chunks: Iterable[DocumentChunk],
     max_items: int,
 ) -> PipelinePluginGoldenDraftResponse:
-    plugin_id = str(getattr(descriptor, "id", ""))
+    plugin_id = descriptor.id
     bundle = build_golden_draft_bundle_from_chunks(
         dataset_id=dataset_id,
         chunks=chunks,
-        golden_rules=getattr(descriptor, "golden_rules", {}) or {},
+        golden_rules=descriptor.golden_rules,
         plugin_id=plugin_id,
-        plugin_version=str(getattr(descriptor, "version", "")),
+        plugin_version=descriptor.version,
         plugin_ref=plugin_ref,
-        plugin_package_hash=str(getattr(descriptor, "package_hash", "")),
+        plugin_package_hash=descriptor.package_hash,
         max_items=max_items,
     )
     return PipelinePluginGoldenDraftResponse(
         dataset_id=dataset_id,
         plugin_id=plugin_id,
-        plugin_version=str(getattr(descriptor, "version", "")),
+        plugin_version=descriptor.version,
         plugin_ref=plugin_ref,
         items_total=len(bundle.get("items") or []),
         bundle=bundle,
@@ -638,7 +640,7 @@ def list_governance_profiles(
     """
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    query = (q if q is not None else "").strip().lower()
+    query = q.strip().lower() if q is not None else None
     items: list[GovernanceProfileSummary] = []
     builtin_count = 0
 
@@ -724,7 +726,7 @@ def create_governance_profile(
 ):
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    name = str(body.name or "").strip()
+    name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="name is required")
 
@@ -839,13 +841,13 @@ def update_governance_profile(
     )
 
     if body.name is not None:
-        name = str(body.name or "").strip()
+        name = body.name.strip()
         if not name:
             raise HTTPException(status_code=400, detail="name must not be empty")
         row.name = name[:200]
 
     if body.description is not None:
-        desc = str(body.description or "").strip()
+        desc = body.description.strip()
         row.description = desc[:2000] if desc else None
 
     if body.payload is not None:
@@ -993,7 +995,7 @@ def export_governance_profile_ingestion_policy(
     # Match all files by default; operators can refine extensions/filename_regex after import.
     rule = IngestionRule(
         id=f"gov:{safe_key}"[:100],
-        name=f"Governance: {str(profile.name or '').strip() or safe_key}"[:200],
+        name=f"Governance: {profile.name.strip() or safe_key}"[:200],
         enabled=True,
         match={"extensions": []},
         preprocess={"enabled": False, "steps": []},
@@ -1051,7 +1053,7 @@ async def parse_preview(
                 "parser_backend": parser_backend,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
         )
         return result
     except SubprocessCancelled:
@@ -1199,7 +1201,7 @@ async def ingestion_preview(
                 "parser_backend": config.parser_backend_choice,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
         )
 
         # Governance clean preview (issues + diff).
@@ -1273,7 +1275,7 @@ def clean_preview(
     dataset_service.ensure_member(db, tenant_id, account_id)
     input_text = _extract_governance_input_text(body)
     input_text, frontmatter, title, tags = _extract_clean_preview_frontmatter(input_text, body)
-    baseline_text = input_text or ""
+    baseline_text = input_text
 
     analysis_opts = _governance_analysis_options(body)
     rules, rule_meta = _build_clean_preview_rules(body)
@@ -1290,7 +1292,7 @@ def clean_preview(
         result = clean_markdown(
             baseline_text,
             rules=rules,
-            regex_timeout_ms=int(settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100),
+            regex_timeout_ms=int(settings.GOVERNANCE_REGEX_TIMEOUT_MS),
             normalize_line_endings=body.normalize_line_endings,
             trim_trailing_spaces=body.trim_trailing_spaces,
             collapse_blank_lines=body.collapse_blank_lines,
@@ -1399,13 +1401,12 @@ def learn_common_lines(
     )
     candidates = [
         GovernanceCommonLineCandidate(
-            signature=str(it.get("signature") or ""),
-            sample=str(it.get("sample") or "")[:400],
+            signature=it["signature"],
+            sample=it["sample"][:400],
             docs=int(it.get("docs") or 0),
             ratio=float(it.get("ratio") or 0.0),
         )
         for it in candidates_raw
-        if isinstance(it, dict) and str(it.get("signature") or "").strip()
     ]
 
     return GovernanceCommonLinesLearnResponse(
@@ -1438,7 +1439,7 @@ def governance_analyze(
 
     input_text = _extract_governance_input_text(body)
     analysis_opts = _governance_analysis_options(body)
-    base = input_text or ""
+    base = input_text
     out_issues, patch = _analyze_governance_preview(base, "", body, analysis_opts)
     return GovernanceAnalyzeResponse(
         input_chars=len(base),
@@ -1492,7 +1493,7 @@ def extract_keywords(
 
     provider = (body.provider or "jieba").lower()
     try:
-        keywords = extract_keywords_fn(body.text or "", provider=provider, top_k=int(body.top_k))
+        keywords = extract_keywords_fn(body.text, provider=provider, top_k=int(body.top_k))
         return KeywordExtractResponse(provider=provider, keywords=keywords)
     except KeywordProviderUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -1522,7 +1523,7 @@ async def auto_annotations(
     """
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    source = str(body.text or "")
+    source = body.text
     total_chars = len(source)
     max_chars = max(1, min(int(body.max_chars or 20_000), 200_000))
     scan_text = source[:max_chars]
@@ -1577,7 +1578,7 @@ async def llm_clean_preview(
     """
     dataset_service.ensure_member(db, tenant_id, account_id)
 
-    markdown = body.markdown or ""
+    markdown = body.markdown
     if len(markdown) > int(body.max_chars):
         raise HTTPException(
             status_code=413,

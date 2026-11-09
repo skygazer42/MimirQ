@@ -95,7 +95,7 @@ def _stable_vision_reader_chunk_id(origin_chunk_id: str) -> str:
     We keep citations chunk_id UUID-like even though this is a synthetic "doc".
     """
 
-    raw = str(origin_chunk_id or "").strip()
+    raw = origin_chunk_id.strip()
     return str(uuid.uuid5(_NIL_UUID, f"mimirq:vision_reader:{raw}"))
 
 
@@ -139,7 +139,7 @@ def _minio_object_name_for_img_id(img_id: str, *, extension: str = "jpg") -> str
 
     img_id format: "{tenant_id}:{dataset_id}:{document_id}:{chunk_key}"
     """
-    raw = str(img_id or "").strip()
+    raw = img_id.strip()
     if ":" not in raw:
         return None
     try:
@@ -241,7 +241,7 @@ def _build_prompt(*, question: str, meta: dict[str, Any]) -> str:
     elif page_i is not None:
         location = f" (page {page_i})"
 
-    q = str(question or "").strip()
+    q = question.strip()
     return (
         "You are a careful technical document reader.\n"
         "Read the image and extract ONLY the information relevant to the user's question.\n"
@@ -264,7 +264,7 @@ def _vision_llm_config() -> tuple[str, str, str]:
 def _resolve_max_tokens(max_tokens: int | None) -> int:
     if max_tokens is not None:
         return int(max_tokens)
-    return settings.VISION_LLM_MAX_TOKENS or 4096
+    return settings.VISION_LLM_MAX_TOKENS
 
 
 def _resolve_temperature(temperature: float | None) -> float:
@@ -340,7 +340,7 @@ async def _describe_with_vision_llm(
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": str(prompt or "")},
+                    {"type": "text", "text": prompt},
                     image_block,
                 ],
             }
@@ -350,11 +350,11 @@ async def _describe_with_vision_llm(
         stream=False,
     )
 
-    timeout = float(settings.VISION_LLM_TIMEOUT_SEC or 120)
+    timeout = float(settings.VISION_LLM_TIMEOUT_SEC)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     resp = await http_client.post(url, json=payload, headers=headers, timeout=timeout)
     if int(resp.status_code or 0) != 200:
-        raise RuntimeError(f"vision_llm_http_{resp.status_code}:{(resp.text or '')[:200]}")
+        raise RuntimeError(f"vision_llm_http_{resp.status_code}:{(resp.text)[:200]}")
 
     data = resp.json()
     choice0 = (data.get("choices") or [{}])[0]
@@ -454,7 +454,7 @@ async def stream_vision_chat_completions_tokens(
         stream=True,
     )
 
-    timeout = float(settings.VISION_LLM_TIMEOUT_SEC or 120)
+    timeout = float(settings.VISION_LLM_TIMEOUT_SEC)
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     async with http_client.stream("POST", url, json=payload, headers=headers, timeout=timeout) as resp:
@@ -473,9 +473,9 @@ async def stream_vision_chat_completions_tokens(
 
 def _vision_reader_limits() -> _VisionReaderLimits:
     return _VisionReaderLimits(
-        max(0, settings.VISION_RAG_READER_MAX_IMAGES or 2),
+        max(0, settings.VISION_RAG_READER_MAX_IMAGES),
         max(1, settings.VISION_RAG_READER_MAX_IMAGE_BYTES),
-        max(0, settings.VISION_RAG_READER_MAX_OUTPUT_CHARS or 1500),
+        max(0, settings.VISION_RAG_READER_MAX_OUTPUT_CHARS),
     )
 
 
@@ -598,7 +598,7 @@ async def _vision_reader_context_doc(
     except Exception as exc:  # noqa: BLE001
         return None, f"vision_exception:{str(exc)[:120]}"
 
-    text = (extracted or "").strip()
+    text = (extracted).strip()
     if not text or text == "NO_RELEVANT_INFO":
         return None, None
     text = _truncate_vision_reader_text(text=text, max_output_chars=max_output_chars)

@@ -21,6 +21,7 @@ from uuid import UUID
 from langchain_core.documents import Document
 
 from app.core.config import settings
+from app.rag.core.metadata import _stringified_metadata_text
 from app.core.utils import parse_csv
 from app.query.normalize import normalize_query
 from app.rag.core.citations import build_citations_from_docs
@@ -577,7 +578,7 @@ def _build_no_retrieval_response(
     requested_retrieval_mode = state.get("retrieval_mode", "hybrid") or "hybrid"
     requested_retrieval_profile = state.get("retrieval_profile")
     retrieval_mode = normalize_retrieval_mode(requested_retrieval_mode)
-    profile_norm = str(requested_retrieval_profile or "").strip().lower()
+    profile_norm = requested_retrieval_profile.strip().lower() if requested_retrieval_profile is not None else None
     if not profile_norm:
         profile_norm = None
     metrics = dict(state.get("metrics") or {})
@@ -612,8 +613,8 @@ def _build_no_retrieval_response(
     retrieval_trace: dict[str, Any] = {
         "schema": "mimirq.retrieval_trace_pass.v1",
         "query_for_retrieval_hash": stable_hash(question),
-        "requested_retrieval_mode": str(requested_retrieval_mode or ""),
-        "retrieval_mode": str(retrieval_mode or ""),
+        "requested_retrieval_mode": requested_retrieval_mode,
+        "retrieval_mode": retrieval_mode,
         "retrieval_mode_auto_routed": False,
         "retrieval_profile": profile_norm,
         "retrieval_profile_requested": profile_norm,
@@ -785,7 +786,7 @@ def _build_post_rerank_candidates(
     id_to_doc: dict[str, Document] = {}
     for doc in docs[:limit]:
         rid = _doc_key(doc)
-        text = (doc.page_content or "").strip()
+        text = (doc.page_content).strip()
         if not rid or not text:
             continue
         meta = dict(doc.metadata or {})
@@ -1684,7 +1685,7 @@ def _temporal_document_ids(docs: list[Document], *, limit: int) -> list[str]:
     seen: set[str] = set()
     for doc in docs:
         metadata = doc.metadata if isinstance(doc.metadata, dict) else {}
-        document_id = str(metadata.get("document_id") or "").strip()
+        document_id = _stringified_metadata_text(metadata, "document_id")
         if not document_id or document_id in seen:
             continue
         seen.add(document_id)
@@ -1770,11 +1771,11 @@ def _kg_path_steps(raw_path: Any) -> list[dict[str, Any]]:
     for step in raw_path:
         if not isinstance(step, dict):
             continue
-        entity_id = str(step.get("entity_id") or "").strip()
+        entity_id = _stringified_metadata_text(step, "entity_id")
         if not entity_id:
             continue
         entry: dict[str, Any] = {"entity_id": entity_id}
-        entity_type = str(step.get("type") or "").strip()
+        entity_type = _stringified_metadata_text(step, "type")
         if entity_type:
             entry["type"] = entity_type[:100]
         path.append(entry)
@@ -1880,16 +1881,7 @@ def _fetch_kg_injection_rows(
 
 
 def _kg_chunk_row_map(rows: list[Any]) -> dict[UUID, Any]:
-    chunks: dict[UUID, Any] = {}
-    for chunk in rows:
-        try:
-            chunk_id = chunk.id
-            content = chunk.content
-        except (TypeError, ValueError, AttributeError):
-            continue
-        if chunk_id is not None and content is not None:
-            chunks[chunk_id] = chunk
-    return chunks
+    return {chunk.id: chunk for chunk in rows}
 
 
 def _kg_document_from_chunk(
@@ -1901,8 +1893,8 @@ def _kg_document_from_chunk(
 ) -> Document:
     metadata = dict(getattr(chunk, "doc_metadata", None) or {})
     metadata["retrieval_role"] = "kg"
-    metadata.setdefault("document_id", str(getattr(chunk, "document_id", "") or ""))
-    metadata.setdefault("chunk_id", str(getattr(chunk, "id", "") or ""))
+    metadata.setdefault("document_id", str(chunk.document_id))
+    metadata.setdefault("chunk_id", str(chunk.id))
     metadata.setdefault("chunk_index", getattr(chunk, "chunk_index", None))
     page_number = getattr(chunk, "page_number", None)
     if page_number is not None:
@@ -1922,7 +1914,7 @@ def _kg_document_from_chunk(
         if value is not None:
             metadata[key] = value
     return Document(
-        page_content=str(getattr(chunk, "content", None) or ""),
+        page_content=chunk.content,
         metadata=metadata,
         id=str(chunk_id),
     )
@@ -1958,7 +1950,12 @@ def _run_kg_injection(ctx: RetrievalRuntimeState) -> list[Document]:
         }
         if dataset_ids:
             kg_kwargs["dataset_ids"] = dataset_ids
-        kg_result = _run_kg_search_sync(kg_kwargs)
+        try:
+            kg_result = _run_kg_search_sync(kg_kwargs)
+        except Exception as exc:  # noqa: BLE001
+            _log_orchestrator_fallback("run_retrieval", exc)
+            ctx.kg_chunk_injection_error = str(exc)[:200]
+            return []
     chunk_ids, scores, features = _collect_kg_injection_candidates(
         (kg_result or {}).get("events") or [],
         limit=int(ctx.kg_chunk_injection_max_chunks or 0) or 5,
@@ -1990,23 +1987,18 @@ def _run_retrieval_kg_injection_phase(ctx: RetrievalRuntimeState) -> dict[str, A
     )
     ctx.kg_chunks_injected = 0
     ctx.kg_chunk_injection_error: str | None = None
-    try:
-        enabled = (
-            bool(ctx.kg_chunk_injection_enabled)
-            and bool(settings.KG_ENABLED)
-            and bool(settings.KG_CHAT_ENABLED)
-            and ctx.state.get("tenant_id") is not None
-            and any(_resolve_kg_scope(ctx.state))
-        )
-        if enabled:
-            kg_docs = _run_kg_injection(ctx)
-            if kg_docs:
-                ctx.docs = _merge_kg_docs_preserving_main(ctx.docs, kg_docs)
-                ctx.kg_chunks_injected = len(kg_docs)
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("run_retrieval", exc)
-        ctx.kg_chunks_injected = 0
-        ctx.kg_chunk_injection_error = str(exc)[:200]
+    enabled = (
+        bool(ctx.kg_chunk_injection_enabled)
+        and bool(settings.KG_ENABLED)
+        and bool(settings.KG_CHAT_ENABLED)
+        and ctx.state.get("tenant_id") is not None
+        and any(_resolve_kg_scope(ctx.state))
+    )
+    if enabled:
+        kg_docs = _run_kg_injection(ctx)
+        if kg_docs:
+            ctx.docs = _merge_kg_docs_preserving_main(ctx.docs, kg_docs)
+            ctx.kg_chunks_injected = len(kg_docs)
     return None
 
 
@@ -2018,11 +2010,13 @@ def _tag_document(raw: Any) -> Document | None:
     content = raw.get("page_content")
     if content is None:
         content = raw.get("content")
+    if content is None:
+        return None
     metadata = raw.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
     try:
         return Document(
-            page_content=str(content or ""),
+            page_content=str(content),
             metadata=metadata,
             id=raw.get("id") or metadata.get("chunk_id"),
         )
@@ -2229,7 +2223,7 @@ def _contextual_query_spec(
     _extend_unique(ctx.iterative_pass_reason_codes, reason_codes)
     selected_terms = [str(value) for value in (spec.get("selected_terms") or []) if str(value).strip()]
     _extend_unique(ctx.contextual_followup_selected_terms, selected_terms, limit=10)
-    query = str(spec.get("query") or "").strip()
+    query = spec["query"].strip()
     if query:
         ctx.contextual_followup_followup_query = query
         ctx.contextual_followup_query_hash = stable_hash(query)
@@ -2944,8 +2938,8 @@ def _retrieval_channel_health_item(item: Any) -> tuple[dict[str, Any] | None, li
     if isinstance(native_hybrid, dict):
         health_item["milvus_native_hybrid"] = dict(native_hybrid)
     reason_codes = [
-        f"{health_item['kind']}:{str(reason.get('channel') or '').strip() or 'unknown'}:"
-        f"{str(reason.get('error_type') or '').strip() or 'unknown'}"
+        f"{health_item['kind']}:{reason['channel'].strip() or 'unknown'}:"
+        f"{reason['error_type'].strip() or 'unknown'}"
         for reason in degraded_reasons
         if isinstance(reason, dict)
     ]
@@ -2960,7 +2954,7 @@ def _run_retrieval_channel_health_phase(ctx: RetrievalRuntimeState) -> dict[str,
         ctx.channel_health_queries.append(health_item)
         ctx.retrieval_degraded_reason_codes.extend(reason_codes)
     channel_health_primary = next(
-        (item for item in ctx.channel_health_queries if str(item.get("kind") or "") == "main"),
+        (item for item in ctx.channel_health_queries if item["kind"] == "main"),
         (ctx.channel_health_queries[0] if ctx.channel_health_queries else None),
     )
     ctx.retrieval_channel_health = {
@@ -3079,7 +3073,7 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["kg_chunk_boost_eligible"] = int(ctx.kg_chunk_boost_meta.get("eligible") or 0)
     ctx.metrics["kg_chunk_boost_promoted"] = int(ctx.kg_chunk_boost_meta.get("promoted") or 0)
     ctx.metrics["kg_chunk_boost_top_changed"] = bool(ctx.kg_chunk_boost_meta.get("top_changed"))
-    ctx.metrics["kg_chunk_boost_reason"] = str(ctx.kg_chunk_boost_meta.get("reason") or "")
+    ctx.metrics["kg_chunk_boost_reason"] = ctx.kg_chunk_boost_meta.get("reason")
     ctx.metrics["metadata_exact_anchor_doc_ordering"] = dict(ctx.metadata_exact_anchor_doc_order_meta or {})
 
     ctx.metrics["multi_query_enabled"] = bool(ctx.mq_enabled)
@@ -3154,7 +3148,7 @@ def _run_retrieval_metrics_features_phase(ctx: RetrievalRuntimeState) -> dict[st
     ctx.metrics["parse_risk"] = dict(ctx.parse_risk or {})
     ctx.metrics["parse_risk_level"] = str(ctx.parse_risk.get("level") or "unknown")
     ctx.metrics["parse_risk_score"] = float(ctx.parse_risk.get("score") or 0.0)
-    ctx.metrics["parse_risk_reason"] = str(ctx.parse_risk.get("reason") or "")
+    ctx.metrics["parse_risk_reason"] = ctx.parse_risk["reason"]
     ctx.metrics["parse_risk_hardcase_eligible"] = bool(ctx.parse_risk.get("hardcase_eligible"))
     parse_repair_actions = ctx.parse_repair_actions_meta
     ctx.metrics["parse_repair_actions"] = dict(parse_repair_actions) if parse_repair_actions is not None else None
@@ -3207,8 +3201,8 @@ def _apply_abstain_thresholds(ctx: RetrievalRuntimeState) -> None:
 
 
 def _apply_out_of_scope_guard(ctx: RetrievalRuntimeState) -> dict[str, Any]:
-    tenant_id = str(ctx.state.get("tenant_id") or "").strip()
-    dataset_id = str(ctx.state.get("dataset_id") or "").strip()
+    tenant_id = _stringified_metadata_text(ctx.state, "tenant_id")
+    dataset_id = _stringified_metadata_text(ctx.state, "dataset_id")
     ruleset_name = settings.RAG_OUT_OF_SCOPE_RULESET.strip()
     result = maybe_apply_out_of_scope_live_guard(
         query=ctx.query_for_retrieval,
@@ -3260,7 +3254,7 @@ def _emit_retrieval_hardcase(ctx: RetrievalRuntimeState) -> None:
     dedupe_payload = {
         "reason": reason,
         "query_hash": stable_hash(ctx.query_for_retrieval),
-        "mode": str(ctx.request_retrieval_mode or ""),
+        "mode": ctx.request_retrieval_mode,
         "profile": ctx.profile_norm,
         "cfg_hash": ctx.metrics.get("retrieval_config_hash"),
     }
@@ -3268,7 +3262,7 @@ def _emit_retrieval_hardcase(ctx: RetrievalRuntimeState) -> None:
         "schema": "mimirq.hardcase_candidate.v1",
         "reason": reason,
         "query_hash": stable_hash(ctx.query_for_retrieval),
-        "retrieval_mode": str(ctx.request_retrieval_mode or ""),
+        "retrieval_mode": ctx.request_retrieval_mode,
         "retrieval_profile": ctx.profile_norm,
         "dedupe_key": stable_hash(
             json.dumps(dedupe_payload, ensure_ascii=False, sort_keys=True),
@@ -3303,7 +3297,7 @@ def _emit_parse_risk_hardcase(ctx: RetrievalRuntimeState, policy: dict[str, Any]
         return
     candidate = build_parse_risk_hardcase_candidate(
         query_hash=stable_hash(ctx.query_for_retrieval),
-        retrieval_mode=str(ctx.request_retrieval_mode or ""),
+        retrieval_mode=ctx.request_retrieval_mode,
         retrieval_profile=ctx.profile_norm,
         retrieval_config_hash=(ctx.metrics.get("retrieval_config_hash") if isinstance(ctx.metrics, dict) else None),
         parse_risk=ctx.parse_risk,
@@ -3782,8 +3776,8 @@ def _run_retrieval_retrieval_trace_phase(ctx: RetrievalRuntimeState) -> dict[str
 def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[str, Any]:
     try:
         retrieval_cfg: dict[str, Any] = {
-            "requested_retrieval_mode": str(ctx.requested_retrieval_mode or ""),
-            "retrieval_mode": str(ctx.request_retrieval_mode or ""),
+            "requested_retrieval_mode": ctx.requested_retrieval_mode,
+            "retrieval_mode": ctx.request_retrieval_mode,
             "retrieval_mode_auto_routed": bool(ctx.retrieval_mode_routed),
             "retrieval_profile": ctx.profile_norm,
             "top_k": int(ctx.top_k),
@@ -3810,9 +3804,9 @@ def _run_retrieval_config_and_result_phase(ctx: RetrievalRuntimeState) -> dict[s
             "keyword_weight": float(ctx.retriever_update.get("keyword_weight") or 0.0),
             "mmr_lambda": float(ctx.retriever_update.get("mmr_lambda") or 0.0),
             "enable_reranker": bool(ctx.retriever_update.get("enable_reranker", False)),
-            "reranker_provider": str(ctx.retriever_update.get("reranker_provider") or ""),
+            "reranker_provider": ctx.retriever_update.get("reranker_provider"),
             "reranker_tier": describe_reranker_provider(
-                str(ctx.retriever_update.get("reranker_provider") or ""),
+                ctx.retriever_update.get("reranker_provider"),
                 provider_name=str(settings.COLBERT_RERANK_PROVIDER),
             ).get("tier"),
             "reranker_top_n": int(ctx.retriever_update.get("reranker_top_n") or 0),
@@ -3991,7 +3985,7 @@ _RETRIEVAL_RUNTIME_PHASES = (
 
 def run_retrieval(state: dict[str, Any]) -> dict[str, Any]:
     """Execute retrieval only and return an updated RAG-like state dict."""
-    question = str(state.get("question") or "")
+    question = state["question"]
     history_text = _build_history_text(state.get("history"))
     no_retrieval_intent = route_intent(question)
     if bool(no_retrieval_intent.get("skip_retrieval")):

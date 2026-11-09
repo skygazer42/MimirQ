@@ -68,7 +68,7 @@ def _append_cn_plate_entities(raw: str, entities: list[_PiiEntity]) -> None:
                 "entity_type": "CN_LICENSE_PLATE",
                 "start": found.start(1),
                 "end": found.end(1),
-                "text": found.group(1) or "",
+                "text": found.group(1),
                 "score": 0.88,
             },
         )
@@ -115,7 +115,7 @@ def _append_cn_social_security_entities(raw: str, entities: list[_PiiEntity]) ->
 
 
 def analyze_pii_text(text: str) -> _PiiAnalysis:
-    raw = str(text or "")
+    raw = text
     entities: list[_PiiEntity] = []
 
     _append_detected_pii_entities(raw, entities)
@@ -130,7 +130,7 @@ def analyze_pii_text(text: str) -> _PiiAnalysis:
 
 
 def anonymize_pii_text(text: str, *, mask: str = "[REDACTED]") -> dict[str, Any]:
-    raw = str(text or "")
+    raw = text
     analyzed = analyze_pii_text(raw)
     entities = list(analyzed["entities"])
     current = raw

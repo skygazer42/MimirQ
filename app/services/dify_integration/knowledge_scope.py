@@ -55,7 +55,7 @@ def _coerce_dataset_id_list(value: Any) -> list[UUID]:
 def _route_hint_terms(raw_route: dict[str, Any]) -> tuple[str, ...]:
     raw_terms = raw_route.get("terms") or raw_route.get("query_terms") or raw_route.get("contains")
     terms = raw_terms if isinstance(raw_terms, list | tuple | set) else [raw_terms]
-    return tuple(str(term or "").strip() for term in terms if str(term or "").strip())
+    return tuple(str(term).strip() for term in terms if term is not None and str(term).strip())
 
 
 def _mapping_query_routes(mapping: dict[str, Any]) -> list[Any] | None:
@@ -102,7 +102,7 @@ def _normalized_inherited_route_sources(raw_sources: Any) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
     for source in sources:
-        key = str(source or "").strip()
+        key = common._first_nonempty_str(source)
         if key and key not in seen:
             seen.add(key)
             result.append(key)
@@ -175,7 +175,7 @@ def knowledge_resolution_mode() -> str:
 
 
 def resolve_scope(knowledge_id: str, *, query: str = "") -> DatasetScopePlan:
-    key = str(knowledge_id or "").strip()
+    key = knowledge_id.strip()
     knowledge_map = load_knowledge_map()
     if key in knowledge_map:
         mapping = knowledge_map[key]
@@ -256,7 +256,7 @@ def resolve_warmup_knowledge_ids(knowledge_map: dict[str, Any] | None = None) ->
     seen: set[str] = set()
     out: list[str] = []
     for item in candidates:
-        knowledge_id = str(item or "").strip()
+        knowledge_id = item.strip()
         if knowledge_id and knowledge_id not in seen:
             seen.add(knowledge_id)
             out.append(knowledge_id)
@@ -315,11 +315,11 @@ def extend_sibling_policy_scope(
     ):
         return dataset_ids
 
-    requested_refs = {str(ref or "").strip() for ref in policy_plugin_refs if str(ref or "").strip()}
+    requested_refs = {ref.strip() for ref in policy_plugin_refs if ref.strip()}
     if not requested_refs:
         return dataset_ids
     knowledge_map = load_knowledge_map()
-    current_mapping = knowledge_map.get(str(knowledge_id or "").strip())
+    current_mapping = knowledge_map.get(knowledge_id.strip())
     if not isinstance(current_mapping, dict):
         return dataset_ids
     try:

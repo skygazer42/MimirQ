@@ -48,7 +48,7 @@ def normalize_query(text: str) -> NormalizedQuery:
     Returns both the normalized query and a list of applied rule IDs so callers can
     audit/trace what changed.
     """
-    s = str(text or "")
+    s = text
     rules: list[str] = []
 
     # 1) Full-width/half-width normalization (best-effort ASCII when possible).

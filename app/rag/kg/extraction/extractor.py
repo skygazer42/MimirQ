@@ -200,8 +200,8 @@ def _normalize_prompt_selector_value(value: object) -> str:
 
 
 def _compute_content_stats(text: str) -> tuple[str, int]:
-    normalized = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True)
-    stripped = (normalized or "").strip()
+    normalized = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
+    stripped = normalized.strip()
     return hashlib.sha256(stripped.encode("utf-8", "ignore")).hexdigest(), len(stripped)
 
 
@@ -220,9 +220,9 @@ def _document_from_chunk(chunk: DocumentChunk) -> LCDocument:
     if chunk.end_char is not None:
         meta.setdefault("end_char", int(chunk.end_char))
     return LCDocument(
-        page_content=str(chunk.content or ""),
+        page_content=chunk.content,
         metadata=meta,
-        id=str(chunk.id or ""),
+        id=str(chunk.id),
     )
 
 
@@ -273,7 +273,7 @@ def _build_canonicalized_entity(
 
 
 def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str, object]]:
-    raw_name = str(ent.get("name") or "").strip()
+    raw_name = ent["name"].strip()
     if not raw_name:
         return []
 
@@ -288,7 +288,7 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
         return [
             _build_canonicalized_entity(
                 name=raw_name,
-                normalized_name=str(ent.get("normalized_name") or "").strip(),
+                normalized_name=ent.get("normalized_name"),
                 ent_type=ent_type,
                 description=description,
                 role=role,
@@ -302,7 +302,7 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
         return [
             _build_canonicalized_entity(
                 name=raw_name,
-                normalized_name=str(ent.get("normalized_name") or "").strip(),
+                normalized_name=ent.get("normalized_name"),
                 ent_type=ent_type,
                 description=description,
                 role=role,
@@ -315,7 +315,7 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
         return [
             _build_canonicalized_entity(
                 name=raw_name,
-                normalized_name=str(ent.get("normalized_name") or "").strip(),
+                normalized_name=ent.get("normalized_name"),
                 ent_type=ent_type,
                 description=description,
                 role=role,
@@ -343,7 +343,7 @@ def _expand_canonicalized_entity(ent: dict, *, text_fold: str) -> list[dict[str,
 
 def _merge_canonicalized_entity(existing: dict, candidate: dict) -> None:
     if len(str(candidate.get("description") or "")) > len(str(existing.get("description") or "")):
-        existing["description"] = candidate.get("description") or ""
+        existing["description"] = candidate["description"]
     if str(existing.get("evidence_quote") or "").strip():
         return
     evidence_quote = str(candidate.get("evidence_quote") or "").strip()
@@ -356,8 +356,8 @@ def _dedupe_canonicalized_entities(expanded: list[dict[str, object]]) -> list[di
     seen: dict[tuple[str, str], dict] = {}
     for ent in expanded:
         ent_type = str(ent.get("type") or "unknown").strip() or "unknown"
-        normalized_name = str(ent.get("normalized_name") or "").strip()
-        name = str(ent.get("name") or "").strip()
+        normalized_name = ent["normalized_name"].strip()
+        name = ent["name"].strip()
         if not name or not normalized_name:
             continue
         key = (ent_type, normalized_name)
@@ -385,7 +385,7 @@ def _canonicalize_entities_for_chunk(entities: list[dict], *, chunk_text: str, m
     if limit <= 0:
         return []
 
-    text_fold = str(chunk_text or "").casefold()
+    text_fold = chunk_text.casefold()
     expanded: list[dict[str, object]] = []
     for ent in entities:
         if not isinstance(ent, dict):
@@ -599,7 +599,7 @@ def _apply_budget_metadata(meta: dict[str, object], budget_stats: dict[str, int 
     if not budget_stats:
         return
     meta["kg_chunk_budget"] = {
-        "strategy": str(budget_stats.get("strategy") or ""),
+        "strategy": budget_stats["strategy"],
         "total": int(budget_stats.get("total") or 0),
         "kept": int(budget_stats.get("kept") or 0),
         "skipped": int(budget_stats.get("skipped") or 0),
@@ -652,9 +652,9 @@ def _build_relation_verify_candidates(
         candidates.append(
             RelationCandidate(
                 rid=relation_id,
-                subject_id=str(relation.get("subject_id") or "").strip(),
-                predicate=str(relation.get("predicate") or "").strip() or "unknown",
-                object_id=str(relation.get("object_id") or "").strip(),
+                subject_id=relation["subject_id"].strip(),
+                predicate=relation["predicate"].strip() or "unknown",
+                object_id=relation["object_id"].strip(),
                 confidence=float(relation.get("confidence") or 0.5),
                 evidence_quote=relation.get("evidence_quote"),
             )
@@ -669,7 +669,7 @@ def _merge_verified_relations(
     for item in kept:
         if not isinstance(item, dict):
             continue
-        relation_id = str(item.get("rid") or "").strip()
+        relation_id = item["rid"].strip()
         source = by_rid.get(relation_id)
         if not relation_id or source is None:
             continue
@@ -711,7 +711,7 @@ async def _verify_relations_for_chunk(
     try:
         async with sem:
             verify_coro = verifier.verify(
-                text=(chunk.content or ""),
+                text=(chunk.content),
                 candidates=relation_candidates,
                 max_keep=max_relations_per_chunk,
             )
@@ -722,7 +722,7 @@ async def _verify_relations_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG relation verify failed for chunk %s: %s",
-            str(chunk.id or ""),
+            str(chunk.id),
             str(exc)[:200],
         )
         return chunk_id, None, False
@@ -843,7 +843,7 @@ async def _extract_chunk_with_retries(
     retry_backoff_sec: float,
     progress: _ExtractProgress,
 ) -> tuple[DocumentChunk, list[dict]]:
-    text = (chunk.content or "").strip()
+    text = (chunk.content).strip()
     if not text:
         progress.succeeded_chunk_ids.add(chunk.id)
         return chunk, []
@@ -1227,7 +1227,7 @@ def _populate_chunk_content_maps(state: _ExtractState) -> None:
         computed_digest = ""
         computed_len = 0
         if not content_hash or content_len is None:
-            computed_digest, computed_len = _compute_content_stats(chunk.content or "")
+            computed_digest, computed_len = _compute_content_stats(chunk.content)
         if not content_hash:
             content_hash = computed_digest
         if content_len is None:
@@ -1239,7 +1239,7 @@ def _populate_chunk_content_maps(state: _ExtractState) -> None:
         raw_key = meta_dict.get("chunk_key")
         chunk_key = raw_key.strip() if isinstance(raw_key, str) and raw_key.strip() else ""
         if not chunk_key:
-            chunk_key = str(chunk.chunk_index or "")
+            chunk_key = str(chunk.chunk_index)
         state.chunk_key_by_id[chunk.id] = chunk_key
 
 
@@ -1264,7 +1264,7 @@ def _load_skip_unchanged_events(session: "Session", state: _ExtractState, progre
 
     for chunk in state.budgeted_chunks:
         prior = state.existing_events_by_chunk.get(chunk.id) or []
-        current_hash = state.chunk_hash_by_id.get(chunk.id) or ""
+        current_hash = state.chunk_hash_by_id[chunk.id]
         if not prior or not current_hash:
             continue
         if _is_chunk_unchanged(
@@ -1282,11 +1282,11 @@ def _load_skip_unchanged_events(session: "Session", state: _ExtractState, progre
 def _normalize_event_payload(
     *, chunk: DocumentChunk, event_data: dict, max_entities_per_event: int
 ) -> tuple[tuple[str, str], dict[str, object]]:
-    title = (event_data.get("title") or "").strip()
-    summary = (event_data.get("summary") or "").strip()
-    content = (event_data.get("content") or "").strip()
+    title = event_data["title"].strip()
+    summary = event_data["summary"].strip()
+    content = event_data["content"].strip()
     if not title:
-        title = (summary[:50] if summary else (chunk.content or "")[:50]).strip() or "Event"
+        title = (summary[:50] if summary else (chunk.content)[:50]).strip() or "Event"
     if not content:
         content = (summary or chunk.content or "Event").strip()
     if not summary:
@@ -1302,7 +1302,7 @@ def _normalize_event_payload(
             entity["description"] = description.strip()
     entities = _canonicalize_entities_for_chunk(
         entities,
-        chunk_text=(chunk.content or ""),
+        chunk_text=(chunk.content),
         max_entities=max_entities_per_event,
     )
     payload = {
@@ -1355,10 +1355,10 @@ def _build_entity_candidates(processed_events: list[tuple[DocumentChunk, dict]])
         for ent in ent_list:
             if not isinstance(ent, dict):
                 continue
-            name = str(ent.get("name") or "").strip()
+            name = ent["name"].strip()
             if not name:
                 continue
-            normalized = str(ent.get("normalized_name") or "").strip()
+            normalized = ent["normalized_name"].strip()
             if not normalized:
                 normalized = normalize_entity_name(name)
                 ent["normalized_name"] = normalized
@@ -1398,7 +1398,7 @@ async def _verify_entities_for_chunk(
     try:
         async with state.sem:
             verify_coro = verifier.verify(
-                text=(chunk.content or ""),
+                text=(chunk.content),
                 candidates=candidates,
                 max_keep=max(5, int(state.max_entities_per_event or 0)),
                 max_alias_edges=10,
@@ -1413,7 +1413,7 @@ async def _verify_entities_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG entity verify failed for chunk %s: %s",
-            str(chunk.id or ""),
+            str(chunk.id),
             str(exc)[:200],
         )
         return chunk_id, {"kept": [], "aliases": []}, False
@@ -1427,7 +1427,7 @@ def _build_keep_map(verify_output: dict[str, object]) -> dict[str, dict[str, obj
     for item in kept:
         if not isinstance(item, dict):
             continue
-        cid = str(item.get("id") or "").strip()
+        cid = item["id"].strip()
         if cid:
             keep_map[cid] = dict(item)
     return keep_map
@@ -1441,8 +1441,8 @@ def _clean_llm_aliases(verify_output: dict[str, object]) -> list[dict[str, objec
     for item in aliases:
         if not isinstance(item, dict):
             continue
-        alias_id = str(item.get("alias_id") or "").strip()
-        canonical_id = str(item.get("canonical_id") or "").strip()
+        alias_id = item["alias_id"].strip()
+        canonical_id = item["canonical_id"].strip()
         if not alias_id or not canonical_id or alias_id == canonical_id:
             continue
         cleaned.append(dict(item))
@@ -1524,10 +1524,10 @@ async def _run_entity_verification(
 
 
 def _normalize_entity_for_evidence(ent: dict) -> tuple[str, str] | None:
-    name = str(ent.get("name") or "").strip()
+    name = ent["name"].strip()
     if not name:
         return None
-    normalized = str(ent.get("normalized_name") or "").strip()
+    normalized = ent["normalized_name"].strip()
     if not normalized:
         normalized = normalize_entity_name(name)
         ent["normalized_name"] = normalized
@@ -1549,7 +1549,7 @@ def _entity_noise_bucket(name: str, normalized: str) -> str | None:
 def _apply_entity_evidence(ent: dict, *, chunk: DocumentChunk, name: str, evidence_required: bool):
     evidence_quote = ent.get("evidence_quote")
     evidence = coerce_evidence(
-        text=(chunk.content or ""),
+        text=(chunk.content),
         evidence_quote=(str(evidence_quote).strip() if isinstance(evidence_quote, str) else None),
         fallback_mention=name,
         max_quote_chars=240,
@@ -1559,7 +1559,7 @@ def _apply_entity_evidence(ent: dict, *, chunk: DocumentChunk, name: str, eviden
     ent["evidence_quote"] = evidence.quote
     ent["evidence_start_char"] = evidence.start_char
     ent["evidence_end_char"] = evidence.end_char
-    ent["evidence_source"] = str(evidence.source or "").strip() or "quote"
+    ent["evidence_source"] = evidence.source.strip() or "quote"
     return ent
 
 
@@ -1618,14 +1618,14 @@ def _collect_chunk_embed_texts(
     chunk: DocumentChunk, event_payload: dict, *, seen_text: set[str], to_embed: list[str]
 ) -> None:
     event_text = (
-        event_payload.get("content") or event_payload.get("summary") or event_payload.get("title") or ""
+        event_payload["content"] or event_payload["summary"] or event_payload["title"]
     ).strip()
     if not event_text:
-        event_text = (chunk.content or "")[:200].strip() or "Event"
+        event_text = (chunk.content)[:200].strip() or "Event"
     event_payload["_embed_text"] = event_text
     _add_text_for_embedding(event_text, seen_text=seen_text, to_embed=to_embed)
     for ent in event_payload.get("entities") or []:
-        name = (ent.get("name") or "").strip()
+        name = (ent["name"]).strip()
         description = (ent.get("description") or "").strip()
         ent_text = (f"{name} {description}").strip() if description else name
         ent["_embed_text"] = ent_text
@@ -1670,10 +1670,10 @@ def _build_event_index_records(
     events_to_index: list[IndexRecord] = []
     entity_total = 0
     for chunk, event_payload in processed_events:
-        vector = embed_cache.get(str(event_payload.get("_embed_text") or ""))
+        vector = embed_cache.get(event_payload["_embed_text"])
         entity_inputs: list[EventEntityInput] = []
         for ent in event_payload.get("entities") or []:
-            name = (ent.get("name") or "").strip()
+            name = (ent["name"]).strip()
             if not name:
                 continue
             normalized = (ent.get("normalized_name") or name).strip()
@@ -1712,14 +1712,14 @@ def _build_event_index_records(
         if isinstance(pipeline_hash_val, str) and pipeline_hash_val.strip():
             refs["pipeline_hash"] = pipeline_hash_val.strip()[:200]
         refs["chunk_key"] = state.chunk_key_by_id.get(chunk.id) or str(chunk.chunk_index)
-        refs["content_hash"] = state.chunk_hash_by_id.get(chunk.id) or ""
+        refs["content_hash"] = state.chunk_hash_by_id[chunk.id]
         refs["content_len"] = int(state.chunk_len_by_id.get(chunk.id, 0) or 0)
         events_to_index.append(
             IndexRecord(
                 kind=IndexKind.EVENT,
-                title=str(event_payload.get("title") or "").strip() or "Event",
-                summary=str(event_payload.get("summary") or "").strip() or "Event",
-                content=str(event_payload.get("content") or "").strip() or "Event",
+                title=event_payload["title"].strip() or "Event",
+                summary=event_payload["summary"].strip() or "Event",
+                content=event_payload["content"].strip() or "Event",
                 document_id=chunk.document_id,
                 chunk_id=chunk.id,
                 references=refs,
@@ -1850,7 +1850,7 @@ def _extract_metrics_payload(
         "retry_chunks": len(progress.retry_chunk_ids),
         "retry_attempts": int(progress.retry_attempts_total),
         "llm_called_chunks": len(progress.llm_called_chunk_ids),
-        "backend": str(backend_selection.backend or ""),
+        "backend": backend_selection.backend,
         "backend_reason": str(backend_reason or ""),
         "chunk_budget_strategy": chunk_budget_strategy,
         "chunk_budget_max_per_document": int(max_chunks_per_document),
@@ -2055,7 +2055,7 @@ def _build_relation_candidates(
         for ent in entities:
             if not isinstance(ent, dict):
                 continue
-            name = (ent.get("name") or "").strip()
+            name = (ent["name"]).strip()
             if not name:
                 continue
             normalized = (ent.get("normalized_name") or name).strip()
@@ -2080,7 +2080,7 @@ def _build_relation_candidates(
 def _build_relation_entity_lookup(result: PersistEventsResult | None) -> dict[tuple[str, str], object]:
     entity_id_by_key: dict[tuple[str, str], object] = {}
     for ent in list(result.entities) if result else []:
-        normalized = str(ent.normalized_name or "").strip()
+        normalized = ent.normalized_name.strip()
         ent_type = str(ent.type or "unknown").strip() or "unknown"
         ent_id = ent.id
         if normalized and ent_id is not None:
@@ -2118,7 +2118,7 @@ def _record_alias_candidate_methods(
     alias_diag["chunks_considered"] = int(alias_diag.get("chunks_considered", 0) or 0) + 1
     alias_diag["candidates_total"] = int(alias_diag.get("candidates_total", 0) or 0) + len(alias_candidates)
     for cand in alias_candidates:
-        method = str(cand.method or "").strip() or "unknown"
+        method = cand.method.strip() or "unknown"
         by_method = alias_diag.get("candidates_by_method")
         if isinstance(by_method, dict):
             by_method[method] = int(by_method.get(method, 0) or 0) + 1
@@ -2139,9 +2139,9 @@ def _record_alias_candidate_methods(
 def _relation_candidate_norm_map(candidates: list[CandidateEntity]) -> dict[str, tuple[str, str]]:
     by_norm: dict[str, tuple[str, str]] = {}
     for candidate in candidates:
-        normalized = str(candidate.normalized_name or "").strip() or normalize_entity_name(str(candidate.name or ""))
+        normalized = candidate.normalized_name.strip() or normalize_entity_name(candidate.name)
         ent_type = str(candidate.type or "unknown").strip() or "unknown"
-        name = str(candidate.name or "").strip()
+        name = candidate.name.strip()
         if normalized and name:
             by_norm.setdefault(normalized, (ent_type, name))
     return by_norm
@@ -2262,7 +2262,7 @@ def _build_alias_spec(
         inferred_type,
         alias_norm,
         canonical_norm,
-        str(cand.method or ""),
+        cand.method,
         str(cand.quote or "").strip(),
     )
 
@@ -2339,7 +2339,7 @@ def _merge_upserted_alias_entities(
 ) -> None:
     context.alias_diag["entities_upserted"] = len(upserted or [])
     for ent in upserted or []:
-        normalized = str(ent.normalized_name or "").strip()
+        normalized = ent.normalized_name.strip()
         ent_type = str(ent.type or "unknown").strip() or "unknown"
         ent_id = ent.id
         if normalized and ent_id is not None:
@@ -2372,10 +2372,7 @@ async def _upsert_missing_alias_entities(
 
 async def _prepare_relation_alias_data(context: _RelationPostIndexContext, data: _RelationPassData) -> None:
     alias_enabled = bool(settings.KG_RELATION_ALIAS_HEURISTIC_ENABLED)
-    alias_max_candidates = max(
-        0,
-        int(settings.KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK or 10),
-    )
+    alias_max_candidates = max(0, int(settings.KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK))
     if not alias_enabled or alias_max_candidates <= 0:
         return
 
@@ -2391,7 +2388,7 @@ async def _prepare_relation_alias_data(context: _RelationPostIndexContext, data:
             continue
         cand_by_norm = _relation_candidate_norm_map(candidates)
         alias_candidates = extract_alias_candidates(
-            text=(chunk.content or ""),
+            text=(chunk.content),
             max_candidates=alias_max_candidates,
         )
         if not alias_candidates:
@@ -2435,7 +2432,7 @@ async def _extract_relations_for_chunk(
     try:
         async with sem:
             coro = relation_processor.extract_relations(
-                text=(chunk.content or ""),
+                text=(chunk.content),
                 candidates=candidates,
                 max_relations=max_relations_per_chunk,
             )
@@ -2447,7 +2444,7 @@ async def _extract_relations_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG relation extract failed for chunk %s: %s",
-            str(chunk.id or ""),
+            str(chunk.id),
             str(exc)[:200],
         )
         return chunk_id, [], False
@@ -2462,10 +2459,7 @@ async def _populate_relation_extraction_results(context: _RelationPostIndexConte
         fallback_default=_DEFAULT_RELATION_PREDICATES,
         raw_override=str(settings.KG_RELATION_ALLOWED_PREDICATES).strip(),
     )
-    max_relations_per_chunk = max(
-        0,
-        int(settings.KG_RELATION_MAX_RELATIONS_PER_CHUNK or 20),
-    )
+    max_relations_per_chunk = max(0, int(settings.KG_RELATION_MAX_RELATIONS_PER_CHUNK))
     if max_relations_per_chunk <= 0:
         raise RuntimeError("KG_RELATION_MAX_RELATIONS_PER_CHUNK must be > 0 when relations are enabled")
 
@@ -2540,7 +2534,7 @@ def _relation_refs_for_chunk(
         pipeline_hash = pipeline_hash_value.strip()[:200]
         refs["pipeline_hash"] = pipeline_hash
     refs["chunk_key"] = chunk_key_by_id.get(chunk.id) or str(chunk.chunk_index)
-    refs["content_hash"] = chunk_hash_by_id.get(chunk.id) or ""
+    refs["content_hash"] = chunk_hash_by_id[chunk.id]
     refs["content_len"] = int(chunk_len_by_id.get(chunk.id, 0) or 0)
     return refs, pipeline_hash
 
@@ -2554,7 +2548,7 @@ def _build_relation_evidence(
     evidence_required: bool,
 ) -> tuple[EvidenceSpan | None, bool]:
     evidence = coerce_evidence(
-        text=(chunk.content or ""),
+        text=(chunk.content),
         evidence_quote=(str(rel.get("evidence_quote")).strip() if isinstance(rel.get("evidence_quote"), str) else None),
         fallback_mention=None,
         max_quote_chars=240,
@@ -2563,13 +2557,13 @@ def _build_relation_evidence(
         return None, False
     if evidence is None:
         return None, True
-    subj_ok = surface_mentioned(quote=evidence.quote, surface=str(subj_cand.name or "")) or surface_mentioned(
+    subj_ok = surface_mentioned(quote=evidence.quote, surface=subj_cand.name) or surface_mentioned(
         quote=evidence.quote,
-        surface=str(subj_cand.normalized_name or ""),
+        surface=subj_cand.normalized_name,
     )
-    obj_ok = surface_mentioned(quote=evidence.quote, surface=str(obj_cand.name or "")) or surface_mentioned(
+    obj_ok = surface_mentioned(quote=evidence.quote, surface=obj_cand.name) or surface_mentioned(
         quote=evidence.quote,
-        surface=str(obj_cand.normalized_name or ""),
+        surface=obj_cand.normalized_name,
     )
     if evidence_required and not (subj_ok and obj_ok):
         return evidence, False
@@ -2640,7 +2634,7 @@ def _existing_alias_relation_keys(
         )
         for subj_id, pred, obj_id in existing:
             if subj_id is not None and obj_id is not None:
-                seen_rel_keys.add((subj_id, str(pred or "").strip(), obj_id))
+                seen_rel_keys.add((subj_id, pred.strip(), obj_id))
     except Exception as exc:
         logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
     return seen_rel_keys
@@ -2651,11 +2645,11 @@ def _relation_entity_ids(
 ) -> tuple[object | None, object | None]:
     subj_key = (
         str(subj_cand.type or "unknown").strip() or "unknown",
-        str(subj_cand.normalized_name or "").strip(),
+        subj_cand.normalized_name.strip(),
     )
     obj_key = (
         str(obj_cand.type or "unknown").strip() or "unknown",
-        str(obj_cand.normalized_name or "").strip(),
+        obj_cand.normalized_name.strip(),
     )
     return data.entity_id_by_key.get(subj_key), data.entity_id_by_key.get(obj_key)
 
@@ -2686,9 +2680,9 @@ def _append_extracted_relation_rows(
         if not isinstance(rel, dict):
             continue
         relation_evidence_stats["total_raw"] += 1
-        subj_cid = str(rel.get("subject_id") or "").strip()
-        obj_cid = str(rel.get("object_id") or "").strip()
-        pred = str(rel.get("predicate") or "").strip() or "unknown"
+        subj_cid = rel["subject_id"].strip()
+        obj_cid = rel["object_id"].strip()
+        pred = rel["predicate"].strip() or "unknown"
         if not subj_cid or not obj_cid:
             continue
         subj_cand = cand_map.get(subj_cid)
@@ -2752,7 +2746,7 @@ def _append_extracted_relation_row(
         rel_refs["evidence_quote"] = evidence.quote
         rel_refs["evidence_start_char"] = evidence.start_char
         rel_refs["evidence_end_char"] = evidence.end_char
-        rel_refs["evidence_source"] = str(evidence.source or "").strip() or "quote"
+        rel_refs["evidence_source"] = evidence.source.strip() or "quote"
     relation_evidence_stats["kept"] += 1
     rel_rows.append(
         KgRelation(
@@ -2818,7 +2812,7 @@ def _append_heuristic_alias_relation_rows(
         _alias_bump(context.alias_stats_by_doc, chunk.document_id, "kg_alias_edges_appended", 1)
         alias_refs = dict(refs)
         evidence = coerce_evidence(
-            text=(chunk.content or ""),
+            text=(chunk.content),
             evidence_quote=(alias_quote),
             fallback_mention=None,
             max_quote_chars=240,
@@ -2829,7 +2823,7 @@ def _append_heuristic_alias_relation_rows(
             alias_refs["evidence_quote"] = evidence.quote
             alias_refs["evidence_start_char"] = evidence.start_char
             alias_refs["evidence_end_char"] = evidence.end_char
-            alias_refs["evidence_source"] = str(evidence.source or "").strip() or "quote"
+            alias_refs["evidence_source"] = evidence.source.strip() or "quote"
         rel_rows.append(
             KgRelation(
                 tenant_id=context.state.tenant_id,
@@ -2842,7 +2836,7 @@ def _append_heuristic_alias_relation_rows(
                 predicate_raw=None,
                 object_entity_id=obj_ent_id,
                 confidence=float(data.alias_conf),
-                qualifiers={"method": "heuristic_alias", "pattern": str(method or "")},
+                qualifiers={"method": "heuristic_alias", "pattern": method},
                 references=alias_refs,
                 extra_data={
                     "kg_prompt_template_id": context.chosen_template_id,
@@ -2859,8 +2853,8 @@ def _llm_alias_entity_ids(
     ent_type = str(alias_cand.type or "unknown").strip() or "unknown"
     if str(canon_cand.type or "unknown").strip() != ent_type:
         return None, None
-    alias_key = (ent_type, str(alias_cand.normalized_name or "").strip())
-    canon_key = (ent_type, str(canon_cand.normalized_name or "").strip())
+    alias_key = (ent_type, alias_cand.normalized_name.strip())
+    canon_key = (ent_type, canon_cand.normalized_name.strip())
     return data.entity_id_by_key.get(alias_key), data.entity_id_by_key.get(canon_key)
 
 
@@ -2878,8 +2872,8 @@ def _append_llm_alias_relation_rows(
     for item in context.llm_aliases_by_chunk.get(chunk.id) or []:
         if not isinstance(item, dict):
             continue
-        alias_cid = str(item.get("alias_id") or "").strip()
-        canon_cid = str(item.get("canonical_id") or "").strip()
+        alias_cid = item["alias_id"].strip()
+        canon_cid = item["canonical_id"].strip()
         if not alias_cid or not canon_cid or alias_cid == canon_cid:
             continue
         alias_cand = cand_map.get(alias_cid)
@@ -2895,7 +2889,7 @@ def _append_llm_alias_relation_rows(
         seen_rel_keys.add(rel_key)
         llm_refs = dict(refs)
         evidence = coerce_evidence(
-            text=(chunk.content or ""),
+            text=(chunk.content),
             evidence_quote=(item.get("evidence_quote")),
             fallback_mention=None,
             max_quote_chars=240,
@@ -2906,7 +2900,7 @@ def _append_llm_alias_relation_rows(
             llm_refs["evidence_quote"] = evidence.quote
             llm_refs["evidence_start_char"] = evidence.start_char
             llm_refs["evidence_end_char"] = evidence.end_char
-            llm_refs["evidence_source"] = str(evidence.source or "").strip() or "quote"
+            llm_refs["evidence_source"] = evidence.source.strip() or "quote"
         try:
             conf = float(item.get("confidence") or 0.9)
         except Exception:
@@ -3124,7 +3118,7 @@ def _dedupe_surfaces(values: object, *, limit: int) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in seq:
-        surface = str(item or "").strip()
+        surface = item.strip()
         if not surface:
             continue
         key = surface.casefold() if surface.isascii() else surface
@@ -3161,7 +3155,7 @@ async def _extract_skills_for_chunk(
     try:
         async with sem:
             coro = skill_processor.extract_skills(
-                text=(chunk.content or ""),
+                text=(chunk.content),
                 max_skills=max_skills_per_chunk,
             )
             if chunk_timeout_sec > 0:
@@ -3172,7 +3166,7 @@ async def _extract_skills_for_chunk(
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "KG skill extract failed for chunk %s: %s",
-            str(chunk.id or ""),
+            str(chunk.id),
             str(exc)[:200],
         )
         return chunk_id, [], False
@@ -3186,7 +3180,7 @@ def _normalize_skill_item(
     skill_evidence_required: bool,
     skill_evidence_stats: dict[str, int],
 ) -> dict | None:
-    name = str(raw.get("name") or "").strip()
+    name = raw["name"].strip()
     if not name:
         return None
     normalized = normalize_entity_name(name)
@@ -3195,7 +3189,7 @@ def _normalize_skill_item(
     skill_evidence_stats["total_raw"] += 1
     evidence_quote = raw.get("evidence_quote")
     evidence = coerce_evidence(
-        text=(chunk.content or ""),
+        text=(chunk.content),
         evidence_quote=(str(evidence_quote).strip() if isinstance(evidence_quote, str) else None),
         fallback_mention=name,
         max_quote_chars=240,
@@ -3232,7 +3226,7 @@ def _normalize_skill_item(
         "_evidence_quote": evidence.quote if evidence is not None else None,
         "_evidence_start_char": evidence.start_char if evidence is not None else None,
         "_evidence_end_char": evidence.end_char if evidence is not None else None,
-        "_evidence_source": (str(evidence.source or "").strip() if evidence is not None else None),
+        "_evidence_source": (evidence.source.strip() if evidence is not None else None),
     }
 
 
@@ -3262,12 +3256,12 @@ def _collect_skill_items_for_chunk(
         )
         if item is None:
             continue
-        normalized = str(item.get("normalized_name") or "").strip()
+        normalized = item["normalized_name"].strip()
         if normalized in seen_norm:
             continue
         seen_norm.add(normalized)
         kept.append(item)
-        text = str(item.get("_embed_text") or "").strip()
+        text = item["_embed_text"].strip()
         if text:
             data.skill_embed_texts.append(text)
         if len(kept) >= max_skills_per_chunk:
@@ -3324,7 +3318,7 @@ async def _embed_skill_items(data: _SkillPassData) -> None:
         skill_vectors_by_text = {}
     for chunk_skills in data.skills_by_chunk.values():
         for item in chunk_skills:
-            embed_text = str(item.get("_embed_text") or "").strip()
+            embed_text = item["_embed_text"].strip()
             if embed_text and embed_text in skill_vectors_by_text:
                 item["vector"] = skill_vectors_by_text.get(embed_text)
             item.pop("_embed_text", None)
@@ -3349,9 +3343,9 @@ def _upsert_skill_entities(context: _SkillPostIndexContext, data: _SkillPassData
         commit=True,
     )
     for ent in upserted or []:
-        if str(ent.type or "") != "Skill":
+        if ent.type != "Skill":
             continue
-        normalized = str(ent.normalized_name or "").strip()
+        normalized = ent.normalized_name.strip()
         if normalized:
             data.skill_id_by_norm[normalized] = ent.id
 
@@ -3366,7 +3360,7 @@ def _collect_taxonomy_surfaces(skills_by_chunk: dict[object, list[dict]]) -> tup
             extra = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
             tags = extra.get("tags") if isinstance(extra.get("tags"), list) else []
             for tag in tags:
-                surface = str(tag or "").strip()
+                surface = tag.strip()
                 if not surface:
                     continue
                 normalized = normalize_entity_name(surface)
@@ -3394,7 +3388,7 @@ async def _embed_taxonomy_surfaces(
         logger.warning("KG skill taxonomy embedding failed; proceeding without vectors: %s", str(exc)[:200])
         vectors = [[] for _ in to_embed]
     for idx, vec in enumerate(list(vectors or [])):
-        surface = str(to_embed[idx] or "").strip()
+        surface = to_embed[idx].strip()
         if not surface:
             continue
         normalized = normalize_entity_name(surface)
@@ -3427,9 +3421,9 @@ def _merge_taxonomy_entities(
     upserted: Sequence[KgEntity] | None, *, expected_type: str, target: dict[str, object]
 ) -> None:
     for ent in upserted or []:
-        if str(ent.type or "") != expected_type:
+        if ent.type != expected_type:
             continue
-        normalized = str(ent.normalized_name or "").strip()
+        normalized = ent.normalized_name.strip()
         if normalized:
             target[normalized] = ent.id
 
@@ -3491,7 +3485,7 @@ def _skill_refs_base(
         chunk_id=chunk.id,
         references=refs_base,
     )
-    return refs_base, pipeline_hash, link_extra_base, str(chunk.content or "")
+    return refs_base, pipeline_hash, link_extra_base, chunk.content
 
 
 def _existing_skill_relation_keys(
@@ -3514,7 +3508,7 @@ def _existing_skill_relation_keys(
         )
         for subj_id, pred, obj_id in existing:
             if subj_id is not None and obj_id is not None:
-                seen_skill_rel_keys.add((subj_id, str(pred or "").strip(), obj_id))
+                seen_skill_rel_keys.add((subj_id, pred.strip(), obj_id))
     except Exception as exc:
         logger.debug(_KG_EXTRACTOR_FALLBACK_LOG_MESSAGE, exc)
     return seen_skill_rel_keys
@@ -3525,7 +3519,7 @@ def _skill_ids_in_chunk(items: list[dict], skill_id_by_norm: dict[str, object]) 
     for item in items:
         if not isinstance(item, dict):
             continue
-        normalized = str(item.get("normalized_name") or "").strip()
+        normalized = item["normalized_name"].strip()
         skill_id = skill_id_by_norm.get(normalized)
         if not skill_id:
             continue
@@ -3544,7 +3538,7 @@ def _edge_refs_from_evidence(
     edge_refs["evidence_quote"] = evidence.quote
     edge_refs["evidence_start_char"] = evidence.start_char
     edge_refs["evidence_end_char"] = evidence.end_char
-    edge_refs["evidence_source"] = str(evidence.source or "").strip() or default_source
+    edge_refs["evidence_source"] = evidence.source.strip() or default_source
     return edge_refs
 
 
@@ -3706,7 +3700,7 @@ def _append_skill_links(
         if event_id is None:
             continue
         for item in items:
-            normalized = str(item.get("normalized_name") or "").strip()
+            normalized = item["normalized_name"].strip()
             skill_id = skill_id_by_norm.get(normalized)
             if not skill_id:
                 continue
@@ -3760,7 +3754,7 @@ def _build_skill_links_and_relations(
             for skill_id, conf, item in skill_ids_in_chunk:
                 extra = item.get("extra_data") if isinstance(item.get("extra_data"), dict) else {}
                 for tag in extra.get("tags") if isinstance(extra.get("tags"), list) else []:
-                    surface = str(tag or "").strip()
+                    surface = tag.strip()
                     tag_id = data.tag_id_by_norm.get(normalize_entity_name(surface))
                     if surface and tag_id:
                         _append_skill_belong_to_edge(

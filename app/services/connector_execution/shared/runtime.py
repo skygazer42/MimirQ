@@ -19,7 +19,7 @@ def _now() -> datetime:
 def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
     stats = dict(run.stats or {})
     raw_config_id = stats.get("config_id")
-    config_id_text = str(raw_config_id or "").strip() if isinstance(raw_config_id, (str, UUID)) else ""
+    config_id_text = str(raw_config_id).strip() if isinstance(raw_config_id, (str, UUID)) else ""
     if not config_id_text:
         return
     try:
@@ -35,11 +35,11 @@ def _sync_connector_config_from_run(db: Session, *, run: ConnectorRun) -> None:
     if config is None:
         return
 
-    status = str(run.status or "").lower()
+    status = run.status.lower()
     config.last_error = None if status == "completed" else (str(run.error_message or status)[:200] or status)
     config.last_run_at = run.started_at or run.finished_at or _now()
     config.state = build_saved_state_snapshot(
-        connector_id=str(run.connector_id or "").strip(),
+        connector_id=run.connector_id.strip(),
         existing_state=dict(config.state or {}),
         stats=stats,
         run_id=run.id,
@@ -57,7 +57,7 @@ def get_active_connector_run(db: Session, *, run_id: UUID, tenant_id: UUID) -> C
     )
     if not run:
         return None
-    if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+    if run.status.lower() in {"cancelled", "completed", "failed"}:
         return None
     return run
 

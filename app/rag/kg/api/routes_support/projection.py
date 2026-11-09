@@ -70,7 +70,7 @@ def _kg_event_node(ev: "KgSourceEvent", event_degree: Counter[str], *, center_id
         meta["center"] = ev_id == str(center_id)
     return {
         "id": ev_id,
-        "label": (ev.title or "").strip() or ev_id,
+        "label": (ev.title).strip() or ev_id,
         "group": 0,
         "val": max(1, int(event_degree.get(ev_id, 0))),
         "meta": meta,
@@ -90,7 +90,7 @@ def _kg_entity_node(
         meta["center"] = ent_id == str(center_id)
     return {
         "id": ent_id,
-        "label": (ent.name or "").strip() or ent_id,
+        "label": (ent.name).strip() or ent_id,
         "group": _stable_group_for(ent.type or "unknown"),
         "val": max(1, int(entity_hit_count.get(ent_id, 0))),
         "meta": meta,
@@ -118,11 +118,11 @@ def _kg_event_entity_link(assoc: "KgEventEntity", ent: "KgEntity") -> dict[str, 
 
 
 def _kg_relation_link(rel: "KgRelation") -> dict[str, Any] | None:
-    subj = str(rel.subject_entity_id or "")
-    obj = str(rel.object_entity_id or "")
+    subj = str(rel.subject_entity_id)
+    obj = str(rel.object_entity_id)
     if not subj or not obj:
         return None
-    pred = str(rel.predicate or "").strip()
+    pred = rel.predicate.strip()
     if not pred:
         return None
     conf_raw = rel.confidence
@@ -139,9 +139,9 @@ def _kg_relation_link(rel: "KgRelation") -> dict[str, Any] | None:
             "kind": "entity_relation",
             "predicate": pred,
             "confidence": conf,
-            "document_id": str(rel.document_id or ""),
-            "chunk_id": str(rel.chunk_id or ""),
-            "event_id": str(rel.event_id or ""),
+            "document_id": rel.document_id,
+            "chunk_id": rel.chunk_id,
+            "event_id": rel.event_id,
         },
     }
 
@@ -236,7 +236,7 @@ def _add_kg_entity_cooccurrence_links(
     max_entity_links: int,
     min_shared_events: int,
 ) -> int:
-    per_event_entity_cap = int(settings.KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT or 60)
+    per_event_entity_cap = int(settings.KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT)
     per_event_entity_cap = max(0, min(per_event_entity_cap, 500))
     co_counts = _kg_entity_cooccurrence_counts(
         rows,
@@ -370,7 +370,7 @@ def _dict_list(values: object) -> list[dict]:
 
 def _audit_hash_text(text: str) -> str:
     """Stable short hash for potentially sensitive strings (PII-minimal)."""
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = (text).encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 

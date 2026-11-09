@@ -76,7 +76,7 @@ def _embedding_space_hash_for_shadow_config(*, provider: str, model: str, base_u
 def _current_space_hash() -> str:
     from app.rag.embedding.utils import current_embedding_space_hash
 
-    return str(current_embedding_space_hash() or "").strip()
+    return current_embedding_space_hash().strip()
 
 
 def _get_collection_adapter(collection_name: str) -> "MilvusAdapter":
@@ -193,21 +193,21 @@ def resolve_shadow_embedding_config() -> _ShadowEmbeddingConfig | None:
     if not settings.EMBEDDING_SHADOW_ENABLED:
         return None
 
-    shadow_collection = str(settings.MILVUS_SHADOW_COLLECTION_NAME or "").strip()
-    shadow_model = str(settings.EMBEDDING_SHADOW_MODEL or "").strip()
+    shadow_collection = settings.MILVUS_SHADOW_COLLECTION_NAME.strip()
+    shadow_model = settings.EMBEDDING_SHADOW_MODEL.strip()
     if not shadow_collection or not shadow_model:
         return None
 
     provider_raw = (
-        str(settings.EMBEDDING_SHADOW_PROVIDER or "").strip().lower()
+        settings.EMBEDDING_SHADOW_PROVIDER.strip().lower()
         or str(settings.EMBEDDING_PROVIDER or "openai_compatible").strip().lower()
     )
     mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider_raw, "openai_compatible")
 
     base_url = (
-        str(settings.EMBEDDING_SHADOW_API_BASE or "").strip()
-        or str(settings.EMBEDDING_API_BASE or "").strip()
-        or str(settings.LLM_API_BASE or "").strip()
+        settings.EMBEDDING_SHADOW_API_BASE.strip()
+        or settings.EMBEDDING_API_BASE.strip()
+        or settings.LLM_API_BASE.strip()
     )
     shadow_space = _embedding_space_hash_for_shadow_config(
         provider=mapped_provider,
@@ -231,9 +231,9 @@ def _init_shadow_embeddings() -> "LangChainEmbeddingsAdapter":
         raise RuntimeError("shadow embedding config not enabled")
 
     api_key = (
-        str(settings.EMBEDDING_SHADOW_API_KEY or "").strip()
-        or str(settings.EMBEDDING_API_KEY or "").strip()
-        or str(settings.LLM_API_KEY or "").strip()
+        settings.EMBEDDING_SHADOW_API_KEY.strip()
+        or settings.EMBEDDING_API_KEY.strip()
+        or settings.LLM_API_KEY.strip()
     )
     return _create_embeddings_from_config(
         provider=cfg["provider"],
@@ -252,8 +252,8 @@ def _init_current_embeddings() -> "LangChainEmbeddingsAdapter":
     return _create_embeddings_from_config(
         provider=mapped_provider,
         model=str(settings.EMBEDDING_MODEL or "text-embedding-3-small"),
-        api_key=api_key or "",
-        base_url=base_url or "",
+        api_key=api_key,
+        base_url=base_url,
         dimension=None,  # Auto-detect
     )
 
@@ -277,7 +277,7 @@ def _build_shadow_embedding_text(
     - Contextual retrieval prefixes are deterministic (no LLM).
     - "Section" structural prefix is applied when embedding_context_prefix_enabled=true.
     """
-    raw_body = str(content or "")
+    raw_body = content
     embed_text = raw_body
 
     # Avoid prefixing non-text assets (images/tables).
@@ -490,7 +490,7 @@ def _load_document_chunks(
     db: Session,
     tenant_id: UUID,
     doc_id: UUID,
-    active_hash: str,
+    active_hash: str | None,
     chunk_limit_per_document: int,
 ) -> "list[DocumentChunk]":
     document_chunk_model = _document_chunk_model()
@@ -518,23 +518,23 @@ def _build_vector_docs_for_document(
     chunks: "list[DocumentChunk]",
     tenant_id: UUID,
     doc_id: UUID,
-    active_hash: str,
+    active_hash: str | None,
     shadow_space: str,
     doc_title: str | None,
 ) -> list[dict[str, Any]]:
     vector_docs: list[dict[str, Any]] = []
     for chunk in chunks:
-        chunk_uuid = str(chunk.id or "").strip()
+        chunk_uuid = str(chunk.id).strip()
         if not chunk_uuid:
             continue
-        content = str(chunk.content or "")
+        content = chunk.content
         if not content.strip():
             continue
 
         meta0 = chunk.doc_metadata
         meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
         meta.setdefault("tenant_id", str(tenant_id))
-        meta.setdefault("dataset_id", str(doc.dataset_id or "") or "")
+        meta.setdefault("dataset_id", str(doc.dataset_id) if doc.dataset_id is not None else "")
         meta.setdefault("document_id", str(doc_id))
         meta.setdefault("chunk_index", int(chunk.chunk_index or 0))
         meta["chunk_id"] = chunk_uuid
@@ -578,7 +578,7 @@ def _write_vector_docs(runtime: _BackfillRuntime, *, vector_docs: list[dict[str,
     written = 0
     write_batch_size = int(settings.VECTOR_WRITE_BATCH_SIZE or 256)
     for batch in _batched(vector_docs, batch_size=runtime.embed_batch_size):
-        texts = [str(item.get("content") or "") for item in batch]
+        texts = [item["content"] for item in batch]
         embeddings = runtime.embeddings.embed_documents(texts)
         runtime.adapter.add_vectors(
             batch,
@@ -608,7 +608,7 @@ def _process_backfill_document(
         return
 
     doc_meta = dict(doc.doc_metadata or {})
-    active_hash = get_active_pipeline_hash(doc_meta) or ""
+    active_hash = get_active_pipeline_hash(doc_meta)
     doc_title = _derive_document_title_for_prefix(
         filename=doc.filename,
         doc_metadata=doc_meta,
@@ -854,7 +854,7 @@ def _load_overlap_queries(
     queries: list[tuple[str, str]] = []
     query_char_cap = int(max_query_chars or 0)
     for chunk_id, content in list(chunks_q.all() or []):
-        query = str(content or "").strip()
+        query = content.strip()
         if not query:
             continue
         if query_char_cap > 0 and len(query) > query_char_cap:
@@ -875,7 +875,7 @@ def _init_overlap_adapters(runtime: _OverlapRuntime) -> "tuple[MilvusAdapter, Mi
 
 
 def _result_ids(results: list[dict[str, Any]]) -> list[str]:
-    return [str(result.get("id") or "") for result in results if str(result.get("id") or "").strip()]
+    return [str(result["id"]) for result in results if result.get("id") is not None and str(result["id"]).strip()]
 
 
 def _build_overlap_summary(

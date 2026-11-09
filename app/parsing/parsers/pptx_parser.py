@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 def _clean_line(text: str) -> str:
-    text = (text or "").replace("\r", " ").strip()
+    text = (text).replace("\r", " ").strip()
     return " ".join(text.split())
 
 
@@ -65,7 +65,7 @@ def _extract_table_text(shape: object) -> str | None:
 
 
 def _paragraph_text(para: object) -> str:
-    raw = str(getattr(para, "text", "") or "")
+    raw = para.text
     text = _clean_line(raw)
     if not text:
         return ""

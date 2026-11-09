@@ -1,5 +1,6 @@
 """Deterministic helpers for chained query decomposition retrieval."""
 
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 
@@ -9,8 +10,10 @@ def summarize_chain_step(citations: list[dict[str, Any]]) -> str:
     for item in citations[:3]:
         if not isinstance(item, dict):
             continue
-        source = str(item.get("source") or item.get("document_id") or "").strip()
-        snippet = " ".join(str(item.get("snippet") or "").split()).strip()
+        source = _stringified_metadata_text(item, "source") or _stringified_metadata_text(item, "document_id")
+        snippet = _stringified_metadata_text(item, "snippet")
+        if snippet is not None:
+            snippet = " ".join(snippet.split())
         if source and snippet:
             parts.append(f"{source}: {snippet[:160]}")
         elif snippet:
@@ -22,14 +25,14 @@ def summarize_chain_step(citations: list[dict[str, Any]]) -> str:
 
 def build_chained_query(subquestion: str, prior_findings: list[str]) -> str:
     """Build the next retrieval query using the current subquestion plus prior findings."""
-    base = " ".join(str(subquestion or "").split()).strip()
+    base = " ".join(subquestion.split()).strip()
     if not base:
         return ""
 
     cleaned_findings: list[str] = []
     seen: set[str] = set()
     for finding in prior_findings[-3:]:
-        normalized = " ".join(str(finding or "").split()).strip()
+        normalized = " ".join(finding.split()).strip()
         if not normalized:
             continue
         key = normalized.casefold()

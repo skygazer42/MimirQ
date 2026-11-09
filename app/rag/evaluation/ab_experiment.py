@@ -38,9 +38,9 @@ def assign_ab_variant(
     bucket = int(digest, 16) % len(normalized_variants)
     return {
         "schema": "mimirq.ab_assignment.v1",
-        "experiment_key": str(experiment_key or "").strip(),
-        "tenant_id": str(tenant_id or "").strip(),
-        "user_id": str(user_id or "").strip(),
+        "experiment_key": experiment_key.strip(),
+        "tenant_id": tenant_id.strip(),
+        "user_id": user_id.strip(),
         "variant": normalized_variants[bucket],
         "bucket": bucket,
     }
@@ -51,7 +51,10 @@ def summarize_ab_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
     counts: dict[str, int] = defaultdict(int)
 
     for row in rows or []:
-        variant = str((row or {}).get("variant") or "").strip()
+        raw_variant = (row or {}).get("variant")
+        if raw_variant is None:
+            continue
+        variant = str(raw_variant).strip()
         if not variant:
             continue
         counts[variant] += 1

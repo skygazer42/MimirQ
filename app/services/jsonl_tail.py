@@ -33,7 +33,7 @@ def _decode_records(raw: bytes, *, log_message: str) -> list[dict[str, Any]]:
         return []
     records: list[dict[str, Any]] = []
     for line in text.splitlines():
-        item = (line or "").strip()
+        item = (line).strip()
         if not item:
             continue
         try:

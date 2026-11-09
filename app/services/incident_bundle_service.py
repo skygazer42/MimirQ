@@ -65,8 +65,8 @@ def write_incident_bundle_zip(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     bundle = IncidentBundle(
-        request_id=str(request_id or "").strip(),
-        base_url=str(base_url or "").strip(),
+        request_id=request_id.strip(),
+        base_url=base_url.strip(),
         tenant_id=(str(tenant_id).strip() if tenant_id else None),
         created_at=_utc_now_iso(),
         meta=meta if isinstance(meta, dict) else None,

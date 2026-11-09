@@ -19,8 +19,8 @@ def route_self_query(
     question: str,
     decision_text: str | None = None,
 ) -> SelfRouteResult:
-    raw_question = str(question or "").strip()
-    raw_decision = str(decision_text or "").strip().lower()
+    raw_question = question.strip()
+    raw_decision = decision_text.strip().lower() if decision_text is not None else None
 
     reason_codes: list[str] = []
     route = "rag"
@@ -38,7 +38,7 @@ def route_self_query(
 
     if not reason_codes:
         classified = classify_query_complexity(raw_question)
-        label = str(classified.get("label") or "")
+        label = classified["label"]
         if label == "multi_hop":
             route = "rag"
             retrieval_profile = PRODUCTION_RETRIEVAL_PROFILE
@@ -66,7 +66,11 @@ class SelfRouteWorkflow(BaseWorkflow):
         return WorkflowMode.ROUTING
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
-        question = str(state.get("question") or state.get("query") or "").strip()
+        question = state.get("question")
+        if question is None:
+            question = state.get("query")
+        if question is not None:
+            question = question.strip()
         if not question:
             return self.create_result(state, success=False, error="self_route_question_missing")
 

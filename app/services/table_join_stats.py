@@ -17,7 +17,9 @@ def build_join_statistics_snapshot(
     for raw in tables or []:
         if not isinstance(raw, dict):
             continue
-        tname = str(raw.get("table_name") or "").strip()
+        tname = raw.get("table_name")
+        if tname is not None:
+            tname = tname.strip()
         cols = raw.get("columns")
         if not tname or not isinstance(cols, list):
             continue

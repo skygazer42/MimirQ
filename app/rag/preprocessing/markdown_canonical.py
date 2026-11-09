@@ -54,7 +54,7 @@ def _split_blockquote_lead(line: str) -> tuple[str, str]:
 
     Implemented without regex so it stays linear-time and avoids backtracking hotspots.
     """
-    s = line or ""
+    s = line
     if not s:
         return "", ""
 
@@ -86,7 +86,7 @@ def _parse_code_fence(line: str) -> tuple[str, str, str] | None:
     Parse a fenced code marker line of the form:
       [ \\t]* ```+ <rest>
     """
-    s = line or ""
+    s = line
     if not s:
         return None
 
@@ -111,7 +111,7 @@ def _parse_heading(line: str) -> tuple[str, str, str] | None:
     Parse ATX headings (1-6 hashes), e.g.:
       '##Heading' or '##  Heading'
     """
-    s = line or ""
+    s = line
     if not s:
         return None
 
@@ -139,7 +139,7 @@ def _parse_heading(line: str) -> tuple[str, str, str] | None:
 
 
 def _parse_ulist(line: str) -> tuple[str, str] | None:
-    s = line or ""
+    s = line
     if not s:
         return None
 
@@ -161,7 +161,7 @@ def _parse_ulist(line: str) -> tuple[str, str] | None:
 
 
 def _parse_olist(line: str) -> tuple[str, str, str] | None:
-    s = line or ""
+    s = line
     if not s:
         return None
 
@@ -191,7 +191,7 @@ def _parse_olist(line: str) -> tuple[str, str, str] | None:
 
 
 def _is_indented_code_line(line: str) -> bool:
-    s = line or ""
+    s = line
     if len(s) < 2:
         return False
     if s[0] == "\t":
@@ -228,7 +228,7 @@ def _canonicalize_body_line(lead: str, body: str) -> _CanonicalLine:
     head = _parse_heading(body)
     if head is not None:
         indent, hashes, title = head
-        new_body = f"{indent}{hashes} {(title or '').rstrip()}"
+        new_body = f"{indent}{hashes} {title.rstrip()}"
         return _CanonicalLine(text=f"{lead}{new_body}", in_fence=False, headings_changed=int(new_body != body))
 
     unordered = _parse_ulist(body)

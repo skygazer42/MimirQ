@@ -11,13 +11,13 @@ class PromptCacheMetadata(TypedDict):
     provider_anthropic_compatible: bool
 
 
-def detect_anthropic_compatible(*, model_name: str, base_url: str) -> bool:
-    model_lower = str(model_name or "").strip().lower()
-    base_lower = str(base_url or "").strip().lower()
-    return model_lower.startswith("claude") or ("anthropic" in base_lower)
+def detect_anthropic_compatible(*, model_name: str, base_url: str | None) -> bool:
+    model_lower = model_name.strip().lower()
+    base_lower = base_url.strip().lower() if base_url is not None else None
+    return model_lower.startswith("claude") or (base_lower is not None and "anthropic" in base_lower)
 
 
-def message_content_to_text(content: Any) -> str:
+def message_content_to_text(content: Any) -> str | None:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -28,19 +28,19 @@ def message_content_to_text(content: Any) -> str:
                 continue
             if not isinstance(item, dict):
                 continue
-            if str(item.get("type") or "").strip().lower() != "text":
+            if item.get("type") != "text":
                 continue
-            parts.append(str(item.get("text") or ""))
+            parts.append(item["text"])
         return "".join(parts)
-    return str(content or "")
+    return str(content) if content is not None else None
 
 
 def should_cache_message(*, role: str, content: Any, anthropic_compatible: bool) -> bool:
-    if not settings.PROMPT_CACHE_ENABLED:
+    if content is None or not settings.PROMPT_CACHE_ENABLED:
         return False
     if not bool(anthropic_compatible):
         return False
-    role_norm = str(role or "").strip().lower()
+    role_norm = role.strip().lower()
     if role_norm in {"system", "developer"}:
         return True
     min_chars = settings.PROMPT_CACHE_MIN_CHARS
@@ -55,7 +55,7 @@ def annotate_prompt_cache_content(*, role: str, content: Any, anthropic_compatib
         annotated: list[Any] = []
         applied = False
         for item in content:
-            if isinstance(item, dict) and str(item.get("type") or "").strip().lower() == "text":
+            if isinstance(item, dict) and item.get("type") == "text":
                 updated = dict(item)
                 if not isinstance(updated.get("cache_control"), dict):
                     updated["cache_control"] = dict(_CACHE_CONTROL)
@@ -80,7 +80,7 @@ def annotate_openai_messages_for_prompt_cache(
     for message in messages:
         cloned = dict(message)
         annotated_content, applied = annotate_prompt_cache_content(
-            role=str(cloned.get("role") or ""),
+            role=cloned["role"],
             content=cloned.get("content"),
             anthropic_compatible=anthropic_compatible,
         )

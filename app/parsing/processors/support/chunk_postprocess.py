@@ -157,11 +157,11 @@ def _joined_text_total_characters(
     """Return the joined-text length used for persisted parsed content offsets."""
     if not documents:
         return 0
-    sep_len = len(join_separator or "")
+    sep_len = len(join_separator)
     total = 0
     last_index = len(documents) - 1
     for idx, doc in enumerate(documents):
-        total += len(doc.page_content or "")
+        total += len(doc.page_content)
         if idx < last_index:
             total += sep_len
     return total
@@ -192,7 +192,7 @@ def _build_page_start_offsets(
     *,
     join_separator: str,
 ) -> dict[int, int]:
-    sep_len = len(join_separator or "")
+    sep_len = len(join_separator)
     page_start: dict[int, int] = {}
     cursor = 0
     last_index = len(documents) - 1
@@ -202,7 +202,7 @@ def _build_page_start_offsets(
         # deterministic base we can preserve; later duplicates must not move
         # every chunk on that page to the final fragment's offset.
         page_start.setdefault(_document_page_index(doc, index), cursor)
-        cursor += len(doc.page_content or "")
+        cursor += len(doc.page_content)
         if index < last_index:
             cursor += sep_len
     return page_start
@@ -252,16 +252,16 @@ def _build_page_text_lookup(
     *,
     join_separator: str,
 ) -> tuple[dict[int, str], dict[int, int]]:
-    sep_len = len(join_separator or "")
+    sep_len = len(join_separator)
     page_text: dict[int, str] = {}
     page_base: dict[int, int] = {}
     cursor = 0
     last_index = len(documents) - 1
     for index, doc in enumerate(documents):
         page_index = _document_page_index(doc, index)
-        page_text.setdefault(page_index, doc.page_content or "")
+        page_text.setdefault(page_index, doc.page_content)
         page_base.setdefault(page_index, cursor)
-        cursor += len(doc.page_content or "")
+        cursor += len(doc.page_content)
         if index < last_index:
             cursor += sep_len
     return page_text, page_base
@@ -330,7 +330,7 @@ def _retrieval_text_for_merge(chunk: Document, meta: dict[str, Any]) -> str:
     retrieval_text = meta.get("_retrieval_text")
     if isinstance(retrieval_text, str) and retrieval_text.strip():
         return retrieval_text.strip()
-    return str(chunk.page_content or "").strip()
+    return str(chunk.page_content).strip()
 
 
 def _refresh_merged_chunk_content_metadata(
@@ -361,7 +361,7 @@ def _refresh_merged_chunk_content_metadata(
             if text
         ]
         meta["_retrieval_text"] = "\n\n".join(pieces)
-        meta["_retrieval_display_content"] = str(merged_content or "")
+        meta["_retrieval_display_content"] = merged_content
     else:
         meta.pop("_retrieval_text", None)
         meta.pop("_retrieval_display_content", None)
@@ -521,7 +521,7 @@ def _merge_small_chunks_by_min_chars(
         )
 
         mergeable = page_index is not None and page_index in page_text and _chunk_mergeable(c)
-        content_len = len((c.page_content or "").strip())
+        content_len = len((c.page_content).strip())
 
         if not mergeable:
             pending, pending_page = _append_unmergeable_chunk(out=out, chunk=c, pending=pending)

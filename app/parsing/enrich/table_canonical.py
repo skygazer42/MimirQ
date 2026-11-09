@@ -38,7 +38,7 @@ def profile_markdown_table(text: str) -> MarkdownTableProfile | None:
     if not any(header):
         return None
     sep = _split_markdown_row(lines[1])
-    if not sep or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in sep):
+    if not sep or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell) for cell in sep):
         return None
 
     row_count = 0
@@ -61,7 +61,7 @@ def extract_markdown_table(
         return None
     header = _split_markdown_row(lines[0])
     sep = _split_markdown_row(lines[1])
-    if not header or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in sep):
+    if not header or len(sep) != len(header) or not all(_MD_TABLE_SEP_CELL_RE.match(cell) for cell in sep):
         return None
 
     rows: list[list[str]] = []

@@ -5,7 +5,7 @@ from app.services.rag_metrics_dashboard import RagTraceBundle
 
 def _first_event(records: list[dict[str, Any]], event: str) -> dict[str, Any] | None:
     for record in records or []:
-        if str(record.get("event") or "") == event:
+        if record.get("event") == event:
             return record
     return None
 
@@ -25,8 +25,8 @@ def build_phoenix_trace_payload(bundle: RagTraceBundle) -> dict[str, Any]:
                 "start_time_ms": trace.get("ts_ms"),
                 "end_time_ms": None,
                 "attributes": {
-                    "retrieval.mode": str(retrieval.get("mode") or ""),
-                    "retrieval.profile": str(retrieval.get("profile") or ""),
+                    "retrieval.mode": retrieval.get("mode"),
+                    "retrieval.profile": retrieval.get("profile"),
                     "retrieval.top_k": int(retrieval.get("top_k") or 0),
                     "retrieval.elapsed_sec": float(retrieval.get("elapsed_sec") or 0.0),
                     "retrieval.citations_count": int(trace.get("citations_count") or 0),
@@ -40,8 +40,8 @@ def build_phoenix_trace_payload(bundle: RagTraceBundle) -> dict[str, Any]:
                 "start_time_ms": done.get("ts_ms"),
                 "end_time_ms": None,
                 "attributes": {
-                    "generation.route": str(done.get("route") or ""),
-                    "generation.model_used": str(done.get("model_used") or ""),
+                    "generation.route": done.get("route"),
+                    "generation.model_used": done.get("model_used"),
                     "generation.elapsed_sec": float(metrics.get("generation_elapsed_sec") or 0.0),
                     "generation.context_tokens": int(metrics.get("context_tokens") or 0),
                 },
@@ -50,7 +50,7 @@ def build_phoenix_trace_payload(bundle: RagTraceBundle) -> dict[str, Any]:
 
     return {
         "schema": "mimirq.phoenix_adapter.v1",
-        "request_id": str(bundle.request_id or ""),
+        "request_id": bundle.request_id,
         "spans": spans,
     }
 

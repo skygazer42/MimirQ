@@ -96,7 +96,7 @@ def _configured_logging_middleware() -> AgentExecutionLoggingMiddleware:
     return AgentExecutionLoggingMiddleware(
         enabled=settings.AGENT_LOG_ENABLED,
         include_execution_path=settings.AGENT_LOG_INCLUDE_EXECUTION_PATH,
-        max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS or 500,
+        max_preview_chars=settings.AGENT_LOG_MAX_PREVIEW_CHARS,
     )
 
 

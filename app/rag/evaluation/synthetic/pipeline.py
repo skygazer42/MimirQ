@@ -60,8 +60,8 @@ def generate_stage2_synthetic_dataset(
             continue
         generated.append(sample)
 
-    query_counts = Counter(str(row.get("query_type") or "") for row in generated)
-    source_counts = Counter(str(row.get("source_type") or "") for row in generated)
+    query_counts = Counter(row["query_type"] for row in generated)
+    source_counts = Counter(row["source_type"] for row in generated)
     critique_summary = {
         "attempted": attempted,
         "accepted": len(generated),

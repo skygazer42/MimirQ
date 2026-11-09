@@ -33,9 +33,11 @@ _SAFE_LABEL_RE = re.compile(r"[^a-z0-9._:-]+")
 
 
 def _safe_label(value: str | None, *, fallback: str) -> str:
-    s = str(value or "").strip().lower()
+    if value is None:
+        return fallback
+    s = value.strip().lower()
     s = _SAFE_LABEL_RE.sub("_", s)
-    s = (s[:64] or "").strip("_")
+    s = (s[:64]).strip("_")
     return s or fallback
 
 

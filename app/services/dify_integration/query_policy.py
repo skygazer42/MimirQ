@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from app.services.dify_integration.common import _first_nonempty_str
+
 from app.core.config import settings
 from app.services.dify_integration import policy_helpers
 from app.services.dify_integration.anchor_strength import _query_intent_terms as _query_intent_terms
@@ -64,7 +66,7 @@ def _question_anchor_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str,
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_helpers.retrieval_policy_for_plugin_ref(plugin_ref)
         for raw_term in _response_hint_string_list(policy, "question_intent_terms"):
-            term = str(raw_term or "").strip()
+            term = raw_term.strip()
             normalized = _normalize_match_term(term)
             if not term or not normalized or normalized in seen:
                 continue
@@ -74,7 +76,7 @@ def _question_anchor_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str,
 
 
 def _query_prefers_question_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return False
     if any(marker in text for marker in _QUESTION_ANCHOR_QUERY_MARKERS):
@@ -137,7 +139,7 @@ def _anchor_binding_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) 
         if isinstance(raw_anchor_fields, list | tuple):
             for raw in raw_anchor_fields:
                 raw_dict = dict(raw) if isinstance(raw, dict) else {}
-                field = str(raw_dict.get("metadata") or "").strip()
+                field = _first_nonempty_str(raw_dict.get("metadata"))
                 normalized = _normalize_match_term(field)
                 if normalized and field not in seen:
                     seen.add(field)
@@ -154,7 +156,7 @@ def _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs: tuple[str, ..
         "service_aliases",
     )
     for field in (*_EXACT_QUERY_ANCHOR_FIELDS, *anchor_fields):
-        text = str(field or "").strip()
+        text = field.strip()
         if text and text not in seen:
             seen.add(text)
             fields.append(text)
@@ -170,8 +172,8 @@ def _policy_slot_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
-            for raw_term in mapping.get("terms") or ():
-                term = str(raw_term or "").strip()
+            for raw_term in _metadata_terms(mapping.get("terms")):
+                term = raw_term.strip()
                 normalized = _normalize_match_term(term)
                 if len(normalized) < 3 or normalized in seen:
                     continue
@@ -188,7 +190,7 @@ def _metadata_anchor_preflight_block_terms_for_policy_refs(policy_plugin_refs: t
         if policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_term in _response_hint_string_list(policy, "metadata_anchor_preflight_block_terms"):
-            term = str(raw_term or "").strip()
+            term = raw_term.strip()
             normalized = _normalize_match_term(term)
             if not term or not normalized or normalized in seen:
                 continue
@@ -243,7 +245,7 @@ def _requested_policy_slot_specs_for_query(
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
-            field = str(mapping.get("metadata") or "").strip()
+            field = _first_nonempty_str(mapping.get("metadata"))
             if not field:
                 continue
             raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
@@ -254,7 +256,7 @@ def _requested_policy_slot_specs_for_query(
             if not any((normalized := _normalize_match_term(term)) and normalized in query_term for term in terms):
                 continue
             for raw_value in slot_values:
-                value = str(raw_value or "").strip()
+                value = raw_value.strip()
                 normalized_value = _normalize_match_term(value)
                 key = f"{field}\0{normalized_value}"
                 if not value or not normalized_value or key in seen:
@@ -289,7 +291,7 @@ def _query_allows_metadata_anchor_preflight(
             query_prefers_service_anchor
             and not _query_has_quoted_anchor_candidate(query)
             and any(
-                marker in str(query or "")
+                marker in query
                 for marker in ("合并回答", "一并回答", "一起回答", "分别回答", "分开回答", "请合并", "请分别")
             )
         ):
@@ -341,7 +343,7 @@ def _mixed_intent_subject_anchor(segment: str, *, policy_plugin_refs: tuple[str,
         return ""
     best_index = len(text)
     intent_markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)
-    for marker in sorted((str(item or "").strip() for item in intent_markers), key=len, reverse=True):
+    for marker in sorted((item.strip() for item in intent_markers), key=len, reverse=True):
         if not marker:
             continue
         index = text.find(marker)
@@ -365,7 +367,7 @@ def _mixed_intent_retrieval_queries(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    text = str(query or "").strip()
+    text = query.strip()
     if not _query_has_mixed_intent_for_policy(text, policy_plugin_refs=policy_plugin_refs):
         return ()
 
@@ -560,7 +562,7 @@ def _policy_slot_canonical_query_term(
     value: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> str:
-    normalized_field = str(field or "").strip()
+    normalized_field = field.strip()
     normalized_value = _normalize_match_term(value)
     if not normalized_field or not normalized_value:
         return ""
@@ -575,7 +577,7 @@ def _policy_slot_canonical_query_term(
         ]
         mappings.sort(key=lambda mapping: 1 if isinstance(mapping.get("values"), list | tuple | set) else 0)
         for mapping in mappings:
-            if str(mapping.get("metadata") or "").strip() != normalized_field:
+            if _first_nonempty_str(mapping.get("metadata")) != normalized_field:
                 continue
             raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
             values = raw_values or [mapping.get("value")]
@@ -583,7 +585,7 @@ def _policy_slot_canonical_query_term(
                 continue
             terms = tuple(_metadata_terms(mapping.get("terms")))
             return next((term for term in terms if len(_normalize_match_term(term)) >= 2), "")
-    return str(value or "").strip()
+    return value.strip()
 
 
 def _policy_slot_query_terms(
@@ -592,7 +594,7 @@ def _policy_slot_query_terms(
     value: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    normalized_field = str(field or "").strip()
+    normalized_field = field.strip()
     normalized_value = _normalize_match_term(value)
     if not normalized_field or not normalized_value:
         return ()
@@ -604,14 +606,14 @@ def _policy_slot_query_terms(
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
-            if str(mapping.get("metadata") or "").strip() != normalized_field:
+            if _first_nonempty_str(mapping.get("metadata")) != normalized_field:
                 continue
             raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
             values = raw_values or [mapping.get("value")]
             if normalized_value not in {_normalize_match_term(item) for item in values}:
                 continue
             for raw_term in (*_metadata_terms(mapping.get("terms")), value):
-                term = str(raw_term or "").strip()
+                term = raw_term.strip()
                 normalized = _normalize_match_term(term)
                 if len(normalized) < 2 or normalized in seen:
                     continue
@@ -627,7 +629,7 @@ def _mixed_intent_policy_slot_queries(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     segment_term = _normalize_match_term(segment)
-    subject = str(subject_anchor or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    subject = subject_anchor.strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
     if len(segment_term) < 3 or len(_normalize_match_term(subject)) < 3:
         return ()
 
@@ -661,7 +663,7 @@ def _policy_slot_canonical_terms_by_value(mappings: list[dict[str, Any]]) -> dic
     for mapping in mappings:
         if "values" in mapping:
             continue
-        value = str(mapping.get("value") or "").strip()
+        value = _first_nonempty_str(mapping.get("value"))
         if value:
             canonical_terms.setdefault(value, []).extend(_metadata_terms(mapping.get("terms")))
     return canonical_terms
@@ -678,7 +680,7 @@ def _append_mixed_intent_policy_slot_queries(
 ) -> None:
     raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
     for raw_value in raw_values or [mapping.get("value")]:
-        value = str(raw_value or "").strip()
+        value = _first_nonempty_str(raw_value)
         if not value:
             continue
         canonical_terms = canonical_terms_by_value.get(value, [])
@@ -700,7 +702,7 @@ def _append_mixed_intent_policy_slot_queries(
 
 
 def _mixed_intent_segment_has_intent_marker(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    text = str(segment or "").strip()
+    text = segment.strip()
     if not text:
         return False
     markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)

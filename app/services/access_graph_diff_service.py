@@ -31,8 +31,10 @@ _MEMBERSHIP_KINDS = {
 _SUPPORTED_KINDS = _FINGERPRINTED_KINDS | _MEMBERSHIP_KINDS
 
 
-def _norm_str(v: Any) -> str:
-    return str(v or "").strip()
+def _norm_str(v: Any) -> str | None:
+    if v is None:
+        return None
+    return str(v).strip()
 
 
 def _hash_or_fallback(obj: dict[str, Any], *, raw_key: str, hash_key: str) -> str | None:
@@ -46,7 +48,9 @@ def _hash_or_fallback(obj: dict[str, Any], *, raw_key: str, hash_key: str) -> st
 
 
 def _norm_access_mode(v: Any) -> str:
-    s = _norm_str(v).lower()
+    s = _norm_str(v)
+    if s is not None:
+        s = s.lower()
     if not s or s == "inherit":
         return "inherit"
     return s
@@ -156,7 +160,10 @@ _KIND_PARSERS = {
 
 
 def _parse_record(obj: dict[str, Any]) -> _ParsedRecord | None:
-    kind = _norm_str(obj.get("kind")).lower()
+    kind = _norm_str(obj.get("kind"))
+    if kind is None:
+        return None
+    kind = kind.lower()
     parser = _KIND_PARSERS.get(kind)
     if parser is None:
         return None

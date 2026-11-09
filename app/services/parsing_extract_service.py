@@ -5,12 +5,14 @@ from typing import Any
 from app.parsing.utils.scalars import coerce_float as _coerce_float
 
 
-def _normalize_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
+def _normalize_text(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
 
 
-def _normalize_kind(value: Any) -> str:
-    return str(value or "").strip().lower()
+def _normalize_kind(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip().lower()
 
 
 def _field_aliases(field_name: str, spec: Mapping[str, Any], prompt: str | None) -> list[str]:
@@ -40,23 +42,28 @@ def _field_aliases(field_name: str, spec: Mapping[str, Any], prompt: str | None)
     return out
 
 
-def _preferred_element_text(element: Mapping[str, Any]) -> str:
+def _preferred_element_text(element: Mapping[str, Any]) -> str | None:
     attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
     kind = _normalize_kind(element.get("kind"))
     if kind == "seal":
         primary = attrs.get("seal_primary") if isinstance(attrs.get("seal_primary"), Mapping) else {}
         for value in (attrs.get("seal_text"), primary.get("text"), element.get("text")):
+            if value is None:
+                continue
             text = _normalize_text(value)
             if text:
                 return text.removeprefix("印章识别：").strip()
-        return ""
+        return None
     if kind == "image":
         for value in (attrs.get("image_code_text"), element.get("text")):
+            if value is None:
+                continue
             text = _normalize_text(value)
             if text:
                 return text
-        return ""
-    return _normalize_text(element.get("text"))
+        return None
+    text = element.get("text")
+    return _normalize_text(text) if text is not None else None
 
 
 def _match_element(
@@ -222,7 +229,7 @@ def extract_parsing_fields(
     if mode_norm == "prompt" and not field_specs:
         field_specs = {"prompt_result": {"type": "string", "aliases": _field_aliases("prompt_result", {}, prompt)}}
 
-    source_markdown = str(markdown or "")
+    source_markdown = markdown
     source_elements = list(elements or [])
     results: dict[str, dict[str, Any]] = {}
     for field_name, raw_spec in field_specs.items():

@@ -23,7 +23,7 @@ class ParsingError(RuntimeError):
         super().__init__(message)
         self.code = str(code or "unknown")
         self.details: dict[str, Any] = dict(details or {})
-        self.log_tail = str(log_tail or "")
+        self.log_tail = log_tail
         self.retryable = bool(retryable)
 
 

@@ -83,7 +83,7 @@ def _render_sentence_citation_rows(
             break
         if not isinstance(item, dict):
             continue
-        claim = str(item.get("claim") or "").strip()
+        claim = item["claim"].strip()
         if not claim:
             continue
 
@@ -156,7 +156,7 @@ def render_sentence_citations_inline(
             break
         if not isinstance(item, dict):
             continue
-        claim = str(item.get("claim") or "").strip()
+        claim = item["claim"].strip()
         if not claim:
             continue
 

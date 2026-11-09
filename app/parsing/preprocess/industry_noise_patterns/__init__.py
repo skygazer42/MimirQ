@@ -15,7 +15,7 @@ def list_industry_noise_profiles() -> list[str]:
 
 
 def get_industry_noise_rules(profile: str) -> list[RegexRule]:
-    key = str(profile or "").strip().lower()
+    key = profile.strip().lower()
     rules = _REGISTRY.get(key)
     if rules is None:
         raise ValueError(f"unsupported industry noise profile: {key or '<empty>'}")

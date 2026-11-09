@@ -35,7 +35,7 @@ _EVENT_LINE_RE = re.compile(
 
 
 def _iter_events(text: str) -> list[_Event]:
-    matches = list(_EVENT_LINE_RE.finditer(text or ""))
+    matches = list(_EVENT_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
 
@@ -43,9 +43,9 @@ def _iter_events(text: str) -> list[_Event]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        date = (m.group("date") or "").strip()
+        date = (m.group("date")).strip()
         time = (m.group("time") or "").strip() or None
-        rest = (m.group("rest") or "").strip()
+        rest = (m.group("rest")).strip()
         preview = rest.splitlines()[0].strip() if rest else None
         if preview and len(preview) > 120:
             preview = preview[:117].rstrip() + "..."
@@ -154,7 +154,7 @@ class TimelineEventsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

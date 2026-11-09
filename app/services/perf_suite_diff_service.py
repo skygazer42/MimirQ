@@ -71,7 +71,8 @@ def _cases_by_name(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
     for row in raw:
         if not isinstance(row, dict):
             continue
-        name = str(row.get("name") or "").strip()
+        raw_name = row.get("name")
+        name = str(raw_name).strip() if raw_name is not None else None
         if not name:
             continue
         out[name] = row
@@ -143,8 +144,8 @@ def diff_perf_suite_reports(
 
     return {
         "schema": PERF_SUITE_DIFF_SCHEMA_V1,
-        "baseline_suite": str((baseline or {}).get("suite") or ""),
-        "current_suite": str((current or {}).get("suite") or ""),
+        "baseline_suite": baseline.get("suite"),
+        "current_suite": current.get("suite"),
         "policy_schema": str((policy or {}).get("schema") or PERF_REGRESSION_POLICY_SCHEMA_V1),
         "strict_gate": strict_gate,
         "cases": cases_out,

@@ -94,7 +94,7 @@ def compute_chunking_stats_from_texts(
     dup_count = 0
 
     for raw in texts:
-        text = str(raw or "").strip()
+        text = raw.strip()
         if not text:
             continue
         lengths.append(len(text))
@@ -130,7 +130,7 @@ def compute_chunking_stats_from_texts_tokens(
     dup_count = 0
 
     for raw in texts:
-        text = str(raw or "").strip()
+        text = raw.strip()
         if not text:
             continue
         lengths.append(estimate_tokens(text))

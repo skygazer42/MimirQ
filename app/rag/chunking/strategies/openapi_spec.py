@@ -34,15 +34,15 @@ _METHOD_RE = re.compile(r"^\s*(get|post|put|delete|patch|options|head|trace)\s*:
 
 
 def _find_paths_anchor(text: str) -> tuple[int, int] | None:
-    m = _PATHS_RE.search(text or "")
+    m = _PATHS_RE.search(text)
     if not m:
         return None
-    indent = len(m.group("indent") or "")
+    indent = len(m.group("indent"))
     return m.start(), indent
 
 
 def _extract_version(text: str) -> str | None:
-    head = (text or "")[:8000]
+    head = (text)[:8000]
     m = _OPENAPI_RE.search(head)
     if m:
         return m.group("val").strip()[:40]
@@ -85,7 +85,7 @@ def _extract_methods(block_text: str) -> list[str]:
         m = _METHOD_RE.match(ln.strip())
         if not m:
             continue
-        meth = (m.group(1) or "").upper()
+        meth = (m.group(1)).upper()
         if meth and meth not in methods:
             methods.append(meth)
     return methods
@@ -215,7 +215,7 @@ class OpenAPISpecChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

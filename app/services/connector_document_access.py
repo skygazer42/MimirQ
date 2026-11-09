@@ -116,7 +116,7 @@ def _apply_document_access_from_config(
 
     try:
         doc.access_mode = None if access_mode == "inherit" else access_mode
-        if not (doc.owner_id or "").strip():
+        if doc.owner_id is None or not doc.owner_id.strip():
             doc.owner_id = requested_by
 
         if access_mode == "partial_members":
@@ -162,7 +162,7 @@ def _delta_sync_connector_documents_acl_by_source_url(
 ) -> int:
     if dataset_id is None:
         return 0
-    source_url = str(source_url or "").strip()
+    source_url = source_url.strip()
     if not source_url:
         return 0
 
@@ -177,7 +177,7 @@ def _delta_sync_connector_documents_acl_by_source_url(
             DBDocument.disabled_at.is_(None),
             ConnectorRun.tenant_id == tenant_id,
             ConnectorRun.dataset_id == dataset_id,
-            ConnectorRun.connector_id == str(connector_id or "").strip(),
+            ConnectorRun.connector_id == connector_id.strip(),
         )
         .filter(DBDocument.doc_metadata["source_url"].astext == source_url)  # type: ignore[attr-defined]
         .distinct()
@@ -224,7 +224,7 @@ def _soft_disable_connector_documents_by_source_url(
 ) -> int:
     if dataset_id is None:
         return 0
-    source_url = str(source_url or "").strip()
+    source_url = source_url.strip()
     if not source_url:
         return 0
 
@@ -239,7 +239,7 @@ def _soft_disable_connector_documents_by_source_url(
             DBDocument.disabled_at.is_(None),
             ConnectorRun.tenant_id == tenant_id,
             ConnectorRun.dataset_id == dataset_id,
-            ConnectorRun.connector_id == str(connector_id or "").strip(),
+            ConnectorRun.connector_id == connector_id.strip(),
         )
         .filter(DBDocument.doc_metadata["source_url"].astext == source_url)  # type: ignore[attr-defined]
         .distinct()
@@ -275,7 +275,7 @@ def _soft_disable_connector_documents_by_source_ref(
 ) -> int:
     if dataset_id is None:
         return 0
-    source_ref = str(source_ref or "").strip()
+    source_ref = source_ref.strip()
     if not source_ref:
         return 0
 
@@ -290,7 +290,7 @@ def _soft_disable_connector_documents_by_source_ref(
             DBDocument.disabled_at.is_(None),
             ConnectorRun.tenant_id == tenant_id,
             ConnectorRun.dataset_id == dataset_id,
-            ConnectorRun.connector_id == str(connector_id or "").strip(),
+            ConnectorRun.connector_id == connector_id.strip(),
             ConnectorRunDocument.source_ref == source_ref,
         )
         .distinct()
@@ -374,10 +374,10 @@ def _delta_sync_confluence_documents_acl_by_page_id(
             metadata = document.doc_metadata if isinstance(document.doc_metadata, dict) else {}
             connector = metadata.get("connector") if isinstance(metadata.get("connector"), dict) else {}
             if (
-                str(connector.get("connector_id") or "") != "confluence_space"
-                or str(connector.get("base_url") or "") != normalized_base_url
-                or str(connector.get("space_key") or "") != normalized_space_key
-                or str(connector.get("page_id") or "") != normalized_page_id
+                connector.get("connector_id") != "confluence_space"
+                or connector.get("base_url") != normalized_base_url
+                or connector.get("space_key") != normalized_space_key
+                or connector.get("page_id") != normalized_page_id
             ):
                 continue
             _apply_document_access_from_config(
@@ -407,10 +407,10 @@ def _normalize_jira_issue_scope(
 ) -> tuple[UUID, str, str, str, set[str]] | None:
     if dataset_id is None:
         return None
-    normalized_base_url = str(base_url or "").strip().rstrip("/")
-    normalized_project_key = str(project_key or "").strip().upper()
-    normalized_issue_url = str(issue_url or "").strip()
-    normalized_seen_urls = {str(url or "").strip() for url in (seen_urls or set()) if str(url or "").strip()}
+    normalized_base_url = base_url.strip().rstrip("/")
+    normalized_project_key = project_key.strip().upper()
+    normalized_issue_url = issue_url.strip()
+    normalized_seen_urls = {url.strip() for url in (seen_urls or set()) if url.strip()}
     if not normalized_base_url or not normalized_project_key or not normalized_issue_url:
         return None
     return dataset_id, normalized_base_url, normalized_project_key, normalized_issue_url, normalized_seen_urls
@@ -430,15 +430,18 @@ def _jira_issue_connector_matches(
     issue_url: str,
     doc_kind: str | None = None,
 ) -> bool:
-    if str(conn.get("connector_id") or "") != "jira_project":
+    if conn.get("connector_id") != "jira_project":
         return False
-    if doc_kind is not None and str(conn.get("doc_kind") or "") != doc_kind:
+    if doc_kind is not None and conn.get("doc_kind") != doc_kind:
         return False
-    if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+    stored_base_url = conn.get("base_url")
+    if stored_base_url is None or stored_base_url.strip().rstrip("/") != base_url:
         return False
-    if str(conn.get("project_key") or "").strip().upper() != project_key:
+    stored_project_key = conn.get("project_key")
+    if stored_project_key is None or stored_project_key.strip().upper() != project_key:
         return False
-    return str(conn.get("issue_url") or "").strip() == issue_url
+    stored_issue_url = conn.get("issue_url")
+    return stored_issue_url is not None and stored_issue_url.strip() == issue_url
 
 
 def _recent_active_dataset_documents(
@@ -559,7 +562,11 @@ def _disable_missing_jira_issue_documents(
     disabled = 0
     for doc in docs:
         meta, conn = _connector_metadata(doc)
-        resource_url = str(conn.get(url_field) or meta.get("source_url") or "").strip()
+        resource_url = conn.get(url_field)
+        if resource_url is None:
+            resource_url = meta.get("source_url")
+        if resource_url is not None:
+            resource_url = resource_url.strip()
         if not resource_url or resource_url in seen_urls:
             continue
         if getattr(doc, "disabled_at", None) is None:

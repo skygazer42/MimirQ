@@ -69,7 +69,7 @@ def _parse_yaml_kv_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or s.startswith("#") or ":" not in s:
         return None
     key_raw, rest = s.split(":", 1)
@@ -96,7 +96,7 @@ def _parse_yaml_kv_line(line: str) -> tuple[str, str] | None:
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -126,7 +126,7 @@ def _extract_doc_meta(doc_text: str) -> tuple[str | None, str | None, str | None
         if meta_indent is None:
             mm = _METADATA_RE.match(ln.plain)
             if mm:
-                meta_indent = len(mm.group("indent") or "")
+                meta_indent = len(mm.group("indent"))
             continue
         if not ln.plain.strip() or ln.plain.lstrip().startswith("#"):
             continue
@@ -197,7 +197,7 @@ def _looks_like_yaml_from_doc_separators(head: str) -> bool:
 
 
 def _looks_like_structured_yaml(text: str) -> bool:
-    raw_lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    raw_lines = [ln for ln in (text).splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if len(raw_lines) < 8:
         return False
 
@@ -273,7 +273,7 @@ class YAMLManifestChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -84,7 +84,7 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _member_role(member: TenantMember) -> str:
-    return (member.role or "").strip().lower()
+    return (member.role).strip().lower()
 
 
 def _can_view_redacted_sql_role(role: str) -> bool:
@@ -99,7 +99,7 @@ def _should_redact_table_rows_role(role: str) -> bool:
 
 
 def _redact_table_text(text: str) -> str:
-    s = text or ""
+    s = text
     if not s:
         return s
 
@@ -149,7 +149,7 @@ def _redact_sample_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _short_sql_hash(sql: str) -> str:
-    raw = (sql or "").encode("utf-8", "ignore")
+    raw = (sql).encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
@@ -175,7 +175,7 @@ def _audit_table_query(
                 "dataset_id": str(dataset_id),
                 "table_id": str(table_id),
                 "sql_hash": _short_sql_hash(sql),
-                "sql_chars": len(str(sql or "")),
+                "sql_chars": len(sql),
                 "sql_redacted": redacted_sql,
             },
         )
@@ -204,7 +204,7 @@ def _audit_fls_redaction(
     try:
         payload: dict[str, Any] = {
             "dataset_id": str(dataset_id),
-            "source": str(source or "")[:64],
+            "source": source[:64],
         }
         payload.update(dict((details if details is not None else {})))
         audit_log_event(
@@ -212,8 +212,8 @@ def _audit_fls_redaction(
             tenant_id=tenant_id,
             actor_id=account_id,
             action="fls.redaction_applied",
-            resource_type=str(resource_type or "")[:64] if resource_type else None,
-            resource_id=str(resource_id or "")[:255] if resource_id else None,
+            resource_type=resource_type[:64] if resource_type else None,
+            resource_id=resource_id[:255] if resource_id else None,
             details=payload,
         )
     except Exception:  # noqa: BLE001 - FLS audit must not block redaction enforcement
@@ -247,7 +247,10 @@ def _table_columns_payload(table_meta: dict[str, Any], *, include_columns: bool)
     for column in table_meta.get("columns") or []:
         if not isinstance(column, dict):
             continue
-        name = str(column.get("name") or "").strip()
+        raw_name = column.get("name")
+        if raw_name is None:
+            continue
+        name = raw_name.strip()
         if not name:
             continue
         cols_payload.append(
@@ -282,7 +285,7 @@ def _table_asset_from_metadata(
     sample_rows: list[dict[str, Any]],
 ) -> TableAssetOut:
     return TableAssetOut(
-        table_id=str(table_meta.get("table_id") or "").strip(),
+        table_id=table_meta["table_id"].strip(),
         document_id=doc.id,
         document_filename=doc.filename,
         sheet_index=int(table_meta.get("sheet_index") or parsed_table_id.sheet_index),
@@ -315,7 +318,7 @@ def _sample_row_columns(sample_rows: list[dict[str, Any]]) -> list[str]:
         if not isinstance(row, dict):
             continue
         for key in row.keys():
-            name = str(key or "")
+            name = str(key)
             if not name or name in seen_cols:
                 continue
             seen_cols.add(name)
@@ -415,7 +418,8 @@ def _table_schema_for_table_id(
     for table_meta in tables:
         if not isinstance(table_meta, dict):
             continue
-        if str(table_meta.get("table_id") or "").strip() != table_id:
+        raw_table_id = table_meta.get("table_id")
+        if raw_table_id is None or raw_table_id.strip() != table_id:
             continue
         columns = [c for c in (table_meta.get("columns") or []) if isinstance(c, dict)]
         sample_rows = [r for r in (table_meta.get("sample_rows") or []) if isinstance(r, dict)]
@@ -496,12 +500,12 @@ def _generate_table_ask_sql_bundle(
     sql_fingerprint = ""
     try:
         sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
-            question=(body.question or ""),
+            question=(body.question),
             sql_table=sql_table,
             columns=columns,
             max_rows=max_rows,
             sample_rows=sample_rows,
-            table_aliases=[str(table_id), doc.filename, str((sheet_name if sheet_name is not None else ""))],
+            table_aliases=[str(table_id), doc.filename] + ([sheet_name] if sheet_name is not None else []),
         )
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=400, detail=f"nl2sql_failed: {str(exc)[:200]}") from exc
@@ -553,12 +557,8 @@ def _ensure_lotus_sem_filter_enabled() -> None:
 
 
 def _lotus_input_limits() -> tuple[int, int]:
-    max_in_rows = min(
-        (settings.TABLE_LOTUS_MAX_ROWS or 20_000),
-        (settings.TABLE_SEM_FILTER_MAX_IN_ROWS or 2000),
-        100_000,
-    )
-    max_in_cols = settings.TABLE_SEM_FILTER_MAX_COLS or 30
+    max_in_rows = min(settings.TABLE_LOTUS_MAX_ROWS, settings.TABLE_SEM_FILTER_MAX_IN_ROWS, 100000)
+    max_in_cols = settings.TABLE_SEM_FILTER_MAX_COLS
     return max_in_rows, max_in_cols
 
 
@@ -566,7 +566,7 @@ def _lotus_select_query(conn: sqlite3.Connection, *, sql_table_q: str, max_in_ro
     cols: list[str] = []
     try:
         cur = conn.execute(f"PRAGMA table_info({sql_table_q})")
-        cols = [str(row[1]) for row in cur.fetchall() if row and len(row) > 1 and str(row[1] or "").strip()]
+        cols = [str(row[1]) for row in cur.fetchall() if row and len(row) > 1 and row[1].strip()]
     except Exception:
         cols = []
     if max_in_cols > 0 and cols:
@@ -690,7 +690,7 @@ def _lotus_fallback_query_response(
             status_code=400,
             detail=f"LOTUS unavailable: {(avail_reason)} (and TABLE_NL2SQL_ENABLED=false)",
         )
-    prompt_q = f"Filter rows that match: {(body.user_instruction or '').strip()}. Return the matching rows."
+    prompt_q = f"Filter rows that match: {(body.user_instruction).strip()}. Return the matching rows."
     try:
         sql = generate_sql_for_table(
             question=prompt_q,
@@ -706,8 +706,8 @@ def _lotus_fallback_query_response(
         table_id=table_id,
         sql=sql,
         max_rows=output_rows,
-        max_cols=(settings.TABLE_QUERY_MAX_COLS or 200),
-        max_bytes=(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
+        max_cols=settings.TABLE_QUERY_MAX_COLS,
+        max_bytes=settings.TABLE_QUERY_MAX_BYTES,
     )
     payload = _maybe_redact_query_rows(dict(payload), redact_rows=redact_rows)
     payload = _mask_table_query_rows(
@@ -744,7 +744,10 @@ def _extract_table_assets(
     for table_meta in tables:
         if not isinstance(table_meta, dict):
             continue
-        table_id = str(table_meta.get("table_id") or "").strip()
+        raw_table_id = table_meta.get("table_id")
+        if raw_table_id is None:
+            continue
+        table_id = raw_table_id.strip()
         parsed = parse_table_id(table_id)
         if parsed is None:
             continue
@@ -963,10 +966,10 @@ def preview_dataset_table(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         table_id=table_id,
-        sql=f"SELECT * FROM {sql_table_q}",  # noqa: S608 - SQL identifiers are quoted/validated; values stay parameterized.
-        max_rows=min(limit, (settings.TABLE_QUERY_MAX_ROWS or 200)),
-        max_cols=(settings.TABLE_QUERY_MAX_COLS or 200),
-        max_bytes=(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
+        sql=f"SELECT * FROM {sql_table_q}",
+        max_rows=min(limit, settings.TABLE_QUERY_MAX_ROWS),
+        max_cols=settings.TABLE_QUERY_MAX_COLS,
+        max_bytes=settings.TABLE_QUERY_MAX_BYTES,
     )
     if redact_rows:
         payload = dict(payload)
@@ -1016,19 +1019,19 @@ def query_dataset_table(
 
     filter_allowed_document_ids(db, tenant_id, account_id, [parsed.document_id])
 
-    max_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200
-    max_cols = body.max_cols or settings.TABLE_QUERY_MAX_COLS or 200
+    max_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS
+    max_cols = body.max_cols or settings.TABLE_QUERY_MAX_COLS
 
     payload = run_table_query(
         tenant_id=tenant_id,
         dataset_id=dataset_id,
         table_id=table_id,
-        sql=(body.sql or ""),
-        max_rows=min(max_rows, (settings.TABLE_QUERY_MAX_ROWS or 200)),
-        max_cols=min(max_cols, (settings.TABLE_QUERY_MAX_COLS or 200)),
-        max_bytes=(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
+        sql=body.sql,
+        max_rows=min(max_rows, settings.TABLE_QUERY_MAX_ROWS),
+        max_cols=min(max_cols, settings.TABLE_QUERY_MAX_COLS),
+        max_bytes=settings.TABLE_QUERY_MAX_BYTES,
     )
-    raw_sql = str(payload.get("sql") or body.sql or "")
+    raw_sql = payload["sql"]
     _audit_table_query(
         db=db,
         tenant_id=tenant_id,
@@ -1098,8 +1101,8 @@ def ask_dataset_table(
     columns, sample_rows, sheet_name = _table_schema_for_table_id(doc, table_id=table_id)
 
     sql_table = sql_table_name_for_sheet(parsed.sheet_index)
-    max_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200
-    max_rows = min(max_rows, (settings.TABLE_QUERY_MAX_ROWS or 200))
+    max_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS
+    max_rows = min(max_rows, settings.TABLE_QUERY_MAX_ROWS)
 
     (
         sql,
@@ -1125,8 +1128,8 @@ def ask_dataset_table(
         table_id=table_id,
         sql=sql,
         max_rows=max_rows,
-        max_cols=(settings.TABLE_QUERY_MAX_COLS or 200),
-        max_bytes=(settings.TABLE_QUERY_MAX_BYTES or 1_000_000),
+        max_cols=settings.TABLE_QUERY_MAX_COLS,
+        max_bytes=settings.TABLE_QUERY_MAX_BYTES,
         planner_diagnostics=planner_diagnostics,
         expected_sql_fingerprint=sql_fingerprint,
     )
@@ -1155,12 +1158,12 @@ def ask_dataset_table(
         table_id=table_id,
     )
     answer = _generate_table_answer(
-        question=(body.question or ""),
+        question=(body.question),
         sql=str(data_payload.get("sql") or sql),
         result=data_payload,
     )
 
-    raw_sql = str(result.get("sql") or sql or "")
+    raw_sql = result["sql"]
     _audit_table_query(
         db=db,
         tenant_id=tenant_id,
@@ -1228,8 +1231,8 @@ def lotus_sem_filter_dataset_table(
 
     sql_table = sql_table_name_for_sheet(parsed.sheet_index)
     sql_table_q = quote_sqlite_ident(sql_table)
-    output_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS or 200
-    output_rows = min(output_rows, (settings.TABLE_QUERY_MAX_ROWS or 200))
+    output_rows = body.max_rows or settings.TABLE_QUERY_MAX_ROWS
+    output_rows = min(output_rows, settings.TABLE_QUERY_MAX_ROWS)
 
     avail = get_lotus_availability()
     if avail.ok:
@@ -1244,7 +1247,7 @@ def lotus_sem_filter_dataset_table(
             )
             filtered = lotus_sem_filter(
                 df,
-                user_instruction=(body.user_instruction or ""),
+                user_instruction=(body.user_instruction),
                 strategy=(body.strategy or "cot"),
             )
         except Exception as exc:  # noqa: BLE001

@@ -5,7 +5,7 @@ from app.rag.preprocessing.secrets import find_secret_matches, redact_secrets
 
 
 def _mask_pii_value(kind: str, text: str) -> str:
-    value = str(text or "")
+    value = text
     if kind == "email" and "@" in value:
         left, right = value.split("@", 1)
         return f"{left[:3]}****@{right}"
@@ -15,7 +15,7 @@ def _mask_pii_value(kind: str, text: str) -> str:
 
 
 def _mask_secret_value(kind: str, text: str) -> str:
-    value = str(text or "")
+    value = text
     if kind == "openai_key" and value.startswith("sk-"):
         return "sk-****"
     if len(value) <= 8:
@@ -31,7 +31,7 @@ def collect_sensitive_review_samples(
     max_pii_samples: int = 10,
     max_secret_samples: int = 10,
 ) -> dict[str, Any]:
-    raw = str(text or "")
+    raw = text
     pii_context_chars = max(0, min(int(pii_context_chars or 0), 500))
     secrets_context_chars = max(0, min(int(secrets_context_chars or 0), 500))
 

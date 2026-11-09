@@ -54,7 +54,7 @@ def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
 
 def _derive_template_key(name: str) -> str:
     """Derive a stable key from name (avoid empty keys)."""
-    raw = (name or "").strip().lower()
+    raw = (name).strip().lower()
     if not raw:
         return "template"
     buf = []

@@ -22,7 +22,7 @@ _SAFE_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-:.]{0,127}$")
 
 
 def _normalize_request_id(raw: str | None) -> str:
-    value = (raw if raw is not None else "").strip()
+    value = raw.strip() if raw is not None else None
     if not value:
         return uuid.uuid4().hex
     # Guard against header injection / unbounded values.
@@ -42,17 +42,21 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         state_token = bind_request_state(request.state)
 
         tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
-        tenant_id = request.headers.get(tenant_header, "").strip()
+        tenant_id = request.headers.get(tenant_header)
+        if tenant_id is not None:
+            tenant_id = tenant_id.strip()
         if not tenant_id and tenant_header.lower() != "x-tenant-id":
-            tenant_id = request.headers.get("X-Tenant-ID", "").strip()
+            tenant_id = request.headers.get("X-Tenant-ID")
 
         # Security: when AUTH_MODE=jwt, do not trust X-User-ID (spoofable) for logging context.
-        user_id = ""
+        context = {"request_id": request_id, "route": request.url.path}
+        if tenant_id is not None:
+            context["tenant_id"] = tenant_id.strip()
         if settings.AUTH_MODE == "header":
-            user_id = request.headers.get("X-User-ID", "").strip()
-        tokens = bind_request_context(
-            request_id=request_id, tenant_id=tenant_id, user_id=user_id, route=request.url.path
-        )
+            user_id = request.headers.get("X-User-ID")
+            if user_id is not None:
+                context["user_id"] = user_id.strip()
+        tokens = bind_request_context(**context)
         try:
             response = await call_next(request)
         finally:

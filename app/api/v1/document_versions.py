@@ -10,6 +10,7 @@ from app.api.dependencies.auth import get_current_account_id
 from app.api.dependencies.tenant import get_tenant_id
 from app.api.schemas.document import DocumentDetail, DocumentVersionDiff, DocumentVersionList
 from app.core.database import get_db
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
@@ -54,7 +55,7 @@ def _get_version_document_or_404(*, db: Session, tenant_id: UUID, document_id: U
 
 
 def _normalize_pipeline_hash(pipeline_hash: str, *, required_detail: str) -> str:
-    pipeline_hash_norm = str(pipeline_hash or "").strip()
+    pipeline_hash_norm = pipeline_hash.strip()
     if not pipeline_hash_norm:
         raise HTTPException(status_code=400, detail=required_detail)
     if len(pipeline_hash_norm) > 64:
@@ -126,9 +127,11 @@ def _load_version_signatures(
     out: list[str] = []
     for chunk_id, meta in rows:
         metadata = meta if isinstance(meta, dict) else {}
-        if str(metadata.get("doc_pipeline_key") or "").strip() != target_key:
+        if metadata.get("doc_pipeline_key") != target_key:
             continue
-        content_hash = str(metadata.get("content_hash") or "").strip()
+        content_hash = metadata.get("content_hash")
+        if content_hash is not None:
+            content_hash = content_hash.strip()
         out.append(content_hash or f"id:{chunk_id}")
     return out
 
@@ -156,7 +159,7 @@ def _changed_transform_keys(*, from_prov: dict[str, object] | None, to_prov: dic
     for key in sorted(set(from_transforms.keys()) | set(to_transforms.keys())):
         from_transform = from_transforms.get(key) if isinstance(from_transforms.get(key), dict) else {}
         to_transform = to_transforms.get(key) if isinstance(to_transforms.get(key), dict) else {}
-        if str(from_transform.get("hash") or "").strip() != str(to_transform.get("hash") or "").strip():
+        if from_transform.get("hash") != to_transform.get("hash"):
             changed.append(str(key)[:64])
     return changed
 
@@ -191,8 +194,7 @@ def _load_version_chunk_ids(
         return [
             chunk_id
             for chunk_id, chunk_meta in rows
-            if str((chunk_meta if isinstance(chunk_meta, dict) else {}).get("doc_pipeline_key") or "").strip()
-            == target_key
+            if (chunk_meta if isinstance(chunk_meta, dict) else {}).get("doc_pipeline_key") == target_key
         ]
 
 
@@ -251,12 +253,12 @@ def list_document_versions(
             .all()
         )
         for pipeline_hash, doc_pipeline_key, cnt, first_at, last_at in rows:
-            pipeline_hash_norm = str(pipeline_hash or "").strip()
-            key = str(doc_pipeline_key or "").strip() or (
-                f"{document_id}:{pipeline_hash_norm}" if pipeline_hash_norm else str(document_id)
-            )
+            pipeline_hash_norm = pipeline_hash.strip() if pipeline_hash is not None else None
             if not pipeline_hash_norm:
                 continue
+            key = doc_pipeline_key.strip() if doc_pipeline_key is not None else None
+            if not key:
+                key = f"{document_id}:{pipeline_hash_norm}"
             items.append(
                 {
                     "pipeline_hash": pipeline_hash_norm,
@@ -276,10 +278,16 @@ def list_document_versions(
         by_key: dict[str, _DocumentVersionEntry] = {}
         for meta, created_at in rows:
             metadata = meta if isinstance(meta, dict) else {}
-            pipeline_hash_norm = str(metadata.get("pipeline_hash") or "").strip()
+            pipeline_hash_norm = metadata.get("pipeline_hash")
+            if pipeline_hash_norm is not None:
+                pipeline_hash_norm = pipeline_hash_norm.strip()
             if not pipeline_hash_norm:
                 continue
-            key = str(metadata.get("doc_pipeline_key") or "").strip() or f"{document_id}:{pipeline_hash_norm}"
+            key = metadata.get("doc_pipeline_key")
+            if key is not None:
+                key = key.strip()
+            if not key:
+                key = f"{document_id}:{pipeline_hash_norm}"
             entry = by_key.get(key) or {
                 "pipeline_hash": pipeline_hash_norm,
                 "doc_pipeline_key": key,
@@ -529,13 +537,15 @@ def delete_document_version(
         document=document,
     )
     pipeline_hash_norm = _normalize_pipeline_hash(pipeline_hash, required_detail="pipeline_hash is required")
-    doc_status = (document.status or "").lower()
+    doc_status = (document.status).lower()
     meta = dict(document.doc_metadata or {})
-    current_hash = str(meta.get("pipeline_hash") or "").strip()
+    current_hash = meta.get("pipeline_hash")
+    if current_hash is not None:
+        current_hash = current_hash.strip()
     if doc_status in {"pending", "processing"} and current_hash == pipeline_hash_norm:
         raise HTTPException(status_code=409, detail="Cannot delete the current in-progress pipeline version")
 
-    active_hash = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
+    active_hash = get_active_pipeline_hash(meta)
     if active_hash and pipeline_hash_norm == active_hash:
         raise HTTPException(
             status_code=409, detail="Cannot delete the active pipeline version (activate another first)"

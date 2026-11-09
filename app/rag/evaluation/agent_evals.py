@@ -241,7 +241,7 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
             return EvaluationScore(
                 metric=self.metric,
                 score=float(result.get("score", 0.5)),
-                explanation=result.get("explanation", ""),
+                explanation=result["explanation"],
             )
         except Exception as e:
             logger.exception("LLM faithfulness evaluation failed: %s", e)
@@ -351,7 +351,7 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
             return EvaluationScore(
                 metric=self.metric,
                 score=float(result.get("score", 0.5)),
-                explanation=result.get("explanation", ""),
+                explanation=result["explanation"],
             )
         except Exception as e:
             logger.exception("LLM relevance evaluation failed: %s", e)
@@ -505,7 +505,7 @@ Respond with JSON: {{"score": <float>, "explanation": "<string>"}}
             return EvaluationScore(
                 metric=self.metric,
                 score=float(result.get("score", 0.5)),
-                explanation=result.get("explanation", ""),
+                explanation=result["explanation"],
             )
         except Exception as e:
             logger.exception("LLM correctness evaluation failed: %s", e)
@@ -750,8 +750,8 @@ class RAGEvaluator:
 
         for sample in samples:
             result = await self.evaluate(
-                question=sample.get("question", ""),
-                answer=sample.get("answer", ""),
+                question=sample["question"],
+                answer=sample["answer"],
                 contexts=sample.get("contexts"),
                 ground_truth=sample.get("ground_truth"),
                 trajectory=sample.get("trajectory"),

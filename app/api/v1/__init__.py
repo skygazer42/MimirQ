@@ -128,7 +128,7 @@ def __getattr__(name: str) -> APIRouter | ModuleType:
         mod = import_module(f"{__name__}.{name}")
     except ModuleNotFoundError as exc:
         # Only translate to AttributeError when the *submodule itself* is missing.
-        if (exc.name or "") in {f"{__name__}.{name}", name}:
+        if (exc.name) in {f"{__name__}.{name}", name}:
             raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
         raise
 

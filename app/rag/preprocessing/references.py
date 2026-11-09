@@ -36,7 +36,7 @@ _CITATION_TOKEN_RE = re.compile(r"(?:^|\s)(?:\[\d{1,4}\]|\d{1,4}[.)]|\u3010\d{1,
 
 
 def _normalized_heading_title(line: str) -> str:
-    stripped = (line or "").strip()
+    stripped = (line).strip()
     parsed_heading = parse_markdown_hash_heading(stripped)
     if parsed_heading is None:
         return stripped
@@ -60,7 +60,7 @@ def _find_reference_heading_index(
 ) -> int | None:
     line_count = len(lines)
     for idx, line in enumerate(lines):
-        if not (line or "").strip():
+        if not line.strip():
             continue
         title = _normalized_heading_title(line).casefold()
         if title not in _HEADING_TEXTS:
@@ -76,14 +76,14 @@ def _find_reference_heading_index(
 def _citation_ratio_ok(tail: list[str], citation_like_ratio: float) -> bool:
     if not tail:
         return True
-    cite_like = sum(1 for line in tail if _CITATION_LINE_RE.match(line or ""))
+    cite_like = sum(1 for line in tail if _CITATION_LINE_RE.match(line))
     ratio = cite_like / max(1, len(tail))
     return ratio >= citation_like_ratio
 
 
 def _trim_trailing_blank_lines(lines: list[str]) -> list[str]:
     trimmed = list(lines)
-    while trimmed and not (trimmed[-1] or "").strip():
+    while trimmed and not (trimmed[-1]).strip():
         trimmed.pop()
     return trimmed
 
@@ -95,7 +95,7 @@ def trim_references_section(
     min_lines_after: int = 8,
     citation_like_ratio: float = 0.25,
 ) -> ReferencesTrimResult:
-    original = text or ""
+    original = text
     if not original:
         return ReferencesTrimResult(text="", removed_lines=0, changed=False)
 

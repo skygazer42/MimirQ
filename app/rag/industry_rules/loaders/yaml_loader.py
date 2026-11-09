@@ -19,7 +19,7 @@ def _ruleset_root() -> Path:
 
 
 def _ruleset_dir(name: str) -> Path | None:
-    candidate = str(name or "").strip()
+    candidate = name.strip()
     if not candidate:
         return None
     root = _ruleset_root().resolve()
@@ -72,14 +72,16 @@ def _normalize_glossary(glossary: Any) -> dict[str, list[str]]:
         return {}
     normalized: dict[str, list[str]] = {}
     for key, value in glossary.items():
-        term = str(key or "").strip()
+        if key is None:
+            continue
+        term = str(key).strip()
         if not term:
             continue
         aliases: list[str] = []
         if isinstance(value, (list, tuple, set)):
-            aliases = [str(item or "").strip() for item in value if str(item or "").strip()]
+            aliases = [str(item).strip() for item in value if item is not None and str(item).strip()]
         elif value is not None:
-            alias = str(value or "").strip()
+            alias = str(value).strip()
             if alias:
                 aliases = [alias]
         normalized[term] = aliases
@@ -99,7 +101,7 @@ def ruleset_exists(name: str) -> bool:
 
 
 def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
+    ruleset_name = name.strip()
     base = _ruleset_dir(ruleset_name)
     if base is None or not base.is_dir():
         raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
@@ -107,7 +109,10 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
     tokens: list[str] = []
     seen: set[str] = set()
     for item in candidates or []:
-        token = str((item or {}).get("token") if isinstance(item, dict) else item or "").strip()
+        raw_token = item.get("token") if isinstance(item, dict) else item
+        if raw_token is None:
+            continue
+        token = str(raw_token).strip()
         if not token or token in seen:
             continue
         seen.add(token)
@@ -141,7 +146,7 @@ def write_glossary_candidates(name: str, candidates: Iterable[Any]) -> dict[str,
 
 
 def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
+    ruleset_name = name.strip()
     base = _ruleset_dir(ruleset_name)
     if base is None or not base.is_dir():
         raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
@@ -152,7 +157,7 @@ def replace_ruleset_glossary(name: str, glossary: Any) -> dict[str, Any]:
 
 
 def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
+    ruleset_name = name.strip()
     base = _ruleset_dir(ruleset_name)
     if base is None or not base.is_dir():
         raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
@@ -163,7 +168,7 @@ def replace_ruleset_patterns(name: str, patterns: Any) -> dict[str, Any]:
 
 
 def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
-    ruleset_name = str(name or "").strip()
+    ruleset_name = name.strip()
     base = _ruleset_dir(ruleset_name)
     if base is None or not base.is_dir():
         raise FileNotFoundError(f"Unknown industry ruleset: {ruleset_name or '<empty>'}")
@@ -176,7 +181,7 @@ def replace_ruleset_intents(name: str, intents: Any) -> dict[str, Any]:
 def load_ruleset(name: str) -> IndustryRuleset:
     base = _ruleset_dir(name)
     if base is None:
-        return IndustryRuleset(name=str(name or "").strip(), glossary={}, patterns=[], intents=[])
+        return IndustryRuleset(name=name.strip(), glossary={}, patterns=[], intents=[])
     glossary = _normalize_glossary(_load_yaml(base / _GLOSSARY_FILENAME))
     generated_glossary = _normalize_glossary(_load_yaml(base / "glossary.generated.yaml"))
     patterns = _load_yaml(base / "patterns.yaml")
@@ -190,7 +195,7 @@ def load_ruleset(name: str) -> IndustryRuleset:
         if term not in merged_glossary:
             merged_glossary[term] = list(aliases)
     return IndustryRuleset(
-        name=str(name or "").strip(),
+        name=name.strip(),
         glossary=merged_glossary,
         patterns=[dict(item) for item in patterns if isinstance(item, dict)],
         intents=[dict(item) for item in intents if isinstance(item, dict)],

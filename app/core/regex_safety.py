@@ -56,7 +56,7 @@ def looks_like_nested_quantifier(pattern: str) -> bool:
     - This is intentionally conservative and does not attempt to parse full regex grammar.
     - It is used as a best-effort guardrail for *user-provided* patterns.
     """
-    s = str(pattern or "")
+    s = pattern
     if not s:
         return False
 
@@ -135,8 +135,14 @@ def _rules_sequence(rules: Any, *, max_rules: int) -> list[Any]:
     return items
 
 
-def _validate_pattern(index: int, raw_pattern: Any, *, max_pattern_len: int) -> tuple[str, RegexRuleViolation | None]:
-    pattern = str(raw_pattern or "")
+def _validate_pattern(
+    index: int, raw_pattern: Any, *, max_pattern_len: int
+) -> tuple[str | None, RegexRuleViolation | None]:
+    if raw_pattern is not None and not isinstance(raw_pattern, str):
+        return None, RegexRuleViolation(index=index, field="pattern", code="type", message="pattern must be a string")
+    pattern = raw_pattern
+    if pattern is None:
+        return None, RegexRuleViolation(index=index, field="pattern", code="required", message="pattern is required")
     if not pattern.strip():
         return pattern, RegexRuleViolation(
             index=index,
@@ -163,8 +169,10 @@ def _validate_pattern(index: int, raw_pattern: Any, *, max_pattern_len: int) -> 
 
 def _validate_replacement(
     index: int, raw_replacement: Any, *, max_repl_len: int
-) -> tuple[str, RegexRuleViolation | None]:
-    replacement = str(raw_replacement or "")
+) -> tuple[str | None, RegexRuleViolation | None]:
+    if raw_replacement is not None and not isinstance(raw_replacement, str):
+        return None, RegexRuleViolation(index=index, field="repl", code="type", message="repl must be a string")
+    replacement = "" if raw_replacement is None else raw_replacement
     if max_repl_len and len(replacement) > max_repl_len:
         return replacement, RegexRuleViolation(
             index=index,

@@ -38,7 +38,7 @@ async def apply_batch_upload_urls(
     Use case: batch upload local files for parsing.
     """
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").lower()
+    role = (member.role).lower()
     if role not in EDIT_ROLES:
         raise HTTPException(status_code=403, detail="No permission to apply upload URLs")
 

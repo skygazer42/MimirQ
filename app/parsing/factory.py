@@ -181,8 +181,8 @@ class ParserFactory:
 
     PDF_SETTING_REQUIREMENTS = {
         family.canonical_name: (
-            str(family.pdf_required_setting_flag or ""),
-            str(family.pdf_disabled_message or ""),
+            family.pdf_required_setting_flag,
+            family.pdf_disabled_message,
             tuple(family.pdf_required_settings),
         )
         for family in _USER_SELECTABLE_BACKEND_FAMILIES
@@ -190,17 +190,17 @@ class ParserFactory:
     }
 
     NON_PDF_BACKEND_EXTENSION_RULES = {
-        family.canonical_name: (set(family.non_pdf_extensions), str(family.non_pdf_extension_error or ""))
+        family.canonical_name: (set(family.non_pdf_extensions), family.non_pdf_extension_error)
         for family in _USER_SELECTABLE_BACKEND_FAMILIES
         if family.non_pdf_extensions
     }
 
     PDF_PARSER_SPECS = {
         family.canonical_name: (
-            str(family.pdf_cache_attr or ""),
-            str(family.parser_module_name or ""),
-            str(family.parser_class_name or ""),
-            str(family.init_log_message or ""),
+            family.pdf_cache_attr,
+            family.parser_module_name,
+            family.parser_class_name,
+            family.init_log_message,
         )
         for family in _USER_SELECTABLE_BACKEND_FAMILIES
         if family.pdf_cache_attr and family.parser_module_name and family.parser_class_name and family.init_log_message
@@ -237,7 +237,7 @@ class ParserFactory:
     def _settings_enabled(flag_name: str, *value_names: str) -> bool:
         if not bool(getattr(settings, flag_name, False)):
             return False
-        return all(bool((getattr(settings, value_name, "") or "").strip()) for value_name in value_names)
+        return all(bool(getattr(settings, value_name).strip()) for value_name in value_names)
 
     @staticmethod
     def _mineru_configured() -> bool:
@@ -480,7 +480,7 @@ class ParserFactory:
         if not bool(getattr(settings, flag_name, False)):
             raise ValueError(disabled_message)
         for value_name, missing_message in required_values:
-            if not bool((getattr(settings, value_name, "") or "").strip()):
+            if not bool(getattr(settings, value_name).strip()):
                 raise ValueError(missing_message)
 
     def _validate_mineru_backend(self) -> None:
@@ -786,8 +786,8 @@ class ParserFactory:
         We only fall back when we can produce a reasonable text representation
         without introducing new heavy dependencies.
         """
-        backend = (requested_backend or "").strip().lower()
-        file_ext = (file_ext or "").strip().lower()
+        backend = (requested_backend).strip().lower()
+        file_ext = (file_ext).strip().lower()
 
         if file_ext == ".pdf" and backend in self.PDF_ADVANCED_FALLBACK_BACKENDS:
             return self._fallback_pdf_parse(file_path=file_path, backend=backend, error=error)

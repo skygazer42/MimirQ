@@ -66,7 +66,7 @@ def _normalize_github_include_set(values: object) -> set[str]:
 
 
 def _build_github_repo_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
-    repo = str(cfg.get("repo") or "").strip()
+    repo = cfg["repo"].strip()
     if "/" not in repo:
         raise ValueError("invalid repo")
     owner, repo_name = repo.split("/", 1)
@@ -111,7 +111,7 @@ def _build_github_repo_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
 async def _fetch_github_repo_listing_and_acl_keys(settings_map: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     team_principal_keys: list[str] = []
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-        resp = await client.get(str(settings_map.get("api_url") or ""), headers=dict(settings_map.get("headers") or {}))
+        resp = await client.get(settings_map['api_url'], headers=dict(settings_map.get("headers") or {}))
         if resp.status_code >= 400:
             raise RuntimeError(f"github api failed (status={resp.status_code})")
         data = resp.json()
@@ -120,8 +120,8 @@ async def _fetch_github_repo_listing_and_acl_keys(settings_map: dict[str, Any]) 
             with contextlib.suppress(Exception):
                 team_principal_keys = await _github_fetch_repo_team_principal_keys(
                     client=client,
-                    owner=str(settings_map.get("owner") or ""),
-                    repo=str(settings_map.get("repo_name") or ""),
+                    owner=settings_map['owner'],
+                    repo=settings_map['repo_name'],
                     headers=dict(settings_map.get("headers") or {}),
                 )
 
@@ -187,7 +187,7 @@ def _build_github_repo_source_acl_context(
             details={
                 "dataset_id": str(run.dataset_id),
                 "connector_id": "github_repo",
-                "repo": str(settings_map.get("repo") or ""),
+                "repo": settings_map['repo'],
                 "team_principal_count": int(len(team_principal_keys)),
                 "mapped_group_count": int(len(mapped_group_ids)),
                 "fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
@@ -220,7 +220,7 @@ def _build_github_repo_source_acl_context(
 def _github_repo_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
     with contextlib.suppress(Exception):
         db.refresh(run)
-    return str(run.status or "").lower() == "cancelled"
+    return run.status.lower() == "cancelled"
 
 
 def _github_repo_effective_access(
@@ -276,9 +276,9 @@ async def _ingest_github_repo_file(
     source_acl_context: dict[str, Any],
 ) -> dict[str, Any]:
     raw_url = _github_raw_url(
-        owner=str(settings_map.get("owner") or ""),
-        repo=str(settings_map.get("repo_name") or ""),
-        branch=str(settings_map.get("branch") or ""),
+        owner=settings_map['owner'],
+        repo=settings_map['repo_name'],
+        branch=settings_map['branch'],
         path=path,
     )
     effective_access = _github_repo_effective_access(
@@ -448,7 +448,7 @@ async def _process_github_repo_files(
     cursor_in = int(plan.get("cursor_in") or 0)
 
     for idx, item in enumerate(plan.get("files_to_process") or []):
-        path, blob_sha = item if isinstance(item, tuple) else (str(item or ""), "")
+        path, blob_sha = item
         if _github_repo_run_cancelled(db, run=run):
             break
 
@@ -521,9 +521,9 @@ def _reconcile_removed_github_repo_paths(
     connector_config_id = _connector_config_id_from_run(run)
     for path in removed_paths:
         raw_url = _github_raw_url(
-            owner=str(settings_map.get("owner") or ""),
-            repo=str(settings_map.get("repo_name") or ""),
-            branch=str(settings_map.get("branch") or ""),
+            owner=settings_map['owner'],
+            repo=settings_map['repo_name'],
+            branch=settings_map['branch'],
             path=path,
         )
         try:
@@ -573,8 +573,8 @@ def _emit_github_repo_source_acl_delta_sync_audit(
             details={
                 "dataset_id": str(run.dataset_id),
                 "connector_id": "github_repo",
-                "repo": str(settings_map.get("repo") or ""),
-                "branch": str(settings_map.get("branch") or ""),
+                "repo": settings_map['repo'],
+                "branch": settings_map['branch'],
                 "updated_documents": int(delta_acl_docs_updated),
                 "updated_sources": int(delta_acl_sources_updated),
             },

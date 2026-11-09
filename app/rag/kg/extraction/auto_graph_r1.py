@@ -28,7 +28,7 @@ def _normalize_backend(value: str | None) -> str:
 def _normalize_type_counts(entity_type_counts: dict[str, int] | None) -> list[_EntityTypeCount]:
     counts: dict[str, int] = {}
     for raw_key, raw_count in (entity_type_counts if entity_type_counts is not None else {}).items():
-        key = str(raw_key or "").strip().lower() or "unknown"
+        key = raw_key.strip().lower() or "unknown"
         try:
             count = max(0, int(raw_count or 0))
         except Exception:
@@ -46,7 +46,7 @@ def _normalize_type_counts(entity_type_counts: dict[str, int] | None) -> list[_E
 def _normalize_predicate_counts(predicate_counts: dict[str, int] | None) -> list[_PredicateCount]:
     counts: dict[str, int] = {}
     for raw_key, raw_count in (predicate_counts if predicate_counts is not None else {}).items():
-        key = normalize_predicate(str(raw_key or ""))
+        key = normalize_predicate(raw_key)
         try:
             count = max(0, int(raw_count or 0))
         except Exception:

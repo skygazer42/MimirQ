@@ -61,13 +61,13 @@ _DIFY_TRACE_CITATION_METADATA_KEYS = (
 )
 
 
-def _request_client_ip(request: Request) -> str:
-    forwarded_for = str(request.headers.get("x-forwarded-for") or "").strip()
+def _request_client_ip(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
     if forwarded_for:
         first = forwarded_for.split(",", 1)[0].strip()
         if first:
             return first
-    return str(getattr(getattr(request, "client", None), "host", "") or "").strip()
+    return request.client.host if request.client is not None else None
 
 
 def _api():
@@ -125,7 +125,9 @@ def _resolve_dify_kg_flags(setting: DifyRetrievalSetting) -> _DifyKGFlags:
 
 
 def _resolve_dify_latency_profile(setting: DifyRetrievalSetting) -> str:
-    raw = str(setting.latency_profile or "").strip().lower().replace("-", "_")
+    if setting.latency_profile is None:
+        return "quality"
+    raw = setting.latency_profile.strip().lower().replace("-", "_")
     if not raw or raw in {"default", "quality", "standard"}:
         return "quality"
     if raw in {"fast", "low_latency", "online"}:
@@ -138,17 +140,21 @@ def _resolve_dify_latency_profile(setting: DifyRetrievalSetting) -> str:
 
 def _first_nonempty_str(*values: object) -> str | None:
     for value in values:
-        text = str(value or "").strip()
+        if value is None:
+            continue
+        text = str(value).strip()
         if text:
             return text
     return None
 
 
 def _uuid_or_none(value: object) -> UUID | None:
+    if value is None:
+        return None
     if isinstance(value, UUID):
         return value
     try:
-        return UUID(str(value or "").strip())
+        return UUID(str(value).strip())
     except (TypeError, ValueError):
         return None
 
@@ -185,7 +191,9 @@ def _has_dify_rerank(records: list[DifyExternalKnowledgeRecord]) -> bool:
 
 
 def _bounded_trace_query_preview(value: object) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[:_DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS]
@@ -205,12 +213,14 @@ def _dify_trace_retrieval_queries(
     for row in rows:
         if not isinstance(row, dict):
             continue
-        query_text = str(row.get("query") or "").strip()
+        query_text = _first_nonempty_str(row.get("query"))
         query_preview = _bounded_trace_query_preview(query_text)
-        path = str(row.get("path") or "").strip()[:_DIFY_TRACE_QUERY_PATH_MAX_CHARS]
+        path = _first_nonempty_str(row.get("path"))
+        if path is not None:
+            path = path[:_DIFY_TRACE_QUERY_PATH_MAX_CHARS]
         item = {
             "kind": _first_nonempty_str(row.get("kind")) or "subq",
-            "query_chars": len(query_text),
+            "query_chars": len(query_text) if query_text is not None else 0,
             "ok": bool(row.get("ok", True)),
         }
         if query_preview:
@@ -260,8 +270,8 @@ def _log_dify_external_rag_trace(
             "conversation_id": str(conversation_id),
             "tenant_id": str(tenant_id),
             "request_id": str(resolved_request_id),
-            "question": str(question or ""),
-            "query_for_retrieval": str(question or ""),
+            "question": question,
+            "query_for_retrieval": question,
             "citations_count": len(citations),
             "citations": citations,
             "retrieval": {
@@ -277,7 +287,7 @@ def _log_dify_external_rag_trace(
                 "reranker_top_n": int(candidate_top_k),
             },
             "route": "dify_external_knowledge",
-            "retrieval_path": str(retrieval_path or ""),
+            "retrieval_path": retrieval_path,
             "metadata_anchor_fallback_count": int(metadata_anchor_fallback_count or 0),
             "dify_message_id": _first_nonempty_str(dify_message_id),
             "dify_workflow_run_id": _first_nonempty_str(dify_workflow_run_id),
@@ -299,7 +309,7 @@ def _log_dify_result_rag_trace(
 ) -> None:
     if conversation_id is None:
         return
-    final_answer = str(answer or "")
+    final_answer = answer
     safe_citations = [item for item in citations or [] if isinstance(item, dict)]
     _api().log_metrics(
         {
@@ -308,7 +318,7 @@ def _log_dify_result_rag_trace(
             "conversation_id": str(conversation_id),
             "tenant_id": str(tenant_id),
             "request_id": _first_nonempty_str(request_id) or f"dify-result-{uuid.uuid4().hex}",
-            "question_hash": _diagnostic_query_hash(str(question or "")),
+            "question_hash": _diagnostic_query_hash(question),
             "retrieval": {
                 "mode": "dify_result",
                 "requested_mode": "dify_workflow",
@@ -405,7 +415,9 @@ def _find_dify_trace_conversation(
 def _conversation_owner_matches_account(conversation: Conversation | None, *, account_id: str) -> bool:
     if conversation is None:
         return False
-    owner_account_id = str(conversation.owner_account_id or "").strip()
+    owner_account_id = conversation.owner_account_id
+    if owner_account_id is not None:
+        owner_account_id = owner_account_id.strip()
     return bool(owner_account_id) and owner_account_id == account_id
 
 
@@ -427,7 +439,7 @@ def _ensure_dify_trace_conversation_accessible(
         raise HTTPException(status_code=404, detail="Conversation not found")
     if not api._conversation_owner_matches_account(conversation, account_id=account_id):
         raise HTTPException(status_code=403, detail="Conversation is not accessible")
-    expected_source_id = str(source_conversation_id or "").strip()
+    expected_source_id = source_conversation_id.strip() if source_conversation_id is not None else None
     if expected_source_id:
         bound_conversation_id = api._find_dify_trace_conversation(
             db,
@@ -569,7 +581,7 @@ def _dify_turn_citations_for_storage(citations: list[dict[str, Any]]) -> list[di
 
 
 def _dify_trace_title(question: str) -> str:
-    title = str(question or "").strip()
+    title = question.strip()
     return title[:80] if title else "Dify external retrieval"
 
 
@@ -584,7 +596,7 @@ def _ensure_dify_trace_conversation(
     question: str,
 ) -> UUID | None:
     api = _api()
-    source_conversation_id = str(source_conversation_id or "").strip()
+    source_conversation_id = source_conversation_id.strip()
     if not source_conversation_id:
         return None
 
@@ -635,7 +647,7 @@ def _ensure_dify_trace_conversation(
             tenant_id=tenant_id,
             conversation_id=conversation.id,
             role="user",
-            content=str(question or "").strip() or source_conversation_id,
+            content=question.strip() or source_conversation_id,
             citations=[],
             message_metadata={
                 "external_conversation": {
@@ -684,9 +696,12 @@ def _persist_dify_conversation_turn(
         source_message_id = source_message_id.strip()
     if source_run_id is not None:
         source_run_id = source_run_id.strip()
-    trace_request_id = str(trace_request_id or "").strip() or None
-    question = str(query or "").strip()
-    final_answer = str(answer or "").strip()
+    if trace_request_id is not None:
+        trace_request_id = trace_request_id.strip()
+        if trace_request_id == "":
+            trace_request_id = None
+    question = query.strip()
+    final_answer = answer.strip()
     if not question:
         raise HTTPException(status_code=400, detail="query is required")
     if not final_answer:
@@ -865,10 +880,10 @@ def _dify_trace_conversation_id(
             )
         return body_conversation_id
     for header_name in ("x-mimirq-conversation-id", "x-conversation-id"):
-        raw = str(request.headers.get(header_name) or "").strip()
+        raw = request.headers.get(header_name)
         if not raw:
             continue
-        header_conversation_id = _uuid_or_none(raw)
+        header_conversation_id = _uuid_or_none(raw.strip())
         if header_conversation_id is not None:
             if db is not None and tenant_id is not None and account_id is not None:
                 api._ensure_dify_trace_conversation_accessible(

@@ -314,7 +314,7 @@ async def route_query(runtime: StandardStreamState) -> None:
     runtime.data.requested_retrieval_profile = routing.evidence_contract["requested_retrieval_profile"]
     runtime.data.mode_req = runtime.data.requested_retrieval_mode
     runtime.data.profile_req = runtime.data.requested_retrieval_profile
-    runtime.data.mode_auto = str(runtime.data.requested_retrieval_mode or "").strip().lower() == "auto"
+    runtime.data.mode_auto = runtime.data.requested_retrieval_mode.strip().lower() == "auto"
     runtime.data.retrieval_mode_routed = normalization.retrieval_mode_routed
     runtime.data.retrieval_contract_policy = normalization.retrieval_contract_policy
     runtime.data.retrieval_contract_mode_effective = normalization.retrieval_contract_mode

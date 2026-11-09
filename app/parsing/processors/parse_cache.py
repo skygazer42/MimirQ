@@ -43,7 +43,7 @@ class LocalParseCacheStore:
         self._root = Path(root)
 
     def _path_for(self, key: str) -> Path:
-        safe = str(key or "").strip().lower()
+        safe = key.strip().lower()
         return self._root / safe[:2] / f"{safe}.json"
 
     def get(

@@ -21,7 +21,9 @@ def _logical_source_from_db_document(db_document: "DBDocument", *, file_path: Pa
         db_document.filename,
         file_path.name,
     ):
-        text = str(value or "").strip()
+        if value is None:
+            continue
+        text = str(value).strip()
         if text:
             return text
     return str(file_path)
@@ -36,11 +38,12 @@ def _attach_logical_source_metadata(
     if not documents:
         return []
     source = _logical_source_from_db_document(db_document, file_path=file_path)
-    filename = str(db_document.filename or file_path.name or "").strip()
+    filename = (db_document.filename or file_path.name).strip()
     out: list[Document] = []
     for doc in documents:
         meta = dict(doc.metadata or {})
-        parser_source = str(meta.get("source") or "").strip()
+        raw_source = meta.get("source")
+        parser_source = str(raw_source).strip() if raw_source is not None else None
         if parser_source and parser_source != source:
             meta.setdefault("parser_source", parser_source)
         meta["source"] = source
@@ -48,7 +51,7 @@ def _attach_logical_source_metadata(
         if filename:
             meta.setdefault("filename", filename)
             meta.setdefault("file_name", filename)
-        out.append(Document(page_content=doc.page_content or "", metadata=meta, id=doc.id))
+        out.append(Document(page_content=doc.page_content, metadata=meta, id=doc.id))
     return out
 
 
@@ -57,12 +60,12 @@ def _get_position_tagged_markdown(doc: Document) -> str:
     if not isinstance(metadata, dict):
         return ""
     tagged = metadata.get("position_tagged_markdown")
-    return str(tagged or "").replace("\x00", "").strip() if isinstance(tagged, str) else ""
+    return tagged.replace("\x00", "").strip() if isinstance(tagged, str) else ""
 
 
 def _join_document_page_content(documents: list[Document] | None) -> str:
     parts = [
-        POSITION_TAG_RE.sub("", str(d.page_content or "").replace("\x00", "")).strip()
+        POSITION_TAG_RE.sub("", str(d.page_content).replace("\x00", "")).strip()
         for d in (documents if documents is not None else [])
     ]
     return "\n\n".join(parts).strip()
@@ -71,7 +74,7 @@ def _join_document_page_content(documents: list[Document] | None) -> str:
 def _join_original_markdown_for_persistence(documents: list[Document] | None) -> str:
     parts: list[str] = []
     for doc in documents if documents is not None else []:
-        parts.append(_get_position_tagged_markdown(doc) or str(doc.page_content or "").replace("\x00", ""))
+        parts.append(_get_position_tagged_markdown(doc) or str(doc.page_content).replace("\x00", ""))
     return "\n\n".join(parts).strip()
 
 
@@ -82,7 +85,7 @@ def _serialize_documents_for_parse_cache(items: list[Document] | None) -> list[d
     for item in items:
         out.append(
             {
-                "page_content": str(item.page_content or ""),
+                "page_content": str(item.page_content),
                 "metadata": dict(item.metadata or {}),
                 "id": item.id,
             }
@@ -99,7 +102,7 @@ def _deserialize_documents_from_parse_cache(items: list[dict[str, Any]] | None) 
             continue
         out.append(
             Document(
-                page_content=str(item.get("page_content") or ""),
+                page_content=item["page_content"],
                 metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
                 id=item.get("id") if isinstance(item.get("id"), str) else None,
             )

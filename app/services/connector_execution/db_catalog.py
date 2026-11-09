@@ -4,6 +4,8 @@ import contextlib
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from fastapi.encoders import jsonable_encoder
+
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -51,7 +53,7 @@ def _build_db_catalog_run_context(
     from app.connectors.db.catalog_store_sqlalchemy import SqlAlchemyCatalogStore
     from app.core.secrets import decrypt_connector_config_secrets
 
-    connector_id = str(run.connector_id or "").strip()
+    connector_id = run.connector_id.strip()
     cfg = decrypt_connector_config_secrets(dict(run.config or {}))
     stats = dict(run.stats or {})
     connector_config_id = _db_catalog_connector_config_id(stats)
@@ -115,6 +117,7 @@ def _emit_db_catalog_schema_doc_completed(
     doc_elapsed: float,
     schema_doc: dict[str, Any],
 ) -> None:
+    document_id = schema_doc["document_id"]
     with contextlib.suppress(Exception):
         import app.services.db_catalog_observability as obs
 
@@ -124,7 +127,7 @@ def _emit_db_catalog_schema_doc_completed(
             run_id=str(run_id),
             connector_id=connector_id,
             elapsed_sec=float(doc_elapsed),
-            document_id=str(schema_doc.get("document_id") or ""),
+            document_id=document_id,
             chunks=int(schema_doc.get("chunks") or 0),
             tables=int(schema_doc.get("tables") or 0),
             catalog_last_seen_at=schema_doc.get("catalog_last_seen_at"),
@@ -300,14 +303,20 @@ def _emit_db_catalog_sync_failed(
     run: ConnectorRun | None,
     exc: Exception,
 ) -> None:
+    if run is None:
+        dataset_id = None
+        connector_id = None
+    else:
+        dataset_id = jsonable_encoder(run.dataset_id)
+        connector_id = run.connector_id
     with contextlib.suppress(Exception):
         import app.services.db_catalog_observability as obs
 
         obs.emit_db_catalog_sync_failed(
             tenant_id=str(tenant_id),
-            dataset_id=str(getattr(run, "dataset_id", "") or ""),
+            dataset_id=dataset_id,
             run_id=str(run_id),
-            connector_id=str(getattr(run, "connector_id", "") or ""),
+            connector_id=connector_id,
             elapsed_sec=0.0,
             error=str(exc)[:200],
         )
@@ -324,6 +333,12 @@ def _emit_db_catalog_failure_audit(
 ) -> None:
     from app.services.audit_log_service import audit_log_event
 
+    if run is None:
+        dataset_id = None
+        connector_id = None
+    else:
+        dataset_id = jsonable_encoder(run.dataset_id)
+        connector_id = run.connector_id
     with contextlib.suppress(Exception):
         audit_log_event(
             db,
@@ -333,8 +348,8 @@ def _emit_db_catalog_failure_audit(
             resource_type="connector_run",
             resource_id=str(run_id),
             details={
-                "dataset_id": (str(getattr(run, "dataset_id", "") or "") if run is not None else None),
-                "connector_id": str(getattr(run, "connector_id", "") or ""),
+                "dataset_id": dataset_id,
+                "connector_id": connector_id,
                 "error": _safe_error_str(exc),
             },
         )

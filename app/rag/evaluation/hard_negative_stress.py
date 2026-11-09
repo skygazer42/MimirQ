@@ -15,9 +15,9 @@ def _average(values: list[float]) -> float | None:
 def evaluate_hard_negative_case(case: dict[str, Any]) -> dict[str, Any]:
     payload = dict(case or {})
     answer_metrics = evaluate_answer_deterministic(
-        question=str(payload.get("query") or ""),
-        answer=str(payload.get("answer") or ""),
-        gold_answer=str(payload.get("gold_answer") or ""),
+        question=payload["query"],
+        answer=payload["answer"],
+        gold_answer=payload.get("gold_answer"),
         is_unanswerable=bool(payload.get("is_unanswerable")),
     )
 
@@ -34,8 +34,8 @@ def evaluate_hard_negative_case(case: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "schema": HARD_NEGATIVE_CASE_SCHEMA_V1,
-        "case_id": str(payload.get("case_id") or ""),
-        "query": str(payload.get("query") or ""),
+        "case_id": payload["case_id"],
+        "query": payload["query"],
         "answer_em": answer_em,
         "answer_f1": answer_f1,
         "obvious_hallucination": obvious_hallucination,

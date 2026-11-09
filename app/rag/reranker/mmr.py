@@ -7,7 +7,7 @@ from app.rag.reranker.types import RerankCandidate, RerankResult
 
 
 def _token_set(text: str) -> set[str]:
-    return {str(tok).strip() for tok in tokenize_lexical_text(str(text or "")) if str(tok).strip()}
+    return {str(tok).strip() for tok in tokenize_lexical_text(text) if str(tok).strip()}
 
 
 def _jaccard(a: set[str], b: set[str]) -> float:
@@ -32,8 +32,8 @@ class MMRReranker(BaseReranker):
     ) -> RerankResult:
         docs = list(candidates or [])
         top_n = max(1, int(kwargs.get("top_n") or len(docs) or 1))
-        query_tokens = _token_set(str(query or ""))
-        doc_tokens = {str(doc.id): _token_set(doc.text or "") for doc in docs}
+        query_tokens = _token_set(query)
+        doc_tokens = {str(doc.id): _token_set(doc.text) for doc in docs}
         relevance = {str(doc.id): _jaccard(query_tokens, doc_tokens.get(str(doc.id), set())) for doc in docs}
 
         remaining = [str(doc.id) for doc in docs]

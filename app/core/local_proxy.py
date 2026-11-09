@@ -5,10 +5,10 @@ LOCAL_NO_PROXY_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 
 def _merge_no_proxy_entries(current: str, hosts: Iterable[str]) -> str:
-    entries = [entry.strip() for entry in (current or "").split(",") if entry.strip()]
+    entries = [entry.strip() for entry in (current).split(",") if entry.strip()]
     seen = set(entries)
     for host in hosts:
-        clean = (host or "").strip()
+        clean = (host).strip()
         if clean and clean not in seen:
             entries.append(clean)
             seen.add(clean)

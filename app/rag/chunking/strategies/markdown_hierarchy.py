@@ -31,7 +31,7 @@ class _Heading:
 def _iter_markdown_headings(text: str) -> list[_Heading]:
     out: list[_Heading] = []
     offset = 0
-    for raw_line in (text or "").splitlines(keepends=True):
+    for raw_line in (text).splitlines(keepends=True):
         line_start = offset
         offset += len(raw_line)
         parsed = parse_markdown_hash_heading(raw_line)
@@ -51,7 +51,7 @@ def _update_heading_stack(stack: list[str], *, heading: _Heading) -> list[str]:
         trimmed.append("")
     trimmed[level - 1] = heading.text
     # Drop empty tails to keep "A > B >" clean.
-    while trimmed and not (trimmed[-1] or "").strip():
+    while trimmed and not (trimmed[-1]).strip():
         trimmed.pop()
     return trimmed
 
@@ -59,7 +59,7 @@ def _update_heading_stack(stack: list[str], *, heading: _Heading) -> list[str]:
 def _group_sentences_by_parent(sentences: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for sentence in sentences:
-        parent_id = str(sentence.get("parent_id") or "").strip()
+        parent_id = sentence["parent_id"].strip()
         if not parent_id:
             continue
         grouped.setdefault(parent_id, []).append(sentence)
@@ -80,7 +80,7 @@ def _header_path_resolver(text: str) -> Callable[[int], str | None]:
         while h_cursor < len(headings) and headings[h_cursor].pos <= start_i:
             stack = _update_heading_stack(stack, heading=headings[h_cursor])
             h_cursor += 1
-        path = " > ".join([part for part in stack if (part or "").strip()])
+        path = " > ".join([part for part in stack if (part).strip()])
         return path if path else None
 
     return resolve
@@ -131,7 +131,7 @@ def _sentence_documents(
 ) -> list[Document]:
     out: list[Document] = []
     for sentence in sentences:
-        text = str(sentence.get("text") or "")
+        text = sentence["text"]
         if not text.strip():
             continue
 
@@ -165,7 +165,7 @@ def _sentence_documents(
 
 
 def _split_markdown_document(doc: Document) -> list[Document]:
-    text = doc.page_content or ""
+    text = doc.page_content
     if not text.strip():
         return []
 
@@ -178,7 +178,7 @@ def _split_markdown_document(doc: Document) -> list[Document]:
 
     out: list[Document] = []
     for paragraph in paragraphs:
-        paragraph_text = str(paragraph.get("text") or "")
+        paragraph_text = paragraph["text"]
         if not paragraph_text.strip():
             continue
 
@@ -195,7 +195,7 @@ def _split_markdown_document(doc: Document) -> list[Document]:
         )
         out.append(Document(page_content=paragraph_text, metadata=paragraph_meta))
 
-        paragraph_id = str(paragraph.get("id") or paragraph_meta.get("hierarchy_node_key") or "").strip()
+        paragraph_id = paragraph["id"].strip()
         out.extend(
             _sentence_documents(
                 base_meta=base_meta,

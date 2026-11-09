@@ -34,7 +34,9 @@ def _default_tenant_id() -> UUID | None:
 
 
 def _is_loopback_client(host: str | None) -> bool:
-    value = (host or "").strip().lower()
+    if host is None:
+        return False
+    value = host.strip().lower()
     if not value:
         return False
     if value in {"localhost", "localhost.localdomain"}:
@@ -59,7 +61,8 @@ def _allow_local_owner_bootstrap(*, tenant_id: UUID) -> bool:
     request_state = get_request_state()
     if request_state is None:
         return False
-    if str(getattr(request_state, "tenant_id_source", "") or "").strip().lower() != "default":
+    tenant_id_source = getattr(request_state, "tenant_id_source", None)
+    if tenant_id_source is None or tenant_id_source.strip().lower() != "default":
         return False
     return _is_loopback_client(getattr(request_state, "client_host", None))
 

@@ -45,7 +45,7 @@ _DATE_RE = re.compile(r"\b(?P<date>\d{4}-\d{2}-\d{2})\b")
 
 
 def _normalize_heading(raw: str) -> str:
-    t = (raw or "").strip()
+    t = (raw).strip()
     if not t:
         return ""
 
@@ -73,7 +73,7 @@ def _split_release_token(text: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex here to prevent catastrophic-backtracking hotspots.
     """
-    s = (text or "").strip()
+    s = (text).strip()
     if not s:
         return None
 
@@ -85,7 +85,7 @@ def _split_release_token(text: str) -> tuple[str, str] | None:
             return token, rest
 
     parts = s.split(None, 1)
-    token = (parts[0] or "").strip()
+    token = (parts[0]).strip()
     if token.startswith("[") and token.endswith("]") and len(token) > 2:
         token = token[1:-1].strip()
     elif token.startswith("["):
@@ -121,7 +121,7 @@ def _iter_release_headings(text: str) -> list[_ReleaseHeading]:
         if not token or not _VERSION_TOKEN_RE.match(token):
             continue
         version = token
-        rest = _RELEASE_REST_PREFIX_RE.sub("", rest_raw or "").strip()
+        rest = _RELEASE_REST_PREFIX_RE.sub("", rest_raw).strip()
         date = None
         dm = _DATE_RE.search(rest)
         if dm:
@@ -190,7 +190,7 @@ class ChangelogChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

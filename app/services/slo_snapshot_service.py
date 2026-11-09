@@ -25,7 +25,7 @@ def _now_utc() -> datetime:
 
 
 def _base_url() -> str:
-    raw = str(settings.PROMETHEUS_QUERY_BASE_URL or "").strip()
+    raw = settings.PROMETHEUS_QUERY_BASE_URL.strip()
     return raw.rstrip("/")
 
 
@@ -69,7 +69,7 @@ def _extract_prometheus_values(data: object) -> list[float]:
 async def _prom_query(client: httpx.AsyncClient, *, base_url: str, promql: str) -> float | None:
     if not base_url:
         return None
-    q = str(promql or "").strip()
+    q = promql.strip()
     if not q:
         return None
 

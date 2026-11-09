@@ -37,10 +37,10 @@ class OutputGuard:
         del question, tenant  # reserved for future topic policy
         sync_result = await asyncio.to_thread(
             self._check_sync,
-            str(text or ""),
+            text,
             list(context_chunks or []),
         )
-        safety_result = await self._safety_guard.guard_agent_response(str(text or ""))
+        safety_result = await self._safety_guard.guard_agent_response(text)
         matched_rules = list(sync_result.matched_rules or [])
         details = dict(sync_result.details or {})
         score = float(sync_result.score or 0.0)
@@ -72,7 +72,7 @@ class OutputGuard:
         if _FAKE_CITATION_RE.search(text):
             _record("citation_fabrication_risk", 0.42)
 
-        context_text = " ".join(str(item or "") for item in context_chunks if str(item or "").strip())
+        context_text = " ".join(item for item in context_chunks if item.strip())
         if context_text:
             answer_entities = {item.strip() for item in _CN_ENTITY_RE.findall(text) if len(item.strip()) >= 4}
             context_entities = {item.strip() for item in _CN_ENTITY_RE.findall(context_text) if len(item.strip()) >= 4}

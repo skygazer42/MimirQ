@@ -32,7 +32,9 @@ def resolve_matryoshka_dimension(
     complex_dim: int = 1024,
 ) -> int:
     src = max(1, int(source_dim or 1))
-    label = str(query_complexity_label or "").strip().lower() or "simple"
+    label = query_complexity_label
+    if label is not None:
+        label = label.strip().lower()
     desired = {
         "simple": int(simple_dim),
         "structured": int(structured_dim),
@@ -99,7 +101,7 @@ def shortlist_then_rescore(
 
     shortlist: list[_ShortlistedEmbedding] = []
     for doc_id, embedding in (corpus_short_embeddings or {}).items():
-        did = str(doc_id or "").strip()
+        did = doc_id.strip()
         if not did:
             continue
         shortlist.append(

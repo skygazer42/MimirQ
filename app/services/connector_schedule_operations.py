@@ -99,7 +99,9 @@ def _scheduled_connector_configs(db: Session, tenant_id: UUID) -> list[Connector
 
 
 def _is_scheduled_config_due(cfg: ConnectorConfig, *, now: datetime) -> bool:
-    schedule = str(cfg.schedule_cron or "").strip()
+    schedule = cfg.schedule_cron
+    if schedule is not None:
+        schedule = schedule.strip()
     if not schedule:
         return False
     return _schedule_due(schedule=schedule, now=now, last_run_at=cfg.last_run_at)
@@ -192,7 +194,7 @@ async def _process_scheduled_config(ctx: _ScheduledTickContext, cfg: ConnectorCo
     if not _claim_scheduled_config_window(ctx, cfg):
         return "skipped"
 
-    connector_id = str(cfg.connector_id or "").strip()
+    connector_id = cfg.connector_id.strip()
     run = _create_scheduled_run(ctx, cfg, connector_id)
     if disabled_error := _disabled_connector_error(connector_id):
         _mark_scheduled_run_failed(ctx, cfg, run, disabled_error)

@@ -178,7 +178,7 @@ def _convert_service_url_to_health_url(api_url: str) -> str:
     except Exception:
         return ""
 
-    path = (parsed.path or "").strip()
+    path = (parsed.path).strip()
     if path.endswith("/v1/convert/file"):
         path = path[: -len("/v1/convert/file")] + "/health"
     elif path.endswith("/v1/convert/source"):
@@ -251,7 +251,7 @@ def _ensure_settings_writable(db: Session, tenant_id: UUID, account_id: str) -> 
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage system settings",
     )
-    if (member.role or "").strip().lower() != "owner":
+    if (member.role).strip().lower() != "owner":
         raise HTTPException(status_code=403, detail="No permission to manage system settings")
 
 
@@ -259,7 +259,7 @@ async def _validate_public_base_url(base_url: str) -> _ValidatedFetchTarget:
     try:
         return await _validated_fetch_target(base_url, enforce_allowlists=False)
     except HTTPException as exc:
-        detail = str(exc.detail or "")
+        detail = exc.detail
         if detail in {"url is required", "url hostname is required"}:
             detail = "api_base must include host"
         elif detail == "url scheme must be http or https":
@@ -410,7 +410,7 @@ def _apply_storage_runtime_settings(env_vars: dict[str, str], updated_keys: set[
             ("OBJECT_STORAGE_SECRET_KEY", str),
             ("OBJECT_STORAGE_BUCKET_NAME", str),
             ("OBJECT_STORAGE_METRICS_LOG_PATH", str),
-            ("DATA_REGION", lambda value: str(value or "").strip().lower()),
+            ("DATA_REGION", lambda value: value.strip().lower()),
         ),
     )
     if "OBJECT_STORAGE_REGION_PROFILES" in updated_keys and "OBJECT_STORAGE_REGION_PROFILES" in env_vars:
@@ -478,10 +478,7 @@ def _apply_cache_runtime_settings(env_vars: dict[str, str], updated_keys: set[st
             ),
             (
                 "CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES",
-                lambda value: _parse_int(
-                    value,
-                    default=settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 200_000,
-                ),
+                lambda value: _parse_int(value, default=settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES),
             ),
             ("CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY", _parse_bool),
         ),
@@ -585,7 +582,7 @@ def _apply_magicpdf_runtime_settings(env_vars: dict[str, str], updated_keys: set
             ("MAGIC_PDF_API_URL", str),
             (
                 "MAGIC_PDF_REQUEST_TIMEOUT_SEC",
-                lambda value: _parse_int(value, default=settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600),
+                lambda value: _parse_int(value, default=settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC),
             ),
             (
                 "MAGIC_PDF_MAX_CONCURRENT_JOBS",
@@ -1494,11 +1491,7 @@ def update_settings(
             # Best-effort, PII-minimal audit record (no secret values).
             from app.services.audit_log_service import audit_log_event
 
-            request_id = (http_request.headers.get("X-Request-ID") or "").strip()
-            if not request_id:
-                request_id = str(getattr(http_request.state, "request_id", "") or "").strip()
-            if not request_id:
-                request_id = None
+            request_id = getattr(http_request.state, "request_id", None)
 
             ip = None
             with contextlib.suppress(Exception):
@@ -1508,9 +1501,7 @@ def update_settings(
                     if not ip:
                         ip = None
 
-            user_agent = (http_request.headers.get("User-Agent") or "").strip()
-            if not user_agent:
-                user_agent = None
+            user_agent = http_request.headers.get("User-Agent")
 
             audit_log_event(
                 db,
@@ -1589,12 +1580,12 @@ def _build_import_parser_status(module: str, *, enabled: bool, available_message
     }
 
 
-def _build_cli_parser_status(enabled: bool, cli: str) -> dict[str, object]:
+def _build_cli_parser_status(enabled: bool, cli: str | None) -> dict[str, object]:
     cli_ok = bool(cli)
     return {
         "enabled": enabled,
         "available": bool(enabled and cli_ok),
-        "message": _configured_status_message(enabled, cli_ok, f"missing cli: {cli}"),
+        "message": _configured_status_message(enabled, cli_ok, "missing cli" if cli is None else f"missing cli: {cli}"),
     }
 
 
@@ -1741,11 +1732,11 @@ async def _build_parser_statuses(
         ),
         "pandoc": _build_cli_parser_status(
             settings.PANDOC_ENABLED,
-            resolve_cli_command(pandoc_cli) or "",
+            resolve_cli_command(pandoc_cli),
         ),
         "libreoffice": _build_cli_parser_status(
             settings.LIBREOFFICE_ENABLED,
-            resolve_cli_command(libreoffice_cli) or "",
+            resolve_cli_command(libreoffice_cli),
         ),
         "deepdoc": _build_import_parser_status(
             "app.deepdoc.parser",
@@ -1930,7 +1921,7 @@ async def test_llm_connection(
                     http_async_client=http_async_client,
                 )
                 resp = await llm.ainvoke([HumanMessage(content="Say 1")])
-                content = (resp.content or "").strip()
+                content = resp.text.strip()
                 if not content:
                     return {"success": False, "message": "Empty response"}
                 return {"success": True, "message": content[:200]}

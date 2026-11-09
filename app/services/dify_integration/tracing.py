@@ -49,7 +49,7 @@ def _has_dify_rerank(records: list[DifyExternalKnowledgeRecord]) -> bool:
 
 
 def _bounded_trace_query_preview(value: object) -> str | None:
-    text = str(value or "").strip()
+    text = common._first_nonempty_str(value)
     if not text:
         return None
     return text[:_DIFY_TRACE_QUERY_PREVIEW_MAX_CHARS]
@@ -69,12 +69,14 @@ def _dify_trace_retrieval_queries(
     for row in rows:
         if not isinstance(row, dict):
             continue
-        query_text = str(row.get("query") or "").strip()
+        query_text = common._first_nonempty_str(row.get("query"))
         query_preview = _bounded_trace_query_preview(query_text)
-        path = str(row.get("path") or "").strip()[:_DIFY_TRACE_QUERY_PATH_MAX_CHARS]
+        path = common._first_nonempty_str(row.get("path"))
+        if path is not None:
+            path = path[:_DIFY_TRACE_QUERY_PATH_MAX_CHARS]
         item = {
             "kind": common._first_nonempty_str(row.get("kind")) or "subq",
-            "query_chars": len(query_text),
+            "query_chars": len(query_text) if query_text is not None else 0,
             "ok": bool(row.get("ok", True)),
         }
         if query_preview:
@@ -124,8 +126,8 @@ def _log_dify_external_rag_trace(
             "conversation_id": str(conversation_id),
             "tenant_id": str(tenant_id),
             "request_id": resolved_request_id,
-            "question": str(question or ""),
-            "query_for_retrieval": str(question or ""),
+            "question": question,
+            "query_for_retrieval": question,
             "citations_count": len(citations),
             "citations": citations,
             "retrieval": {
@@ -141,7 +143,7 @@ def _log_dify_external_rag_trace(
                 "reranker_top_n": int(candidate_top_k),
             },
             "route": "dify_external_knowledge",
-            "retrieval_path": str(retrieval_path or ""),
+            "retrieval_path": retrieval_path,
             "metadata_anchor_fallback_count": int(metadata_anchor_fallback_count or 0),
             "dify_message_id": common._first_nonempty_str(dify_message_id),
             "dify_workflow_run_id": common._first_nonempty_str(dify_workflow_run_id),

@@ -29,7 +29,7 @@ _PUNCT_STRIP_CHARS = "-–—:：.。!！?？·•"
 
 
 def _normalize_heading(text: str) -> str:
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return ""
     normalized = raw.strip(_PUNCT_STRIP_CHARS).strip().casefold()
@@ -108,7 +108,7 @@ def remove_markdown_boilerplate(text: str) -> BoilerplateRemovalResult:
     - Code fences are preserved as-is.
     - Section removal triggers only on explicit headings.
     """
-    original = text or ""
+    original = text
     if not original:
         return BoilerplateRemovalResult(text="", removed_sections=0, removed_lines=0, changed=False)
 

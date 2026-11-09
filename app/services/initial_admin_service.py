@@ -55,10 +55,10 @@ def _read_password_file(raw_path: str) -> str:
 
 
 def _load_credentials(config: Settings) -> _InitialAdminCredentials | None:
-    raw_email = (config.INITIAL_ADMIN_EMAIL or "").strip()
-    username = (config.INITIAL_ADMIN_USERNAME or "").strip()
-    inline_password = config.INITIAL_ADMIN_PASSWORD or ""
-    password_file = (config.INITIAL_ADMIN_PASSWORD_FILE or "").strip()
+    raw_email = (config.INITIAL_ADMIN_EMAIL).strip()
+    username = (config.INITIAL_ADMIN_USERNAME).strip()
+    inline_password = config.INITIAL_ADMIN_PASSWORD
+    password_file = (config.INITIAL_ADMIN_PASSWORD_FILE).strip()
 
     if not any((raw_email, username, inline_password, password_file)):
         return None
@@ -86,7 +86,7 @@ def _validated_credentials(config: Settings, *, email: str, username: str, passw
     if not 3 <= len(username) <= 64:
         raise InitialAdminBootstrapError("INITIAL_ADMIN_USERNAME must be between 3 and 64 characters")
 
-    min_length = config.PASSWORD_MIN_LENGTH or 8
+    min_length = config.PASSWORD_MIN_LENGTH
     if len(password) < min_length:
         raise InitialAdminBootstrapError(f"Initial admin password must be at least {min_length} characters")
     if len(password.encode("utf-8")) > 72:
@@ -165,7 +165,7 @@ def _default_credentials(config: Settings) -> _InitialAdminCredentials:
 
 
 def _default_tenant_id(config: Settings) -> UUID:
-    raw_tenant_id = (config.DEFAULT_TENANT_ID or "").strip()
+    raw_tenant_id = (config.DEFAULT_TENANT_ID).strip()
     try:
         return UUID(raw_tenant_id)
     except ValueError as exc:
@@ -179,7 +179,7 @@ def _matching_owner(db: Session, *, tenant_id: UUID, credentials: _InitialAdminC
 
     for member in members:
         try:
-            user_id = UUID(member.user_id or "")
+            user_id = UUID(member.user_id)
         except ValueError:
             continue
         user = db.query(User).filter(User.id == user_id).first()
@@ -189,7 +189,7 @@ def _matching_owner(db: Session, *, tenant_id: UUID, credentials: _InitialAdminC
             and user.username == credentials.username
             and bool(user.is_active)
             and bool(member.is_active)
-            and (member.role or "").lower() == UserRoles.OWNER
+            and member.role.lower() == UserRoles.OWNER
         ):
             return user
 
@@ -264,7 +264,7 @@ def bootstrap_initial_admin_if_configured(db: Session, *, config: Settings = set
             tenant = _lock_or_create_tenant(db, tenant_id)
             if db.query(TenantMember.id).filter(TenantMember.tenant_id == tenant_id).first() is not None:
                 return False
-            if str(tenant.status or "").lower() != "active":
+            if tenant.status.lower() != "active":
                 raise InitialAdminBootstrapError("The default tenant is inactive; cannot create initial administrator")
             # Generate and persist credentials only after taking the workspace
             # lock. Other API replicas then see the committed owner and skip.

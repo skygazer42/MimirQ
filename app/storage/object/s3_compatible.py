@@ -34,13 +34,13 @@ class S3CompatibleObjectStore(MinIOService):
         super().__init__()
         self._provider_name = str(provider_name or "s3_compatible").strip().lower() or "s3_compatible"
         self._enabled = bool(enabled)
-        self._endpoint = str(endpoint or "").strip()
-        self._access_key = str(access_key or "").strip()
-        self._secret_key = str(secret_key or "").strip()
-        self._bucket_name = str(bucket_name or "").strip()
+        self._endpoint = endpoint.strip()
+        self._access_key = access_key.strip()
+        self._secret_key = secret_key.strip()
+        self._bucket_name = bucket_name.strip()
         self._use_ssl = bool(use_ssl)
         self._documents_enabled = bool(documents_enabled)
-        self._region = str(region or "").strip().lower() or None
+        self._region = (region.strip().lower() or None) if region is not None else None
         self._metrics_path = Path(metrics_log_path or "./logs/object_store_metrics.jsonl")
 
     def describe_backend(self) -> dict[str, Any]:
@@ -55,8 +55,8 @@ class S3CompatibleObjectStore(MinIOService):
         }
 
     def build_object_uri(self, bucket: str, object_name: str) -> str:
-        b = str(bucket or "").strip()
-        o = str(object_name or "").lstrip("/").strip()
+        b = bucket.strip()
+        o = object_name.lstrip("/").strip()
         if not b or not o:
             raise ValueError("invalid_object_uri_components")
         uri_scheme = "s3compat" if self._provider_name == "s3_compatible" else self._provider_name
@@ -124,7 +124,7 @@ class S3CompatibleObjectStore(MinIOService):
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
             document_id=str(document_id),
-            extension=str(extension or ""),
+            extension=extension,
         )
         client = self._get_client()
         try:

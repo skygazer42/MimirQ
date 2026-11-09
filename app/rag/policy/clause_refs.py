@@ -17,7 +17,7 @@ def normalize_clause_ref(ref: str) -> str:
     - Canonicalizes English prefixes ("ARTICLE" -> "Article", "SECTION" -> "Section")
     - Leaves non-ASCII / CN refs unchanged beyond trimming
     """
-    s = (ref or "").strip()
+    s = (ref).strip()
     if not s:
         return ""
 
@@ -45,7 +45,7 @@ def extract_clause_refs(text: str) -> list[str]:
     - No external dependencies
     - Bounded output (dedup only; caller can cap if needed)
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return []
 

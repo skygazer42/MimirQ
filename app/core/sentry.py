@@ -12,7 +12,7 @@ logger = logging.getLogger("mimirq.sentry")
 
 
 def init_sentry() -> bool:
-    dsn = (settings.SENTRY_DSN or "").strip()
+    dsn = (settings.SENTRY_DSN).strip()
     if not dsn:
         return False
 

@@ -60,18 +60,18 @@ def build_index_drift_marker(
     payload: dict[str, Any] = {
         "schema": "mimirq.index_drift_marker.v1",
         "created_at": _now_utc_iso() if created_at is None else created_at,
-        "operation": str(operation or "").strip()[:80],
-        "strictness": str(strictness or "").strip().lower()[:20] or "off",
+        "operation": operation.strip()[:80],
+        "strictness": strictness.strip().lower()[:20] or "off",
         "tenant_id": str(tenant_id) if tenant_id is not None else None,
         "document_id": str(document_id) if document_id is not None else None,
         "chunk_id": str(chunk_id) if chunk_id is not None else None,
-        "channel": str(channel or "").strip().lower()[:40] or "unknown",
-        "reason": str(reason or "").strip()[:240] or "index_operation_failed",
+        "channel": channel.strip().lower()[:40] or "unknown",
+        "reason": reason.strip()[:240] or "index_operation_failed",
     }
     if isinstance(details, dict) and details:
         safe_details: dict[str, Any] = {}
         for key, value in details.items():
-            k = str(key or "").strip()
+            k = key.strip()
             if not k:
                 continue
             if isinstance(value, (bool, int, float)) or value is None:
@@ -284,7 +284,7 @@ def _replay_vector_patch(*, db: Session, item: IndexDriftItem, chunk: DocumentCh
         store.add_documents(
             [
                 {
-                    "content": str(chunk.content or ""),
+                    "content": chunk.content,
                     "metadata": dict(chunk.doc_metadata or {}),
                 }
             ],
@@ -434,8 +434,8 @@ def _replay_index_drift_item(
     item: IndexDriftItem,
 ) -> str:
     document, chunk = _load_index_drift_context(db=db, item=item)
-    operation = str(item.operation or "").strip().lower()
-    channel = str(item.channel or "").strip().lower()
+    operation = item.operation.strip().lower()
+    channel = item.channel.strip().lower()
 
     if operation == "chunk.patch":
         if document is None or chunk is None or chunk.disabled_at is not None:
@@ -567,7 +567,7 @@ def compute_index_audit_summary(
     return {
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id),
-        "vector_backend": str(settings.VECTOR_BACKEND or ""),
+        "vector_backend": settings.VECTOR_BACKEND,
         "active_documents": int(active_documents),
         "active_chunks": int(active_chunks),
         "vector_id_missing": int(vector_id_missing),
@@ -593,10 +593,10 @@ def _index_channel_rows_by_document(
     rows_by_document: dict[str, dict[str, dict[str, Any]]] = {}
     rows_seen_by_document: set[str] = set()
     pipeline_hash_by_document = {
-        str(document.id or ""): _document_pipeline_hash(document) for document in documents if document.id is not None
+        str(document.id): _document_pipeline_hash(document) for document in documents if document.id is not None
     }
     for row in channel_rows:
-        document_key = str(row.document_id or "")
+        document_key = str(row.document_id)
         if not document_key:
             continue
         pipeline_hash = row.pipeline_hash
@@ -605,7 +605,7 @@ def _index_channel_rows_by_document(
         rows_seen_by_document.add(document_key)
         channel_status = document_index_channel_status(row)
         channel_status["legacy"] = False
-        rows_by_document.setdefault(document_key, {})[str(row.channel or "")] = channel_status
+        rows_by_document.setdefault(document_key, {})[row.channel] = channel_status
     return rows_by_document, rows_seen_by_document
 
 
@@ -660,7 +660,7 @@ def _accumulate_index_channel_summary(
         summary["documents_using_legacy_fallback"] += 1
 
     for channel, payload in statuses.items():
-        status = str(payload.get("status") or "").strip().lower() or "pending"
+        status = payload["status"].strip().lower() or "pending"
         enabled = bool(payload.get("enabled"))
         summary["status_counts"][status] = summary["status_counts"].get(status, 0) + 1
         channel_status_counts = summary["status_counts_by_channel"].setdefault(channel, {})
@@ -731,7 +731,7 @@ def compute_index_channel_audit_summary(
     summary = _empty_index_channel_audit_summary()
     summary["documents_with_channel_rows"] = len(rows_seen_by_document)
     for document in documents:
-        document_key = str(document.id or "")
+        document_key = str(document.id)
         _accumulate_index_channel_summary(
             summary,
             statuses=_document_index_channel_statuses(

@@ -13,6 +13,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
+from app.rag.core.metadata import _stringified_metadata_text
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.rag.core.errors import ConfigError
 from app.rag.core.http import httpx_trust_env
@@ -32,7 +33,9 @@ logger = get_logger("rag.llm.factory")
 
 def _resolve_explicit_http_proxy() -> str | None:
     for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
-        value = str(os.getenv(key) or "").strip()
+        value = os.getenv(key)
+        if value is not None:
+            value = value.strip()
         if value and not value.lower().startswith("socks"):
             return value
     return None
@@ -192,7 +195,7 @@ class EmbeddingClient:
 def _normalize_fallback_spec(spec: object) -> dict[str, Any] | None:
     if isinstance(spec, dict):
         out = {str(k): v for k, v in spec.items()}
-        model_name = str(out.get("model") or "").strip()
+        model_name = _stringified_metadata_text(out, "model")
         if not model_name:
             return None
         out["model"] = model_name
@@ -205,7 +208,7 @@ def _normalize_fallback_spec(spec: object) -> dict[str, Any] | None:
 
 
 def _parse_fallback_specs(raw: str) -> list[dict[str, Any]]:
-    text = str(raw or "").strip()
+    text = raw.strip()
     if not text:
         return []
     if text.startswith(("{", "[")):
@@ -280,7 +283,7 @@ async def _build_fallback_clients(
     clients: list[BaseLLMClient] = [primary]
     seen_models = {primary_model} if primary_model else set()
     for spec in specs:
-        model_name = str(spec.get("model") or "").strip()
+        model_name = spec["model"].strip()
         if not model_name or model_name in seen_models:
             continue
         try:

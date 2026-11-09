@@ -104,14 +104,14 @@ class _MultiJoinResult(TypedDict):
 
 
 def _normalize_ident(value: str) -> str:
-    raw = (value or "").strip().casefold()
+    raw = (value).strip().casefold()
     if not raw:
         return ""
     return re.sub(_NON_IDENT_RE, "_", raw).strip("_")
 
 
 def _singularize(token: str) -> str:
-    t = (token or "").strip()
+    t = (token).strip()
     if not t:
         return ""
     if t.endswith("ies") and len(t) > 3:
@@ -126,7 +126,7 @@ def _singularize(token: str) -> str:
 def _alias_bases(table_name: str, aliases: list[str] | None) -> set[str]:
     out: set[str] = set()
     for raw in [table_name, *list(aliases or [])]:
-        s = str(raw or "").strip()
+        s = raw.strip()
         if not s:
             continue
         s = s.split(".")[0] if s.count(".") == 1 and s.lower().endswith((".csv", ".xls", ".xlsx")) else s
@@ -161,7 +161,7 @@ def _safe_col_names(columns: list[dict[str, Any]]) -> list[str]:
     for c in columns or []:
         if not isinstance(c, dict):
             continue
-        name = str(c.get("name") or "").strip()
+        name = c['name'].strip()
         if not name:
             continue
         out.append(name)
@@ -179,7 +179,7 @@ def _safe_positive_int(value: Any) -> int | None:
 
 
 def _sample_column_selectivity(*, rows: list[dict[str, Any]] | None, column_name: str) -> float | None:
-    col = str(column_name or "").strip()
+    col = column_name.strip()
     if not col:
         return None
     sample = [r for r in (rows or []) if isinstance(r, dict)][:50]
@@ -272,7 +272,7 @@ def _build_relationship_candidate(
         "right_table": right_table,
         "right_column": right_column,
         "confidence": round(confidence, 6),
-        "reason": (reason or "").strip(),
+        "reason": (reason).strip(),
         "penalties": penalties,
         "penalty_score": penalty_score,
         "base_penalty_score": round(base_penalty_score, 6),
@@ -547,7 +547,7 @@ def build_table_schema_graph(*, tables: list[dict[str, Any]]) -> _SchemaGraph:
     for raw in tables or []:
         if not isinstance(raw, dict):
             continue
-        tname = str(raw.get("table_name") or "").strip()
+        tname = raw['table_name'].strip()
         cols = raw.get("columns")
         if not tname or not isinstance(cols, list):
             continue
@@ -821,7 +821,7 @@ def score_multi_join_plan_candidates(
         return _empty_multi_join_result(graph=graph, max_states=max_states)
 
     beam_limit = max(4, int(max_states or 4))
-    table_names = [str(t.get("table_name") or "").strip() for t in (tables or []) if isinstance(t, dict)]
+    table_names = [t['table_name'].strip() for t in (tables or []) if isinstance(t, dict)]
     target_tables = len([t for t in table_names if t])
 
     states = _seed_multi_join_states(edge_candidates)

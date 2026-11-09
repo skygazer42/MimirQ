@@ -48,6 +48,7 @@ from app.services.dify_integration.common import (
 )
 from app.services.dify_integration.common import _MAX_QA_HINT_VALUE_CHARS as _MAX_QA_HINT_VALUE_CHARS
 from app.services.dify_integration.common import _clamp_score as _clamp_score
+from app.services.dify_integration.common import _first_nonempty_str as _first_nonempty_str
 from app.services.dify_integration.common import _iter_record_metadata_layers as _iter_record_metadata_layers
 from app.services.dify_integration.common import _metadata_terms as _metadata_terms
 from app.services.dify_integration.common import _normalize_match_term as _normalize_match_term
@@ -101,7 +102,7 @@ def _record_matches_quoted_query_anchor_for_policy(
     anchors = _quoted_query_anchor_terms(query)
     if not anchors:
         return True
-    values: list[str] = [str(record.get("content") or ""), str(record.get("title") or "")]
+    values: list[str] = [record['content'], record['title']]
     anchor_fields = query_policy._exact_query_anchor_fields_for_policy_refs(policy_plugin_refs)
     for metadata in _iter_record_metadata_layers(record):
         for field in anchor_fields:
@@ -196,7 +197,7 @@ def _record_intent_bonus(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
-    query_text = str(query or "").casefold()
+    query_text = query.casefold()
     if not query_text:
         return 0.0
     matches = 0
@@ -220,7 +221,7 @@ def _record_mixed_intent_subquery_bonus(
     query_term = _normalize_match_term(query)
     best = 0.0
     for metadata in _iter_record_metadata_layers(record):
-        subquery = str(metadata.get("dify_mixed_intent_subquery") or "").strip()
+        subquery = _first_nonempty_str(metadata.get("dify_mixed_intent_subquery"))
         if not subquery:
             continue
         subquery_term = _normalize_match_term(subquery)
@@ -351,7 +352,7 @@ def _record_final_rerank_text(
     seen: set[str] = set()
 
     def add(value: Any) -> None:
-        text = str(value or "").strip()
+        text = _first_nonempty_str(value)
         if not text or text in seen:
             return
         seen.add(text)
@@ -457,7 +458,7 @@ def _final_rerank_candidates(
         candidate_id = _record_final_rerank_candidate_id(record, index=index, used=used_ids)
         metadata = dict(record.get("metadata") if isinstance(record.get("metadata"), dict) else {})
         metadata["score"] = float(record.get("score") or 0.0)
-        metadata["title"] = str(record.get("title") or "")
+        metadata["title"] = record['title']
         candidates.append(RerankCandidate(id=candidate_id, text=text, metadata=metadata))
         id_to_record[candidate_id] = record
     return candidates, id_to_record, candidate_count
@@ -551,7 +552,7 @@ def _record_content_is_answerful(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
-    content = str(record.get("content") or "").strip()
+    content = record['content'].strip()
     return bool(content) and _record_has_answer_evidence(
         record,
         content=content,
@@ -562,7 +563,7 @@ def _record_content_is_answerful(
 def _record_answerfulness_score(record: dict[str, Any], *, policy_plugin_refs: tuple[str, ...] = ()) -> float:
     answerful_record_bonus = _ANSWERFUL_RECORD_BONUS
     anchor_only_qa_record_penalty = _ANCHOR_ONLY_QA_RECORD_PENALTY
-    content = str(record.get("content") or "").strip()
+    content = record['content'].strip()
     if not content:
         return 0.0
     if _record_has_answer_evidence(record, content=content, policy_plugin_refs=policy_plugin_refs):
@@ -720,8 +721,8 @@ def _composite_exact_anchor_slot_metadata(
     source_document_ids: list[str] = []
     for record in records:
         record_metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-        chunk_id = str(record_metadata.get("chunk_id") or "").strip()
-        document_id = str(record_metadata.get("document_id") or "").strip()
+        chunk_id = _first_nonempty_str(record_metadata.get("chunk_id"))
+        document_id = _first_nonempty_str(record_metadata.get("document_id"))
         if chunk_id and chunk_id not in source_chunk_ids:
             source_chunk_ids.append(chunk_id)
         if document_id and document_id not in source_document_ids:
@@ -749,7 +750,7 @@ def _composite_exact_anchor_slot_content(records: list[dict[str, Any]]) -> str:
         part
         for part in (
             _composite_stitched_section_text(records),
-            "\n\n".join(str(record.get("content") or "").strip() for record in records if record.get("content")),
+            "\n\n".join(record['content'].strip() for record in records if record.get("content")),
         )
         if part
     ]
@@ -790,7 +791,7 @@ def _record_is_anchor_only_qa(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     response_hints = _response_hints_for_record(record, policy_plugin_refs=policy_plugin_refs)
-    normalized = str(content or "").strip()
+    normalized = content.strip()
     answer_labels = _response_hint_string_list(response_hints, "answer_labels")
     answer_keywords = _response_hint_string_list(response_hints, "answer_keywords")
     if any(label and label in normalized for label in (*answer_labels, *answer_keywords)):
@@ -799,7 +800,7 @@ def _record_is_anchor_only_qa(
     if not chunk_kinds:
         return False
     is_qa_record = any(
-        str(metadata.get("chunk_kind") or "").strip() in chunk_kinds
+        _first_nonempty_str(metadata.get("chunk_kind")) in chunk_kinds
         for metadata in _iter_record_metadata_layers(record)
     )
     if not is_qa_record:
@@ -1052,7 +1053,7 @@ def _records_can_skip_kg_on_demand(
 def _dedupe_records(
     records: list[dict[str, Any]], *, query: str, policy_plugin_refs: tuple[str, ...] = ()
 ) -> list[dict[str, Any]]:
-    best_by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
+    best_by_key: dict[tuple[str | None, str | None, str], dict[str, Any]] = {}
     for record in records:
         key = _record_dedupe_key(record)
         if not any(key):

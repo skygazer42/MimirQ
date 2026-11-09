@@ -42,7 +42,7 @@ def _enabled_api_backend_availability(
     api_url_note: str,
 ) -> tuple[bool, str | None]:
     enabled = bool(getattr(settings, enabled_setting, False))
-    api_url = bool((getattr(settings, api_url_setting, "") or "").strip())
+    api_url = bool((getattr(settings, api_url_setting)).strip())
     if not enabled:
         return False, enable_note
     if not api_url:
@@ -174,7 +174,7 @@ _PARSER_BACKEND_CHECKS: dict[str, Callable[[], tuple[bool, str | None]]] = {
 
 
 def _pipeline_parser_backend_info(name: str) -> ParserBackendInfo:
-    backend = (name or "").strip().lower()
+    backend = (name).strip().lower()
     if backend == "auto":
         return ParserBackendInfo(name=backend, available=True, notes="Auto routes to the best enabled backend.")
     if backend == "basic":
@@ -310,7 +310,7 @@ def _integrated_pipeline_chunk_note() -> str:
 
 
 def _pipeline_chunk_strategy_info(name: str) -> ChunkStrategyInfo:
-    strategy = (name or "").strip().lower()
+    strategy = (name).strip().lower()
     available = True
     notes = _CHUNK_STRATEGY_NOTES.get(strategy)
     if strategy.startswith("llama_index"):

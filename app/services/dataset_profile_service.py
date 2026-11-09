@@ -158,7 +158,9 @@ def normalize_language_bucket(value: object) -> str:
     - Keep in sync with retrieval/eval slice taxonomy.
     """
 
-    s = str(value or "").strip()
+    if value is None:
+        return "unknown"
+    s = str(value).strip()
     if not s:
         return "unknown"
     lowered = s.lower()
@@ -181,7 +183,9 @@ def directory_bucket_from_source_path(value: object) -> str:
     and to align with eval slice taxonomy.
     """
 
-    raw = str(value or "").replace("\\", "/").strip()
+    if value is None:
+        return "root"
+    raw = str(value).replace("\\", "/").strip()
     if not raw or raw in {".", "/"}:
         return "root"
     raw = raw.lstrip("/")
@@ -238,10 +242,10 @@ def extract_language_bucket(meta: dict[str, Any]) -> str:
 
 
 def _normalize_file_type(file_type: object, filename: object) -> str:
-    explicit = str(file_type or "").strip().lower()
+    explicit = file_type.strip().lower()
     if explicit:
         return explicit
-    name = str(filename or "").strip()
+    name = filename.strip()
     if "." in name:
         ext = name.rsplit(".", 1)[-1].strip().lower()
         if ext:
@@ -255,7 +259,7 @@ def _extract_pii_hits(meta: dict) -> dict[str, int]:
         return {}
     out: dict[str, int] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        key = str(k).strip()
         if not key:
             continue
         n = safe_int(v, default=0)
@@ -270,7 +274,7 @@ def _extract_secrets_hits(meta: dict) -> dict[str, int]:
         return {}
     out: dict[str, int] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        key = str(k).strip()
         if not key:
             continue
         n = safe_int(v, default=0)
@@ -452,7 +456,10 @@ def _accumulate_parse_provenance(state: _ProfileAggregateState, *, meta_dict: di
     if not isinstance(prov, dict) or not prov:
         return
     state.provenance_docs += 1
-    backend = str(prov.get("resolved_backend") or "").strip() or "unknown"
+    backend = prov.get("resolved_backend")
+    if backend is not None:
+        backend = backend.strip()
+    backend = backend or "unknown"
     state.provenance_by_backend[backend] += 1
 
     elapsed = safe_int(prov.get("elapsed_ms"), default=0)
@@ -476,7 +483,7 @@ def _accumulate_chunk_length_histogram(state: _ProfileAggregateState, *, meta_di
     for bucket in hist:
         if not isinstance(bucket, dict):
             continue
-        label = str(bucket.get("label") or "").strip()
+        label = bucket["label"].strip()
         if not label:
             continue
         idx = state.chunk_length_label_to_idx.get(label)
@@ -500,7 +507,7 @@ def _accumulate_chunk_token_histogram(state: _ProfileAggregateState, *, meta_dic
     for bucket in hist:
         if not isinstance(bucket, dict):
             continue
-        label = str(bucket.get("label") or "").strip()
+        label = bucket["label"].strip()
         if not label:
             continue
         idx = state.chunk_token_label_to_idx.get(label)
@@ -553,7 +560,9 @@ def _accumulate_chunk_quality_findings(state: _ProfileAggregateState, *, meta_di
     gate = meta_dict.get("chunk_quality_gate")
     if not isinstance(gate, dict):
         return
-    grade = str(gate.get("grade") or "").strip().lower()
+    grade = gate.get("grade")
+    if grade is not None:
+        grade = grade.strip().lower()
     if grade == "fail":
         state.finding_counts["chunk_quality_fail"] += 1
     reason_items = gate.get("reason_items")
@@ -562,7 +571,7 @@ def _accumulate_chunk_quality_findings(state: _ProfileAggregateState, *, meta_di
     for item in reason_items:
         if not isinstance(item, dict):
             continue
-        code = str(item.get("code") or "").strip().lower()
+        code = item["code"].strip().lower()
         if code not in {"many_duplicates", "too_many_duplicates"}:
             continue
         state.duplicate_like_docs += 1
@@ -611,8 +620,7 @@ def _accumulate_document_findings(
 ) -> None:
     if status == "failed":
         state.finding_counts["parse_failed"] += 1
-        err = str(error_message or "")
-        if err.strip().lower().startswith("preprocess_failed"):
+        if error_message is not None and str(error_message).strip().lower().startswith("preprocess_failed"):
             state.finding_counts["preprocess_failed"] += 1
 
     if _is_low_density(meta_dict, density_threshold=float(density_threshold)):
@@ -656,7 +664,9 @@ def _accumulate_security_and_dedup(state: _ProfileAggregateState, *, meta_dict: 
     if _has_near_dedup(meta_dict):
         state.finding_counts["near_dedup"] += 1
 
-    sha = str(meta_dict.get("file_sha256") or "").strip().lower()
+    sha = meta_dict.get("file_sha256")
+    if sha is not None:
+        sha = sha.strip().lower()
     if sha:
         state.sha_counts[sha] += 1
 
@@ -670,7 +680,7 @@ def _accumulate_profile_row(
 ) -> None:
     _doc_id, filename, file_type, file_size, status, chunk_count, total_chars, error_message, meta = row
     file_type_norm = _normalize_file_type(file_type, filename)
-    status_norm = str(status or "").strip().lower() or "unknown"
+    status_norm = status.strip().lower() or "unknown"
     state.by_status[status_norm] += 1
     state.by_type[file_type_norm] += 1
 
@@ -1289,12 +1299,12 @@ def compute_dataset_profile_summary(
             .enable_eagerloads(False)
             .scalar()
         )
-        latest_doc_key = latest_doc_ts.isoformat() if hasattr(latest_doc_ts, "isoformat") else str(latest_doc_ts or "")
+        latest_doc_key = latest_doc_ts.isoformat() if latest_doc_ts is not None else None
         cache_key = (
             str(tenant_id),
             str(account_id),
             str(dataset_id),
-            str(pipeline_hash_norm or ""),
+            pipeline_hash_norm,
             float(density_threshold),
             int(image_threshold),
             latest_doc_key,
@@ -1478,7 +1488,7 @@ def apply_finding_filter(
     NOTE: For JSONB fields, we only use predicates that work on PostgreSQL.
     For sqlite/local dev, callers can fall back to Python-side filtering (not ideal).
     """
-    key = str(finding_key or "").strip().lower()
+    key = finding_key.strip().lower()
     if key not in FINDING_KEY_REASONS:
         raise ValueError("Unknown finding_key")
     builder = _FINDING_FILTER_BUILDERS.get(key)
@@ -1528,10 +1538,10 @@ def list_finding_documents(
             DatasetProfileDocumentOut(
                 id=doc.id,
                 dataset_id=doc.dataset_id,
-                filename=str(doc.filename or ""),
-                file_type=str(doc.file_type or ""),
+                filename=doc.filename,
+                file_type=doc.file_type,
                 file_size=int(doc.file_size or 0),
-                status=str(doc.status or ""),
+                status=doc.status,
                 chunk_count=int(doc.chunk_count or 0),
                 total_characters=int(doc.total_characters or 0),
                 created_at=doc.created_at,
@@ -1546,11 +1556,11 @@ def list_finding_documents(
 _WS_RE = re.compile(r"\s+")
 
 
-def _collapse_ws(text: object) -> str:
-    return _WS_RE.sub(" ", str(text or "").strip())
+def _collapse_ws(text: str) -> str:
+    return _WS_RE.sub(" ", text.strip())
 
 
-def _safe_preview(text: str, *, max_chars: int) -> tuple[str | None, bool]:
+def _safe_preview(text: str | None, *, max_chars: int) -> tuple[str | None, bool]:
     """
     Produce a short, PII-safe preview snippet from markdown.
 
@@ -1560,7 +1570,9 @@ def _safe_preview(text: str, *, max_chars: int) -> tuple[str | None, bool]:
     """
 
     max_chars = max(80, min(int(max_chars or 0), 2000))
-    raw = str(text or "").strip()
+    if text is None:
+        return None, False
+    raw = text.strip()
     if not raw:
         return None, False
 
@@ -1581,7 +1593,7 @@ def _resolve_bucket_total(
     dimension: str,
     bucket: str,
 ) -> tuple[str, int]:
-    raw_bucket = str(bucket or "").strip() or "unknown"
+    raw_bucket = bucket.strip() or "unknown"
     if dimension == "file_type":
         bucket_key = raw_bucket.lower() or "unknown"
         total = int((summary.by_file_type or {}).get(bucket_key, 0) or 0)
@@ -1671,7 +1683,7 @@ def _load_bucket_previews(
         if doc_id and isinstance(markdown, str) and markdown.strip():
             by_id[doc_id] = markdown
     for doc_id in ids:
-        previews[doc_id] = _safe_preview(by_id.get(doc_id) or "", max_chars=int(preview_max_chars or 0))
+        previews[doc_id] = _safe_preview(by_id.get(doc_id), max_chars=int(preview_max_chars or 0))
     return previews
 
 
@@ -1699,10 +1711,10 @@ def _build_bucket_document_out(
     return DatasetProfileDocumentOut(
         id=doc_id,
         dataset_id=ds_id,
-        filename=str(filename or ""),
-        file_type=str(file_type or ""),
+        filename=filename,
+        file_type=file_type,
         file_size=int(file_size or 0),
-        status=str(status or ""),
+        status=status,
         chunk_count=int(chunk_count or 0),
         total_characters=int(total_chars or 0),
         created_at=created_at,
@@ -1737,7 +1749,7 @@ def list_bucket_documents(
     - quality_bucket (derived from metadata.governance_quality)
     """
 
-    dim = str(dimension or "").strip().lower()
+    dim = dimension.strip().lower()
     if dim not in {"file_type", "language", "directory", "quality_bucket"}:
         raise ValueError("Unknown dimension")
 

@@ -8,7 +8,7 @@ _TEMPORAL_HINT_RE = re.compile(
 
 
 def _sorted_snapshots(available_snapshots: list[str]) -> list[str]:
-    snapshots = [str(item or "").strip() for item in (available_snapshots or []) if str(item or "").strip()]
+    snapshots = [item.strip() for item in (available_snapshots or []) if item.strip()]
     return sorted(snapshots)
 
 
@@ -16,7 +16,7 @@ def _snapshot_for_year(query: str, snapshots: list[str]) -> str | None:
     year_match = _YEAR_RE.search(query)
     if not year_match:
         return None
-    year = str(year_match.group(1) or "")
+    year = year_match.group(1)
     return next((snap for snap in snapshots if snap.startswith(year)), None)
 
 
@@ -34,7 +34,7 @@ def route_snapshot_for_query(
     query: str,
     available_snapshots: list[str],
 ) -> dict[str, Any]:
-    q = str(query or "").strip()
+    q = query.strip()
     snapshots = _sorted_snapshots(available_snapshots)
     temporal_query = bool(_TEMPORAL_HINT_RE.search(q) or _YEAR_RE.search(q))
 

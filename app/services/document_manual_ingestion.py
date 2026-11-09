@@ -93,7 +93,9 @@ def _manual_chunk_metadata(
     chunk: ManualChunkCreate,
     chunk_index: int,
 ) -> dict[str, Any]:
-    pipeline_hash = str((document.doc_metadata or {}).get("pipeline_hash") or "").strip()
+    pipeline_hash = (document.doc_metadata or {}).get("pipeline_hash")
+    if pipeline_hash is not None:
+        pipeline_hash = pipeline_hash.strip()
     return {
         "source": request.filename,
         "file_type": request.file_type.lower(),

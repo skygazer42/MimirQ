@@ -23,7 +23,7 @@ def _position_tagged_text(*, page, page_num: int) -> str:  # noqa: ANN001
         except Exception:
             get_logger(__name__).debug(NON_CRITICAL_EXCEPTION_LOG_MESSAGE, exc_info=True)
             continue
-        clean = str(text or "").strip()
+        clean = text.strip()
         if not clean:
             continue
         blocks.append(f"{clean}@@{page_num + 1}\t{float(x0):.1f}\t{float(x1):.1f}\t{float(y0):.1f}\t{float(y1):.1f}##")
@@ -31,7 +31,7 @@ def _position_tagged_text(*, page, page_num: int) -> str:  # noqa: ANN001
 
 
 def _extract_table_signature(text: str) -> tuple[str, list[str]] | None:
-    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     for index in range(len(lines) - 1):
         header = lines[index]
         separator = lines[index + 1]
@@ -86,11 +86,11 @@ def _load_rgb_image(image_bytes: bytes):  # noqa: ANN001
 
 def _decode_image_details(image) -> tuple[str, str, list[str]]:  # noqa: ANN001
     code_info = decode_image_codes(image)
-    visual_kind = str(code_info.get("visual_kind") or "").strip().lower() if isinstance(code_info, dict) else ""
+    visual_kind = code_info.get("visual_kind", "").strip().lower() if isinstance(code_info, dict) else ""
     if not visual_kind:
-        visual_kind = str(infer_visual_kind_from_pixels(image) or "").strip().lower()
+        visual_kind = infer_visual_kind_from_pixels(image).strip().lower()
 
-    code_text = str(code_info.get("text") or "").strip() if isinstance(code_info, dict) else ""
+    code_text = code_info.get("text", "").strip() if isinstance(code_info, dict) else ""
     code_values: list[str] = []
     if isinstance(code_info, dict):
         raw_values = code_info.get("values")

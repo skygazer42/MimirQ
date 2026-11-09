@@ -29,6 +29,7 @@ from langgraph.runtime import Runtime, get_runtime
 from langgraph.types import CachePolicy, RetryPolicy
 
 from app.core.config import settings
+from app.rag.core.metadata import _stringified_metadata_text
 from app.core.database import SessionLocal
 from app.core.pii_redaction import pii_redaction_enabled, redact_text
 from app.core.token_utils import num_tokens_from_string, truncate
@@ -189,8 +190,8 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
     doc_ids_key = ",".join(sorted(str(x) for x in doc_ids))
     # Security: retrieval is scoped by ACL and dataset; cache key MUST include account_id/dataset_id
     # to avoid cross-user leakage when cache is enabled.
-    account_id = str(state.get("account_id") or "")
-    dataset_id = str(state.get("dataset_id") or "")
+    account_id = _stringified_metadata_text(state, "account_id")
+    dataset_id = _stringified_metadata_text(state, "dataset_id")
     from app.rag.embedding.utils import current_embedding_space_hash
 
     embedding_space = current_embedding_space_hash()
@@ -200,9 +201,9 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         policy_json = json.dumps(raw_policy, ensure_ascii=False, sort_keys=True, default=str)
     policy_hash = hashlib.sha256(policy_json.encode("utf-8", errors="ignore")).hexdigest()[:16] if policy_json else ""
     key_obj = {
-        "question": state.get("question") or "",
+        "question": state["question"],
         "history": history_text,
-        "tenant_id": str(state.get("tenant_id") or ""),
+        "tenant_id": _stringified_metadata_text(state, "tenant_id"),
         "account_id": account_id,
         "dataset_id": dataset_id,
         "dataset_ids": state.get("dataset_ids"),
@@ -215,7 +216,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
             settings.SIMILARITY_THRESHOLD if state.get("score_threshold") is None else state.get("score_threshold")
         ),
         "retrieval_mode": str(state.get("retrieval_mode") or "hybrid"),
-        "retrieval_profile": str(state.get("retrieval_profile") or ""),
+        "retrieval_profile": _stringified_metadata_text(state, "retrieval_profile"),
         "intent_router": state.get("intent_router"),
         "intent_router_policy_hash": policy_hash,
         # Query expansion knobs affect retrieval results; include them to avoid cache collisions.
@@ -253,10 +254,7 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         "enable_reranker": bool(
             settings.ENABLE_RERANKER if state.get("enable_reranker") is None else state.get("enable_reranker")
         ),
-        "reranker_provider": str(
-            (settings.RERANKER_PROVIDER if state.get("reranker_provider") is None else state.get("reranker_provider"))
-            or ""
-        ),
+        "reranker_provider": settings.RERANKER_PROVIDER if state.get("reranker_provider") is None else state["reranker_provider"],
         "reranker_top_n": int(
             settings.RERANKER_TOP_N if state.get("reranker_top_n") is None else state.get("reranker_top_n")
         ),
@@ -390,7 +388,7 @@ def _context_content(
     max_per_chunk_chars: int,
     max_per_chunk_tokens: int,
 ) -> str:
-    raw_content = str(doc.page_content or "").strip()
+    raw_content = doc.page_content.strip()
     if settings.RAG_CONTEXT_EVIDENCE_ENABLED and query:
         return extract_evidence_text(
             raw_content,
@@ -415,10 +413,10 @@ def _build_context_part(
     max_per_chunk_tokens: int,
 ) -> str:
     meta = doc.metadata or {}
-    filename = str(meta.get("filename") or "").strip()
+    filename = _stringified_metadata_text(meta, "filename")
     source = str(meta.get("source") or filename or "Unknown")
     info_parts: list[str] = []
-    title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip()
+    title = _stringified_metadata_text(meta, "document_title") or _stringified_metadata_text(meta, "doc_title") or _stringified_metadata_text(meta, "title")
     if title:
         info_parts.append(f"Title: {title}")
     if filename:
@@ -672,7 +670,7 @@ def _invoke_generation_chain(
             "context": redact_text(ctx) if pii_on else ctx,
             "history": redact_text(hist_text) if pii_on else hist_text,
             "question": redact_text(state["question"]) if pii_on else state["question"],
-            "format_instructions": state.get("format_instructions", ""),
+            "format_instructions": state["format_instructions"],
         }
     )
     rendered = redact_text(str(answer)) if pii_on else str(answer)
@@ -696,7 +694,7 @@ def _prepare_generation_answer(
             source_identification_answer_used = True
     followup_questions: list[str] = []
     if not state.get("structured_output") and settings.RAG_FOLLOWUP_SUGGESTIONS_ENABLED:
-        answer, followup_questions = extract_followup_questions_from_answer(str(answer or ""), max_items=3)
+        answer, followup_questions = extract_followup_questions_from_answer(answer, max_items=3)
     return answer, source_identification_answer_used, followup_questions
 
 
@@ -749,7 +747,7 @@ def _apply_claim_check_to_answer(
 
 
 def _apply_text_claim_check(*, answer: str, claim_ctx: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-    claims = split_into_claims(str(answer or ""), max_claims=int(claim_ctx["claim_check_max_claims"]))
+    claims = split_into_claims(answer, max_claims=int(claim_ctx["claim_check_max_claims"]))
     kept: list[str] = []
     removed_reasons: list[dict[str, Any]] = []
     for claim in claims:
@@ -765,7 +763,7 @@ def _apply_text_claim_check(*, answer: str, claim_ctx: dict[str, Any]) -> tuple[
             diag = result.diagnostics if isinstance(result.diagnostics, dict) else {}
             removed_reasons.append(
                 {
-                    "claim": str(claim or "")[:300],
+                    "claim": claim[:300],
                     "reason_code": str(diag.get("reason_code") or diag.get("reason") or "unsupported")[:120],
                     "contradiction_type": (
                         str(diag.get("contradiction_type"))[:120]
@@ -793,7 +791,7 @@ def _apply_structured_claim_check(
         top_k=int(state.get("top_k") or 0),
     )
     parsed, _meta = parse_and_repair_structured_output(
-        str(answer or ""),
+        answer,
         preset=state.get("structured_preset"),
         fallback_answer=_UNABLE_TO_ANSWER_MESSAGE,
         fallback_citations=structured_citations,
@@ -807,7 +805,7 @@ def _apply_structured_claim_check(
     if (
         isinstance(scrubbed, dict)
         and isinstance(scrubbed.get("answer"), str)
-        and not str(scrubbed.get("answer") or "").strip()
+        and not scrubbed["answer"].strip()
     ):
         scrubbed["answer"] = _UNABLE_TO_ANSWER_MESSAGE
     removed_reasons = []
@@ -830,7 +828,7 @@ def _build_claim_evidence_safe(
         return []
     try:
         return build_claim_evidence_map(
-            str(answer or ""),
+            answer,
             evidence_chunks=list(state.get("docs") or []),
             max_claims=int(claim_ctx["claim_check_max_claims"]) if claim_ctx["claim_check_configured"] else 24,
             **_claim_verifier_kwargs(claim_ctx),
@@ -939,7 +937,7 @@ def _render_appendix_sentence_citations(
     suffix_md, rendered_count = render_sentence_citations_markdown(claim_evidence, **limits)
     if not suffix_md:
         return answer, sentence_meta
-    answer = (answer or "") + (redact_text(suffix_md) if pii_on else suffix_md)
+    answer = (answer) + (redact_text(suffix_md) if pii_on else suffix_md)
     sentence_meta["used"] = True
     sentence_meta["count"] = int(rendered_count or 0)
     return answer, sentence_meta
@@ -954,7 +952,7 @@ def _append_related_images(*, answer: str, state: RAGState, pii_on: bool) -> str
     parts = ["\n\n---\n\n### Related Images\n"]
     parts.extend(f"![Referenced Image {idx}]({url})" for idx, url in enumerate(image_urls, 1))
     images_md = "\n\n".join(parts) + "\n"
-    return (answer or "") + (redact_text(images_md) if pii_on else images_md)
+    return (answer) + (redact_text(images_md) if pii_on else images_md)
 
 
 def _answer_image_urls(citations: list[dict[str, Any]]) -> list[str]:
@@ -973,9 +971,9 @@ def _answer_image_urls(citations: list[dict[str, Any]]) -> list[str]:
 
 def _generation_evidence_text(docs: list[Document]) -> str:
     evidence_text = "\n".join(
-        str(getattr(doc, "page_content", "") or "")
+        doc.page_content
         for doc in docs
-        if str(getattr(doc, "page_content", "") or "").strip()
+        if doc.page_content.strip()
     )
     max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000))
     if max_evidence_chars and len(evidence_text) > max_evidence_chars:
@@ -1000,7 +998,7 @@ def _compute_generation_faithfulness(
     if not settings.FAITHFULNESS_SCORE_ENABLED:
         return faithfulness_meta
     return compute_faithfulness_score(
-        answer=str(answer or ""),
+        answer=answer,
         evidence_text=_generation_evidence_text(docs),
         max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
         verifier_mode=verifier_mode,
@@ -1110,18 +1108,18 @@ def _populate_standard_generation_metrics(
         generation_elapsed=generation_elapsed,
         prompt_state=state,
     )
-    metrics["context_chars"] = len(ctx or "")
-    metrics["context_tokens"] = num_tokens_from_string(ctx or "")
+    metrics["context_chars"] = len(ctx)
+    metrics["context_tokens"] = num_tokens_from_string(ctx)
     metrics.update(
         compute_context_cliff_metrics(
             context_tokens=int(metrics["context_tokens"] or 0),
             threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS),
         )
     )
-    metrics["history_chars"] = len(hist_text or "")
-    metrics["history_tokens"] = num_tokens_from_string(hist_text or "")
-    metrics["question_chars"] = len(state.get("question") or "")
-    metrics["question_tokens"] = num_tokens_from_string(state.get("question") or "")
+    metrics["history_chars"] = len(hist_text)
+    metrics["history_tokens"] = num_tokens_from_string(hist_text)
+    metrics["question_chars"] = len(state["question"])
+    metrics["question_tokens"] = num_tokens_from_string(state["question"])
     metrics["context_limit_total_chars"] = int(settings.RAG_CONTEXT_MAX_TOTAL_CHARS)
     metrics["context_limit_total_tokens"] = int(settings.RAG_CONTEXT_MAX_TOTAL_TOKENS)
     metrics["context_limit_per_chunk_chars"] = int(settings.RAG_CONTEXT_MAX_CHARS_PER_CHUNK)
@@ -1189,7 +1187,7 @@ def retrieve_task(state: dict[str, Any]) -> dict[str, Any]:
         writer(
             {
                 "event": "retrieve_start",
-                "question": (state.get("question") or "")[:500],
+                "question": (state["question"])[:500],
                 "retrieval_mode": state.get("retrieval_mode"),
                 "top_k": state.get("top_k"),
             }
@@ -1209,7 +1207,7 @@ def retrieve_task(state: dict[str, Any]) -> dict[str, Any]:
             name="rag_retrieve",
             run_type="retriever",
             inputs={
-                "question": (state.get("question") or "")[:2000],
+                "question": (state["question"])[:2000],
                 "retrieval_mode": state.get("retrieval_mode"),
                 "top_k": state.get("top_k"),
                 "document_ids_count": len(state.get("document_ids") or []),
@@ -1217,7 +1215,7 @@ def retrieve_task(state: dict[str, Any]) -> dict[str, Any]:
             metadata={
                 "request_id": metrics_in.get("request_id"),
                 "conversation_id": metrics_in.get("conversation_id"),
-                "tenant_id": metrics_in.get("tenant_id") or str(state.get("tenant_id") or ""),
+                "tenant_id": metrics_in.get("tenant_id") or _stringified_metadata_text(state, "tenant_id"),
                 "account_id": metrics_in.get("account_id"),
             },
             tags=["rag", "langgraph", "retrieval"],
@@ -1227,7 +1225,7 @@ def retrieve_task(state: dict[str, Any]) -> dict[str, Any]:
             metrics_out = result.get("metrics") or {}
             span.outputs = {
                 "citations_count": len(citations),
-                "query_for_retrieval": (result.get("query_for_retrieval") or "")[:2000],
+                "query_for_retrieval": result["query_for_retrieval"][:2000],
                 "retrieval_elapsed_sec": metrics_out.get("retrieval_elapsed_sec"),
             }
     else:
@@ -1239,7 +1237,7 @@ def retrieve_task(state: dict[str, Any]) -> dict[str, Any]:
         writer(
             {
                 "event": "retrieve_done",
-                "query_for_retrieval": (result.get("query_for_retrieval") or "")[:500],
+                "query_for_retrieval": result["query_for_retrieval"][:500],
                 "citations_count": len(citations),
                 "retrieval_mode": metrics.get("retrieval_mode") or result.get("retrieval_mode"),
                 "elapsed_sec": metrics.get("retrieval_elapsed_sec"),
@@ -1286,14 +1284,14 @@ def generate_task(state: dict[str, Any]) -> dict[str, Any]:
             name="rag_generate",
             run_type="llm",
             inputs={
-                "question": (state.get("question") or "")[:2000],
+                "question": (state["question"])[:2000],
                 "structured_output": bool(state.get("structured_output")),
                 "structured_preset": state.get("structured_preset"),
             },
             metadata={
                 "request_id": metrics_in.get("request_id"),
                 "conversation_id": metrics_in.get("conversation_id"),
-                "tenant_id": metrics_in.get("tenant_id") or str(state.get("tenant_id") or ""),
+                "tenant_id": metrics_in.get("tenant_id") or _stringified_metadata_text(state, "tenant_id"),
                 "account_id": metrics_in.get("account_id"),
             },
             tags=["rag", "langgraph", "generation"],
@@ -1301,7 +1299,7 @@ def generate_task(state: dict[str, Any]) -> dict[str, Any]:
             result = _run_with_retry("generate", _generate_node, state)
             metrics_out = result.get("metrics") or {}
             span.outputs = {
-                "answer_chars": len(result.get("answer") or ""),
+                "answer_chars": len(result["answer"]),
                 "route": result.get("route"),
                 "model_used": result.get("model_used"),
                 "generation_elapsed_sec": metrics_out.get("generation_elapsed_sec"),
@@ -1314,7 +1312,7 @@ def generate_task(state: dict[str, Any]) -> dict[str, Any]:
         writer(
             {
                 "event": "generate_done",
-                "answer_chars": len(result.get("answer") or ""),
+                "answer_chars": len(result["answer"]),
                 "route": result.get("route"),
                 "model_used": result.get("model_used"),
                 "elapsed_sec": metrics.get("generation_elapsed_sec"),
@@ -1917,7 +1915,7 @@ def run_rag_graph(
         result = app.invoke(state, config=config, context=runtime_context)
 
     return {
-        "answer": result.get("answer", ""),
+        "answer": result["answer"],
         "citations": result.get("citations", []),
         "model_used": result.get("model_used"),
         "route": result.get("route"),

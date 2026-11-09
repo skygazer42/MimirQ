@@ -56,7 +56,7 @@ def _is_block_start(lines: list[_Line], i: int) -> bool:
 
 
 def _infer_kind(block_text: str) -> str:
-    lowered = (block_text or "").lower()
+    lowered = (block_text).lower()
     if "traceback (most recent call last)" in lowered:
         return "python"
     if "\tat " in block_text or re.search(r"(?m)^\s*at\s+\S+", block_text):
@@ -126,7 +126,7 @@ def looks_like_stacktrace(text: str) -> bool:
         return False
     if _PY_START_RE.search(text):
         return True
-    head_lines = (text or "").splitlines()[:200]
+    head_lines = (text).splitlines()[:200]
     frame_lines = 0
     exc_lines = 0
     for ln in head_lines:
@@ -154,7 +154,7 @@ class StackTraceChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

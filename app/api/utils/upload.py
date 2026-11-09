@@ -149,7 +149,7 @@ def _drop_fakepath_prefix(parts: list[str]) -> list[str]:
 
 
 def _normalize_upload_path_parts(filename: str) -> list[str]:
-    raw = str(filename or "")
+    raw = filename
     if not raw:
         return []
     _assert_upload_filename_has_no_control_chars(raw)

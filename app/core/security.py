@@ -7,7 +7,7 @@ import bcrypt
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password."""
-    password_bytes = (password or "").encode("utf-8")
+    password_bytes = (password).encode("utf-8")
     if len(password_bytes) > 72:
         raise ValueError("Password cannot be longer than 72 bytes for bcrypt")
     salt = bcrypt.gensalt()
@@ -18,8 +18,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plaintext password against a hash."""
     try:
         return bcrypt.checkpw(
-            (plain_password or "").encode("utf-8"),
-            (hashed_password or "").encode("utf-8"),
+            (plain_password).encode("utf-8"),
+            (hashed_password).encode("utf-8"),
         )
     except (TypeError, ValueError):
         return False

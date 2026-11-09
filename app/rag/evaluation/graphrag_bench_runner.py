@@ -7,7 +7,7 @@ def run_graphrag_bench_runner(rows: list[dict[str, Any]], *, benchmark_name: str
     report = summarize_graphrag_bench(list(rows or []))
     return {
         "schema": "mimirq.graphrag_bench_runner.v1",
-        "benchmark_name": str(benchmark_name or "").strip(),
+        "benchmark_name": benchmark_name.strip(),
         "compared_systems": sorted((report.get("systems") or {}).keys()),
         "report": report,
     }

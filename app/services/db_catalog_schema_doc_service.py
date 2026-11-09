@@ -30,7 +30,9 @@ _SAFE_PROFILE_KEYS: set[str] = {
 
 
 def _norm_str(value: Any) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _safe_int(value: Any) -> int | None:
@@ -65,7 +67,7 @@ def build_virtual_schema_document_fields(
 
     This is a pure helper (testable without DB) used by the upsert flow.
     """
-    md = str(markdown or "")
+    md = markdown
     ds = _norm_str(dataset_id)
     return {
         "tenant_id": _norm_str(tenant_id),
@@ -105,7 +107,7 @@ def chunk_virtual_schema_markdown(
 
     from app.rag.chunking import chunker_factory  # noqa: WPS433
 
-    md = str(markdown or "")
+    md = markdown
     meta0 = dict(base_metadata or {})
 
     chunker = chunker_factory.get_chunker(
@@ -122,7 +124,7 @@ def chunk_virtual_schema_markdown(
         end_i = _safe_int(meta.get("end_char"))
         out.append(
             ChunkInput(
-                content=str(getattr(d, "page_content", None) or ""),
+                content=d.page_content,
                 metadata=meta,
                 page_number=None,
                 start_char=start_i,
@@ -638,9 +640,9 @@ def _append_table_columns(lines: list[str], *, columns: Sequence[Mapping[str, An
         name = _norm_str(column.get("name"))
         if not name:
             continue
-        dtype = _norm_str(column.get("data_type")) or ""
+        dtype = _norm_str(column.get("data_type"))
         nullable = _render_nullable_marker(column.get("nullable"))
-        comment = _norm_str(column.get("comment")) or ""
+        comment = _norm_str(column.get("comment"))
         lines.append(f"| {ordinal} | `{name}` | {dtype} | {nullable} | {comment} |")
     lines.append("")
 
@@ -697,7 +699,7 @@ def render_virtual_schema_markdown(
 
     for table in _iter_tables_sorted(tables):
         db_name = _norm_str(table.get("db_name"))
-        schema_name_raw = _norm_str(table.get("schema_name")) or ""
+        schema_name_raw = _norm_str(table.get("schema_name"))
         schema_name = schema_name_raw
         table_name = _norm_str(table.get("table_name"))
         if not db_name or not table_name:
@@ -743,7 +745,7 @@ def extract_schema_from_markdown(markdown: str) -> dict[str, dict[str, Any]]:
     - table heading (H2)
     - columns markdown table rows
     """
-    md = str(markdown or "")
+    md = markdown
     out: dict[str, dict[str, Any]] = {}
 
     current_table: str | None = None

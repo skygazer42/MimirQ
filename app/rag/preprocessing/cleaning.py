@@ -105,7 +105,7 @@ def _looks_like_pipe_table_row(line: str) -> bool:
     These lines are considered "structural" and should not be merged/rewritten by
     unwrap/noise filters.
     """
-    stripped = (line or "").strip()
+    stripped = (line).strip()
     return bool("|" in stripped and stripped != "|")
 
 
@@ -128,7 +128,7 @@ def _consume_digits_left(text: str, idx: int, *, max_digits: int) -> int:
 
 def _strip_trailing_page_of(text: str) -> str:
     # Equivalent to: r"\s+\d{1,4}\s*/\s*\d{1,4}\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = len(s)
     j = _consume_digits_left(s, i, max_digits=4)
     if j == i:
@@ -149,7 +149,7 @@ def _strip_trailing_page_of(text: str) -> str:
 
 def _strip_trailing_page_word(text: str) -> str:
     # Equivalent to: r"\s+(?:page|p\.?)\s*\d{1,4}\s*$" (case-insensitive)
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = len(s)
     j = _consume_digits_left(s, i, max_digits=4)
     if j == i:
@@ -169,7 +169,7 @@ def _strip_trailing_page_word(text: str) -> str:
 
 def _strip_trailing_page_num(text: str) -> str:
     # Equivalent to: r"\s+\d{1,4}\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = len(s)
     j = _consume_digits_left(s, i, max_digits=4)
     if j == i:
@@ -181,7 +181,7 @@ def _strip_trailing_page_num(text: str) -> str:
 
 def _strip_trailing_page_cn_of(text: str) -> str:
     # Equivalent to: r"\s*第?\s*\d{1,4}\s*页\s*/\s*共?\s*\d{1,4}\s*页\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = _skip_spaces_left(s, len(s))
     if i <= 0 or s[i - 1] != "页":
         return text
@@ -214,7 +214,7 @@ def _strip_trailing_page_cn_of(text: str) -> str:
 
 def _strip_trailing_page_cn(text: str) -> str:
     # Equivalent to: r"\s*第?\s*\d{1,4}\s*页\s*$"
-    s = (text or "").rstrip()
+    s = (text).rstrip()
     i = _skip_spaces_left(s, len(s))
     if i <= 0 or s[i - 1] != "页":
         return text
@@ -316,7 +316,7 @@ def clean_markdown(
                     {
                         "rule_index": int(detail.get("rule_index") or idx),
                         "timeout_ms": int(detail.get("timeout_ms") or regex_timeout_ms or 0),
-                        "pattern": str(detail.get("pattern") or ""),
+                        "pattern": detail["pattern"],
                     }
                 )
                 rule_hits.append(0)
@@ -415,7 +415,7 @@ def _normalize_line_for_display(line: str) -> str:
 
     Keep this aligned with _normalize_line_signature() so candidates map cleanly to signatures.
     """
-    text = (line or "").strip()
+    text = (line).strip()
     if not text:
         return ""
     text = re.sub(r"\s+", " ", text)
@@ -426,7 +426,7 @@ def _normalize_line_for_display(line: str) -> str:
 def _document_common_line_samples(text: str, *, max_line_length: int) -> dict[str, str]:
     samples: dict[str, str] = {}
     in_code = False
-    for raw_line in (text or "").splitlines():
+    for raw_line in (text).splitlines():
         if _CODE_FENCE_RE.match(raw_line):
             in_code = not in_code
             continue

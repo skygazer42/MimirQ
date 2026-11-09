@@ -79,9 +79,9 @@ def is_model_provider_unavailable_error(exc: BaseException) -> bool:
 
 
 def _model_provider_circuit_key() -> str:
-    api_key = str(settings.LLM_API_KEY or "").strip()
-    model = str(settings.LLM_MODEL or "").strip()
-    api_base = str(settings.LLM_API_BASE or "").strip()
+    api_key = settings.LLM_API_KEY.strip()
+    model = settings.LLM_MODEL.strip()
+    api_base = settings.LLM_API_BASE.strip()
     mock_enabled = bool(settings.LLM_MOCK_ENABLED)
     digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:12] if api_key else ""
     return "|".join((api_base, model, digest, str(mock_enabled)))
@@ -130,9 +130,9 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
     if now < _MODEL_PROVIDER_AVAILABLE_UNTIL:
         return True, None
 
-    api_key = str(settings.LLM_API_KEY or "").strip()
-    model = str(settings.LLM_MODEL or "").strip()
-    api_base = str(settings.LLM_API_BASE or "").strip()
+    api_key = settings.LLM_API_KEY.strip()
+    model = settings.LLM_MODEL.strip()
+    api_base = settings.LLM_API_BASE.strip()
     if not api_key or not model or not api_base:
         mark_model_provider_unavailable()
         return False, "LLM_API_KEY/LLM_API_BASE/LLM_MODEL is not configured"
@@ -180,8 +180,8 @@ async def preflight_model_provider_fast() -> tuple[bool, str | None]:
         return True, None
 
 
-def _clean_snippet(value: Any, *, max_chars: int = 320) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()
+def _clean_snippet(value: str, *, max_chars: int = 320) -> str:
+    text = re.sub(r"\s+", " ", value).strip()
     if len(text) <= max_chars:
         return text
     return text[: max(0, max_chars - 1)].rstrip() + "..."
@@ -224,7 +224,7 @@ _EXTRACTIVE_STOPWORDS = {
 def _question_terms(question: str) -> set[str]:
     terms = {
         token
-        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", str(question or "").lower())
+        for token in re.findall(r"[A-Za-z0-9][A-Za-z0-9_-]+", question.lower())
         if token not in _EXTRACTIVE_STOPWORDS and len(token) >= 3
     }
     return terms
@@ -264,8 +264,8 @@ def _best_snippet_candidate(*, candidates: list[str], terms: set[str], max_chars
     return best_segment
 
 
-def _select_relevant_snippet(*, question: str, content: Any, max_chars: int = 320) -> str:
-    raw = str(content or "")
+def _select_relevant_snippet(*, question: str, content: str, max_chars: int = 320) -> str:
+    raw = content
     if not raw.strip():
         return ""
 
@@ -298,16 +298,7 @@ def _citation_document_name(citation: dict[str, Any], *, index: int) -> str:
 
 
 def _citation_content(citation: dict[str, Any]) -> str:
-    meta = _citation_metadata(citation)
-    return str(
-        citation.get("chunk_content")
-        or citation.get("content")
-        or citation.get("text")
-        or meta.get("chunk_content")
-        or meta.get("content")
-        or meta.get("text")
-        or ""
-    )
+    return citation["chunk_content"]
 
 
 def _extractive_source_answer_from_citations(*, question: str, citations: list[dict[str, Any]]) -> str | None:
@@ -383,11 +374,11 @@ def _append_unique_evidence_row(
     seen: set[tuple[str, str]],
     max_items: int,
     doc_name: Any,
-    content: Any,
+    content: str,
     row: dict[str, Any],
 ) -> bool:
-    key = (str(doc_name), str(content))
-    if key in seen or not str(content).strip():
+    key = (str(doc_name), content)
+    if key in seen or not content.strip():
         return False
     seen.add(key)
     rows.append(row)
@@ -397,7 +388,7 @@ def _append_unique_evidence_row(
 def _doc_evidence_row(doc: Any) -> tuple[Any, Any, dict[str, Any]]:
     meta = getattr(doc, "metadata", None) or {}
     doc_name = meta.get("document_name") or meta.get("filename") or meta.get("source") or "文档"
-    content = getattr(doc, "page_content", None) or ""
+    content = doc.page_content
     return doc_name, content, {"document_name": doc_name, "chunk_content": content}
 
 
@@ -412,13 +403,7 @@ def _citation_evidence_row(citation: dict[str, Any]) -> tuple[Any, Any, dict[str
         or meta.get("source")
         or "引用"
     )
-    content = (
-        citation.get("chunk_content")
-        or citation.get("content")
-        or citation.get("text")
-        or meta.get("chunk_content")
-        or ""
-    )
+    content = citation["chunk_content"]
     return doc_name, content, dict(citation)
 
 
@@ -442,10 +427,14 @@ def build_extractive_fallback_answer(
 
     question_text = _clean_snippet(question, max_chars=180)
     evidence_lines = "\n".join(usable)
-    direct_answer = str(direct_answer_override or "").strip() or _extractive_direct_answer(
-        question=question,
-        citations=citations[: max(1, max_items)],
-    )
+    direct_answer = direct_answer_override
+    if direct_answer is not None:
+        direct_answer = direct_answer.strip()
+    if not direct_answer:
+        direct_answer = _extractive_direct_answer(
+            question=question,
+            citations=citations[: max(1, max_items)],
+        )
     direct_answer_section = f"\n\n结论：{direct_answer}" if direct_answer else ""
     prefix = (
         "以下为基于已检索引用生成的抽取式可审计摘要。"
@@ -536,44 +525,41 @@ def _source_identification_answer_from_citations(
     if doc_id is None:
         return None
 
-    try:
-        from app.models.document import Document as DBDocument
-        from app.models.document import DocumentChunk
+    from app.models.document import Document as DBDocument
+    from app.models.document import DocumentChunk
 
-        q = db.query(DBDocument).filter(DBDocument.id == doc_id)
-        if tenant_id is not None:
-            q = q.filter(DBDocument.tenant_id == tenant_id)
-        document = q.first()
-        if document is None:
-            return None
-
-        cq = db.query(DocumentChunk.content).filter(
-            DocumentChunk.document_id == doc_id,
-            DocumentChunk.chunk_index == 0,
-        )
-        if tenant_id is not None:
-            cq = cq.filter(DocumentChunk.tenant_id == tenant_id)
-        first_chunk_content = cq.scalar()
-
-        filename = str(getattr(document, "filename", "") or "").strip()
-        doc_meta = getattr(document, "doc_metadata", None)
-        doc_meta = doc_meta if isinstance(doc_meta, dict) else {}
-        title = derive_document_title(
-            filename=filename,
-            doc_metadata=doc_meta,
-            first_chunk_content=first_chunk_content,
-        )
-        source_doc = Document(
-            page_content="",
-            metadata={
-                "document_title": title,
-                "filename": filename,
-                "source": filename or str(first.get("document_name") or ""),
-            },
-        )
-        return maybe_build_source_identification_answer(question=question, docs=[source_doc])
-    except Exception:
+    q = db.query(DBDocument).filter(DBDocument.id == doc_id)
+    if tenant_id is not None:
+        q = q.filter(DBDocument.tenant_id == tenant_id)
+    document = q.first()
+    if document is None:
         return None
+
+    cq = db.query(DocumentChunk.content).filter(
+        DocumentChunk.document_id == doc_id,
+        DocumentChunk.chunk_index == 0,
+    )
+    if tenant_id is not None:
+        cq = cq.filter(DocumentChunk.tenant_id == tenant_id)
+    first_chunk_content = cq.scalar()
+
+    filename = document.filename.strip()
+    doc_meta = document.doc_metadata
+    doc_meta = doc_meta if isinstance(doc_meta, dict) else {}
+    title = derive_document_title(
+        filename=filename,
+        doc_metadata=doc_meta,
+        first_chunk_content=first_chunk_content,
+    )
+    source_doc = Document(
+        page_content="",
+        metadata={
+            "document_title": title,
+            "filename": filename,
+            "source": filename or first["document_name"],
+        },
+    )
+    return maybe_build_source_identification_answer(question=question, docs=[source_doc])
 
 
 def execute_extractive_fallback_once(
@@ -954,12 +940,12 @@ def execute_graph_chat_once(
     graph_result = rag_workflow.invoke(state, config=config, context=runtime_context) or {}
 
     citations_data = graph_result.get("citations") or []
-    full_response = graph_result.get("answer") or ""
+    full_response = graph_result["answer"]
     metrics_data = dict(graph_result.get("metrics") or {})
     full_response = _apply_source_identification_override(
         db=db,
         tenant_id=tenant_id,
-        question=str(request.message or ""),
+        question=request.message,
         citations_data=citations_data,
         full_response=full_response,
         metrics_data=metrics_data,
@@ -1078,7 +1064,7 @@ async def execute_langchain_chat_once(
             citations_data = event.get("data") or []
         elif etype == "token":
             data = event.get("data") or {}
-            full_response_parts.append(str(data.get("content") or ""))
+            full_response_parts.append(data["content"])
         elif etype == "done":
             done_data = event.get("data") or {}
         elif etype == "error":
@@ -1091,7 +1077,7 @@ async def execute_langchain_chat_once(
     source_answer = _source_identification_answer_from_citations(
         db=db,
         tenant_id=tenant_id,
-        question=str(request.message or ""),
+        question=request.message,
         citations=[c for c in citations_data if isinstance(c, dict)],
     )
     if source_answer:

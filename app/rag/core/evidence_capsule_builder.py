@@ -130,7 +130,7 @@ def _capsule_payload_without_hash(
     return {
         "schema": EVIDENCE_CAPSULE_SCHEMA_V1,
         "generated_at": datetime.now(UTC).isoformat(),
-        "query_for_retrieval": str(query_for_retrieval or ""),
+        "query_for_retrieval": query_for_retrieval,
         "request_context": dict(request_context or {}),
         "retrieval_summary": retrieval_summary,
         "must_recall": must_recall,
@@ -165,7 +165,7 @@ def sign_evidence_capsule(
     secret: str,
     key_id: str = "default",
 ) -> dict[str, Any] | None:
-    sec = str(secret or "").strip()
+    sec = secret.strip()
     if not sec:
         return None
     kid = str(key_id or "default").strip() or "default"
@@ -190,7 +190,7 @@ def verify_evidence_capsule_signature(
     sig = capsule.get("signature")
     if not isinstance(sig, dict):
         return False, "signature_missing"
-    if str(sig.get("schema") or "") != EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1:
+    if sig.get("schema") != EVIDENCE_CAPSULE_SIGNATURE_SCHEMA_V1:
         return False, "invalid_signature_schema"
     if str(sig.get("alg") or "").strip().lower() != "hmac_sha256":
         return False, "unsupported_signature_alg"
@@ -312,9 +312,14 @@ def validate_evidence_capsule(
 ) -> tuple[bool, str]:
     if not isinstance(capsule, dict):
         return False, "capsule_not_object"
-    if str(capsule.get("schema") or "") != EVIDENCE_CAPSULE_SCHEMA_V1:
+    if capsule.get("schema") != EVIDENCE_CAPSULE_SCHEMA_V1:
         return False, "invalid_schema"
-    capsule_hash = str(capsule.get("capsule_hash") or "").strip()
+    capsule_hash = capsule.get("capsule_hash")
+    if capsule_hash is None:
+        return False, "missing_capsule_hash"
+    if not isinstance(capsule_hash, str):
+        return False, "invalid_capsule_hash"
+    capsule_hash = capsule_hash.strip()
     if not capsule_hash:
         return False, "missing_capsule_hash"
     citations = capsule.get("citations")

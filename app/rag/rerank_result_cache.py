@@ -92,7 +92,7 @@ def _provider_version_signature(provider: str | None) -> dict[str, Any]:
 
     sig.update(
         {
-            "reranker_model": str(settings.RERANKER_MODEL or ""),
+            "reranker_model": settings.RERANKER_MODEL,
             "reranker_api_base": str(settings.RERANKER_API_BASE),
         }
     )
@@ -115,7 +115,7 @@ def _normalize_meta_value(value: Any) -> Any:
 def _fingerprint_candidate_entry(candidate: RerankCandidate) -> dict[str, Any] | None:
     if candidate is None:
         return None
-    cid = str(candidate.id or "").strip()
+    cid = candidate.id.strip()
     if not cid:
         return None
     meta = candidate.metadata

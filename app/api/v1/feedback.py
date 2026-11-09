@@ -148,8 +148,10 @@ def _extract_reference_sources(citations: Any) -> list[dict]:
     return out
 
 
-def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request_id: str) -> dict | None:
-    rid = str(request_id or "").strip()
+def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request_id: str | None) -> dict | None:
+    if request_id is None:
+        return None
+    rid = request_id.strip()
     if not rid:
         return None
     try:
@@ -162,14 +164,10 @@ def _find_trace_by_request_id(*, tenant_id: UUID, conversation_id: UUID, request
         )
     except Exception:
         return None
-    for item in getattr(traces, "items", []) or []:
-        if str(getattr(item, "request_id", "") or "") != rid:
+    for item in traces.items:
+        if item.request_id != rid:
             continue
-        if hasattr(item, "model_dump"):
-            return item.model_dump(mode="json")
-        if isinstance(item, dict):
-            return dict(item)
-        return None
+        return item.model_dump(mode="json")
 
 
 def _extract_rag_config_snapshot(trace_payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -191,7 +189,7 @@ def _normalize_feedback_tags(*tag_groups: Any) -> list[str]:
     seen: set[str] = set()
     cleaned: list[str] = []
     for tag in tags:
-        value = str(tag or "").strip()
+        value = tag.strip()
         if not value:
             continue
         key = value.lower()
@@ -250,14 +248,16 @@ def _infer_feedback_question(
         .order_by(Message.created_at.desc())
         .first()
     )
-    question = (q_msg.content if q_msg else "").strip()
+    if q_msg is None:
+        return "(missing user question)"
+    question = q_msg.content.strip()
     return question or "(missing user question)"
 
 
 def _resolve_feedback_dataset_id(
     assistant: Message,
     conv: Conversation,
-) -> tuple[UUID | None, dict[str, Any], str]:
+) -> tuple[UUID | None, dict[str, Any], str | None]:
     meta = assistant.message_metadata if isinstance(assistant.message_metadata, dict) else {}
     dataset_id: UUID | None = None
     raw_ds = meta.get("dataset_id")
@@ -268,7 +268,9 @@ def _resolve_feedback_dataset_id(
             dataset_id = None
     if dataset_id is None:
         dataset_id = conv.dataset_id
-    request_id = str(meta.get("request_id") or "").strip()
+    request_id = meta.get("request_id")
+    if request_id is not None:
+        request_id = request_id.strip()
     return dataset_id, meta, request_id
 
 
@@ -276,7 +278,7 @@ def _hydrate_feedback_trace_payload(
     *,
     tenant_id: UUID,
     conversation_id: UUID,
-    request_id: str,
+    request_id: str | None,
     citations: Any,
 ) -> tuple[list[dict], dict[str, Any] | None]:
     reference_sources = _extract_reference_sources(citations)
@@ -336,7 +338,7 @@ def _merge_trace_payload_into_extra(
     *,
     extra: dict[str, Any],
     trace_payload: dict[str, Any] | None,
-    request_id: str,
+    request_id: str | None,
 ) -> None:
     if not isinstance(trace_payload, dict):
         return
@@ -545,7 +547,7 @@ def preview_feedback_loop_candidates(
         detail="No permission to review feedback candidates",
     )
     ruleset_obj = None
-    ruleset_name = str(ruleset or "").strip()
+    ruleset_name = ruleset.strip() if ruleset is not None else None
     if ruleset_name:
         if not ruleset_exists(ruleset_name):
             raise HTTPException(status_code=404, detail="Industry ruleset not found")
@@ -589,7 +591,7 @@ def export_feedback_loop_hard_negatives(
         detail="No permission to export feedback candidates",
     )
     ruleset_obj = None
-    ruleset_name = str(ruleset or "").strip()
+    ruleset_name = ruleset.strip() if ruleset is not None else None
     if ruleset_name:
         if not ruleset_exists(ruleset_name):
             raise HTTPException(status_code=404, detail="Industry ruleset not found")
@@ -640,7 +642,8 @@ def create_regression_case_from_feedback(
 
     fb = _get_feedback_for_promotion(db, tenant_id=tenant_id, feedback_id=feedback_id)
     feedback_extra = dict(fb.extra or {}) if isinstance(fb.extra, dict) else {}
-    if str(feedback_extra.get("eval_case_status") or "").strip().lower() == "promoted":
+    eval_case_status = feedback_extra.get("eval_case_status")
+    if eval_case_status is not None and eval_case_status.strip().lower() == "promoted":
         raise HTTPException(status_code=409, detail="Feedback already promoted to a regression case")
 
     assistant = _get_feedback_assistant_message(db, tenant_id=tenant_id, message_id=fb.message_id)
@@ -693,8 +696,8 @@ def create_regression_case_from_feedback(
         logger.debug(_FEEDBACK_FALLBACK_LOG_MESSAGE, exc)
 
     feedback_extra["eval_case_status"] = "promoted"
-    feedback_extra["eval_case_id"] = str(row.id or "")
-    feedback_extra["eval_case_promoted_by"] = str(account_id or "")
+    feedback_extra["eval_case_id"] = str(row.id)
+    feedback_extra["eval_case_promoted_by"] = account_id
     fb.extra = feedback_extra
 
     # Best-effort audit log (commit in the same transaction).
@@ -704,7 +707,7 @@ def create_regression_case_from_feedback(
         actor_id=account_id,
         action="regression.case.create_from_feedback",
         resource_type="regression_case",
-        resource_id=str(row.id or ""),
+        resource_id=str(row.id),
         details={
             "feedback_id": str(fb.id),
             "message_id": str(fb.message_id),
@@ -805,7 +808,7 @@ def create_evidence_item_from_feedback(
         reference_sources=reference_sources,
         retrieval_snapshot=retrieval_snapshot,
         rag_config_snapshot=rag_config_snapshot,
-        notes=(str(fb.reason or "").strip()[:2000] if fb.reason else None),
+        notes=(fb.reason.strip()[:2000] if fb.reason else None),
         created_by=account_id,
     )
     db.add(row)
@@ -820,7 +823,7 @@ def create_evidence_item_from_feedback(
         actor_id=account_id,
         action="evidence.item.create_from_feedback",
         resource_type="evidence_item",
-        resource_id=str(row.id or ""),
+        resource_id=str(row.id),
         details={
             "feedback_id": str(fb.id),
             "message_id": str(fb.message_id),

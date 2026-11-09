@@ -38,7 +38,7 @@ def _parse_target_line(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "")
+    s = line
     if not s:
         return None
     colon = s.find(":")
@@ -82,14 +82,14 @@ def _iter_targets(text: str) -> list[_Target]:
 def looks_like_makefile(text: str) -> bool:
     if not text or len(text) < 80:
         return False
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if ".phony" in lowered:
         return True
     targets = _iter_targets(text)
     if len(targets) < 2:
         return False
     # Require at least one recipe line.
-    for ln in (text or "").splitlines()[:400]:
+    for ln in (text).splitlines()[:400]:
         if ln.startswith("\t"):
             return True
     return False
@@ -211,7 +211,7 @@ class MakefileChunker(BaseChunker):
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

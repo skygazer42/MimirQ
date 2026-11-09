@@ -93,7 +93,7 @@ def _build_web_crawl_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
 def _web_crawl_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
     with contextlib.suppress(Exception):
         db.refresh(run)
-    return str(run.status or "").lower() == "cancelled"
+    return run.status.lower() == "cancelled"
 
 
 async def _ingest_web_crawl_url(
@@ -173,7 +173,7 @@ def _persist_web_crawl_progress(
 ) -> None:
     discovered_manifest = dict(plan.get("discovered_manifest") or {})
     if succeeded and url and url in discovered_manifest:
-        token = str(discovered_manifest.get(url) or "").strip()
+        token = discovered_manifest[url].strip()
         if ingested_doc is not None:
             with contextlib.suppress(Exception):
                 token = _web_crawl_build_doc_sync_token(
@@ -233,7 +233,7 @@ async def _process_web_crawl_urls(
                 run=run,
                 tenant_id=tenant_id,
                 requested_by=requested_by,
-                url=str(url or ""),
+                url=url,
                 settings_map=settings_map,
             )
             created += 1
@@ -241,14 +241,14 @@ async def _process_web_crawl_urls(
             succeeded = True
         except Exception as exc:  # noqa: BLE001
             failed += 1
-            run.stats = _append_connector_error(dict(run.stats or {}), url=str(url or ""), exc=exc)
+            run.stats = _append_connector_error(dict(run.stats or {}), url=url, exc=exc)
 
         _persist_web_crawl_progress(
             db,
             run=run,
             plan=plan,
             idx=idx,
-            url=str(url or ""),
+            url=url,
             created=created,
             failed=failed,
             created_doc_ids=created_doc_ids,

@@ -27,7 +27,7 @@ logger = get_logger("parsing.qianfan_ocr")
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "qianfan_ocr"
     return text
 
@@ -64,7 +64,7 @@ class QianfanOCRParser:
 
     def _post_multipart(self, *, file_path: Path) -> requests.Response:
         file_bytes = file_path.read_bytes()
-        suffix = (file_path.suffix or "").lower()
+        suffix = (file_path.suffix).lower()
         content_type = "application/pdf" if suffix == ".pdf" else "application/octet-stream"
         files = {"file": (file_path.name, file_bytes, content_type)}
         data = {
@@ -93,7 +93,7 @@ class QianfanOCRParser:
         logger.info("[qianfan_ocr] parsing %s", file_path.name)
         resp = self._post_multipart(file_path=file_path)
         if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"Qianfan-OCR API error {resp.status_code}: {(resp.text or '')[:500]}")
+            raise RuntimeError(f"Qianfan-OCR API error {resp.status_code}: {(resp.text)[:500]}")
 
         markdown_text = ""
         ctype = str(resp.headers.get("content-type") or "").lower()
@@ -101,14 +101,14 @@ class QianfanOCRParser:
             try:
                 data = resp.json()
             except Exception:
-                data = json.loads((resp.text or "").strip() or "{}")
+                data = json.loads((resp.text).strip() or "{}")
             markdown_text = _extract_markdown_from_json(data)
         else:
-            markdown_text = resp.text or ""
+            markdown_text = resp.text
 
         try:
             artifact_root.mkdir(parents=True, exist_ok=True)
-            (artifact_root / "result.md").write_text(markdown_text or "", encoding="utf-8")
+            (artifact_root / "result.md").write_text(markdown_text, encoding="utf-8")
         except Exception as exc:
             # Best-effort only; do not block parsing.
             logger.debug("Failed to write Qianfan OCR parse artifact; continuing: %s", exc)

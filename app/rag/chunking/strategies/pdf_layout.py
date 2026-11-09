@@ -59,7 +59,7 @@ def _strip_position_tags(text: str) -> str:
 
 
 def _parse_pages(value: str) -> tuple[int, ...]:
-    s = str(value or "").strip()
+    s = value.strip()
     if not s:
         return ()
     out: list[int] = []
@@ -353,7 +353,7 @@ class PDFLayoutChunker(BaseChunker):
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents or []:
-            raw = doc.page_content or ""
+            raw = doc.page_content
             if not raw.strip():
                 continue
 

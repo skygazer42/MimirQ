@@ -60,7 +60,7 @@ class PIIRedactor:
     mask: str = DEFAULT_MASK
 
     def redact_text(self, text: str) -> tuple[str, dict[str, Any]]:
-        raw = str(text or "")
+        raw = text
         meta: dict[str, Any] = {"redacted": False, "hits": {}}
 
         def _mark(kind: str, n: int = 1) -> None:
@@ -90,7 +90,7 @@ class PIIRedactor:
 
         # Credit card candidates: validate with Luhn to reduce false positives.
         def _card_repl(match: re.Match[str]) -> str:
-            s = match.group(0) or ""
+            s = match.group(0)
             digits = "".join(ch for ch in s if ch.isdigit())
             if _luhn_ok(digits):
                 _mark("credit_card")
@@ -132,7 +132,7 @@ def redact_text(text: str) -> str:
             "exception",
             str(exc)[:200],
         )
-        return _current_mask() if (text or "") else text
+        return _current_mask() if (text) else text
 
 
 def redact_obj(obj: Any) -> Any:

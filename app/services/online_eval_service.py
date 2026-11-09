@@ -93,7 +93,7 @@ def compute_faithfulness_det(answer: str, contexts: list[str], *, max_evidence_c
     - split answer into atomic claims
     - score = supported_claims / total_claims (support checked against joined evidence)
     """
-    raw_answer = str(answer or "").strip()
+    raw_answer = answer.strip()
     if not raw_answer:
         return None
 
@@ -101,7 +101,7 @@ def compute_faithfulness_det(answer: str, contexts: list[str], *, max_evidence_c
     if not claims:
         return None
 
-    joined = "\n".join([str(c or "") for c in (contexts or []) if str(c or "").strip()])
+    joined = "\n".join([c for c in (contexts or []) if c.strip()])
     evidence = joined
     if max_evidence_chars and max_evidence_chars > 0 and len(evidence) > int(max_evidence_chars):
         evidence = evidence[: int(max_evidence_chars)]
@@ -109,7 +109,7 @@ def compute_faithfulness_det(answer: str, contexts: list[str], *, max_evidence_c
     supported = 0
     total = 0
     for claim in claims:
-        c = str(claim or "").strip()
+        c = claim.strip()
         if not c:
             continue
         total += 1
@@ -158,7 +158,7 @@ def _online_eval_records(
             record_tenant_id = record.get("tenant_id")
             if record_tenant_id and str(record_tenant_id) != tenant_id:
                 continue
-        if str(record.get("event") or "") == "online_eval":
+        if record.get("event") == "online_eval":
             selected.append(record)
     return selected
 
@@ -382,7 +382,7 @@ def _ensure_worker_started() -> None:
 
 
 def _process_eval_item(item: dict[str, Any]) -> None:
-    answer = str(item.get("answer") or "")
+    answer = item["answer"]
     contexts_raw = item.get("contexts")
     contexts = [str(c or "") for c in (contexts_raw or []) if str(c or "").strip()]
     # Bound context sizes (best-effort).
@@ -443,8 +443,8 @@ def maybe_enqueue_online_eval(
         "retrieval_mode": retrieval_mode,
         "citations_count": int(citations_count) if citations_count is not None else None,
         "sample_rate": round(rate, 6),
-        "answer": str(answer or ""),
-        "contexts": [str(c or "") for c in (contexts or []) if str(c or "").strip()],
+        "answer": answer,
+        "contexts": [c for c in (contexts or []) if c.strip()],
     }
 
     _ensure_worker_started()

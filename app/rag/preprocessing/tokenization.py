@@ -40,7 +40,7 @@ def _normalize_lexical_text(text: str) -> str:
     (e.g. "ＡＰＩ" -> "API", "２０２６" -> "2026") for multilingual recall stability.
     """
 
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return ""
     try:
@@ -140,7 +140,7 @@ def _version_subtokens(norm_token: str) -> list[str]:
 def _numeric_normalization_tokens(text: str) -> list[str]:
     if not settings.BM25_TOKENIZE_NUMERIC_NORMALIZATION_ENABLED:
         return []
-    raw = text or ""
+    raw = text
     out: list[str] = []
     # 1) Plain digit sequences (>= 2 chars), e.g. 2024, 42.
     for m in _NUM_SEQ_RE.findall(raw):
@@ -182,7 +182,7 @@ def _expand_ascii_subtokens(raw_tok: str, norm: str, *, tokens: list[str], seen:
 def _tokenize_ascii_text(text: str) -> list[str]:
     tokens: list[str] = []
     extra: set[str] = set()
-    for token in _ASCII_TOKEN_RE.findall(text or ""):
+    for token in _ASCII_TOKEN_RE.findall(text):
         raw_tok = token.strip()
         if not raw_tok:
             continue
@@ -266,7 +266,7 @@ def _tokenize_lexical_text_impl(text: str) -> list[str]:
 
     tokens: list[str] = []
     # Keep a small expansion budget to avoid pathological token explosion on weird inputs.
-    extra_budget = [settings.BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS or 128]
+    extra_budget = [settings.BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS]
     cjk_oov_buf: list[str] = []
 
     for token in jieba.cut_for_search(raw):

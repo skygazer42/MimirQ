@@ -147,7 +147,7 @@ def _looks_like_markdown(text: str) -> bool:
 
 
 def _looks_like_json(text: str) -> bool:
-    stripped = (text or "").strip()
+    stripped = (text).strip()
     if not stripped:
         return False
     if stripped[0] not in "{[":
@@ -634,8 +634,8 @@ class ManuscriptChunker(BaseChunker):
 
     def _select(self, doc: Document) -> tuple[BaseChunker, str]:
         meta = doc.metadata or {}
-        file_type = str(meta.get("file_type", "") or "").strip().lower()
-        text = doc.page_content or ""
+        file_type = str(meta.get("file_type") or "").strip().lower()
+        text = doc.page_content
 
         for selector in (
             self._select_structured_payloads,

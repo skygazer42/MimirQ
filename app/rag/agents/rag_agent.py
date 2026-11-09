@@ -200,7 +200,7 @@ def resolve_agentic_stream_request(
             key: value for key, value in legacy_overrides.items() if key not in _AGENTIC_STREAM_REQUEST_KEYS
         }
         return AgenticStreamRequest(
-            question=str(legacy_overrides.get("question") or ""),
+            question=legacy_overrides["question"],
             history=legacy_overrides.get("history"),
             conversation_id=legacy_overrides.get("conversation_id"),
             document_ids=legacy_overrides.get("document_ids"),
@@ -279,7 +279,7 @@ class AgenticRAGRunner:
                 for item in data:
                     if not isinstance(item, str):
                         continue
-                    query = " ".join(str(item or "").split()).strip()
+                    query = " ".join(item.split()).strip()
                     if not query:
                         continue
                     key = query.casefold()
@@ -327,7 +327,7 @@ class AgenticRAGRunner:
 
     @staticmethod
     def _extract_math_expression(question: str) -> str | None:
-        candidates = re.findall(r"[-+/*().\d\s]{5,}", question or "")
+        candidates = re.findall(r"[-+/*().\d\s]{5,}", question)
         for candidate in candidates:
             expr = " ".join(candidate.split()).strip(" =?")
             if not expr:
@@ -350,7 +350,7 @@ class AgenticRAGRunner:
         if not settings.RAG_AGENTIC_TOOLS_ENABLED:
             return []
 
-        question_norm = " ".join((question or "").split())
+        question_norm = " ".join((question).split())
         question_lower = question_norm.casefold()
         invocations: list[AgenticToolInvocation] = []
 
@@ -417,7 +417,7 @@ class AgenticRAGRunner:
         return deduped
 
     @staticmethod
-    def _format_tool_context(tool_name: str, data: Any) -> str:
+    def _format_tool_context(tool_name: str, data: Any) -> str | None:
         if isinstance(data, dict):
             if tool_name == "calculate":
                 if data.get("success"):
@@ -426,11 +426,15 @@ class AgenticRAGRunner:
             if tool_name == "get_current_time":
                 return f"[Tool: get_current_time]\nCurrent datetime: {data.get('datetime') or data.get('date') or data}"
             if tool_name == "get_document_content":
-                content = str(data.get("content") or "").strip()
+                content = data.get("content")
+                if content is not None:
+                    content = content.strip()
                 if not content:
                     return f"[Tool: get_document_content]\nError: {data.get('error') or 'No content returned'}"
                 return f"[Tool: get_document_content]\n{content}"
-        text = str(data or "").strip()
+        if data is None:
+            return None
+        text = str(data).strip()
         if not text:
             return ""
         return f"[Tool: {tool_name}]\n{text}"
@@ -615,7 +619,7 @@ class AgenticRAGRunner:
             query_for_retrieval=retrieval_query,
             retrieval_result=retrieval_result,
         )
-        context_block = str(crag_result.get("context_block") or "")
+        context_block = crag_result["context_block"]
         if not bool(crag_result.get("used")) or not context_block.strip():
             return None
         state.crag_used = True
@@ -688,7 +692,7 @@ class AgenticRAGRunner:
             "context": context,
             "history": history_text,
             "question": question,
-            "format_instructions": str(base_state.get("format_instructions") or ""),
+            "format_instructions": base_state["format_instructions"],
         }
         gen_start = time.time()
         chain = prompt_template | llm | StrOutputParser()
@@ -752,9 +756,9 @@ class AgenticRAGRunner:
             return
         evidence_text = "\n".join(
             [
-                str(getattr(doc, "page_content", "") or "").strip()
+                doc.page_content.strip()
                 for doc in (collected_docs or [])
-                if str(getattr(doc, "page_content", "") or "").strip()
+                if doc.page_content.strip()
             ]
         )
         generation_state.self_rag_reflection = run_self_rag_reflection(
@@ -899,7 +903,7 @@ class AgenticRAGRunner:
             final_result={
                 "docs": [],
                 "citations": [],
-                "metrics": {"retrieval_mode": str(base_state.get("retrieval_mode") or "")},
+                "metrics": {"retrieval_mode": base_state["retrieval_mode"]},
                 "abstain_triggered": True,
                 "abstain_reason": "no_rounds",
             }

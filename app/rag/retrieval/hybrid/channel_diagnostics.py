@@ -101,26 +101,22 @@ def update_hybrid_channel_diagnostics(
             "enabled": bool(colbert_retrieval_enabled),
             "used": bool(colbert_used),
             "candidates": int(colbert_candidates or 0),
-            "provider": str(
-                (colbert_readiness.get("effective_provider") if isinstance(colbert_readiness, dict) else None)
-                or colbert_provider
-                or ""
-            ),
+            "provider": colbert_readiness.get("effective_provider") or colbert_provider,
         }
     )
     channel_metrics["colbert_ann"] = colbert_box
 
     sparse_status = dict(sparse_provider_status or {})
     sparse_provider_snapshot = {
-        "requested_provider": str(sparse_status.get("requested_provider") or ""),
-        "requested_provider_normalized": str(sparse_status.get("requested_provider_normalized") or ""),
+        "requested_provider": sparse_status.get("requested_provider"),
+        "requested_provider_normalized": sparse_status.get("requested_provider_normalized"),
         "effective_provider": str(sparse_status.get("effective_provider") or sparse_provider or "deterministic"),
         "provider_supported": bool(sparse_status.get("provider_supported", False)),
         "model_required": bool(sparse_status.get("model_required", False)),
         "model_configured": bool(sparse_status.get("model_configured", False)),
-        "status": str(sparse_status.get("status") or ""),
-        "reason": str(sparse_status.get("reason") or ""),
-        "outcome": str(sparse_status.get("outcome") or ""),
+        "status": sparse_status.get("status"),
+        "reason": sparse_status.get("reason"),
+        "outcome": sparse_status.get("outcome"),
     }
 
     channel_metrics.update(
@@ -133,7 +129,7 @@ def update_hybrid_channel_diagnostics(
                     sorted(
                         (str(key), round(float(value), 6))
                         for key, value in (fusion_weights if fusion_weights is not None else {}).items()
-                        if str(key or "").strip() and value is not None
+                        if key.strip() and value is not None
                     )
                 )
                 if isinstance(fusion_weights, dict) and fusion_weights

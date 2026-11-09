@@ -16,9 +16,11 @@ def build_document_heatmap(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if not isinstance(row, dict):
             continue
         filenames = [
-            str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip()
+            str(name).strip()
+            for name in (row.get("final_context_filenames") or [])
+            if name is not None and str(name).strip()
         ]
-        is_negative = str(row.get("feedback_polarity") or "").strip().lower() == "negative"
+        is_negative = row.get("feedback_polarity") == "negative"
         for filename in filenames:
             retrieval_counts[filename] += 1
             if is_negative:

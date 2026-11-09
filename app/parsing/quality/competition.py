@@ -9,7 +9,7 @@ from typing import Any
 
 
 def _grade_rank(value: Any) -> int:
-    v = str(value or "").strip().lower()
+    v = value.strip().lower() if isinstance(value, str) else None
     if v == "pass":
         return 2
     if v == "warn":

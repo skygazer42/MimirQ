@@ -30,11 +30,11 @@ _TABLE_ROW_RE = re.compile(r"^\s*\|.*\|\s*$")
 def _stable_markdown_node_key(*, level: str, start: int, end: int, text: str, parent_key: str | None = None) -> str:
     seed = "|".join(
         [
-            str(level or ""),
+            level,
             str(parent_key or ""),
             str(int(start)),
             str(int(end)),
-            stable_hash(str(text or ""), length=None),
+            stable_hash(text, length=None),
         ]
     )
     return f"md:{stable_hash(seed, length=32)}"
@@ -230,7 +230,7 @@ def hierarchical_chunk_markdown(markdown: str) -> dict[str, list[dict[str, Any]]
         - tokens_est: Estimated token count
         - parent_id: (sentences only) Reference to parent paragraph
     """
-    text = markdown or ""
+    text = markdown
     paragraphs = _split_paragraphs(text)
 
     paragraph_chunks: list[dict[str, Any]] = []

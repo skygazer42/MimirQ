@@ -32,7 +32,7 @@ def _try_parse_table_row(line: str) -> tuple[str, list[str]] | None:
     We avoid regex here to keep runtime linear-time and to prevent ReDoS-style
     security hotspots (python:S5852).
     """
-    raw = str(line or "")
+    raw = line
     if not raw or "|" not in raw:
         return None
 
@@ -66,14 +66,14 @@ def _is_separator_row(cells: list[str]) -> bool:
         return False
     ok = 0
     for cell in cells:
-        if _SEP_CELL_RE.match(cell or ""):
+        if _SEP_CELL_RE.match(cell):
             ok += 1
     # Require that most cells look like separator definitions.
     return ok >= max(1, int(len(cells) * 0.8))
 
 
 def _normalize_separator_cell(cell: str) -> str:
-    raw = (cell or "").strip()
+    raw = (cell).strip()
     if not raw:
         return "---"
     # Preserve left/right alignment colons if present.
@@ -131,7 +131,7 @@ def _normalize_table_rows(
 
 
 def normalize_markdown_tables(text: str) -> TableNormalizeResult:
-    original = text or ""
+    original = text
     if not original:
         return TableNormalizeResult(text="", tables=0, rows_changed=0, changed=False)
 

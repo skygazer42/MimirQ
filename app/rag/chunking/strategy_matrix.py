@@ -933,7 +933,7 @@ def _fixture_document(strategy: str) -> Document:
 
 
 def _is_expected_unavailable(strategy: str, exc: Exception) -> bool:
-    message = str(exc or "")
+    message = str(exc)
     if strategy in {"llama_index", "llama_index_hierarchical"}:
         try:
             import llama_index.core as llama_index_core

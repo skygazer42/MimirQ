@@ -14,7 +14,7 @@ def extract_html_images(line: str) -> list[tuple[str, str]]:
         alt = ""
         src = ""
         for key, _quote, value in _HTML_IMAGE_ATTR_RE.findall(tag):
-            normalized_key = (key or "").strip().lower()
+            normalized_key = key.strip().lower()
             if normalized_key == "alt":
                 alt = value
             elif normalized_key == "src":
@@ -27,12 +27,12 @@ def normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
     resolved_ref = raw
     if raw.lower().startswith("file://"):
         parsed = urlparse(raw)
-        if str(parsed.scheme or "").lower() != "file":
+        if str(parsed.scheme).lower() != "file":
             return None, "unsupported_scheme"
-        netloc = str(parsed.netloc or "").strip().lower()
+        netloc = str(parsed.netloc).strip().lower()
         if netloc and netloc not in {"localhost", "127.0.0.1"}:
             return None, "remote_file_url"
-        resolved_ref = unquote(str(parsed.path or ""))
+        resolved_ref = unquote(str(parsed.path))
         if not resolved_ref:
             return None, "empty_file_path"
         if re.match(r"^/[a-zA-Z]:/", resolved_ref):

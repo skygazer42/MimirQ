@@ -59,7 +59,7 @@ def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
         TenantPermissions.SETTINGS_WRITE,
         detail="No permission to manage industry rules",
     )
-    if str(member.role or "").strip().lower() != "owner":
+    if member.role.strip().lower() != "owner":
         raise HTTPException(status_code=403, detail="No permission to manage industry rules")
 
 
@@ -87,7 +87,7 @@ def _ruleset_detail(name: str) -> dict[str, Any]:
 
 
 def _require_ruleset(name: str) -> str:
-    candidate = str(name or "").strip()
+    candidate = name.strip()
     if not ruleset_exists(candidate):
         raise HTTPException(status_code=404, detail=f"Unknown industry ruleset: {candidate or '<empty>'}")
     return candidate
@@ -218,7 +218,7 @@ def put_industry_ruleset_intents(
 def preview_industry_rules_rewrite(body: IndustryRulesRewritePreviewRequest) -> dict[str, Any]:
     candidate = _require_ruleset(body.ruleset)
     ruleset = load_ruleset(candidate)
-    original_query = str(body.query or "").strip()
+    original_query = body.query.strip()
     expanded_query = expand_query_terms(original_query, ruleset.glossary)
     return {
         "schema": _PREVIEW_SCHEMA,

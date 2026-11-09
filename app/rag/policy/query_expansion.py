@@ -42,7 +42,7 @@ def _useful_lightweight_query_part(value: str, *, min_chars: int, max_chars: int
 
 
 def build_clause_fastlane_queries(query: str, *, max_refs: int = 4) -> list[str]:
-    raw = (query or "").strip()
+    raw = (query).strip()
     if not raw:
         return []
 
@@ -108,7 +108,7 @@ def build_lightweight_subquery_queries(
     then let the normal fusion/rerank path decide what survives.
     """
 
-    raw = " ".join(str(query or "").strip().split())
+    raw = " ".join(query.strip().split())
     if len(raw) < int(min_query_chars or 0):
         return []
 

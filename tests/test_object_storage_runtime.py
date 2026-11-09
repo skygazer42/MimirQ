@@ -96,7 +96,16 @@ def test_s3_compatible_health_check_rejects_missing_bucket(monkeypatch: pytest.M
 
 
 def test_get_document_object_store_uses_generic_minio_profile_when_enabled(monkeypatch) -> None:  # noqa: ANN001
-    sentinel = object()
+    sentinel = SimpleNamespace(
+        describe_backend=lambda: {
+            "provider": "minio",
+            "enabled": True,
+            "endpoint": "minio.example.test:9000",
+            "bucket": "documents",
+            "documents_enabled": True,
+            "region": None,
+        }
+    )
 
     monkeypatch.setattr(runtime.settings, "OBJECT_STORAGE_ENABLED", True, raising=False)
     monkeypatch.setattr(runtime.settings, "OBJECT_STORAGE_DOCUMENTS_ENABLED", True, raising=False)

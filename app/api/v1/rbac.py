@@ -88,7 +88,7 @@ def get_current_tenant_access(
     db: Annotated[Session, Depends(get_db)],
 ) -> TenantAccessOut:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").strip().lower()
+    role = (member.role).strip().lower()
     permissions = [permission for permission in all_tenant_permissions() if role_allows(permission, role=role)]
     return TenantAccessOut(
         tenant_id=tenant_id,
@@ -165,7 +165,7 @@ def patch_tenant_member_role(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant member not found")
 
     next_role = payload.role
-    current_role = (member.role or "").strip().lower()
+    current_role = (member.role).strip().lower()
     if current_role in UserRoles.ADMIN_ROLES and next_role not in UserRoles.ADMIN_ROLES and len(active_admins) <= 1:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能降级最后一个管理员")
 
@@ -211,7 +211,7 @@ def delete_tenant_member(
     if member is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到该成员")
 
-    member_role = (member.role or "").strip().lower()
+    member_role = (member.role).strip().lower()
     if member_role in UserRoles.ADMIN_ROLES and member.is_active and len(active_admins) <= 1:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="不能移除最后一个管理员")
 

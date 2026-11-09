@@ -163,7 +163,7 @@ class WorkerSettings:
         ping_job,
     ]
     max_jobs = settings.TASK_WORKER_MAX_JOBS or 10
-    job_timeout = settings.TASK_JOB_TIMEOUT_SEC or 60 * 30
+    job_timeout = settings.TASK_JOB_TIMEOUT_SEC
     max_tries = settings.TASK_JOB_MAX_TRIES or 80
     allow_abort_jobs = True
     on_startup = startup

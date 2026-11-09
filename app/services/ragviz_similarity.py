@@ -58,8 +58,8 @@ def _get_embeddings_adapter() -> "LangChainEmbeddingsAdapter":
 
     provider = (settings.EMBEDDING_PROVIDER or "local").lower()
     mapped_provider = EmbeddingProviders.PROVIDER_MAP.get(provider, "openai_compatible")
-    api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-    base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
+    api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+    base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
 
     _embeddings_adapter = create_langchain_embeddings_from_config(
         provider=mapped_provider,
@@ -72,7 +72,7 @@ def _get_embeddings_adapter() -> "LangChainEmbeddingsAdapter":
 
 
 def _parse_collection_id(collection_id: str) -> tuple[str, str]:
-    raw = str(collection_id or "").strip()
+    raw = collection_id.strip()
     if ":" not in raw:
         raise ValueError("Invalid collection id")
     kind, value = raw.split(":", 1)
@@ -286,7 +286,7 @@ def _dataset_chunks_items(
                 "text": chunk.content,
             }
         )
-        texts.append(chunk.content or "")
+        texts.append(chunk.content)
     return items, texts
 
 
@@ -322,14 +322,14 @@ def _document_chunks_items(
                 "id": str(chunk.id),
                 "order_id": idx,
                 "document_id": str(document_id),
-                "document": str(doc.filename or ""),
-                "file_type": str(doc.file_type or ""),
+                "document": doc.filename,
+                "file_type": doc.file_type,
                 "chunk_index": int(chunk.chunk_index),
                 "page_number": int(chunk.page_number or 0),
                 "text": chunk.content,
             }
         )
-        texts.append(chunk.content or "")
+        texts.append(chunk.content)
     return items, texts
 
 
@@ -465,7 +465,7 @@ def _regression_chunks_items(
                 "text": chunk.content,
             }
         )
-        texts.append(chunk.content or "")
+        texts.append(chunk.content)
         if len(items) >= max_items:
             break
 

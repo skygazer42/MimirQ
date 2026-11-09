@@ -85,7 +85,7 @@ def emit_stream_event(
         return
     emitter.emit(
         {
-            "type": event_type or "",
+            "type": event_type,
             "data": data or {},
         },
         dedupe_key=dedupe_key,

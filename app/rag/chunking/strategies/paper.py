@@ -91,7 +91,7 @@ _CN_SECTIONS: dict[str, str] = {
 
 
 def _normalize_section(title: str) -> str | None:
-    raw = (title or "").strip()
+    raw = (title).strip()
     if not raw:
         return None
     if raw in _CN_SECTIONS:
@@ -109,7 +109,7 @@ def _strip_leading_number_prefix(line: str) -> str:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").lstrip()
+    s = line.lstrip()
     if not s or not s[:1].isdigit():
         return s
 
@@ -229,7 +229,7 @@ class PaperChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

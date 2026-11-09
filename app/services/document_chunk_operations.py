@@ -17,6 +17,7 @@ from app.api.schemas.document import (
     DocumentChunkUpdateRequest,
 )
 from app.core.config import settings
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.rag.core.logging import get_logger
@@ -59,13 +60,13 @@ def create_chunk(
         document=document,
     )
 
-    current_status = str(document.status or "").lower()
+    current_status = document.status.lower()
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
 
     doc_meta = dict(document.doc_metadata or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
-    active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+    active_hash = get_active_pipeline_hash(doc_meta)
 
     query = db.query(func.max(DocumentChunk.chunk_index)).filter(
         DocumentChunk.tenant_id == tenant_id,
@@ -310,7 +311,7 @@ async def disable_chunk(
         document=document,
     )
 
-    current_status = str(document.status or "").lower()
+    current_status = document.status.lower()
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
 
@@ -320,7 +321,9 @@ async def disable_chunk(
 
     doc_meta = dict(document.doc_metadata or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
-    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
+    chunk_key = (chunk.doc_metadata or {}).get("doc_pipeline_key")
+    if chunk_key is not None:
+        chunk_key = chunk_key.strip()
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
@@ -421,7 +424,7 @@ def enable_chunk(
         document=document,
     )
 
-    current_status = str(document.status or "").lower()
+    current_status = document.status.lower()
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot edit chunks for a {current_status} document")
 
@@ -431,7 +434,9 @@ def enable_chunk(
 
     doc_meta = dict(document.doc_metadata or {})
     active_key = _resolve_active_doc_pipeline_key(document_id, doc_meta)
-    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
+    chunk_key = (chunk.doc_metadata or {}).get("doc_pipeline_key")
+    if chunk_key is not None:
+        chunk_key = chunk_key.strip()
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
 
@@ -485,7 +490,9 @@ def reembed_chunks(
         if chunk.disabled_at is not None and not payload.include_disabled:
             conflicts.append(chunk_id)
             continue
-        chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
+        chunk_key = (chunk.doc_metadata or {}).get("doc_pipeline_key")
+        if chunk_key is not None:
+            chunk_key = chunk_key.strip()
         if active_key and chunk_key and chunk_key != active_key:
             conflicts.append(chunk_id)
             continue
@@ -531,7 +538,7 @@ def _load_chunk_write_document(
         account_id=account_id,
         document=document,
     )
-    current_status = str(document.status or "").lower()
+    current_status = document.status.lower()
     if current_status in {"pending", "processing"}:
         raise HTTPException(status_code=409, detail=f"Cannot {edit_verb} for a {current_status} document")
     doc_meta = dict(document.doc_metadata or {})
@@ -550,7 +557,9 @@ def _get_active_chunk_or_404(
     chunk = _get_chunk_for_chunk_ops(db, tenant_id, document_id, chunk_id)
     if not chunk:
         raise HTTPException(status_code=404, detail=CHUNK_NOT_FOUND_DETAIL)
-    chunk_key = str((chunk.doc_metadata or {}).get("doc_pipeline_key") or "").strip()
+    chunk_key = (chunk.doc_metadata or {}).get("doc_pipeline_key")
+    if chunk_key is not None:
+        chunk_key = chunk_key.strip()
     if active_key and chunk_key and chunk_key != active_key:
         raise HTTPException(status_code=409, detail=CHUNK_NOT_ACTIVE_PIPELINE_DETAIL)
     return chunk
@@ -827,7 +836,7 @@ def _reembed_single_chunk(
         bm25_meta = dict(meta_for_vector)
         bm25_meta.setdefault("source", bm25_meta.get("source", str(document.filename or "unknown")))
         bm25_doc = Document(
-            page_content=str(chunk.content or ""),
+            page_content=chunk.content,
             id=str(chunk.id),
             metadata=bm25_meta,
         )
@@ -884,9 +893,7 @@ def _assert_document_writable_for_chunk_ops(
 
 
 def _resolve_active_doc_pipeline_key(document_id: UUID, doc_metadata: dict[str, Any]) -> str:
-    active_hash = str(
-        (doc_metadata or {}).get("active_pipeline_hash") or (doc_metadata or {}).get("pipeline_hash") or ""
-    ).strip()
+    active_hash = get_active_pipeline_hash(doc_metadata)
     return f"{document_id}:{active_hash}" if active_hash else str(document_id)
 
 
@@ -960,7 +967,7 @@ def _build_chunk_index_operation_result(
     success = all(st in {"ok", "skipped"} for st in (vector_status, bm25_status, kg_status))
     return {
         "schema": "mimirq.index_operation_result.v1",
-        "operation": str(operation or "").strip()[:80] or CHUNK_PATCH_OPERATION,
+        "operation": operation.strip()[:80] or CHUNK_PATCH_OPERATION,
         "strictness": str(strictness or "off").strip().lower(),
         "success": bool(success),
         "vector": dict(vector or {}),

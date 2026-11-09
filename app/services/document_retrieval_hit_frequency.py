@@ -70,10 +70,13 @@ def _count_matching_citations(
     for citation in citations:
         if not isinstance(citation, dict):
             continue
-        if str(citation.get("document_id") or "") != document_id:
+        cited_document_id = citation.get("document_id")
+        if cited_document_id is None or str(cited_document_id) != document_id:
             continue
         matched += 1
-        chunk_id = str(citation.get("chunk_id") or "").strip()
+        chunk_id = citation.get("chunk_id")
+        if chunk_id is not None:
+            chunk_id = str(chunk_id).strip()
         if chunk_id:
             unique_chunk_ids.add(chunk_id)
     return matched
@@ -92,9 +95,9 @@ def _scan_trace_hits(
     unique_chunk_ids: set[str] = set()
     for record in records:
         try:
-            if str(record.get("event") or "") != "rag_trace":
+            if record.get('event') != "rag_trace":
                 continue
-            if str(record.get("tenant_id") or "") != tenant_id:
+            if record.get('tenant_id') != tenant_id:
                 continue
             ts_ms = ts_ms_value if (ts_ms_value := _to_int(record.get("ts_ms"))) is not None else 0
             if ts_ms and ts_ms < cutoff_ms:

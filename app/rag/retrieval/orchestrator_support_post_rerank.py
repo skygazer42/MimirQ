@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 from langchain_core.documents import Document
@@ -285,7 +286,9 @@ def run_post_rerank_pipeline_mode(
     cache_misses = 0
 
     for index, stage in enumerate(pipeline):
-        stage_provider = str(stage.get("provider") or "").strip().lower()
+        stage_provider = _stringified_metadata_text(stage, "provider")
+        if stage_provider is not None:
+            stage_provider = stage_provider.lower()
         if not stage_provider or stage_provider in {"none", "off", "false", "0"}:
             continue
 
@@ -488,7 +491,7 @@ def run_post_rerank_stage(
     if not settings_meta["enabled"]:
         return result
 
-    provider = str(settings_meta["provider"] or "")
+    provider = settings_meta["provider"]
 
     top_n = int(settings_meta["top_n"] or 0)
     if top_n <= 0:

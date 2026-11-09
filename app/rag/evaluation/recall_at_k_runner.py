@@ -14,7 +14,7 @@ class _RecallRow(TypedDict):
 
 
 def _normalize_ids(values: list[Any] | None) -> list[str]:
-    return [str(value).strip() for value in (values or []) if str(value or "").strip()]
+    return [str(value).strip() for value in (values or []) if value is not None and str(value).strip()]
 
 
 def _mrr(expected_ids: list[str], retrieved_ids: list[str], *, top_k: int) -> float:
@@ -41,8 +41,8 @@ def run_recall_at_k_runner(
         mrr = _mrr(expected_ids, retrieved_ids, top_k=top_k)
         out_rows.append(
             {
-                "query_id": str((row or {}).get("query_id") or ""),
-                "query": str((row or {}).get("query") or ""),
+                "query_id": row["query_id"],
+                "query": row["query"],
                 "expected_document_ids": expected_ids,
                 "retrieved_document_ids": retrieved_ids,
                 "hit_at_k": 1.0 if recall > 0.0 else 0.0,
@@ -63,7 +63,7 @@ def run_recall_at_k_runner(
     }
     return {
         "schema": "mimirq.recall_at_k_runner.v1",
-        "benchmark_name": str(benchmark_name or "").strip(),
+        "benchmark_name": benchmark_name.strip(),
         "top_k": int(top_k or 0),
         "summary": summary,
         "rows": out_rows,

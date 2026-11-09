@@ -67,7 +67,7 @@ _STOPWORDS_ZH = frozenset(
 
 
 def _is_mostly_cjk(text: str) -> bool:
-    raw = str(text or "")
+    raw = text
     if not raw:
         return False
     try:
@@ -93,7 +93,7 @@ def _extract_section(meta: dict[str, Any]) -> str | None:
 
 
 def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
-    text = str(content or "").strip()
+    text = content.strip()
     if not text:
         return []
     sample = text[: max(0, int(max_chars or 0))] if max_chars else text
@@ -106,7 +106,7 @@ def _extract_keywords(content: str, *, top_k: int, max_chars: int) -> list[str]:
     stop = _STOPWORDS_ZH if mostly_cjk else _STOPWORDS_EN
     filtered: list[str] = []
     for t in tokens:
-        tok = str(t or "").strip()
+        tok = t.strip()
         if not tok:
             continue
         if len(tok) <= 1:
@@ -173,7 +173,7 @@ def build_context_prefix(
     - Avoid copying large raw content into the prefix.
     - Keep it short and bounded (stable embeddings).
     """
-    body = str(content or "").strip()
+    body = content.strip()
     if not body:
         return None
 

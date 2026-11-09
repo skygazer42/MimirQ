@@ -84,7 +84,7 @@ def _semantic_completeness_score(text: str) -> float:
     - starts with obvious mid-sentence tokens -> lower
     - unbalanced brackets/quotes -> lower
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return 0.0
 
@@ -242,7 +242,7 @@ def score_chunk_semantic_quality(
 
     `scores` is safe to embed into chunk metadata.
     """
-    text = str(content or "")
+    text = content
     trimmed = text.strip()
     if not trimmed:
         return (

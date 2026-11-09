@@ -30,7 +30,9 @@ def _now_utc_iso() -> str:
 
 
 def _normalize_mode(v: object, *, default: str = "inherit") -> str:
-    mode = str(v or "").strip().lower()
+    if v is None:
+        return default
+    mode = str(v).strip().lower()
     return mode or default
 
 
@@ -67,7 +69,9 @@ def _normalize_group_ids(group_ids: Iterable[object] | None, *, max_items: int) 
     out: list[str] = []
     seen: set[str] = set()
     for raw in group_ids if group_ids is not None else []:
-        s = str(raw or "").strip()
+        if raw is None:
+            continue
+        s = str(raw).strip()
         if not s:
             continue
         if len(s) > 80:

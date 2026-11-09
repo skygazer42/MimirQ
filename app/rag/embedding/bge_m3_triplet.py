@@ -34,10 +34,10 @@ def build_bge_m3_triplet_payload(
     sparse_fn: Callable[[str], dict[str, float]] | None = None,
     colbert_fn: Callable[[str], list[list[float]]] | None = None,
 ) -> BgeM3TripletPayload:
-    raw = str(text or "")
+    raw = text
     dense = [float(v) for v in dense_fn(raw) or []]
     sparse_raw = sparse_fn(raw) if sparse_fn is not None else {}
-    sparse = {str(k): float(v) for k, v in dict(sparse_raw or {}).items() if str(k or "").strip()}
+    sparse = {str(k): float(v) for k, v in dict(sparse_raw or {}).items() if k.strip()}
     colbert_raw = colbert_fn(raw) if colbert_fn is not None else []
     colbert = [[float(v) for v in row or []] for row in colbert_raw or []]
     return {
@@ -57,10 +57,10 @@ def build_bge_m3_tri_index_payload(
     sparse_fn: Callable[[str], dict[str, float]] | None = None,
     colbert_fn: Callable[[str], list[list[float]]] | None = None,
 ) -> BgeM3TriIndexPayload:
-    resolved_chunk_id = str(chunk_id or "").strip()
+    resolved_chunk_id = chunk_id.strip()
     subindex = build_chunk_type_subindex_payload(
         chunk_id=resolved_chunk_id,
-        content=str(text or ""),
+        content=text,
         meta=dict(metadata or {}),
     )
     chunk_type = str(subindex["chunk_type"] or "text")

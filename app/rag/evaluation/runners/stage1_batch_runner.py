@@ -34,7 +34,9 @@ def _chunk_ids(items: Iterable[Any]) -> list[str]:
     chunk_ids: list[str] = []
     for item in items or []:
         raw = item.get("chunk_id") if isinstance(item, dict) else item
-        chunk_id = str(raw or "").strip()
+        if raw is None:
+            continue
+        chunk_id = str(raw).strip()
         if chunk_id and chunk_id not in chunk_ids:
             chunk_ids.append(chunk_id)
     return chunk_ids
@@ -76,7 +78,7 @@ def run_stage1_batch(
             evaluators = {
                 "answer_det": evaluate_answer_deterministic(
                     question=sample["query"],
-                    answer=(route_result.get("answer") or {}).get("text") or "",
+                    answer=route_result["answer"]["text"],
                     gold_answer=sample["gold_answer"],
                     is_unanswerable=bool(sample.get("is_unanswerable")),
                 ),

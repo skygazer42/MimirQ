@@ -150,7 +150,7 @@ def _sanitize_details(details: dict[str, Any], *, include_sensitive: bool) -> di
         return dict(details)
     out: dict[str, Any] = {}
     for key, value in details.items():
-        lowered = str(key or "").strip().lower()
+        lowered = str(key).strip().lower()
         if lowered in _SENSITIVE_DETAIL_KEYS:
             continue
         if isinstance(value, dict):
@@ -692,7 +692,9 @@ def _normalize_access_graph_export_params(
     if fmt not in {"ndjson", "json"}:
         raise HTTPException(status_code=400, detail="export_format must be one of: ndjson, json")
 
-    kind = (after_kind or "").strip().lower() or None
+    kind = after_kind.strip().lower() if after_kind is not None else None
+    if kind == "":
+        kind = None
     if (after_created_at is not None or after_id is not None) and not kind:
         raise HTTPException(status_code=400, detail="after_kind is required when using after_created_at/after_id")
     if kind is not None and kind not in _ACCESS_GRAPH_KINDS:

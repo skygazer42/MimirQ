@@ -26,7 +26,7 @@ def create_pre_poc_dashboard_app(
 
     @app.get("/dashboard", response_class=HTMLResponse)
     def dashboard() -> str:
-        return str(render_dashboard_html() or "")
+        return render_dashboard_html()
 
     @app.get("/events")
     def events() -> StreamingResponse:

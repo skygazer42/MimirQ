@@ -15,10 +15,12 @@ CHUNK_OVERLAP_LESS_THAN_SIZE_DETAIL = "chunk_overlap must be less than chunk_siz
 
 
 def parse_pipeline_json(pipeline: str | None) -> DocumentPipelineOptions | None:
-    raw = (pipeline or "").strip()
+    if pipeline is None:
+        return None
+    raw = pipeline.strip()
     if not raw or raw.lower() in {"null", "none", "undefined"}:
         return None
-    max_len = settings.PIPELINE_FORM_JSON_MAX_CHARS or 200_000
+    max_len = settings.PIPELINE_FORM_JSON_MAX_CHARS
     if max_len > 0 and len(raw) > max_len:
         raise HTTPException(status_code=400, detail="pipeline is too large")
     try:

@@ -29,7 +29,9 @@ _WHITESPACE_RE = re.compile(r"\s+")
 
 
 def _safe_text(value: Any, *, max_len: int = 500) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -55,11 +57,11 @@ def _safe_str_list(value: Any, *, max_items: int, max_len: int) -> list[str]:
 
 
 def _normalize_space(text: str) -> str:
-    return _WHITESPACE_RE.sub(" ", str(text or "").strip()).strip()
+    return _WHITESPACE_RE.sub(" ", text.strip()).strip()
 
 
 def _strip_leading_title(text: str, *, title: str | None) -> str:
-    raw = str(text or "")
+    raw = text
     title_norm = _normalize_space(title or "")
     if not raw.strip() or not title_norm:
         return raw.strip()
@@ -79,7 +81,7 @@ def _strip_leading_title(text: str, *, title: str | None) -> str:
 
 
 def _summary_from_text(text: str, *, max_chars: int) -> str | None:
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw:
         return None
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", raw) if p.strip()]
@@ -295,7 +297,7 @@ def build_document_metadata_enrichment(
     - document_language_confidence
     """
     meta = dict(metadata or {})
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return {}
 
@@ -379,7 +381,7 @@ def enrich_documents_metadata(
         meta = dict(doc.metadata or {})
         meta.update(
             build_document_metadata_enrichment(
-                doc.page_content or "",
+                doc.page_content,
                 metadata=meta,
                 keywords_provider=keywords_provider,
                 keyword_top_k=keyword_top_k,
@@ -392,7 +394,7 @@ def enrich_documents_metadata(
         try:
             out.append(doc.model_copy(update={"metadata": meta}))
         except Exception:
-            out.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
+            out.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None)))
     return out
 
 

@@ -1,3 +1,4 @@
+from app.services.connector_execution.shared.common import _optional_source_text
 import contextlib
 import hashlib
 import re
@@ -19,14 +20,14 @@ def _build_auth_headers(cfg: dict) -> dict[str, str]:
         return {}
     auth_type = str(auth.get("type") or "none").strip().lower()
     if auth_type == "cookie":
-        cookie = str(auth.get("cookie") or "").strip()
+        cookie = auth["cookie"].strip()
         return {"Cookie": cookie} if cookie else {}
     if auth_type == "bearer":
-        token = str(auth.get("token") or "").strip()
+        token = auth["token"].strip()
         return {"Authorization": f"Bearer {token}"} if token else {}
     if auth_type == "basic":
-        username = str(auth.get("username") or "").strip()
-        password = str(auth.get("password") or "").strip()
+        username = auth["username"].strip()
+        password = auth["password"].strip()
         return _build_basic_auth_header(username, password)
     return {}
 
@@ -42,32 +43,36 @@ def _build_basic_auth_header(username: str, password: str) -> dict[str, str]:
     return {"Authorization": f"Basic {b64}"}
 
 
-def _is_http_or_https_url(value: str) -> bool:
-    raw = str(value or "").strip()
+def _is_http_or_https_url(value: str | None) -> bool:
+    if value is None:
+        return False
+    raw = value.strip()
     if not raw:
         return False
     parsed = urlparse(raw)
-    scheme = str(parsed.scheme or "").strip().lower()
+    scheme = parsed.scheme.strip().lower()
     if scheme not in {"http", "https"}:
         return False
-    return bool(str(parsed.netloc or "").strip())
+    return bool(parsed.netloc.strip())
 
 
-def _is_link_href_allowed(value: str) -> bool:
-    raw = str(value or "").strip()
+def _is_link_href_allowed(value: str | None) -> bool:
+    if value is None:
+        return False
+    raw = value.strip()
     if not raw:
         return False
     parsed = urlparse(raw)
-    scheme = str(parsed.scheme or "").strip().lower()
+    scheme = parsed.scheme.strip().lower()
     if scheme in {"http", "https"}:
-        return bool(str(parsed.netloc or "").strip())
+        return bool(parsed.netloc.strip())
     if scheme == "mailto":
-        return bool(str(parsed.path or "").strip())
+        return bool(parsed.path.strip())
     return False
 
 
 def _extract_drive_file_id(url: str) -> str | None:
-    raw = str(url or "").strip()
+    raw = url.strip()
     if not raw:
         return None
     try:
@@ -75,43 +80,43 @@ def _extract_drive_file_id(url: str) -> str | None:
     except Exception:
         return None
 
-    host = (parsed.netloc or "").strip().lower()
+    host = (parsed.netloc).strip().lower()
     if host not in {"drive.google.com", "docs.google.com"}:
         return None
 
-    qs = parse_qs(parsed.query or "")
+    qs = parse_qs(parsed.query)
     if "id" in qs and qs["id"]:
-        fid = str(qs["id"][0] or "").strip()
+        fid = str(qs["id"][0]).strip()
         return fid or None
 
-    match = _DRIVE_FILE_ID_FROM_PATH_RE.search(parsed.path or "")
+    match = _DRIVE_FILE_ID_FROM_PATH_RE.search(parsed.path)
     if match:
-        fid = str(match.group(1) or "").strip()
+        fid = str(match.group(1)).strip()
         return fid or None
     return None
 
 
 def _drive_direct_download_url(file_id: str) -> str:
-    fid = str(file_id or "").strip()
+    fid = file_id.strip()
     if not fid:
         raise ValueError("drive_file_id_required")
     return f"https://drive.google.com/uc?export=download&id={fid}"
 
 
 def _drive_source_ref(*, file_id: str | None, source_url: str) -> str:
-    fid = str(file_id or "").strip()
+    fid = _optional_source_text(file_id)
     if fid:
         return fid
 
-    raw_url = str(source_url or "").strip()
+    raw_url = source_url.strip()
     digest = hashlib.sha256(raw_url.encode("utf-8", "ignore")).hexdigest()
     return f"url:{digest}"
 
 
 def _drive_fallback_sync_token(*, file_id: str | None, source_url: str) -> str:
-    fid = str(file_id or "").strip()
-    raw_url = str(source_url or "").strip()
-    seed = f"file_id:{fid}|url:{raw_url}"
+    fid = _optional_source_text(file_id)
+    raw_url = source_url.strip()
+    seed = f"file_id:{fid if fid is not None else ''}|url:{raw_url}"
     digest = hashlib.sha256(seed.encode("utf-8", "ignore")).hexdigest()
     return f"hash:{digest}"
 
@@ -119,11 +124,11 @@ def _drive_fallback_sync_token(*, file_id: str | None, source_url: str) -> str:
 async def _drive_fetch_file_sync_token(
     *,
     client: httpx.AsyncClient | None,
-    file_id: str,
+    file_id: str | None,
     source_url: str,
     headers: dict[str, str] | None = None,
 ) -> str:
-    fid = str(file_id or "").strip()
+    fid = _optional_source_text(file_id)
     fallback = _drive_fallback_sync_token(file_id=fid, source_url=source_url)
     if not fid or client is None:
         return fallback
@@ -142,8 +147,8 @@ async def _drive_fetch_file_sync_token(
         return fallback
 
     data = payload if isinstance(payload, dict) else {}
-    version = str(data.get("version") or "").strip()
-    modified_time = str(data.get("modifiedTime") or "").strip()
+    version = _optional_source_text(data.get('version'))
+    modified_time = _optional_source_text(data.get('modifiedTime'))
     resolved_file_id = str(data.get("id") or fid).strip() or fid
     if not version and not modified_time:
         return fallback
@@ -158,7 +163,7 @@ async def _drive_fetch_file_sync_token(
 
 
 def _drive_group_principal_key(email: str) -> str:
-    normalized = str(email or "").strip().lower()
+    normalized = email.strip().lower()
     if not normalized:
         return ""
     return f"drive:group:{normalized}"[:255]
@@ -177,14 +182,17 @@ def _drive_permission_external_ids_and_anyone(
         if bool(permission.get("deleted", False)):
             continue
 
-        permission_type = str(permission.get("type") or "").strip().lower()
+        permission_type = _optional_source_text(permission.get('type'), lower=True)
         if permission_type == "anyone":
             has_anyone = True
             continue
         if permission_type != "group":
             continue
 
-        key = _drive_group_principal_key(str(permission.get("emailAddress") or ""))
+        email_address = _optional_source_text(permission.get('emailAddress'))
+        if email_address is None:
+            continue
+        key = _drive_group_principal_key(email_address)
         if key and key not in seen_ext:
             seen_ext.add(key)
             ext_ids.append(key)
@@ -201,7 +209,7 @@ async def _drive_fetch_file_permissions(
     headers: dict[str, str],
     max_items: int = 500,
 ) -> list[dict[str, Any]]:
-    fid = str(file_id or "").strip()
+    fid = file_id.strip()
     if not fid:
         return []
 
@@ -228,10 +236,10 @@ async def _drive_fetch_file_permissions(
 
 
 def _github_raw_url(*, owner: str, repo: str, branch: str, path: str) -> str:
-    org = str(owner or "").strip()
-    repo_name = str(repo or "").strip()
-    branch_name = str(branch or "").strip() or "main"
-    file_path = str(path or "").lstrip("/").strip()
+    org = owner.strip()
+    repo_name = repo.strip()
+    branch_name = branch.strip() or "main"
+    file_path = path.lstrip("/").strip()
     if not org or not repo_name or not file_path:
         raise ValueError("invalid_github_raw_url_parts")
     return (
@@ -241,15 +249,15 @@ def _github_raw_url(*, owner: str, repo: str, branch: str, path: str) -> str:
 
 
 def _github_team_principal_key(*, org: str, team_slug: str) -> str:
-    normalized_org = str(org or "").strip()
-    normalized_slug = str(team_slug or "").strip()
+    normalized_org = org.strip()
+    normalized_slug = team_slug.strip()
     if not normalized_org or not normalized_slug:
         return ""
     return f"github:team:{normalized_org.lower()}/{normalized_slug.lower()}"[:255]
 
 
 def _parse_link_header_next(link_header: str | None) -> str | None:
-    raw = str(link_header or "").strip()
+    raw = _optional_source_text(link_header)
     if not raw:
         return None
     for part in raw.split(","):
@@ -275,16 +283,16 @@ def _github_team_principal_key_from_repo_team_item(
     if not isinstance(item, dict):
         return ""
 
-    slug = str(item.get("slug") or "").strip()
+    slug = _optional_source_text(item.get('slug'))
     if not slug:
         return ""
 
     org_login = ""
     org_obj = item.get("organization")
     if isinstance(org_obj, dict):
-        org_login = str(org_obj.get("login") or "").strip()
+        org_login = _optional_source_text(org_obj.get('login'))
     if not org_login:
-        org_login = str(owner or "").strip()
+        org_login = owner.strip()
 
     return _github_team_principal_key(org=org_login, team_slug=slug)
 
@@ -298,8 +306,8 @@ async def _github_fetch_repo_team_principal_keys(
     max_pages: int = 3,
     max_items: int = 200,
 ) -> list[str]:
-    org = str(owner or "").strip()
-    repo_name = str(repo or "").strip()
+    org = owner.strip()
+    repo_name = repo.strip()
     if not org or not repo_name:
         return []
 
@@ -343,7 +351,7 @@ def _resolve_tenant_group_ids_by_external_id(
     ids: list[str] = []
     seen: set[str] = set()
     for raw in external_ids or []:
-        ext = str(raw or "").strip()
+        ext = raw.strip()
         if not ext or ext in seen:
             continue
         seen.add(ext)

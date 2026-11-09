@@ -27,9 +27,9 @@ def _parse_tags(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
-        raw = [str(x or "").strip() for x in value]
+        raw = [str(x).strip() for x in value if x is not None]
     else:
-        s = str(value or "").strip()
+        s = str(value).strip()
         if not s:
             return []
         # If it's JSON, prefer that.
@@ -37,7 +37,7 @@ def _parse_tags(value: Any) -> list[str]:
             try:
                 obj = json.loads(s)
                 if isinstance(obj, list):
-                    raw = [str(x or "").strip() for x in obj]
+                    raw = [str(x).strip() for x in obj if x is not None]
                 else:
                     raw = [s]
             except Exception:
@@ -48,7 +48,7 @@ def _parse_tags(value: Any) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for t in raw:
-        tag = str(t or "").strip()
+        tag = t.strip()
         if not tag:
             continue
         if tag in seen:
@@ -63,7 +63,7 @@ def _parse_source_metadata(value: Any) -> dict[str, Any]:
         return {}
     if isinstance(value, dict):
         return dict(value)
-    s = str(value or "").strip()
+    s = str(value).strip()
     if not s:
         return {}
     if s.startswith("{") and s.endswith("}"):
@@ -83,7 +83,7 @@ def _pick_first(mapping: dict[str, Any], keys: Sequence[str]) -> Any:
         # Common CSV variants.
         lk = k.lower()
         for mk in mapping.keys():
-            if str(mk or "").strip().lower() == lk:
+            if mk.strip().lower() == lk:
                 return mapping.get(mk)
     return None
 
@@ -131,7 +131,7 @@ def _build_item(payload: dict[str, Any]) -> dict[str, Any]:
         )
     }
     for k, v in payload.items():
-        kk = str(k or "").strip()
+        kk = k.strip()
         if not kk:
             continue
         if kk.lower() in reserved:
@@ -203,7 +203,7 @@ def parse_qa_faq_import_bytes(
     - JSONL: one JSON object per line
     """
     cap = max(1, min(10_000, int(max_items or 0))) if max_items else 2000
-    name = str(filename or "").strip()
+    name = filename.strip()
     ext = os.path.splitext(name.lower())[1]
 
     errors: list[dict[str, Any]] = []

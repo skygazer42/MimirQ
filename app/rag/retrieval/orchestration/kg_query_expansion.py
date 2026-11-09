@@ -58,7 +58,7 @@ def _scored_entities(entities: list[object], settings: KGExpansionSettings) -> l
     for entity in entities:
         if not isinstance(entity, dict):
             raise TypeError("KG entity must be an object")
-        entity_type = entity.get("type", "")
+        entity_type = entity["type"]
         if not isinstance(entity_type, str):
             raise TypeError("KG entity type must be text")
         if entity_type.strip().casefold() in excluded:

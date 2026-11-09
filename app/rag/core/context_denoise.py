@@ -26,7 +26,7 @@ _JACCARD_TOKEN_RE = re.compile(r"\w+", flags=re.UNICODE)
 
 
 def _normalize_for_signature(text: str) -> str:
-    norm = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True)
+    norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
     # Keep newlines, but normalize whitespace so "exact duplicates" are caught.
     norm = _WS_RE.sub(" ", norm)
     norm = _BLANK_LINES_RE.sub("\n\n", norm)
@@ -101,7 +101,7 @@ def _apply_exact_dedup(docs: list[Document]) -> list[Document]:
     seen: set[str] = set()
     out: list[Document] = []
     for d in docs:
-        sig = _normalize_for_signature(d.page_content or "")
+        sig = _normalize_for_signature(d.page_content)
         key = sig.casefold() if sig.isascii() else sig
         if key and key in seen:
             continue
@@ -128,7 +128,7 @@ def _apply_jaccard_dedup(
     out: list[Document] = []
     compare_sets: list[set[str]] = []
     for d in docs:
-        tokens = _tokenize_for_jaccard(d.page_content or "")
+        tokens = _tokenize_for_jaccard(d.page_content)
         if not tokens:
             out.append(d)
             compare_sets.append(tokens)
@@ -168,7 +168,7 @@ def _apply_token_budget_trim(docs: list[Document], *, max_total_tokens: int) -> 
     out: list[Document] = []
     used = 0
     for doc in docs:
-        content = str(doc.page_content or "").strip()
+        content = doc.page_content.strip()
         if not content:
             continue
         n = num_tokens_from_string(content)
@@ -212,7 +212,7 @@ Relevant information:"""
         out = chain.invoke({"query": query, "text": text})
     except Exception:
         return text
-    compressed = str(out or "").strip()
+    compressed = out.strip()
     if not compressed:
         return text
     return compressed
@@ -239,7 +239,7 @@ def compress_context_docs_with_llm(
     for doc in docs:
         if doc is None:
             continue
-        text = str(doc.page_content or "").strip()
+        text = doc.page_content.strip()
         if not text:
             continue
         compressed = _compress_text_with_llm(text=text, query=query_text, target_ratio=ratio)
@@ -265,7 +265,7 @@ def denoise_context_docs(docs: Iterable[Document] | None) -> list[Document]:
     for d in docs:
         if d is None:
             continue
-        text = _clean_chunk_text(d.page_content or "")
+        text = _clean_chunk_text(d.page_content)
         if not text:
             continue
         cleaned.append(Document(page_content=text, metadata=dict(d.metadata or {}), id=d.id))

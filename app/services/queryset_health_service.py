@@ -306,7 +306,7 @@ def build_queryset_health_snapshot(
         degradation_flags.append("weak_hit_rate_regression")
 
     status = "degraded" if degradation_flags else "healthy"
-    profile_hash_norm = str(profile_hash or "").strip()
+    profile_hash_norm = profile_hash.strip()
 
     return {
         "schema": SNAPSHOT_SCHEMA,

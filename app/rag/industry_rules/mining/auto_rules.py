@@ -1,4 +1,5 @@
 from collections import Counter
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 from app.rag.evaluation.poc_runner.query_pattern_miner import mine_query_patterns
@@ -22,8 +23,8 @@ _INTENT_LIBRARY = {
 }
 
 
-def _safe_query(row: dict[str, Any]) -> str:
-    return str(row.get("original_query") or "").strip()
+def _safe_query(row: dict[str, Any]) -> str | None:
+    return _stringified_metadata_text(row, "original_query")
 
 
 def _build_glossary_suggestions(
@@ -33,7 +34,7 @@ def _build_glossary_suggestions(
     existing = set((ruleset.glossary or {}).keys()) if ruleset is not None else set()
     out: list[dict[str, Any]] = []
     for item in pattern_summary.get("glossary_candidates") or []:
-        token = str((item or {}).get("token") or "").strip()
+        token = item["token"].strip()
         if not token or token in existing:
             continue
         out.append({"token": token, "count": int((item or {}).get("count") or 0), "source": (item or {}).get("source")})

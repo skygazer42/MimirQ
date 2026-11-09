@@ -243,7 +243,7 @@ def _doc_ids_needing_allowlist(
     doc_ids: list[UUID] = []
     for doc_id, _dataset_id, access_mode, owner_id, *_rest in documents:
         mode = _normalize_doc_access_mode(access_mode)
-        if mode == _DOC_ACCESS_PARTIAL and (owner_id or "").strip() != account_id:
+        if mode == _DOC_ACCESS_PARTIAL and owner_id != account_id:
             doc_ids.append(doc_id)
     return doc_ids
 
@@ -341,7 +341,7 @@ def _document_is_accessible(
         )
     if dataset_id not in dataset_map or dataset_id not in allowed_dataset_ids:
         return False
-    if (dataset_map[dataset_id].owner_id or "") == account_id:
+    if dataset_map[dataset_id].owner_id == account_id:
         return True
     return _doc_access_allows(
         doc_id=doc_id,

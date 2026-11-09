@@ -26,8 +26,8 @@ def _metric_card_rows(metrics: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _report_meta(payload: "DatasetAnalysisReportPayload") -> dict[str, Any]:
     return {
-        "dataset_id": str(payload.dataset_id or ""),
-        "dataset_name": str(payload.dataset_name or ""),
+        "dataset_id": payload.dataset_id,
+        "dataset_name": payload.dataset_name,
         "filters": dict(payload.filters or {}),
         "generated_at": _iso_now(),
         "scope_summary": dict(payload.scope_summary or {}),

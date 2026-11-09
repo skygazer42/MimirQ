@@ -139,8 +139,8 @@ def estimate_tokens(text: str) -> int:
     - For CJK-heavy text, treat CJK-ish characters as ~1 char/token to avoid
       severe under-estimation (important for token-based guards and previews).
     """
-    raw = text or ""
-    if not raw:
+    raw = text
+    if raw == "":
         return 0
 
     if raw.isascii():

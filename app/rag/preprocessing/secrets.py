@@ -55,7 +55,7 @@ _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 def redact_secrets(
     text: str, *, enabled: bool, mode: SecretMode = "mask", mask: str = "[SECRET]"
 ) -> SecretsRedactResult:
-    original = text or ""
+    original = text
     if not enabled or not original:
         return SecretsRedactResult(text=original, hits={}, changed=False)
 
@@ -71,7 +71,7 @@ def redact_secrets(
         token_map = token_maps.setdefault(kind, {})
 
         def repl(match: re.Match[str]) -> str:
-            raw = match.group(0) or ""
+            raw = match.group(0)
             val = raw
             if keep_prefix and raw.lower().startswith(keep_prefix.lower()):
                 val = raw[len(keep_prefix) :]
@@ -119,7 +119,7 @@ def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch
     Intended for review-time displays (precheck / governance debug). Results are
     conservative but still require human verification.
     """
-    s = text or ""
+    s = text
     if not s:
         return []
 
@@ -132,7 +132,7 @@ def find_secret_matches(text: str, *, max_matches: int = 50) -> list[SecretMatch
 
     for kind, pat in _SECRET_PATTERNS:
         for m in pat.finditer(s):
-            raw = m.group(0) or ""
+            raw = m.group(0)
             if not raw:
                 continue
             start, end = m.start(), m.end()

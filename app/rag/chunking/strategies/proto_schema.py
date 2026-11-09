@@ -60,12 +60,12 @@ def _find_matching_brace(text: str, start: int) -> int | None:
 
 def _iter_blocks(text: str) -> list[_Block]:
     blocks: list[_Block] = []
-    for m in _BLOCK_START_RE.finditer(text or ""):
+    for m in _BLOCK_START_RE.finditer(text):
         end = _find_matching_brace(text, m.start())
         if end is None:
             continue
-        kind = (m.group("kind") or "").strip().lower()
-        name = (m.group("name") or "").strip()
+        kind = (m.group("kind")).strip().lower()
+        name = (m.group("name")).strip()
         if not kind or not name:
             continue
         blocks.append(_Block(start=m.start(), end=end, kind=kind, name=name, index=len(blocks)))
@@ -88,7 +88,7 @@ def _build_sections(text: str, blocks: list[_Block]) -> list[_Section]:
 
 
 def _extract_package(text: str) -> str | None:
-    m = _PACKAGE_RE.search((text or "")[:8000])
+    m = _PACKAGE_RE.search((text)[:8000])
     if not m:
         return None
     return m.group("name").strip()[:200]
@@ -121,7 +121,7 @@ class ProtoSchemaChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

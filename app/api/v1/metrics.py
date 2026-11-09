@@ -25,8 +25,8 @@ router = APIRouter(responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)
 
 
 def _token_matches(*, provided_token: str, expected_token: str) -> bool:
-    expected = str(expected_token or "").strip()
-    provided = str(provided_token or "").strip()
+    expected = expected_token.strip()
+    provided = provided_token.strip()
     if not expected or not provided:
         return False
     if expected.lower().startswith("sha256:"):
@@ -44,7 +44,9 @@ async def require_metrics_access(
 ) -> None:
     expected_token = str(settings.METRICS_BEARER_TOKEN).strip()
     if expected_token:
-        auth = str(headers.authorization or "").strip()
+        auth = headers.authorization
+        if auth is not None:
+            auth = auth.strip()
         if not auth:
             raise HTTPException(status_code=401, detail="Authorization header required")
         if not auth.lower().startswith("bearer "):

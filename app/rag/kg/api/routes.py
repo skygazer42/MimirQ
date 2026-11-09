@@ -504,7 +504,7 @@ def _search_kg_entity_nodes(
 def _kg_entity_search_node(ent: "KgEntity") -> KGGraphNode:
     return KGGraphNode(
         id=str(ent.id),
-        label=(ent.name or "").strip() or str(ent.id),
+        label=(ent.name).strip() or str(ent.id),
         group=_stable_group_for(ent.type or "unknown"),
         val=1,
         meta={
@@ -518,7 +518,7 @@ def _kg_entity_search_node(ent: "KgEntity") -> KGGraphNode:
 def _kg_event_search_node(event: "KgSourceEvent") -> KGGraphNode:
     return KGGraphNode(
         id=str(event.id),
-        label=(event.title or "").strip() or str(event.id),
+        label=(event.title).strip() or str(event.id),
         group=0,
         val=1,
         meta={
@@ -578,7 +578,7 @@ def search_kg_graph_nodes(
     """
     _ensure_enabled()
 
-    q_text = (q or "").strip()
+    q_text = q.strip()
     if not q_text:
         return []
 
@@ -821,7 +821,7 @@ def delete_manual_kg_import(
     _ensure_enabled()
     from app.rag.kg.manual_import import delete_manual_import
 
-    clean_import_id = str(import_id or "").strip()
+    clean_import_id = import_id.strip()
     if not clean_import_id:
         raise HTTPException(status_code=400, detail="import_id is required")
     return delete_manual_import(
@@ -1478,7 +1478,7 @@ def get_kg_entity_detail(
             .all()
         )
         neighbors = [
-            {"entity_id": row[0], "name": row[1] or "", "type": row[2] or "unknown", "count": int(row[3] or 0)}
+            {"entity_id": row[0], "name": row[1], "type": row[2] or "unknown", "count": int(row[3] or 0)}
             for row in rows
             if row and row[0]
         ]
@@ -1564,7 +1564,7 @@ def create_kg_entity_alias(
     if not ent:
         raise HTTPException(status_code=404, detail=KG_ENTITY_NOT_FOUND_DETAIL)
 
-    alias_text = str(payload.alias or "").strip()
+    alias_text = payload.alias.strip()
     if not alias_text:
         raise HTTPException(status_code=400, detail="alias is required")
 
@@ -1755,7 +1755,7 @@ def preview_kg_entity_merge(
     rel_rows.extend(db.query(KgRelation).filter_by(tenant_id=tenant_id, object_entity_id=source_id).all())
     rel_by_id: dict[str, object] = {}
     for r in rel_rows:
-        rid = str(getattr(r, "id", "") or "")
+        rid = str(r.id)
         if rid:
             rel_by_id[rid] = r
 
@@ -1828,7 +1828,7 @@ def create_kg_predicate_ontology(
     from app.rag.kg.extraction.relation_processor import normalize_predicate
     from app.rag.kg.models import KgPredicateOntology
 
-    key = normalize_predicate(str(payload.predicate or ""))
+    key = normalize_predicate(payload.predicate)
     if not key or key == "unknown":
         raise HTTPException(status_code=400, detail="Invalid predicate key")
 
@@ -1861,7 +1861,7 @@ def create_kg_predicate_ontology(
                 actor_id=account_id,
                 action="kg.ontology.predicate.upsert",
                 resource_type="kg_predicate_ontology",
-                resource_id=str(getattr(row, "id", "")),
+                resource_id=str(row.id),
                 details={"predicate": key, "is_enabled": bool(payload.is_enabled)},
             )
         )
@@ -1958,7 +1958,7 @@ def delete_kg_predicate_ontology(
     if not row:
         raise HTTPException(status_code=404, detail="Predicate not found")
 
-    pred = str(getattr(row, "predicate", "") or "")
+    pred = row.predicate
     db.delete(row)
 
     try:
@@ -2109,7 +2109,7 @@ def _validated_split_event_ids(payload: KGEntitySplitRequest) -> list[UUID]:
 
 
 def _split_new_entity_name(payload: KGEntitySplitRequest) -> str:
-    new_name = str(payload.new_entity_name or "").strip()
+    new_name = payload.new_entity_name.strip()
     if not new_name:
         raise HTTPException(status_code=400, detail="new_entity_name is required")
     return new_name
@@ -2148,7 +2148,7 @@ def _move_split_associations(source_assocs: list[Any], *, event_id_set: set[UUID
         event_id = getattr(assoc, "event_id", None)
         if event_id is None or event_id not in event_id_set:
             continue
-        moved_assoc_ids.append(str(getattr(assoc, "id", "") or ""))
+        moved_assoc_ids.append(str(assoc.id))
         assoc.entity_id = new_entity_id
     return moved_assoc_ids
 
@@ -2165,7 +2165,7 @@ def _move_split_relations(
         event_id = getattr(relation, "event_id", None)
         if event_id is None or event_id not in event_id_set:
             continue
-        moved_relation_ids.append(str(getattr(relation, "id", "") or ""))
+        moved_relation_ids.append(str(relation.id))
         if getattr(relation, "subject_entity_id", None) == original_id:
             relation.subject_entity_id = new_entity_id
         if getattr(relation, "object_entity_id", None) == original_id:
@@ -2362,7 +2362,7 @@ def undo_kg_entity_resolution_action(
 
     return KGEntityResolutionUndoResponse(
         action_id=action.id,
-        status=str(action.status or ""),
+        status=action.status,
         stats={
             "restored_event_entity_edges": stats.restored_edges,
             "restored_relations": stats.restored_relations,

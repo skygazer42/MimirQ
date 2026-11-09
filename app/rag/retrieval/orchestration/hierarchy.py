@@ -9,6 +9,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.orchestration.common import _doc_key, _safe_int
 
 
@@ -115,7 +116,7 @@ def _resolve_family_aggregation_strategy(
         return "", {"enabled": False, "reason": "no_docs"}
     if not family_features:
         return "", {"enabled": False, "reason": "no_families"}
-    strat = str(strategy or "").strip().lower()
+    strat = strategy.strip().lower()
     if strat not in {"frequency", "score", "combined"}:
         return strat, {"enabled": False, "reason": "invalid_strategy"}
     return strat, None
@@ -139,9 +140,9 @@ def _family_aggregation_sort_key(
     return (-float(variant_hits), -float(best_score), float(best_rank), family_key)
 
 
-def _doc_stable_debug_id(doc: Document) -> str:
+def _doc_stable_debug_id(doc: Document) -> str | None:
     meta = doc.metadata or {}
-    return str(getattr(doc, "id", None) or meta.get("chunk_id") or "")
+    return doc.id if doc.id is not None else _stringified_metadata_text(meta, "chunk_id")
 
 
 def _rank_hierarchy_family_docs(
@@ -155,7 +156,7 @@ def _rank_hierarchy_family_docs(
         meta = doc.metadata or {}
         family_key = _resolve_hierarchy_family_collapse_key(meta)
         family_key_tuple = _family_aggregation_sort_key(
-            family_key or "",
+            family_key,
             family_features=family_features,
             strategy=strategy,
         )
@@ -213,7 +214,7 @@ def _resolve_hierarchy_node_key(meta: dict[str, Any]) -> str:
     return ""
 
 
-def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str:
+def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str | None:
     # Respect explicit hierarchy_parent_key=None emitted by chunkers. Only fall back to
     # legacy parent_id fields when the hierarchy_parent_key field is absent entirely.
     raw = (
@@ -221,8 +222,7 @@ def _resolve_hierarchy_parent_key(meta: dict[str, Any]) -> str:
         if "hierarchy_parent_key" in meta
         else (meta.get("parent_id") or meta.get("parent_node_id"))
     )
-    s = str(raw or "").strip()
-    return s if s else ""
+    return str(raw).strip() if raw is not None else None
 
 
 @dataclass
@@ -284,8 +284,8 @@ def _remove_hierarchy_dedup_doc(state: _HierarchyDedupState, doc_key: str) -> in
     state.kept_doc_keys.discard(doc_key)
     state.removed_by_ancestor += 1
 
-    node_key = state.node_by_doc_key.get(doc_key) or ""
-    parent_key = state.parent_by_doc_key.get(doc_key) or ""
+    node_key = state.node_by_doc_key[doc_key]
+    parent_key = state.parent_by_doc_key[doc_key]
     if parent_key:
         kids = state.children_by_parent_node.get(parent_key)
         if kids:

@@ -287,10 +287,10 @@ def _create_url_ingestion_run(
         "source_url": url,
         "url_final_url": source.final_url,
         "url_canonical_url": source.canonical_url,
-        "parser_backend_requested": str(body.parser_backend or "")[:80],
-        "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
-        "parser_backend": str(pipeline.parser_backend or "")[:80],
-        "chunk_strategy": str(pipeline.chunk_strategy or "")[:80],
+        "parser_backend_requested": body.parser_backend[:80],
+        "chunk_strategy_requested": body.chunk_strategy[:80],
+        "parser_backend": pipeline.parser_backend[:80],
+        "chunk_strategy": pipeline.chunk_strategy[:80],
     }
     return _create_ingestion_run_if_missing(
         db=db,
@@ -320,10 +320,10 @@ def _create_local_html_ingestion_run(
     run_cfg = {
         "source_url": source_url,
         "content_type": content_type,
-        "parser_backend_requested": str(body.parser_backend or "")[:80],
-        "chunk_strategy_requested": str(body.chunk_strategy or "")[:80],
-        "parser_backend": str(pipeline.parser_backend or "")[:80],
-        "chunk_strategy": str(pipeline.chunk_strategy or "")[:80],
+        "parser_backend_requested": body.parser_backend[:80],
+        "chunk_strategy_requested": body.chunk_strategy[:80],
+        "parser_backend": pipeline.parser_backend[:80],
+        "chunk_strategy": pipeline.chunk_strategy[:80],
     }
     return _create_ingestion_run_if_missing(
         db=db,
@@ -345,7 +345,7 @@ def _build_url_document_metadata(
     source: ingestion_sources.UrlSourceMetadata,
     pipeline: ingestion_plan.ResolvedDocumentPipeline,
 ) -> dict[str, Any]:
-    requested_parser_backend = str(body.parser_backend or "").strip().lower()
+    requested_parser_backend = body.parser_backend.strip().lower()
     parser_backend_resolved = (
         None
         if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"}
@@ -353,10 +353,10 @@ def _build_url_document_metadata(
     )
     return {
         "parser_backend": pipeline.parser_backend,
-        "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "parser_backend_requested": body.parser_backend.lower(),
         "parser_backend_resolved": parser_backend_resolved,
         "chunk_strategy": pipeline.chunk_strategy,
-        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
+        "chunk_strategy_requested": body.chunk_strategy.lower(),
         "source_url": url,
         "source_fetched_at": ingest_file.fetched_at_iso,
         "source_last_modified_at": source.last_modified_at,
@@ -382,7 +382,7 @@ def _build_local_html_document_metadata(
     content_type: str,
     pipeline: ingestion_plan.ResolvedDocumentPipeline,
 ) -> dict[str, Any]:
-    requested_parser_backend = str(body.parser_backend or "").strip().lower()
+    requested_parser_backend = body.parser_backend.strip().lower()
     parser_backend_resolved = (
         None
         if pipeline.parser_backend == "auto" and requested_parser_backend in {"", "auto"}
@@ -390,10 +390,10 @@ def _build_local_html_document_metadata(
     )
     return {
         "parser_backend": pipeline.parser_backend,
-        "parser_backend_requested": str(body.parser_backend or "").lower(),
+        "parser_backend_requested": body.parser_backend.lower(),
         "parser_backend_resolved": parser_backend_resolved,
         "chunk_strategy": pipeline.chunk_strategy,
-        "chunk_strategy_requested": str(body.chunk_strategy or "").lower(),
+        "chunk_strategy_requested": body.chunk_strategy.lower(),
         "source_url": source_url,
         "source_fetched_at": fetched_at_iso,
         "source_last_modified_at": fetched_at_iso,
@@ -489,7 +489,7 @@ async def _reuse_duplicate_document_for_ingest(
     content_sha256: str,
     pipeline_hash: str,
 ) -> DBDocument:
-    status0 = str(duplicate.status or "").strip().lower()
+    status0 = duplicate.status.strip().lower()
     if status0 in {"pending", "processing"}:
         if source_persistence.document_matches_dedup_identity(
             duplicate, file_sha256=content_sha256, pipeline_hash=pipeline_hash
@@ -544,7 +544,7 @@ async def ingest_url(
     if not settings.URL_INGEST_ENABLED:
         raise HTTPException(status_code=400, detail="URL ingestion is disabled")
 
-    url = await validate_url_for_ingest(str(body.url or ""))
+    url = await validate_url_for_ingest(body.url)
     dataset = dataset_service.resolve_writable_dataset(db, tenant_id, account_id, body.dataset_id)
     ingest_file = await ingestion_sources.download_url_ingest_file(url=url, body=body, tenant_id=tenant_id)
     source_lease = source_persistence.SourceFileLease(ingest_file.final_path)
@@ -808,7 +808,8 @@ async def _maybe_acquire_ingest_lock(
 
 
 def _retain_ingest_lock_if_task_handed_off(document: DBDocument, *, ingest_lock: _IngestLockLease) -> None:
-    if str((document.doc_metadata or {}).get("task_id") or "").strip():
+    task_id = (document.doc_metadata or {}).get("task_id")
+    if task_id is not None and task_id.strip():
         ingest_lock.retain()
 
 
@@ -837,7 +838,7 @@ async def _retry_failed_persisted_duplicate(
     account_id: str,
     db: Session,
 ) -> None:
-    if str(document.status or "").lower() != "failed":
+    if document.status.lower() != "failed":
         return
 
     await retry_document(
@@ -874,8 +875,8 @@ def _normalize_upload_identity(file: UploadFile) -> _UploadIdentity:
     source_path = upload_key if "/" in upload_key else None
     file.filename = sanitize_filename(raw_filename)
     return _UploadIdentity(
-        filename=str(file.filename or ""),
-        file_ext=Path(str(file.filename or "")).suffix.lower(),
+        filename=file.filename,
+        file_ext=Path(file.filename).suffix.lower(),
         upload_key=upload_key,
         source_path=source_path,
     )
@@ -916,7 +917,7 @@ def _build_document_metadata(
     upload_only: bool,
 ) -> _PreparedDocumentMetadata:
 
-    requested_parser_backend = (request_parser_backend or "").strip().lower()
+    requested_parser_backend = (request_parser_backend).strip().lower()
     doc_metadata = {
         "parser_backend": resolved_pipeline.resolved_parser_backend,
         "parser_backend_requested": requested_parser_backend,
@@ -926,7 +927,7 @@ def _build_document_metadata(
             else resolved_pipeline.resolved_parser_backend
         ),
         "chunk_strategy": resolved_pipeline.resolved_chunk_strategy,
-        "chunk_strategy_requested": (request_chunk_strategy or "").lower(),
+        "chunk_strategy_requested": (request_chunk_strategy).lower(),
     }
     if identity.source_path:
         doc_metadata["source_path"] = identity.source_path
@@ -970,7 +971,7 @@ def _merge_duplicate_document_metadata(
 ) -> dict[str, Any]:
 
     meta_any = dict(duplicate_document.doc_metadata or {})
-    requested_parser_backend = (request_parser_backend or "").strip().lower()
+    requested_parser_backend = (request_parser_backend).strip().lower()
     meta_any["parser_backend"] = resolved_pipeline.resolved_parser_backend
     meta_any["parser_backend_requested"] = requested_parser_backend
     meta_any["parser_backend_resolved"] = (
@@ -979,7 +980,7 @@ def _merge_duplicate_document_metadata(
         else resolved_pipeline.resolved_parser_backend
     )
     meta_any["chunk_strategy"] = resolved_pipeline.resolved_chunk_strategy
-    meta_any["chunk_strategy_requested"] = (request_chunk_strategy or "").lower()
+    meta_any["chunk_strategy_requested"] = (request_chunk_strategy).lower()
     if identity.source_path and not meta_any.get("source_path"):
         meta_any["source_path"] = identity.source_path
     _sync_duplicate_document_pipeline_identity(
@@ -999,7 +1000,7 @@ def _merge_duplicate_document_metadata(
             replace=False,
         )
     meta_any.setdefault("active_pipeline_hash", meta_any["pipeline_hash"])
-    meta_any.setdefault("active_pipeline_ready", bool(str(duplicate_document.status or "").lower() == "completed"))
+    meta_any.setdefault("active_pipeline_ready", bool(duplicate_document.status.lower() == "completed"))
     sync_pipeline_execution_identity(
         meta_any,
         content_sha256=file_sha256,
@@ -1029,7 +1030,7 @@ async def _reuse_duplicate_document(
     account_id: str,
     ingest_lock: _IngestLockLease,
 ) -> DBDocument:
-    status0 = str(duplicate_document.status or "").lower()
+    status0 = duplicate_document.status.lower()
     if status0 in {"pending", "processing"}:
         if source_persistence.document_matches_dedup_identity(
             duplicate_document,
@@ -1090,14 +1091,14 @@ def _create_single_ingestion_run(
             requested_by=account_id,
             kind="upload",
             config={
-                "filename": str(identity.filename or "")[:255],
+                "filename": identity.filename[:255],
                 "source_path": (str(identity.source_path)[:1000] if identity.source_path else None),
-                "file_ext": str(identity.file_ext or "")[:16],
-                "parser_backend_requested": str(parser_backend or "")[:80],
-                "chunk_strategy_requested": str(chunk_strategy or "")[:80],
-                "parser_backend": str(resolved_pipeline.resolved_parser_backend or "")[:80],
-                "chunk_strategy": str(resolved_pipeline.resolved_chunk_strategy or "")[:80],
-                "pipeline_hash": str(pipeline_hash or "")[:64],
+                "file_ext": identity.file_ext[:16],
+                "parser_backend_requested": parser_backend[:80],
+                "chunk_strategy_requested": chunk_strategy[:80],
+                "parser_backend": resolved_pipeline.resolved_parser_backend[:80],
+                "chunk_strategy": resolved_pipeline.resolved_chunk_strategy[:80],
+                "pipeline_hash": pipeline_hash[:64],
                 "ingestion_meta": dict(resolved_pipeline.ingestion_meta or {}),
                 "pipeline": (pipeline_parsed.model_dump(exclude_none=True) if pipeline_parsed is not None else None),
             },
@@ -1189,7 +1190,7 @@ async def _maybe_resolve_single_upload_duplicate(
         file_sha256=file_sha256,
         pipeline_hash=pipeline_hash,
     )
-    if duplicate is not None and str(duplicate.status or "").lower() not in {"failed"}:
+    if duplicate is not None and duplicate.status.lower() not in {"failed"}:
         logger.info(
             "Upload dedup hit tenant_id=%s dataset_id=%s document_id=%s",
             str(tenant_id),
@@ -1491,7 +1492,9 @@ async def _ingest_local_html_request_with_source(
     source_lease: source_persistence.SourceFileLease,
 ) -> DBDocument:
     content_type = "text/html"
-    source_url = str(body.source_url or "").strip()
+    source_url = body.source_url
+    if source_url is not None:
+        source_url = source_url.strip()
     if not source_url:
         source_url = None
     url_normalized = normalize_url_for_dedup(source_url) if source_url else None

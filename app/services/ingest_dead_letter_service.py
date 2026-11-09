@@ -39,12 +39,16 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _safe_str(value: object, *, max_len: int) -> str:
-    return str(value or "").strip()[:max_len]
+def _safe_str(value: object, *, max_len: int) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip()[:max_len]
 
 
 def normalize_ingest_error_code(value: object, *, fallback: str = "ingest_failed") -> str:
-    raw = str(value or "").strip()
+    if value is None:
+        return fallback
+    raw = str(value).strip()
     if not raw:
         return fallback
 
@@ -62,7 +66,9 @@ def normalize_ingest_error_code(value: object, *, fallback: str = "ingest_failed
 
 def infer_failed_stage(*, failed_stage: object = None, current_stage: object = None) -> str:
     for raw in (failed_stage, current_stage):
-        stage = _safe_str(raw, max_len=50).lower()
+        stage = _safe_str(raw, max_len=50)
+        if stage is not None:
+            stage = stage.lower()
         if stage and stage not in {"failed", "error", "unknown"}:
             return stage
     return "unknown"
@@ -139,7 +145,7 @@ def record_ingest_dead_letter(
             source_ref=source_ref,
             original_payload=payload,
             retry_count=0,
-            producer_service=_safe_str(producer_service, max_len=80) or "document_processor",
+            producer_service=producer_service.strip()[:80],
             schema_version=INGEST_DEAD_LETTER_SCHEMA_V1,
             first_failed_at=now,
             last_attempt_at=now,

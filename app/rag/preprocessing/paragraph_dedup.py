@@ -26,7 +26,7 @@ class ParagraphDedupResult:
 
 
 def _normalize_paragraph_signature(text: str) -> str:
-    norm = normalize_text(text or "", normalize_line_endings=True, remove_control_chars=True)
+    norm = normalize_text(text, normalize_line_endings=True, remove_control_chars=True)
     norm = re.sub(r"\s+", " ", norm.strip())
     return norm.casefold()
 
@@ -37,7 +37,7 @@ def _eligible_paragraph_signature(
     min_chars: int,
     max_chars: int,
 ) -> str | None:
-    raw_paragraph = paragraph or ""
+    raw_paragraph = paragraph
     if not raw_paragraph.strip():
         return None
     if _CODE_FENCE_RE.search(raw_paragraph) or _HEADING_RE.search(raw_paragraph) or _TABLE_ROW_RE.search(raw_paragraph):
@@ -66,7 +66,7 @@ def drop_duplicate_paragraphs(
     - skips code fences/headings/tables (structure)
     - only considers paragraphs within [min_paragraph_chars, max_paragraph_chars]
     """
-    original = text or ""
+    original = text
     if not original:
         return ParagraphDedupResult(text="", paragraphs_total=0, paragraphs_dropped=0, changed=False)
 

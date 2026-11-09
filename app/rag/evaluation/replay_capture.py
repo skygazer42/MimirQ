@@ -109,11 +109,11 @@ def fingerprint_citations(citations: Any) -> str:
         cleaned.append(
             {
                 "rank": idx,
-                "chunk_id": str(c.get("chunk_id") or ""),
-                "document_id": str(c.get("document_id") or "") or None,
+                "chunk_id": str(c["chunk_id"]) if c.get("chunk_id") is not None else "",
+                "document_id": (str(c["document_id"]) or None) if c.get("document_id") is not None else None,
                 "relevance_score": _round_float(c.get("relevance_score")),
                 "retrieval_score": _round_float(c.get("retrieval_score")),
-                "retrieval_role": (str(c.get("retrieval_role") or "") or None),
+                "retrieval_role": (str(c["retrieval_role"]) or None) if c.get("retrieval_role") is not None else None,
             }
         )
 
@@ -138,7 +138,7 @@ def build_retrieval_replay_capture_record(
     - stores query_hash + query_chars only (no raw query)
     - stores only allowlisted citation keys (no chunk_content)
     """
-    q = str(query or "").strip()
+    q = query.strip()
     qh = stable_hash(q, length=16) if q else ""
 
     metrics = evidence_payload.get("metrics") if isinstance(evidence_payload.get("metrics"), dict) else {}

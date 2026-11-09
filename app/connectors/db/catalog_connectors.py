@@ -87,11 +87,11 @@ class MySQLCatalogConnector(_BaseCatalogConnector):
 
             t0 = time.time()
             conn = pymysql.connect(
-                host=str(cfg.get("host", "") or "").strip(),
+                host=cfg["host"].strip(),
                 port=int(cfg.get("port", 3306) or 3306),
-                user=str(cfg.get("username", "") or "").strip(),
-                password=str(cfg.get("password", "") or ""),
-                database=str(cfg.get("database", "") or "").strip(),
+                user=cfg["username"].strip(),
+                password=cfg["password"],
+                database=cfg["database"].strip(),
                 connect_timeout=3,
                 read_timeout=3,
                 write_timeout=3,
@@ -107,7 +107,7 @@ class MySQLCatalogConnector(_BaseCatalogConnector):
                     with conn.cursor() as cur:
                         cur.execute("SHOW GRANTS")
                         rows = cur.fetchall() or []
-                    grants = [str(row[0] or "") for row in rows if row]
+                    grants = [row[0] for row in rows if row]
                     has_write = _has_write_privileges_from_text("\n".join(grants[:20]))
                     details["read_only"] = not has_write
                     if has_write:
@@ -160,11 +160,11 @@ class SQLServerCatalogConnector(_BaseCatalogConnector):
             if not driver:
                 raise RuntimeError("No SQL Server ODBC driver found")
 
-            host = str(cfg.get("host", "") or "").strip()
+            host = cfg["host"].strip()
             port = int(cfg.get("port", 1433) or 1433)
-            database = str(cfg.get("database", "") or "").strip()
-            username = str(cfg.get("username", "") or "").strip()
-            password = str(cfg.get("password", "") or "")
+            database = cfg["database"].strip()
+            username = cfg["username"].strip()
+            password = cfg["password"]
 
             conn_str = (
                 f"DRIVER={{{driver}}};"
@@ -187,7 +187,7 @@ class SQLServerCatalogConnector(_BaseCatalogConnector):
                 try:
                     cur = conn.cursor()
                     cur.execute("SELECT permission_name FROM fn_my_permissions(NULL, 'DATABASE')")
-                    perms = [str(row[0] or "") for row in (cur.fetchall() or []) if row and row[0]]
+                    perms = [row[0] for row in (cur.fetchall() or []) if row and row[0]]
                     has_write = _has_write_privileges_from_text("\n".join(perms[:200]))
                     details["read_only"] = not has_write
                     if has_write:

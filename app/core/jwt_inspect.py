@@ -22,7 +22,7 @@ def try_get_jwt_claims(token: str) -> dict[str, Any] | None:
 
     Returns None if the token does not look like a JWT or payload decoding fails.
     """
-    parts = str(token or "").strip().split(".")
+    parts = token.strip().split(".")
     if len(parts) != 3:
         return None
     payload_b64 = parts[1]

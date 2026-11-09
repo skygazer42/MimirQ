@@ -31,7 +31,9 @@ def _document_records(rows: list[dict[str, Any]], *, limit: int) -> list[_Scatte
         if not isinstance(row, dict):
             continue
         for filename in row.get("final_context_filenames") or []:
-            name = str(filename or "").strip()
+            if filename is None:
+                continue
+            name = str(filename).strip()
             if name:
                 counts[name] += 1
     out: list[_ScatterRecord] = []
@@ -53,17 +55,20 @@ def _query_records(rows: list[dict[str, Any]], *, limit: int) -> list[_ScatterRe
     for row in list(rows or [])[: max(1, int(limit or 1))]:
         if not isinstance(row, dict):
             continue
-        query = str(row.get("original_query") or "").strip()
+        raw_query = row.get("original_query")
+        if raw_query is None:
+            continue
+        query = str(raw_query).strip()
         if not query:
             continue
         is_out_of_scope_candidate = (
-            str(row.get("feedback_polarity") or "").strip().lower() == "negative"
+            row.get("feedback_polarity") == "negative"
             and int(row.get("citation_count") or 0) <= 0
         )
         group = "out_of_scope_candidate" if is_out_of_scope_candidate else "query"
         out.append(
             {
-                "label": str(row.get("interaction_id") or "") or query[:24],
+                "label": str(row["interaction_id"]) if row.get("interaction_id") is not None else query[:24],
                 "kind": "query",
                 "group": group,
                 "weight": 1,

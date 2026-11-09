@@ -78,7 +78,7 @@ PROMPT_BUNDLES: dict[str, PromptBundle] = {
 
 
 def get_prompt_bundle(key: str) -> PromptBundle:
-    norm = str(key or "").strip().lower()
+    norm = key.strip().lower()
     if norm not in PROMPT_BUNDLES:
         raise KeyError(f"Unknown prompt bundle: {key}")
     return PROMPT_BUNDLES[norm]

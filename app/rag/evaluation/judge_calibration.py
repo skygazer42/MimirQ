@@ -9,14 +9,16 @@ CALIBRATION_LABELS = ("supported", "partial", "unsupported")
 
 
 def _required_version(payload: dict[str, Any], key: str) -> str:
-    value = str(payload.get(key) or "").strip()
-    if len(value) < 3:
+    value = payload.get(key)
+    if not isinstance(value, str) or len(value.strip()) < 3:
         raise ValueError(f"calibration_{key}_required")
-    return value
+    return value.strip()
 
 
 def _parse_reviewed_at(value: Any) -> str | None:
-    raw = str(value or "").strip()
+    if value is None:
+        return None
+    raw = str(value).strip()
     if not raw:
         return None
     try:
@@ -27,7 +29,11 @@ def _parse_reviewed_at(value: Any) -> str | None:
 
 
 def validate_calibration_payload(payload: Any, *, min_items: int = 50) -> list[dict[str, str]]:
-    if not isinstance(payload, dict) or str(payload.get("schema") or "").strip() != CALIBRATION_SCHEMA:
+    if (
+        not isinstance(payload, dict)
+        or not isinstance(payload.get("schema"), str)
+        or payload["schema"].strip() != CALIBRATION_SCHEMA
+    ):
         raise ValueError(f"invalid_calibration_schema:{CALIBRATION_SCHEMA}")
     _required_version(payload, "judge_version_hash")
     _required_version(payload, "dataset_version")
@@ -43,16 +49,22 @@ def validate_calibration_payload(payload: Any, *, min_items: int = 50) -> list[d
     for index, raw_row in enumerate(rows):
         if not isinstance(raw_row, dict):
             raise ValueError(f"calibration_item_invalid:{index}")
-        case_id = str(raw_row.get("case_id") or "").strip()
-        if not case_id or case_id in seen_case_ids:
+        case_id = raw_row.get("case_id")
+        if not isinstance(case_id, str) or not case_id.strip() or case_id.strip() in seen_case_ids:
             raise ValueError(f"calibration_case_id_invalid:{index}")
-        human_label = str(raw_row.get("human_label") or "").strip().lower()
-        judge_label = str(raw_row.get("judge_label") or "").strip().lower()
+        case_id = case_id.strip()
+        human_label = raw_row.get("human_label")
+        judge_label = raw_row.get("judge_label")
+        if isinstance(human_label, str):
+            human_label = human_label.strip().lower()
+        if isinstance(judge_label, str):
+            judge_label = judge_label.strip().lower()
         if human_label not in CALIBRATION_LABELS or judge_label not in CALIBRATION_LABELS:
             raise ValueError(f"calibration_label_invalid:{case_id}")
-        reviewer_hash = str(raw_row.get("reviewer_hash") or "").strip()
-        if len(reviewer_hash) < 8:
+        reviewer_hash = raw_row.get("reviewer_hash")
+        if not isinstance(reviewer_hash, str) or len(reviewer_hash.strip()) < 8:
             raise ValueError(f"calibration_reviewer_hash_invalid:{case_id}")
+        reviewer_hash = reviewer_hash.strip()
         reviewed_at = _parse_reviewed_at(raw_row.get("reviewed_at"))
         if reviewed_at is None:
             raise ValueError(f"calibration_reviewed_at_invalid:{case_id}")

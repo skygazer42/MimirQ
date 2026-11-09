@@ -249,7 +249,9 @@ def _build_scan_duplicate_groups(
     by_sha: dict[str, list[dict[str, Any]]] = {}
     for doc_id, filename, status, dataset_id, created_at, meta in rows:
         metadata = meta if isinstance(meta, dict) else {}
-        sha = str(metadata.get("file_sha256") or "").strip().lower()
+        sha = metadata.get("file_sha256")
+        if sha is not None:
+            sha = sha.strip().lower()
         if not sha:
             continue
         by_sha.setdefault(sha, []).append(

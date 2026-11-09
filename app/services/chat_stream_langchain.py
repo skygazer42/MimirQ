@@ -111,7 +111,7 @@ def _handle_stream_event(
             event["data"]["metrics"] = dict(state.metrics_data)
     elif event_type == "token":
         data = event.get("data") if isinstance(event.get("data"), dict) else {}
-        state.response_parts.append(str(data.get("content") or ""))
+        state.response_parts.append(data["content"])
     event["request_id"] = str(request_id)
     return event
 

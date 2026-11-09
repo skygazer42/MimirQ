@@ -29,7 +29,7 @@ _VOWEL_RE = re.compile(r"[aeiou]")
 
 
 def _is_outline_line(line: str) -> bool:
-    stripped = (line or "").strip()
+    stripped = (line).strip()
     if not stripped:
         return False
     if _MD_HEADING_RE.match(stripped):
@@ -60,7 +60,7 @@ def _outline_only_metrics(raw: str) -> tuple[int, int, int]:
             continue
         if in_code:
             continue
-        stripped = (line or "").strip()
+        stripped = line.strip()
         if not stripped:
             continue
         total += 1
@@ -77,7 +77,7 @@ def drop_if_outline_only(
     min_content_chars: int = 200,
     max_heading_ratio: float = 0.85,
 ) -> QualityDecision:
-    raw = text or ""
+    raw = text
     if not raw.strip():
         return QualityDecision(dropped=True, reason="empty_document", metrics={"content_chars": 0})
 
@@ -107,7 +107,7 @@ def drop_if_low_density(text: str, *, threshold: float = 0.12) -> QualityDecisio
     This is useful for garbled OCR or corrupted encodings that produce mostly
     symbols. It is intentionally simple and should be opt-in.
     """
-    raw = text or ""
+    raw = text
     if not raw.strip():
         return QualityDecision(dropped=True, reason="empty_document", metrics={"density": 0.0})
 
@@ -142,7 +142,7 @@ def drop_if_high_perplexity_proxy(
     - many digit-mixed tokens
     - very low vowel ratio in ASCII words
     """
-    raw = text or ""
+    raw = text
     if not raw.strip():
         return QualityDecision(
             dropped=True, reason="empty_document", metrics={"perplexity_proxy": 0.0, "token_count": 0}

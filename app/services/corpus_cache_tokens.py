@@ -47,7 +47,9 @@ def _dataset_embedding_binding(dataset_meta: Any) -> dict[str, Any]:
 def build_dataset_scope_corpus_cache_token(
     *, dataset_id: Any, updated_at: Any, dataset_embedding_binding: Any = None
 ) -> str | None:
-    ds = str(dataset_id or "").strip()
+    if dataset_id is None:
+        return None
+    ds = str(dataset_id).strip()
     if not ds:
         return None
     sig = {
@@ -64,7 +66,10 @@ def build_document_scope_corpus_cache_token(rows: Sequence[Any]) -> str | None:
     items: list[dict[str, Any]] = []
     for row in rows or []:
         payload = row if isinstance(row, dict) else {}
-        doc_id = str(payload.get("id") or "").strip()
+        raw_id = payload.get("id")
+        if raw_id is None:
+            continue
+        doc_id = str(raw_id).strip()
         if not doc_id:
             continue
         items.append(
@@ -98,7 +103,12 @@ def build_multi_dataset_scope_corpus_cache_token(rows: Sequence[Any]) -> str | N
     items: list[dict[str, Any]] = []
     for row in rows or []:
         payload = row if isinstance(row, dict) else {}
-        dataset_id = str(payload.get("dataset_id") or payload.get("id") or "").strip()
+        raw_id = payload.get("dataset_id")
+        if raw_id is None:
+            raw_id = payload.get("id")
+        if raw_id is None:
+            continue
+        dataset_id = str(raw_id).strip()
         if not dataset_id:
             continue
         items.append(

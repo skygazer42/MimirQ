@@ -17,7 +17,7 @@ def rerank_long_context_candidates(
     top_n: int = 20,
 ) -> RerankResult:
     docs = list(candidates or [])
-    scores = dict(scorer(str(query or ""), docs) or {})
+    scores = dict(scorer(query, docs) or {})
     ordered_ids = sorted(
         [doc.id for doc in docs],
         key=lambda cid: (float(scores.get(cid, 0.0)), cid),
@@ -35,14 +35,14 @@ def rerank_long_context_candidates(
 
 
 def _default_long_context_scorer(query: str, docs: list[RerankCandidate]) -> dict[str, float]:
-    query_tokens = [str(tok).strip() for tok in tokenize_lexical_text(str(query or "")) if str(tok).strip()]
+    query_tokens = [str(tok).strip() for tok in tokenize_lexical_text(query) if str(tok).strip()]
     if not query_tokens:
         return {str(doc.id): 0.0 for doc in (docs or [])}
 
     doc_tokens: dict[str, set[str]] = {}
     df: dict[str, int] = dict.fromkeys(query_tokens, 0)
     for doc in docs or []:
-        tokens = set(tokenize_lexical_text(str(doc.text or "")))
+        tokens = set(tokenize_lexical_text(doc.text))
         doc_tokens[str(doc.id)] = tokens
         for token in query_tokens:
             if token in tokens:
@@ -88,7 +88,7 @@ class LongContextReranker(BaseReranker):
         **kwargs: Any,
     ) -> RerankResult:
         out = rerank_long_context_candidates(
-            query=str(query or ""),
+            query=query,
             candidates=list(candidates or []),
             scorer=self._scorer,
             top_n=max(1, int(kwargs.get("top_n") or 20)),

@@ -33,7 +33,7 @@ def _stable_hash(*parts: Any, length: int = 24) -> str:
         if isinstance(part, bytes):
             data = part
         else:
-            data = str(part or "").encode("utf-8", errors="ignore")
+            data = part.encode("utf-8", errors="ignore")
         h.update(data)
         h.update(b"\0")
     return h.hexdigest()[: max(8, int(length or 24))]
@@ -69,13 +69,13 @@ def build_chart_data_v1_payload(
     """
     raw = dict(payload or {})
     digest = _stable_hash(src, image_bytes, _stable_json(raw), length=32)
-    source_image = str(src or "").strip()
+    source_image = src.strip()
     out: dict[str, Any] = {
         "schema": CHART_DATA_SCHEMA_V1,
         "chart_id": f"chart_{digest[:16]}",
         "cache_key": f"chart_data:v1:{digest}",
         "source_image": source_image,
-        "alt": str(alt or "").strip(),
+        "alt": alt.strip(),
         "page": raw.get("page"),
         "title": raw.get("title"),
         "series": raw.get("series") if isinstance(raw.get("series"), list) else [],
@@ -87,26 +87,26 @@ def build_chart_data_v1_payload(
 
 
 def _extract_md_images(line: str) -> list[tuple[str, str]]:
-    return [(alt or "", src or "") for alt, src in _MD_IMAGE_RE.findall(line or "")]
+    return [(alt, src) for alt, src in _MD_IMAGE_RE.findall(line)]
 
 
 def _extract_html_imgs(line: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
-    for tag in _HTML_IMG_TAG_RE.findall(line or ""):
+    for tag in _HTML_IMG_TAG_RE.findall(line):
         alt = ""
         src = ""
         for key, _q, val in _HTML_IMG_ATTR_RE.findall(tag):
-            k = (key or "").strip().lower()
+            k = key.strip().lower()
             if k == "alt":
                 alt = val
             elif k == "src":
                 src = val
-        out.append((alt or "", src or ""))
+        out.append((alt, src))
     return out
 
 
 def _is_chart_candidate(*, alt: str, src: str) -> bool:
-    hint = f"{alt or ''} {src or ''}".strip()
+    hint = f"{alt} {src}".strip()
     return bool(hint and _CHART_HINT_RE.search(hint))
 
 
@@ -114,12 +114,12 @@ def _normalize_local_image_ref(raw: str) -> tuple[str | None, str | None]:
     resolved_ref = raw
     if raw.lower().startswith("file://"):
         parsed = urlparse(raw)
-        if str(parsed.scheme or "").lower() != "file":
+        if str(parsed.scheme).lower() != "file":
             return None, "unsupported_scheme"
-        netloc = str(parsed.netloc or "").strip().lower()
+        netloc = str(parsed.netloc).strip().lower()
         if netloc and netloc not in {"localhost", "127.0.0.1"}:
             return None, "remote_file_url"
-        resolved_ref = unquote(str(parsed.path or ""))
+        resolved_ref = unquote(str(parsed.path))
         if re.match(r"^/[a-zA-Z]:/", resolved_ref):
             resolved_ref = resolved_ref[1:]
         return resolved_ref, None
@@ -136,7 +136,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
         base_dir = base_dir.parent
     base_dir_resolved = base_dir.resolve(strict=False)
 
-    path_obj = Path(resolved_ref or "")
+    path_obj = Path(resolved_ref)
     if not path_obj.is_absolute():
         path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
     else:
@@ -164,7 +164,7 @@ def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> tuple[bytes | 
 
 
 def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
-    raw = str(src or "").strip()
+    raw = src.strip()
     if not raw:
         return None, "empty_src"
     if raw.startswith("data:"):
@@ -243,7 +243,7 @@ class ChartToDataAudit:
             "images_attempted": int(self.images_attempted),
             "images_succeeded": int(self.images_succeeded),
             "elapsed_ms": int(self.elapsed_ms),
-            "backend": str(self.backend or ""),
+            "backend": self.backend,
             "error": (str(self.error)[:200] if self.error else None),
             "chart_elements": list(self.chart_elements or []),
         }
@@ -307,7 +307,7 @@ def add_chart_data_blocks(
 ) -> tuple[str, int, ChartToDataAudit]:
     from app.core.config import settings
 
-    raw = str(markdown or "")
+    raw = markdown
     if not bool(settings.CHART_TO_DATA_ENABLED):
         return (
             raw,
@@ -324,7 +324,7 @@ def add_chart_data_blocks(
             ),
         )
 
-    api_url = str(settings.CHART_TO_DATA_API_URL or "").strip()
+    api_url = str(settings.CHART_TO_DATA_API_URL).strip()
     if not api_url:
         return (
             raw,
@@ -350,7 +350,7 @@ def add_chart_data_blocks(
     chart_elements: list[dict[str, Any]] = []
 
     for line in raw.splitlines():
-        if _FENCE_RE.match(line or ""):
+        if _FENCE_RE.match(line):
             in_fence = not in_fence
             out_lines.append(line)
             continue

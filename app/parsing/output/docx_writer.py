@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
 def _add_highlighted_heading(doc: "Document", title: str, *, highlight_keywords: list[str] | None) -> None:
     paragraph = doc.add_heading("", level=1)
-    keywords = [str(item or "").strip() for item in (highlight_keywords or []) if str(item or "").strip()]
+    keywords = [item.strip() for item in (highlight_keywords or []) if item.strip()]
     if not keywords:
         paragraph.add_run(title)
         return
@@ -47,14 +47,17 @@ def write_clean_docx(
     target.parent.mkdir(parents=True, exist_ok=True)
 
     doc = DocxDocument()
-    title_text = str(title or "").strip()
+    title_text = str(title).strip() if title is not None else None
     if title_text:
         _add_highlighted_heading(doc, title_text, highlight_keywords=highlight_keywords)
 
     for block in blocks or []:
         if not isinstance(block, dict):
             continue
-        text = str(block.get("text") or "").strip()
+        value = block.get("text")
+        if value is None:
+            continue
+        text = str(value).strip()
         if not text:
             continue
         doc.add_paragraph(text)
@@ -70,15 +73,19 @@ def render_clean_docx_bytes(
     highlight_keywords: list[str] | None = None,
 ) -> bytes:
     doc = DocxDocument()
-    title_text = str(title or "").strip()
+    title_text = str(title).strip() if title is not None else None
     if title_text:
         _add_highlighted_heading(doc, title_text, highlight_keywords=highlight_keywords)
 
     for block in blocks or []:
         if not isinstance(block, dict):
             continue
-        block_type = str(block.get("type") or "").strip().lower()
-        text = str(block.get("text") or "").strip()
+        raw_type = block.get("type")
+        block_type = raw_type.strip().lower() if isinstance(raw_type, str) else None
+        value = block.get("text")
+        if value is None:
+            continue
+        text = str(value).strip()
         if not text:
             continue
         if block_type == "heading":

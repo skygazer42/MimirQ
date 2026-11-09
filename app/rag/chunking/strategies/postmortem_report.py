@@ -69,7 +69,7 @@ for k, vals in _SECTION_SYNONYMS.items():
 
 
 def _parse_heading_line(plain: str) -> tuple[str, str, int] | None:
-    s = (plain or "").strip()
+    s = (plain).strip()
     if not s:
         return None
 
@@ -132,7 +132,7 @@ def looks_like_postmortem_report(text: str) -> bool:
     keys = {h.key for h in headings}
     if len(keys) >= 5:
         return True
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if len(keys) >= 3 and any(k in lowered for k in ("postmortem", "root cause", "rca", "incident", "根因", "复盘")):
         return True
     return False
@@ -155,7 +155,7 @@ class PostmortemReportChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

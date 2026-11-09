@@ -57,8 +57,9 @@ def suppress_watermark_regions(
             continue
         draw.rectangle(rect, fill=fill)
         masked += 1
-        if isinstance(box, Mapping) and str(box.get("reason") or "").strip():
-            reasons.append(str(box.get("reason")))
+        reason = box.get("reason") if isinstance(box, Mapping) else None
+        if reason is not None and str(reason).strip():
+            reasons.append(str(reason))
     return WatermarkSuppressResult(image=out, changed=masked > 0, masked_regions=masked, reasons=reasons)
 
 

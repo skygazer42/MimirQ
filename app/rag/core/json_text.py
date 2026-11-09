@@ -11,7 +11,7 @@ def _extract_string_items_from_lines(text: str, *, max_items: int = 12) -> list[
     max_items = max(1, int(max_items or 0))
     items: list[str] = []
     seen: set[str] = set()
-    for raw_line in (text or "").splitlines():
+    for raw_line in (text).splitlines():
         line = raw_line.strip()
         if not line:
             continue
@@ -88,7 +88,7 @@ def parse_json_from_text(
 
     Returns: (data, meta) where meta contains ok/method/error.
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return None, {"ok": False, "method": None, "error": "empty"}
 

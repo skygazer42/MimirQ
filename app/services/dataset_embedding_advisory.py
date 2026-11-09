@@ -13,8 +13,10 @@ _GENERIC_OPENAI_MODELS = {
 }
 
 
-def _clean(value: Any) -> str:
-    return str(value or "").strip()
+def _clean(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.strip()
 
 
 def _non_negative_count(value: Any) -> int:
@@ -25,7 +27,7 @@ def _non_negative_count(value: Any) -> int:
 
 
 def _normalized_model_id(*, provider: Any, model: Any) -> str:
-    provider_text = _clean(provider).lower()
+    provider_text = _clean(provider)
     model_text = _clean(model)
     if not model_text:
         return ""
@@ -39,8 +41,8 @@ def _normalized_model_id(*, provider: Any, model: Any) -> str:
 def _configured_language_models() -> dict[str, str]:
     supported = set(get_supported_model_ids())
     configured = {
-        "zh": _clean(settings.EMBEDDING_MODEL_ZH),
-        "mixed": _clean(settings.EMBEDDING_MODEL_MIXED),
+        "zh": settings.EMBEDDING_MODEL_ZH.strip(),
+        "mixed": settings.EMBEDDING_MODEL_MIXED.strip(),
     }
     return {key: value for key, value in configured.items() if value and value in supported}
 
@@ -85,8 +87,8 @@ def build_embedding_language_advisories(
     raw_defaults = metadata.get("embedding_defaults")
     defaults = dict(raw_defaults) if isinstance(raw_defaults, dict) else {}
     source = "dataset" if defaults else "global"
-    provider = _clean(defaults.get("provider")) or _clean(settings.EMBEDDING_PROVIDER)
-    model = _clean(defaults.get("model")) or _clean(settings.EMBEDDING_MODEL)
+    provider = _clean(defaults.get("provider")) or settings.EMBEDDING_PROVIDER.strip()
+    model = _clean(defaults.get("model")) or settings.EMBEDDING_MODEL.strip()
     model_id = _normalized_model_id(provider=provider, model=model)
 
     configured = _configured_language_models()

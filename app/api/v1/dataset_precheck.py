@@ -94,7 +94,7 @@ def _precheck_scan_reference_time(row: DBDatasetPrecheckScanRun) -> datetime | N
 
 
 def _is_stale_precheck_scan_run(row: DBDatasetPrecheckScanRun, *, now: datetime) -> bool:
-    status = str(row.status or "").strip().lower()
+    status = row.status.strip().lower()
     if status not in {"pending", "running"}:
         return False
     ts = _precheck_scan_reference_time(row)
@@ -106,7 +106,7 @@ def _is_stale_precheck_scan_run(row: DBDatasetPrecheckScanRun, *, now: datetime)
 
 
 def _is_hard_stale_precheck_scan_run(row: DBDatasetPrecheckScanRun, *, now: datetime) -> bool:
-    status = str(row.status or "").strip().lower()
+    status = row.status.strip().lower()
     ts = _precheck_scan_reference_time(row)
     if ts is None:
         return False
@@ -130,7 +130,7 @@ async def _expire_stale_precheck_scan_runs(db: Session, *, tenant_id: UUID, data
     )
     expired = 0
     for row in rows:
-        status = str(row.status or "").strip().lower()
+        status = row.status.strip().lower()
         if not _is_stale_precheck_scan_run(row, now=now):
             continue
         if bool(settings.TASK_QUEUE_ENABLED):
@@ -172,7 +172,7 @@ def _mark_precheck_scan_run_failed(
 ) -> None:
     failed_at = _precheck_scan_now()
     row.status = "failed"
-    row.error_message = str(error_message or "")[:200]
+    row.error_message = error_message[:200]
     row.finished_at = failed_at
     row.updated_at = failed_at
     try:
@@ -195,7 +195,7 @@ def _collect_precheck_sample_names(raw: dict[str, object]) -> set[str]:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            name = str(item.get("name") or "").strip()
+            name = item["name"].strip()
             if name:
                 names.add(name)
 
@@ -526,7 +526,7 @@ def cancel_dataset_precheck_scan_run(
     if row is None:
         raise HTTPException(status_code=404, detail=_SCAN_RUN_NOT_FOUND_DETAIL)
 
-    st = str(row.status or "").lower()
+    st = row.status.lower()
     if st in {"completed", "failed", "cancelled"}:
         return DatasetPrecheckScanRunOut(**_scan_run_out_from_row(row))
 
@@ -574,7 +574,7 @@ def stream_dataset_precheck_scan_events(
                     break
                 out = _scan_run_out_from_row(row)
                 payload = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
-                st = str(out.get("status") or "").lower()
+                st = out["status"].lower()
             finally:
                 db2.close()
 
@@ -936,7 +936,7 @@ def export_dataset_precheck_html_report(
 
     summary = load_precheck_summary_from_row(row)
     effective_redact = bool(redact) or bool(cfg.get("redact_paths", False))
-    root_path = str(artifacts.get("root_path") or "")
+    root_path = artifacts.get("root_path")
 
     samples = None
     # Only include file lists in a redacted export when the scan itself redacted paths
@@ -954,7 +954,7 @@ def export_dataset_precheck_html_report(
 
     html = render_precheck_html(
         title="MimirQ · 预检扫描报告",
-        dataset_name=str(dataset.name or ""),
+        dataset_name=dataset.name,
         dataset_id=str(dataset_id),
         root_path=root_path,
         generated_at=summary.generated_at,

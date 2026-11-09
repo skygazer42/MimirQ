@@ -70,7 +70,7 @@ _META_FIELDS = (
 
 
 def _sig(value: str) -> str:
-    s = str(value or "").strip()
+    s = value.strip()
     if not s:
         return ""
     return s.casefold() if s.isascii() else s
@@ -78,8 +78,8 @@ def _sig(value: str) -> str:
 
 def _extract_terms(text: str, *, min_chars: int, max_chars: int) -> list[str]:
     out: list[str] = []
-    for m in _TOKEN_RE.finditer(str(text or "")):
-        tok = str(m.group(0) or "").strip()
+    for m in _TOKEN_RE.finditer(text):
+        tok = m.group(0).strip()
         if not tok:
             continue
         if len(tok) < int(min_chars):
@@ -103,7 +103,9 @@ def _iter_meta_values(raw: Any) -> Iterable[str]:
     if isinstance(raw, (list, tuple, set)):
         out: list[str] = []
         for v in raw:
-            s = str(v or "").strip()
+            if v is None:
+                continue
+            s = str(v).strip()
             if not s:
                 continue
             out.append(s)
@@ -117,7 +119,7 @@ def _dedupe_terms(values: list[str], *, max_items: int) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in values:
-        term = str(raw or "").strip()
+        term = raw.strip()
         if not term:
             continue
         sig = _sig(term)
@@ -199,7 +201,7 @@ def _score_terms_from_docs(
                     considered += 1
                     score_by_sig[sig] = float(score_by_sig.get(sig, 0.0) or 0.0) + float(weight)
                     term_by_sig.setdefault(sig, token)
-        content = str(getattr(doc, "page_content", "") or "")
+        content = doc.page_content
         if not content:
             continue
         for token in _extract_terms(content[:2000], min_chars=min_chars, max_chars=max_chars):
@@ -257,7 +259,7 @@ def build_contextual_followup_query(
     max_term_chars: int = 40,
     max_query_chars: int = 500,
 ) -> dict[str, Any]:
-    base = " ".join(str(query or "").strip().split())
+    base = " ".join(query.strip().split())
     if not base:
         return _unused_followup_result(query="", reason_code="empty_query")
 

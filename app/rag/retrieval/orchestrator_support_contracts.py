@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.evidence_expectations import DEFAULT_EVIDENCE_ANCHOR_FIELDS, normalize_anchor_fields
 from app.rag.policy.must_recall import normalize_source_keys
 from app.rag.retrieval.orchestration.channel_budget import resolve_channel_budget_policy_overrides
@@ -94,15 +95,15 @@ def _resolve_expected_source_keys(
 
 def _build_must_recall_scope_payload(state: dict[str, Any]) -> dict[str, Any]:
     scope_payload: dict[str, Any] = {}
-    dataset_scope = str(state.get("dataset_id") or "").strip()
+    dataset_scope = _stringified_metadata_text(state, "dataset_id")
     if dataset_scope:
         scope_payload["dataset_id"] = dataset_scope
     raw_doc_scope = state.get("document_ids")
     if isinstance(raw_doc_scope, list):
-        scope_payload["document_ids"] = [str(value) for value in raw_doc_scope if str(value or "").strip()][:200]
+        scope_payload["document_ids"] = [str(value) for value in raw_doc_scope if value is not None and str(value).strip()][:200]
     raw_table_scope = state.get("table_ids")
     if isinstance(raw_table_scope, list):
-        scope_payload["table_ids"] = [str(value) for value in raw_table_scope if str(value or "").strip()][:200]
+        scope_payload["table_ids"] = [str(value) for value in raw_table_scope if value is not None and str(value).strip()][:200]
     return scope_payload
 
 
@@ -319,7 +320,7 @@ def resolve_contract_phase(
         visible_evidence_only_setting=bool(settings.RAG_VISIBLE_EVIDENCE_ONLY_ENABLED),
         evidence_span_strict_setting=bool(settings.RAG_EVIDENCE_REQUIRE_SPANS_ENABLED),
     )
-    retrieval_contract_mode = str(retrieval_contract_policy.get("mode") or "").strip().lower()
+    retrieval_contract_mode = retrieval_contract_policy["mode"].strip().lower()
     contract_deterministic_recall = bool(retrieval_contract_policy.get("deterministic_recall"))
     contract_must_recall_strict = bool(retrieval_contract_policy.get("must_recall_strict"))
 
@@ -411,7 +412,7 @@ def _apply_intent_router(
     try:
         overrides, intent_router_meta = route_retrieval_preset_fn(
             query=query_for_retrieval,
-            retrieval_mode=str(requested_retrieval_mode or ""),
+            retrieval_mode=requested_retrieval_mode,
             retrieval_profile=(
                 str(requested_retrieval_profile).strip() if requested_retrieval_profile is not None else None
             ),
@@ -432,7 +433,7 @@ def _apply_intent_router(
                 state.get("intent_router_model") if isinstance(state.get("intent_router_model"), dict) else None
             ),
             learned_router_model_path=(
-                str(state.get("intent_router_model_path") or "").strip()
+                state["intent_router_model_path"].strip()
                 if state.get("intent_router_model_path") is not None
                 else str(settings.RAG_INTENT_ROUTER_MODEL_PATH).strip()
             ),
@@ -527,7 +528,7 @@ def _build_query_contract(
             requested_retrieval_mode=requested_retrieval_mode,
             requested_retrieval_profile=requested_retrieval_profile,
             sparse_enabled=bool(sparse_enabled),
-            sparse_provider=str(sparse_provider or ""),
+            sparse_provider=sparse_provider,
             hierarchy=HierarchyContractSettings(
                 enabled=bool(hierarchy_recall_enabled),
                 family_collapse=bool(hierarchy_family_collapse),
@@ -653,7 +654,7 @@ def apply_routing_phase(  # noqa: PLR0913
     profile_applied = dict(query_contract.profile_applied)
     profile_norm = query_contract.profile_norm
     sparse_enabled = query_contract.sparse_enabled
-    sparse_provider = normalize_sparse_provider_name(query_contract.sparse_provider or "")
+    sparse_provider = normalize_sparse_provider_name(query_contract.sparse_provider)
     hierarchy_recall_enabled = query_contract.hierarchy.enabled
     hierarchy_family_collapse = query_contract.hierarchy.family_collapse
     hierarchy_family_aggregation = query_contract.hierarchy.family_aggregation or "combined"
@@ -681,7 +682,7 @@ def apply_routing_phase(  # noqa: PLR0913
         "profile_applied": profile_applied,
         "profile_norm": profile_norm,
         "retrieval_contract_policy": dict(query_contract.retrieval_contract_policy or {}),
-        "retrieval_contract_mode": str(query_contract.retrieval_contract_mode or "").strip().lower(),
+        "retrieval_contract_mode": query_contract.retrieval_contract_mode.strip().lower(),
         "contract_deterministic_recall": query_contract.contract_deterministic_recall,
         "sparse_enabled": sparse_enabled,
         "sparse_provider": sparse_provider,

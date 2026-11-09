@@ -90,7 +90,8 @@ def _documents_need_image_persist(documents: list[Document]) -> bool:
         meta = getattr(doc, "metadata", None) or {}
         if not isinstance(meta, dict) or meta.get("image") is None:
             continue
-        if str(meta.get("doc_type_kwd") or "").lower() == "image":
+        doc_type = meta.get("doc_type_kwd")
+        if isinstance(doc_type, str) and doc_type.lower() == "image":
             return True
     return False
 
@@ -187,7 +188,8 @@ def _materialize_images_for_ingest(
             doc.metadata = meta
             continue
 
-        if str(meta.get("doc_type_kwd") or "").lower() != "image":
+        doc_type = meta.get("doc_type_kwd")
+        if not isinstance(doc_type, str) or doc_type.lower() != "image":
             _finalize_non_image_metadata(doc, meta)
             continue
 
@@ -263,8 +265,8 @@ def _parse_documents(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(provenance, dict):
         # Echo routing decisions used inside the subprocess for audit/debug.
         provenance = dict(provenance)
-        provenance.setdefault("payload_requested_backend", str(requested_backend or ""))
-        provenance.setdefault("effective_backend", str(effective_backend or ""))
+        provenance.setdefault("payload_requested_backend", requested_backend)
+        provenance.setdefault("effective_backend", effective_backend)
 
     if mode == "preview":
         # Reuse narrow preview helpers without importing the full documents router.
@@ -374,9 +376,10 @@ def main() -> int:
         if not isinstance(payload, dict):
             raise ValueError("payload must be a JSON object")
 
-        action = str(payload.get("action") or "").strip()
-        if not action:
+        action = payload.get("action")
+        if not isinstance(action, str) or not action.strip():
             raise ValueError("missing action")
+        action = action.strip()
 
         if action == "parse_documents":
             data = _parse_documents(payload)

@@ -66,10 +66,7 @@ def resolve_pre_poc_scanner_thresholds(overrides: dict[str, Any] | None = None) 
             maximum=32,
         ),
         "near_dup_max_pairs": _coerce_int(
-            cfg.get("near_dup_max_pairs"),
-            default=settings.PRECHECK_NEAR_DUP_MAX_PAIRS or 5000,
-            minimum=0,
-            maximum=200_000,
+            cfg.get("near_dup_max_pairs"), default=settings.PRECHECK_NEAR_DUP_MAX_PAIRS, minimum=0, maximum=200000
         ),
         "sample_size": _coerce_int(
             cfg.get("sample_size"),

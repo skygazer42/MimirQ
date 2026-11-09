@@ -53,7 +53,7 @@ def detect_temporal_intent(query: str) -> dict[str, Any]:
         "reason_codes": list[str],
       }
     """
-    q = (query or "").strip()
+    q = (query).strip()
     if not q:
         return {"detected": False, "reason_codes": []}
 
@@ -172,7 +172,7 @@ def _normalize_document_uuid_list(document_ids: list[str], *, max_docs: int) -> 
     doc_uuid_list: list[UUID] = []
     seen: set[str] = set()
     for did in document_ids:
-        s = str(did or "").strip()
+        s = did.strip()
         if not s or s in seen:
             continue
         seen.add(s)

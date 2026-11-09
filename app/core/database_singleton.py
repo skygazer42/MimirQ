@@ -26,7 +26,7 @@ from app.core.config import settings
 def _build_engine_kwargs(url: str) -> dict[str, bool | int]:
     parsed_url = make_url(url)
     engine_kwargs: dict[str, bool | int] = {"pool_pre_ping": settings.DB_POOL_PRE_PING}
-    if not (parsed_url.drivername or "").startswith("sqlite"):
+    if not (parsed_url.drivername).startswith("sqlite"):
         engine_kwargs.update(
             {
                 "pool_size": settings.DB_POOL_SIZE,

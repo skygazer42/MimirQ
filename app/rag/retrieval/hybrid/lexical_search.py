@@ -151,7 +151,7 @@ def _lexical_result_from_row(
     meta.setdefault("lexical_score_raw", score)
     if metadata_filter and (not match_metadata_filter(meta, metadata_filter)):
         return None
-    return (cid, {"chunk_id": cid, "content": content or "", "metadata": meta, "score": score})
+    return (cid, {"chunk_id": cid, "content": content, "metadata": meta, "score": score})
 
 
 def _add_lexical_rows(
@@ -430,12 +430,12 @@ def _metadata_exact_result_from_row(
         meta["page"] = page_number
     meta.setdefault("lexical_method", "metadata_exact")
     meta["metadata_exact_candidate"] = True
-    meta["metadata_exact_candidate_field"] = str(metadata_match.get("field") or "")
+    meta["metadata_exact_candidate_field"] = metadata_match["field"]
     meta["metadata_exact_candidate_fields"] = list(metadata_match.get("fields") or [])
     meta["metadata_exact_candidate_score"] = float(match_score)
     if metadata_filter and (not match_metadata_filter(meta, metadata_filter)):
         return None
-    return (cid, {"chunk_id": cid, "content": content or "", "metadata": meta, "score": max(1.0, float(match_score))})
+    return (cid, {"chunk_id": cid, "content": content, "metadata": meta, "score": max(1.0, float(match_score))})
 
 
 def _search_metadata_exact_anchor_db_with_session(
@@ -485,7 +485,7 @@ def _search_metadata_exact_anchor_db_with_session(
     results.sort(
         key=lambda item: (
             -float((item.get("metadata") or {}).get("metadata_exact_candidate_score") or 0.0),
-            str(item.get("chunk_id") or ""),
+            item["chunk_id"],
         )
     )
     return results[:limit]

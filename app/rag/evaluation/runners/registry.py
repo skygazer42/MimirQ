@@ -19,4 +19,4 @@ def get_registered_route_ids() -> list[str]:
 
 
 def get_runner(route_id: str) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
-    return _REGISTRY.get(str(route_id or ""))
+    return _REGISTRY.get(route_id)

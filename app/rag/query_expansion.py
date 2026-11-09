@@ -24,7 +24,9 @@ def _unique_alias_values(key: str, raw: Any) -> list[str]:
     seen: set[str] = set()
     unique: list[str] = []
     for item in values:
-        alias = str(item or "").strip()
+        if item is None:
+            continue
+        alias = str(item).strip()
         if not alias or alias == key:
             continue
         signature = alias.casefold() if alias.isascii() else alias
@@ -50,7 +52,7 @@ def coerce_query_aliases(raw: Any) -> dict[str, list[str]]:
 
     out: dict[str, list[str]] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        key = k.strip()
         if not key:
             continue
         unique = _unique_alias_values(key, v)
@@ -114,7 +116,7 @@ def generate_alias_queries(
     - Case-insensitive matching for ASCII rules, exact for non-ASCII.
     - Returns both the variants and a small meta payload for traces/metrics.
     """
-    base = (query or "").strip()
+    base = (query).strip()
     if not base:
         return [], {"enabled": False, "used": False, "reason": "empty_query"}
 

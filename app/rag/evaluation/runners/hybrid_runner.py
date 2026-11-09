@@ -52,7 +52,9 @@ def _coerce_ranked_ids(items: Any) -> list[str]:
             raw = item.get("chunk_id") or item.get("id") or item.get("document_id")
         else:
             raw = item
-        chunk_id = str(raw or "").strip()
+        if raw is None:
+            continue
+        chunk_id = str(raw).strip()
         if chunk_id and chunk_id not in out:
             out.append(chunk_id)
     return out
@@ -64,7 +66,7 @@ def _coerce_channels(sample: dict[str, Any]) -> dict[str, list[str]]:
         return {}
     channels: dict[str, list[str]] = {}
     for channel, items in raw.items():
-        key = str(channel or "").strip().lower()
+        key = channel.strip().lower()
         if not key:
             continue
         ranked = _coerce_ranked_ids(items)
@@ -96,11 +98,11 @@ def _weighted_rrf(channels: dict[str, list[str]], *, alpha: float, rrf_k: int, t
 
 
 def _mrr(gold_chunk_ids: list[str], retrieved_chunk_ids: list[str]) -> float:
-    gold = {str(item).strip() for item in gold_chunk_ids or [] if str(item or "").strip()}
+    gold = {str(item).strip() for item in gold_chunk_ids or [] if item.strip()}
     if not gold:
         return 0.0
     for index, chunk_id in enumerate(retrieved_chunk_ids or [], start=1):
-        if str(chunk_id or "").strip() in gold:
+        if chunk_id.strip() in gold:
             return round(1.0 / float(index), 4)
     return 0.0
 
@@ -139,8 +141,8 @@ def run_hybrid_sweep(
         retrieval_metrics["mrr"] = _mrr(gold_chunk_ids, retrieved)
         rows.append(
             {
-                "label": str(cfg.get("label") or ""),
-                "sample_id": str((sample or {}).get("sample_id") or ""),
+                "label": cfg["label"],
+                "sample_id": sample["sample_id"],
                 "route_id": "hybrid",
                 "actual_route": "hybrid",
                 "route_config": route_config,
@@ -166,7 +168,7 @@ def run_hybrid_sweep(
 
     return {
         "schema": "mimirq.hybrid_sweep.v1",
-        "sample_id": str((sample or {}).get("sample_id") or ""),
+        "sample_id": sample["sample_id"],
         "rows": rows,
         "best": best,
     }
@@ -196,7 +198,7 @@ def run_hybrid_route(sample: dict[str, Any]) -> dict[str, Any]:
             "extensions": {
                 "hybrid_sweep": {
                     "schema": sweep.get("schema"),
-                    "best_label": str(best.get("label") or ""),
+                    "best_label": best["label"],
                     "rows": list(sweep.get("rows") or []),
                 }
             },
@@ -208,10 +210,12 @@ def run_hybrid_route(sample: dict[str, Any]) -> dict[str, Any]:
 
 
 def _actual_answer_text(sample: dict[str, Any]) -> str:
-    raw = sample.get("actual_answer") or sample.get("answer") or ""
+    raw = sample.get("actual_answer")
+    if raw is None:
+        raw = sample.get("answer")
     if isinstance(raw, dict):
-        raw = raw.get("text") or ""
-    return str(raw)
+        raw = raw.get("text")
+    return "" if raw is None else str(raw)
 
 
 __all__ = ["build_hybrid_sweep_configs", "run_hybrid_route", "run_hybrid_sweep"]

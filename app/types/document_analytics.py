@@ -41,7 +41,7 @@ class DocumentAnalytics:
 
 
 def _count_lines(text: str) -> int:
-    raw = text or ""
+    raw = text
     if not raw:
         return 0
     # splitlines() ignores trailing newline and handles mixed newlines.
@@ -56,7 +56,7 @@ def compute_document_analytics(
     detect_language: bool = False,
     language_min_chars: int = 40,
 ) -> DocumentAnalytics:
-    raw = markdown or ""
+    raw = markdown
 
     # Reuse existing artifact stats helper to keep table/image/page/block counting consistent.
     artifact = compute_parsing_artifact_stats(

@@ -40,7 +40,7 @@ def _dedupe_query_variants(retrieval_queries: list[tuple[str, str]]) -> list[tup
     seen_queries: set[str] = set()
     deduped_queries: list[tuple[str, str]] = []
     for kind, query in retrieval_queries:
-        normalized = " ".join((query or "").strip().split())
+        normalized = " ".join((query).strip().split())
         if not normalized:
             continue
         key = normalized.casefold() if normalized.isascii() else normalized
@@ -123,7 +123,7 @@ def _filter_budgeted_queries(
     if latency_budget_exceeded:
         budget_meta["reasons"].append("latency_budget_exceeded")
     for kind, query in extra_queries:
-        query_tokens = num_tokens_from_string(query or "")
+        query_tokens = num_tokens_from_string(query)
         if max_candidates > 0 and len(filtered_extra_queries) >= max_candidates:
             budget_meta["reasons"].append("candidate_budget_exceeded")
             continue

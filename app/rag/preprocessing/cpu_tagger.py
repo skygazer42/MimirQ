@@ -263,7 +263,7 @@ def extract_cpu_tags(
     keyword_top_k: int = 12,
     max_items: int = 80,
 ) -> CPUTaggingResult:
-    source = str(text or "").strip()
+    source = text.strip()
     max_items_i = max(1, int(max_items or 80))
     document_tags: list[CPUDocumentTag] = []
     spans: list[CPUSpanAnnotation] = []

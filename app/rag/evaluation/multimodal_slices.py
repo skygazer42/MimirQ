@@ -75,7 +75,9 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip().lower().replace("_", "-")
+    if value is None:
+        return ""
+    return str(value).strip().lower().replace("_", "-")
 
 
 def _normalize_slice(value: Any) -> str | None:
@@ -136,12 +138,12 @@ def classify_regression_case_multimodal_slice(case: Any) -> str:
         if normalized:
             return normalized
 
-    tag_text = " ".join(str(tag or "") for tag in _as_list(_get(case, "tags", None)))
+    tag_text = " ".join(str(tag) for tag in _as_list(_get(case, "tags", None)) if tag is not None)
     tagged = _normalize_slice(tag_text) or _hinted_slice(tag_text)
     if tagged:
         return tagged
 
-    question = str(_get(case, "question", "") or "")
+    question = _get(case, "question")
     hinted = _hinted_slice(question)
     if hinted:
         return hinted
@@ -150,7 +152,7 @@ def classify_regression_case_multimodal_slice(case: Any) -> str:
     for src in _as_list(_get(case, "reference_sources", None)):
         src_d = _as_dict(src)
         reference_text_parts.extend(
-            str(src_d.get(key) or "") for key in ("label", "quote", "hit_type", "source_type") if src_d.get(key)
+            str(src_d[key]) for key in ("label", "quote", "hit_type", "source_type") if src_d.get(key) is not None
         )
     hinted = _hinted_slice(" ".join(reference_text_parts))
     return hinted or "text"
@@ -171,7 +173,7 @@ def summarize_multimodal_regression_slices(eval_items: list[dict[str, Any]]) -> 
         counts[slice_key] += 1
         contexts = _as_list(item.get("retrieved_contexts"))
         citations = _as_list(item.get("citations"))
-        if any(str(ctx or "").strip() for ctx in contexts) or bool(citations):
+        if any(str(ctx).strip() for ctx in contexts if ctx is not None) or bool(citations):
             evaluatable[slice_key] += 1
         if bool(item.get("abstain_triggered")):
             abstained[slice_key] += 1

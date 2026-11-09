@@ -158,7 +158,7 @@ def _sanitize_regex_rule(item: Any) -> dict[str, Any] | None:
         return None
     return {
         "pattern": pattern,
-        "repl": _sanitize_regex_replacement(item.get("repl", "")),
+        "repl": _sanitize_regex_replacement(item.get("repl")),
         "flags": flags,
     }
 
@@ -878,9 +878,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         else int(settings.GOVERNANCE_MAX_BLANK_LINES or 1)
     )
     governance_html_xpath = (
-        settings.GOVERNANCE_HTML_XPATH
-        if options.governance_html_xpath is None
-        else str(options.governance_html_xpath or "")
+        settings.GOVERNANCE_HTML_XPATH if options.governance_html_xpath is None else options.governance_html_xpath
     )
     governance_drop_outline_only = (
         settings.GOVERNANCE_DROP_OUTLINE_ONLY
@@ -988,7 +986,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
     vlm_correction_max_pages = (
         options.vlm_correction_max_pages
         if options.vlm_correction_max_pages is not None
-        else int(settings.VLM_CORRECTION_MAX_PAGES or 2)
+        else int(settings.VLM_CORRECTION_MAX_PAGES)
     )
     persist_parsed_content = (
         settings.PERSIST_PARSED_CONTENT
@@ -1095,14 +1093,10 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         settings.IMAGE_OCR_ENABLED if options.image_ocr_enabled is None else bool(options.image_ocr_enabled)
     )
     image_ocr_max_chars = (
-        options.image_ocr_max_chars
-        if options.image_ocr_max_chars is not None
-        else int(settings.IMAGE_OCR_MAX_CHARS or 2000)
+        options.image_ocr_max_chars if options.image_ocr_max_chars is not None else int(settings.IMAGE_OCR_MAX_CHARS)
     )
     image_ocr_max_images = (
-        options.image_ocr_max_images
-        if options.image_ocr_max_images is not None
-        else int(settings.IMAGE_OCR_MAX_IMAGES or 20)
+        options.image_ocr_max_images if options.image_ocr_max_images is not None else int(settings.IMAGE_OCR_MAX_IMAGES)
     )
     image_ocr_max_chars = max(0, int(image_ocr_max_chars))
     image_ocr_max_images = max(0, int(image_ocr_max_images))
@@ -1149,7 +1143,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_secrets_mask=str(governance_secrets_mask or DEFAULT_GOVERNANCE_SECRETS_MASK),
         governance_secrets_max_hits=int(governance_secrets_max_hits),
         governance_max_blank_lines=int(governance_max_blank_lines),
-        governance_html_xpath=str(governance_html_xpath or ""),
+        governance_html_xpath=governance_html_xpath,
         governance_drop_outline_only=bool(governance_drop_outline_only),
         governance_drop_outline_min_content_chars=int(governance_drop_outline_min_content_chars),
         governance_drop_outline_max_heading_ratio=float(governance_drop_outline_max_heading_ratio),
@@ -1160,7 +1154,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         governance_noise_ratio_threshold=float(governance_noise_ratio_threshold),
         governance_common_lines_min_docs=int(governance_common_lines_min_docs),
         governance_common_lines_min_ratio=float(governance_common_lines_min_ratio),
-        governance_python_plugin=str(governance_python_plugin or ""),
+        governance_python_plugin=governance_python_plugin,
         governance_python_params=dict(governance_python_params),
         parse_fallback_enabled=bool(parse_fallback_enabled),
         parse_fallback_min_content_chars=int(parse_fallback_min_content_chars),
@@ -1183,7 +1177,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         chunk_overlap=int(chunk_overlap),
         chunk_merge_small_min_chars=int(chunk_merge_small_min_chars),
         chunk_strategy_params=dict(chunk_strategy_params),
-        chunk_python_plugin=str(chunk_python_plugin or ""),
+        chunk_python_plugin=chunk_python_plugin,
         chunk_python_params=dict(chunk_python_params),
         embedding_context_prefix_enabled=bool(embedding_context_prefix_enabled),
         embedding_contextual_retrieval_enabled=bool(embedding_contextual_retrieval_enabled),
@@ -1195,7 +1189,7 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
             and _resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled)
         ),
         kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
-        kg_python_plugin=str(kg_python_plugin or ""),
+        kg_python_plugin=kg_python_plugin,
         kg_python_params=dict(kg_python_params),
         event_vector_enabled=_resolve_flag(settings.EVENT_VECTOR_ENABLED, options.event_vector_enabled),
         entity_vector_enabled=_resolve_flag(settings.ENTITY_VECTOR_ENABLED, options.entity_vector_enabled),

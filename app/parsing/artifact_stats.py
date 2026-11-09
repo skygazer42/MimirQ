@@ -92,8 +92,12 @@ def compute_parsing_artifact_stats(
     image_count = 0
 
     for meta in _iter_metadata(documents):
-        content_type = str(meta.get("content_type") or "").strip().lower()
-        doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+        content_type = meta.get("content_type")
+        doc_type = meta.get("doc_type_kwd")
+        if isinstance(content_type, str):
+            content_type = content_type.strip().lower()
+        if isinstance(doc_type, str):
+            doc_type = doc_type.strip().lower()
         if content_type == "table" or doc_type == "table":
             table_count += 1
         if content_type == "image" or doc_type == "image":
@@ -108,7 +112,7 @@ def compute_parsing_artifact_stats(
         count_markdown_images(markdown),
     )
     image_count = max(image_count, markdown_image_count)
-    block_count = count_position_tag_blocks(original_markdown or "")
+    block_count = count_position_tag_blocks(original_markdown)
 
     return {
         "page_count": page_count,

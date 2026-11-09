@@ -20,13 +20,13 @@ def extract_first_code_fence(text: str, *, allowed_info_strings: Iterable[str] |
     Returns:
         The inner fenced content (trimmed), or None if no allowed fence is found.
     """
-    raw = text or ""
+    raw = text
     if not raw:
         return None
 
     allowed: set[str] | None = None
     if allowed_info_strings is not None:
-        allowed = {(s or "").strip().lower() for s in allowed_info_strings}
+        allowed = {(s).strip().lower() for s in allowed_info_strings}
 
     lower = raw.lower()
     start = lower.find("```")

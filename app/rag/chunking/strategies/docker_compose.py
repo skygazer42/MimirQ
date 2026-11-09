@@ -33,14 +33,14 @@ _VERSION_RE = re.compile(r"(?m)^\s*version\s*:\s*(?P<val>[^\s#]+)")
 
 
 def _find_services_anchor(text: str) -> tuple[int, int] | None:
-    m = _SERVICES_RE.search(text or "")
+    m = _SERVICES_RE.search(text)
     if not m:
         return None
-    return m.start(), len(m.group("indent") or "")
+    return m.start(), len(m.group("indent"))
 
 
 def _extract_version(text: str) -> str | None:
-    head = (text or "")[:8000]
+    head = (text)[:8000]
     m = _VERSION_RE.search(head)
     if not m:
         return None
@@ -109,7 +109,7 @@ def _service_candidate_for_line(line: _Line, *, base_indent: int) -> tuple[int, 
     match = _KEY_RE.match(plain)
     if not match:
         return None
-    key = (match.group("key") or "").strip()
+    key = (match.group("key")).strip()
     return (indent, key) if key else None
 
 
@@ -230,7 +230,7 @@ class DockerComposeChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

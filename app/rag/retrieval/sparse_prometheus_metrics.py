@@ -80,7 +80,7 @@ def _enabled() -> bool:
 def _norm_provider(value: str | None) -> str:
     s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
-    s = (s[:40] or "").strip("_")
+    s = s[:40].strip("_")
     if not s:
         return "unknown"
     if s in {"det", "deterministic"}:
@@ -93,7 +93,7 @@ def _norm_provider(value: str | None) -> str:
 def _norm_outcome(value: str | None, *, allowed: set[str], fallback: str) -> str:
     s = str((value if value is not None else "")).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
-    s = (s[:24] or "").strip("_")
+    s = s[:24].strip("_")
     if not s:
         return fallback
     if s not in allowed:

@@ -41,7 +41,7 @@ def _response_compaction_for_records(
     refs: list[str] = []
     seen: set[str] = set()
     for ref in policy_plugin_refs:
-        text = str(ref or "").strip()
+        text = ref.strip()
         if text and text not in seen:
             seen.add(text)
             refs.append(text)
@@ -61,7 +61,7 @@ def _compact_fast_record_content(
     content: str, *, query: str, policy_plugin_refs: tuple[str, ...] = (), metadata: dict[str, Any] | None = None
 ) -> str:
     max_chars = _dify_fast_content_max_chars()
-    body = str(content or "").strip()
+    body = content.strip()
     if not body:
         return body
     fields = _structured_label_values_from_content(body)
@@ -98,7 +98,7 @@ def _compact_fast_records_for_response(
     for record in list(records or [])[:response_top_k]:
         next_record = dict(record)
         metadata = dict(next_record.get("metadata") if isinstance(next_record.get("metadata"), dict) else {})
-        original_content = str(next_record.get("content") or "")
+        original_content = next_record['content']
         compacted_content = _compact_fast_record_content(
             original_content, query=query, policy_plugin_refs=policy_plugin_refs, metadata=metadata
         )

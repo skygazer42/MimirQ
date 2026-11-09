@@ -61,7 +61,7 @@ def result_key(result: dict[str, Any]) -> str:
     cid = result.get("chunk_id") or meta.get("chunk_id")
     if cid:
         return str(cid)
-    content = str(result.get("content") or "")
+    content = result["content"]
     return f"content:{stable_hash(content)}"
 
 

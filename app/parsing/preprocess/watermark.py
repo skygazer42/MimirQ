@@ -271,7 +271,7 @@ def _onnx_feeds(
 ) -> dict[str, Any]:
     import numpy as np
 
-    image_name = str(getattr(image_input, "name", "") or "image")
+    image_name = str(image_input.name or "image")
     if mask_input is None:
         if layout == "nhwc":
             combined = np.concatenate([image_arr, mask_arr[..., None]], axis=-1)[None, ...]
@@ -279,7 +279,7 @@ def _onnx_feeds(
             combined = np.concatenate([np.transpose(image_arr, (2, 0, 1)), mask_arr[None, ...]], axis=0)[None, ...]
         return {image_name: combined}
 
-    mask_name = str(getattr(mask_input, "name", "") or "mask")
+    mask_name = str(mask_input.name or "mask")
     if layout == "nhwc":
         return {image_name: image_arr[None, ...], mask_name: mask_arr[None, ..., None]}
     return {image_name: np.transpose(image_arr, (2, 0, 1))[None, ...], mask_name: mask_arr[None, None, ...]}
@@ -363,7 +363,7 @@ def _annotation_name_and_subject(annot: Any) -> tuple[str, str]:
     typ = getattr(annot, "type", None)
     name = ""
     if isinstance(typ, (tuple, list)) and len(typ) >= 2:
-        name = str(typ[1] or "")
+        name = typ[1]
     info = getattr(annot, "info", None) or {}
     subject = str((info or {}).get("subject") or (info or {}).get("title") or "")
     return name, subject
@@ -511,9 +511,9 @@ def _resolve_watermark_backend(
     auto_selected = normalized_backend == "auto"
     if not auto_selected:
         return normalized_backend, False
-    if str(model_path or "").strip():
+    if model_path.strip():
         return "local", True
-    if str(api_url or "").strip():
+    if api_url.strip():
         return "http", True
     if input_path.suffix.lower() in _RASTER_EXTS:
         return "heuristic", True
@@ -549,14 +549,14 @@ def _cleanup_watermark_heuristic(
         changed, suppress_meta = suppress_watermark_file(input_path=input_path, output_path=output_path, boxes=boxes)
         info["suppressor"] = suppress_meta
     except Exception as exc:  # noqa: BLE001
-        if auto_selected and not str(api_url or "").strip():
+        if auto_selected and not api_url.strip():
             return False, "missing_api_url", info
         return False, f"heuristic_failed:{exc.__class__.__name__}", info
     return changed, "watermark_ok" if changed else "watermark_no_change", info
 
 
 def _load_watermark_onnx(model_path: str, info: dict[str, Any]) -> LoadedModel | None:
-    model_ref = str(model_path or "").strip()
+    model_ref = model_path.strip()
     if not model_ref:
         return None
     loaded = get_preprocess_model_loader().load_onnx(name="watermark_removal", model_path=model_ref)
@@ -572,7 +572,7 @@ def _cleanup_watermark_local(
     model_path: str,
     info: dict[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    if not str(model_path or "").strip():
+    if not model_path.strip():
         return False, "missing_model_path", info
     try:
         loaded = _load_watermark_onnx(model_path, info)
@@ -610,7 +610,7 @@ def _cleanup_watermark_http(
     timeout_sec: float,
     info: dict[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    target_url = str(api_url or "").strip()
+    target_url = api_url.strip()
     if not target_url:
         return False, "missing_api_url", info
     changed, note = remove_watermark_via_http(

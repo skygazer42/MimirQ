@@ -49,7 +49,7 @@ class _QAPair:
 
 
 def _iter_tag_segments(text: str) -> list[_TagSeg]:
-    matches = list(_QA_TAG_LINE_RE.finditer(text or ""))
+    matches = list(_QA_TAG_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
 
@@ -57,7 +57,7 @@ def _iter_tag_segments(text: str) -> list[_TagSeg]:
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        prefix = (m.group("prefix") or "").strip()
+        prefix = (m.group("prefix")).strip()
         if not prefix:
             continue
         lower = prefix.lower()
@@ -85,7 +85,7 @@ def _build_pairs(text: str, segs: list[_TagSeg]) -> list[_QAPair]:
                 has_answer = True
                 break
 
-        question_text = (text[pair_start:next_q_start] or "").strip()
+        question_text = (text[pair_start:next_q_start]).strip()
         first_line = question_text.splitlines()[0] if question_text else ""
         preview = _Q_STRIP_RE.sub("", first_line).strip() if first_line else None
         if preview and len(preview) > 120:
@@ -202,7 +202,7 @@ class QAMarkdownChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

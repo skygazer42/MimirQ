@@ -357,7 +357,7 @@ def _safe_report_list(raw: Any, *, max_items: int = 20, max_len: int = 160) -> l
     out: list[str] = []
     seen: set[str] = set()
     for item in values:
-        text = str(item or "").strip()
+        text = _safe_report_text(item, max_len=max_len)
         if not text or len(text) > max_len or text in seen:
             continue
         seen.add(text)
@@ -368,7 +368,9 @@ def _safe_report_list(raw: Any, *, max_items: int = 20, max_len: int = 160) -> l
 
 
 def _safe_report_text(raw: Any, *, max_len: int = 160) -> str | None:
-    text = str(raw or "").strip()
+    if raw is None:
+        return None
+    text = str(raw).strip()
     if not text or len(text) > max_len:
         return None
     return text
@@ -641,7 +643,7 @@ def _retrieval_audit_from_regression_run(
     summary = dict(latest_regression_run.summary or {})
     params = dict(latest_regression_run.params or {})
     failure_categories = _retrieval_audit_failure_categories(summary)
-    run_status = str(latest_regression_run.status or "").strip().lower()
+    run_status = latest_regression_run.status.strip().lower()
     status = "failed" if failure_categories or run_status in {"failed", "error"} else "passed"
     if run_status not in {"completed", "passed", "success"} and status == "passed":
         status = run_status or "unavailable"
@@ -1140,7 +1142,7 @@ def _load_pipeline_snapshots(
     pipeline_hash_norm: str | None,
     pipeline_versions: list[PipelineVersionSummary],
 ) -> dict[str, dict]:
-    targets = [str(v.pipeline_hash or "").strip() for v in (pipeline_versions or [])]
+    targets = [v.pipeline_hash.strip() for v in (pipeline_versions or [])]
     targets = [target for target in targets if target and target != "unknown"][:10]
     target_set = set(targets)
     if not target_set:
@@ -1196,8 +1198,8 @@ def _load_connector_runs(db: Session, request: DatasetReportRequest) -> list[Con
         return [
             ConnectorRunSummary(
                 id=row.id,
-                connector_id=str(row.connector_id or ""),
-                status=str(row.status or ""),
+                connector_id=row.connector_id,
+                status=row.status,
                 created_at=row.created_at,
                 finished_at=row.finished_at,
                 error_message=row.error_message,
@@ -1468,7 +1470,7 @@ def _load_latest_regression_summaries(
         row_summary = dict(row.summary or {})
         latest = DatasetRegressionRunSummaryOut(
             run_id=row.id,
-            status=str(row.status or ""),
+            status=row.status,
             metrics=list(row.metrics or []),
             params=dict(row.params or {}),
             summary=row_summary,

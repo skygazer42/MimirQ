@@ -269,7 +269,7 @@ def mimirq_exception_handler(request: Request, exc: MimirQError) -> JSONResponse
     hint = _derive_hint(
         status_code=exc.status_code,
         error_code=exc.error_code or "INTERNAL_ERROR",
-        message=exc.message or "",
+        message=exc.message,
         detail=exc.detail if isinstance(exc.detail, dict) else None,
     )
     return JSONResponse(

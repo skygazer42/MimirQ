@@ -192,7 +192,7 @@ class _Block:
 
 
 def _parse_pages(raw: str) -> tuple[int, ...]:
-    s = str(raw or "").strip()
+    s = raw.strip()
     if not s:
         return ()
     out: list[int] = []
@@ -428,7 +428,7 @@ def _flow_group(
 
 
 def _score_reading_order_markdown(markdown: str, *, max_blocks: int = 600, min_blocks: int = 6) -> dict[str, Any]:
-    blocks, tag_count = _extract_blocks(str(markdown or ""))
+    blocks, tag_count = _extract_blocks(markdown)
     if not blocks:
         return _reading_order_empty_result(tag_count=tag_count)
 

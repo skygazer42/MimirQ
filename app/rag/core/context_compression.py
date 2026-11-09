@@ -21,7 +21,7 @@ def compress_context_docs(
     out: list[Document] = []
     q = str(query or "").strip()
     for doc in docs:
-        raw = str(doc.page_content or "").strip()
+        raw = doc.page_content.strip()
         if not raw:
             continue
 

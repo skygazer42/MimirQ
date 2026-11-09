@@ -33,10 +33,10 @@ class RegexSafetyGuard:
     """Regex-based input/response safety screen (rule baseline, not a model)."""
 
     async def guard_user_input(self, text: str) -> RegexSafetyGuardResult:
-        return await asyncio.to_thread(self._check_user_input, str(text or ""))
+        return await asyncio.to_thread(self._check_user_input, text)
 
     async def guard_agent_response(self, text: str) -> RegexSafetyGuardResult:
-        return await asyncio.to_thread(self._check_agent_response, str(text or ""))
+        return await asyncio.to_thread(self._check_agent_response, text)
 
     @staticmethod
     def _check_user_input(text: str) -> RegexSafetyGuardResult:

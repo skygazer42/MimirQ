@@ -48,7 +48,7 @@ class LearnedRouterHint(TypedDict):
 
 def _safe_tokenize(query: str) -> set[str]:
     out: set[str] = set()
-    for m in _TOKEN_RE.finditer(str(query or "")):
+    for m in _TOKEN_RE.finditer(query):
         tok = m.group(0)
         out.add(tok.casefold() if tok.isascii() else tok)
         if len(out) >= 256:
@@ -81,7 +81,9 @@ def _normalize_rule_tokens(tokens_raw: Any) -> list[str]:
     tokens: list[str] = []
     seen: set[str] = set()
     for token in tokens_raw:
-        tok = str(token or "").strip()
+        if token is None:
+            continue
+        tok = str(token).strip()
         if not tok:
             continue
         key = tok.casefold() if tok.isascii() else tok
@@ -101,7 +103,8 @@ def _normalize_rule_overrides(overrides_raw: Any) -> dict[str, Any]:
 
 
 def _normalize_rule(item: dict[str, Any]) -> IntentRouterModelRule | None:
-    rid = str(item.get("rule_id") or "").strip()[:40]
+    raw_id = item.get("rule_id")
+    rid = str(raw_id).strip()[:40] if raw_id is not None else None
     if not rid:
         return None
 
@@ -128,7 +131,8 @@ def _normalize_rule(item: dict[str, Any]) -> IntentRouterModelRule | None:
 
 def normalize_intent_router_model(raw: Any) -> IntentRouterModel | None:
     payload = raw if isinstance(raw, dict) else {}
-    if str(payload.get("schema") or "").strip() != INTENT_ROUTER_MODEL_SCHEMA_V1:
+    schema = payload.get("schema")
+    if not isinstance(schema, str) or schema.strip() != INTENT_ROUTER_MODEL_SCHEMA_V1:
         return None
     rules_raw = payload.get("rules")
     if not isinstance(rules_raw, list):
@@ -152,7 +156,7 @@ def normalize_intent_router_model(raw: Any) -> IntentRouterModel | None:
 
 
 def load_intent_router_model(path: str | None) -> IntentRouterModel | None:
-    path_s = str(path or "").strip()
+    path_s = path.strip() if path is not None else None
     if not path_s:
         return None
     if not _SAFE_MODEL_PATH_RE.fullmatch(path_s):

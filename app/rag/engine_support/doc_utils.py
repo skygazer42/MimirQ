@@ -25,12 +25,12 @@ class DocUtilsMixin:
         cid = doc.id or meta.get("chunk_id")
         if cid:
             return str(cid)
-        content = (doc.page_content or "").strip()
+        content = (doc.page_content).strip()
         return f"content:{stable_hash(content)}"
 
     @staticmethod
     def _normalize_query_text(text: str) -> str:
-        return " ".join((text or "").strip().split())
+        return " ".join((text).strip().split())
 
     @classmethod
     def _dedup_retrieval_queries(cls, queries: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -56,10 +56,10 @@ class DocUtilsMixin:
         out: list[Document] = []
         for d in docs:
             meta = dict(d.metadata or {})
-            if str(role or "").strip() == "main":
+            if role.strip() == "main":
                 meta.setdefault("retrieval_role", "main")
             else:
-                meta["retrieval_role"] = str(role or "").strip() or "main"
+                meta["retrieval_role"] = role.strip() or "main"
             out.append(
                 Document(
                     page_content=d.page_content,

@@ -59,7 +59,7 @@ class JSONChunker(BaseChunker):
         all_chunks: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             original_metadata = dict(doc.metadata or {})
 
             if not text.strip():
@@ -376,7 +376,7 @@ class CodeChunker(BaseChunker):
         all_chunks: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             original_metadata = dict(doc.metadata or {})
 
             if not text.strip():
@@ -397,12 +397,12 @@ class CodeChunker(BaseChunker):
             split_texts = splitter.split_text(text)
             search_pos = 0
             for split_text in split_texts:
-                if not (split_text or "").strip():
+                if not (split_text).strip():
                     continue
 
                 start_idx = text.find(split_text, max(0, int(search_pos)))
                 if start_idx < 0:
-                    probe = (split_text or "").strip()
+                    probe = (split_text).strip()
                     if probe:
                         probe = probe[: min(120, len(probe))]
                         start_idx = text.find(probe, max(0, int(search_pos)))
@@ -448,7 +448,7 @@ class CodeChunker(BaseChunker):
                 return lang
 
         # Try to detect from content
-        text = doc.page_content or ""
+        text = doc.page_content
         return self._detect_language_from_content(text)
 
     def _detect_language_from_content(self, text: str) -> str:
@@ -545,7 +545,7 @@ class SmartCodeChunker(BaseChunker):
         all_chunks: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             original_metadata = dict(doc.metadata or {})
 
             if not text.strip():

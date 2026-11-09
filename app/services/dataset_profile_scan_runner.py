@@ -59,7 +59,7 @@ def _download_object_storage_document_to_temp(
     """
     Download a document stored in object storage to a local temp path.
     """
-    raw_path = str(document.file_path or "").strip()
+    raw_path = document.file_path.strip()
     store, ref = resolve_document_object_reference(
         raw_path,
         tenant_id=tenant_id,
@@ -69,14 +69,10 @@ def _download_object_storage_document_to_temp(
         document_metadata=dict(document.doc_metadata or {}),
     )
 
-    suffix = f".{(document.file_type or '').lower()}" if str(document.file_type or "").strip() else ""
+    suffix = f".{(document.file_type).lower()}" if document.file_type.strip() else ""
     temp_dir.mkdir(parents=True, exist_ok=True)
     out = temp_dir / f"{str(document.id)}{suffix}"
-    store.download_object_to_path(
-        object_name=ref.object_name,
-        destination=out,
-        max_bytes=int(settings.MAX_FILE_SIZE or 0),
-    )
+    store.download_object_to_path(object_name=ref.object_name, destination=out, max_bytes=int(settings.MAX_FILE_SIZE))
     return out
 
 
@@ -90,7 +86,7 @@ def _ensure_local_path(
     """
     Return (local_path, temp_path_if_downloaded).
     """
-    raw = str(document.file_path or "").strip()
+    raw = document.file_path.strip()
     if not raw or raw.startswith("manual://"):
         raise ValueError("document_file_not_available")
 
@@ -366,7 +362,7 @@ def _maybe_backfill_pdf_quality(
 ) -> bool:
     if not options.backfill_pdf_quality:
         return False
-    if str(document.file_type or "").strip().lower() != "pdf":
+    if document.file_type.strip().lower() != "pdf":
         return False
     if isinstance(meta.get("pdf_quality"), dict) and meta.get("pdf_quality"):
         return False
@@ -662,7 +658,8 @@ def _maybe_backfill_file_hash(
 ) -> bool:
     if not options.compute_file_hash:
         return False
-    if str(meta.get("file_sha256") or "").strip().lower():
+    file_sha256 = meta.get("file_sha256")
+    if file_sha256 is not None and file_sha256.strip():
         return False
 
     local_path, temp_path = _ensure_local_path(
@@ -816,7 +813,7 @@ def run_dataset_profile_deep_scan(
         )
 
     stats = _DeepScanStats(documents=len(docs))
-    temp_root = Path(settings.UPLOAD_DIR or "./uploads")
+    temp_root = Path(settings.UPLOAD_DIR)
     last_progress_write = time.monotonic()
 
     for idx, doc in enumerate(docs, start=1):

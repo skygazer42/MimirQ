@@ -69,8 +69,10 @@ class LlmRoutingMixin:
         default_model_name: str,
     ) -> bool:
         """Avoid routing to stale fast/heavy model aliases after provider changes."""
-        route_model = str(route_model_name or "").strip()
-        default_model = str(default_model_name or "").strip()
+        if route_model_name is None:
+            return False
+        route_model = route_model_name.strip()
+        default_model = default_model_name.strip()
         if not route_model:
             return False
         if not default_model or route_model == default_model:
@@ -91,7 +93,7 @@ class LlmRoutingMixin:
 
     @staticmethod
     def _model_name_for_route(*, llm: Any, model_route: str) -> str:
-        route = str(model_route or "").strip().lower()
+        route = model_route.strip().lower()
         if route == "heavy" and settings.LLM_MODEL_HEAVY:
             return str(settings.LLM_MODEL_HEAVY)
         if route == "fast" and settings.LLM_MODEL_FAST:
@@ -146,10 +148,10 @@ class LlmRoutingMixin:
 
         This stays dependency-free and is only used for model routing heuristics.
         """
-        q = question or ""
+        q = question
 
         history = history or []
-        history_len = sum(len(msg.get("content", "")) for msg in history if isinstance(msg, dict))
+        history_len = sum(len(msg["content"]) for msg in history if isinstance(msg, dict))
         score = float(len(q)) + settings.MODEL_COMPLEXITY_HISTORY_WEIGHT * float(history_len)
 
         # If routing is enabled, treat certain patterns as "complex" even when the
@@ -223,7 +225,7 @@ class LlmRoutingMixin:
         temperature: float,
         max_chars: int,
     ) -> tuple[list[str], float, str | None, dict[str, Any]]:
-        if not enabled or count <= 0 or max_chars <= 0 or len(query or "") > max_chars:
+        if not enabled or count <= 0 or max_chars <= 0 or len(query) > max_chars:
             return [], 0.0, None, {"ok": False, "method": None, "error": None}
 
         mq_llm = self.models.get("fast") or llm
@@ -244,7 +246,7 @@ class LlmRoutingMixin:
                 for item in mq_data:
                     if not isinstance(item, str):
                         continue
-                    candidate = (item or "").strip().strip('"').strip()
+                    candidate = (item).strip().strip('"').strip()
                     if not candidate or candidate == query or candidate in seen:
                         continue
                     if len(candidate) > 400:

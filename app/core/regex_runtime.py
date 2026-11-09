@@ -26,7 +26,7 @@ class RegexSubstitutionTimeoutError(RuntimeError):
     def __init__(self, *, rule_index: int, pattern: str, timeout_ms: int) -> None:
         super().__init__(f"regex_timeout (rule_index={rule_index}, timeout_ms={timeout_ms})")
         self.rule_index = rule_index
-        self.pattern = pattern or ""
+        self.pattern = pattern
         self.timeout_ms = timeout_ms
 
     def to_detail(self) -> dict[str, Any]:

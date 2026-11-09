@@ -41,8 +41,8 @@ class _MarkdownImageRef(TypedDict):
     src: str
 
 
-def _normalize_string(value: Any) -> str:
-    return str(value or "").strip().lower()
+def _normalize_string(value: Any) -> str | None:
+    return value.strip().lower() if isinstance(value, str) else None
 
 
 def _get_metadata(item: Any) -> dict[str, Any]:
@@ -55,12 +55,14 @@ def _get_metadata(item: Any) -> dict[str, Any]:
 
 def _get_text(item: Any) -> str:
     if isinstance(item, Mapping):
-        return str(item.get("page_content") or "")
-    return str(getattr(item, "page_content", "") or "")
+        return item["page_content"].strip()
+    return item.page_content
 
 
 def _clean_element_text(value: Any) -> str:
-    text = str(value or "")
+    if value is None:
+        return ""
+    text = str(value)
     if not text:
         return ""
     return _POSITION_TAG_RE.sub("", text).strip()
@@ -152,18 +154,20 @@ def _extract_pages(meta: Mapping[str, Any]) -> list[int] | None:
 
 
 def _classify_kind(meta: Mapping[str, Any], text: str) -> str:
-    preferred = str(meta.get("element_kind") or "").strip().lower()
+    raw_kind = meta.get("element_kind")
+    preferred = raw_kind.strip().lower() if isinstance(raw_kind, str) else None
     if preferred in _KNOWN_KINDS:
         return preferred
 
     for raw in (meta.get("doc_type_kwd"), meta.get("content_type")):
-        value = str(raw or "").strip().lower()
+        value = raw.strip().lower() if isinstance(raw, str) else None
         if value in _KNOWN_KINDS:
             return value
         if value in {"text", "ocr"}:
             break
 
-    chunk_role = str(meta.get("chunk_role") or "").strip().lower()
+    raw_role = meta.get("chunk_role")
+    chunk_role = raw_role.strip().lower() if isinstance(raw_role, str) else None
     if chunk_role in _KNOWN_KINDS:
         return chunk_role
     if chunk_role == "ocr":
@@ -220,11 +224,12 @@ def _extract_attributes(meta: Mapping[str, Any]) -> dict[str, Any] | None:
 def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | None) -> str | None:
     if kind != "image":
         return None
-    existing = str((attributes or {}).get("visual_kind") or "").strip().lower()
+    raw_kind = (attributes or {}).get("visual_kind")
+    existing = raw_kind.strip().lower() if isinstance(raw_kind, str) else None
     if existing:
         return existing
     hint = " ".join(
-        str(part or "").strip().lower()
+        str(part).strip().lower()
         for part in (
             text,
             (attributes or {}).get("source_content_type"),
@@ -236,7 +241,7 @@ def _infer_visual_kind(*, kind: str, text: str, attributes: Mapping[str, Any] | 
             (attributes or {}).get("src"),
             (attributes or {}).get("alt"),
         )
-        if str(part or "").strip()
+        if part is not None and str(part).strip()
     )
     if not hint:
         return None
@@ -256,7 +261,7 @@ def _prefer_image_code_text(
 ) -> str:
     if kind != "image":
         return text
-    if str(visual_kind or "").strip().lower() not in {"qr", "barcode"}:
+    if visual_kind is None or visual_kind.strip().lower() not in {"qr", "barcode"}:
         return text
     code_text = _clean_element_text((attributes or {}).get("image_code_text"))
     return code_text or text
@@ -264,15 +269,15 @@ def _prefer_image_code_text(
 
 def _extract_markdown_image_refs(markdown: str) -> list[_MarkdownImageRef]:
     refs: list[_MarkdownImageRef] = []
-    for match in _MD_IMAGE_RE.finditer(markdown or ""):
-        refs.append({"alt": str(match.group(1) or "").strip(), "src": str(match.group(2) or "").strip()})
-    for match in _HTML_IMAGE_RE.finditer(markdown or ""):
+    for match in _MD_IMAGE_RE.finditer(markdown):
+        refs.append({"alt": match.group(1).strip(), "src": match.group(2).strip()})
+    for match in _HTML_IMAGE_RE.finditer(markdown):
         token = match.group(0)
         alt_match = _HTML_ALT_RE.search(token)
         refs.append(
             {
                 "alt": str(alt_match.group(1) if alt_match else "").strip(),
-                "src": str(match.group(1) or "").strip(),
+                "src": match.group(1).strip(),
             }
         )
     return [ref for ref in refs if ref["src"]]
@@ -281,7 +286,7 @@ def _extract_markdown_image_refs(markdown: str) -> list[_MarkdownImageRef]:
 def _extract_positioned_image_blocks(markdown: str) -> list[dict[str, Any]]:
     positioned: list[dict[str, Any]] = []
     last_index = 0
-    for match in _POSITION_TAG_DETAIL_RE.finditer(markdown or ""):
+    for match in _POSITION_TAG_DETAIL_RE.finditer(markdown):
         text = markdown[last_index : match.start()].strip()
         last_index = match.end()
         if not text:

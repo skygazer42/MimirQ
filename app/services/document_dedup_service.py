@@ -22,21 +22,28 @@ class DuplicatePersistedDocumentError(RuntimeError):
 
 def document_matches_dedup_identity(document: Any, *, content_sha256: str, pipeline_hash: str) -> bool:
     expected = build_document_dedup_key(content_sha256=content_sha256, pipeline_hash=pipeline_hash)
-    if expected and str(getattr(document, "dedup_key", "") or "").strip() == expected:
+    dedup_key = document.dedup_key
+    if dedup_key is not None:
+        dedup_key = dedup_key.strip()
+    if expected and dedup_key == expected:
         return True
     metadata = dict(getattr(document, "doc_metadata", None) or {})
+    stored_pipeline_hash = metadata.get("pipeline_hash")
+    if stored_pipeline_hash is not None:
+        stored_pipeline_hash = stored_pipeline_hash.strip()
     return bool(
         expected
-        and get_content_sha256(metadata) == str(content_sha256 or "").strip().lower()
-        and str(metadata.get("pipeline_hash") or "").strip() == str(pipeline_hash or "").strip()
+        and get_content_sha256(metadata) == content_sha256.strip().lower()
+        and stored_pipeline_hash == pipeline_hash.strip()
     )
 
 
 def is_document_dedup_integrity_error(exc: IntegrityError) -> bool:
-    diag = getattr(getattr(exc, "orig", None), "diag", None)
-    if str(getattr(diag, "constraint_name", "") or "").strip() == DOCUMENT_DEDUP_CONSTRAINT_NAME:
+    diag = getattr(exc.orig, "diag", None)
+    constraint_name = getattr(diag, "constraint_name", None)
+    if constraint_name is not None and constraint_name.strip() == DOCUMENT_DEDUP_CONSTRAINT_NAME:
         return True
-    message = str(getattr(exc, "orig", "") or exc)
+    message = str(exc.orig) if exc.orig is not None else str(exc)
     return DOCUMENT_DEDUP_CONSTRAINT_NAME in message
 
 
@@ -83,8 +90,8 @@ def _find_duplicate_document(
 ) -> DBDocument | None:
     if dataset_id is None:
         return None
-    sha = str(file_sha256 or "").strip().lower()
-    ph = str(pipeline_hash or "").strip()
+    sha = file_sha256.strip().lower()
+    ph = pipeline_hash.strip()
     if not sha or not ph:
         return None
 
@@ -105,7 +112,9 @@ def _find_duplicate_document(
             dataset_id=dataset_id,
             max_scan=max_scan,
             predicate=lambda meta: (
-                get_content_sha256(meta) == sha and str(meta.get("pipeline_hash") or "").strip() == ph
+                get_content_sha256(meta) == sha
+                and meta.get("pipeline_hash") is not None
+                and meta["pipeline_hash"].strip() == ph
             ),
         )
 
@@ -120,7 +129,7 @@ def _find_duplicate_document_by_sha(
 ) -> DBDocument | None:
     if dataset_id is None:
         return None
-    sha = str(file_sha256 or "").strip().lower()
+    sha = file_sha256.strip().lower()
     if not sha:
         return None
 
@@ -153,7 +162,9 @@ def _find_duplicate_document_for_persist_conflict(
         return None
     doc_metadata = dict(db_document.doc_metadata or {})
     file_sha256 = get_content_sha256(doc_metadata)
-    pipeline_hash = str(doc_metadata.get("pipeline_hash") or "").strip()
+    pipeline_hash = doc_metadata.get("pipeline_hash")
+    if pipeline_hash is not None:
+        pipeline_hash = pipeline_hash.strip()
     if not file_sha256 or not pipeline_hash:
         return None
     return _find_duplicate_document(

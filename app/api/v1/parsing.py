@@ -225,15 +225,11 @@ def _sanitize_filename(filename: str) -> str:
 
 
 def _strip_position_tags(markdown: str) -> str:
-    if not markdown:
-        return ""
     return POSITION_TAG_RE.sub("", markdown)
 
 
 def _strip_storage_nul_chars(value: str) -> str:
     """PostgreSQL text/jsonb cannot store NUL bytes; OCR backends may emit them."""
-    if not value:
-        return ""
     return value.replace("\x00", "")
 
 
@@ -256,7 +252,7 @@ def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None
         if not isinstance(item, dict):
             continue
 
-        page_content = _strip_storage_nul_chars(str(item.get("page_content") or ""))
+        page_content = _strip_storage_nul_chars(item["page_content"])
         cleaned_parts.append(page_content)
 
         metadata = item.get("metadata")
@@ -281,7 +277,7 @@ def _extract_markdown_pair_from_documents(documents: list[dict[str, Any]] | None
 def _should_inline_preview_parse(file_ext: str) -> bool:
     if not bool(settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED):
         return False
-    ext = str(file_ext or "").strip().lower()
+    ext = file_ext.strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
 
 
@@ -291,7 +287,7 @@ def _serialize_inline_parse_documents(documents: list[Any]) -> list[dict[str, An
         metadata = getattr(doc, "metadata", None) or {}
         out.append(
             {
-                "page_content": str(getattr(doc, "page_content", "") or ""),
+                "page_content": doc.page_content,
                 "metadata": _sanitize_storage_value(metadata if isinstance(metadata, dict) else {}),
                 "id": getattr(doc, "id", None),
             }
@@ -315,8 +311,8 @@ def _parse_inline_text_preview(
     )
     if isinstance(provenance, dict):
         provenance = dict(provenance)
-        provenance.setdefault("payload_requested_backend", str(requested_backend or ""))
-        provenance.setdefault("effective_backend", str(resolved_backend or ""))
+        provenance.setdefault("payload_requested_backend", requested_backend)
+        provenance.setdefault("effective_backend", resolved_backend)
         provenance.setdefault("execution_mode", "inline_text_preview")
     return {
         "resolved_backend": inline_backend,
@@ -348,7 +344,7 @@ def _compute_parsing_quality_gate(
     reasons: list[str] = []
     grade: str = "pass"
 
-    text_quality = score_parsed_text_quality(markdown or "")
+    text_quality = score_parsed_text_quality(markdown)
     evidence: dict[str, Any] = {
         "text_quality": text_quality.to_dict(),
     }
@@ -361,7 +357,7 @@ def _compute_parsing_quality_gate(
     if isinstance(pdf_quality, dict) and pdf_quality:
         evidence["pdf_quality"] = dict(pdf_quality)
 
-    if not (markdown or "").strip():
+    if not (markdown).strip():
         grade = "fail"
         reasons.append("empty_markdown")
 
@@ -425,7 +421,7 @@ def extract_parsing_document(
     )
     markdown = ""
     if row is not None:
-        markdown = str(row.markdown_content or row.original_markdown_content or "")
+        markdown = row.markdown_content or row.original_markdown_content
     elements = meta.get("elements") if isinstance(meta.get("elements"), list) else []
     result = extract_parsing_fields(
         markdown=markdown,
@@ -578,7 +574,7 @@ def _build_pdf_fallback_candidates() -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for c in candidates:
-        key = (c or "").strip().lower()
+        key = (c).strip().lower()
         if not key or key in seen:
             continue
         seen.add(key)
@@ -680,7 +676,7 @@ def _get_workspace_document(db: Session, *, tenant_id: UUID, account_id: str, do
         # Should not happen for workspace docs, but keep safe default.
         raise HTTPException(status_code=403, detail="Workspace access denied")
 
-    owner_id = str(doc.owner_id or "").strip()
+    owner_id = doc.owner_id.strip()
     if owner_id and owner_id != account_id:
         raise HTTPException(status_code=404, detail="Document not found")
 
@@ -795,7 +791,7 @@ async def upload_parsing_document(
 
     meta = {
         "workspace": "parsing",
-        "parser_backend_requested": (parser_backend or "").strip().lower() or "auto",
+        "parser_backend_requested": (parser_backend).strip().lower() or "auto",
     }
     if target_dataset is not None:
         meta["target_dataset_id"] = str(target_dataset.id)
@@ -846,7 +842,7 @@ async def _resolve_workspace_source_path(
     doc: DBDocument,
     tenant_id: UUID,
 ) -> Path:
-    raw_path = str(doc.file_path or "").strip()
+    raw_path = doc.file_path.strip()
     if not raw_path or raw_path.startswith("manual://"):
         raise HTTPException(status_code=404, detail="Source file not available")
     if not is_object_storage_uri(raw_path):
@@ -878,7 +874,7 @@ async def _resolve_workspace_source_path(
         raise HTTPException(status_code=404, detail=_DETAIL_SOURCE_FILE_NOT_FOUND) from exc
 
     temp_dir = (Path(settings.UPLOAD_DIR) / str(tenant_id) / ".tmp").resolve(strict=False)
-    suffix = f".{(doc.file_type or '').lower()}"
+    suffix = f".{(doc.file_type).lower()}"
     temp_path = temp_dir / f"{doc.id}.{uuid.uuid4().hex}{suffix}"
     await asyncio.to_thread(
         store.download_object_to_path,
@@ -903,7 +899,7 @@ def _resolve_workspace_requested_backend(meta: Any, parser_backend: str | None) 
         requested_backend = parser_backend or meta.get("parser_backend_requested") or "auto"
     else:
         requested_backend = parser_backend or "auto"
-    return str(requested_backend or "").strip().lower() or "auto"
+    return requested_backend.strip().lower() or "auto"
 
 
 def _resolve_workspace_backend(*, file_ext: str, requested_backend: str) -> str:
@@ -978,7 +974,7 @@ async def _parse_workspace_source(
             "mode": "preview",
         },
         disconnect_check=request.is_disconnected,
-        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
     )
 
 
@@ -1015,7 +1011,7 @@ def _build_workspace_parse_attempt(
     ro = score_reading_order(original_markdown) if file_ext == ".pdf" else None
     ro_score = _coerce_float((ro or {}).get("score")) if isinstance(ro, dict) else None
     attempt: dict[str, Any] = {
-        "backend": str(backend or "").strip(),
+        "backend": backend.strip(),
         "grade": gate.grade,
         "parse_score": parse_score,
         "content_chars": content_chars,
@@ -1078,7 +1074,7 @@ async def _run_workspace_fallback_candidate(
                 "pdf_quality": dict(pdf_quality) if isinstance(pdf_quality, dict) else None,
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
         )
     except Exception as exc:  # noqa: BLE001
         return None, {"from": resolved_backend, "to": cand_backend, "accepted": False, "error": str(exc)[:200]}
@@ -1177,7 +1173,7 @@ async def _run_workspace_pdf_fallbacks(
 
     retries_left = int(max_retries)
     filtered_candidates = [
-        item for item in _build_pdf_fallback_candidates() if item != (resolved_backend or "").strip().lower()
+        item for item in _build_pdf_fallback_candidates() if item != (resolved_backend).strip().lower()
     ]
     for candidate in filtered_candidates:
         if retries_left <= 0:
@@ -1230,12 +1226,12 @@ async def _run_workspace_pdf_fallbacks(
         best = select_best_parse_attempt(attempt_candidates, weights=matrix_weights)
     except Exception:
         best = attempt_candidates[0]
-    selected_backend = str(best.get("backend") or "").strip() or resolved_backend
+    selected_backend = best["backend"].strip() or resolved_backend
     best_gate = best.get("gate") or gate
     best_cross_page = best.get("cross_page_merge_stats")
     next_cross_page = dict(best_cross_page) if isinstance(best_cross_page, dict) else cross_page_merge_stats
     for attempt in fallback_attempts:
-        attempt["selected"] = str(attempt.get("to") or "") == selected_backend
+        attempt["selected"] = attempt["to"] == selected_backend
     if fallback_attempts:
         best_gate = ParsingQualityGate(
             grade=best_gate.grade,
@@ -1277,19 +1273,15 @@ def _apply_workspace_vlm_correction(
     if file_ext != ".pdf" or not vlm_correction_requested:
         return markdown, gate, None, vlm_correction_requested
     try:
-        pages = [
-            _strip_position_tags(str(item.get("page_content") or "") if isinstance(item, dict) else "")
-            for item in (artifact_docs or [])
-            if isinstance(item, dict)
-        ]
+        pages = [_strip_position_tags(item["page_content"]) for item in (artifact_docs or []) if isinstance(item, dict)]
         corrected_pages, audit = maybe_correct_markdown_pages(
             pages,
             enabled=True,
             api_url=str(settings.VLM_CORRECTION_API_URL),
-            timeout_sec=float(settings.VLM_CORRECTION_TIMEOUT_SEC or 60),
-            max_pages=int(settings.VLM_CORRECTION_MAX_PAGES or 3),
-            max_chars=int(settings.VLM_CORRECTION_MAX_CHARS or 40_000),
-            pdf_quality=(pdf_quality if isinstance(pdf_quality, dict) else None),
+            timeout_sec=float(settings.VLM_CORRECTION_TIMEOUT_SEC),
+            max_pages=int(settings.VLM_CORRECTION_MAX_PAGES),
+            max_chars=int(settings.VLM_CORRECTION_MAX_CHARS),
+            pdf_quality=pdf_quality if isinstance(pdf_quality, dict) else None,
             min_table_quality=float(settings.VLM_CORRECTION_MIN_TABLE_QUALITY),
             meta={"tenant_id": str(tenant_id), "document_id": str(document_id)},
         )
@@ -1307,7 +1299,7 @@ def _apply_workspace_vlm_correction(
                 vlm_audit,
                 vlm_correction_requested,
             )
-        markdown = _strip_storage_nul_chars("\n\n".join([str(page or "") for page in corrected_pages]).strip())
+        markdown = _strip_storage_nul_chars("\n\n".join([page for page in corrected_pages]).strip())
         gate_after = _compute_parsing_quality_gate(
             markdown,
             pdf_quality=pdf_quality,
@@ -1360,8 +1352,8 @@ def _apply_workspace_image_enrichments(
             markdown, image_ocr_added, audit = add_image_ocr_blocks(
                 markdown,
                 origin_path=source_path,
-                max_images=max(0, int(settings.IMAGE_OCR_MAX_IMAGES or 20)),
-                max_ocr_chars=max(0, int(settings.IMAGE_OCR_MAX_CHARS or 2000)),
+                max_images=max(0, int(settings.IMAGE_OCR_MAX_IMAGES)),
+                max_ocr_chars=max(0, int(settings.IMAGE_OCR_MAX_CHARS)),
             )
             image_ocr_audit = audit.to_dict()
             markdown = _strip_storage_nul_chars(markdown)
@@ -1616,7 +1608,7 @@ def _build_workspace_parse_diagnostics(
     file_ext: str,
     requested_backend: str,
     resolved_backend: str,
-    error_type: str,
+    error_type: str | None,
     error_message: str,
 ) -> dict[str, Any]:
     try:
@@ -1695,8 +1687,8 @@ async def _execute_workspace_parse_request(
         )
         raise HTTPException(status_code=499, detail="Client closed request") from None
     except SubprocessWorkerError as exc:
-        err_type = str((exc.details or {}).get("type") or "")
-        msg = (str(exc) or "").strip()
+        err_type = (exc.details or {}).get("type")
+        msg = (str(exc)).strip()
         if not msg:
             details = exc.details or {}
             msg = str(details.get("message") or details.get("type") or exc.__class__.__name__).strip()
@@ -1722,7 +1714,7 @@ async def _execute_workspace_parse_request(
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
-        msg = (str(exc) or "").strip() or exc.__class__.__name__
+        msg = (str(exc)).strip() or exc.__class__.__name__
         msg = msg[:200]
         logger.error("Unexpected error during workspace parse: %s", msg)
         diagnostics = _build_workspace_parse_diagnostics(
@@ -1887,13 +1879,13 @@ async def parse_workspace_document(
     ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
     dataset_service.assert_dataset_writable(db, ds, account_id)
     source_path = await _resolve_workspace_source_path(doc=doc, tenant_id=tenant_id)
-    cleanup_path = source_path if is_object_storage_uri(str(doc.file_path or "").strip()) else None
+    cleanup_path = source_path if is_object_storage_uri(doc.file_path.strip()) else None
     _set_workspace_parse_processing(doc, db)
 
     # Resolve parser backend (validate early).
     meta = doc.doc_metadata or {}
     requested_backend = _resolve_workspace_requested_backend(meta, parser_backend)
-    file_ext = f".{(doc.file_type or '').lower()}"
+    file_ext = f".{(doc.file_type).lower()}"
     try:
         resolved_backend = _resolve_workspace_backend(file_ext=file_ext, requested_backend=requested_backend)
     except ValueError as exc:
@@ -1992,7 +1984,7 @@ def update_parsing_content(
     ds = dataset_service.get_dataset(db, tenant_id, doc.dataset_id)
     dataset_service.assert_dataset_writable(db, ds, account_id)
 
-    markdown = _strip_storage_nul_chars(str(payload.markdown_content or ""))
+    markdown = _strip_storage_nul_chars(payload.markdown_content)
     original = payload.original_markdown_content
     if original is None:
         # Keep original if not explicitly provided.
@@ -2002,9 +1994,7 @@ def update_parsing_content(
             .first()
         )
         original = row_existing.original_markdown_content if row_existing else markdown
-    else:
-        original = str(original or "")
-    original = _strip_storage_nul_chars(str(original or ""))
+    original = _strip_storage_nul_chars(original)
 
     row = (
         db.query(DocumentParsedContent)
@@ -2074,7 +2064,7 @@ def delete_parsing_document(
 
     # Best-effort delete source file.
     with contextlib.suppress(Exception):
-        raw_path = str(doc.file_path or "").strip()
+        raw_path = doc.file_path.strip()
         if raw_path and not raw_path.startswith("manual://"):
             if is_object_storage_uri(raw_path):
                 store, ref = resolve_document_object_reference(

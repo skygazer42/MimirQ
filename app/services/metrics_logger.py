@@ -198,7 +198,7 @@ def _hash_text(text: str) -> str:
     Used when METRICS_LOG_INCLUDE_TEXT=false to keep correlation/debugging possible
     without storing raw content in JSONL logs.
     """
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = (text).encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
@@ -364,7 +364,7 @@ def _strip_text_fields_for_metrics(record: dict[str, Any]) -> dict[str, Any]:
     if bool(settings.METRICS_LOG_INCLUDE_TEXT):
         return record
 
-    event = str(record.get("event") or "")
+    event = record.get("event")
     if event != "rag_trace":
         return record
 
@@ -589,7 +589,7 @@ def _resolve_otel_api() -> tuple[Any, Any, Any] | None:
 
 
 def _otel_provider_configured(provider: Any) -> bool:
-    module_name = str(getattr(provider.__class__, "__module__", "") or "")
+    module_name = provider.__class__.__module__
     if not module_name.startswith("opentelemetry.sdk.trace"):
         return False
     return callable(getattr(provider, "get_tracer", None))
@@ -619,7 +619,7 @@ def _sanitize_otel_attributes(attributes: Mapping[str, Any] | None) -> dict[str,
         return {}
     out: dict[str, Any] = {}
     for raw_key, raw_value in attributes.items():
-        key = str(raw_key or "").strip()
+        key = raw_key.strip()
         if not key:
             continue
         if isinstance(raw_value, bool):
@@ -639,7 +639,7 @@ def _sanitize_otel_attributes(attributes: Mapping[str, Any] | None) -> dict[str,
 
 def _start_optional_otel_span(tracer: Any, span_name: str) -> tuple[Any | None, Any | None]:
     try:
-        span_cm = tracer.start_as_current_span(str(span_name or "").strip() or "span")
+        span_cm = tracer.start_as_current_span(span_name.strip() or "span")
         return span_cm, span_cm.__enter__()
     except Exception as exc:
         logger.debug(_SERVICE_FALLBACK_LOG_MESSAGE, exc)

@@ -53,7 +53,7 @@ def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").rstrip("\r\n")
+    raw = line.rstrip("\r\n")
     if not raw:
         return None
     s = raw.strip()
@@ -79,7 +79,7 @@ def _parse_wiki_heading(line: str) -> tuple[int, str] | None:
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -190,7 +190,7 @@ class MediaWikiSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -53,7 +53,7 @@ def _ingestion_rule_preprocess_steps(matched_rule: object | None) -> list[dict[s
         return []
     return [
         {
-            "id": str(getattr(step, "id", "") or "").strip(),
+            "id": step.id.strip(),
             "params": dict(getattr(step, "params", {}) or {}),
         }
         for step in steps
@@ -118,7 +118,7 @@ def _build_ingestion_clean_preview_request(
     diff_max_lines: int,
 ) -> CleanPreviewRequest:
     return CleanPreviewRequest(
-        markdown=str(parsed.get("markdown") or ""),
+        markdown=parsed["markdown"],
         rules=[CleanRegexRuleModel(**rule) for rule in (getattr(effective, "governance_regex_rules", None) or [])],
         use_default_rules=True,
         include_diff=True,
@@ -194,7 +194,7 @@ def _ingestion_preview_rule_output(
         "governance_profile_ref": config.governance_profile_ref,
         "preprocess_steps": config.preprocess_steps,
         "parser_backend": str(config.parser_backend_choice or "auto"),
-        "chunk_strategy": str(config.chunk_strategy_choice or ""),
+        "chunk_strategy": config.chunk_strategy_choice,
     }
 
 
@@ -208,26 +208,26 @@ def _ingestion_preview_explain(
     pre_summary: dict[str, object],
     parsed: dict[str, object],
 ) -> dict[str, object]:
-    filename = str(getattr(file, "filename", "") or "")
+    filename = file.filename
     return {
         "dataset_id": str(dataset_id),
         "filename": filename,
-        "file_type": str(file_ext or ""),
+        "file_type": file_ext,
         "requested": {
-            "parser_backend": str(config.base_parser_backend or ""),
-            "chunk_strategy": str(config.base_chunk_strategy or ""),
+            "parser_backend": config.base_parser_backend,
+            "chunk_strategy": config.base_chunk_strategy,
         },
         "rule": rule_out,
         "snapshot": {
             "dataset_id": str(dataset_id),
             "filename": filename,
-            "file_type": str(file_ext or ""),
+            "file_type": file_ext,
             "rule": rule_out,
             "preprocess": dict(pre_summary),
             "pipeline_patch": dict(config.patch_dict),
             "parser_backend": str(config.parser_backend_choice or "auto"),
-            "chunk_strategy": str(config.chunk_strategy_choice or ""),
-            "parse_backend": str(parsed.get("backend") or ""),
+            "chunk_strategy": config.chunk_strategy_choice,
+            "parse_backend": parsed["backend"],
             "pdf_quality": parsed.get("pdf_quality"),
         },
     }

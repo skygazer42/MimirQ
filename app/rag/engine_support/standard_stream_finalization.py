@@ -115,10 +115,10 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "distinct_documents": len(
                     {c.get("document_id") for c in runtime.data.citations if c.get("document_id")}
                 ),
-                "history_chars": len(runtime.data.history_text or ""),
-                "history_tokens": runtime.module.num_tokens_from_string(runtime.data.history_text or ""),
-                "context_chars": len(runtime.data.context or ""),
-                "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context or ""),
+                "history_chars": len(runtime.data.history_text),
+                "history_tokens": runtime.module.num_tokens_from_string(runtime.data.history_text),
+                "context_chars": len(runtime.data.context),
+                "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context),
                 "tag_enabled": bool(runtime.data.tag_meta.get("enabled")),
                 "tag_used": bool(runtime.data.tag_meta.get("used")),
                 "tag_reason": runtime.data.tag_meta.get("reason"),
@@ -151,7 +151,7 @@ async def finalization_phase(runtime: StandardStreamState) -> AsyncGenerator[dic
                 "answer_chars": runtime.data.answer_chars,
                 "answer_tokens": runtime.data.answer_tokens,
                 # Stable, numeric, PII-safe cost attribution.
-                "cost_schema": str(runtime.data.cost_attribution.get("schema") or ""),
+                "cost_schema": runtime.data.cost_attribution["schema"],
                 "cost_llm_prompt_tokens": int(runtime.data.prompt_tokens_est),
                 "cost_llm_completion_tokens": int(runtime.data.answer_tokens),
                 "cost_llm_total_tokens": int(runtime.data.prompt_tokens_est + runtime.data.answer_tokens),

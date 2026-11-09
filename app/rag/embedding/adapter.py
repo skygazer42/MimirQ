@@ -317,8 +317,8 @@ def create_langchain_embeddings(model_id: str, normalize: bool = True) -> LangCh
 def create_langchain_embeddings_from_config(
     provider: str,
     model: str,
-    api_key: str = "",
-    base_url: str = "",
+    api_key: str | None = None,
+    base_url: str | None = None,
     dimension: int | None = None,
     cache_space_hash: str | None = None,
 ) -> LangChainEmbeddingsAdapter:
@@ -348,8 +348,9 @@ def create_langchain_embeddings_from_config(
     from app.core.model_execution import reject_retired_provider
 
     reject_retired_provider(provider, capability="embedding")
-    base_url = (base_url or "").strip()
-    if provider in {"openai", "openai_compatible", "dashscope"}:
+    if base_url is not None:
+        base_url = base_url.strip()
+    if provider in {"openai", "openai_compatible", "dashscope"} and base_url is not None:
         stripped = base_url.rstrip("/")
         if stripped.endswith("/v1"):
             base_url = stripped + "/embeddings"

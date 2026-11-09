@@ -293,7 +293,7 @@ def resolve_chat_response_cache_key(
     try:
         key = build_chat_cache_key(
             tenant_id=str(tenant_id),
-            account_id=str(account_id or ""),
+            account_id=account_id,
             dataset_id=str(scope_dataset_id) if scope_dataset_id is not None else None,
             document_ids=[str(doc_id) for doc_id in doc_ids],
             question=question,
@@ -350,7 +350,7 @@ def set_cached_chat_response(key: str, payload: dict[str, Any]) -> bool:
         return False
 
     ttl = int(settings.CHAT_RESPONSE_CACHE_TTL_SEC or 0)
-    max_bytes = int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0)
+    max_bytes = int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES)
     try:
         asyncio.get_running_loop()
     except RuntimeError:
@@ -413,9 +413,7 @@ async def set_cached_chat_response_async(
     if not bool(settings.CHAT_RESPONSE_CACHE_ENABLED):
         return False
     ttl = int(ttl_sec if ttl_sec is not None else (settings.CHAT_RESPONSE_CACHE_TTL_SEC or 0))
-    max_bytes = int(
-        max_value_bytes if max_value_bytes is not None else (settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0)
-    )
+    max_bytes = int(max_value_bytes if max_value_bytes is not None else settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES)
     return await set_best_effort_json_cache_value(
         key,
         payload,
@@ -597,7 +595,7 @@ def resolve_inflight_chat_response(key: str, payload: dict[str, Any]) -> None:
                 _chat_response_singleflight_result_key(key),
                 payload,
                 ttl_sec=_CHAT_RESPONSE_SINGLEFLIGHT_TRANSIENT_RESULT_TTL_SEC,
-                max_value_bytes=int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES or 0),
+                max_value_bytes=int(settings.CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES),
             )
         )
         _inflight_response_result_write_tasks[key] = task

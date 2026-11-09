@@ -34,7 +34,7 @@ def _missing_lxml_result(raw: str) -> HtmlXPathExtractResult:
     if callable(extract_text):
         try:
             return HtmlXPathExtractResult(
-                text=extract_text(raw, guess_layout=True) or "",
+                text=extract_text(raw, guess_layout=True),
                 matched_nodes=0,
                 xpath_error="dependency_missing:lxml",
             )
@@ -80,12 +80,12 @@ def _serialize_nodes(raw: str, nodes: list[Any] | None, lxml_etree: ModuleType) 
     for node in nodes:
         if isinstance(node, lxml_etree._Element):  # type: ignore[attr-defined]
             try:
-                fragments.append(lxml_etree.tostring(node, encoding="unicode", method="html") or "")
+                fragments.append(lxml_etree.tostring(node, encoding="unicode", method="html"))
             except Exception:
-                fragments.append(node.text_content() or "")
+                fragments.append(node.text_content())
         else:
             fragments.append(str(node))
-    return "\n".join([fragment for fragment in fragments if (fragment or "").strip()]), len(nodes)
+    return "\n".join([fragment for fragment in fragments if (fragment).strip()]), len(nodes)
 
 
 def _extract_html_text(fragments_html: str) -> tuple[bool, str]:
@@ -93,7 +93,7 @@ def _extract_html_text(fragments_html: str) -> tuple[bool, str]:
     extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
     if callable(extract_text):
         try:
-            return True, extract_text(fragments_html or "", guess_layout=True) or ""
+            return True, extract_text(fragments_html, guess_layout=True)
         except Exception as exc:
             logger.debug("Optional html-text extraction failed (%s)", type(exc).__name__)
     return False, ""
@@ -107,20 +107,20 @@ def _extract_with_lxml_fallback(
 ) -> str:
     try:
         if not nodes:
-            return root.text_content() or ""
+            return root.text_content()
         extracted: list[str] = []
         for node in nodes:
             if isinstance(node, lxml_etree._Element):  # type: ignore[attr-defined]
-                extracted.append(node.text_content() or "")
+                extracted.append(node.text_content())
             else:
                 extracted.append(str(node))
-        return "\n\n".join([text.strip() for text in extracted if (text or "").strip()])
+        return "\n\n".join([text.strip() for text in extracted if (text).strip()])
     except Exception:
-        return fragments_html or ""
+        return fragments_html
 
 
 def extract_text_from_html(html: str, *, xpath: str | None = None) -> HtmlXPathExtractResult:
-    raw = html or ""
+    raw = html
     if not raw.strip():
         return HtmlXPathExtractResult(text="", matched_nodes=0)
 

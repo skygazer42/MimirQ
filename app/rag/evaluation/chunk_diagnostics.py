@@ -14,12 +14,12 @@ class _ClaimCounts(TypedDict):
 
 
 def _is_informative_claim(claim: str) -> bool:
-    raw = str(claim or "").strip()
+    raw = claim.strip()
     if not raw:
         return False
     try:
         res = verify_claim(raw, _DUMMY_EVIDENCE_TOKENS, mode="token_overlap", enable_contradiction_check=False)
-        rc = str((res.diagnostics or {}).get("reason_code") or "")
+        rc = (res.diagnostics or {}).get("reason_code")
     except Exception:
         return True
     if rc in {"no_claim_tokens", "uncertainty_claim"}:
@@ -54,7 +54,7 @@ def _prepare_contexts(
     contexts: list[str] = []
     relevance: list[bool] | None = [] if context_relevance is not None else None
     for index, context in enumerate(retrieved_contexts or []):
-        text = str(context or "").strip()
+        text = context.strip()
         if not text:
             continue
         if max_context_chars > 0 and len(text) > max_context_chars:
@@ -66,7 +66,9 @@ def _prepare_contexts(
 
 
 def _prepare_reference_text(value: str | None, *, max_chars: int) -> str | None:
-    text = str(value or "").strip() or None
+    if value is None:
+        return None
+    text = value.strip() or None
     if text and max_chars > 0 and len(text) > max_chars:
         return text[:max_chars]
     return text
@@ -111,7 +113,7 @@ def _evaluate_claims(
     }
     used_chunks: set[int] = set()
     for claim in claims:
-        claim_text = str(claim or "").strip()
+        claim_text = claim.strip()
         if not claim_text:
             continue
         first_support, relevant_support = _supporting_chunk_indices(claim_text, contexts, relevance)
@@ -187,7 +189,7 @@ def compute_chunk_diagnostics(
     max_context_chars = max(0, int(max_context_chars or 0))
     max_reference_chars = max(0, int(max_reference_chars or 0))
 
-    raw_answer = str(answer or "").strip()
+    raw_answer = answer.strip()
     if not raw_answer:
         return _empty_diagnostics(chunks_total=len(retrieved_contexts or []))
 

@@ -8,6 +8,7 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.json_text import parse_json_from_text as parse_json_from_text
 from app.rag.core.retrieval_modes import normalize_retrieval_mode as normalize_retrieval_mode
 
@@ -50,7 +51,7 @@ _AUTO_KEYWORD_HINT_RES = (
 
 
 def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
-    q = (question or "").strip()
+    q = (question).strip()
     if not q:
         return False
     short_len = max(1, int(short_len or 0))
@@ -60,7 +61,7 @@ def should_rewrite_query(question: str, *, short_len: int = 12) -> bool:
 
 
 def guess_retrieval_mode(query: str) -> str:
-    q = (query or "").strip()
+    q = (query).strip()
     if not q:
         return "hybrid"
 
@@ -85,14 +86,14 @@ def _iter_citation_dicts(citations: list[dict[str, Any]] | None) -> Iterator[dic
             yield citation
 
 
-def _citation_followup_identity(citation: dict[str, Any]) -> tuple[Any, Any, str]:
+def _citation_followup_identity(citation: dict[str, Any]) -> tuple[Any, Any, str | None]:
     document_id = citation.get("document_id")
     name = citation.get("document_name") or citation.get("source")
-    key = str(document_id or name or "").strip()
+    key = _stringified_metadata_text(citation, "document_id") or _stringified_metadata_text(citation, "document_name") or _stringified_metadata_text(citation, "source")
     return document_id, name, key
 
 
-def _skip_followup_option(key: str, seen: set[str]) -> bool:
+def _skip_followup_option(key: str | None, seen: set[str]) -> bool:
     return not key or key in seen
 
 

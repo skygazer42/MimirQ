@@ -41,7 +41,9 @@ def _to_int(v: Any) -> int | None:
 
 
 def _safe_str(v: Any, *, max_len: int = 255) -> str | None:
-    s = str(v or "").strip()
+    if v is None:
+        return None
+    s = str(v).strip()
     if not s:
         return None
     return s[: max(1, int(max_len or 255))]
@@ -63,7 +65,7 @@ def _read_jsonl_tail(path: Path, *, max_bytes: int) -> list[dict[str, Any]]:
 def _can_read_observability(member: "TenantMember") -> bool:
     return role_allows(
         TenantPermissions.OBSERVABILITY_READ,
-        role=str(member.role or ""),
+        role=member.role,
     )
 
 
@@ -73,7 +75,7 @@ def load_answer_lineage_trace(
     request_id: str,
 ) -> dict[str, Any] | None:
     tenant_key = str(tenant_id)
-    request_key = str(request_id or "").strip()
+    request_key = request_id.strip()
     if not request_key or not settings.ENABLE_METRICS_LOG:
         return None
     path = Path(str(settings.METRICS_LOG_PATH or "./logs/rag_metrics.jsonl"))
@@ -82,11 +84,11 @@ def load_answer_lineage_trace(
 
     records = _read_jsonl_tail(path, max_bytes=5_000_000)
     for record in reversed(records):
-        if str(record.get("event") or "") != "rag_trace":
+        if record.get('event') != "rag_trace":
             continue
-        if str(record.get("tenant_id") or "") != tenant_key:
+        if record.get('tenant_id') != tenant_key:
             continue
-        if str(record.get("request_id") or "").strip() == request_key:
+        if record.get('request_id') == request_key:
             return dict(record)
     return None
 
@@ -142,7 +144,7 @@ def authorize_answer_lineage_access(
     if _can_read_observability(member):
         return True
 
-    owns_trace = str(trace_record.get("account_id") or "").strip() == account_id
+    owns_trace = trace_record.get('account_id') == account_id
     if not owns_trace:
         conversation_raw = _safe_str(trace_record.get("conversation_id"), max_len=120)
         if not conversation_raw:
@@ -219,9 +221,9 @@ def _eligible_retrieval_trace(
     cutoff_ms: int,
 ) -> tuple[dict[str, Any], int] | None:
     record = dict(raw) if isinstance(raw, Mapping) else {}
-    if str(record.get("event") or "") != "rag_trace":
+    if record.get('event') != "rag_trace":
         return None
-    if str(record.get("tenant_id") or "") != tenant_id:
+    if record.get('tenant_id') != tenant_id:
         return None
     ts_ms = _to_int(record.get("ts_ms")) or 0
     if ts_ms and ts_ms < cutoff_ms:

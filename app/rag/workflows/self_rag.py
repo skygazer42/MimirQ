@@ -48,9 +48,9 @@ def run_self_rag_reflection(
     evidence_text: str,
     citations: list[dict[str, Any]] | None = None,
 ) -> SelfRagReflection:
-    raw_question = str(question or "").strip()
-    raw_answer = str(answer or "").strip()
-    evidence_raw = str(evidence_text or "").strip()
+    raw_question = question.strip()
+    raw_answer = answer.strip()
+    evidence_raw = evidence_text.strip()
     faithfulness = compute_faithfulness_score(
         answer=raw_answer,
         evidence_text=evidence_raw,

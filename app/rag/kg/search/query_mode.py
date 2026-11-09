@@ -161,7 +161,7 @@ def classify_kg_query_mode(
     if default_norm != "auto":
         return _query_mode_result(default_norm, "forced", ["default_mode_forced"])
 
-    q = str(query or "").strip()
+    q = query.strip()
     q_fold = q.casefold()
     reasons: list[str] = []
 

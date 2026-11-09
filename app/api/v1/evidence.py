@@ -87,12 +87,12 @@ def _hash_text_for_metrics(text: str) -> str:
     """
     Match metrics JSONL `question_hash` (sha256[:16]) for dedupe.
     """
-    raw = (text or "").encode("utf-8", "ignore")
+    raw = (text).encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
 def _ensure_status(item: EvidenceItem, *, expected: str) -> None:
-    cur = str(item.status or "").strip().lower()
+    cur = item.status.strip().lower()
     if cur != expected:
         raise HTTPException(
             status_code=400,
@@ -122,7 +122,7 @@ def _suite_counts(db: Session, *, tenant_id: UUID, suite_ids: list[UUID]) -> dic
     )
     for suite_id, status, cnt in rows:
         sid = str(suite_id)
-        st = str(status or "").strip().lower() or "unknown"
+        st = status.strip().lower() or "unknown"
         out.setdefault(sid, _empty_suite_counts())
         if st in out[sid]:
             out[sid][st] = int(cnt or 0)
@@ -268,9 +268,9 @@ def _load_hardcase_traces(
 
     earliest_ts_ms: int | None = None
     for record in raw_records:
-        if str(record.get("event") or "") != "rag_trace":
+        if record.get("event") != "rag_trace":
             continue
-        if str(record.get("tenant_id") or "") != tenant_key:
+        if record.get("tenant_id") != tenant_key:
             continue
         try:
             ts_ms = int(record.get("ts_ms") or 0)
@@ -309,7 +309,9 @@ def _collect_existing_suite_fingerprints(
         if isinstance(query_text, str) and query_text.strip():
             existing_question_hashes.add(_hash_text_for_metrics(query_text.strip()))
         if isinstance(metadata, dict):
-            feedback_id = str(metadata.get("feedback_id") or "").strip()
+            feedback_id = metadata.get("feedback_id")
+            if feedback_id is not None:
+                feedback_id = str(feedback_id).strip()
             if feedback_id:
                 existing_feedback_ids.add(feedback_id)
     return existing_question_hashes, existing_feedback_ids
@@ -344,7 +346,9 @@ def _collect_hardcase_feedback_rows(
     out: list[dict[str, Any]] = []
     for feedback, meta in fb_rows:
         message_metadata = meta if isinstance(meta, dict) else {}
-        request_id = str(message_metadata.get("request_id") or "").strip()
+        request_id = message_metadata.get("request_id")
+        if request_id is not None:
+            request_id = request_id.strip()
         if not request_id:
             continue
         out.append(
@@ -433,7 +437,7 @@ def _feedback_training_export_row(
 
 def _evidence_training_export_row(item: EvidenceItem) -> dict[str, Any]:
     source_metadata = dict(item.source_metadata)
-    source_metadata.setdefault("suite_id", str(item.suite_id or ""))
+    source_metadata.setdefault("suite_id", str(item.suite_id))
     return {
         "schema": "mimirq.training_export_row.v1",
         "source_type": "evidence_item",
@@ -890,7 +894,7 @@ def get_evidence_suite_dashboard(
                 continue
             doc_map[did] = {
                 "id": did,
-                "file_type": str(ft or "").strip().lower() or "unknown",
+                "file_type": ft.strip().lower() or "unknown",
                 "metadata": meta if isinstance(meta, dict) else {},
             }
 
@@ -1284,8 +1288,8 @@ async def import_evidence_items(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)[:200]) from exc
 
-    def _norm(s: Any) -> str:
-        return " ".join(str(s or "").strip().split())
+    def _norm(s: str) -> str:
+        return " ".join(s.strip().split())
 
     existing_rows = (
         db.query(EvidenceItem.query)
@@ -1306,7 +1310,7 @@ async def import_evidence_items(
                 dataset_id=suite.dataset_id,
                 suite_id=suite.id,
                 status="draft",
-                query=str(payload.get("query") or "").strip(),
+                query=payload["query"].strip(),
                 expected_answer=payload.get("expected_answer"),
                 reference_sources=[],
                 retrieval_snapshot={"created_from": "qa_faq_import"},
@@ -1498,7 +1502,7 @@ def archive_evidence_item(
     ds = dataset_service.get_dataset(db, tenant_id, suite.dataset_id)
     dataset_service.assert_dataset_writable(db, ds, account_id)
 
-    cur = str(row.status or "").strip().lower()
+    cur = row.status.strip().lower()
     if cur == "archived":
         return row
 
@@ -1614,7 +1618,9 @@ def sync_suite_to_regression_cases(
             merged_tags = []
             seen: set[str] = set()
             for t in list(existing_tags) + tags:
-                s = str(t or "").strip()
+                if t is None:
+                    continue
+                s = str(t).strip()
                 if not s or s in seen:
                     continue
                 seen.add(s)
@@ -1771,9 +1777,10 @@ def export_training_dataset(
 
     rows.sort(
         key=lambda row: (
-            str(row.get("created_at") or ""),
-            str(row.get("source_type") or ""),
-            str(row.get("source_id") or ""),
+            row["created_at"] is not None,
+            row["created_at"],
+            row["source_type"],
+            row["source_id"],
         )
     )
 

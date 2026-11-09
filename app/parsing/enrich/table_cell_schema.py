@@ -17,7 +17,7 @@ class TableCell:
         out = {
             "row_index": int(self.row_index),
             "col_index": int(self.col_index),
-            "text": str(self.text or ""),
+            "text": self.text,
             "is_header": bool(self.is_header),
             "row_span": int(self.row_span),
             "col_span": int(self.col_span),

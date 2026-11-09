@@ -51,7 +51,7 @@ def _evaluate_community_detection_gate(*, config: SearchConfig, query_mode: str)
     if not bool(settings.KG_COMMUNITY_ENABLED):
         return False, ["disabled"]
 
-    if str(query_mode or "").strip().lower() != "global":
+    if query_mode.strip().lower() != "global":
         return False, [f"skipped_mode:{query_mode}"]
 
     reasons = [str(x) for x in (config.query_mode_reason_codes or []) if str(x).strip()]
@@ -78,13 +78,13 @@ def _evaluate_expansion_skip_policy(
     """
     reasons = {str(x).strip() for x in (config.query_mode_reason_codes or []) if str(x).strip()}
     if (
-        str(query_mode or "").strip().lower() == "local"
+        query_mode.strip().lower() == "local"
         and "dataset_factoid_scope" in reasons
         and int(recalled_event_count or 0) > 0
     ):
         return True, "local_factoid_precision"
 
-    if str(query_mode or "").strip().lower() != "global":
+    if query_mode.strip().lower() != "global":
         return False, ""
     if bool(config.expand.enabled) is False:
         return False, ""
@@ -101,7 +101,7 @@ def _evaluate_expansion_skip_policy(
 
 def _effective_rerank_strategy(*, config: SearchConfig, query_mode: str) -> RerankStrategy:
     reasons = {str(x).strip() for x in (config.query_mode_reason_codes or []) if str(x).strip()}
-    if str(query_mode or "").strip().lower() == "local" and "dataset_factoid_scope" in reasons:
+    if query_mode.strip().lower() == "local" and "dataset_factoid_scope" in reasons:
         return RerankStrategy.RRF
     return config.rerank.strategy
 
@@ -112,7 +112,7 @@ def _lazy_community_summary_settings() -> _LazySummarySettings:
         "top_n": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_TOP_N)),
         "max_tokens": max(1, int(settings.KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS)),
         "ttl_sec": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC)),
-        "max_entries": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES or 1024)),
+        "max_entries": max(0, int(settings.KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES)),
     }
 
 
@@ -283,7 +283,7 @@ def _rerank_stats(
         stats.setdefault("serving_layer", recall_result.serving_layer or {})
     if skip_expand:
         stats.setdefault("expand_skipped", True)
-        stats.setdefault("expand_skipped_reason", str(expand_skipped_reason or ""))
+        stats.setdefault("expand_skipped_reason", expand_skipped_reason)
     stats.setdefault(
         "timing_sec",
         {
@@ -368,7 +368,7 @@ async def _community_summary_pass(
         community_meta["lazy_summary"] = await _apply_lazy_community_summaries(
             config=config,
             reports=community_reports,
-            query=str(config.query or ""),
+            query=config.query,
         )
         community_meta["used"] = True
     except Exception as exc:  # noqa: BLE001
@@ -397,7 +397,7 @@ async def _build_community_outputs(
     rerank_result: RerankResult,
     event_ids_total: list[str],
 ) -> tuple[list[str], list[dict[str, Any]], str]:
-    max_events = max(0, int(settings.KG_COMMUNITY_MAX_EVENTS or 200))
+    max_events = max(0, int(settings.KG_COMMUNITY_MAX_EVENTS))
     event_scores = dict(expand_result.event_scores or {})
     scored = [(float(event_scores.get(eid, 0.0) or 0.0), str(eid)) for eid in (event_ids_total or [])]
     scored.sort(key=lambda item: (-float(item[0]), str(item[1])))
@@ -407,13 +407,13 @@ async def _build_community_outputs(
         entities=list(expand_result.key_final or []),
         events=list(rerank_result.items or []),
         event_entities=ev_to_ents,
-        max_entities_per_event=int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_EVENT or 12),
+        max_entities_per_event=int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_EVENT),
         min_edge_weight=float(settings.KG_COMMUNITY_MIN_EDGE_WEIGHT),
         label_propagation_iters=int(settings.KG_COMMUNITY_LABEL_PROPAGATION_ITERS),
         max_communities=int(settings.KG_COMMUNITY_MAX_COMMUNITIES),
-        max_entities_per_community=int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY or 12),
-        max_events_per_community=int(settings.KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY or 6),
-        global_summary_max_chars=int(settings.KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS or 3200),
+        max_entities_per_community=int(settings.KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY),
+        max_events_per_community=int(settings.KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY),
+        global_summary_max_chars=int(settings.KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS),
     )
     return chosen_event_ids, community_reports, global_summary
 
@@ -429,7 +429,7 @@ def _community_event_entities(*, config: SearchConfig, chosen_event_ids: list[st
         repo = EventRepository(session)
         assoc = repo.get_event_entities(chosen_event_ids, tenant_id=config.tenant_id)
         for ev_id, links in (assoc or {}).items():
-            ent_ids = [str(getattr(link, "entity_id", "") or "").strip() for link in (links or [])]
+            ent_ids = [str(link.entity_id).strip() for link in (links or [])]
             ent_ids = [entity_id for entity_id in ent_ids if entity_id]
             if ent_ids:
                 ev_to_ents[str(ev_id)] = ent_ids
@@ -457,7 +457,7 @@ def _log_community_metrics(
                 "query_mode": str(query_mode),
                 "events_considered": len(chosen_event_ids),
                 "reports": len(community_reports or []),
-                "global_summary_chars": len(global_summary or ""),
+                "global_summary_chars": len(global_summary),
                 "elapsed_sec": float(community_meta.get("elapsed_sec") or 0.0),
             }
         )
@@ -480,7 +480,7 @@ async def search(config: SearchConfig) -> dict[str, Any]:
                     "event": "kg.search.timeout",
                     "tenant_id": str(config.tenant_id) if config.tenant_id else None,
                     "doc_count": len(config.document_ids or []),
-                    "query_chars": len(config.query or ""),
+                    "query_chars": len(config.query),
                     "timeout_sec": float(timeout_sec),
                     "elapsed_sec": round(float(time.perf_counter() - t0), 3),
                 }
@@ -491,8 +491,8 @@ async def search(config: SearchConfig) -> dict[str, Any]:
 async def _search_impl(config: SearchConfig) -> dict[str, Any]:
     metrics_enabled = bool(settings.KG_SEARCH_METRICS_ENABLED)
     doc_count = len(config.document_ids or [])
-    query_chars = len(config.query or "")
-    query_mode = str(config.query_mode or "").strip().lower() or "global"
+    query_chars = len(config.query)
+    query_mode = config.query_mode.strip().lower() or "global"
     t_total = time.perf_counter()
 
     # recall
@@ -565,7 +565,7 @@ async def _search_impl(config: SearchConfig) -> dict[str, Any]:
                 "event_ids": len(expand_result.event_ids or []),
                 "clues": len(expand_result.clues or []),
                 "skipped": bool(skip_expand),
-                "skipped_reason": str(expand_skipped_reason or ""),
+                "skipped_reason": expand_skipped_reason,
                 "elapsed_sec": round(float(expand_elapsed), 3),
             }
         )
@@ -651,7 +651,7 @@ async def _search_impl(config: SearchConfig) -> dict[str, Any]:
     rendered_events = attach_path_renderings(
         events=list(rerank_result.items or []),
         key_entities=list(expand_result.key_final or []),
-        query=str(config.query or ""),
+        query=config.query,
         community_reports=community_reports,
     )
     return _event_response(

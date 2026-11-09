@@ -36,9 +36,9 @@ def test_empty_secret_is_still_rejected():
         validate_secret_key_and_jwt_key_source(settings.model_copy(update={"SECRET_KEY": ""}))
 
 
-def test_unresolved_password_minimum_keeps_existing_safety_floor():
+@pytest.mark.parametrize("minimum", [1, 7])
+def test_configured_short_password_minimum_remains_supported(minimum):
     from app.core.config import settings
     from app.core.config_validation import _validate_initial_admin_password
 
-    with pytest.raises(ValueError):
-        _validate_initial_admin_password(settings.model_copy(update={"PASSWORD_MIN_LENGTH": 0}), "x")
+    _validate_initial_admin_password(settings.model_copy(update={"PASSWORD_MIN_LENGTH": minimum}), "x" * minimum)

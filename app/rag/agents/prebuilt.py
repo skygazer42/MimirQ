@@ -162,7 +162,7 @@ def create_retriever_tool(
     """
     from langchain_core.tools import tool as tool_decorator
 
-    @tool_decorator(name=name, description=description)
+    @tool_decorator(name, description=description)
     def retrieve(query: str) -> str:
         """Retrieve documents for the given query."""
         try:
@@ -188,15 +188,15 @@ def create_retriever_tool(
             # Format results
             output_parts = []
             for i, doc in enumerate(results[:5], 1):
-                content = doc.get("content", doc.get("page_content", ""))[:500]
+                content = doc["content"] if "content" in doc else doc["page_content"]
                 source = doc.get("metadata", {}).get("source", "Unknown")
-                output_parts.append(f"[{i}] Source: {source}\n{content}")
+                output_parts.append(f"[{i}] Source: {source}\n" + content[:500])
 
             return "\n\n".join(output_parts)
 
         except Exception as e:
             logger.exception("Retrieval failed: %s", e)
-            return f"Error during retrieval: {str(e)[:200]}"
+            raise
 
     return retrieve
 

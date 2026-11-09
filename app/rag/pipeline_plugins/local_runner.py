@@ -45,8 +45,10 @@ def _coerce_input_document(item: Any) -> Document:
             content = item.get("content")
         if content is None:
             content = item.get("text")
+        if content is None:
+            raise PipelinePluginRegistryError("input document must provide page_content, content or text")
         metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
-        return Document(page_content=str(content or ""), metadata=dict(metadata))
+        return Document(page_content=str(content), metadata=dict(metadata))
     raise PipelinePluginRegistryError(f"unsupported input document item: {type(item).__name__}")
 
 
@@ -76,7 +78,7 @@ class _LocalGoldenChunk:
 def _local_golden_chunks(documents: list[Document], *, plugin_id: str, version: str) -> list[_LocalGoldenChunk]:
     chunks: list[_LocalGoldenChunk] = []
     for index, doc in enumerate(documents or []):
-        seed = f"{plugin_id}@{version}:{index}:{doc.page_content or ''}"
+        seed = f"{plugin_id}@{version}:{index}:{doc.page_content}"
         document_id = uuid5(_LOCAL_GOLDEN_NAMESPACE, f"doc:{seed}")
         chunk_id = uuid5(_LOCAL_GOLDEN_NAMESPACE, f"chunk:{seed}")
         chunks.append(
@@ -84,7 +86,7 @@ def _local_golden_chunks(documents: list[Document], *, plugin_id: str, version: 
                 document_id=document_id,
                 chunk_id=chunk_id,
                 chunk_index=index,
-                content=str(doc.page_content or ""),
+                content=doc.page_content,
                 metadata=dict(doc.metadata or {}),
             )
         )
@@ -110,7 +112,7 @@ def _build_golden_draft_report(
     items = bundle["items"]
     questions = []
     for item in items[: max(0, int(max_sample_questions or 0))]:
-        if isinstance(item, dict) and str(item.get("question") or "").strip():
+        if isinstance(item, dict) and item["question"].strip():
             questions.append(str(item.get("question")).strip())
     return {
         "passed": bool(items),
@@ -177,7 +179,7 @@ def _run_kg_stage(
         "passed": kg_validation["ok"],
         "input_count": len(current_documents),
         "output_count": len(events),
-        "output_chars": sum(len(event.content or "") for event in events),
+        "output_chars": sum(len(event.content) for event in events),
         "kg_validation": kg_validation,
     }
     return report, kg_validation["ok"]
@@ -227,7 +229,7 @@ def _run_document_stage(
         "passed": metadata_validation["ok"],
         "input_count": len(current_documents),
         "output_count": len(output_documents),
-        "output_chars": sum(len(doc.page_content or "") for doc in output_documents),
+        "output_chars": sum(len(doc.page_content) for doc in output_documents),
         "metadata_validation": metadata_validation,
     }
     return output_documents, report, stage_passed

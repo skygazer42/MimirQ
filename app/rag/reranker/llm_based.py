@@ -14,6 +14,7 @@ Note: this module is a reranker implementation; do not confuse it with app.rag.l
 import json
 import time
 from dataclasses import dataclass
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 import httpx
@@ -116,7 +117,7 @@ def _prepare_llm_candidates(
     candidates: list[dict[str, Any]] = []
     id_to_doc: dict[str, Document] = {}
     for idx, doc in enumerate(documents):
-        text = (doc.page_content or "").strip()
+        text = (doc.page_content).strip()
         if not text:
             continue
         cid = reranker._candidate_id(doc, idx)
@@ -189,8 +190,8 @@ def _append_unreranked_documents(
 def _build_candidate_payload(
     *, cid: str, text: str, meta: dict[str, Any] | None, max_chars: int
 ) -> dict[str, Any] | None:
-    cid_norm = str(cid or "").strip()
-    text_norm = str(text or "").strip()
+    cid_norm = cid.strip()
+    text_norm = text.strip()
     if not cid_norm or not text_norm:
         return None
 
@@ -225,8 +226,10 @@ def _vector_anchor_score(candidate: dict[str, Any]) -> float:
 def _load_weight_mapping(raw: Any) -> dict[str, float]:
     if isinstance(raw, dict):
         source = dict(raw)
+    elif raw is None:
+        return {}
     else:
-        text = str(raw or "").strip()
+        text = raw.strip()
         if not text:
             return {}
         try:
@@ -237,7 +240,7 @@ def _load_weight_mapping(raw: Any) -> dict[str, float]:
 
     out: dict[str, float] = {}
     for key, value in source.items():
-        name = str(key or "").strip()
+        name = key.strip()
         if not name:
             continue
         out[name.casefold()] = _clamp_score(value, default=0.7)
@@ -248,11 +251,11 @@ def resolve_llm_reranker_weight(*, tenant_id: str | None, query_type: str | None
     tenant_map = _load_weight_mapping(settings.RERANKER_LLM_WEIGHT_BY_TENANT)
     query_type_map = _load_weight_mapping(settings.RERANKER_LLM_WEIGHT_BY_QUERY_TYPE)
 
-    tenant_key = str(tenant_id or "").strip().casefold()
+    tenant_key = tenant_id.strip().casefold() if tenant_id is not None else None
     if tenant_key and tenant_key in tenant_map:
         return tenant_map[tenant_key]
 
-    query_type_key = str(query_type or "").strip().casefold()
+    query_type_key = query_type.strip().casefold() if query_type is not None else None
     if query_type_key and query_type_key in query_type_map:
         return query_type_map[query_type_key]
 
@@ -275,7 +278,7 @@ def _finalize_rerank_scores(
     score_map: dict[str, float] = {}
     seen: set[str] = set()
     for candidate in candidates:
-        cid = str(candidate.get("id") or "").strip()
+        cid = candidate["id"].strip()
         if not cid or cid in seen:
             continue
         seen.add(cid)
@@ -449,10 +452,10 @@ candidates(JSON): {candidates}
             if fallback_score is not None
             else _clamp_score(self.fallback_score, default=0.5)
         )
-        max_chars = int(settings.RERANKER_MAX_CHARS or 800)
+        max_chars = int(settings.RERANKER_MAX_CHARS)
         for c in candidates:
-            cid = str(c.get("id") or "").strip()
-            text = (c.get("text") or "").strip()
+            cid = c["id"].strip()
+            text = c["text"].strip()
             item = _build_candidate_payload(cid=cid, text=text, meta=c, max_chars=max_chars)
             if item is not None:
                 prompt_payload.append(item)
@@ -472,7 +475,7 @@ candidates(JSON): {candidates}
         )
         elapsed = time.time() - start
 
-        json_text = _extract_json_array((out_text or "").strip())
+        json_text = _extract_json_array(out_text.strip())
         if not json_text:
             ordered, score_map = _finalize_rerank_scores(
                 candidates=payload,
@@ -501,7 +504,7 @@ candidates(JSON): {candidates}
         for item in data if isinstance(data, list) else []:
             if not isinstance(item, dict):
                 continue
-            cid = str(item.get("id") or "").strip()
+            cid = _stringified_metadata_text(item, "id")
             if not cid:
                 continue
             llm_scores[cid] = _clamp_score(item.get("score", 0.0), default=0.0)

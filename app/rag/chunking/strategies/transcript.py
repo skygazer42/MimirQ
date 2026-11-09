@@ -40,14 +40,14 @@ _SPEAKER_LINE_RE = re.compile(
 
 
 def _iter_turns(text: str) -> list[_Turn]:
-    matches = list(_SPEAKER_LINE_RE.finditer(text or ""))
+    matches = list(_SPEAKER_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
     turns: list[_Turn] = []
     for idx, m in enumerate(matches):
         start = m.start()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        speaker = (m.group("speaker") or "").strip()
+        speaker = (m.group("speaker")).strip()
         turns.append(_Turn(start=start, end=end, speaker=speaker))
     return turns
 
@@ -172,7 +172,7 @@ class TranscriptChunker(BaseChunker):
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

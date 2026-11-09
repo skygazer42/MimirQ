@@ -53,7 +53,7 @@ def diff_precheck_summaries(
         for item in raw:
             if not isinstance(item, dict):
                 continue
-            key = str(item.get("key") or "").strip()
+            key = item["key"].strip()
             if not key:
                 continue
             out[key] = _as_int(item.get("count"))
@@ -64,10 +64,10 @@ def diff_precheck_summaries(
     finding_keys = sorted({*base_findings.keys(), *target_findings.keys()})
 
     by_file_type = [_diff_item(key=k, before=base_types.get(k), after=target_types.get(k)) for k in type_keys]
-    by_file_type.sort(key=lambda d: (-abs(int(d.get("delta") or 0)), str(d.get("key") or "")))
+    by_file_type.sort(key=lambda d: (-abs(int(d.get("delta") or 0)), d["key"]))
 
     findings = [_diff_item(key=k, before=base_findings.get(k), after=target_findings.get(k)) for k in finding_keys]
-    findings.sort(key=lambda d: (-abs(int(d.get("delta") or 0)), str(d.get("key") or "")))
+    findings.sort(key=lambda d: (-abs(int(d.get("delta") or 0)), d["key"]))
 
     return {
         "base_scan_run_id": str(base_scan_run_id),

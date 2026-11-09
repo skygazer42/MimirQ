@@ -82,7 +82,7 @@ def _remove_images_mode(body: CleanPreviewRequest | GovernanceAnalyzeRequest) ->
 
 
 def _extract_governance_input_text(body: CleanPreviewRequest | GovernanceAnalyzeRequest) -> str:
-    raw_input = body.markdown or ""
+    raw_input = body.markdown
     if body.input_format != "html":
         return raw_input
 
@@ -92,7 +92,7 @@ def _extract_governance_input_text(body: CleanPreviewRequest | GovernanceAnalyze
     extracted = extract_text_from_html(html, xpath=body.html_xpath)
     if body.html_xpath and extracted.xpath_error and extracted.xpath_error.startswith("xpath_failed:"):
         raise HTTPException(status_code=400, detail=f"Invalid XPath: {extracted.xpath_error}")
-    return extracted.text or ""
+    return extracted.text
 
 
 def _governance_issue_models(raw_issues: list[GovernanceAnalysisIssue]) -> list[GovernanceIssue]:
@@ -152,7 +152,7 @@ def _extract_clean_preview_frontmatter(
         tags = normalize_frontmatter_tags(raw_tags)
 
     if body.strip_frontmatter:
-        input_text = fm.stripped_text or ""
+        input_text = fm.stripped_text
     return input_text, frontmatter, title, tags
 
 
@@ -218,7 +218,7 @@ def _clean_preview_rule_stats(
             {
                 "index": i,
                 "pattern": rule.pattern,
-                "repl": (getattr(rule, "repl", "") if isinstance(getattr(rule, "repl", ""), str) else ""),
+                "repl": rule.repl if isinstance(rule.repl, str) else None,
                 "flags": rule.flags,
                 "hits": int(rule_hits[i] if i < len(rule_hits) else 0),
                 "source": meta.get("source"),
@@ -419,9 +419,9 @@ def _build_clean_preview_response(
         paragraphs_dropped=context.paragraphs_dropped,
         references_removed_lines=context.references_removed_lines,
         input_chars=len(context.baseline_text),
-        output_chars=len(markdown or ""),
-        input_lines=len((context.baseline_text or "").splitlines()),
-        output_lines=len((markdown or "").splitlines()),
+        output_chars=len(markdown),
+        input_lines=len((context.baseline_text).splitlines()),
+        output_lines=len((markdown).splitlines()),
         added_lines=added,
         removed_lines=removed,
         changed_lines=changed_lines,
@@ -439,8 +439,8 @@ def _line_diff_stats(before: str, after: str) -> tuple[int, int, int]:
     Returns: (added_lines, removed_lines, changed_lines)
     - changed_lines counts "replaced" blocks (approximate: max(len(a), len(b))).
     """
-    a = (before or "").splitlines()
-    b = (after or "").splitlines()
+    a = (before).splitlines()
+    b = (after).splitlines()
     sm = SequenceMatcher(a=a, b=b, autojunk=False)
     added = 0
     removed = 0
@@ -468,8 +468,8 @@ def _unified_diff_text(before: str, after: str, *, max_lines: int) -> tuple[str 
 
     diff_lines = list(
         unified_diff(
-            (before or "").splitlines(),
-            (after or "").splitlines(),
+            (before).splitlines(),
+            (after).splitlines(),
             fromfile="before",
             tofile="after",
             lineterm="",
@@ -531,7 +531,7 @@ def _resolve_llm_clean_prompt_selection(
     if not chosen:
         raise HTTPException(status_code=404, detail="PromptTemplate not found or inactive")
 
-    selection.system_prompt = str(chosen.content or "").strip() or selection.system_prompt
+    selection.system_prompt = chosen.content.strip()
     selection.prompt_template_id = str(chosen.id)
     selection.template_key = chosen.template_key
     selection.ab_experiment_key = chosen.ab_experiment_key

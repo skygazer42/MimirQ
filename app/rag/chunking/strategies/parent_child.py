@@ -67,7 +67,7 @@ class ParentChildChunker(BaseChunker):
         meta_json = json.dumps(meta, ensure_ascii=False, sort_keys=True, default=str)
         return stable_hash(
             f"pc-cache:{self.chunk_size}:{self.chunk_overlap}:{self.child_ratio}:{self.min_child_size}:"
-            f"{stable_hash(doc.page_content or '', length=None)}:{stable_hash(meta_json, length=None)}",
+            f"{stable_hash(doc.page_content, length=None)}:{stable_hash(meta_json, length=None)}",
             length=32,
         )
 
@@ -79,7 +79,7 @@ class ParentChildChunker(BaseChunker):
             try:
                 out.append(doc.model_copy(update={"metadata": meta}))
             except Exception:
-                out.append(Document(page_content=doc.page_content or "", metadata=meta, id=getattr(doc, "id", None)))
+                out.append(Document(page_content=doc.page_content, metadata=meta, id=getattr(doc, "id", None)))
         return out
 
     def _split_single_document(

@@ -103,7 +103,7 @@ def _parse_numeric_heading_level(line: str) -> int | None:
       1.1.1 Title
     Returns the heading level (number of segments) if it looks like a heading.
     """
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return None
 
@@ -141,7 +141,7 @@ def _parse_numeric_heading_level(line: str) -> int | None:
 
 
 def _looks_like_cn_num_heading(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return False
     i = 0
@@ -161,7 +161,7 @@ def _looks_like_cn_num_heading(line: str) -> bool:
 
 
 def _looks_like_cn_paren_heading(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s or s[0] not in ("（", "("):
         return False
     i = 1
@@ -184,7 +184,7 @@ def _looks_like_cn_paren_heading(line: str) -> bool:
 
 
 def _looks_like_en_chapter_heading(line: str) -> bool:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return False
     low = s.lower()
@@ -286,7 +286,7 @@ class OutlineChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -248,15 +248,18 @@ def _extract_evidence_fields(case: RagasRegressionCase) -> tuple[list[str], list
     for src in refs or []:
         if not isinstance(src, dict):
             continue
-        cid = str(src.get("chunk_id") or "").strip()
+        raw_id = src.get("chunk_id")
+        cid = str(raw_id).strip() if raw_id is not None else None
         if cid and cid not in seen_chunks:
             seen_chunks.add(cid)
             chunk_ids.append(cid)
-        did = str(src.get("document_id") or "").strip()
+        raw_id = src.get("document_id")
+        did = str(raw_id).strip() if raw_id is not None else None
         if did and did not in seen_docs:
             seen_docs.add(did)
             doc_ids.append(did)
-        quote = str(src.get("quote") or "").strip()
+        raw_quote = src.get("quote")
+        quote = str(raw_quote).strip() if raw_quote is not None else None
         if quote and len(snippets) < 2:
             snippets.append(_truncate_text(quote, max_chars=800))
     return chunk_ids, doc_ids, snippets
@@ -269,7 +272,8 @@ def _first_hit_rank(events: Sequence[dict[str, Any]], evidence_chunk_ids: set[st
     for idx, ev in enumerate(events or [], 1):
         if not isinstance(ev, dict):
             continue
-        cid = str(ev.get("chunk_id") or "").strip()
+        raw_id = ev.get("chunk_id")
+        cid = str(raw_id).strip() if raw_id is not None else None
         if cid and cid in ev_set:
             return idx
     return None
@@ -283,7 +287,9 @@ def _summarize_clues(clues: Any) -> _ClueCounts:
     for c in clues:
         if not isinstance(c, dict):
             continue
-        rel = str(c.get("relation") or "").strip()
+        rel = c.get("relation")
+        if isinstance(rel, str):
+            rel = rel.strip()
         if rel == "query->entity":
             q2e += 1
         if rel == "query->event":
@@ -293,10 +299,10 @@ def _summarize_clues(clues: Any) -> _ClueCounts:
 
 def _event_out(ev: dict[str, Any]) -> KGSearchEventOut:
     return KGSearchEventOut(
-        id=str(ev.get("id") or ""),
-        title=_truncate_text(ev.get("title") or "", max_chars=160),
-        summary=_truncate_text(ev.get("summary") or "", max_chars=600),
-        content=_truncate_text(ev.get("content") or "", max_chars=600),
+        id=str(ev["id"]),
+        title=_truncate_text(ev.get("title"), max_chars=160),
+        summary=_truncate_text(ev.get("summary"), max_chars=600),
+        content=_truncate_text(ev.get("content"), max_chars=600),
         document_id=(str(ev.get("document_id")) if ev.get("document_id") is not None else None),
         chunk_id=(str(ev.get("chunk_id")) if ev.get("chunk_id") is not None else None),
         score=float(ev.get("score", 0.0) or 0.0),
@@ -305,8 +311,8 @@ def _event_out(ev: dict[str, Any]) -> KGSearchEventOut:
 
 def _entity_out(ent: dict[str, Any]) -> KGSearchEntityOut:
     return KGSearchEntityOut(
-        entity_id=str(ent.get("entity_id") or ""),
-        name=_truncate_text(ent.get("name") or "", max_chars=160),
+        entity_id=str(ent["entity_id"]),
+        name=_truncate_text(ent.get("name"), max_chars=160),
         type=str(ent.get("type") or "unknown"),
         weight=float(ent.get("weight", 0.0) or 0.0),
     )
@@ -521,7 +527,9 @@ def _load_missing_kg_document_ids(
     missing: list[UUID] = []
     for doc_id, meta in docs:
         md = meta if isinstance(meta, dict) else {}
-        kg_extracted_at = str(md.get("kg_extracted_at") or "").strip()
+        kg_extracted_at = md.get("kg_extracted_at")
+        if isinstance(kg_extracted_at, str):
+            kg_extracted_at = kg_extracted_at.strip()
         if not kg_extracted_at:
             missing.append(UUID(str(doc_id)))
     return missing
@@ -615,7 +623,7 @@ def _build_case_context(
     tenant_id: UUID,
     case: RagasRegressionCase,
 ) -> _CaseContext:
-    question = str(case.question or "").strip()
+    question = case.question.strip()
     chunk_ids, _doc_ids, evidence_snips = _extract_evidence_fields(case)
     evidence_set = {str(value).strip() for value in chunk_ids if str(value).strip()}
     gt_event_ids = _resolve_ground_truth_event_ids(
@@ -676,7 +684,7 @@ def _build_search_config(
     graph_embeddings_enabled: bool | None = None,
 ) -> SearchConfig:
     cfg = SearchConfig(
-        query=str(query or ""),
+        query=query,
         tenant_id=scope.tenant_id,
         dataset_id=(None if scope.document_ids else scope.dataset_id),
         account_id=scope.account_id,
@@ -763,7 +771,7 @@ def _evaluate_search_outcome(
         clue_counts=_summarize_clues(outcome.raw_clues),
         first_hit_rank=_first_hit_rank(outcome.raw_events, evidence_set),
         selected_has_skill=any(
-            isinstance(entity, dict) and str(entity.get("type") or "").strip() in _KG_SKILL_ENTITY_TYPES
+            isinstance(entity, dict) and entity["type"].strip() in _KG_SKILL_ENTITY_TYPES
             for entity in outcome.raw_entities
         ),
         relation_debug=_relation_debug_from_stats(outcome.raw_stats),
@@ -1134,7 +1142,7 @@ def _load_deterministic_entity_rows(
 def _collect_skill_names(
     ent_rows: Sequence[tuple[UUID, str, str, float]],
 ) -> list[str]:
-    skill_names = [row[1] for row in ent_rows if row and str(row[2] or "").strip() == "Skill" and row[1]]
+    skill_names = [row[1] for row in ent_rows if row and row[2].strip() == "Skill" and row[1]]
     return _dedupe_strs(skill_names, limit=20)
 
 
@@ -1188,7 +1196,7 @@ def _fallback_alias_pairs(entity_names: Sequence[str]) -> list[tuple[str, str]]:
 
     alias_pairs: list[tuple[str, str]] = []
     for name in entity_names:
-        split = split_trailing_parenthetical_alias(str(name or ""))
+        split = split_trailing_parenthetical_alias(name)
         if not split:
             continue
         head, tail = split
@@ -1260,7 +1268,7 @@ def _deterministic_hardcase_candidates(
     if not alias_pairs and entity_names:
         alias_pairs = _fallback_alias_pairs(entity_names)
 
-    skill_ids = [row[0] for row in ent_rows if row and str(row[2] or "").strip() == "Skill" and row[0] is not None]
+    skill_ids = [row[0] for row in ent_rows if row and row[2].strip() == "Skill" and row[0] is not None]
     tags = _load_skill_tags(
         db,
         tenant_id=tenant_id,
@@ -1443,7 +1451,7 @@ async def _run_llm_hardcases(
 
         hardcases = await generate_hardcases_llm(
             llm_client=llm_client,
-            question=str(pending.case.question or ""),
+            question=pending.case.question,
             evidence_snippets=list(pending.evidence_snips),
             entity_hints=list(pending.entity_hints),
             max_items=limits.hardcases_per_failed,

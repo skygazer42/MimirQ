@@ -2,7 +2,9 @@ from typing import Any
 
 
 def _normalize_text(value: Any) -> str:
-    return " ".join(str(value or "").split()).strip()
+    if value is None:
+        return ""
+    return " ".join(str(value).split()).strip()
 
 
 def _extract_step_texts(items: Any) -> list[str]:
@@ -127,8 +129,8 @@ def evaluate_ragcap_case(case: dict[str, Any]) -> dict[str, Any]:
     passed = bool((overall_score or 0.0) >= 0.7 and not reason_codes)
     return {
         "schema": "mimirq.ragcap_case_result.v1",
-        "case_id": str(payload.get("case_id") or ""),
-        "query_type": str(payload.get("query_type") or ""),
+        "case_id": payload["case_id"],
+        "query_type": payload.get("query_type"),
         "metrics": metrics,
         "overall_score": overall_score,
         "passed": passed,

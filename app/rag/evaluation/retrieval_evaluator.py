@@ -51,7 +51,10 @@ def evaluate_retrieval_verdict(
 def summarize_retrieval_evaluator_decisions(rows: list[dict[str, Any]]) -> dict[str, Any]:
     counts = {"correct": 0, "ambiguous": 0, "incorrect": 0}
     for row in rows or []:
-        verdict = str((row or {}).get("verdict") or "").strip().lower()
+        verdict = (row or {}).get("verdict")
+        if not isinstance(verdict, str):
+            continue
+        verdict = verdict.strip().lower()
         if verdict not in counts:
             continue
         counts[verdict] += 1

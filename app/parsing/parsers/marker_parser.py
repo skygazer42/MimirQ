@@ -29,7 +29,7 @@ _ENDPOINT_MISMATCH_STATUSES = {404, 405, 415, 422}
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "marker"
     return text
 
@@ -164,7 +164,7 @@ class MarkerParser:
         logger.info("[marker] parsing %s", file_path.name)
         resp = self._post_multipart(file_path=file_path)
         if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"Marker API error {resp.status_code}: {(resp.text or '')[:500]}")
+            raise RuntimeError(f"Marker API error {resp.status_code}: {(resp.text)[:500]}")
 
         markdown_text = ""
         asset_base_dir: str | None = None
@@ -177,10 +177,10 @@ class MarkerParser:
                 try:
                     data = resp.json()
                 except Exception:
-                    data = json.loads((resp.text or "").strip() or "{}")
+                    data = json.loads((resp.text).strip() or "{}")
                 markdown_text = extract_markdown_response_text(data)
             else:
-                markdown_text = resp.text or ""
+                markdown_text = resp.text
 
         if not markdown_text.strip():
             raise RuntimeError("Marker API returned empty Markdown.")

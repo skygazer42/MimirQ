@@ -90,8 +90,8 @@ async def execute_retrieval_plan(runtime: StandardStreamState) -> AsyncGenerator
             runtime.data.retrieval_per_query.append(
                 {
                     "kind": runtime.data.kind,
-                    "query_chars": len(runtime.data.q or ""),
-                    "query_tokens": runtime.module.num_tokens_from_string(runtime.data.q or ""),
+                    "query_chars": len(runtime.data.q),
+                    "query_tokens": runtime.module.num_tokens_from_string(runtime.data.q),
                     "elapsed_sec": round(runtime.data.elapsed_i, 3),
                     "ok": runtime.data.err is None,
                     "retriever_debug": runtime.data.dbg,
@@ -125,8 +125,8 @@ async def execute_retrieval_plan(runtime: StandardStreamState) -> AsyncGenerator
             runtime.data.retrieval_per_query.append(
                 {
                     "kind": runtime.data.kind,
-                    "query_chars": len(runtime.data.q or ""),
-                    "query_tokens": runtime.module.num_tokens_from_string(runtime.data.q or ""),
+                    "query_chars": len(runtime.data.q),
+                    "query_tokens": runtime.module.num_tokens_from_string(runtime.data.q),
                     "elapsed_sec": round(runtime.data.elapsed_i, 3),
                     "ok": runtime.data.err is None,
                     "retriever_debug": runtime.data.dbg,
@@ -324,8 +324,8 @@ def _kg_injection_fetch_kwargs(runtime: StandardStreamState) -> dict[str, Any]:
 def _kg_document_from_chunk(runtime: StandardStreamState, chunk_id: UUID, chunk: Any) -> Document:
     metadata = dict(getattr(chunk, "doc_metadata", None) or {})
     metadata["retrieval_role"] = "kg"
-    metadata.setdefault("document_id", str(getattr(chunk, "document_id", "") or ""))
-    metadata.setdefault("chunk_id", str(getattr(chunk, "id", "") or ""))
+    metadata.setdefault("document_id", str(chunk.document_id))
+    metadata.setdefault("chunk_id", str(chunk.id))
     metadata.setdefault("chunk_index", getattr(chunk, "chunk_index", None))
     page_number = getattr(chunk, "page_number", None)
     if page_number is not None:
@@ -342,7 +342,7 @@ def _kg_document_from_chunk(runtime: StandardStreamState, chunk_id: UUID, chunk:
         metadata.setdefault("retrieval_score", score)
         metadata.setdefault("score", score)
     return runtime.module.Document(
-        page_content=str(getattr(chunk, "content", None) or ""),
+        page_content=chunk.content,
         metadata=metadata,
         id=str(chunk_id),
     )
@@ -358,53 +358,51 @@ def _build_kg_injection_docs(runtime: StandardStreamState) -> list[Document]:
 
 
 async def inject_kg_chunks(runtime: StandardStreamState) -> None:
-    try:
-        (
-            runtime.data.kg_document_ids,
-            runtime.data.kg_dataset_id,
-            runtime.data.kg_dataset_ids,
-        ) = runtime.module._resolve_kg_scope(
-            {
-                "document_ids": runtime.data.document_ids,
-                "dataset_id": runtime.data.dataset_id,
-                "dataset_ids": runtime.data.dataset_ids,
-            }
-        )
-        if not _kg_chunk_injection_allowed(runtime):
-            return
-        runtime.data.kg_kwargs = {
-            "query": runtime.data.query_for_retrieval,
-            "tenant_id": runtime.data.tenant_id,
-            "document_ids": runtime.data.kg_document_ids,
-            "dataset_id": runtime.data.kg_dataset_id,
-            "account_id": runtime.data.account_id,
+    (
+        runtime.data.kg_document_ids,
+        runtime.data.kg_dataset_id,
+        runtime.data.kg_dataset_ids,
+    ) = runtime.module._resolve_kg_scope(
+        {
+            "document_ids": runtime.data.document_ids,
+            "dataset_id": runtime.data.dataset_id,
+            "dataset_ids": runtime.data.dataset_ids,
         }
-        if runtime.data.kg_dataset_ids:
-            runtime.data.kg_kwargs["dataset_ids"] = runtime.data.kg_dataset_ids
+    )
+    if not _kg_chunk_injection_allowed(runtime):
+        return
+    runtime.data.kg_kwargs = {
+        "query": runtime.data.query_for_retrieval,
+        "tenant_id": runtime.data.tenant_id,
+        "document_ids": runtime.data.kg_document_ids,
+        "dataset_id": runtime.data.kg_dataset_id,
+        "account_id": runtime.data.account_id,
+    }
+    if runtime.data.kg_dataset_ids:
+        runtime.data.kg_kwargs["dataset_ids"] = runtime.data.kg_dataset_ids
+    try:
         runtime.data.kg_result_cached = runtime.data.kg_result_cached or await runtime.module.kg_search(
             **runtime.data.kg_kwargs
         )
-        runtime.data.kg_events = (runtime.data.kg_result_cached or {}).get("events") or []
-        runtime.data.max_chunks = int(runtime.data.kg_chunk_injection_max_chunks_i or 0) or 5
-        _collect_kg_chunk_candidates(runtime)
-        if not runtime.data.chunk_ids:
-            return
-        rows = runtime.module._fetch_document_chunks_for_kg_injection(**_kg_injection_fetch_kwargs(runtime))
-        runtime.data.chunk_by_id = {
-            chunk.id: chunk
-            for chunk in (rows or [])
-            if getattr(chunk, "id", None) is not None and getattr(chunk, "content", None) is not None
-        }
-        runtime.data.kg_docs = _build_kg_injection_docs(runtime)
-        if runtime.data.kg_docs:
-            runtime.data.docs = runtime.module._merge_kg_docs_preserving_main(
-                runtime.data.docs,
-                runtime.data.kg_docs,
-            )
-            runtime.data.kg_chunks_injected = len(runtime.data.kg_docs)
     except Exception:
+        runtime.module.logger.debug("Optional KG chunk search failed", exc_info=True)
         runtime.data.kg_result_cached = None
         runtime.data.kg_chunks_injected = 0
+        return
+    runtime.data.kg_events = (runtime.data.kg_result_cached or {}).get("events") or []
+    runtime.data.max_chunks = int(runtime.data.kg_chunk_injection_max_chunks_i or 0) or 5
+    _collect_kg_chunk_candidates(runtime)
+    if not runtime.data.chunk_ids:
+        return
+    rows = runtime.module._fetch_document_chunks_for_kg_injection(**_kg_injection_fetch_kwargs(runtime))
+    runtime.data.chunk_by_id = {chunk.id: chunk for chunk in rows}
+    runtime.data.kg_docs = _build_kg_injection_docs(runtime)
+    if runtime.data.kg_docs:
+        runtime.data.docs = runtime.module._merge_kg_docs_preserving_main(
+            runtime.data.docs,
+            runtime.data.kg_docs,
+        )
+        runtime.data.kg_chunks_injected = len(runtime.data.kg_docs)
 
 
 async def boost_kg_and_select_images(runtime: StandardStreamState) -> None:
@@ -477,9 +475,9 @@ async def read_images_and_initialize_tag(runtime: StandardStreamState) -> AsyncG
                 # avoid sending raw identifiers to external vision providers.
                 runtime.data.pii_on_for_vision = bool(runtime.module.pii_redaction_enabled())
                 runtime.data.q_for_vision = (
-                    runtime.module.redact_text(runtime.data.question or "")
+                    runtime.module.redact_text(runtime.data.question)
                     if runtime.data.pii_on_for_vision
-                    else (runtime.data.question or "")
+                    else (runtime.data.question)
                 )
                 (
                     runtime.data.vision_reader_docs,

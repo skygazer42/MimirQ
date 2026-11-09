@@ -39,10 +39,10 @@ def _github_repo_listed_files_and_observed_paths(
     for item in tree_items:
         if not isinstance(item, dict):
             continue
-        if str(item.get("type") or "") != "blob":
+        if item["type"] != "blob":
             continue
 
-        path = str(item.get("path") or "").strip()
+        path = item["path"].strip()
         if not path:
             continue
         if path in tracked_paths:
@@ -50,7 +50,7 @@ def _github_repo_listed_files_and_observed_paths(
         if not _github_repo_path_is_included(path, include_set):
             continue
 
-        blob_sha = str(item.get("sha") or "").strip()
+        blob_sha = item["sha"].strip()
         if len(files) < max_files_bound:
             files.append((path, blob_sha))
 

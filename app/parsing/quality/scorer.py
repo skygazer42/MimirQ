@@ -167,7 +167,7 @@ def _count_watermark_annots(page: Any) -> int:
     for annot in annots:
         try:
             typ = getattr(annot, "type", None)
-            name = str(typ[1] or "") if isinstance(typ, (tuple, list)) and len(typ) >= 2 else ""
+            name = typ[1] if isinstance(typ, (tuple, list)) and len(typ) >= 2 else ""
             meta = getattr(annot, "info", None) or {}
             subject = str((meta or {}).get("subject") or (meta or {}).get("title") or "")
             hint = f"{name} {subject}".lower()

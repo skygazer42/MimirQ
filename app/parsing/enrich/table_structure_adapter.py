@@ -21,10 +21,16 @@ class TableStructureDetection:
         return out
 
 
+def _text_grid_cell(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def _normalize_rows(rows: Sequence[Sequence[Any]], col_count: int) -> list[list[str]]:
     out: list[list[str]] = []
     for raw in rows:
-        row = [str(cell or "").strip() for cell in list(raw)[:col_count]]
+        row = [_text_grid_cell(cell) for cell in list(raw)[:col_count]]
         row += [""] * max(0, int(col_count) - len(row))
         if any(row):
             out.append(row)
@@ -94,7 +100,7 @@ def table_extraction_from_text_grid(
     source_element_id: str | None = None,
     detections: Sequence[TableStructureDetection] | None = None,
 ) -> TableExtraction:
-    normalized_columns = [str(col or "").strip() for col in columns]
+    normalized_columns = [_text_grid_cell(col) for col in columns]
     col_count = len(normalized_columns)
     normalized_rows = _normalize_rows(rows, col_count)
     cells: list[TableCell] = []

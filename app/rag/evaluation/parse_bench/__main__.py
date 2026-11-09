@@ -43,12 +43,14 @@ def _filter_manifest_cases(manifest_path: Path, docs_arg: str) -> tuple[Path, Pa
     if not isinstance(rows, list):
         raise ValueError("manifest_invalid")
 
-    docs_raw = str(docs_arg or "").strip().lower()
+    docs_raw = docs_arg.strip().lower()
     if docs_raw in {"", "all", "*"}:
         return manifest_path.parent, manifest_path
 
     requested = {item.strip() for item in docs_raw.split(",") if item.strip()}
-    filtered = [row for row in rows if isinstance(row, dict) and str(row.get("id") or "").strip().lower() in requested]
+    filtered = [
+        row for row in rows if isinstance(row, dict) and row.get("id") is not None and str(row["id"]).strip().lower() in requested
+    ]
     if not filtered:
         raise ValueError("docs_filter_empty")
 
@@ -98,9 +100,9 @@ def run(argv: list[str] | None = None) -> int:
         "--out",
         str(out_path),
     ]
-    if str(args.baseline or "").strip():
+    if args.baseline.strip():
         bench_argv.extend(["--baseline", str(Path(args.baseline).resolve())])
-    if str(args.strict_profile or "").strip():
+    if args.strict_profile.strip():
         bench_argv.extend(["--strict-profile", str(Path(args.strict_profile).resolve())])
     if bool(args.strict):
         bench_argv.append("--strict")

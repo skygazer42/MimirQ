@@ -6,7 +6,9 @@ _EDGE_STRIP = " \t\r\n,.;:!?，。；：！？、\"'`“”‘’()（）[]【�
 
 
 def _normalize_subquery(value: Any) -> str:
-    text = str(value or "").strip().lower()
+    if value is None:
+        return ""
+    text = str(value).strip().lower()
     if not text:
         return ""
     text = _SPACE_RE.sub(" ", text)

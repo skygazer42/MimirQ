@@ -109,11 +109,15 @@ def _extract_failed_urls(stats: dict) -> list[str]:
     urls: list[str] = []
     raw_failed = stats.get("failed_urls")
     if isinstance(raw_failed, list):
-        urls = [str(url or "").strip() for url in raw_failed if str(url or "").strip()]
+        urls = [str(url).strip() for url in raw_failed if url is not None and str(url).strip()]
     if not urls:
         raw_errors = stats.get("errors")
         if isinstance(raw_errors, list):
-            urls = [str((error or {}).get("url") or "").strip() for error in raw_errors if isinstance(error, dict)]
+            urls = [
+                str(error["url"]).strip()
+                for error in raw_errors
+                if isinstance(error, dict) and error.get("url") is not None
+            ]
             urls = [url for url in urls if url]
     seen: set[str] = set()
     out: list[str] = []
@@ -263,7 +267,7 @@ async def enqueue_or_schedule_run(
     tenant_id: UUID,
     requested_by: str,
 ) -> ConnectorRunOut:
-    connector_id = str(run.connector_id or "").strip()
+    connector_id = run.connector_id.strip()
     try:
         dispatcher = _connector_run_dispatcher(connector_id)
     except HTTPException:
@@ -358,7 +362,7 @@ def _non_negative_int(value: Any) -> int:
 def _compact_string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
-    return [str(item or "").strip() for item in value if str(item or "").strip()]
+    return [str(item).strip() for item in value if item is not None and str(item).strip()]
 
 
 def _get_resumable_connector_definition(connector_id: str) -> ConnectorDefinition:
@@ -455,7 +459,9 @@ def _build_resume_run_config(
 
 
 def _normalize_doc_access_mode(value: object) -> str:
-    mode = str(value or "").strip().lower()
+    if value is None:
+        return "inherit"
+    mode = str(value).strip().lower()
     if not mode or mode == "inherit":
         return "inherit"
     return mode
@@ -610,7 +616,7 @@ async def create_run(
 
     Requires dataset write permission.
     """
-    connector_id = str(payload.connector_id or "").strip()
+    connector_id = payload.connector_id.strip()
     _validate_connector_run_enabled(connector_id)
 
     if connector_id in _DB_CATALOG_CONNECTOR_IDS:
@@ -668,7 +674,7 @@ def list_runs(
         dataset = dataset_service.get_dataset(db, tenant_id, dataset_id)
         dataset_service.assert_dataset_writable(db, dataset, account_id)
         query = query.filter(ConnectorRun.dataset_id == dataset_id)
-    elif str(getattr(member, "role", "") or "").lower() not in EDIT_ROLES:
+    elif member.role.lower() not in EDIT_ROLES:
         return {"total": 0, "items": []}
     else:
         query = query.filter(
@@ -744,7 +750,7 @@ async def retry_failed_run(
 
     run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
 
-    status = str(run.status or "").lower()
+    status = run.status.lower()
     if status in {"pending", "running"}:
         raise HTTPException(status_code=400, detail="Connector run is still active")
 
@@ -756,7 +762,7 @@ async def retry_failed_run(
         raise HTTPException(status_code=400, detail="No failed URLs to retry")
 
     base_cfg = dict(run.config or {})
-    connector_id = str(run.connector_id or "").strip()
+    connector_id = run.connector_id.strip()
     new_connector_id, new_cfg = _build_retry_failed_run_config(
         connector_id=connector_id,
         base_cfg=base_cfg,
@@ -799,13 +805,13 @@ async def resume_run(
 
     run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
 
-    status = str(run.status or "").lower()
+    status = run.status.lower()
     if status not in {"cancelled", "failed"}:
         raise HTTPException(status_code=400, detail="Connector run is not resumable")
 
     _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
 
-    connector_id = str(run.connector_id or "").strip()
+    connector_id = run.connector_id.strip()
     connector_definition = _get_resumable_connector_definition(connector_id)
     new_cfg, resume_stats = _build_resume_run_config(
         run=run,
@@ -846,7 +852,7 @@ async def cancel_run(
     run = _get_connector_run_or_404(db, run_id=run_id, tenant_id=tenant_id)
     _assert_connector_run_dataset_writable(db, run=run, tenant_id=tenant_id, account_id=account_id)
 
-    status = str(run.status or "").lower()
+    status = run.status.lower()
     if status in {"completed", "failed"}:
         return _run_out(run)
 

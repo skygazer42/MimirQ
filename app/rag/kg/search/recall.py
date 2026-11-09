@@ -79,7 +79,7 @@ class _GraphEmbeddingSettings:
 
 
 def _event_id(value: Any) -> str:
-    return str(getattr(value, "id", "") or "").strip()
+    return str(value.id).strip()
 
 
 def _scope_key(value: Any, field_name: str, *, fallback: str) -> str:
@@ -161,8 +161,8 @@ def apply_serving_layer_budget(
 
 
 def _should_bypass_serving_layer(*, mode: str, reason_codes: list[str]) -> bool:
-    reasons = {str(item or "").strip() for item in (reason_codes or []) if str(item or "").strip()}
-    if str(mode or "").strip().lower() == "drift":
+    reasons = {item.strip() for item in (reason_codes or []) if item.strip()}
+    if mode.strip().lower() == "drift":
         return True
     return bool({"global_pattern", "drift_pattern"} & reasons)
 
@@ -278,7 +278,7 @@ def _match_alias_hits(
 
 
 def _expand_query_with_alias_hits(query: str, alias_hits: list[dict[str, Any]]) -> str:
-    expanded_query = str(query or "")
+    expanded_query = query
     if not alias_hits:
         return expanded_query
     names_added = 0
@@ -309,7 +309,7 @@ def _lexical_first_event_results(
         return []
     try:
         return event_repo.search_events_lexical(
-            query=str(config.query or ""),
+            query=config.query,
             tenant_id=tenant_id,
             k=config.recall.vector_candidates,
             document_ids=config.document_ids,
@@ -389,7 +389,7 @@ def _lexical_entity_fallback(
         return
     try:
         lexical_entities = entity_repo.search_lexical(
-            query=str(config.query or ""),
+            query=config.query,
             tenant_id=tenant_id,
             k=max_entities,
             document_ids=config.document_ids,
@@ -419,9 +419,9 @@ def _graph_embedding_settings(config: SearchConfig) -> _GraphEmbeddingSettings:
         enabled = bool(settings.KG_SEARCH_GRAPH_EMBEDDINGS_ENABLED)
     return _GraphEmbeddingSettings(
         enabled=enabled,
-        max_events=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS or 200)),
-        max_entities=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES or 400)),
-        max_relations=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS or 1500)),
+        max_events=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS)),
+        max_entities=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES)),
+        max_relations=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS)),
         top_k=max(0, int(settings.KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K)),
         min_similarity=float(settings.KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY),
     )
@@ -450,7 +450,7 @@ def _graph_kept_entity_ids(
     entity_counts: dict[str, int] = {}
     for links in (assoc_map or {}).values():
         for link in links or []:
-            entity_id = str(link.entity_id or "").strip()
+            entity_id = str(link.entity_id).strip()
             if not entity_id:
                 continue
             entity_counts[entity_id] = int(entity_counts.get(entity_id, 0) or 0) + 1
@@ -501,15 +501,15 @@ def _graph_relation_edges(
     ordered_rows = sorted(
         rel_rows or [],
         key=lambda row: (
-            str(row.subject_entity_id or ""),
-            str(row.predicate or ""),
-            str(row.object_entity_id or ""),
-            str(row.id or ""),
+            str(row.subject_entity_id),
+            row.predicate,
+            str(row.object_entity_id),
+            str(row.id),
         ),
     )
     for rel in ordered_rows:
-        subject_id = str(rel.subject_entity_id or "").strip()
-        object_id = str(rel.object_entity_id or "").strip()
+        subject_id = str(rel.subject_entity_id).strip()
+        object_id = str(rel.object_entity_id).strip()
         if not subject_id or not object_id:
             continue
         if subject_id not in kept_entity_ids or object_id not in kept_entity_ids:
@@ -527,7 +527,7 @@ def _graph_candidate_hits(
     hit_seed_by_entity: dict[str, str] = {}
     hit_sim_by_entity: dict[str, float] = {}
     for hit in hits or []:
-        node_key = str(hit.get("node_key") or "")
+        node_key = hit["node_key"]
         seed_key = str(hit.get("seed_node_key") or "")
         if not node_key.startswith("ent:"):
             continue
@@ -560,7 +560,7 @@ def _append_graph_entities(
     if not candidate_entity_ids:
         return
     ents = entity_repo.get_entities_by_ids(candidate_entity_ids, tenant_id=tenant_uuid)
-    ent_by_id = {str(entity.id or ""): entity for entity in (ents or [])}
+    ent_by_id = {str(entity.id): entity for entity in (ents or [])}
     for entity_id in candidate_entity_ids:
         if entity_id in existing_ids:
             continue
@@ -570,7 +570,7 @@ def _append_graph_entities(
         similarity = float(hit_sim_by_entity.get(entity_id, 0.0) or 0.0)
         ent_dict = {
             "entity_id": str(entity_id),
-            "name": str(obj.name or ""),
+            "name": obj.name,
             "type": str(obj.type or "unknown"),
             "similarity": similarity,
             "tenant_id": str(tenant_id),
@@ -578,7 +578,7 @@ def _append_graph_entities(
         }
         raw_entities.append(ent_dict)
         existing_ids.add(str(entity_id))
-        seed_id = str(hit_seed_by_entity.get(entity_id, "") or "").strip()
+        seed_id = hit_seed_by_entity.get(entity_id, "").strip()
         if not seed_id:
             continue
         tracker.add_clue(
@@ -850,9 +850,9 @@ def _record_relation_clue(
             "evidence_source": evidence_source,
             "confidence_bucket": bucket,
             "relation_id": str(rel.id),
-            "relation_document_id": str(rel.document_id or "") or None,
-            "relation_chunk_id": str(rel.chunk_id or "") or None,
-            "relation_event_id": str(rel.event_id or "") or None,
+            "relation_document_id": str(rel.document_id) if rel.document_id is not None else None,
+            "relation_chunk_id": str(rel.chunk_id) if rel.chunk_id is not None else None,
+            "relation_event_id": str(rel.event_id) if rel.event_id is not None else None,
             "step": "step1.5",
         },
     )
@@ -996,7 +996,7 @@ def _content_results(
         return content_results
     try:
         return event_repo.search_events_lexical(
-            query=str(config.query or ""),
+            query=config.query,
             tenant_id=tenant_id,
             k=config.recall.vector_candidates,
             document_ids=config.document_ids,
@@ -1201,11 +1201,11 @@ async def recall(config: SearchConfig) -> RecallResult:
         limits = _build_recall_limits(config)
         alias_hits = _match_alias_hits(
             alias_repo,
-            query=str(config.query or ""),
+            query=config.query,
             tenant_id=tenant_id,
             max_entities=limits.max_entities,
         )
-        expanded_query = _expand_query_with_alias_hits(str(config.query or ""), alias_hits)
+        expanded_query = _expand_query_with_alias_hits(config.query, alias_hits)
         lexical_first_event_results = _lexical_first_event_results(
             event_repo,
             config=config,

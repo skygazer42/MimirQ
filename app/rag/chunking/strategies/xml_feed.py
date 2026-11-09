@@ -36,16 +36,16 @@ _TAG_STRIP_RE = re.compile(r"(?is)<[^>]+>")
 
 
 def _clean_text(s: str) -> str:
-    out = _TAG_STRIP_RE.sub("", s or "")
+    out = _TAG_STRIP_RE.sub("", s)
     out = _html.unescape(out)
     return re.sub(r"\s+", " ", out).strip()
 
 
 def _extract_title(block_text: str) -> str | None:
-    m = _TITLE_RE.search(block_text or "")
+    m = _TITLE_RE.search(block_text)
     if not m:
         return None
-    title = _clean_text(m.group("body") or "")
+    title = _clean_text(m.group("body"))
     return title[:200] or None
 
 
@@ -132,7 +132,7 @@ class XMLFeedChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

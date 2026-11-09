@@ -138,11 +138,11 @@ class BaseAdvancedParser(ABC):
         return callback
 
     def _positions_from_tag(self, tag: str) -> list[tuple[int, float, float, float, float]]:
-        match = _POSITION_TAG_RE.search(tag or "")
+        match = _POSITION_TAG_RE.search(tag)
         if not match:
             return []
 
-        page_tokens = [p for p in str(match.group(1) or "").split("-") if p.strip()]
+        page_tokens = [p for p in match.group(1).split("-") if p.strip()]
         left = float(match.group(2))
         right = float(match.group(3))
         top = float(match.group(4))
@@ -246,7 +246,7 @@ class BaseAdvancedParser(ABC):
             if image_obj is None:
                 return
 
-            content = (table_content or "").strip() or "image"
+            content = (table_content).strip() or "image"
             if len(content) > 900:
                 content = content[:900].rstrip() + "..."
             meta = {

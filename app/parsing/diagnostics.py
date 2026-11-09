@@ -59,7 +59,7 @@ def sample_pdf_text_pages(
         for page_no in idxs:
             try:
                 page = doc.load_page(page_no - 1)
-                txt = (page.get_text("text") or "").strip()
+                txt = (page.get_text("text")).strip()
             except Exception:
                 txt = ""
 
@@ -129,7 +129,7 @@ def suggest_parser_backends(
     """
     Suggest a small ordered list of parser backends for user retry actions.
     """
-    file_ext0 = str(file_ext or "").strip().lower()
+    file_ext0 = file_ext.strip().lower()
     available = _filter_available_backends(file_ext0, parser_factory=parser_factory)
 
     if file_ext0 == ".pdf" and pdf_is_scanned is True:
@@ -160,22 +160,22 @@ def build_parse_failure_diagnostics(
     file_ext: str,
     parser_backend_requested: str,
     parser_backend_resolved: str,
-    error_type: str,
+    error_type: str | None,
     error_message: str,
 ) -> dict[str, Any]:
     """
     Build a structured diagnostics payload for parse failures (best-effort).
     """
-    ext = str(file_ext or "").strip().lower()
-    requested = str(parser_backend_requested or "").strip().lower() or "auto"
-    resolved = str(parser_backend_resolved or "").strip().lower() or requested
+    ext = file_ext.strip().lower()
+    requested = parser_backend_requested.strip().lower() or "auto"
+    resolved = parser_backend_resolved.strip().lower() or requested
 
     diag: dict[str, Any] = {
         "file_type": ext,
         "parser_backend_requested": requested,
         "parser_backend": resolved,
-        "error_type": str(error_type or ""),
-        "error_message": str(error_message or "")[:400],
+        "error_type": error_type,
+        "error_message": error_message[:400],
     }
 
     parser_factory = ParserFactory()

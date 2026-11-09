@@ -37,11 +37,17 @@ class WatermarkRemovalResult:
 
 
 def _text_value(element: Mapping[str, Any]) -> str:
-    return str(element.get("text") or element.get("element_text") or "").strip()
+    value = element.get("text")
+    if value is None:
+        value = element.get("element_text")
+    return str(value).strip() if value is not None else ""
 
 
-def _kind_value(element: Mapping[str, Any]) -> str:
-    return str(element.get("kind") or element.get("element_kind") or "").strip().lower()
+def _kind_value(element: Mapping[str, Any]) -> str | None:
+    kind = element.get("kind")
+    if kind is None:
+        kind = element.get("element_kind")
+    return kind.strip().lower() if isinstance(kind, str) else None
 
 
 def _page_value(element: Mapping[str, Any]) -> int | None:
@@ -114,8 +120,8 @@ def _is_known_export_noise(text: str) -> bool:
     return classify_document_noise_text(text) is not None
 
 
-def _is_removable_kind(kind: str) -> bool:
-    return kind.strip().lower() not in {"table", "equation", "formula", "seal"}
+def _is_removable_kind(kind: str | None) -> bool:
+    return kind is None or kind.strip().lower() not in {"table", "equation", "formula", "seal"}
 
 
 def _repeated_overlay_key(

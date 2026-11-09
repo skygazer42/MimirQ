@@ -28,7 +28,9 @@ class RerankerCapabilities(TypedDict):
 
 def describe_reranker_provider(provider: str | None, **kwargs: Any) -> RerankerDescription:
     normalized = str((provider if provider is not None else "")).strip().lower() or "openai"
-    provider_name = str(kwargs.get("provider_name") or "").strip().lower()
+    provider_name = kwargs.get("provider_name")
+    if provider_name is not None:
+        provider_name = provider_name.strip().lower()
     if not provider_name:
         provider_name = None
     family = get_reranker_provider_family(normalized)

@@ -42,14 +42,14 @@ def _profile_identity(profile: GovernanceProfileOut) -> str:
     # Custom profiles have id; builtins do not. key is always present.
     if profile.id:
         return str(profile.id)
-    return str(profile.key or "")
+    return profile.key
 
 
 def _summary(profile: GovernanceProfileOut) -> GovernanceProfileSummary:
     return GovernanceProfileSummary(
         id=profile.id,
-        key=str(profile.key or ""),
-        name=str(profile.name or ""),
+        key=profile.key,
+        name=profile.name,
         description=profile.description,
         is_system=bool(profile.is_system),
     )
@@ -72,7 +72,9 @@ def _resolve_profile_chain(
         seen.add(ident)
         chain_leaf_to_root.append(current)
 
-        parent_ref = str(current.payload.extends or "").strip()
+        parent_ref = current.payload.extends
+        if parent_ref is not None:
+            parent_ref = parent_ref.strip()
         if not parent_ref:
             return list(reversed(chain_leaf_to_root))
         current = fetch_by_ref(parent_ref)
@@ -88,7 +90,7 @@ def _merge_profile_payload(chain: list[GovernanceProfileOut]) -> GovernanceProfi
 
     for profile in chain:
         for fmt in profile.payload.input_formats or []:
-            value = str(fmt or "").strip().lower()
+            value = fmt.strip().lower()
             if value in {"markdown", "html"} and value not in input_formats:
                 input_formats.append(value)
 
@@ -145,7 +147,7 @@ def _load_governance_profile_ref(
     tenant_id: UUID,
     profile_ref: str,
 ) -> GovernanceProfileOut:
-    ref = str(profile_ref or "").strip()
+    ref = profile_ref.strip()
     if not ref:
         raise ValueError("profile_ref is required")
 
@@ -176,8 +178,8 @@ def _load_governance_profile_ref(
     try:
         return GovernanceProfileOut(
             id=row.id,
-            key=(str(row.key or "").strip() or f"custom:{str(row.id)}"),
-            name=str(row.name or ""),
+            key=row.key.strip() or f"custom:{str(row.id)}",
+            name=row.name,
             description=row.description,
             is_system=bool(row.is_system),
             payload=payload_raw,  # pydantic validates nested payload

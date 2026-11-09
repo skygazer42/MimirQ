@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.qa import DocumentQAGenerateRequest, DocumentQAGenerateResponse, QAPairPreview
 from app.core.config import settings
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.core.openai_compat import normalize_openai_compatible_base_url
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk, DocumentParsedContent
@@ -114,7 +115,7 @@ def extract_qa_pairs_from_text(text: str, *, max_pairs: int) -> list[QAPair]:
       Q: ...
       A: ...
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw or max_pairs <= 0:
         return []
 
@@ -233,11 +234,11 @@ Return JSON:
 }}"""
 
     llm = ChatOpenAI(
-        model=(settings.LLM_MODEL_FAST or settings.LLM_MODEL),
+        model=settings.LLM_MODEL_FAST or settings.LLM_MODEL,
         api_key=settings.LLM_API_KEY,
         base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=0.2,
-        timeout=int(settings.LLM_TIMEOUT or 60),
+        timeout=int(settings.LLM_TIMEOUT),
     )
     parser = JsonOutputParser()
     prompt = PromptTemplate(template=prompt_text, input_variables=["text", "num_pairs"])
@@ -256,16 +257,20 @@ Return JSON:
             break
         if not isinstance(item, dict):
             continue
-        q = str(item.get("question") or "").strip()
-        a = str(item.get("answer") or "").strip()
+        q = item.get("question")
+        a = item.get("answer")
+        if not isinstance(q, str) or not isinstance(a, str):
+            continue
+        q = q.strip()
+        a = a.strip()
         if not q or not a:
             continue
         pairs.append(QAPair(question=q, answer=a))
     return pairs
 
 
-def _active_pipeline_hash(doc_meta: dict[str, Any]) -> str:
-    return str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()
+def _active_pipeline_hash(doc_meta: dict[str, Any]) -> str | None:
+    return get_active_pipeline_hash(doc_meta)
 
 
 def _active_doc_pipeline_key(document_id: UUID, doc_meta: dict[str, Any]) -> str:
@@ -290,8 +295,8 @@ def _get_source_text(db: Session, *, tenant_id: UUID, document_id: UUID, max_cha
         .filter(DocumentParsedContent.tenant_id == tenant_id, DocumentParsedContent.document_id == document_id)
         .first()
     )
-    if row and (row.markdown_content or "").strip():
-        return str(row.markdown_content or "")[:max_chars_eff]
+    if row and row.markdown_content.strip():
+        return row.markdown_content[:max_chars_eff]
 
     # Fallback: assemble from chunks (best-effort).
     chunks = (
@@ -304,7 +309,7 @@ def _get_source_text(db: Session, *, tenant_id: UUID, document_id: UUID, max_cha
     buf: list[str] = []
     total = 0
     for (content,) in chunks:
-        s = (content or "").strip()
+        s = content.strip()
         if not s:
             continue
         remaining = max_chars_eff - total
@@ -492,9 +497,11 @@ def _collect_active_qa_chunk_ids(
     qa_ids: list[UUID] = []
     for chunk_id, meta in rows:
         data = meta if isinstance(meta, dict) else {}
-        if str(data.get("doc_pipeline_key") or "").strip() != active_key:
+        pipeline_key = data.get("doc_pipeline_key")
+        if pipeline_key is None or pipeline_key.strip() != active_key:
             continue
-        if str(data.get("file_type") or "").strip().lower() != "qa":
+        file_type = data.get("file_type")
+        if file_type is None or file_type.strip().lower() != "qa":
             continue
         qa_ids.append(UUID(str(chunk_id)))
     return qa_ids
@@ -584,7 +591,7 @@ def _log_delete_errors(
             "delete_failed",
             "check vector backend health/permissions; stale vectors may remain",
             vector_delete_errors,
-            vector_delete_first_error or "",
+            vector_delete_first_error,
         )
 
     bm25_delete_errors, bm25_delete_first_error = bm25_errors
@@ -596,7 +603,7 @@ def _log_delete_errors(
             "delete_failed",
             "check BM25 index backend; stale keywords may remain",
             bm25_delete_errors,
-            bm25_delete_first_error or "",
+            bm25_delete_first_error,
         )
 
 
@@ -729,7 +736,7 @@ def _persist_qa_chunks(
             tenant_id=tenant_id,
             document_id=document_id,
             chunk_index=int(chunk_metas[index].get("chunk_index") or index),
-            content=str(records[index].get("content") or ""),
+            content=records[index]["content"],
             page_number=None,
             start_char=None,
             end_char=None,

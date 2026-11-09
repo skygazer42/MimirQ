@@ -91,7 +91,7 @@ def _find_dify_trace_conversation(
 def _conversation_owner_matches_account(conversation: Conversation | None, *, account_id: str) -> bool:
     if conversation is None:
         return False
-    owner_account_id = str(conversation.owner_account_id or "").strip()
+    owner_account_id = conversation.owner_account_id
     return bool(owner_account_id) and owner_account_id == account_id
 
 
@@ -126,7 +126,9 @@ def _ensure_dify_trace_conversation_accessible(
         raise HTTPException(status_code=404, detail="Conversation not found")
     if not _conversation_owner_matches_account(conversation, account_id=account_id):
         raise HTTPException(status_code=403, detail="Conversation is not accessible")
-    expected_source_id = str(source_conversation_id or "").strip()
+    expected_source_id = source_conversation_id
+    if expected_source_id is not None:
+        expected_source_id = expected_source_id.strip()
     if expected_source_id:
         bound_conversation_id = _find_dify_trace_conversation(
             db,
@@ -568,7 +570,7 @@ def _log_dify_result_rag_trace(
 ) -> None:
     if conversation_id is None:
         return
-    final_answer = str(answer or "")
+    final_answer = answer
     safe_citations = [item for item in citations if isinstance(item, dict)]
     log_metrics(
         {

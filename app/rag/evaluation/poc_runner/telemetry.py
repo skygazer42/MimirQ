@@ -32,7 +32,9 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
 
 
 def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -43,7 +45,7 @@ def _coerce_datetime(value: Any) -> datetime | None:
         return None
     if isinstance(value, datetime):
         return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
-    text = str(value or "").strip()
+    text = str(value).strip()
     if not text:
         return None
     if text.endswith("Z"):

@@ -64,7 +64,7 @@ def upsert_pipeline_provenance_version(
     - Best-effort cap by `created_at` (ISO string) to keep metadata bounded.
     """
     base = dict((meta if meta is not None else {}))
-    ph = str(pipeline_hash or "").strip()
+    ph = pipeline_hash.strip()
     if not ph:
         return base
 

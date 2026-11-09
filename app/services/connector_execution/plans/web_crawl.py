@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.services.connector_execution.shared.common import _optional_source_text
 import hashlib
 import re
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
@@ -36,28 +37,28 @@ def _web_crawl_content_fingerprint(
     body_sha256: str | None = None,
     crawl_sync_token: str | None = None,
 ) -> str:
-    token = str(crawl_sync_token or "").strip()
+    token = _optional_source_text(crawl_sync_token)
     if token:
         return token[:1000]
 
     parts: list[str] = []
-    etag_s = str(etag or "").strip()
+    etag_s = _optional_source_text(etag)
     if etag_s:
         parts.append(f"etag:{etag_s[:500]}")
-    lm_s = str(last_modified or "").strip()
+    lm_s = _optional_source_text(last_modified)
     if lm_s:
         parts.append(f"last_modified:{lm_s[:100]}")
-    body_s = str(body_sha256 or "").strip().lower()
+    body_s = _optional_source_text(body_sha256, lower=True)
     if body_s and re.fullmatch(r"[a-f0-9]{64}", body_s):
         parts.append(f"body_sha256:{body_s}")
     if parts:
         return "|".join(parts)
 
-    return f"{URL_SHA256_PREFIX}{hashlib.sha256(str(url or '').encode('utf-8', 'ignore')).hexdigest()}"
+    return f"{URL_SHA256_PREFIX}{hashlib.sha256(url.encode('utf-8', 'ignore')).hexdigest()}"
 
 
 def _web_crawl_token_is_content_aware(token: str | None) -> bool:
-    raw = str(token or "").strip()
+    raw = _optional_source_text(token)
     if not raw:
         return False
     markers = ("etag:", "last_modified:", "body_sha256:", URL_SHA256_PREFIX, "content_type:")
@@ -65,8 +66,8 @@ def _web_crawl_token_is_content_aware(token: str | None) -> bool:
 
 
 def _web_crawl_manifest_token_changed(*, existing_token: str | None, discovered_token: str | None) -> bool:
-    existing = str(existing_token or "").strip()
-    discovered = str(discovered_token or "").strip()
+    existing = _optional_source_text(existing_token)
+    discovered = _optional_source_text(discovered_token)
     if not existing:
         return True
     if not discovered:
@@ -81,15 +82,15 @@ def _web_crawl_manifest_token_changed(*, existing_token: str | None, discovered_
 
 
 def _web_crawl_extract_token_part(token: str | None, *, key: str) -> str | None:
-    raw = str(token or "").strip()
-    key_norm = str(key or "").strip()
+    raw = _optional_source_text(token)
+    key_norm = key.strip()
     if not raw or not key_norm:
         return None
     pat = re.compile(rf"(?:^|\|){re.escape(key_norm)}:([^|]+)")
     match = pat.search(raw)
     if not match:
         return None
-    out = str(match.group(1) or "").strip()
+    out = match.group(1).strip()
     return out or None
 
 
@@ -109,7 +110,7 @@ def _web_crawl_build_doc_sync_token(*, source_url: str, doc: Document, crawl_tok
     )
 
     if token.startswith(URL_SHA256_PREFIX) and _web_crawl_token_is_content_aware(crawl_token):
-        token = str(crawl_token or "").strip() or token
+        token = _optional_source_text(crawl_token) or token
 
     ct = _web_crawl_extract_token_part(crawl_token, key="content_type")
     if ct and "content_type:" not in token:
@@ -122,7 +123,7 @@ def _web_crawl_source_manifest(urls: list[str], *, sync_tokens: dict[str, str] |
     out: dict[str, str] = {}
     token_map = sync_tokens if isinstance(sync_tokens, dict) else {}
     for raw in urls or []:
-        url = str(raw or "").strip()
+        url = raw.strip()
         if not url or url in out:
             continue
         out[url] = _web_crawl_content_fingerprint(
@@ -141,7 +142,7 @@ def _build_web_crawl_execution_plan(
 ) -> WebCrawlExecutionPlan:
     existing_manifest = normalize_source_manifest(state.get("source_manifest"))
     discovered_manifest = _web_crawl_source_manifest(
-        [str(url or "").strip() for url in crawl_urls or [] if str(url or "").strip()],
+        [url.strip() for url in crawl_urls or [] if url.strip()],
         sync_tokens={str(key): str(value) for key, value in crawl_sync_tokens.items()},
     )
     discovered_urls = list(discovered_manifest.keys())

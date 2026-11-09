@@ -62,7 +62,7 @@ def _sanitize_preview_value(value: Any) -> Any:
 def _should_inline_preview_parse(file_ext: str) -> bool:
     if not settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED:
         return False
-    ext = (file_ext or "").strip().lower()
+    ext = (file_ext).strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
 
 
@@ -72,7 +72,7 @@ def _serialize_inline_preview_documents(documents: list[Document]) -> list[dict[
         metadata = doc.metadata or {}
         out.append(
             {
-                "page_content": _strip_preview_nul_chars(doc.page_content or ""),
+                "page_content": _strip_preview_nul_chars(doc.page_content),
                 "metadata": _sanitize_preview_value(metadata),
                 "id": doc.id,
             }
@@ -94,8 +94,8 @@ def _parse_inline_text_preview(
         document_id=uuid.uuid4().hex,
     )
     provenance = dict(provenance)
-    provenance.setdefault("payload_requested_backend", requested_backend or "")
-    provenance.setdefault("effective_backend", resolved_backend or "")
+    provenance.setdefault("payload_requested_backend", requested_backend)
+    provenance.setdefault("effective_backend", resolved_backend)
     provenance.setdefault("execution_mode", "inline_document_preview")
     return {
         "resolved_backend": inline_backend,
@@ -143,7 +143,7 @@ async def _parse_preview_payload(
             "mode": "preview",
         },
         disconnect_check=request.is_disconnected,
-        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
     )
 
 
@@ -154,7 +154,7 @@ def _materialize_preview_documents(
 ) -> tuple[list[Document], str, dict[str, Any] | None, set[str]]:
     documents = [
         Document(
-            page_content=str(item.get("page_content") or ""),
+            page_content=item["page_content"],
             metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
             id=item.get("id") if isinstance(item.get("id"), str) else None,
         )
@@ -166,7 +166,7 @@ def _materialize_preview_documents(
         artifact_dir = (doc.metadata or {}).get("artifact_dir")
         if isinstance(artifact_dir, str) and artifact_dir.strip():
             artifact_dirs.add(artifact_dir.strip())
-    resolved_backend = str(parsed.get("resolved_backend") or parser_backend)
+    resolved_backend = parsed["resolved_backend"]
     pdf_quality = parsed.get("pdf_quality") if isinstance(parsed.get("pdf_quality"), dict) else None
     return documents, resolved_backend, pdf_quality, artifact_dirs
 
@@ -213,7 +213,7 @@ def _compute_preview_analytics(
     pdf_quality: dict[str, Any] | None,
     pipeline_effective: PipelineEffective,
 ) -> dict[str, Any]:
-    markdown = "\n\n".join(d.page_content or "" for d in documents)
+    markdown = "\n\n".join(d.page_content for d in documents)
     return compute_document_analytics(
         markdown=markdown,
         documents=documents,
@@ -274,7 +274,7 @@ def _raise_preview_http_exception(exc: Exception) -> NoReturn:
         if err_type in {"ValueError", "RetiredModelProviderError"}:
             raise HTTPException(status_code=400, detail=f"Invalid input: {str(exc)[:100]}") from exc
         logger.error("Subprocess worker failed during preview: %s", str(exc)[:200])
-        msg = (str(exc) or "").strip()
+        msg = (str(exc)).strip()
         if not msg:
             details = exc.details or {}
             msg = str(details.get("message") or details.get("type") or exc.__class__.__name__).strip()
@@ -289,7 +289,7 @@ def _raise_preview_http_exception(exc: Exception) -> NoReturn:
     if isinstance(exc, HTTPException):
         raise exc
     logger.error("Unexpected error during document preview: %s", str(exc)[:200])
-    msg = (str(exc) or "").strip() or exc.__class__.__name__
+    msg = (str(exc)).strip() or exc.__class__.__name__
     msg = msg[:200]
     detail = "Failed to parse document" if is_production_env() else f"Failed to parse document: {msg}"
     raise HTTPException(status_code=500, detail=detail) from exc

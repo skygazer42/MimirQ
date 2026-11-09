@@ -12,7 +12,7 @@ def _positive_weight(value: Any) -> float | None:
 def _normalized_edges(src_id: str, edges: dict[str, float] | None) -> dict[str, float]:
     out: dict[str, float] = {}
     for dst, weight in (edges or {}).items():
-        dst_id = str(dst or "").strip()
+        dst_id = dst.strip()
         edge_weight = _positive_weight(weight)
         if dst_id and dst_id != src_id and edge_weight is not None:
             out[dst_id] = edge_weight
@@ -22,7 +22,7 @@ def _normalized_edges(src_id: str, edges: dict[str, float] | None) -> dict[str, 
 def _normalize_graph(graph: dict[str, dict[str, float]] | None) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
     for src, edges in (graph or {}).items():
-        src_id = str(src or "").strip()
+        src_id = src.strip()
         if src_id:
             out[src_id] = _normalized_edges(src_id, edges)
     return out

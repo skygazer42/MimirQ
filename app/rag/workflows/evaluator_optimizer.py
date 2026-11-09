@@ -143,7 +143,7 @@ class EvaluatorOptimizerWorkflow(BaseWorkflow):
         if contexts:
             context_parts = []
             for i, ctx in enumerate(contexts[:5], 1):
-                content = ctx.get("content", "")[:1000]
+                content = ctx["content"][:1000]
                 context_parts.append(f"[{i}] {content}")
             context_text = "\n".join(context_parts)
 
@@ -206,7 +206,7 @@ Feedback: [specific feedback for improvement]"""
             score += 0.2
         if len(answer) > 200:
             score += 0.1
-        if any(c.get("content", "")[:100].lower() in answer.lower() for c in contexts[:3]):
+        if any(c["content"] and c["content"][:100].lower() in answer.lower() for c in contexts[:3]):
             score += 0.2
         return EvaluationResult(min(score, 1.0), "Heuristic evaluation")
 
@@ -214,7 +214,7 @@ Feedback: [specific feedback for improvement]"""
     def _evaluation_context_text(contexts: list[dict[str, Any]]) -> str:
         if not contexts:
             return "No context"
-        return "\n".join(ctx.get("content", "")[:500] for ctx in contexts[:3])
+        return "\n".join(ctx["content"][:500] for ctx in contexts[:3])
 
     @staticmethod
     def _parse_evaluation_response(content: str) -> EvaluationResult:
@@ -412,9 +412,9 @@ def create_ragas_evaluator(
         if dataset_cls is None or evaluate is None or answer_relevancy is None or faithfulness is None:
             raise RuntimeError("RAGAS evaluator dependencies are missing required exports")
 
+        context_texts = [ctx["content"] for ctx in contexts]
         try:
             # Prepare data
-            context_texts = [ctx.get("content", "") for ctx in contexts]
 
             data = {
                 "question": [question],

@@ -35,9 +35,6 @@ def normalize_text(
 
     This is intentionally conservative and does not attempt semantic rewriting.
     """
-    if not isinstance(text, str) or not text:
-        return ""
-
     out = text
 
     if normalize_line_endings:

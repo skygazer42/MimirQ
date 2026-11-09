@@ -41,7 +41,7 @@ _TAG_STRIP_RE = re.compile(r"(?is)<[^>]+>")
 
 
 def _clean_heading_text(raw_html: str) -> str:
-    s = _TAG_STRIP_RE.sub("", raw_html or "")
+    s = _TAG_STRIP_RE.sub("", raw_html)
     s = _html.unescape(s)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -57,7 +57,7 @@ def _iter_headings(text: str) -> list[HtmlHeading]:
         except Exception:
             get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
             continue
-        title = _clean_heading_text(m.group("body") or "")
+        title = _clean_heading_text(m.group("body"))
         headings.append(
             HtmlHeading(
                 start=m.start(),
@@ -156,7 +156,7 @@ class HTMLSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

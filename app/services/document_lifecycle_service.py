@@ -94,7 +94,7 @@ def _build_lifecycle_audit_details(
         "changed_fields": changed_fields[:50],
     }
     if "lifecycle_owner" in fields_set:
-        owner = str(after.get("lifecycle_owner") or "")
+        owner = after.get("lifecycle_owner")
         details["lifecycle_owner_hash"] = stable_hash(owner, length=16) if owner else None
     if "review_due_at" in fields_set:
         review_due_at = after.get("review_due_at")
@@ -214,12 +214,16 @@ def _is_uploaded_only_pending_document(document: DBDocument) -> bool:
 
     meta = document.doc_metadata
     meta = meta if isinstance(meta, dict) else {}
-    if str(meta.get("ingest_stage") or "").strip() != "uploaded_only":
+    ingest_stage = meta.get("ingest_stage")
+    if ingest_stage is None or ingest_stage.strip() != "uploaded_only":
         return False
-    if str(meta.get("task_id") or "").strip():
+    task_id = meta.get("task_id")
+    if task_id is not None and task_id.strip():
         return False
 
-    current_stage = (document.current_stage or "").strip().lower()
+    current_stage = document.current_stage
+    if current_stage is not None:
+        current_stage = current_stage.strip().lower()
     if current_stage and current_stage not in {"uploaded_only", "registered"}:
         return False
 
@@ -239,10 +243,14 @@ def _is_idle_pending_document(document: DBDocument) -> bool:
 
     meta = document.doc_metadata
     meta = meta if isinstance(meta, dict) else {}
-    if str(meta.get("task_id") or "").strip() or str(meta.get("kg_task_id") or "").strip():
-        return False
+    for field in ("task_id", "kg_task_id"):
+        task_id = meta.get(field)
+        if task_id is not None and task_id.strip():
+            return False
 
-    current_stage = (document.current_stage or "").strip().lower()
+    current_stage = document.current_stage
+    if current_stage is not None:
+        current_stage = current_stage.strip().lower()
     if current_stage and current_stage not in {"uploaded_only", "registered"}:
         return False
 
@@ -293,7 +301,7 @@ def _assert_document_delete_permission(
 
 
 def _cancel_processing_document(db: Session, document: DBDocument) -> None:
-    if str(document.status or "").lower() not in {"pending", "processing"}:
+    if document.status.lower() not in {"pending", "processing"}:
         return
     doc_meta = dict(document.doc_metadata or {})
     doc_meta["cancel_requested"] = True
@@ -399,7 +407,7 @@ def _delete_document_minio_images(db: Session, *, tenant_id: UUID, document_id: 
 
 
 def _delete_document_table_store(*, tenant_id: UUID, document_id: UUID, document: DBDocument) -> None:
-    if document.dataset_id is None or str(document.file_type or "").lower() not in {"csv", "xls", "xlsx"}:
+    if document.dataset_id is None or document.file_type.lower() not in {"csv", "xls", "xlsx"}:
         return
     from app.services.table_store import table_store_path
 
@@ -453,7 +461,7 @@ def _delete_local_document_file(*, raw_path: str, tenant_id: UUID) -> None:
 
 
 def _delete_document_file(*, tenant_id: UUID, document: DBDocument) -> None:
-    raw_path = str(document.file_path or "").strip()
+    raw_path = document.file_path.strip()
     if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         return
     if is_object_storage_uri(raw_path):

@@ -184,7 +184,7 @@ def _existing_source_message_ids(
         )
         .all()
     )
-    return {str(source_id).strip() for (source_id,) in rows if str(source_id or "").strip()}
+    return {str(source_id).strip() for (source_id,) in rows if source_id is not None and str(source_id).strip()}
 
 
 def _external_message_metadata(
@@ -302,9 +302,9 @@ def _normalize_mimirq_citation(value: Any) -> dict[str, Any] | None:
     metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
     document_id = _normalize_uuid_text(value.get("document_id") or metadata.get("document_id"))
     chunk_id = _normalize_uuid_text(value.get("chunk_id") or metadata.get("chunk_id"))
-    chunk_content = str(
-        _first_non_empty(value, _CITATION_CONTENT_KEYS) or _first_non_empty(metadata, _CITATION_CONTENT_KEYS) or ""
-    ).strip()
+    chunk_content = _first_non_empty(value, _CITATION_CONTENT_KEYS) or _first_non_empty(metadata, _CITATION_CONTENT_KEYS)
+    if chunk_content is not None:
+        chunk_content = chunk_content.strip()
 
     if not document_id or not chunk_id or not chunk_content:
         return None

@@ -123,7 +123,7 @@ def _coerce_preprocess_step(item: object, *, idx: int) -> IngestionPreprocessSte
 
 
 def _normalized_step_id(step: IngestionPreprocessStep, *, idx: int) -> str:
-    sid = str(step.id or "").strip().lower()
+    sid = step.id.strip().lower()
     if not sid:
         raise ValueError(f"preprocess step id is required at index={idx}")
     if sid not in ALLOWED_PREPROCESS_STEP_IDS:
@@ -193,7 +193,7 @@ def _normalize_governance_profile_ref(value: Any) -> str | None:
 def _normalize_rule(rule: IngestionRule | dict[str, Any] | object, *, idx: int, seen_ids: set[str]) -> IngestionRule:
     rule = _coerce_rule(rule, idx=idx)
 
-    rid = str(rule.id or "").strip()
+    rid = rule.id.strip()
     if not rid:
         raise ValueError(f"rule.id is required at index={idx}")
     if not RULE_ID_RE.match(rid):
@@ -202,7 +202,7 @@ def _normalize_rule(rule: IngestionRule | dict[str, Any] | object, *, idx: int, 
         raise ValueError(f"duplicate rule.id: {rid}")
     seen_ids.add(rid)
 
-    name = str(rule.name or "").strip()
+    name = rule.name.strip()
     if not name:
         raise ValueError(f"rule.name is required at index={idx}")
 
@@ -234,7 +234,7 @@ def validate_and_normalize_ingestion_policy(policy: IngestionPolicy) -> Ingestio
 
     Raises ValueError on invalid input.
     """
-    if str(policy.version or "").strip() not in {"1"}:
+    if policy.version.strip() not in {"1"}:
         raise ValueError("unsupported ingestion policy version")
 
     rules_in = policy.rules or []
@@ -283,10 +283,10 @@ def validate_ingestion_policy_execution(policy: IngestionPolicy) -> None:
 def match_ingestion_rule(policy: IngestionPolicy | None, *, filename: str, file_ext: str) -> IngestionRule | None:
     if policy is None:
         return None
-    ext = (file_ext or "").strip().lower()
+    ext = (file_ext).strip().lower()
     if ext and not ext.startswith("."):
         ext = "." + ext
-    fn = str(filename or "")
+    fn = filename
     for rule in policy.rules or []:
         if not bool(rule.enabled):
             continue

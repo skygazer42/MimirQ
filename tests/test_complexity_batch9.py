@@ -649,7 +649,9 @@ async def test_multi_agent_stream_builds_fallback_citations_from_preferred_docs(
 
     monkeypatch.setattr(runner, "_decompose", _decompose)
     monkeypatch.setattr(runner, "_run_sub_agent", _run_sub_agent)
-    monkeypatch.setattr(multi_agent, "build_rag_state", lambda **kwargs: dict(kwargs), raising=True)
+    monkeypatch.setattr(
+        multi_agent, "build_rag_state", lambda **kwargs: {**kwargs, "format_instructions": ""}, raising=True
+    )
     monkeypatch.setattr(multi_agent, "_build_history_text", lambda history: f"history:{len(history)}", raising=True)
     monkeypatch.setattr(multi_agent, "_build_context", lambda docs, **_k: f"context:{len(docs)}", raising=True)
     monkeypatch.setattr(multi_agent, "build_citations_from_docs", _build_citations_from_docs, raising=True)

@@ -22,7 +22,9 @@ def _safe_uuid_text(value: Any) -> str | None:
 
 
 def _safe_text(value: Any, *, max_len: int = 2000) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]

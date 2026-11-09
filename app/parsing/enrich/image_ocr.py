@@ -95,7 +95,7 @@ def _ocr_text_for_image(
         return None, 1, 0
 
     try:
-        text = str(ocr_image(image, _max_chars=int(max_ocr_chars or 0)) or "").strip()
+        text = ocr_image(image, _max_chars=int(max_ocr_chars or 0)).strip()
     finally:
         try:
             image.close()

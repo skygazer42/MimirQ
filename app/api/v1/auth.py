@@ -75,7 +75,7 @@ def _require_initial_registration_token(*, db: Session, bootstrap_token: str | N
         return
     if get_default_tenant_member_count(db, default_tenant_id=settings.DEFAULT_TENANT_ID) != 0:
         return
-    if _bootstrap_token_matches(bootstrap_token or "", settings.INITIAL_REGISTRATION_TOKEN):
+    if bootstrap_token is not None and _bootstrap_token_matches(bootstrap_token, settings.INITIAL_REGISTRATION_TOKEN):
         return
     raise HTTPException(status_code=403, detail="Initial registration bootstrap token required")
 

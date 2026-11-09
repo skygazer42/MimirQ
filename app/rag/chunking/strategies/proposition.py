@@ -35,12 +35,12 @@ def _units_from_text(text: str) -> list[_PropUnit]:
     - list items (list)
     """
     splitter = SemanticSentenceChunker(chunk_size=1, chunk_overlap=0)
-    raw_units = splitter._build_units(text or "")  # noqa: SLF001
+    raw_units = splitter._build_units(text)  # noqa: SLF001
     out: list[_PropUnit] = []
     for u in raw_units:
         s = u.start
         e = u.end
-        body = (u.text or "").strip()
+        body = (u.text).strip()
         kind = u.kind or "text"
         if not body or e <= s:
             continue
@@ -59,7 +59,7 @@ class PropositionChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -31,7 +31,7 @@ _TASKS_RE = re.compile(r"(?m)^\s*tasks\s*:\s*")
 
 
 def _is_tasks_key_line(line: str) -> bool:
-    s = (line or "").lstrip()
+    s = (line).lstrip()
     if s.startswith("-"):
         s = s[1:].lstrip()
     if not s.lower().startswith("tasks"):
@@ -48,7 +48,7 @@ def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
       name: Value
       hosts: all
     """
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
 
@@ -57,7 +57,7 @@ def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
         s = s[1:].lstrip()
 
     low = s.lower()
-    key_low = (key or "").strip().lower()
+    key_low = (key).strip().lower()
     if not key_low or not low.startswith(key_low):
         return None
 
@@ -73,7 +73,7 @@ def _parse_yaml_inline_key_value(line: str, *, key: str) -> str | None:
 
 
 def _extract_play_field(block_text: str, *, key: str) -> str | None:
-    head = (block_text or "")[:2000]
+    head = (block_text)[:2000]
     for ln in head.splitlines():
         if not ln.strip() or ln.lstrip().startswith("#"):
             continue
@@ -104,7 +104,7 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
         m = _PLAY_START_RE.match(plain)
         if not m:
             continue
-        indent = len(m.group("indent") or "")
+        indent = len(m.group("indent"))
         if indent != 0:
             continue
         idxs.append(i)
@@ -117,7 +117,7 @@ def _build_play_blocks(text: str) -> list[_PlayBlock]:
         start = lines[i].start
         end = lines[idxs[j + 1]].start if j + 1 < len(idxs) else len(text)
         end = max(start, min(end, len(text)))
-        blk_text = (text or "")[start:end]
+        blk_text = (text)[start:end]
         blocks.append(
             _PlayBlock(
                 start=start,
@@ -201,7 +201,7 @@ class AnsiblePlaybookChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -128,7 +128,7 @@ def _abstain_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
     unanswerable_rows = [
         row
         for row in rows
-        if str(row.get("query_type") or "").strip().lower() == "unanswerable"
+        if (isinstance(row.get("query_type"), str) and row["query_type"].strip().lower() == "unanswerable")
         or _extract_eval_metric(row, "answer_det", "refusal_correct") is not None
     ]
     abstain_values: list[float] = []
@@ -158,7 +158,10 @@ def _cost_dimension(rows: list[dict[str, Any]], *, token_cost_values: list[float
 def _stability_dimension(rows: list[dict[str, Any]]) -> dict[str, Any]:
     grouped_by_sample: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        sample_id = str(row.get("sample_id") or "").strip()
+        raw_id = row.get("sample_id")
+        if raw_id is None:
+            continue
+        sample_id = str(raw_id).strip()
         if sample_id:
             grouped_by_sample[sample_id].append(row)
 
@@ -256,13 +259,20 @@ def _compute_dimensions(rows: list[dict[str, Any]]) -> dict[str, Any]:
 def summarize_eval_dashboard_11d(rows: list[dict[str, Any]]) -> dict[str, Any]:
     normalized_rows = [dict(row or {}) for row in (rows or []) if isinstance(row, dict)]
     route_ids = sorted(
-        {str(row.get("route_id") or "").strip() for row in normalized_rows if str(row.get("route_id") or "").strip()}
+        {
+            str(row["route_id"]).strip()
+            for row in normalized_rows
+            if row.get("route_id") is not None and str(row["route_id"]).strip()
+        }
     )
 
     by_query_type: dict[str, dict[str, Any]] = {}
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in normalized_rows:
-        query_type = str(row.get("query_type") or "").strip()
+        raw_type = row.get("query_type")
+        if raw_type is None:
+            continue
+        query_type = str(raw_type).strip()
         if not query_type:
             continue
         groups[query_type].append(row)

@@ -48,7 +48,7 @@ class _ParsedEmail(_EmailBodyMetadata):
 
 
 def _collapse_ws(text: str) -> str:
-    return _RE_WS.sub(" ", (text or "").strip())
+    return _RE_WS.sub(" ", (text).strip())
 
 
 def _strip_html(html_text: str) -> str:
@@ -56,7 +56,7 @@ def _strip_html(html_text: str) -> str:
     Best-effort HTML -> text without optional deps.
     Keeps this intentionally conservative to avoid mangling content.
     """
-    raw = str(html_text or "")
+    raw = html_text
     if not raw.strip():
         return ""
     raw = _RE_SCRIPT_STYLE.sub(" ", raw)
@@ -94,7 +94,7 @@ def _is_multipart_part(part: Message) -> bool:
 
 def _part_content_type(part: Message) -> str:
     try:
-        return str(part.get_content_type() or "").lower()
+        return part.get_content_type().lower()
     except Exception:
         return ""
 

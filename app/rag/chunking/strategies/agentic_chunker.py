@@ -23,7 +23,7 @@ class AgenticChunker(BaseChunker):
 
     def _signals_for_chunk(self, *, text: str, meta: dict[str, object]) -> list[str]:
         signals: list[str] = []
-        content = str(text or "")
+        content = text
         if "\n1." in content or "\n2." in content or "\n- " in content:
             signals.append("list_boundary")
         if "```" in content:
@@ -48,7 +48,7 @@ class AgenticChunker(BaseChunker):
                         "agentic_chunker_mode": "offline_batch",
                         "agentic_chunker_judge": "heuristic",
                         "agentic_chunker_signals": self._signals_for_chunk(
-                            text=chunk.page_content or "",
+                            text=chunk.page_content,
                             meta=meta,
                         ),
                     }

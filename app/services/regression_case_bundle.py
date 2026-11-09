@@ -40,7 +40,8 @@ def _is_review_only_local_sample_item(payload: dict[str, Any]) -> bool:
     extra = extra if isinstance(extra, dict) else {}
     if extra.get("review_only") is True:
         return True
-    return str(extra.get("reference_source_mode") or "").strip() == "local_sample_synthetic"
+    reference_source_mode = extra.get("reference_source_mode")
+    return reference_source_mode is not None and reference_source_mode.strip() == "local_sample_synthetic"
 
 
 def export_case_bundle(cases: "Sequence[RagasRegressionCase]", dataset_id: UUID) -> dict[str, Any]:
@@ -61,7 +62,7 @@ def export_case_bundle(cases: "Sequence[RagasRegressionCase]", dataset_id: UUID)
 
         items.append(
             {
-                "question": str(case.question or ""),
+                "question": case.question,
                 "expected_answer": case.expected_answer,
                 "tags": list(case.tags or []),
                 "reference_sources": list(case.reference_sources or []),
@@ -71,7 +72,7 @@ def export_case_bundle(cases: "Sequence[RagasRegressionCase]", dataset_id: UUID)
         extra = extra if isinstance(extra, dict) else {}
         reasoning_hops = extra.get("reasoning_hops")
         if isinstance(reasoning_hops, list):
-            hops = [str(x) for x in reasoning_hops if str(x or "").strip()]
+            hops = [str(x) for x in reasoning_hops if x is not None and str(x).strip()]
             if hops:
                 items[-1]["reasoning_hops"] = hops[:20]
         evidence_chain = extra.get("evidence_chain")
@@ -84,7 +85,7 @@ def export_case_bundle(cases: "Sequence[RagasRegressionCase]", dataset_id: UUID)
             items[-1]["extra"] = portable_extra
 
     # Stable ordering is useful for diffs/reviews.
-    items.sort(key=lambda it: it.get("question") or "")
+    items.sort(key=lambda it: it["question"])
 
     return {
         "schema": REGRESSION_CASE_BUNDLE_SCHEMA_V1,
@@ -122,7 +123,12 @@ def plan_case_import(
 
     for idx, raw in enumerate(list(items or [])[:cap]):
         payload = _coerce_bundle_item(raw)
-        question = str(payload.get("question") or "").strip()
+        raw_question = payload.get("question")
+        if raw_question is not None and not isinstance(raw_question, str):
+            skipped += 1
+            errors.append({"index": idx, "error": "question must be a string"})
+            continue
+        question = raw_question.strip() if raw_question is not None else None
         if not question:
             skipped += 1
             errors.append({"index": idx, "error": "question is required"})

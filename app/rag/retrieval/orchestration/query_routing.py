@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import settings
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.core.evidence_expectations import DEFAULT_EVIDENCE_ANCHOR_FIELDS, normalize_anchor_fields
 from app.rag.core.retrieval_profiles import is_recall_first_profile
 from app.rag.core.text import guess_recall_bucket
@@ -98,15 +99,15 @@ def _resolve_expected_source_keys(
 
 def _build_must_recall_scope_payload(state: dict[str, Any]) -> dict[str, Any]:
     scope_payload: dict[str, Any] = {}
-    dataset_scope = str(state.get("dataset_id") or "").strip()
+    dataset_scope = _stringified_metadata_text(state, "dataset_id")
     if dataset_scope:
         scope_payload["dataset_id"] = dataset_scope
     raw_doc_scope = state.get("document_ids")
     if isinstance(raw_doc_scope, list):
-        scope_payload["document_ids"] = [str(value) for value in raw_doc_scope if str(value or "").strip()][:200]
+        scope_payload["document_ids"] = [str(value) for value in raw_doc_scope if value is not None and str(value).strip()][:200]
     raw_table_scope = state.get("table_ids")
     if isinstance(raw_table_scope, list):
-        scope_payload["table_ids"] = [str(value) for value in raw_table_scope if str(value or "").strip()][:200]
+        scope_payload["table_ids"] = [str(value) for value in raw_table_scope if value is not None and str(value).strip()][:200]
     return scope_payload
 
 
@@ -395,7 +396,7 @@ def _apply_intent_router(
             "learned_router_model": state.get("intent_router_model")
             if isinstance(state.get("intent_router_model"), dict)
             else None,
-            "learned_router_model_path": str(state.get("intent_router_model_path") or "").strip()
+            "learned_router_model_path": state["intent_router_model_path"].strip()
             if state.get("intent_router_model_path") is not None
             else settings.RAG_INTENT_ROUTER_MODEL_PATH.strip(),
             "learned_router_confidence_min": float(
@@ -407,7 +408,7 @@ def _apply_intent_router(
     try:
         overrides, intent_router_meta = route_retrieval_preset(
             query=query_for_retrieval,
-            retrieval_mode=str(requested_retrieval_mode or ""),
+            retrieval_mode=requested_retrieval_mode,
             retrieval_profile=str(requested_retrieval_profile).strip()
             if requested_retrieval_profile is not None
             else None,
@@ -498,7 +499,7 @@ def _build_query_contract(
             requested_retrieval_mode=requested_retrieval_mode,
             requested_retrieval_profile=requested_retrieval_profile,
             sparse_enabled=bool(sparse_enabled),
-            sparse_provider=str(sparse_provider or ""),
+            sparse_provider=sparse_provider,
             hierarchy=HierarchyContractSettings(
                 enabled=bool(hierarchy_recall_enabled),
                 family_collapse=bool(hierarchy_family_collapse),
@@ -556,8 +557,8 @@ def resolve_query_routing(
 ) -> QueryRoutingDecision:
     effective = dict(options)
     evidence = resolve_evidence_contract(effective, query=query)
-    contract_mode = str(evidence.get("retrieval_contract_mode") or "").strip()
-    if contract_mode and not str(effective.get("retrieval_contract_mode") or "").strip():
+    contract_mode = _stringified_metadata_text(evidence, "retrieval_contract_mode")
+    if contract_mode and not _stringified_metadata_text(effective, "retrieval_contract_mode"):
         effective["retrieval_contract_mode"] = contract_mode
     intent = _apply_intent_router(
         state=effective,
@@ -605,8 +606,8 @@ def resolve_stream_query_routing(
     """Apply the stream's recall buckets/profile, then its existing complexity route."""
     effective = dict(options)
     evidence = resolve_evidence_contract(effective, query=query)
-    contract_mode = str(evidence.get("retrieval_contract_mode") or "").strip()
-    if contract_mode and not str(effective.get("retrieval_contract_mode") or "").strip():
+    contract_mode = _stringified_metadata_text(evidence, "retrieval_contract_mode")
+    if contract_mode and not _stringified_metadata_text(effective, "retrieval_contract_mode"):
         effective["retrieval_contract_mode"] = contract_mode
     intent = _apply_intent_router(
         state=effective,

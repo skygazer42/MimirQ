@@ -9,7 +9,7 @@ def _active_pipeline_hash(*, status: Any, meta: Any) -> str | None:
     ready = (
         bool(metadata.get("active_pipeline_ready"))
         if "active_pipeline_ready" in metadata
-        else (str(status or "").lower() == "completed")
+        else (status.lower() == "completed")
     )
     if not ready:
         return None

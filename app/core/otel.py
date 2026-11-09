@@ -40,8 +40,8 @@ def init_otel() -> bool:
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
     service_name = (settings.OTEL_SERVICE_NAME or "mimirq").strip() or "mimirq"
-    endpoint = (settings.OTEL_EXPORTER_OTLP_ENDPOINT or "").strip()
-    headers = (settings.OTEL_EXPORTER_OTLP_HEADERS or "").strip()
+    endpoint = (settings.OTEL_EXPORTER_OTLP_ENDPOINT).strip()
+    headers = (settings.OTEL_EXPORTER_OTLP_HEADERS).strip()
     timeout_sec = float(settings.OTEL_EXPORTER_OTLP_TIMEOUT_SEC or 10)
 
     exporter_kwargs: dict[str, Any] = {}

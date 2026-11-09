@@ -21,7 +21,7 @@ class _FormulaError(ValueError):
 
 
 def _normalize_expression(expression: str) -> str:
-    text = re.sub(r"\s+", " ", str(expression or "")).strip()
+    text = re.sub(r"\s+", " ", expression).strip()
     return text.replace("^", "**")
 
 
@@ -130,7 +130,7 @@ def evaluate_formula_expression(
     coerced_variables: dict[str, float] = {}
     try:
         for key, value in (variables or {}).items():
-            name = str(key or "").strip()
+            name = key.strip()
             if not name:
                 continue
             coerced_variables[name] = _coerce_number(value, name=name)

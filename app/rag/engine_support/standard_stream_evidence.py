@@ -32,7 +32,7 @@ async def apply_temporal_rerank(runtime: StandardStreamState) -> None:
                 # Extract candidate document ids (bounded).
                 runtime.data.doc_ids: list[str] = []
                 runtime.data.seen_doc_ids: set[str] = set()
-                runtime.data.max_docs = max(0, int(settings.RAG_TEMPORAL_INTENT_MAX_DOCS or 200))
+                runtime.data.max_docs = max(0, int(settings.RAG_TEMPORAL_INTENT_MAX_DOCS))
                 for runtime.data.d in runtime.data.docs:
                     runtime.data.meta = getattr(runtime.data.d, "metadata", None)
                     runtime.data.meta = runtime.data.meta if isinstance(runtime.data.meta, dict) else {}
@@ -271,8 +271,8 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
         yield {"type": "token", "data": {"content": runtime.data.full_response}}
 
         runtime.data.t_total = time.time() - runtime.data.t_all_start
-        runtime.data.answer_chars = len(runtime.data.full_response or "")
-        runtime.data.answer_tokens = runtime.module.num_tokens_from_string(runtime.data.full_response or "")
+        runtime.data.answer_chars = len(runtime.data.full_response)
+        runtime.data.answer_tokens = runtime.module.num_tokens_from_string(runtime.data.full_response)
         runtime.data.faithfulness_meta: dict[str, Any] = {
             "score": None,
             "supported_claims": 0,
@@ -283,24 +283,24 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
         if bool(settings.FAITHFULNESS_SCORE_ENABLED):
             runtime.data.evidence_text = "\n".join(
                 [
-                    str(getattr(d, "page_content", "") or "")
+                    d.page_content
                     for d in (runtime.data.docs or [])
-                    if str(getattr(d, "page_content", "") or "").strip()
+                    if d.page_content.strip()
                 ]
             )
-            runtime.data.max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS or 24_000))
+            runtime.data.max_evidence_chars = max(0, int(settings.FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS))
             if runtime.data.max_evidence_chars and len(runtime.data.evidence_text) > runtime.data.max_evidence_chars:
                 runtime.data.evidence_text = runtime.data.evidence_text[: runtime.data.max_evidence_chars]
             runtime.data.faithfulness_meta = runtime.module.compute_faithfulness_score(
-                answer=str(runtime.data.full_response or ""),
+                answer=runtime.data.full_response,
                 evidence_text=runtime.data.evidence_text,
                 max_claims=max(1, int(settings.FAITHFULNESS_SCORE_MAX_CLAIMS)),
-                verifier_mode=(str(settings.RAG_CLAIM_VERIFIER_MODE).strip().lower()),
+                verifier_mode=str(settings.RAG_CLAIM_VERIFIER_MODE).strip().lower(),
                 verifier_enable_contradiction_check=bool(settings.RAG_CLAIM_VERIFIER_ENABLE_CONTRADICTION_CHECK),
                 use_nli_fallback=bool(settings.RAG_CLAIM_NLI_VERIFIER_ENABLED),
                 nli_provider=str(settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER),
                 nli_model_name=str(settings.RAG_CLAIM_NLI_VERIFIER_MODEL),
-                nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8),
+                nli_timeout_sec=float(settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC),
             )
         runtime.data.confidence_meta = runtime.module.compute_confidence_score(
             faithfulness_score=runtime.data.faithfulness_meta.get("score"),
@@ -392,7 +392,7 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                     "distinct_documents": len(
                         {c.get("document_id") for c in runtime.data.citations if c.get("document_id")}
                     ),
-                    "history_chars": len(runtime.data.history_text or ""),
+                    "history_chars": len(runtime.data.history_text),
                     "context_chars": 0,
                     "llm_max_retries": settings.LLM_MAX_RETRIES,
                     "tag_enabled": bool(runtime.data.tag_meta.get("enabled")),
@@ -487,8 +487,8 @@ async def emit_abstention_result(runtime: StandardStreamState) -> AsyncGenerator
                 tenant_id=runtime.data.tenant_id,
                 dataset_id=runtime.data.dataset_id,
                 request_id=str(runtime.data.request_id),
-                answer=str(runtime.data.full_response or ""),
-                contexts=[str(getattr(d, "page_content", "") or "") for d in (runtime.data.docs or [])],
+                answer=runtime.data.full_response,
+                contexts=[d.page_content for d in (runtime.data.docs or [])],
                 retrieval_mode=runtime.data.mode_used,
                 citations_count=len(runtime.data.citations or []),
             )
@@ -528,8 +528,8 @@ async def recall_kg_context(runtime: StandardStreamState) -> None:
             if runtime.data.events:
                 runtime.data.parts = []
                 for runtime.data.idx, runtime.data.ev in enumerate(runtime.data.events[:5], 1):
-                    runtime.data.title = (runtime.data.ev.get("title") or "").strip()
-                    runtime.data.summary = (runtime.data.ev.get("summary") or "").strip()
+                    runtime.data.title = (runtime.data.ev["title"]).strip()
+                    runtime.data.summary = (runtime.data.ev["summary"]).strip()
                     if len(runtime.data.summary) > 600:
                         runtime.data.summary = runtime.data.summary[:600] + "..."
                     runtime.data.parts.append(
@@ -626,7 +626,7 @@ def _append_context_part(runtime: StandardStreamState, part: str) -> bool:
 def _build_context_parts(runtime: StandardStreamState) -> None:
     for index, document in enumerate(runtime.data.context_docs, 1):
         metadata = document.metadata or {}
-        content = _context_content(runtime, (document.page_content or "").strip())
+        content = _context_content(runtime, (document.page_content).strip())
         part = f"[Source {index}: {' | '.join(_context_info_parts(metadata))}]\n{content}"
         if _append_context_part(runtime, part):
             break
@@ -713,8 +713,8 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
 
     runtime.data.fp = build_retrieval_config_fingerprint(
         config={
-            "requested_retrieval_mode": str(runtime.data.mode_req or ""),
-            "retrieval_mode": str(runtime.data.mode_used or ""),
+            "requested_retrieval_mode": runtime.data.mode_req,
+            "retrieval_mode": runtime.data.mode_used,
             "retrieval_mode_auto_routed": bool(runtime.data.mode_auto),
             "retrieval_profile": runtime.data.profile_norm,
             "rag_config_template": runtime.data.rag_cfg_tpl_fp,
@@ -731,9 +731,9 @@ async def build_retrieval_config_trace(runtime: StandardStreamState) -> None:
             "keyword_weight": float(runtime.data.kw_w or 0.0),
             "mmr_lambda": float(runtime.data.mmr_lambda_val or 0.0),
             "enable_reranker": bool(runtime.data.rerank_on),
-            "reranker_provider": str(runtime.data.rerank_provider or ""),
+            "reranker_provider": runtime.data.rerank_provider,
             "reranker_tier": runtime.module.describe_reranker_provider(
-                str(runtime.data.rerank_provider or ""),
+                runtime.data.rerank_provider,
                 provider_name=str(settings.COLBERT_RERANK_PROVIDER),
             ).get("tier"),
             "reranker_top_n": int(runtime.data.rerank_top_n),
@@ -804,12 +804,12 @@ async def build_rag_trace_payload(runtime: StandardStreamState) -> None:
         "request_id": runtime.data.request_id,
         "question": runtime.data.question,
         "query_for_retrieval": runtime.data.query_for_retrieval,
-        "history_chars": len(runtime.data.history_text or ""),
-        "history_tokens": runtime.module.num_tokens_from_string(runtime.data.history_text or ""),
-        "context_chars": len(runtime.data.context or ""),
-        "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context or ""),
+        "history_chars": len(runtime.data.history_text),
+        "history_tokens": runtime.module.num_tokens_from_string(runtime.data.history_text),
+        "context_chars": len(runtime.data.context),
+        "context_tokens": runtime.module.num_tokens_from_string(runtime.data.context),
         **runtime.module.compute_context_cliff_metrics(
-            context_tokens=runtime.module.num_tokens_from_string(runtime.data.context or ""),
+            context_tokens=runtime.module.num_tokens_from_string(runtime.data.context),
             threshold_tokens=int(settings.RAG_CONTEXT_CLIFF_THRESHOLD_TOKENS),
         ),
         "citations_count": len(runtime.data.citations),

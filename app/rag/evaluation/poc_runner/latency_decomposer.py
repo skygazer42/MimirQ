@@ -61,7 +61,7 @@ def _decompose_row(row: dict[str, Any]) -> _LatencyRow:
         bottleneck = "balanced"
 
     return {
-        "interaction_id": str(row.get("interaction_id") or ""),
+        "interaction_id": row["interaction_id"],
         "latency_total_ms": total_ms,
         "retrieval_ms": retrieval_ms,
         "generation_ms": generation_ms,

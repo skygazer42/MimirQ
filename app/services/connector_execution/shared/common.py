@@ -7,6 +7,17 @@ from fastapi import HTTPException
 from app.models.connector import ConnectorRun
 
 
+def _optional_source_text(*values: object, lower: bool = False) -> str | None:
+    """Select provided source metadata text; absent or blank candidates do not match."""
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text.lower() if lower else text
+    return None
+
+
 class ConnectorIngestionOptions(TypedDict):
     parser_backend: str
     chunk_strategy: str
@@ -26,7 +37,7 @@ def build_ingestion_options(
 
 
 def _safe_error_str(exc: Exception) -> str:
-    msg = str(exc or "").replace("\r", " ").replace("\n", " ").strip()
+    msg = str(exc).replace("\r", " ").replace("\n", " ").strip()
     if not msg:
         msg = exc.__class__.__name__
     if len(msg) > 200:
@@ -40,7 +51,7 @@ def _connector_error_code_from_message(
     default: str,
     status_code: int | None = None,
 ) -> str:
-    lowered = str(message or "").strip().lower()
+    lowered = message.strip().lower()
     if "not allowed" in lowered or "private ip" in lowered or "ssrf" in lowered:
         return "ssrf"
     if "timeout" in lowered:
@@ -55,7 +66,7 @@ def _connector_error_code_from_message(
 def _classify_connector_error(exc: Exception) -> tuple[str, str]:
     if isinstance(exc, HTTPException):
         status_code = getattr(exc, "status_code", 0)
-        detail = str(getattr(exc, "detail", "") or "").strip()
+        detail = str(exc.detail).strip()
         msg = (detail or f"HTTP {status_code}").replace("\r", " ").replace("\n", " ").strip()
         msg = msg[:200] if len(msg) > 200 else msg
         code = _connector_error_code_from_message(
@@ -98,7 +109,7 @@ def _get_or_create_error_group(
     msg: str,
 ) -> dict[str, Any]:
     for item in groups:
-        if isinstance(item, dict) and str(item.get("key") or "") == key:
+        if isinstance(item, dict) and item["key"] == key:
             return item
     group = {"key": key, "code": code, "error": msg, "count": 0, "sample_urls": []}
     groups.append(group)

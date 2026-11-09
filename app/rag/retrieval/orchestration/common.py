@@ -55,7 +55,7 @@ def _doc_key(doc: Document) -> str:
     cid = doc.id or meta.get("chunk_id")
     if cid:
         return str(cid)
-    content = (doc.page_content or "").strip()
+    content = (doc.page_content).strip()
     return f"content:{stable_hash(content)}"
 
 

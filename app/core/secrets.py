@@ -28,24 +28,24 @@ AUTH_SECRET_FIELDS = ("cookie", "token", _PASSWORD_FIELD)
 
 def _fernet_for_secret_key(secret_key: str) -> Fernet:
     # Derive a stable 32-byte key from a SECRET_KEY string.
-    raw = (secret_key or "").encode("utf-8", "ignore")
+    raw = (secret_key).encode("utf-8", "ignore")
     digest = hashlib.sha256(raw).digest()
     key = base64.urlsafe_b64encode(digest)
     return Fernet(key)
 
 
 def _fernet() -> Fernet:
-    return _fernet_for_secret_key(settings.SECRET_KEY or "")
+    return _fernet_for_secret_key(settings.SECRET_KEY)
 
 
 def _fallback_fernets() -> list[Fernet]:
     """
     Optional fallback keys for decrypting secrets encrypted with previous SECRET_KEY values.
     """
-    raw = (settings.SECRET_KEY_FALLBACKS or "").strip()
+    raw = (settings.SECRET_KEY_FALLBACKS).strip()
     if not raw:
         return []
-    current = (settings.SECRET_KEY or "").strip()
+    current = (settings.SECRET_KEY).strip()
     out: list[Fernet] = []
     for item in raw.split(","):
         key = item.strip()

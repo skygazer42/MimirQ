@@ -113,7 +113,7 @@ def _build_version_row(
     first_chunk_at: datetime | None,
     last_chunk_at: datetime | None,
 ) -> _VersionRow | None:
-    pipeline_hash_norm = str(pipeline_hash or "").strip()
+    pipeline_hash_norm = pipeline_hash.strip()
     if not pipeline_hash_norm:
         return None
     key = str(doc_pipeline_key or "").strip() or f"{document_id}:{pipeline_hash_norm}"
@@ -245,7 +245,7 @@ def _list_document_versions_no_acl(
 
 
 def _invalid_pipeline_hash_reason(pipeline_hash: str) -> str | None:
-    pipeline_hash_norm = str(pipeline_hash or "").strip()
+    pipeline_hash_norm = pipeline_hash.strip()
     if not pipeline_hash_norm:
         return "missing_pipeline_hash"
     if len(pipeline_hash_norm) > 64:
@@ -413,7 +413,7 @@ def delete_document_version_best_effort(
 
     Mirrors the API endpoint semantics but skips permission checks.
     """
-    pipeline_hash_norm = str(pipeline_hash or "").strip()
+    pipeline_hash_norm = pipeline_hash.strip()
     invalid_reason = _invalid_pipeline_hash_reason(pipeline_hash_norm)
     if invalid_reason is not None:
         return {"ok": False, "reason": invalid_reason}
@@ -422,7 +422,7 @@ def delete_document_version_best_effort(
     if doc is None:
         return {"ok": False, "reason": "doc_not_found"}
 
-    doc_status = str(doc.status or "").lower()
+    doc_status = doc.status.lower()
     doc_meta = dict(doc.doc_metadata or {})
     current_hash = str(doc_meta.get("pipeline_hash") or "").strip()
     active_hash = str(doc_meta.get("active_pipeline_hash") or doc_meta.get("pipeline_hash") or "").strip()

@@ -312,17 +312,17 @@ def _enrich_reference_source_payload(
             logger.debug(_EVALUATIONS_ROUTER_FALLBACK_LOG_MESSAGE, exc)
 
     meta = chunk_meta if isinstance(chunk_meta, dict) else {}
-    if not str(payload.get("doc_pipeline_key") or "").strip():
+    if "doc_pipeline_key" not in payload:
         v = meta.get("doc_pipeline_key")
         if isinstance(v, str) and v.strip():
             payload["doc_pipeline_key"] = v.strip()
-    if not str(payload.get("pipeline_hash") or "").strip():
+    if "pipeline_hash" not in payload:
         v = meta.get("pipeline_hash")
         if isinstance(v, str) and v.strip():
             payload["pipeline_hash"] = v.strip()
 
-    if not str(payload.get("quote") or "").strip():
-        text = (chunk_content or "").strip() if isinstance(chunk_content, str) else ""
+    if "quote" not in payload and chunk_content is not None:
+        text = chunk_content.strip()
         if text:
             payload["quote"] = text[:2000] + ("..." if len(text) > 2000 else "")
 
@@ -464,7 +464,9 @@ def _normalize_reasoning_hops(raw: Any) -> list[str]:
         return []
     out: list[str] = []
     for item in raw:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text:
             continue
         out.append(text[:300])
@@ -494,8 +496,12 @@ def _normalize_evidence_item(item: Any) -> dict[str, Any] | None:
         item = item.model_dump(mode="json")
     if not isinstance(item, dict):
         return None
-    document_id = str(item.get("document_id") or "").strip()
-    chunk_id = str(item.get("chunk_id") or "").strip()
+    raw_document_id = item.get("document_id")
+    raw_chunk_id = item.get("chunk_id")
+    if raw_document_id is None or raw_chunk_id is None:
+        return None
+    document_id = str(raw_document_id).strip()
+    chunk_id = str(raw_chunk_id).strip()
     if not document_id or not chunk_id:
         return None
 
@@ -976,7 +982,7 @@ def import_ragas_regression_cases(
         )
         .all()
     )
-    by_question = {str(row.question or "").strip(): row for row in existing if row.question}
+    by_question = {row.question.strip(): row for row in existing if row.question}
 
     plan = plan_case_import(
         dataset_id=payload.dataset_id,
@@ -991,7 +997,7 @@ def import_ragas_regression_cases(
     skipped_case_ids: list[UUID] = []
 
     for question in plan.get("skipped_existing_questions") or []:
-        row = by_question.get(str(question or "").strip())
+        row = by_question.get(question.strip())
         if row is not None:
             skipped_case_ids.append(row.id)
 
@@ -1054,7 +1060,7 @@ def _import_new_regression_cases(
                 id=case_id,
                 tenant_id=tenant_id,
                 dataset_id=dataset_id,
-                question=str(item.get("question") or "").strip(),
+                question=item["question"].strip(),
                 expected_answer=item.get("expected_answer"),
                 reference_sources=reference_sources,
                 tags=list(item.get("tags") or []),
@@ -1089,7 +1095,7 @@ def _import_existing_regression_cases(
     skipped = 0
     errors: list[dict[str, Any]] = []
     for item in items:
-        question = str(item.get("question") or "").strip()
+        question = item["question"].strip()
         row = by_question.get(question)
         if row is None:
             skipped += 1
@@ -1182,7 +1188,7 @@ def generate_synthetic_hardcases(
     max_cases = max(1, min(int(payload.max_cases or 0), 200))
     per_case = max(0, min(int(payload.hardcases_per_case or 0), 20))
     max_created = max(0, min(int(payload.max_created or 0), 5000))
-    tag = str(payload.tag or "").strip() or "synthetic_hardcase"
+    tag = payload.tag.strip() or "synthetic_hardcase"
 
     base_total, base_cases = _load_synthetic_base_cases(
         db,
@@ -1293,7 +1299,7 @@ def _load_synthetic_base_cases(
 
 
 def _synthetic_question_key(text: str) -> str:
-    return " ".join(str(text or "").strip().split()).casefold()
+    return " ".join(text.strip().split()).casefold()
 
 
 def _load_existing_synthetic_question_keys(
@@ -1307,7 +1313,7 @@ def _load_existing_synthetic_question_keys(
         .filter(RagasRegressionCase.tenant_id == tenant_id, RagasRegressionCase.dataset_id == dataset_id)
         .all()
     )
-    return {_synthetic_question_key(str(question or "")) for (question,) in rows if question}
+    return {_synthetic_question_key(question) for (question,) in rows if question}
 
 
 def _synthetic_evidence_chunk_ids(reference_sources: Any) -> list[str]:
@@ -1338,7 +1344,7 @@ def _generate_hardcases_for_base_case(
     existing_keys: set[str],
     created_ids: list[UUID],
 ) -> tuple[int, int, int]:
-    question = str(case.question or "").strip()
+    question = case.question.strip()
     if not question:
         return 0, 0, 0
 
@@ -1404,7 +1410,7 @@ def _persist_generated_hardcases(
     generated = 0
     duplicates = 0
     for hardcase in hardcases:
-        question = str(getattr(hardcase, "question", "") or "").strip()
+        question = hardcase.question.strip()
         if not question:
             continue
         generated += 1
@@ -1470,7 +1476,9 @@ def _synthetic_case_tags(base_case: RagasRegressionCase, hardcase: Any, tag: str
     cleaned: list[str] = []
     seen: set[str] = set()
     for raw_tag in tags:
-        normalized = str(raw_tag or "").strip()
+        if raw_tag is None:
+            continue
+        normalized = str(raw_tag).strip()
         if not normalized or normalized in seen:
             continue
         seen.add(normalized)
@@ -1481,8 +1489,8 @@ def _synthetic_case_tags(base_case: RagasRegressionCase, hardcase: Any, tag: str
 def _synthetic_case_extra(base_case: RagasRegressionCase, hardcase: Any) -> dict[str, Any]:
     base_extra = base_case.extra
     extra = dict(base_extra or {}) if isinstance(base_extra, dict) else {}
-    extra.setdefault("synthetic_from_case_id", str(base_case.id or ""))
-    extra["hardcase_kind"] = str(getattr(hardcase, "kind", "") or "")
+    extra.setdefault("synthetic_from_case_id", str(base_case.id))
+    extra["hardcase_kind"] = hardcase.kind
     rationale = getattr(hardcase, "rationale", None)
     if rationale:
         extra["hardcase_rationale"] = str(rationale)[:400]
@@ -2146,7 +2154,7 @@ def _document_dataset_map(
 def _generated_question_document_ids(questions: list[_GeneratedTestQuestion]) -> list[UUID]:
     document_ids: list[UUID] = []
     for question in questions:
-        raw_document_id = str((question.metadata or {}).get("source_id") or "").strip()
+        raw_document_id = question.metadata["source_id"].strip()
         if not raw_document_id:
             continue
         try:
@@ -2167,7 +2175,7 @@ def _auto_save_generated_document_question(
     account_id: str,
 ) -> UUID | None:
     metadata = dict(question.metadata or {})
-    document_id = str(metadata.get("source_id") or "").strip()
+    document_id = metadata["source_id"].strip()
     dataset_id = requested_dataset_id or document_to_dataset.get(document_id)
     if dataset_id is None:
         _mark_generated_question_unsaved(question, metadata, "missing_dataset_id")
@@ -2256,7 +2264,9 @@ def _generated_question_reference_payloads(
     chunk_ids = metadata.get("reference_chunk_ids") or [metadata.get("chunk_id")]
     payloads: list[dict[str, Any]] = []
     for raw_chunk_id in chunk_ids or []:
-        chunk_id = str(raw_chunk_id or "").strip()
+        if raw_chunk_id is None:
+            continue
+        chunk_id = str(raw_chunk_id).strip()
         if chunk_id and document_id:
             payloads.append({"document_id": document_id, "chunk_id": chunk_id})
     return payloads
@@ -2311,11 +2321,12 @@ def _validate_generated_reference_chunk_hit(
             account_id=account_id,
             dataset_id=dataset_id,
         )
-        docs = retriever.get_relevant_documents(str(question or ""))
+        docs = retriever.get_relevant_documents(question)
         rank: int | None = None
         for index, document in enumerate(docs or []):
             metadata = getattr(document, "metadata", None) or {}
-            if str(metadata.get("chunk_id") or "").strip() == str(chunk_id):
+            candidate_chunk_id = metadata.get("chunk_id")
+            if candidate_chunk_id is not None and str(candidate_chunk_id).strip() == str(chunk_id):
                 rank = index + 1
                 break
         return {"mode": "vector_topk", "top_k": top_k, "hit": rank is not None, "rank": rank}
@@ -2335,7 +2346,7 @@ def _document_questions_response(questions: list[_GeneratedTestQuestion]) -> lis
             expected_answer=question.expected_answer,
             context=question.context,
             source_type="document",
-            source_id=(question.metadata or {}).get("source_id", ""),
+            source_id=question.metadata["source_id"],
             metadata=question.metadata,
         )
         for question in questions
@@ -2417,7 +2428,7 @@ async def run_kg_search_diagnostics(
                     m_obj = getattr(run, "metrics", None)
                     hardcases_compact.append(
                         {
-                            "kind": str(getattr(hc, "kind", "") or ""),
+                            "kind": hc.kind,
                             "metrics": (m_obj.model_dump(mode="json") if hasattr(m_obj, "model_dump") else {}),
                             "error": (run.error if run is not None else None),
                         }
@@ -2428,8 +2439,8 @@ async def run_kg_search_diagnostics(
 
                 items_compact.append(
                     {
-                        "case_id": str(getattr(item, "case_id", "") or ""),
-                        "question": str(getattr(item, "question", "") or "")[:500],
+                        "case_id": str(item.case_id),
+                        "question": item.question[:500],
                         "tags": list(getattr(item, "tags", []) or []),
                         "evidence_chunk_ids": list(getattr(item, "evidence_chunk_ids", []) or []),
                         "attribution": attr_dict,

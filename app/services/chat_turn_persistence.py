@@ -49,7 +49,9 @@ def build_chat_message_metadata(
     out = dict(metrics)
     out["request_id"] = request_id
 
-    rewritten = str((out.get("query_for_retrieval") or "")).strip()
+    rewritten = out.get("query_for_retrieval")
+    if rewritten is not None:
+        rewritten = rewritten.strip()
     question = original_question.strip()
     out["rewritten_query"] = rewritten if rewritten and rewritten != question else None
 
@@ -62,7 +64,10 @@ def build_chat_message_metadata(
         document_name = item.get("document_name") or item.get("source")
         chunk_id = item.get("chunk_id")
         page_number = item.get("page_number")
-        key = str(document_id or document_name or chunk_id or "").strip()
+        key = next((value for value in (document_id, document_name, chunk_id) if value is not None), None)
+        if key is None:
+            continue
+        key = str(key).strip()
         if not key or key in seen:
             continue
         seen.add(key)

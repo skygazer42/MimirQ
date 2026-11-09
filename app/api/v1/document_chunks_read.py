@@ -127,7 +127,7 @@ def list_document_chunk_matches(
         dataset_service.assert_dataset_readable(db, dataset, account_id)
     assert_document_acl_readable(db, tenant_id=tenant_id, account_id=account_id, document=document, dataset=dataset)
 
-    term = (q or "").strip()
+    term = (q).strip()
     if not term:
         return {"total": 0, "truncated": False, "items": []}
 

@@ -52,7 +52,7 @@ def _flatten_reference_pointers(items: list[EvidenceItem]) -> tuple[list[_Refere
                 {
                     "suite_id": item.suite_id,
                     "item_id": item.id,
-                    "item_status": str(item.status or "").strip().lower() or "unknown",
+                    "item_status": item.status.strip().lower() or "unknown",
                     "dataset_id": item.dataset_id,
                     "reference_source": dict(ref),
                     "document_id": doc_uuid,

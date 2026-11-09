@@ -38,8 +38,12 @@ _DEFAULT_EXTRACT_IMAGES = False
 
 def _apply_element_hints(meta: dict[str, Any], *, text: str) -> dict[str, Any]:
     out = dict(meta)
-    content_type = str(out.get("content_type") or "").strip().lower()
-    doc_type = str(out.get("doc_type_kwd") or "").strip().lower()
+    content_type = out.get("content_type")
+    doc_type = out.get("doc_type_kwd")
+    if isinstance(content_type, str):
+        content_type = content_type.strip().lower()
+    if isinstance(doc_type, str):
+        doc_type = doc_type.strip().lower()
     if doc_type == "table" or content_type == "table":
         out.setdefault("element_kind", "table")
     elif doc_type == "image" or content_type == "image":
@@ -102,7 +106,7 @@ class _TableParser(HTMLParser):
         self.rows: list[list[str]] = []
 
     def handle_starttag(self, tag: str, attrs) -> None:  # type: ignore[override]
-        t = (tag or "").lower()
+        t = (tag).lower()
         if t == "tr":
             self._in_row = True
             self._cell_buf = []
@@ -111,7 +115,7 @@ class _TableParser(HTMLParser):
             self._cell_buf.append("")
 
     def handle_endtag(self, tag: str) -> None:  # type: ignore[override]
-        t = (tag or "").lower()
+        t = (tag).lower()
         if t in {"td", "th"}:
             self._in_cell = False
         elif t == "tr":
@@ -123,7 +127,7 @@ class _TableParser(HTMLParser):
     def handle_data(self, data: str) -> None:  # type: ignore[override]
         if not self._in_cell or not self._cell_buf:
             return
-        text = re.sub(r"\s+", " ", data or "").strip()
+        text = re.sub(r"\s+", " ", data).strip()
         if not text:
             return
         idx = len(self._cell_buf) - 1
@@ -132,17 +136,17 @@ class _TableParser(HTMLParser):
 
 def _html_table_to_markdown(table_html: str) -> str:
     parser = _TableParser()
-    parser.feed(table_html or "")
+    parser.feed(table_html)
     rows = parser.rows
     if not rows:
         # Fallback: strip tags.
-        return re.sub(r"<[^>]+>", " ", table_html or "").strip()
+        return re.sub(r"<[^>]+>", " ", table_html).strip()
 
     max_cols = max(len(r) for r in rows)
     norm_rows = [r + [""] * (max_cols - len(r)) for r in rows]
 
     def esc(cell: str) -> str:
-        cell = _html.unescape(cell or "")
+        cell = _html.unescape(cell)
         cell = cell.replace("|", r"\|")
         return re.sub(r"\s+", " ", cell).strip()
 
@@ -230,12 +234,16 @@ class DoclingParser(BaseAdvancedParser):
 
     def _process_document(self, doc: Document) -> list[Document]:
         meta = dict(doc.metadata)
-        doc_type = str(meta.get("doc_type_kwd") or "").lower()
+        doc_type = meta.get("doc_type_kwd")
+        if isinstance(doc_type, str):
+            doc_type = doc_type.lower()
         if not self.extract_images and doc_type == "image":
             return []
 
         content = doc.page_content
-        content_type = str(meta.get("content_type") or "").lower()
+        content_type = meta.get("content_type")
+        if isinstance(content_type, str):
+            content_type = content_type.lower()
         meta = _apply_element_hints(meta, text=content)
         if content_type == "table":
             converted = _convert_table_content(content, mode=self.table_mode)

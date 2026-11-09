@@ -55,7 +55,7 @@ def _iter_instructions(text: str, *, start: int, end: int) -> list[_Instr]:
         m = _INSTR_RE.match(plain.lstrip())
         if not m:
             continue
-        kw = (m.group("kw") or "").upper()
+        kw = (m.group("kw")).upper()
         instr_idx.append(i)
         kws.append(kw)
 
@@ -82,7 +82,7 @@ def _build_stages(text: str) -> list[_Stage]:
         start = lines[i].start
         end = lines[from_lines[idx + 1]].start if idx + 1 < len(from_lines) else len(text)
         m = _FROM_RE.match(lines[i].plain)
-        img = (m.group("img") or "").strip() if m else ""
+        img = (m.group("img")).strip() if m else ""
         als = (m.group("as") or "").strip() if m else ""
         stages.append(
             _Stage(
@@ -99,7 +99,7 @@ def _build_stages(text: str) -> list[_Stage]:
 def looks_like_dockerfile(text: str) -> bool:
     if not text or len(text) < 40:
         return False
-    lines = [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+    lines = [ln for ln in (text).splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
     if not lines:
         return False
     head = "\n".join(lines[:80])
@@ -178,7 +178,7 @@ class DockerfileChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

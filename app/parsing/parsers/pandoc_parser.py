@@ -26,7 +26,7 @@ logger = get_logger("parsing.pandoc")
 
 
 def _sanitize_run_id(value: str) -> str:
-    value = (value or "").strip()
+    value = (value).strip()
     value = re.sub(r"[^a-zA-Z0-9._-]+", "_", value)[:120]
     return value or "pandoc"
 
@@ -90,7 +90,7 @@ class PandocParser:
             stdin = None
         else:
             args.extend(["-f", "html", "-"])  # stdin as HTML
-            stdin = (input_text or "").encode("utf-8")
+            stdin = input_text.encode("utf-8")
 
         try:
             proc = run_resolved_cli(
@@ -161,9 +161,9 @@ class PandocParser:
             raise RuntimeError(f"soffice produced no .{target_ext} output")
 
         # Prefer a name-matched candidate when possible.
-        stem = (file_path.stem or "").strip().lower()
+        stem = (file_path.stem).strip().lower()
         for c in candidates:
-            if (c.stem or "").strip().lower() == stem:
+            if (c.stem).strip().lower() == stem:
                 return c
         return candidates[0]
 
@@ -177,7 +177,7 @@ class PandocParser:
         # HTML: best-effort readability extraction, keep local image refs (no media extraction).
         if ext in {".html", ".htm"}:
             decoded = read_text_file(file_path)
-            raw_html = decoded.text or ""
+            raw_html = decoded.text
             html_text = raw_html
             if self._html_use_readability and raw_html.strip():
                 try:

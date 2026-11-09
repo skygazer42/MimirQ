@@ -60,8 +60,9 @@ def _normalize_simhash_items(rows: list[dict[str, Any]]) -> list[_SimhashItem]:
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        path = str(row.get("path") or "").strip()
-        text = str(row.get("text") or "").strip()
+        raw_path, raw_text = row.get("path"), row.get("text")
+        path = str(raw_path).strip() if raw_path is not None else None
+        text = str(raw_text).strip() if raw_text is not None else None
         if not path or not text:
             continue
         items.append(

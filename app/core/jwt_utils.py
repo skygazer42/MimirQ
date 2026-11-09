@@ -11,7 +11,7 @@ from app.core.config import settings
 
 
 def _normalize_claim_key(value: str) -> str:
-    return (value or "").strip()
+    return (value).strip()
 
 
 def _merge_extra_claims(payload: dict[str, Any], extra_claims: dict[str, Any] | None) -> None:
@@ -28,7 +28,7 @@ def _set_string_claim(payload: dict[str, Any], key: str, value: str | None) -> N
     claim_key = _normalize_claim_key(key)
     if not claim_key:
         return
-    claim_value = (value or "").strip()
+    claim_value = value.strip() if value is not None else None
     if claim_value:
         payload[claim_key] = claim_value
 

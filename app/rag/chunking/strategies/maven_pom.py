@@ -33,18 +33,18 @@ _ARTIFACT_ID_RE = re.compile(r"(?is)<artifactId\b[^>]*>(?P<body>.*?)</artifactId
 
 
 def _clean_text(s: str) -> str:
-    out = re.sub(r"\s+", " ", (s or "").strip())
+    out = re.sub(r"\s+", " ", (s).strip())
     return out
 
 
 def _extract_ga(block_text: str) -> str | None:
-    head = (block_text or "")[:6000]
+    head = (block_text)[:6000]
     gm = _GROUP_ID_RE.search(head)
     am = _ARTIFACT_ID_RE.search(head)
     if not am:
         return None
-    group_id = _clean_text(gm.group("body") or "") if gm else ""
-    artifact_id = _clean_text(am.group("body") or "")
+    group_id = _clean_text(gm.group("body")) if gm else ""
+    artifact_id = _clean_text(am.group("body"))
     if not artifact_id:
         return None
     if group_id:
@@ -250,7 +250,7 @@ class MavenPOMChunker(BaseChunker):
             )
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
         base_meta = dict(doc.metadata or {})

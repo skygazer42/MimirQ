@@ -216,7 +216,7 @@ def create_multi_query_workflow(
 
     def create_query_task(query_id: int) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
         async def task(state: dict[str, Any]) -> dict[str, Any]:
-            question = state.get("question") or state.get("query") or ""
+            question = BaseWorkflow.get_question(state)
             # Rewrite query
             rewritten = await query_rewrite_func(question, query_id)
             # Retrieve

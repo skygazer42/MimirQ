@@ -32,7 +32,7 @@ class _EvidenceChunk(TypedDict):
 
 
 def _collapse_ws(text: str) -> str:
-    return _WS_RE.sub(" ", (text or "").strip())
+    return _WS_RE.sub(" ", (text).strip())
 
 
 def _find_prev_boundary(text: str, *, start: int, end: int) -> int:
@@ -95,7 +95,7 @@ def _extract_span(text: str, terms: list[str], *, max_chars: int) -> tuple[int, 
     Return (start, end, quote) span in `text` that best matches `terms`.
     """
     max_chars = max(80, int(max_chars or 0))
-    raw = str(text or "")
+    raw = text
     if not raw.strip() or not terms:
         return None
 
@@ -148,10 +148,12 @@ def _iter_chunks(evidence_chunks: Iterable[Any]) -> Iterator[_EvidenceChunk]:
             end_char = meta.get("end_char")
             page_number = meta.get("page_number") or meta.get("page")
 
+        if text is None:
+            continue
         out: _EvidenceChunk = {
             "document_id": str(doc_id) if doc_id is not None else None,
             "chunk_id": str(chunk_id) if chunk_id is not None else None,
-            "text": str(text or ""),
+            "text": str(text),
             "start_char": start_char,
             "end_char": end_char,
             "page_number": page_number,
@@ -233,7 +235,7 @@ def _claim_evidence_entry(
     max_quote_chars: int,
     verifier_options: dict[str, Any],
 ) -> dict[str, Any] | None:
-    claim_text = (claim or "").strip()
+    claim_text = (claim).strip()
     if not claim_text:
         return None
     if is_uncertainty_claim(claim_text):
@@ -301,7 +303,7 @@ def build_claim_evidence_map(
     max_evidence_per_claim = max(0, int(max_evidence_per_claim or 0))
     max_quote_chars = max(80, int(max_quote_chars or 0))
 
-    claims = split_into_claims(answer or "", max_claims=max_claims)
+    claims = split_into_claims(answer, max_claims=max_claims)
     chunks = list(_iter_chunks(evidence_chunks or []))
     verifier_options = {
         "verifier_mode": verifier_mode,

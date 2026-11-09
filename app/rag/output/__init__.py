@@ -16,6 +16,7 @@ Usage:
 
 import json
 from enum import Enum
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any, Union
 
 from pydantic import BaseModel, Field
@@ -226,26 +227,26 @@ def _adapt_shared_payload(
     if mode == OutputMode.FAQ:
         qa_pairs = list(payload.get("qa_pairs") or [])
         related_questions = [
-            str(item.get("question") or "").strip()
+            _stringified_metadata_text(item, "question")
             for item in qa_pairs[1:]
-            if isinstance(item, dict) and str(item.get("question") or "").strip()
+            if isinstance(item, dict) and _stringified_metadata_text(item, "question")
         ]
         return FAQOutput(
-            question=str(query or "").strip(),
-            answer=str(payload.get("answer") or "").strip(),
+            question=query.strip(),
+            answer=payload["answer"].strip(),
             confidence=0.0,
             related_questions=related_questions,
             sources=list(sources or []),
         )
 
     if mode == OutputMode.SUMMARY:
-        summary = str(payload.get("summary") or payload.get("answer") or "").strip()
-        bullets = [str(item or "").strip() for item in payload.get("bullets") or [] if str(item or "").strip()]
+        summary = (payload["summary"] or payload["answer"]).strip()
+        bullets = [item.strip() for item in payload["bullets"] if item.strip()]
         return SummaryOutput(
-            title=str(query or "").strip() or "Summary",
+            title=query.strip() or "Summary",
             summary=summary,
             key_points=bullets,
-            word_count=len(str(context or "").split()),
+            word_count=len(context.split()),
             sources=list(sources or []),
         )
 
@@ -255,7 +256,7 @@ def _adapt_shared_payload(
         for item in raw_actions:
             if not isinstance(item, dict):
                 continue
-            task = str(item.get("item") or item.get("task") or "").strip()
+            task = _stringified_metadata_text(item, "item") or _stringified_metadata_text(item, "task")
             if not task:
                 continue
             items.append(
@@ -268,13 +269,13 @@ def _adapt_shared_payload(
                 )
             )
         return ActionItemsOutput(
-            title=str(query or "").strip() or "Action Items",
+            title=query.strip() or "Action Items",
             items=items,
             total_count=len(items),
             sources=list(sources or []),
         )
 
-    return PlainOutput(content=str(payload.get("answer") or "").strip(), sources=list(sources or []))
+    return PlainOutput(content=payload["answer"].strip(), sources=list(sources or []))
 
 
 # ============================================================================

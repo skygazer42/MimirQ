@@ -41,7 +41,7 @@ def _render_pdf_page_png(file_path: Path, page_number: int) -> bytes:
 
 
 def _build_correction_prompt(markdown: str) -> str:
-    body = (markdown or "").strip()
+    body = (markdown).strip()
     return (
         "You are correcting OCR/parsing markdown for a document page.\n"
         "Use the page image as the source of truth.\n"
@@ -54,7 +54,7 @@ def _build_correction_prompt(markdown: str) -> str:
 
 
 async def _correct_markdown_with_vision_async(*, markdown: str, image_bytes: bytes) -> str:
-    timeout = float(settings.VISION_LLM_TIMEOUT_SEC or 120)
+    timeout = float(settings.VISION_LLM_TIMEOUT_SEC)
     async with httpx.AsyncClient(timeout=timeout) as http_client:
         return (
             await _describe_with_vision_llm(
@@ -90,11 +90,11 @@ async def apply_vlm_correction_async(
             page = 0
 
         next_doc = doc
-        if remaining > 0 and page > 0 and (doc.page_content or "").strip():
+        if remaining > 0 and page > 0 and (doc.page_content).strip():
             try:
                 image_bytes = _render_pdf_page_png(file_path, page)
                 corrected = await _correct_markdown_with_vision_async(
-                    markdown=doc.page_content or "",
+                    markdown=doc.page_content,
                     image_bytes=image_bytes,
                 )
                 if corrected:
@@ -132,11 +132,11 @@ def apply_vlm_correction(
             page = 0
 
         next_doc = doc
-        if remaining > 0 and page > 0 and (doc.page_content or "").strip():
+        if remaining > 0 and page > 0 and (doc.page_content).strip():
             try:
                 image_bytes = _render_pdf_page_png(file_path, page)
                 corrected = _correct_markdown_with_vision(
-                    markdown=doc.page_content or "",
+                    markdown=doc.page_content,
                     image_bytes=image_bytes,
                 ).strip()
                 if corrected:
@@ -211,7 +211,7 @@ async def _call_vlm_backend_async(
       - JSON {"markdown": "..."} OR
       - raw text body (treated as markdown)
     """
-    payload = {"markdown": str(markdown or ""), "meta": dict((meta if meta is not None else {}))}
+    payload = {"markdown": markdown, "meta": dict((meta if meta is not None else {}))}
     timeout = float(timeout_sec)
     async with httpx.AsyncClient(timeout=timeout) as client:
         try:
@@ -231,10 +231,10 @@ async def _call_vlm_backend_async(
                 data = resp.json()
                 if isinstance(data, dict) and isinstance(data.get("markdown"), str):
                     out = str(data.get("markdown") or "")
-                    return out, bool(out.strip() and out.strip() != str(markdown or "").strip()), "ok_json"
+                    return out, bool(out.strip() and out.strip() != markdown.strip()), "ok_json"
             # Fallback: treat response body as markdown text.
             out = resp.text if isinstance(resp.text, str) else str(resp.content or b"", "utf-8", errors="ignore")
-            return out, bool(out.strip() and out.strip() != str(markdown or "").strip()), "ok_text"
+            return out, bool(out.strip() and out.strip() != markdown.strip()), "ok_text"
         except Exception as exc:  # noqa: BLE001
             return markdown, False, f"parse_failed:{exc.__class__.__name__}"
 
@@ -284,7 +284,7 @@ def maybe_correct_markdown_pages(
             error=None,
         )
 
-    url = str(api_url or "").strip()
+    url = api_url.strip()
     if not url:
         return list(pages or []), VLMCorrAudit(
             applied=False,
@@ -317,7 +317,7 @@ def maybe_correct_markdown_pages(
     for i, text in enumerate(out):
         if max_pages_i and attempted >= max_pages_i:
             break
-        raw = str(text or "")
+        raw = text
         if not raw.strip():
             continue
         if max_chars_i and len(raw) > max_chars_i:

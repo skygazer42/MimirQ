@@ -27,10 +27,10 @@ def _fingerprint(*, engine: str, db_name: str, schema_name: str | None, table_na
     # Stable table identity for upsert. Keep it deterministic and do not include secrets.
     key = "|".join(
         (
-            str(engine or "").strip().lower(),
-            str(db_name or "").strip(),
+            engine.strip().lower(),
+            db_name.strip(),
             str(schema_name or "").strip(),
-            str(table_name or "").strip(),
+            table_name.strip(),
         )
     )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
@@ -44,11 +44,11 @@ def _entitlement_hash(*, engine: str, config: dict[str, Any]) -> str:
     """
     safe_cfg: dict[str, Any] = {}
     for k, v in (config or {}).items():
-        key = str(k or "").strip()
+        key = k.strip()
         if not key or key in {"password"} or key.startswith("_"):
             continue
         safe_cfg[key] = v
-    payload = {"engine": str(engine or "").strip().lower(), "config": safe_cfg}
+    payload = {"engine": engine.strip().lower(), "config": safe_cfg}
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=True, default=str, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
@@ -121,15 +121,16 @@ def _connect_sqlserver(config: dict[str, Any]) -> Iterator[Connection]:
     - Uses pyodbc driver via SQLAlchemy dialect (mssql+pyodbc).
     - Kept small and easily monkeypatchable for unit tests.
     """
-    host = str(config.get("host") or "").strip()
+    host = config["host"].strip()
     port = int(config.get("port") or 1433)
-    database = str(config.get("database") or "").strip()
-    username = str(config.get("username") or "").strip()
-    password = str(config.get("password") or "")
+    database = config["database"].strip()
+    username = config["username"].strip()
+    password = config["password"]
     if not host or not database or not username:
         raise ValueError("sqlserver config requires host/database/username")
 
-    driver = str(config.get("odbc_driver") or "").strip() or "ODBC Driver 18 for SQL Server"
+    raw_driver = config.get("odbc_driver")
+    driver = raw_driver.strip() or "ODBC Driver 18 for SQL Server" if raw_driver is not None else "ODBC Driver 18 for SQL Server"
 
     # Import lazily so pure unit tests can monkeypatch _connect_sqlserver without requiring pyodbc.
     from sqlalchemy import create_engine  # noqa: WPS433
@@ -167,11 +168,11 @@ def _connect_mysql(config: dict[str, Any]) -> Iterator[Connection]:
     - Uses pymysql driver via SQLAlchemy dialect (mysql+pymysql).
     - Kept small and easily monkeypatchable for unit tests.
     """
-    host = str(config.get("host") or "").strip()
+    host = config["host"].strip()
     port = int(config.get("port") or 3306)
-    database = str(config.get("database") or "").strip()
-    username = str(config.get("username") or "").strip()
-    password = str(config.get("password") or "")
+    database = config["database"].strip()
+    username = config["username"].strip()
+    password = config["password"]
     if not host or not database or not username:
         raise ValueError("mysql config requires host/database/username")
 
@@ -209,7 +210,7 @@ def _bounded_positive_int(value: Any, *, default: int, upper: int) -> int:
 def _normalize_column_dict(raw: Any) -> _CatalogColumnPayload | None:
     if not isinstance(raw, dict):
         return None
-    name = str(raw.get("name") or "").strip()
+    name = raw["name"].strip()
     if not name:
         return None
     try:
@@ -239,20 +240,20 @@ def _extract_column_dicts(*, col_rows: Sequence[Any], limit: int = 5000) -> list
 
 def _mysql_include_tables(config: dict[str, Any]) -> set[str]:
     return {
-        str(table or "").strip().lower() for table in (config.get("include_tables") or []) if str(table or "").strip()
+        table.strip().lower() for table in (config.get("include_tables") or []) if table.strip()
     }
 
 
 def _sqlserver_table_filters(config: dict[str, Any]) -> tuple[set[str], set[str], set[str]]:
     include_schemas = {
-        str(schema or "").strip().lower()
+        schema.strip().lower()
         for schema in (config.get("include_schemas") or [])
-        if str(schema or "").strip()
+        if schema.strip()
     }
     include_fqn: set[str] = set()
     include_names: set[str] = set()
     for raw_table in config.get("include_tables") or []:
-        table = str(raw_table or "").strip()
+        table = raw_table.strip()
         if not table:
             continue
         if "." not in table:
@@ -288,7 +289,7 @@ def _catalog_table_entry(
     return {
         "db_name": (str(row.get("db_name") or database).strip() or database),
         "schema_name": (schema_name),
-        "table_name": str(row.get("table_name") or "").strip(),
+        "table_name": row["table_name"].strip(),
         "table_type": (str(row.get("table_type") or "table").strip().lower() or "table"),
         "comment": (row.get("comment")),
         "row_count_estimate": row.get("row_count_estimate"),
@@ -299,7 +300,7 @@ def _catalog_table_entry(
 def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, Any]) -> list[dict[str, Any]]:
     """Read bounded MySQL table metadata and its column definitions."""
     _ = (tenant_id, dataset_id)
-    database = str(config.get("database") or "").strip()
+    database = config["database"].strip()
     if not database:
         return []
 
@@ -319,7 +320,7 @@ def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, An
         for row in rows or []:
             if not isinstance(row, dict):
                 continue
-            table_name = str(row.get("table_name") or "").strip()
+            table_name = row["table_name"].strip()
             if not table_name:
                 continue
             if include_tables and table_name.lower() not in include_tables:
@@ -336,7 +337,7 @@ def _introspect_mysql(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, An
 def _introspect_sqlserver(*, tenant_id: UUID, dataset_id: UUID, config: dict[str, Any]) -> list[dict[str, Any]]:
     """Read bounded SQL Server table metadata and its column definitions."""
     _ = (tenant_id, dataset_id)
-    database = str(config.get("database") or "").strip()
+    database = config["database"].strip()
     if not database:
         return []
 
@@ -356,8 +357,8 @@ def _introspect_sqlserver(*, tenant_id: UUID, dataset_id: UUID, config: dict[str
         for row in table_rows or []:
             if not isinstance(row, dict):
                 continue
-            schema_name = str(row.get("schema_name") or "").strip()
-            table_name = str(row.get("table_name") or "").strip()
+            schema_name = row["schema_name"].strip()
+            table_name = row["table_name"].strip()
             if not table_name:
                 continue
             if not _sqlserver_table_included(
@@ -386,7 +387,7 @@ def _load_catalog_tables(
     dataset_id: UUID,
     config: dict[str, Any],
 ) -> tuple[str, list[dict[str, Any]]]:
-    cid = str(connector_id or "").strip()
+    cid = connector_id.strip()
     if cid == "mysql_catalog":
         return "mysql", _introspect_mysql(tenant_id=tenant_id, dataset_id=dataset_id, config=dict(config or {}))
     if cid == "sqlserver_catalog":
@@ -436,8 +437,8 @@ def _build_catalog_sync_item(
 ) -> _CatalogSyncItem | None:
     if not isinstance(raw_table, dict):
         return None
-    db_name = str(raw_table.get("db_name") or config.get("database") or "").strip()
-    table_name = str(raw_table.get("table_name") or "").strip()
+    db_name = (raw_table.get("db_name") or config["database"]).strip()
+    table_name = raw_table["table_name"].strip()
     if not db_name or not table_name:
         return None
     schema_name = raw_table.get("schema_name")
@@ -578,19 +579,19 @@ def _row_hash(row: dict[str, Any], *, exclude_keys: Sequence[str] | None = None)
 
 def _snapshot_token(*, source_table: str, rows: Sequence[dict[str, Any]]) -> str:
     payload = {
-        "source_table": str(source_table or ""),
-        "pk_hashes": [str(r.get("__row_pk_hash") or "") for r in rows if isinstance(r, dict)],
+        "source_table": source_table,
+        "pk_hashes": [r["__row_pk_hash"] for r in rows if isinstance(r, dict)],
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8", "ignore")).hexdigest()
 
 
 def _quote_mysql_ident(name: str) -> str:
-    return f"`{str(name or '').replace('`', '``')}`"
+    return f"`{name.replace('`', '``')}`"
 
 
 def _quote_sqlserver_ident(name: str) -> str:
-    return f"[{str(name or '').replace(']', ']]')}]"
+    return f"[{name.replace(']', ']]')}]"
 
 
 def _snapshot_columns(rows_raw: Sequence[Mapping[str, Any]], table_columns: Any, *, max_cols: int) -> list[str]:
@@ -601,9 +602,11 @@ def _snapshot_columns(rows_raw: Sequence[Mapping[str, Any]], table_columns: Any,
         return columns
     for raw in table_columns:
         if isinstance(raw, dict):
-            name = str(raw.get("name") or "").strip()
+            name = raw["name"].strip()
         else:
-            name = str(raw or "").strip()
+            if raw is None:
+                continue
+            name = str(raw).strip()
         if not name:
             continue
         columns.append(name)
@@ -651,16 +654,16 @@ def _sqlserver_snapshot_sql(schema_name: str, table_name: str, max_rows: int) ->
 
 
 def _mysql_source_table(raw_table: dict[str, Any], config: dict[str, Any]) -> tuple[str, str]:
-    table_name = str(raw_table.get("table_name") or "").strip()
-    db_name = str(raw_table.get("db_name") or config.get("database") or "").strip()
+    table_name = raw_table["table_name"].strip()
+    db_name = (raw_table.get("db_name") or config["database"]).strip()
     source_table = f"{db_name}.{table_name}" if db_name else table_name
     return table_name, source_table
 
 
 def _sqlserver_source_table(raw_table: dict[str, Any], config: dict[str, Any]) -> tuple[str, str, str]:
-    schema_name = str(raw_table.get("schema_name") or "").strip()
-    table_name = str(raw_table.get("table_name") or "").strip()
-    db_name = str(raw_table.get("db_name") or config.get("database") or "").strip()
+    schema_name = raw_table["schema_name"].strip()
+    table_name = raw_table["table_name"].strip()
+    db_name = (raw_table.get("db_name") or config["database"]).strip()
     source_table = f"{db_name}.{schema_name}.{table_name}" if schema_name else f"{db_name}.{table_name}"
     return schema_name, table_name, source_table
 
@@ -781,7 +784,7 @@ def extract_row_snapshots(
     The output is connector-agnostic and intentionally small:
       [{"source_table","sheet_name","source_sync_token","source_pk_hash_col","columns","rows"}, ...]
     """
-    cid = str(connector_id or "").strip()
+    cid = connector_id.strip()
     max_tables_i = max(0, int(max_tables or 0))
     max_rows_i = max(0, int(max_rows_per_table or 0))
     max_cols_i = max(0, int(max_cols or 0))

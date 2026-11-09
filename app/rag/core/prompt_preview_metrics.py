@@ -31,9 +31,9 @@ def compute_prompt_preview_metrics(
     """
     metrics: dict[str, Any] = dict(base_metrics or {})
 
-    prompt_text = prompt_text or ""
-    context = context or ""
-    history = history or ""
+    prompt_text = prompt_text
+    context = context
+    history = history
 
     metrics["prompt_chars"] = len(prompt_text)
     metrics["prompt_tokens"] = num_tokens_from_string(prompt_text)

@@ -15,7 +15,7 @@ def python_plugin_allow_prefixes() -> tuple[str, ...]:
 
 
 def registered_python_plugin_stage(plugin_ref: str) -> str | None:
-    match = REGISTERED_PYTHON_PLUGIN_REF_RE.fullmatch(str(plugin_ref or "").strip())
+    match = REGISTERED_PYTHON_PLUGIN_REF_RE.fullmatch(plugin_ref.strip())
     return match.group("stage") if match else None
 
 

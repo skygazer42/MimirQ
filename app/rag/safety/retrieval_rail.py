@@ -21,7 +21,7 @@ def apply_retrieval_rail(
     blocked_docs = 0
     masked_docs = 0
     for doc in docs or []:
-        text = str(getattr(doc, "page_content", "") or "")
+        text = doc.page_content
         if _INDIRECT_INJECTION_RE.search(text):
             blocked_docs += 1
             continue
@@ -32,7 +32,7 @@ def apply_retrieval_rail(
                 masked_docs += 1
                 metadata = dict(getattr(doc, "metadata", None) or {})
                 metadata["retrieval_rail_pii_masked"] = True
-                new_doc = Document(page_content=str(pii.text or ""), metadata=metadata, id=getattr(doc, "id", None))
+                new_doc = Document(page_content=pii.text, metadata=metadata, id=getattr(doc, "id", None))
         kept.append(new_doc)
 
     return {

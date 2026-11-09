@@ -30,7 +30,7 @@ def should_attempt_pdf_fallback(
     - too-short content retries
     - low parse quality score retries when threshold > 0
     """
-    grade_norm = str(grade or "").strip().lower()
+    grade_norm = grade.strip().lower() if isinstance(grade, str) else None
     if grade_norm == "fail":
         return True
 

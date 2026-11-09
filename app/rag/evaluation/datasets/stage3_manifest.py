@@ -15,9 +15,9 @@ def build_stage3_manifest(
     query_counts = Counter(row["query_type"] for row in normalized_rows)
     source_counts = Counter(row["source_type"] for row in normalized_rows)
     return {
-        "dataset_name": str(dataset_name or "").strip() or "stage3-dataset",
+        "dataset_name": dataset_name.strip() or "stage3-dataset",
         "schema_version": "mimirq.eval.dataset.manifest.v1",
-        "dataset_version": str(dataset_version or "").strip() or "unknown",
+        "dataset_version": dataset_version.strip() or "unknown",
         "sample_count": len(normalized_rows),
         "source_type_counts": dict(sorted(source_counts.items(), key=lambda kv: kv[0])),
         "query_type_counts": dict(sorted(query_counts.items(), key=lambda kv: kv[0])),

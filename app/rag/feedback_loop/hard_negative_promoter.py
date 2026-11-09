@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 from app.rag.evaluation.hard_negative_mining import HARD_NEGATIVES_SCHEMA_V1
@@ -22,7 +23,9 @@ def _clean_str_list(value: Any, *, max_items: int = 100) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -39,7 +42,7 @@ def _export_record(record: dict[str, Any]) -> dict[str, Any]:
     out["source_feedback_ids"] = _clean_str_list(record.get("source_feedback_ids"))
     out["source_conversation_ids"] = _clean_str_list(record.get("source_conversation_ids"))
     out["source_message_ids"] = _clean_str_list(record.get("source_message_ids"))
-    dataset_id = str(record.get("dataset_id") or "").strip()
+    dataset_id = _stringified_metadata_text(record, "dataset_id")
     if dataset_id:
         out["dataset_id"] = dataset_id[:128]
     return out

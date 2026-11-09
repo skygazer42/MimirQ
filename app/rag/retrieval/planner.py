@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 from uuid import UUID
 
@@ -95,13 +96,15 @@ def compact_high_confidence_items(
 
 
 def query_terms_match(query: str, terms: tuple[str, ...] | list[str] | set[str] | str | None) -> bool:
-    query_text = str(query or "").strip().casefold()
+    query_text = query.strip().casefold()
     if not query_text:
         return False
     raw_terms: tuple[str, ...] | list[str] | set[str]
     raw_terms = (terms,) if isinstance(terms, str) or terms is None else terms
     for raw in raw_terms:
-        term = str(raw or "").strip().casefold()
+        if raw is None:
+            continue
+        term = str(raw).strip().casefold()
         if term and term in query_text:
             return True
     return False
@@ -117,7 +120,9 @@ def _policy_string_list(value: Any) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
     for item in value:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -143,7 +148,9 @@ def _metadata_terms(value: Any) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in raw_items:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -152,7 +159,9 @@ def _metadata_terms(value: Any) -> tuple[str, ...]:
 
 
 def _append_unique_text(out: list[str], seen: set[str], value: Any) -> None:
-    text = str(value or "").strip()
+    if value is None:
+        return
+    text = str(value).strip()
     if not text or text in seen:
         return
     seen.add(text)
@@ -250,7 +259,7 @@ def retrieval_policy_mixed_intent_subject_terms(retrieval_policy: dict[str, Any]
         *(_policy_string_list(retrieval_policy.get("service_anchor_noise_terms"))),
         *(_policy_string_list(retrieval_policy.get("question_intent_terms"))),
     ):
-        term = str(raw_term or "").strip()
+        term = raw_term.strip()
         normalized = _normalize_policy_match_text(term)
         if not term or not normalized or normalized in seen:
             continue
@@ -280,7 +289,7 @@ def retrieval_policy_service_anchor_query_rewrite_terms(
         if not rewrite_terms or not _policy_rule_matches_query(raw, query_text):
             continue
         for term in rewrite_terms:
-            text = str(term or "").strip()
+            text = term.strip()
             normalized = _normalize_policy_match_text(text)
             if not text or normalized in seen:
                 continue
@@ -314,7 +323,7 @@ def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any]
     out: list[dict[str, Any]] = []
     for raw in raw_mappings:
         mapping = _as_dict(raw)
-        field = str(mapping.get("metadata") or "").strip()
+        field = _stringified_metadata_text(mapping, "metadata")
         if not field:
             continue
         raw_values = mapping.get("values") if "values" in mapping else mapping.get("value")
@@ -327,8 +336,8 @@ def _policy_value_query_term_mappings(raw_mappings: Any) -> tuple[dict[str, Any]
     return tuple(out)
 
 
-def _normalize_policy_match_text(value: Any) -> str:
-    text = str(value or "").strip().casefold()
+def _normalize_policy_match_text(value: str) -> str:
+    text = value.strip().casefold()
     return "".join(char for char in text if char.isalnum())
 
 
@@ -395,7 +404,7 @@ def _policy_boost_bonus(
     base_bonus: float,
 ) -> float:
     boost = _as_dict(raw_boost)
-    field = str(boost.get("metadata") or "").strip()
+    field = _stringified_metadata_text(boost, "metadata")
     if not field:
         return 0.0
     match_mode = _policy_boost_match_mode(boost.get("match"))
@@ -492,7 +501,7 @@ def retrieval_policy_anchor_mismatch_penalty(
     penalty = 0.0
     for raw in raw_anchors:
         anchor = _as_dict(raw)
-        field = str(anchor.get("metadata") or "").strip()
+        field = _stringified_metadata_text(anchor, "metadata")
         if not field:
             continue
         aliases = _policy_anchor_aliases(anchor.get("aliases"))
@@ -633,8 +642,9 @@ def _record_value(record: dict[str, Any], key: str) -> Any:
     return _record_meta(record).get(key)
 
 
-def _record_text(record: dict[str, Any], key: str) -> str:
-    return str(_record_value(record, key) or "").strip()
+def _record_text(record: dict[str, Any], key: str) -> str | None:
+    value = _record_value(record, key)
+    return str(value).strip() if value is not None else None
 
 
 def _record_float(record: dict[str, Any], key: str) -> float:
@@ -662,7 +672,8 @@ def _record_has_kg_path(record: dict[str, Any]) -> bool:
 
 
 def _record_role(record: dict[str, Any]) -> str:
-    return _record_text(record, "retrieval_role").lower() or "main"
+    role = _record_text(record, "retrieval_role")
+    return role.lower() if role else "main"
 
 
 def _is_kg_hint_record(record: dict[str, Any]) -> bool:
@@ -738,10 +749,10 @@ def summarize_kg_hint_diagnostics(
 ) -> dict[str, Any]:
     """Summarize optional KG retrieval hints without changing ranking behavior."""
 
-    expected_chunks = {str(item or "").strip() for item in expected_chunk_ids or () if str(item or "").strip()}
-    expected_documents = {str(item or "").strip() for item in expected_document_ids or () if str(item or "").strip()}
+    expected_chunks = {item.strip() for item in expected_chunk_ids or () if item.strip()}
+    expected_documents = {item.strip() for item in expected_document_ids or () if item.strip()}
     expected_meta = dict(expected_metadata) if isinstance(expected_metadata, dict) else {}
-    view_keys = tuple(str(item or "").strip() for item in metadata_view_keys or () if str(item or "").strip())
+    view_keys = tuple(item.strip() for item in metadata_view_keys or () if item.strip())
     noise_evaluated = bool(expected_chunks or expected_documents or expected_meta)
 
     role_counts: dict[str, int] = {}
@@ -827,12 +838,12 @@ def _without_dataset_ids(dataset_ids: tuple[UUID, ...], excluded: tuple[UUID, ..
 
 
 def _matched_terms(route: DatasetRouteHint, query: str) -> tuple[str, ...]:
-    query_text = str(query or "").strip().casefold()
+    query_text = query.strip().casefold()
     if not query_text:
         return ()
     out: list[str] = []
     for raw in route.terms:
-        term = str(raw or "").strip()
+        term = raw.strip()
         if term and term.casefold() in query_text:
             out.append(term)
     return tuple(out)

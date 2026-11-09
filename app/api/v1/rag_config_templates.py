@@ -64,7 +64,7 @@ def _ensure_write(db: Session, tenant_id: UUID, account_id: str) -> None:
 
 
 def _derive_template_key(name: str) -> str:
-    raw = (name or "").strip().lower()
+    raw = (name).strip().lower()
     if not raw:
         return "rag_config"
     buf = []

@@ -135,10 +135,12 @@ def _prepare_shadow_vector_items(
     for doc in docs:
         meta0 = doc.get("metadata") if isinstance(doc, dict) else None
         meta = dict(meta0 or {}) if isinstance(meta0, dict) else {}
-        chunk_id = str(meta.get("chunk_id") or "").strip()
+        chunk_id = meta.get("chunk_id")
+        if chunk_id is not None:
+            chunk_id = str(chunk_id).strip()
         if not chunk_id:
             continue
-        content = str(doc.get("content") or "")
+        content = doc["content"]
         meta["embedding_space_hash"] = shadow_space
         items.append({"id": chunk_id, "content": content, "metadata": meta})
         texts.append(content)

@@ -26,7 +26,7 @@ def plan_quarterly_refresh(
     refresh_ratio: float = 0.2,
 ) -> dict[str, Any]:
     normalized_rows = [normalize_eval_dataset_sample(row) for row in (rows or []) if isinstance(row, dict)]
-    quarter = str(quarter_key or "").strip() or "unknown"
+    quarter = quarter_key.strip() or "unknown"
     ratio = _normalize_ratio(refresh_ratio)
 
     ranked = sorted(

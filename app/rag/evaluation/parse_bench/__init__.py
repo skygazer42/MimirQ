@@ -44,9 +44,12 @@ _ROW_METRIC_KEYS: tuple[_MetricKey, ...] = (
 
 
 def classify_doc_type(case_row: dict[str, Any]) -> str:
-    file_type = str(case_row.get("file_type") or "").strip().lower()
-    case_id = str(case_row.get("id") or "").strip().lower()
-    text = f"{case_id} {file_type}"
+    file_type = case_row.get("file_type")
+    if isinstance(file_type, str):
+        file_type = file_type.strip().lower()
+    else:
+        file_type = None
+    text = " ".join(str(value).strip().lower() for value in (case_row.get("id"), file_type) if value is not None)
     if "qr" in text or "barcode" in text:
         return "code_image"
     if "chart" in text:
@@ -124,7 +127,8 @@ def build_doc_type_matrix(report: dict[str, Any]) -> dict[str, Any]:
         for attempt in attempts:
             if not isinstance(attempt, dict):
                 continue
-            backend = str(attempt.get("backend") or "").strip().lower() or "unknown"
+            raw_backend = attempt.get("backend")
+            backend = raw_backend.strip().lower() or "unknown" if isinstance(raw_backend, str) else "unknown"
             bucket = buckets[backend][doc_type]
             _accumulate_attempt_metrics(bucket, attempt)
 

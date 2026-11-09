@@ -83,7 +83,7 @@ def _infer_onnx_channels(shape: Any, *, layout: str) -> int:
 
 def _onnx_input_spec(session: Any) -> tuple[str, Any, str, int]:
     inputs = list(session.get_inputs() or [])
-    input_name = str(getattr(inputs[0], "name", "") or "input")
+    input_name = str(inputs[0].name or "input")
     input_shape = getattr(inputs[0], "shape", None) if inputs else None
     input_layout = _infer_onnx_layout(input_shape)
     input_channels = _infer_onnx_channels(input_shape, layout=input_layout)
@@ -216,7 +216,7 @@ def _run_local_cleanup(
     model_path: str,
     info: dict[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    model_ref = str(model_path or "").strip()
+    model_ref = model_path.strip()
     if not model_ref:
         return False, "missing_model_path", info
     try:
@@ -242,7 +242,7 @@ def _run_http_cleanup(
     timeout_sec: float,
     info: dict[str, Any],
 ) -> tuple[bool, str, dict[str, Any]]:
-    target_url = str(api_url or "").strip()
+    target_url = api_url.strip()
     if not target_url:
         return False, "missing_api_url", info
     return _run_coroutine_sync(
@@ -268,8 +268,8 @@ def cleanup_handwriting_document(
     normalized_backend = _resolve_cleanup_backend(
         backend=backend,
         input_path=input_path,
-        model_path=str(model_path or "").strip(),
-        api_url=str(api_url or "").strip(),
+        model_path=model_path.strip(),
+        api_url=api_url.strip(),
     )
     info: dict[str, Any] = {"backend": normalized_backend}
 

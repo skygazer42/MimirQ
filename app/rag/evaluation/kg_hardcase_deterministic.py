@@ -18,7 +18,7 @@ from app.rag.kg.extraction.alias import is_abbrev_token
 
 
 def _contains_cjk(text: str) -> bool:
-    for ch in str(text or ""):
+    for ch in text:
         code = ord(ch)
         if 0x4E00 <= code <= 0x9FFF:
             return True
@@ -61,9 +61,9 @@ def _replace_surface(question: str, *, src: str, dst: str) -> str | None:
     - Prefer exact substring replacement.
     - For ASCII src, also try case-insensitive replacement.
     """
-    q = str(question or "")
-    s = str(src or "")
-    d = str(dst or "")
+    q = question
+    s = src
+    d = dst
     if not q or not s or not d or s == d:
         return None
 

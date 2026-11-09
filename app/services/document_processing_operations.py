@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.document import DocumentStatus
 from app.core.config import settings
+from app.core.pipeline_versions import get_active_pipeline_hash
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
 from app.parsing.factory import parser_factory
@@ -38,16 +39,20 @@ def _is_uploaded_only_pending_document(document: DBDocument) -> bool:
     lists, but they are not active processing jobs. Reingest may safely patch
     their pipeline and start processing them later.
     """
-    if str(document.status or "").strip().lower() != "pending":
+    if document.status.strip().lower() != "pending":
         return False
 
     meta = document.doc_metadata or {}
-    if str(meta.get("ingest_stage") or "").strip() != "uploaded_only":
+    ingest_stage = meta.get("ingest_stage")
+    if ingest_stage is None or ingest_stage.strip() != "uploaded_only":
         return False
-    if str(meta.get("task_id") or "").strip():
+    task_id = meta.get("task_id")
+    if task_id is not None and task_id.strip():
         return False
 
-    current_stage = str(document.current_stage or "").strip().lower()
+    current_stage = document.current_stage
+    if current_stage is not None:
+        current_stage = current_stage.strip().lower()
     if current_stage and current_stage not in {"uploaded_only", "registered"}:
         return False
 
@@ -62,14 +67,18 @@ def _is_idle_pending_document(document: DBDocument) -> bool:
     without `ingest_stage=uploaded_only`. They are safe to reconfigure only when
     no queue/task marker, active stage, or progress indicates work is running.
     """
-    if str(document.status or "").strip().lower() != "pending":
+    if document.status.strip().lower() != "pending":
         return False
 
     meta = document.doc_metadata or {}
-    if str(meta.get("task_id") or "").strip() or str(meta.get("kg_task_id") or "").strip():
-        return False
+    for field in ("task_id", "kg_task_id"):
+        task_id = meta.get(field)
+        if task_id is not None and task_id.strip():
+            return False
 
-    current_stage = str(document.current_stage or "").strip().lower()
+    current_stage = document.current_stage
+    if current_stage is not None:
+        current_stage = current_stage.strip().lower()
     if current_stage and current_stage not in {"uploaded_only", "registered"}:
         return False
 
@@ -148,7 +157,7 @@ async def cancel_document(
         document=document,
     )
 
-    current_status = str(document.status or "").lower()
+    current_status = document.status.lower()
     if current_status in {"completed", "failed"}:
         raise HTTPException(status_code=409, detail=f"Cannot cancel a {current_status} document")
 
@@ -206,7 +215,7 @@ def _ensure_retryable_document_state(
     document: DBDocument,
     force: bool,
 ) -> tuple[str, str]:
-    current_status = str(document.status or "").lower()
+    current_status = document.status.lower()
     if current_status == "processing" or (
         current_status == "pending" and not is_reprocessable_pending_document(document)
     ):
@@ -214,7 +223,7 @@ def _ensure_retryable_document_state(
     if current_status == "completed" and not force:
         raise HTTPException(status_code=409, detail="Document is already completed (use force=true to reprocess)")
 
-    raw_path = str(document.file_path or "").strip()
+    raw_path = document.file_path.strip()
     if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         raise HTTPException(status_code=409, detail="Document file is not reprocessable")
     return current_status, raw_path
@@ -232,7 +241,7 @@ def _apply_retry_parser_backend_override(
     filename = str(document.filename or raw_path)
     file_ext = Path(filename).suffix.lower()
     if not file_ext:
-        file_type = str(document.file_type or "").strip().lower().lstrip(".")
+        file_type = document.file_type.strip().lower().lstrip(".")
         file_ext = f".{file_type}" if file_type else ""
     try:
         resolved_parser_backend = parser_factory.resolve_backend(file_ext, requested_parser_backend)
@@ -279,9 +288,9 @@ def _maybe_skip_unchanged_retry(
     if not (skip_if_unchanged and current_status == "completed" and force):
         return None
     meta0 = dict(document.doc_metadata or {})
-    file_sha = str(get_content_sha256(meta0) or "").strip().lower()
+    file_sha = get_content_sha256(meta0)
     ready0 = bool(meta0.get("active_pipeline_ready")) if "active_pipeline_ready" in meta0 else True
-    active0 = str(meta0.get("active_pipeline_hash") or meta0.get("pipeline_hash") or "").strip()
+    active0 = get_active_pipeline_hash(meta0)
     if not (file_sha and ready0 and active0):
         return None
     computed0 = compute_pipeline_hash(meta0)
@@ -318,9 +327,9 @@ def _prepare_retry_metadata(
     meta.pop("cancel_requested", None)
     meta.pop("task_id", None)
     meta.pop("kg_task_id", None)
-    active_pipeline_hash = str(meta.get("active_pipeline_hash") or meta.get("pipeline_hash") or "").strip()
+    active_pipeline_hash = get_active_pipeline_hash(meta)
     if "active_pipeline_ready" not in meta:
-        meta["active_pipeline_ready"] = bool(str(document.status or "").lower() == "completed")
+        meta["active_pipeline_ready"] = bool(document.status.lower() == "completed")
 
     pipeline_hash = compute_pipeline_hash(meta)
     meta["pipeline_hash"] = pipeline_hash

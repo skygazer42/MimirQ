@@ -21,7 +21,7 @@ def simhash64(text: str) -> int:
     - Tokenization is intentionally simple (alnum/CJK runs).
     - Hashing uses BLAKE2b truncated to 64 bits for stability across processes.
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return 0
 

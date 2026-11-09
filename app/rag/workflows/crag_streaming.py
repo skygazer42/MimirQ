@@ -20,15 +20,20 @@ def classify_retrieval_verdict(
 
 
 def format_web_search_context_block(search_result: dict[str, Any]) -> str:
-    provider = str(search_result.get("provider") or "").strip() or "unknown"
+    raw_provider = search_result.get("provider")
+    provider = "unknown" if raw_provider is None else raw_provider.strip() or "unknown"
     results = search_result.get("results") or []
     lines = [f"[Web Search Fallback | provider={provider}]"]
     for idx, item in enumerate(results, 1):
         if not isinstance(item, dict):
             continue
-        title = str(item.get("title") or "").strip()
-        url = str(item.get("url") or "").strip()
-        snippet = str(item.get("snippet") or "").strip()
+        title, url, snippet = item.get("title"), item.get("url"), item.get("snippet")
+        if title is not None:
+            title = title.strip()
+        if url is not None:
+            url = url.strip()
+        if snippet is not None:
+            snippet = snippet.strip()
         if title:
             lines.append(f"{idx}. {title}")
         if url:
@@ -69,10 +74,10 @@ async def run_crag_streaming(
             "evaluator": evaluator,
         }
 
-    search_query = str(query_for_retrieval or question or "").strip()
+    search_query = (question if query_for_retrieval is None else query_for_retrieval).strip()
     search_result = await web_search(
         search_query,
-        max_results=max_results or settings.RAG_CRAG_STREAMING_MAX_RESULTS or 5,
+        max_results=max_results or settings.RAG_CRAG_STREAMING_MAX_RESULTS,
         site_filter=site_filter,
         freshness=freshness,
         lang=lang,

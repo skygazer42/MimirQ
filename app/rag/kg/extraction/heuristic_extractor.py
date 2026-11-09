@@ -32,11 +32,11 @@ _STOP_PHRASES = {
 
 
 def _collapse_spaces(value: str) -> str:
-    return " ".join(str(value or "").split())
+    return " ".join(value.split())
 
 
 def _line_heading(line: str) -> str | None:
-    raw = str(line or "").rstrip()
+    raw = line.rstrip()
     leading_spaces = len(raw) - len(raw.lstrip(" "))
     if leading_spaces > 3:
         return None
@@ -51,7 +51,7 @@ def _line_heading(line: str) -> str | None:
 
 
 def _extract_heading(text: str) -> str | None:
-    for line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
         title = _line_heading(line)
         if title:
             return title
@@ -59,7 +59,7 @@ def _extract_heading(text: str) -> str | None:
 
 
 def _trim_table_edge_pipes(text: str) -> str:
-    trimmed = str(text or "").strip()
+    trimmed = text.strip()
     if trimmed.startswith("|"):
         trimmed = trimmed[1:]
     if trimmed.endswith("|"):
@@ -68,7 +68,7 @@ def _trim_table_edge_pipes(text: str) -> str:
 
 
 def _is_table_separator_cell(cell: str) -> bool:
-    core = str(cell or "").strip()
+    core = cell.strip()
     if not core:
         return False
     if core.startswith(":"):
@@ -79,7 +79,7 @@ def _is_table_separator_cell(cell: str) -> bool:
 
 
 def _is_table_separator(line: str) -> bool:
-    text = str(line or "").strip()
+    text = line.strip()
     if not text or "-" not in text:
         return False
     cells = [cell.strip() for cell in _trim_table_edge_pipes(text).split("|")]
@@ -87,7 +87,7 @@ def _is_table_separator(line: str) -> bool:
 
 
 def _strip_bullet_prefix(line: str) -> str:
-    text = str(line or "").lstrip()
+    text = line.lstrip()
     if len(text) >= 2 and text[0] in {"-", "*", "+"} and text[1].isspace():
         return text[2:].lstrip()
     cursor = 0
@@ -99,7 +99,7 @@ def _strip_bullet_prefix(line: str) -> str:
 
 
 def _split_sentences(line: str) -> list[str]:
-    text = str(line or "")
+    text = line
     parts: list[str] = []
     start = 0
     for index, char in enumerate(text):
@@ -132,7 +132,7 @@ def _normalized_entity_candidate(value: str) -> tuple[str, str] | None:
 
 
 def _iter_line_fact_parts(raw_line: str) -> list[str]:
-    line = str(raw_line or "").strip()
+    line = raw_line.strip()
     if not line or _line_heading(line) or _is_table_separator(line):
         return []
     line = _strip_bullet_prefix(line).strip()
@@ -152,13 +152,13 @@ def _iter_line_fact_parts(raw_line: str) -> list[str]:
 
 def _iter_fact_parts(text: str) -> list[str]:
     parts: list[str] = []
-    for raw_line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").splitlines():
+    for raw_line in text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
         parts.extend(_iter_line_fact_parts(raw_line))
     return parts
 
 
 def _entity_type(name: str) -> str:
-    value = str(name or "").strip()
+    value = name.strip()
     upper = value.upper()
     if re.fullmatch(r"RFC\s?-?\d{3,5}", value, flags=re.IGNORECASE):
         return "standard"
@@ -172,7 +172,7 @@ def _entity_type(name: str) -> str:
 
 
 def _candidate_entities(text: str, *, max_entities: int) -> list[dict[str, Any]]:
-    clean = str(text or "")
+    clean = text
     if not clean.strip():
         return []
 
@@ -205,7 +205,7 @@ def _candidate_entities(text: str, *, max_entities: int) -> list[dict[str, Any]]
 
 
 def _event_title(text: str, *, chunk: DocumentChunk) -> str:
-    clean = str(text or "").strip()
+    clean = text.strip()
     heading = _extract_heading(clean)
     if heading:
         return heading[:120]
@@ -218,7 +218,7 @@ def _event_title(text: str, *, chunk: DocumentChunk) -> str:
 
 
 def _event_summary(text: str, *, title: str) -> str:
-    clean = _collapse_spaces(str(text or ""))
+    clean = _collapse_spaces(text)
     if not clean:
         return title
     sentences = _split_sentences(clean)
@@ -230,7 +230,7 @@ def _event_summary(text: str, *, title: str) -> str:
 
 
 def _fact_title(text: str, *, chunk: DocumentChunk) -> str:
-    clean = _collapse_spaces(str(text or ""))
+    clean = _collapse_spaces(text)
     if clean:
         return clean[:120]
     return _event_title(text, chunk=chunk)
@@ -263,7 +263,7 @@ def _event_fact_candidates(
     parts = _iter_fact_parts(text)
 
     if not parts:
-        clean = _collapse_spaces(str(text or ""))
+        clean = _collapse_spaces(text)
         if clean:
             parts.append(clean)
 
@@ -275,7 +275,7 @@ def _event_fact_candidates(
     if not rows:
         entities = _candidate_entities(text, max_entities=max(1, int(max_entities_per_event or 30)))
         if entities:
-            rows.append((_collapse_spaces(str(text or "")), entities))
+            rows.append((_collapse_spaces(text), entities))
     return rows
 
 
@@ -299,7 +299,7 @@ class HeuristicExtractor:
         if not sections:
             return []
         target = sections[0]
-        text = str(target.content or "").strip()
+        text = target.content.strip()
         if not text:
             return []
 
@@ -326,7 +326,7 @@ class HeuristicExtractor:
                     "summary": summary,
                     "content": summary,
                     "entities": entities,
-                    "chunk_id": str(target.id or ""),
+                    "chunk_id": str(target.id),
                 }
             )
 

@@ -9,7 +9,9 @@ _DEFAULT_PROVIDER_ORDER = ("tavily", "serper", "brave")
 
 
 def _safe_text(value: Any, *, max_len: int = 500) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -20,7 +22,7 @@ def _normalize_provider_order(value: list[str] | tuple[str, ...] | None) -> list
     out: list[str] = []
     seen: set[str] = set()
     for item in raw:
-        provider = str(item or "").strip().lower()
+        provider = item.strip().lower()
         if provider not in {"tavily", "serper", "brave"}:
             continue
         if provider in seen:
@@ -38,7 +40,12 @@ def _normalize_results(items: list[dict[str, Any]] | None, *, max_results: int) 
             continue
         url = _safe_text(item.get("url"), max_len=1000)
         title = _safe_text(item.get("title"), max_len=240)
-        snippet = _safe_text(item.get("snippet") or item.get("content") or item.get("description"), max_len=1200)
+        snippet_value = item.get("snippet")
+        if snippet_value is None:
+            snippet_value = item.get("content")
+        if snippet_value is None:
+            snippet_value = item.get("description")
+        snippet = _safe_text(snippet_value, max_len=1200)
         source = _safe_text(item.get("source"), max_len=120)
         published_at = _safe_text(item.get("published_at") or item.get("date"), max_len=80)
         if not url or url in seen_urls:
@@ -47,8 +54,8 @@ def _normalize_results(items: list[dict[str, Any]] | None, *, max_results: int) 
         payload: dict[str, Any] = {
             "title": title or url,
             "url": url,
-            "snippet": snippet or "",
-            "source": source or "",
+            "snippet": snippet,
+            "source": source,
         }
         if published_at:
             payload["published_at"] = published_at
@@ -71,7 +78,7 @@ async def _run_tavily_search(
     if not api_key:
         raise RuntimeError("missing_tavily_api_key")
     payload: dict[str, Any] = {
-        "query": str(query or ""),
+        "query": query,
         "max_results": int(max_results or 5),
     }
     if site_filter:
@@ -82,7 +89,7 @@ async def _run_tavily_search(
         payload["search_lang"] = str(lang)
     if region:
         payload["region"] = str(region)
-    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=settings.WEB_SEARCH_TIMEOUT_SEC or 8.0) as client:
+    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=settings.WEB_SEARCH_TIMEOUT_SEC) as client:
         resp = await client.post(
             "https://api.tavily.com/search",
             headers={"Authorization": f"Bearer {api_key}"},
@@ -116,10 +123,10 @@ async def _run_serper_search(
     api_key = settings.SERPER_API_KEY.strip()
     if not api_key:
         raise RuntimeError("missing_serper_api_key")
-    query_text = str(query or "")
+    query_text = query
     if site_filter:
         for domain in site_filter:
-            dom = str(domain or "").strip()
+            dom = domain.strip()
             if dom:
                 query_text = f"{query_text} site:{dom}"
     payload: dict[str, Any] = {
@@ -132,7 +139,7 @@ async def _run_serper_search(
         payload["hl"] = str(lang)
     if region:
         payload["gl"] = str(region)
-    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=settings.WEB_SEARCH_TIMEOUT_SEC or 8.0) as client:
+    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=settings.WEB_SEARCH_TIMEOUT_SEC) as client:
         resp = await client.post(
             "https://google.serper.dev/search",
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
@@ -167,7 +174,7 @@ async def _run_brave_search(
     if not api_key:
         raise RuntimeError("missing_brave_search_api_key")
     params: dict[str, Any] = {
-        "q": str(query or ""),
+        "q": query,
         "count": int(max_results or 5),
     }
     if site_filter:
@@ -178,7 +185,7 @@ async def _run_brave_search(
         params["search_lang"] = str(lang)
     if region:
         params["country"] = str(region)
-    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=settings.WEB_SEARCH_TIMEOUT_SEC or 8.0) as client:
+    async with httpx.AsyncClient(trust_env=httpx_trust_env(), timeout=settings.WEB_SEARCH_TIMEOUT_SEC) as client:
         resp = await client.get(
             "https://api.search.brave.com/res/v1/web/search",
             headers={"X-Subscription-Token": api_key},
@@ -226,7 +233,7 @@ async def web_search(
         fn = provider_funcs[provider]
         try:
             raw_results = await fn(
-                query=str(query or ""),
+                query=query,
                 max_results=limit,
                 site_filter=site_filter,
                 freshness=freshness,
@@ -236,7 +243,7 @@ async def web_search(
             results = _normalize_results(raw_results, max_results=limit)
             return {
                 "ok": True,
-                "query": str(query or ""),
+                "query": query,
                 "provider": provider,
                 "providers_tried": tried,
                 "fallback_used": len(tried) > 1,
@@ -249,7 +256,7 @@ async def web_search(
 
     return {
         "ok": False,
-        "query": str(query or ""),
+        "query": query,
         "provider": None,
         "providers_tried": tried,
         "fallback_used": len(tried) > 1,

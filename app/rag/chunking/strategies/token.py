@@ -46,7 +46,7 @@ class LangChainTokenChunker(BaseChunker):
             self.splitter = None
 
     def _split_text_fallback(self, text: str) -> list[str]:
-        raw = text or ""
+        raw = text
         if not raw:
             return []
 

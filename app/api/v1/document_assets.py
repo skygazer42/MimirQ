@@ -146,8 +146,8 @@ def _asset_disposition_type(*, inline: bool, filename: str | None, media_type: s
     if not inline:
         return "attachment"
 
-    normalized_media_type = str((media_type if media_type is not None else "")).split(";", 1)[0].strip().lower()
-    normalized_suffix = Path(str((filename if filename is not None else ""))).suffix.strip().lower()
+    normalized_media_type = media_type.split(";", 1)[0].strip().lower() if media_type is not None else None
+    normalized_suffix = Path(filename).suffix.strip().lower() if filename is not None else None
     if normalized_media_type in _ACTIVE_CONTENT_MEDIA_TYPES or normalized_suffix in _ACTIVE_CONTENT_SUFFIXES:
         return "attachment"
     return "inline"
@@ -165,7 +165,7 @@ def _asset_cache_control_value() -> str:
 
 
 def _quoted_etag(raw_value: str | None) -> str | None:
-    etag_raw = str((raw_value if raw_value is not None else "")).strip()
+    etag_raw = raw_value.strip() if raw_value is not None else None
     if not etag_raw:
         return None
     return etag_raw if etag_raw.startswith('"') else f'"{etag_raw}"'
@@ -189,7 +189,7 @@ def _asset_response_headers(
 def _not_modified_response(request: Request, *, etag: str | None, cache_control: str) -> Response | None:
     if not etag:
         return None
-    if_none_match = (request.headers.get("if-none-match") or "").strip()
+    if_none_match = request.headers.get("if-none-match")
     if not if_none_match:
         return None
     candidates_etag = [part.strip() for part in if_none_match.split(",") if part.strip()]
@@ -199,7 +199,7 @@ def _not_modified_response(request: Request, *, etag: str | None, cache_control:
 
 
 def _parse_range_request(
-    *, range_header: str, total_size: int, invalid_detail: str
+    *, range_header: str | None, total_size: int, invalid_detail: str
 ) -> tuple[int, int | None, int, dict[str, str]]:
     if not range_header:
         return 0, None, 200, {"Content-Length": str(total_size)}
@@ -258,7 +258,9 @@ def _resolve_document_download(
 
 
 def _resolve_document_media_type(filename: str | None) -> str:
-    media_type, _encoding = mimetypes.guess_type((filename if filename is not None else ""))
+    if filename is None:
+        return "application/octet-stream"
+    media_type, _encoding = mimetypes.guess_type(filename)
     return media_type or "application/octet-stream"
 
 
@@ -269,7 +271,7 @@ def _stream_object_storage_document(
     request: Request,
     inline: bool,
 ) -> Response:
-    raw_path = str(document.file_path or "").strip()
+    raw_path = document.file_path.strip()
     try:
         store, ref = resolve_document_object_reference(
             raw_path,
@@ -298,8 +300,10 @@ def _stream_object_storage_document(
     if total_size <= 0:
         raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL)
     cache_control = _asset_cache_control_value()
-    etag = _quoted_etag(getattr(stat, "etag", ""))
-    range_header = (request.headers.get("range") or "").strip()
+    etag = _quoted_etag(stat.etag)
+    range_header = request.headers.get("range")
+    if range_header is not None:
+        range_header = range_header.strip()
     if not range_header:
         cached = _not_modified_response(request, etag=etag, cache_control=cache_control)
         if cached is not None:
@@ -326,7 +330,7 @@ def _stream_object_storage_document(
 
 
 def _serve_local_document_file(*, document: DBDocument, tenant_id: UUID, inline: bool) -> FileResponse:
-    path = Path(str(document.file_path or "")).resolve(strict=False)
+    path = Path(document.file_path).resolve(strict=False)
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL)
     upload_root = Path(settings.UPLOAD_DIR).resolve(strict=False)
@@ -395,7 +399,7 @@ def _file_etag(file_path: Path) -> tuple[Any, str | None]:
 def _tenant_from_image_url_id(img_id: str) -> UUID | None:
     if ":" not in img_id:
         return None
-    raw_tenant = (img_id.split(":", 1)[0] or "").strip()
+    raw_tenant = (img_id.split(":", 1)[0]).strip()
     if not raw_tenant:
         return None
     try:
@@ -446,8 +450,10 @@ def _stream_minio_image(*, request: Request, object_name: str) -> Response:
     if total_size <= 0:
         raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL)
     cache_control = _asset_cache_control_value()
-    etag = _quoted_etag(getattr(stat, "etag", ""))
-    range_header = (request.headers.get("range") or "").strip()
+    etag = _quoted_etag(stat.etag)
+    range_header = request.headers.get("range")
+    if range_header is not None:
+        range_header = range_header.strip()
     if not range_header:
         cached = _not_modified_response(request, etag=etag, cache_control=cache_control)
         if cached is not None:
@@ -488,7 +494,7 @@ async def download_document(
         account_id=account_id,
         document_id=document_id,
     )
-    raw_path = str(document.file_path or "").strip()
+    raw_path = document.file_path.strip()
     if not raw_path or raw_path.startswith(MANUAL_FILE_PATH_PREFIX):
         raise HTTPException(status_code=404, detail="Document file not available")
     if is_object_storage_uri(raw_path):

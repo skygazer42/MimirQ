@@ -83,7 +83,9 @@ def _summary_or_404(scan_run: DBDatasetPrecheckScanRun) -> dict[str, Any]:
 def _load_jsonl_path(scan_run: DBDatasetPrecheckScanRun, *, tenant_id: UUID) -> Path:
     artifacts = scan_run.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
-    raw = str(artifacts.get("files_jsonl") or "").strip()
+    raw = artifacts.get("files_jsonl")
+    if raw is not None:
+        raw = raw.strip()
     if not raw:
         raise HTTPException(status_code=404, detail="Artifacts not available")
     p = Path(raw)
@@ -160,7 +162,7 @@ def _extract_suggestion_signals(summary: dict[str, Any]) -> _SuggestionSignals:
     pdf_scan = summary.get("pdf_scan") if isinstance(summary.get("pdf_scan"), dict) else {}
     finding_list = summary.get("findings") if isinstance(summary.get("findings"), list) else []
     finding_by_key = {
-        str(item.get("key") or "").strip().lower(): item for item in finding_list if isinstance(item, dict)
+        item["key"].strip().lower(): item for item in finding_list if isinstance(item, dict)
     }
     length_percentiles = (
         summary.get("length_percentiles") if isinstance(summary.get("length_percentiles"), dict) else {}
@@ -189,9 +191,9 @@ def _collect_sensitive_file_types(jsonl_path: Path) -> tuple[set[str], set[str]]
     pii_types: set[str] = set()
     secrets_types: set[str] = set()
     for obj in _iter_jsonl(jsonl_path):
-        file_type = str(obj.get("file_type") or "").strip().lower()
+        file_type = obj["file_type"].strip().lower()
         findings = obj.get("findings") if isinstance(obj.get("findings"), list) else []
-        finding_set = {str(x or "").strip().lower() for x in findings}
+        finding_set = {x.strip().lower() for x in findings}
         if file_type and "pii" in finding_set:
             pii_types.add(file_type)
         if file_type and "secrets" in finding_set:
@@ -495,7 +497,9 @@ def _near_dup_manual_review_bucket(
 ) -> dict[str, Any]:
     artifacts = scan_run.artifacts
     artifacts = artifacts if isinstance(artifacts, dict) else {}
-    near_raw = str(artifacts.get("near_dups_json") or "").strip()
+    near_raw = artifacts.get("near_dups_json")
+    if near_raw is not None:
+        near_raw = near_raw.strip()
     names: list[str] = []
     total_affected = 0
     if near_raw:
@@ -511,7 +515,7 @@ def _near_dup_manual_review_bucket(
                 members = cluster.get("members")
                 if isinstance(members, list):
                     for member in members:
-                        name = str(member or "").strip()
+                        name = member.strip()
                         if name:
                             affected.append(name)
             total_affected = len(set(affected))

@@ -22,7 +22,7 @@ from app.services.dify_integration.scoring import (
 
 
 def _query_requests_url_evidence(query: str) -> bool:
-    text = str(query or "").casefold()
+    text = query.casefold()
     if not text:
         return False
     normalized = _normalize_match_term(text)
@@ -65,7 +65,7 @@ def _dify_fast_total_content_max_chars() -> int:
 def _structured_label_values_from_content(content: str) -> dict[str, str]:
     fields: dict[str, str] = {}
     current_label = ""
-    for segment in re.split(r"\s*\|\s*|\n+", str(content or "")):
+    for segment in re.split(r"\s*\|\s*|\n+", content):
         text = segment.strip()
         if not text:
             continue
@@ -85,7 +85,7 @@ def _fast_answer_query_terms(query: str) -> tuple[str, ...]:
     seen: set[str] = set()
 
     def add(value: str) -> None:
-        term = str(value or "").strip(" \t\r\n，。；;、：:？?！!（）()“”\"'《》「」")
+        term = value.strip(" \t\r\n，。；;、：:？?！!（）()“”\"'《》「」")
         normalized = _normalize_match_term(term)
         if len(normalized) < 2 or normalized in seen or normalized in _FAST_ANSWER_QUERY_STOP_TERMS:
             return
@@ -105,7 +105,7 @@ def _fast_answer_query_terms(query: str) -> tuple[str, ...]:
 
 
 def _fast_answer_snippet_segments(answer: str) -> list[str]:
-    text = re.sub(r"\s+", " ", str(answer or "")).strip()
+    text = re.sub(r"\s+", " ", answer).strip()
     if not text:
         return []
     return [
@@ -116,7 +116,7 @@ def _fast_answer_snippet_segments(answer: str) -> list[str]:
 
 
 def _compact_fast_answer_value(answer: str, *, query: str, limit: int) -> str:
-    text = str(answer or "").strip()
+    text = answer.strip()
     if len(text) <= limit:
         return text
     normalized_terms = tuple(

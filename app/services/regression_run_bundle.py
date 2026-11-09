@@ -99,16 +99,16 @@ def export_regression_run_bundle(
     for raw in list(items or [])[:max_items_i]:
         case_id = _coerce_uuid_str(raw.case_id)
         case_id_hash = _hash_uuid_str(case_id)
-        question = str(raw.question or "")
-        response = str(raw.response or "")
+        question = raw.question
+        response = raw.response
 
         rec: dict[str, Any] = {
             "case_id": case_id if not redact_ids else None,
             "case_id_hash": case_id_hash if redact_ids else None,
             "question_hash": stable_hash(question, length=16) if question else None,
-            "question_chars": len(question) if question else 0,
+            "question_chars": len(question),
             "response_hash": stable_hash(response, length=16) if response else None,
-            "response_chars": len(response) if response else 0,
+            "response_chars": len(response),
             "scores": _coerce_dict(raw.scores),
             "meta": _coerce_dict(raw.meta),
             "citations": sanitize_citations_for_capture(raw.citations, max_items=max_citations_i),
@@ -125,10 +125,13 @@ def export_regression_run_bundle(
         out_items.append({k: v for k, v in rec.items() if v is not None})
 
     # Stable ordering for diffs.
+    identifier_key = "case_id_hash" if redact_ids else "case_id"
     out_items.sort(
         key=lambda it: (
-            str(it.get("case_id_hash") or it.get("case_id") or ""),
-            str(it.get("question_hash") or ""),
+            it.get(identifier_key) is not None,
+            it.get(identifier_key),
+            it.get("question_hash") is not None,
+            it.get("question_hash"),
         )
     )
 
@@ -139,7 +142,7 @@ def export_regression_run_bundle(
         "tenant_id_hash": tenant_id_hash if redact_ids else None,
         "dataset_id": dataset_id if not redact_ids else None,
         "dataset_id_hash": dataset_id_hash if redact_ids else None,
-        "status": str(run.status or ""),
+        "status": run.status,
         "metrics": _coerce_list(run.metrics),
         "params": _coerce_dict(run.params),
         "summary": _coerce_dict(run.summary),

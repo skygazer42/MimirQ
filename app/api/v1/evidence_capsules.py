@@ -61,7 +61,7 @@ def _store_dir() -> Path:
 
 
 def _normalize_capsule_id(value: str) -> str:
-    cid = str(value or "").strip()
+    cid = value.strip()
     if not _SAFE_ID_RE.match(cid):
         raise HTTPException(status_code=400, detail="invalid_capsule_id")
     return cid
@@ -102,11 +102,11 @@ def _legacy_capsule_path(*, capsule_id: str) -> Path:
 def _capsule_envelope(*, capsule: dict[str, Any], tenant_id: UUID, capsule_id: str, account_id: str) -> dict[str, Any]:
     bound_tenant_id = str(tenant_id)
     bound_owner_account_id = account_id
-    existing_tenant_id = str(capsule.get("tenant_id") or "").strip()
-    if existing_tenant_id and existing_tenant_id != bound_tenant_id:
+    existing_tenant_id = capsule.get("tenant_id")
+    if existing_tenant_id is not None and existing_tenant_id != bound_tenant_id:
         raise HTTPException(status_code=400, detail="capsule_tenant_id_mismatch")
-    existing_owner_account_id = str(capsule.get("owner_account_id") or "").strip()
-    if existing_owner_account_id and existing_owner_account_id != bound_owner_account_id:
+    existing_owner_account_id = capsule.get("owner_account_id")
+    if existing_owner_account_id is not None and existing_owner_account_id != bound_owner_account_id:
         raise HTTPException(status_code=400, detail="capsule_owner_account_id_mismatch")
     return {
         "tenant_id": bound_tenant_id,
@@ -127,7 +127,7 @@ def _extract_capsule_binding(
     payload: Any,
     *,
     allow_legacy_raw: bool,
-) -> tuple[str, str, dict[str, Any]]:
+) -> tuple[str | None, str | None, dict[str, Any]]:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=500, detail="capsule_invalid_payload")
 
@@ -136,8 +136,8 @@ def _extract_capsule_binding(
         if not isinstance(capsule, dict):
             raise HTTPException(status_code=500, detail="capsule_invalid_payload")
         return (
-            str(payload.get("tenant_id") or "").strip(),
-            str(payload.get("owner_account_id") or "").strip(),
+            payload.get("tenant_id"),
+            payload.get("owner_account_id"),
             capsule,
         )
 
@@ -145,8 +145,8 @@ def _extract_capsule_binding(
         raise HTTPException(status_code=500, detail="capsule_invalid_payload")
 
     return (
-        str(payload.get("tenant_id") or "").strip(),
-        str(payload.get("owner_account_id") or "").strip(),
+        payload.get("tenant_id"),
+        payload.get("owner_account_id"),
         dict(payload),
     )
 
@@ -231,8 +231,8 @@ def persist_evidence_capsule(
     if not ok:
         raise HTTPException(status_code=400, detail=f"invalid_capsule:{reason}")
 
-    capsule_hash = str(body.capsule.get("capsule_hash") or "").strip()
-    capsule_id = _normalize_capsule_id(str(body.capsule_id or capsule_hash or ""))
+    capsule_hash = body.capsule["capsule_hash"].strip()
+    capsule_id = _normalize_capsule_id(body.capsule_id if body.capsule_id is not None else capsule_hash)
     path = _capsule_path(tenant_id=tenant_id, capsule_id=capsule_id)
     legacy_path = _legacy_capsule_path(capsule_id=capsule_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -312,7 +312,7 @@ def get_evidence_capsule(
 
     return EvidenceCapsuleGetResponse(
         capsule_id=capsule_id,
-        capsule_hash=str(capsule.get("capsule_hash") or ""),
+        capsule_hash=capsule["capsule_hash"],
         capsule=capsule,
     )
 

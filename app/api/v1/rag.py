@@ -307,8 +307,8 @@ def _resolve_preview_rag_template_meta(
     rag_config_template_patch_applied_fields: list[str] = []
     if (
         effective_rag_config_template_id
-        or (effective_rag_config_template_key or "").strip()
-        or (effective_rag_config_ab_experiment_key or "").strip()
+        or (effective_rag_config_template_key is not None and effective_rag_config_template_key.strip())
+        or (effective_rag_config_ab_experiment_key is not None and effective_rag_config_ab_experiment_key.strip())
     ):
         chosen, resolver_debug = resolve_rag_config_template(
             db=db,
@@ -475,7 +475,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
         "passes": [
             {
                 "pass": "primary",
-                "retrieval_mode": str(metrics.get("retrieval_mode") or ""),
+                "retrieval_mode": metrics.get("retrieval_mode"),
                 "retrieval_profile": state.get("retrieval_profile"),
                 "empty_retrieval": metrics.get("empty_retrieval")
                 if isinstance(metrics.get("empty_retrieval"), dict)
@@ -488,7 +488,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
             },
             {
                 "pass": "fallback",
-                "retrieval_mode": str(f_metrics.get("retrieval_mode") or ""),
+                "retrieval_mode": f_metrics.get("retrieval_mode"),
                 "retrieval_profile": fallback_profile,
                 "empty_retrieval": f_metrics.get("empty_retrieval")
                 if isinstance(f_metrics.get("empty_retrieval"), dict)
@@ -508,7 +508,7 @@ async def _maybe_apply_iterative_retrieval_fallback(
 
     result["citations"] = f_citations
     result["metrics"] = f_metrics
-    result["query_for_retrieval"] = (fallback.get("query_for_retrieval") or query_for_retrieval or "").strip()
+    result["query_for_retrieval"] = (fallback["query_for_retrieval"]).strip()
     qd = fallback.get("query_debug")
     result["query_debug"] = qd if isinstance(qd, dict) else query_debug
     result["abstain_triggered"] = f_abstain
@@ -630,7 +630,7 @@ def _observe_evidence_retrieve_metrics(
             duration_sec=(time.monotonic() - t_api_start),
             has_evidence=bool(has_evidence),
             abstain_triggered=bool(abstain_triggered),
-            retrieval_mode=str(metrics.get("retrieval_mode") or effective_rag_config.retrieval_mode or ""),
+            retrieval_mode=metrics.get("retrieval_mode"),
             selected_pass=str(selected_pass),
             citations_count=(len(citations) if isinstance(citations, list) else 0),
             top_relevance_score=float(_top_relevance_score(metrics) or 0.0),
@@ -806,7 +806,7 @@ def document_structure_preview(
         document_id=body.document_id,
         max_nodes=body.max_nodes,
     )
-    error = str(structure.get("error") or "")
+    error = structure.get("error")
     if error == "No document access":
         raise HTTPException(status_code=403, detail=error)
     if error == "Document not found":
@@ -965,7 +965,7 @@ async def retrieve_preview(
     )
     citations = result.get("citations") or []
     metrics = result.get("metrics") or {}
-    query_for_retrieval = (result.get("query_for_retrieval") or body.query or "").strip()
+    query_for_retrieval = (result["query_for_retrieval"]).strip()
 
     # Ensure minimum fields exist for UI debugging.
     metrics = dict(metrics)
@@ -1316,7 +1316,7 @@ async def retrieve_evidence(
     citations = primary.get("citations") or []
     metrics = dict(primary.get("metrics") or {})
     metrics.update(primary_offload_metrics)
-    query_for_retrieval = (primary.get("query_for_retrieval") or body.query or "").strip()
+    query_for_retrieval = (primary["query_for_retrieval"]).strip()
     query_debug = primary.get("query_debug")
     if not isinstance(query_debug, dict):
         query_debug = None
@@ -1564,13 +1564,13 @@ async def prompt_preview(
     docs = retrieved.get("docs") or []
     metrics = dict(retrieved.get("metrics") or {})
     metrics.update(offload_metrics)
-    query_for_retrieval = (retrieved.get("query_for_retrieval") or body.query or "").strip()
+    query_for_retrieval = (retrieved["query_for_retrieval"]).strip()
 
     ctx_t0 = time.time()
     ctx = _build_context(docs, query=query_for_retrieval or body.query)
     hist_text = _build_history_text(state.get("history"))
     ctx_elapsed = time.time() - ctx_t0
-    format_instructions = state.get("format_instructions") or ""
+    format_instructions = state["format_instructions"]
 
     engine = get_rag_engine()
     prompt_obj = engine.prompt_template

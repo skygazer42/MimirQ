@@ -311,7 +311,7 @@ def _drop_sheet_tables(path: Path) -> None:
         try:
             cur = conn.execute(_SQL_LIST_SHEET_TABLES)
             for row in cur.fetchall():
-                name = str(row[0] or "")
+                name = row[0]
                 if name:
                     conn.execute(f"DROP TABLE IF EXISTS {quote_sqlite_ident(name)};")
             conn.commit()
@@ -582,7 +582,7 @@ def _docx_block_text(block: "BaseOxmlElement", doc: "DocxDocumentType") -> str:
     from docx.text.paragraph import Paragraph  # type: ignore
 
     paragraph = Paragraph(block, doc)
-    text = (paragraph.text or "").replace("\r", " ").replace("\n", " ")
+    text = (paragraph.text).replace("\r", " ").replace("\n", " ")
     return _WS_RE.sub(" ", text).strip()
 
 
@@ -601,7 +601,7 @@ def _docx_table_sheet_name(prev_paras: list[str], table_index: int) -> str:
 
 
 def _docx_cell_text(cell: "_Cell") -> str:
-    text = (cell.text or "").replace("\r", " ").replace("\n", " ")
+    text = (cell.text).replace("\r", " ").replace("\n", " ")
     return _WS_RE.sub(" ", text).strip()
 
 
@@ -741,7 +741,7 @@ def _extract_markdown_table_blocks(text: str) -> list[list[str]]:
     We keep this conservative (line-based) since this is used on parser-emitted table segments,
     not arbitrary user-provided markdown.
     """
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return []
 
@@ -778,7 +778,7 @@ def _markdown_table_body_start(lines: list[str], header_width: int) -> tuple[int
     if (
         separator
         and len(separator) == header_width
-        and all(_MD_TABLE_SEP_CELL_RE.match(cell or "") for cell in separator)
+        and all(_MD_TABLE_SEP_CELL_RE.match(cell) for cell in separator)
     ):
         return 2, True
     return 1, False
@@ -790,7 +790,7 @@ def _parse_markdown_table(block_lines: list[str]) -> tuple["pd.DataFrame", bool]
 
     Returns: (df, had_separator_row) or None if it doesn't look like a table.
     """
-    lines = [str(line or "") for line in (block_lines or []) if str(line or "").strip()]
+    lines = [line for line in (block_lines or []) if line.strip()]
     if len(lines) < 2:
         return None
 
@@ -844,7 +844,9 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
     for t in tables or []:
         if not isinstance(t, dict):
             continue
-        md = str(t.get("markdown") or "")
+        md = t.get("markdown")
+        if md is None:
+            continue
         if not md.strip():
             continue
 
@@ -888,10 +890,12 @@ def import_markdown_tables(  # noqa: PLR0913 - public importer keeps explicit AP
     return assets
 
 
-def _db_snapshot_column_name(raw: Any) -> str:
+def _db_snapshot_column_name(raw: Any) -> str | None:
     if isinstance(raw, dict):
-        return str(raw.get("name") or "").strip()
-    return str(raw or "").strip()
+        raw = raw["name"]
+    if raw is None:
+        return None
+    return str(raw).strip()
 
 
 def _db_snapshot_column_names(snap: dict[str, Any], *, max_cols: int) -> list[str]:
@@ -1049,7 +1053,9 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
         if not isinstance(t, dict):
             continue
         tid = t.get("table_id")
-        parsed = parse_table_id(str(tid or ""))
+        if tid is None:
+            continue
+        parsed = parse_table_id(tid)
         if parsed is None:
             continue
         doc_id = parsed.document_id
@@ -1077,8 +1083,8 @@ def list_tables_from_metadata(meta: dict[str, Any]) -> list[TableAsset]:
 
 def _extract_sql_table_refs(sql: str) -> list[str]:
     refs: list[str] = []
-    for m in _SQL_TABLE_REF_RE.finditer(str(sql or "")):
-        raw = str((m.group(1) or m.group(2) or "")).strip()
+    for m in _SQL_TABLE_REF_RE.finditer(sql):
+        raw = (m.group(1) or m.group(2)).strip()
         if not raw:
             continue
         if raw.startswith("("):
@@ -1127,9 +1133,9 @@ def evaluate_planner_execution_mismatch(
 
 
 def _clamped_table_query_limits(*, max_rows: int, max_cols: int, max_bytes: int) -> TableQueryLimits:
-    hard_rows = settings.TABLE_QUERY_MAX_ROWS or 0
-    hard_cols = settings.TABLE_QUERY_MAX_COLS or 0
-    hard_bytes = settings.TABLE_QUERY_MAX_BYTES or 0
+    hard_rows = settings.TABLE_QUERY_MAX_ROWS
+    hard_cols = settings.TABLE_QUERY_MAX_COLS
+    hard_bytes = settings.TABLE_QUERY_MAX_BYTES
     if hard_rows > 0:
         max_rows = min((max_rows or 0) or hard_rows, hard_rows)
     if hard_cols > 0:
@@ -1170,7 +1176,7 @@ def _normalize_table_query_sql(raw_sql: str, *, limit: int) -> str:
 def _query_allowed_tables(*, sql_table: str, allowed_sql_tables: list[str] | None) -> set[str]:
     allowed_tables = {sql_table}
     for raw in allowed_sql_tables if allowed_sql_tables is not None else []:
-        name = str(raw or "").strip()
+        name = raw.strip()
         if name:
             allowed_tables.add(name)
     return allowed_tables
@@ -1250,7 +1256,7 @@ def _execute_table_query(
     try:
         cur = conn.execute(normalized_sql)
     except sqlite3.OperationalError as exc:
-        msg = str(exc or "").lower()
+        msg = str(exc).lower()
         if "interrupted" in msg and timeout_sec > 0:
             raise TimeoutError(f"query_timeout ({timeout_sec:.1f}s)") from exc
         raise
@@ -1282,7 +1288,7 @@ def run_table_query(  # noqa: PLR0913 - public query API keeps explicit guardrai
     if parsed is None:
         raise ValueError("invalid table_id")
 
-    raw_sql = str(sql or "")
+    raw_sql = sql
     limits = _clamped_table_query_limits(max_rows=max_rows, max_cols=max_cols, max_bytes=max_bytes)
     _validate_table_query_sql(raw_sql)
 
@@ -1376,8 +1382,8 @@ def _apply_sqlite_readonly_authorizer(conn: sqlite3.Connection, *, allowed_table
 
         # Restrict table reads to the allowed set.
         if action_code == sqlite3.SQLITE_READ:
-            table = str(arg1 or "")
-            if table and table not in allowed and table not in schema_tables:
+            table = arg1
+            if table not in allowed and table not in schema_tables:
                 return deny
             return ok
 

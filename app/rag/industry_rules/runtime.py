@@ -14,9 +14,9 @@ def normalize_ruleset_names(raw: Any, *, max_items: int = 8) -> list[str]:
     if isinstance(raw, str):
         values = [p.strip() for p in raw.replace(";", ",").split(",")]
     elif isinstance(raw, Sequence) and not isinstance(raw, (bytes, bytearray)):
-        values = [str(item or "").strip() for item in raw]
+        values = [str(item).strip() for item in raw if item is not None]
     else:
-        values = [str(raw or "").strip()]
+        values = [str(raw).strip()]
 
     out: list[str] = []
     seen: set[str] = set()
@@ -35,7 +35,7 @@ def normalize_ruleset_names(raw: Any, *, max_items: int = 8) -> list[str]:
 
 
 def _hash_text(value: str) -> str:
-    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
 
 
 def _query_expansion_meta(original: str, *, enabled: bool, ruleset_names: list[str]) -> dict[str, Any]:
@@ -55,11 +55,11 @@ def _query_expansion_meta(original: str, *, enabled: bool, ruleset_names: list[s
 
 def _collect_matching_aliases(*, before: str, glossary: dict[str, Any], aliases: list[str]) -> None:
     for term, values in (glossary or {}).items():
-        token = str(term or "").strip()
+        token = term.strip()
         if not token or token not in before:
             continue
         for value in values or []:
-            alias = str(value or "").strip()
+            alias = value.strip()
             if alias and alias not in aliases:
                 aliases.append(alias)
 
@@ -89,7 +89,7 @@ def apply_industry_rules_query_expansion(
     max_aliases: int = 16,
     max_query_chars: int = 2000,
 ) -> tuple[str, dict[str, Any]]:
-    original = str(query or "").strip()
+    original = query.strip()
     max_aliases_i = max(0, int(max_aliases or 0))
     max_query_chars_i = max(64, int(max_query_chars or 2000))
     names = normalize_ruleset_names(ruleset_names)

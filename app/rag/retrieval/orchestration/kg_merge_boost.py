@@ -9,6 +9,7 @@ from uuid import UUID
 
 from langchain_core.documents import Document
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.orchestration.common import (
     _doc_key,
     _log_orchestrator_fallback,
@@ -179,7 +180,7 @@ def _fetch_document_chunks_for_kg_injection(
     if dataset_id is not None:
         scoped_dataset_ids = _coerce_uuid_list([dataset_id])
 
-    if not scoped_dataset_ids or not str(account_id or "").strip():
+    if not scoped_dataset_ids or (account_id is None or not account_id.strip()):
         return []
 
     try:
@@ -247,7 +248,8 @@ def _kg_boost_row(doc: Document, *, index: int, weight: float) -> dict[str, Any]
     if base_raw is None:
         base_raw = row_meta.get("score", 0.0)
     base_score = _safe_float(base_raw, default=0.0, minimum=0.0)
-    role = str(row_meta.get("retrieval_role") or "").strip().lower()
+    role = _stringified_metadata_text(row_meta, "retrieval_role")
+    role = role.lower() if role is not None else None
     kg_raw = row_meta.get("kg_pagerank")
     if kg_raw is None and role == "kg":
         kg_raw = row_meta.get("score", 0.0)

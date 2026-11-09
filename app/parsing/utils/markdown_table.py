@@ -19,7 +19,7 @@ def clean_table_cell(text: str) -> str:
     This is intentionally conservative: it only collapses whitespace and removes
     line breaks, without rewriting content.
     """
-    raw = str(text or "")
+    raw = text
     raw = raw.replace("\r", " ").replace("\n", " ")
     raw = _WS_RE.sub(" ", raw).strip()
     # Escape pipes so we don't accidentally change the column structure.
@@ -55,11 +55,11 @@ def infer_table_header(rows: list[list[str]]) -> tuple[list[str], list[list[str]
     body = padded[1:] if len(padded) > 1 else []
 
     # Heuristic: header cells should be mostly non-empty, mostly non-numeric, and unique.
-    non_empty = [c for c in head if (c or "").strip()]
+    non_empty = [c for c in head if c.strip()]
     if len(padded) >= 2 and len(non_empty) >= max(1, width // 2):
-        keys = [(c or "").strip().casefold() for c in non_empty]
+        keys = [c.strip().casefold() for c in non_empty]
         unique = len(set(keys)) == len(keys)
-        numeric = sum(1 for c in non_empty if _NUMERIC_RE.match(c or ""))
+        numeric = sum(1 for c in non_empty if _NUMERIC_RE.match(c))
         avg_len = sum(len(c) for c in non_empty) / max(1, len(non_empty))
         if unique and numeric <= max(1, len(non_empty) // 3) and avg_len <= 40:
             return head, body

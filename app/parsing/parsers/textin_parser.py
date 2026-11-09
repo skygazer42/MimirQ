@@ -23,7 +23,7 @@ logger = get_logger("parsing.textin")
 
 
 def _sanitize_run_id(value: str) -> str:
-    text = (value or "").strip()
+    text = (value).strip()
     text = re.sub(r"[^a-zA-Z0-9._-]+", "_", text)[:120] or "textin"
     return text
 
@@ -166,12 +166,12 @@ class TextInParser:
 
         resp = self._post_binary(file_path=file_path)
         if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"TextIn API error {resp.status_code}: {(resp.text or '')[:500]}")
+            raise RuntimeError(f"TextIn API error {resp.status_code}: {(resp.text)[:500]}")
 
         try:
             data = resp.json()
         except Exception:
-            data = json.loads((resp.text or "").strip() or "{}")
+            data = json.loads((resp.text).strip() or "{}")
 
         code = data.get("code") if isinstance(data, dict) else None
         if code not in {None, 0, 200, "0", "200"}:
@@ -184,7 +184,7 @@ class TextInParser:
 
         artifact_root.mkdir(parents=True, exist_ok=True)
         (artifact_root / "result.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        (artifact_root / "result.md").write_text(markdown_text or "", encoding="utf-8")
+        (artifact_root / "result.md").write_text(markdown_text, encoding="utf-8")
 
         metadata: dict[str, Any] = {
             "source": str(file_path.name),

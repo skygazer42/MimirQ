@@ -33,7 +33,8 @@ def _hard_case_ids(snapshot: Mapping[str, Any], *, max_ids: int) -> list[str]:
     for row in rows:
         if not isinstance(row, Mapping):
             continue
-        cid = str(row.get("id") or "").strip()
+        raw_id = row.get("id")
+        cid = str(raw_id).strip() if raw_id is not None else None
         if not cid:
             continue
         if cid not in out:
@@ -49,7 +50,9 @@ def _flag_set(snapshot: Mapping[str, Any]) -> set[str]:
         return set()
     out: set[str] = set()
     for item in raw:
-        key = str(item or "").strip()
+        if item is None:
+            continue
+        key = str(item).strip()
         if key:
             out.add(key)
     return out
@@ -91,8 +94,12 @@ def diff_queryset_health_snapshots(
         ),
     }
 
-    base_hash = str(baseline.get("policy_hash") or "").strip()
-    curr_hash = str(current.get("policy_hash") or "").strip()
+    base_hash = baseline.get("policy_hash")
+    if base_hash is not None:
+        base_hash = base_hash.strip()
+    curr_hash = current.get("policy_hash")
+    if curr_hash is not None:
+        curr_hash = curr_hash.strip()
     policy_changed = bool((base_hash or curr_hash) and base_hash != curr_hash)
 
     base_cases = set(_hard_case_ids(baseline, max_ids=max_hard_case_ids))
@@ -109,11 +116,11 @@ def diff_queryset_health_snapshots(
 
     return {
         "schema": QUERYSET_HEALTH_DIFF_SCHEMA_V1,
-        "baseline_generated_at": str(baseline.get("generated_at") or ""),
-        "current_generated_at": str(current.get("generated_at") or ""),
+        "baseline_generated_at": baseline.get("generated_at"),
+        "current_generated_at": current.get("generated_at"),
         "policy": {
-            "baseline_source": str(baseline.get("policy_source") or ""),
-            "current_source": str(current.get("policy_source") or ""),
+            "baseline_source": baseline.get("policy_source"),
+            "current_source": current.get("policy_source"),
             "baseline_hash": base_hash,
             "current_hash": curr_hash,
             "changed": policy_changed,

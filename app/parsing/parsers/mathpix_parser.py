@@ -15,8 +15,8 @@ async def _call_mathpix_backend_async(*, file_path: Path, app_id: str, app_key: 
         resp = await client.post(
             "https://api.mathpix.com/v3/pdf",
             headers={
-                "app_id": str(app_id or "").strip(),
-                "app_key": str(app_key or "").strip(),
+                "app_id": app_id.strip(),
+                "app_key": app_key.strip(),
             },
             files={"file": (file_path.name, file_bytes, "application/pdf")},
         )
@@ -25,7 +25,7 @@ async def _call_mathpix_backend_async(*, file_path: Path, app_id: str, app_key: 
         data = resp.json()
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"Mathpix parse failed: {exc}") from exc
-    text = str((data or {}).get("text") or "").strip()
+    text = data["text"].strip()
     if not text:
         raise RuntimeError("Mathpix parse failed: empty response")
     return text

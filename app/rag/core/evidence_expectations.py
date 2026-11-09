@@ -23,7 +23,7 @@ def normalize_anchor_fields(raw: Any) -> list[str]:
         values = []
 
     for v in values:
-        key = str(v or "").strip()
+        key = v.strip()
         if not key:
             continue
         norm = key.lower()
@@ -44,9 +44,9 @@ def evaluate_evidence_anchor_expectations(
 ) -> dict[str, Any]:
     req = normalize_anchor_fields(list((required_fields if required_fields is not None else [])))
     prefixes = [
-        str(p or "").strip().lower()
+        p.strip().lower()
         for p in (exclude_retrieval_role_prefixes if exclude_retrieval_role_prefixes is not None else [])
-        if str(p or "").strip()
+        if p.strip()
     ]
     if not req:
         return _empty_anchor_expectations(len((citations if citations is not None else [])))

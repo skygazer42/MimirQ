@@ -29,7 +29,7 @@ class _ObjectStoreConfig(TypedDict):
 
 
 def _normalize_region(region: str | None = None) -> str:
-    return str(region or settings.DATA_REGION or "").strip().lower()
+    return (region or settings.DATA_REGION).strip().lower()
 
 
 def _load_region_profiles() -> dict[str, dict[str, object]]:

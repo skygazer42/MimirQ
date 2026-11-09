@@ -257,3 +257,17 @@ A 批 tokenize dry-run 共 105 处、16 个文件；4c1cb4531 已存在的 occur
 
 外部备份和预览：`%TEMP%/mimirq-resource-config-before.py`、`%TEMP%/mimirq-resource-consumers-before/`、`%TEMP%/mimirq-resource-consumers.json`、`%TEMP%/mimirq-runtime-before/`、`%TEMP%/mimirq-runtime-preview.json`。没有启动模型、解析器或容器服务，没有开始 services 的普通候选批次。
 
+最终组合命令：`E:/MimirQ/.venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp %TEMP%/mimirq-pytest-resource-20261109b tests/test_positive_resource_settings.py tests/test_runtime_safety_settings.py tests/test_settings_api_defaults.py tests/test_settings_validation_defaults.py tests/test_config_validation_contracts.py tests/test_config_validation_complexity.py tests/test_reranker_factory.py tests/test_pipeline_config_settings.py tests/test_pipeline_config_complexity.py tests/test_table_store_service.py tests/test_kg_community_summary_cache.py tests/test_initial_admin_bootstrap.py tests/test_document_pipeline_form_schema.py tests/test_kg_search_complexity_refactors.py`：143 passed，仅两个原有 deprecation warning。
+
+`python -m ruff check app tests/test_positive_resource_settings.py tests/test_runtime_safety_settings.py tests/test_settings_api_defaults.py tests/test_settings_validation_defaults.py` 全通过；同范围 `ruff format --check` 为 1221 files already formatted。note 三门禁通过 137 notes / 0 archives。说明：代表性运行测试覆盖配置构造、SCIM 正数 cap、密码 1/7、任务 helper 非默认值及上述相关模块；并非逐一运行每个被改调用点，不能把 AST 证明当作运行覆盖。
+
+事故中文修正提交 f55cb43ea；另一个受管道损坏的新文件 positive-resource-contracts.md 已重写为英文定性表。本轮 config.py、两份新增配置测试与 owner note 均读回 UTF-8，连续问号计数为 0。外部临时目录均在仓库外，两份未跟踪 services 测试原样保留。
+
+C 最后删除任务 timeout 的冗余 max(1) 后，配置构造与任务 helper 组合再次 59 passed；Ruff check / format 全通过，note 门禁检查时 138 notes / 0 archives。期间出现外部提交 1ab665700、e56a6af90，均只改 langgraph.py 与各自 note，不与 C 文件相交。曾观察到 langgraph.py 未提交变化，提交后已消失；没有触碰该文件。提交前仍逐次复核外部提交交叉清单。
+
+### C 提交被并发暂存阻塞
+
+提交预检期间 HEAD 已到外部提交 ddaec3b657c4ca6da275ff5ea84e6a7e5f1cafef。与 C 文件清单的提交交叉检查通过，但工作区变化触发预检退出；再次读取时还发现外部会话已暂存 `.agents/notes/implemented/bug-fix/2026-11-09-context-stage-empty-results.md`、`app/rag/core/context_compression.py`、`app/rag/core/context_denoise.py`。这些文件均不在 C 清单中。没有执行 C 的 git add，没有修改、撤销或提交外部暂存内容。
+
+因此 C 的 62 个自有文件保持未提交，不能给出 C 提交 SHA；代码与回归结果已完成，需待共享 index 的外部提交结束后重新检查再提交。提交清单及当时 hash 位于 `%TEMP%/mimirq-c-commit-plan.json`；因本段更新，progress.md 的该份 hash 已过期，重试时必须重建。两份先前 services 未跟踪测试继续保留。外部暂存导致提交阻塞属于并行护栏实际拦截，并非 Git 权限问题。
+

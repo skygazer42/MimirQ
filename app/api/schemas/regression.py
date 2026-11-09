@@ -89,11 +89,15 @@ class ReferenceSource(BaseModel):
     @field_validator("semantic_keys", mode="before")
     @classmethod
     def _normalize_semantic_keys(cls, raw: Any) -> list[str]:
+        if raw is None:
+            return []
         values = raw if isinstance(raw, list | tuple | set) else [raw]
         out: list[str] = []
         seen: set[str] = set()
         for value in values:
-            text = str(value or "").strip()
+            if not isinstance(value, str):
+                raise ValueError("semantic_keys must contain strings")
+            text = value.strip()
             if not text or text in seen:
                 continue
             seen.add(text)
@@ -339,10 +343,12 @@ class RagasRegressionRunCreateRequest(BaseModel):
     def _normalize_retrieval_mode(cls, v: Any) -> str:
         return normalize_retrieval_mode(str(v) if v is not None else None)
 
-    @field_validator("fusion_strategy", mode="before")
+    @field_validator("fusion_strategy", mode="after")
     @classmethod
-    def _normalize_fusion_strategy(cls, v: Any) -> str | None:
-        raw = str(v or "").strip().lower()
+    def _normalize_fusion_strategy(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        raw = v.strip().lower()
         if not raw:
             return None
         if raw in {"reciprocal_rank_fusion", "rrf"}:
@@ -381,10 +387,12 @@ class RagasRegressionRunCreateRequest(BaseModel):
         raw = v.strip()
         return raw if raw else None
 
-    @field_validator("sparse_retrieval_provider", mode="before")
+    @field_validator("sparse_retrieval_provider", mode="after")
     @classmethod
-    def _normalize_sparse_retrieval_provider(cls, v: Any) -> str | None:
-        raw = str(v or "").strip().lower()
+    def _normalize_sparse_retrieval_provider(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        raw = v.strip().lower()
         if not raw:
             return None
         from app.core.model_execution import reject_retired_provider

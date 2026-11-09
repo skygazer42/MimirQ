@@ -143,7 +143,7 @@ async def search_documents(
 
         results = []
         for doc in documents:
-            content = doc.page_content if hasattr(doc, "page_content") else doc.get("content", "")
+            content = doc.page_content if hasattr(doc, "page_content") else doc["content"]
             metadata = doc.metadata if hasattr(doc, "metadata") else doc.get("metadata", {})
             results.append(
                 {
@@ -233,11 +233,13 @@ def _can_read_document_content(
     document_id: UUID,
     account_id: str | None,
 ) -> bool:
-    if not account_id:
+    if account_id is None:
         return True
-    mode = (document.access_mode or "").strip().lower()
-    owner = (document.owner_id or "").strip()
-    actor = str(account_id or "").strip()
+    actor = account_id.strip()
+    if not actor:
+        return False
+    mode = document.access_mode.strip().lower() if document.access_mode is not None else None
+    owner = document.owner_id.strip() if document.owner_id is not None else None
     if not mode or mode in {"inherit", "all_team_members"} or (owner and owner == actor):
         return True
     if mode == "partial_members":
@@ -451,21 +453,10 @@ def _get_document_sync(
             if not document:
                 return {"document_id": document_id, "error": _DOCUMENT_NOT_FOUND_ERROR}
 
-            mode = (document.access_mode or "").strip().lower()
-            owner = (document.owner_id or "").strip()
-            if account_id:
-                actor = str(account_id or "").strip()
-                is_owner = bool(owner and owner == actor)
-                if mode and mode not in {"inherit", "all_team_members"} and not is_owner:
-                    if mode == "only_me":
-                        return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
-                    if mode == "partial_members" and not _document_permission_exists(
-                        db,
-                        tenant_id=tenant_uuid,
-                        document_id=doc_uuid,
-                        account_id=actor,
-                    ):
-                        return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
+            if not _can_read_document_content(
+                db, document, tenant_id=tenant_uuid, document_id=doc_uuid, account_id=account_id
+            ):
+                return {"document_id": document_id, "error": _NO_DOCUMENT_ACCESS_ERROR}
 
             meta = document.doc_metadata
             meta = meta if isinstance(meta, dict) else {}
@@ -527,7 +518,7 @@ def _get_document_structure_sync(
             return load_document_structure(
                 db=db,
                 tenant_id=tenant_uuid,
-                account_id=str(account_id or ""),
+                account_id=account_id,
                 dataset_id=ds_uuid,
                 document_id=doc_uuid,
                 max_nodes=max_nodes,
@@ -587,7 +578,7 @@ def _parse_pages_selector(pages: Any) -> list[int]:
         return []
     if isinstance(pages, int):
         return [pages] if pages > 0 else []
-    raw = str(pages or "").strip()
+    raw = str(pages).strip()
     if not raw:
         return []
     out: list[int] = []
@@ -636,7 +627,7 @@ def _get_page_content_sync(
         last = result
         if result.get("error"):
             return {**result, "pages_requested": selected_pages}
-        text = str(result.get("content") or "")
+        text = result["content"]
         if text.strip():
             prefix = f"\n\n[page {page}]\n" if parts else f"[page {page}]\n"
             parts.append(prefix + text)
@@ -829,7 +820,7 @@ class _SafeMathEvaluator:
 
 
 def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
-    expr = (expression or "").strip().lower()
+    expr = (expression).strip().lower()
     if not expr:
         raise ValueError("Empty expression")
     if len(expr) > _MAX_MATH_EXPRESSION_CHARS:
@@ -839,7 +830,7 @@ def _safe_eval_math(expression: str, allowed_names: dict[str, Any]) -> Any:
 
 
 def _resolve_timezone(name: str | None) -> tzinfo:
-    raw = str(name or "").strip()
+    raw = name.strip() if name is not None else None
     if not raw:
         return UTC
     with contextlib.suppress(Exception):

@@ -29,7 +29,7 @@ _EN_TERM_ALLOWED_CHARS = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQR
 
 
 def _is_all_cjk(s: str) -> bool:
-    t = str(s or "")
+    t = s
     if not t:
         return False
     for ch in t:
@@ -81,7 +81,7 @@ def _parse_inline_entry(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return None
 
@@ -104,7 +104,7 @@ def _iter_entries(text: str) -> list[_Entry]:
     starts: list[int] = []
     terms: list[str] = []
     offset = 0
-    for raw_line in (text or "").splitlines(keepends=True):
+    for raw_line in (text).splitlines(keepends=True):
         line_start = offset
         offset += len(raw_line)
         term = _parse_inline_entry(raw_line)
@@ -227,7 +227,7 @@ class GlossaryChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

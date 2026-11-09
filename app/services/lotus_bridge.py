@@ -40,7 +40,7 @@ def get_lotus_availability() -> LotusAvailability:
     """Return semantic-operation configuration eligibility and its reason without a provider probe."""
     if not settings.TABLE_LOTUS_ENABLED:
         return LotusAvailability(ok=False, reason="TABLE_LOTUS_ENABLED=false")
-    if not (settings.LLM_API_KEY or "").strip():
+    if not (settings.LLM_API_KEY).strip():
         return LotusAvailability(ok=False, reason="LLM_API_KEY is not configured")
     if not settings.TABLE_LLM_ALLOW_ROW_EGRESS:
         return LotusAvailability(ok=False, reason="TABLE_LLM_ALLOW_ROW_EGRESS=false")
@@ -48,7 +48,7 @@ def get_lotus_availability() -> LotusAvailability:
 
 
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
-    model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL or "").strip()
+    model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL).strip()
     if not model_name:
         model_name = "gpt-5.4-mini"
     return ChatOpenAI(
@@ -56,14 +56,14 @@ def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
         api_key=settings.LLM_API_KEY,
         base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=float(temperature),
-        timeout=float(settings.LLM_TIMEOUT or 60),
+        timeout=float(settings.LLM_TIMEOUT),
         max_retries=settings.LLM_MAX_RETRIES or 2,
         streaming=False,
     )
 
 
 def _extract_json_array(text: str) -> list[Any] | None:
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw:
         return None
 
@@ -136,12 +136,12 @@ def _build_row_payload(
 
 
 def _normalized_sem_filter_instruction(user_instruction: str) -> str:
-    return " ".join(str(user_instruction or "").strip().split())
+    return " ".join(user_instruction.strip().split())
 
 
 def _sem_filter_limits() -> tuple[int, int, int, int]:
-    max_in_rows = settings.TABLE_SEM_FILTER_MAX_IN_ROWS or 2000
-    max_cols = settings.TABLE_SEM_FILTER_MAX_COLS or 30
+    max_in_rows = settings.TABLE_SEM_FILTER_MAX_IN_ROWS
+    max_cols = settings.TABLE_SEM_FILTER_MAX_COLS
     max_cell_chars = settings.TABLE_SEM_FILTER_MAX_CELL_CHARS or 200
     batch_size = settings.TABLE_SEM_FILTER_BATCH_SIZE or 25
     return max_in_rows, max_cols, max_cell_chars, batch_size
@@ -202,7 +202,7 @@ def _invoke_sem_filter_batch(
 ) -> list[bool]:
     user = _sem_filter_batch_prompt(instr=instr, cols=cols, chunk=chunk)
     resp = llm.invoke([system, user])
-    raw = str(getattr(resp, "content", "") or "").strip()
+    raw = resp.text.strip()
     arr = _extract_json_array(raw)
     if arr is None:
         return [False] * len(chunk)

@@ -62,12 +62,12 @@ class PrometheusMiddleware:
             await self.app(scope, receive, send)
             return
 
-        raw_path = str(scope.get("path") or "")
+        raw_path = scope["path"]
         if raw_path in self.exclude_paths:
             await self.app(scope, receive, send)
             return
 
-        method = str(scope.get("method") or "").upper()
+        method = scope["method"].upper()
         start = time.monotonic()
         status_code = 500
 

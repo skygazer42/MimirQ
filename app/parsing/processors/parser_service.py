@@ -48,21 +48,21 @@ def _rewrite_preview_image_refs(
     replacements: dict[str, str],
 ) -> str:
     def _md_repl(match: re.Match[str]) -> str:
-        raw = match.group(1) or ""
+        raw = match.group(1)
         new = replacements.get(raw.strip())
         if not new:
             return match.group(0)
         return match.group(0).replace(raw, new, 1)
 
     def _html_repl(match: re.Match[str]) -> str:
-        raw = match.group(1) or ""
+        raw = match.group(1)
         new = replacements.get(raw.strip())
         if not new:
             return match.group(0)
         return match.group(0).replace(raw, new, 1)
 
     rewritten = md_pat.sub(_md_repl, content)
-    return html_pat.sub(_html_repl, rewritten or "")
+    return html_pat.sub(_html_repl, rewritten)
 
 
 def _preview_images_dir(tenant_id: UUID) -> Path:
@@ -208,7 +208,7 @@ def _saved_preview_image_payload(*, preview_id: str, out_ext: str, images_dir: P
 
 
 def _preview_doc_content_and_base_dir(doc: Document) -> tuple[str, Path] | None:
-    content = doc.page_content or ""
+    content = doc.page_content
     if not isinstance(content, str) or not content:
         return None
 
@@ -447,7 +447,7 @@ class DocumentParserService:
     def _merge_documents(self, documents: list[Document]) -> str:
         parts = []
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             parts.append(text.strip())
         return "\n\n".join(p for p in parts if p)
 
@@ -481,7 +481,7 @@ class DocumentParserService:
             try:
                 mm = re.match(r"^data:image/([a-zA-Z0-9.+-]+);base64,", data_uri)
                 if mm:
-                    fmt = (mm.group(1) or "").strip().lower()
+                    fmt = (mm.group(1)).strip().lower()
                     if fmt in {"jpg", "jpeg"}:
                         ext = "jpg"
                     elif fmt in {"png", "webp", "gif", "bmp"}:

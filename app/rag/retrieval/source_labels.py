@@ -2,6 +2,7 @@
 
 import re
 from pathlib import Path
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any
 
 _DEEPDOC_BOX_RE = re.compile(r"@@[^#\n]{1,160}##")
@@ -24,7 +25,7 @@ _SOURCE_IDENTIFICATION_RE = re.compile(
 
 
 def _clean_line(raw: str) -> str:
-    text = re.sub(r"\s+", " ", str(raw or "").strip())
+    text = re.sub(r"\s+", " ", raw.strip())
     text = text.strip(" #\t\r\n")
     return text
 
@@ -50,7 +51,9 @@ def _is_title_like(line: str, *, first: bool) -> bool:
 
 
 def _title_from_first_chunk(first_chunk_content: Any) -> str | None:
-    raw = str(first_chunk_content or "").strip()
+    if first_chunk_content is None:
+        return None
+    raw = str(first_chunk_content).strip()
     if not raw:
         return None
 
@@ -76,7 +79,9 @@ def _title_from_first_chunk(first_chunk_content: Any) -> str | None:
 
 
 def _title_from_filename(filename: Any) -> str | None:
-    raw = str(filename or "").strip()
+    if filename is None:
+        return None
+    raw = str(filename).strip()
     if not raw:
         return None
     try:
@@ -114,7 +119,9 @@ def derive_document_title(
 def should_replace_source_label(source: Any, *, document_id: Any) -> bool:
     """Return true when `source` is a low-value generated label such as UUID.pdf."""
 
-    text = str(source or "").strip()
+    if source is None:
+        return True
+    text = str(source).strip()
     if not text:
         return True
     if text.lower() in {"unknown", "document", "source"}:
@@ -122,7 +129,7 @@ def should_replace_source_label(source: Any, *, document_id: Any) -> bool:
     name = text.rsplit("/", 1)[-1]
     if _UUID_PDF_RE.fullmatch(name):
         return True
-    doc_id = str(document_id or "").strip().lower()
+    doc_id = str(document_id).strip().lower() if document_id is not None else None
     return bool(doc_id and name.lower() in {doc_id, f"{doc_id}.pdf"})
 
 
@@ -131,17 +138,17 @@ def _source_answer_title_and_filename(doc: Any) -> tuple[str | None, str | None]
     if not isinstance(meta, dict):
         return None, None
 
-    title = str(meta.get("document_title") or meta.get("doc_title") or meta.get("title") or "").strip()
+    title = _stringified_metadata_text(meta, "document_title") or _stringified_metadata_text(meta, "doc_title") or _stringified_metadata_text(meta, "title")
     if not title:
         title = None
-    filename = str(meta.get("filename") or meta.get("source") or "").strip()
+    filename = _stringified_metadata_text(meta, "filename") or _stringified_metadata_text(meta, "source")
     if not filename:
         filename = None
     return title, filename
 
 
 def _source_answer_label(question: str) -> str:
-    q = str(question or "").lower()
+    q = question.lower()
     if "survey" in q:
         return "survey"
     if "document" in q:
@@ -161,7 +168,7 @@ def maybe_build_source_identification_answer(*, question: str, docs: list[Any] |
     answering with a filename or an unnecessary abstention.
     """
 
-    if not _SOURCE_IDENTIFICATION_RE.search(str(question or "")):
+    if not _SOURCE_IDENTIFICATION_RE.search(question):
         return None
     if not docs:
         return None
@@ -169,7 +176,7 @@ def maybe_build_source_identification_answer(*, question: str, docs: list[Any] |
     doc = docs[0]
     title, filename = _source_answer_title_and_filename(doc)
     if not title:
-        title = filename or ""
+        title = filename
     if not title:
         return None
 

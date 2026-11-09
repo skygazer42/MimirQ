@@ -13,7 +13,7 @@ def response_compaction_for_records(
     refs: list[str] = []
     seen: set[str] = set()
     for ref in policy_plugin_refs:
-        text = str(ref or "").strip()
+        text = ref.strip()
         if text and text not in seen:
             seen.add(text)
             refs.append(text)
@@ -38,7 +38,7 @@ def record_answerfulness_score(
     answerful_record_bonus: float,
     anchor_only_qa_record_penalty: float,
 ) -> float:
-    content = str(record.get("content") or "").strip()
+    content = record['content'].strip()
     if not content:
         return 0.0
     if record_has_answer_evidence(record, content, policy_plugin_refs):
@@ -95,7 +95,7 @@ def _fast_metadata_fields(
 
 
 def _append_unique_line(lines: list[str], seen: set[str], line: str) -> None:
-    value = str(line or "").strip()
+    value = line.strip()
     if not value or value in seen:
         return
     seen.add(value)
@@ -147,7 +147,7 @@ def compact_fast_record_content(
     clamp_hint_value: Callable[[str, int], str],
     compact_fast_answer_value: Callable[[str, str, int], str],
 ) -> str:
-    body = str(content or "").strip()
+    body = content.strip()
     if not body:
         return body
     fields = structured_label_values_from_content(body)
@@ -202,7 +202,7 @@ def compact_fast_records_for_response(
     for record in list(records or [])[:response_top_k]:
         next_record = dict(record)
         metadata = dict(next_record.get("metadata") if isinstance(next_record.get("metadata"), dict) else {})
-        original_content = str(next_record.get("content") or "")
+        original_content = next_record['content']
         compacted_content = compact_fast_record_content(
             original_content,
             query,

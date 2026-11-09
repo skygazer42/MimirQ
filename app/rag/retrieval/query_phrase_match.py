@@ -50,8 +50,8 @@ class _QueryPhraseMatch(TypedDict):
     token_coverage: float
 
 
-def _normalize_text(value: Any) -> str:
-    raw = str(value or "").strip()
+def _normalize_text(value: str) -> str:
+    raw = value.strip()
     if not raw:
         return ""
     try:
@@ -64,7 +64,7 @@ def _normalize_text(value: Any) -> str:
 
 def _query_tokens(query: str) -> list[str]:
     tokens: list[str] = []
-    for raw in _TOKEN_RE.findall(str(query or "")):
+    for raw in _TOKEN_RE.findall(query):
         tok = _normalize_text(raw)
         if not tok:
             continue

@@ -31,7 +31,9 @@ def _isoformat_utc(value: datetime) -> str:
 def _normalize_recorded_at(value: datetime | str | None) -> str:
     if isinstance(value, datetime):
         return _isoformat_utc(value)
-    text = (value or "").strip()
+    if value is None:
+        return _isoformat_utc(datetime.now(UTC))
+    text = value.strip()
     if text:
         return text
     return _isoformat_utc(datetime.now(UTC))
@@ -43,8 +45,10 @@ def normalize_source_manifest(value: Mapping[str, Any] | None) -> dict[str, str]
 
     items: list[tuple[str, str]] = []
     for raw_path, raw_sha in value.items():
-        path = str(raw_path or "").strip()
-        sha = str(raw_sha or "").strip()
+        if raw_sha is None:
+            continue
+        path = raw_path.strip()
+        sha = str(raw_sha).strip()
         if not path or not sha:
             continue
         items.append((path, sha))
@@ -59,7 +63,9 @@ def normalize_boundary_ids(value: Any, *, max_items: int = 200) -> list[str]:
     seen: set[str] = set()
     limit = max(1, int(max_items or 0))
     for raw in raw_items:
-        item = str(raw or "").strip()
+        if raw is None:
+            continue
+        item = str(raw).strip()
         if not item or item in seen:
             continue
         seen.add(item)
@@ -100,7 +106,10 @@ def _normalize_watermark_value(*, definition: ConnectorDefinition, state: Mappin
     if kind != "timestamp":
         return None
 
-    value = str(state.get("last_modified") or "").strip()
+    raw_value = state.get("last_modified")
+    if raw_value is None:
+        return None
+    value = str(raw_value).strip()
     if not value:
         return None
     out: dict[str, Any] = {"kind": "timestamp", "field": "last_modified", "value": value}
@@ -149,10 +158,13 @@ def _resolve_last_successful_markers(
     last_successful_run_id = prev.get("state_last_successful_run_id")
     last_successful_recorded_at = prev.get("state_last_successful_recorded_at")
 
-    status = (run_status or "").strip().lower()
+    status = run_status
+    if status is not None:
+        status = status.strip().lower()
     if status == "completed" and run_id is not None:
         last_successful_run_id = str(run_id)
-        last_successful_recorded_at = (recorded_at_norm or "").strip() or last_successful_recorded_at
+        if recorded_at_norm is not None:
+            last_successful_recorded_at = recorded_at_norm.strip() or last_successful_recorded_at
 
     return last_successful_run_id, last_successful_recorded_at
 
@@ -213,7 +225,7 @@ def _apply_policy_state_key(*, state: dict[str, Any], stats_map: Mapping[str, An
     if value is None:
         return
     if key == "last_modified":
-        value = str(value or "").strip()
+        value = str(value).strip()
         if not value:
             return
     state[key] = value

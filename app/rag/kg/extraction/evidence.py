@@ -19,7 +19,7 @@ _EDGE_STRIP_CHARS = " \t\r\n,.;:!?，。；：！？、\"'`“”‘’()（）[
 
 
 def _clean(text: str) -> str:
-    return unicodedata.normalize("NFKC", str(text or ""))
+    return unicodedata.normalize("NFKC", text)
 
 
 def _collapse_ws(text: str) -> str:
@@ -69,8 +69,8 @@ def find_evidence_span(text: str, quote: str) -> tuple[int, int] | None:
     - exact substring match
     - whitespace-flex regex match (quote tokens joined by \\s+)
     """
-    hay = str(text or "")
-    needle = str(quote or "")
+    hay = text
+    needle = quote
     if not hay or not needle:
         return None
 
@@ -144,8 +144,8 @@ def derive_evidence_from_mention(
 
     Returns None if the mention isn't found.
     """
-    hay = str(text or "")
-    m = str(mention or "").strip()
+    hay = text
+    m = mention.strip()
     if not hay or not m:
         return None
 
@@ -197,7 +197,7 @@ def coerce_evidence(
     1) Use provided evidence_quote if it can be matched in text.
     2) Otherwise, derive evidence from fallback_mention surface.
     """
-    hay = str(text or "")
+    hay = text
     if not hay:
         return None
 

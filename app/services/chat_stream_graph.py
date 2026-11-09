@@ -309,8 +309,8 @@ def _consume_graph_value_chunk(
         citations_data = chunk.get("citations") or []
         citations_sent = True
         events.append({"type": "citations", "data": citations_data})
-    if not answer_sent and "answer" in chunk:
-        events.extend(_answer_token_events(chunk.get("answer") or "", response_parts))
+    if not answer_sent and chunk.get("answer") is not None:
+        events.extend(_answer_token_events(chunk["answer"], response_parts))
         answer_sent = True
     return events, citations_sent, answer_sent, citations_data
 
@@ -437,7 +437,7 @@ async def stream_graph_chat_events(
         yield {"type": "citations", "data": stream_state.citations_data}
 
     if not stream_state.answer_sent:
-        for event in _answer_token_events(graph_result.get("answer") or "", stream_state.response_parts):
+        for event in _answer_token_events(graph_result["answer"], stream_state.response_parts):
             yield event
 
     full_response = "".join(stream_state.response_parts)
@@ -479,7 +479,7 @@ async def stream_graph_chat_session_events(
         yield graph_event
 
     citations_data = list(graph_stream_state.get("citations") or [])
-    full_response = str(graph_stream_state.get("content") or "")
+    full_response = graph_stream_state["content"]
     metrics_data = dict(graph_stream_state.get("metrics") or {})
     structured_data = graph_stream_state.get("structured_data")
 

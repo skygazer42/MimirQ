@@ -79,7 +79,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
         base_dir = base_dir.parent
     base_dir_resolved = base_dir.resolve(strict=False)
 
-    path_obj = Path(resolved_ref or "")
+    path_obj = Path(resolved_ref)
     if not path_obj.is_absolute():
         path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
     else:
@@ -95,7 +95,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> tuple[Path | N
 
 
 def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> tuple[bytes | None, str]:
-    raw = str(src or "").strip()
+    raw = src.strip()
     if not raw:
         return None, "empty_src"
     if raw.startswith("data:"):
@@ -221,7 +221,7 @@ def _extract_formula_element(
         max_bytes=int(max_image_bytes or 0),
     )
     if img_bytes is None:
-        logger.debug("[formula_ocr] skipped image (read=%s) src=%s", reason, str(src or "")[:200])
+        logger.debug("[formula_ocr] skipped image (read=%s) src=%s", reason, src[:200])
         return None, 0, 0
 
     latex_raw, status = _call_formula_backend(
@@ -244,9 +244,9 @@ def _extract_formula_element(
                 "attributes": {
                     "source_content_type": "formula_ocr",
                     "source_doc_type": "formula_ocr",
-                    "formula_image_alt": str(alt or ""),
-                    "formula_image_src": str(src or ""),
-                    "formula_backend_status": str(status or ""),
+                    "formula_image_alt": alt,
+                    "formula_image_src": src,
+                    "formula_backend_status": status,
                 },
             },
         },

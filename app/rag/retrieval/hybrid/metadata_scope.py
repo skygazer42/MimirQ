@@ -20,7 +20,9 @@ def parse_dataset_scope_values(raw: Any) -> list[UUID]:
     dataset_uuids: list[UUID] = []
     seen: set[str] = set()
     for item in values:
-        text = str(item or "").strip()
+        if item is None:
+            continue
+        text = str(item).strip()
         if not text:
             continue
         try:

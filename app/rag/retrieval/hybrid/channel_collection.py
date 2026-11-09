@@ -430,10 +430,10 @@ class _ChannelCollector:
     def _append_metadata_exact_results(self, records: list[dict[str, Any]]) -> None:
         lexical_records = self.keyword.lexical.records
         seen = {
-            str((item.get("metadata") or {}).get("chunk_id") or item.get("chunk_id") or "") for item in lexical_records
+            item["chunk_id"] for item in lexical_records
         }
         for item in records:
-            chunk_id = str((item.get("metadata") or {}).get("chunk_id") or item.get("chunk_id") or "")
+            chunk_id = item["chunk_id"]
             if chunk_id and chunk_id in seen:
                 continue
             if chunk_id:

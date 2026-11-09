@@ -227,8 +227,8 @@ def _build_dify_external_retrieval_context(
             "client_ip_hash": common._diagnostic_value_hash(client_ip),
             "knowledge_id_hash": common._diagnostic_value_hash(body.knowledge_id),
             "query_hash": scoring._diagnostic_query_hash(body.query),
-            "knowledge_id_chars": len(str(body.knowledge_id or "")),
-            "query_chars": len(str(body.query or "")),
+            "knowledge_id_chars": len(body.knowledge_id),
+            "query_chars": len(body.query),
             "top_k": top_k,
             "candidate_top_k": candidate_top_k,
             "response_top_k": response_top_k,
@@ -261,7 +261,7 @@ def _build_dify_external_retrieval_context(
 
 def _set_main_trace_query(ctx: _DifyExternalRetrievalContext, path: str, *, ok: bool = True) -> None:
     entry = {"kind": "main", "query": ctx.body.query, "path": path, "ok": ok}
-    if ctx.trace_queries and str(ctx.trace_queries[0].get("kind") or "") == "main":
+    if ctx.trace_queries and ctx.trace_queries[0].get("kind") == "main":
         ctx.trace_queries[0] = entry
         return
     ctx.trace_queries.insert(0, entry)

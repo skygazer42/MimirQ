@@ -19,6 +19,7 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from app.rag.core.metadata import _stringified_metadata_text
 from typing import Any, Protocol
 
 from app.core.model_execution import reject_retired_provider
@@ -85,7 +86,7 @@ def resolve_sparse_provider_capability(
         effective_provider = default_norm
 
     return {
-        "requested_provider": requested_raw or "",
+        "requested_provider": requested_raw,
         "requested_provider_normalized": requested_norm,
         "effective_provider": effective_provider,
         "provider_supported": provider_supported,
@@ -97,14 +98,14 @@ def resolve_sparse_provider_capability(
 
 
 def _norm_token(t: str) -> str:
-    tok = str(t or "").strip()
+    tok = t.strip()
     if not tok:
         return ""
     return tok.casefold() if tok.isascii() else tok
 
 
 def tokenize(text: str) -> list[str]:
-    raw = str(text or "")
+    raw = text
     out: list[str] = []
     seen: set[str] = set()
     for m in _TOKEN_RE.finditer(raw):
@@ -124,7 +125,7 @@ def parse_synonyms(raw: str) -> dict[str, set[str]]:
 
     Output is symmetric: both sides expand to each other.
     """
-    text = str(raw or "").strip()
+    text = raw.strip()
     if not text:
         return {}
 
@@ -189,7 +190,7 @@ class DeterministicSparseEncoder:
         return SparseVector(weights=dict(weights))
 
     def encode_batch(self, texts: Sequence[str]) -> list[SparseVector]:
-        return [self.encode(str(t or "")) for t in (texts or [])]
+        return [self.encode(t) for t in (texts or [])]
 
 
 _ENCODER_LOCK = threading.Lock()
@@ -216,14 +217,14 @@ def get_sparse_encoder(
 
 
 def _stable_key(text: str) -> str:
-    return hashlib.sha256((text or "").encode("utf-8", errors="ignore")).hexdigest()
+    return hashlib.sha256((text).encode("utf-8", errors="ignore")).hexdigest()
 
 
 def build_sparse_provider_config(*, provider: str, synonyms_raw: str = "") -> dict[str, Any]:
     p = normalize_sparse_provider_name(provider)
     if p not in VALID_SPARSE_PROVIDERS:
         raise ValueError(f"Unsupported sparse provider: {provider}")
-    return {"provider": p, "synonyms_raw": str(synonyms_raw or "")}
+    return {"provider": p, "synonyms_raw": synonyms_raw}
 
 
 def _coerce_sparse_vector(obj: Any) -> SparseVector:
@@ -246,7 +247,7 @@ def _coerce_sparse_vector(obj: Any) -> SparseVector:
 
 class SparseIndexStore:
     def __init__(self, *, base_dir: str) -> None:
-        self._base = Path(str(base_dir or "").strip() or "./data/sparse_indexes")
+        self._base = Path(base_dir.strip() or "./data/sparse_indexes")
 
     def _index_path(self, *, cache_key: str, provider_config: dict[str, Any]) -> Path:
         key = f"{cache_key}|{json.dumps(provider_config, sort_keys=True, ensure_ascii=True)}"
@@ -273,12 +274,12 @@ class SparseIndexStore:
             return None
         if not isinstance(obj, dict):
             return None
-        if str(obj.get("schema") or "") != _INDEX_SCHEMA_V1:
+        if obj.get("schema") != _INDEX_SCHEMA_V1:
             return None
-        if str(obj.get("corpus_fingerprint") or "") != str(expected_fingerprint or ""):
+        if obj.get("corpus_fingerprint") != expected_fingerprint:
             return None
         expected_token = str((expected_version_token if expected_version_token is not None else "")).strip()
-        stored_token = str(obj.get("version_token") or "").strip()
+        stored_token = _stringified_metadata_text(obj, "version_token")
         if expected_token and stored_token != expected_token:
             return None
         vecs = obj.get("vectors")
@@ -308,9 +309,9 @@ class SparseIndexStore:
 
         payload = {
             "schema": _INDEX_SCHEMA_V1,
-            "provider": str(provider_config.get("provider") or ""),
+            "provider": provider_config["provider"],
             "provider_config": dict(provider_config),
-            "corpus_fingerprint": str(corpus_fingerprint or ""),
+            "corpus_fingerprint": corpus_fingerprint,
             "version_token": str((version_token if version_token is not None else "")).strip(),
             "doc_count": len(vectors or {}),
             "vectors": {

@@ -216,7 +216,7 @@ def _rows_from_cells(*, cells: list[TableCell], row_count: int, col_count: int) 
         row_index = int(cell.row_index) - 1
         col_index = int(cell.col_index)
         if 0 <= row_index < row_count and 0 <= col_index < col_count:
-            rows[row_index][col_index] = str(cell.text or "")
+            rows[row_index][col_index] = cell.text
     return rows
 
 
@@ -285,7 +285,7 @@ def bind_ocr_lines_to_table_cells(
     for cell in table.cells:
         key = _cell_key(cell)
         bound_text = " ".join(text_by_cell.get(key) or []).strip()
-        if bound_text and not str(cell.text or "").strip():
+        if bound_text and not cell.text.strip():
             bound_cells += 1
             next_cells.append(
                 TableCell(

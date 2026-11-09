@@ -87,14 +87,14 @@ def _is_dataset_scope_condition(value: Any) -> bool:
         return False
     if isinstance(value, dict):
         if "$eq" in value:
-            return bool(str(value.get("$eq") or "").strip())
+            return _is_dataset_scope_condition(value["$eq"])
         if "$in" in value:
             items = value.get("$in")
-            return isinstance(items, list | tuple | set) and any(str(item or "").strip() for item in items)
+            return isinstance(items, list | tuple | set) and any(_is_dataset_scope_condition(item) for item in items)
         return False
     if isinstance(value, list | tuple | set):
-        return any(str(item or "").strip() for item in value)
-    return bool(str(value or "").strip())
+        return any(_is_dataset_scope_condition(item) for item in value)
+    return bool(str(value).strip())
 
 
 def _metadata_filter_has_dataset_scope(metadata_filter: dict[str, Any] | None) -> bool:

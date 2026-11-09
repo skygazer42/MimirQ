@@ -272,8 +272,8 @@ def _safe_int(v: object, *, default: int = 0) -> int:
         return default
 
 
-def _normalize_status(value: object) -> str:
-    s = str(value or "").strip().lower()
+def _normalize_status(value: str) -> str:
+    s = value.strip().lower()
     return s or "unknown"
 
 
@@ -283,7 +283,9 @@ def _failure_reason(error_message: object) -> str:
 
     We intentionally avoid leaking long exception strings into run stats.
     """
-    msg = str(error_message or "").strip()
+    if error_message is None:
+        return "unknown"
+    msg = str(error_message).strip()
     if not msg:
         return "unknown"
     # Prefer prefix-style codes: "preprocess_failed: ..." / "parse_failed: ..." etc.
@@ -329,10 +331,11 @@ def _bump_counter(mapping: dict[str, Any], key: str, delta: int) -> None:
 
 
 def _is_duplicate_run_document_integrity_error(exc: IntegrityError) -> bool:
-    diag = getattr(getattr(exc, "orig", None), "diag", None)
-    if str(getattr(diag, "constraint_name", "") or "").strip() == _INGESTION_RUN_DOCUMENT_UNIQUE_CONSTRAINT:
+    diag = getattr(exc.orig, "diag", None)
+    constraint_name = getattr(diag, "constraint_name", None)
+    if constraint_name is not None and constraint_name.strip() == _INGESTION_RUN_DOCUMENT_UNIQUE_CONSTRAINT:
         return True
-    message = str(getattr(exc, "orig", "") or exc)
+    message = str(exc.orig if exc.orig is not None else exc)
     return _INGESTION_RUN_DOCUMENT_UNIQUE_CONSTRAINT in message
 
 

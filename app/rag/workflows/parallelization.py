@@ -282,7 +282,7 @@ def create_multi_query_aggregator() -> Callable[[list[dict[str, Any]]], Awaitabl
         for result in results:
             contexts = result.get("contexts", [])
             for ctx in contexts:
-                ctx_id = ctx.get("chunk_id") or ctx.get("id") or f"content:{stable_hash(str(ctx.get('content') or ''))}"
+                ctx_id = ctx.get("chunk_id") or ctx.get("id") or f"content:{stable_hash(ctx['content'])}"
                 if ctx_id not in seen_ids:
                     seen_ids.add(ctx_id)
                     all_contexts.append(ctx)

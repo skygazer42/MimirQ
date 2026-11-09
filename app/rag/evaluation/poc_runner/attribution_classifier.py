@@ -18,7 +18,9 @@ class _AttributionExample(TypedDict):
 
 
 def _safe_str(value: Any, *, max_len: int = 2_000) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -32,12 +34,12 @@ def _is_negative_feedback(row: dict[str, Any]) -> bool:
 
 
 def heuristic_classify_feedback_record(row: dict[str, Any]) -> dict[str, Any]:
-    comment = (_safe_str(row.get("feedback_comment")) or "").casefold()
-    query = (_safe_str(row.get("original_query")) or "").casefold()
-    answer = (_safe_str(row.get("llm_response")) or "").casefold()
+    comment = _safe_str(row.get("feedback_comment"))
+    query = _safe_str(row.get("original_query"))
+    answer = _safe_str(row.get("llm_response"))
     filenames = row.get("final_context_filenames") or []
     has_files = isinstance(filenames, list) and bool(filenames)
-    joined = " ".join(part for part in (comment, query, answer) if part)
+    joined = " ".join(part.casefold() for part in (comment, query, answer) if part is not None)
 
     if any(token in joined for token in ("知识库没有", "未收录", "超出知识库", "新型号", "没有相关资料")):
         return {
@@ -72,7 +74,9 @@ def heuristic_classify_feedback_record(row: dict[str, Any]) -> dict[str, Any]:
 
 def _build_llm_prompt(row: dict[str, Any]) -> str:
     filenames = ", ".join(
-        str(name or "").strip() for name in (row.get("final_context_filenames") or []) if str(name or "").strip()
+        str(name).strip()
+        for name in (row.get("final_context_filenames") or [])
+        if name is not None and str(name).strip()
     )
     return (
         "Classify the root cause of this negative feedback into one of: "
@@ -99,7 +103,7 @@ def build_llm_attribution_classifier(
         except Exception:
             return dict(fallback(row) or {})
 
-        category = _safe_str(raw.get("category"), max_len=40) or ""
+        category = _safe_str(raw.get("category"), max_len=40)
         try:
             confidence = round(float(raw.get("confidence") or 0.0), 4)
         except Exception:
@@ -118,12 +122,12 @@ def build_llm_attribution_classifier(
     return _classifier
 
 
-def _top_example_sort_key(example: _AttributionExample) -> tuple[float, float, str]:
+def _top_example_sort_key(example: _AttributionExample) -> tuple[float, float, bool, str | None]:
     confidence = example["confidence"] or 0.0
     created_at = _coerce_datetime(example.get("created_at"))
     created_ts = created_at.timestamp() if created_at is not None else 0.0
-    interaction_id = example["interaction_id"] or ""
-    return (confidence, created_ts, interaction_id)
+    interaction_id = example["interaction_id"]
+    return (confidence, created_ts, interaction_id is not None, interaction_id)
 
 
 def classify_feedback_records(

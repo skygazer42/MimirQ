@@ -49,7 +49,7 @@ def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").rstrip("\r\n")
+    raw = line.rstrip("\r\n")
     if not raw:
         return None
     s = raw.lstrip()
@@ -80,7 +80,7 @@ def _parse_asciidoc_heading(line: str) -> tuple[int, str] | None:
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -138,7 +138,7 @@ def looks_like_asciidoc(text: str) -> bool:
     headings = _iter_headings(text)
     if len(headings) >= 2:
         return True
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if len(headings) == 1 and (":toc:" in lowered or ":doctype:" in lowered or "[source" in lowered):
         return True
     return False
@@ -194,7 +194,7 @@ class AsciiDocSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

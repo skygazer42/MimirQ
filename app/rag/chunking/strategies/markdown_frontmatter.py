@@ -18,12 +18,12 @@ _FRONTMATTER_DELIM = "---"
 
 
 def _is_frontmatter_end_delim(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     return s in {"---", "..."}
 
 
 def _looks_like_yaml_kv_line(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or s.startswith("#") or ":" not in s:
         return False
     key, rest = s.split(":", 1)
@@ -54,7 +54,7 @@ def _find_frontmatter(text: str) -> tuple[int, int] | None:
 
 
 def _extract_title(frontmatter: str) -> str | None:
-    for ln in (frontmatter or "").splitlines():
+    for ln in (frontmatter).splitlines():
         s = ln.strip()
         if not s or ":" not in s:
             continue
@@ -71,7 +71,7 @@ def looks_like_markdown_frontmatter(text: str) -> bool:
     if not fm:
         return False
     start, end = fm
-    block = (text or "")[start:end]
+    block = (text)[start:end]
     if len(block) > 30000:
         return False
     # Require at least one key-value line inside the block.
@@ -137,7 +137,7 @@ class MarkdownFrontmatterChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

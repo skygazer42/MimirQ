@@ -30,7 +30,7 @@ def _raise_no_document_access() -> NoReturn:
 
 
 def _document_acl_owner_allowed(*, account_id: str, document: DBDocument, dataset: Dataset | None) -> bool:
-    if dataset is not None and (dataset.owner_id or "") == account_id:
+    if dataset is not None and dataset.owner_id == account_id:
         return True
     owner_id = document.owner_id
     if owner_id:
@@ -89,7 +89,9 @@ def assert_document_acl_readable(
     if not account_id:
         return
 
-    mode = (document.access_mode or "").strip().lower()
+    mode = document.access_mode
+    if mode is not None:
+        mode = mode.strip().lower()
     if _document_acl_owner_allowed(account_id=account_id, document=document, dataset=dataset):
         return
 
@@ -210,7 +212,10 @@ def get_document_access(
         dataset=dataset,
     )
 
-    mode = (document.access_mode or "").strip().lower() or "inherit"
+    mode = document.access_mode
+    if mode is not None:
+        mode = mode.strip().lower()
+    mode = mode or "inherit"
     partial_members: list[str] | None = None
     partial_groups: list[UUID] | None = None
     if mode == "partial_members":

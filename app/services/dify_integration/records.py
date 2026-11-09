@@ -3,20 +3,21 @@
 from typing import Any
 from uuid import UUID
 
+from app.services.dify_integration.common import _first_nonempty_str
 from app.services.dify_integration.scoring import _record_source_identity_key
 
 
-def _record_dedupe_key(record: dict[str, Any]) -> tuple[str, str, str]:
+def _record_dedupe_key(record: dict[str, Any]) -> tuple[str | None, str | None, str]:
     source_identity = _record_source_identity_key(record)
     if source_identity:
         return ("source_record", source_identity, "")
 
     metadata = record.get("metadata")
     metadata = metadata if isinstance(metadata, dict) else {}
-    chunk_id = str(metadata.get("chunk_id") or "").strip()
-    document_id = str(metadata.get("document_id") or "").strip()
-    content = str(record.get("content") or "").strip()
-    title = str(record.get("title") or "").strip()
+    chunk_id = _first_nonempty_str(metadata.get("chunk_id"))
+    document_id = _first_nonempty_str(metadata.get("document_id"))
+    content = record['content'].strip()
+    title = record['title'].strip()
     return (chunk_id, document_id, content or title)
 
 

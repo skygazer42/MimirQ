@@ -11,9 +11,15 @@ from app.rag.preprocessing.processor import GovernanceStats
 def _is_table_segment_metadata(meta: dict[str, Any] | None) -> bool:
     if not isinstance(meta, dict):
         return False
-    content_type = str(meta.get("content_type") or "").strip().lower()
-    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
-    element_kind = str(meta.get("element_kind") or "").strip().lower()
+    content_type = meta.get("content_type")
+    doc_type = meta.get("doc_type_kwd")
+    element_kind = meta.get("element_kind")
+    if isinstance(content_type, str):
+        content_type = content_type.strip().lower()
+    if isinstance(doc_type, str):
+        doc_type = doc_type.strip().lower()
+    if isinstance(element_kind, str):
+        element_kind = element_kind.strip().lower()
     return content_type == "table" or doc_type == "table" or element_kind == "table"
 
 
@@ -41,8 +47,12 @@ def _coerce_int(value: Any) -> int | None:
 def _is_seal_segment_metadata(meta: dict[str, Any] | None) -> bool:
     if not isinstance(meta, dict):
         return False
-    content_type = str(meta.get("content_type") or "").strip().lower()
-    doc_type = str(meta.get("doc_type_kwd") or "").strip().lower()
+    content_type = meta.get("content_type")
+    doc_type = meta.get("doc_type_kwd")
+    if isinstance(content_type, str):
+        content_type = content_type.strip().lower()
+    if isinstance(doc_type, str):
+        doc_type = doc_type.strip().lower()
     return content_type == "seal" or doc_type == "seal"
 
 
@@ -75,7 +85,7 @@ def _seal_candidate_from_document(doc: Document) -> dict[str, Any] | None:
         score = _coerce_float(meta.get("seal_score"))
     page = _seal_segment_page(meta)
     return {
-        "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content or "").strip(),
+        "text": str(primary.get("text") or meta.get("seal_text") or doc.page_content).strip(),
         "score": score,
         "kind": str(primary.get("seal_kind") or meta.get("seal_kind") or "unknown").strip() or "unknown",
         "page": page,
@@ -100,7 +110,7 @@ def _format_seal_summary(candidates: list[dict[str, Any]]) -> dict[str, Any] | N
         "detected": True,
         "count": int(len(candidates)),
         "candidate_count_total": int(sum(int(item.get("candidate_count") or 0) for item in candidates)),
-        "primary_text": str(primary.get("text") or ""),
+        "primary_text": primary["text"],
         "primary_score": (float(primary["score"]) if primary.get("score") is not None else None),
         "primary_kind": str(primary.get("kind") or "unknown"),
         "primary_page": primary.get("page"),
@@ -141,9 +151,10 @@ def _ocr_confidence_from_metadata(meta: dict[str, Any]) -> float | None:
 
 
 def _low_confidence_span(meta: dict[str, Any], *, text: str, confidence: float) -> dict[str, Any]:
+    element_id = next((meta[key] for key in ("id", "element_id", "source_element_id") if meta.get(key) is not None), None)
     return {
-        "element_id": str(meta.get("id") or meta.get("element_id") or meta.get("source_element_id") or ""),
-        "text": str(meta.get("text") or text or "")[:160],
+        "element_id": str(element_id) if element_id is not None else None,
+        "text": str(meta.get("text") or text)[:160],
         "page": meta.get("page") or meta.get("element_page"),
         "bbox": meta.get("bbox") if isinstance(meta.get("bbox"), dict) else meta.get("element_bbox"),
         "confidence": round(float(confidence), 4),
@@ -159,7 +170,7 @@ def _iter_ocr_quality_candidates(documents: list[Document] | None) -> list[tuple
             for item in derived:
                 if isinstance(item, dict):
                     candidates.append((dict(item), str(item.get("text") or "")))
-        candidates.append((meta, str(getattr(doc, "page_content", "") or "")))
+        candidates.append((meta, doc.page_content))
     return candidates
 
 
@@ -276,7 +287,7 @@ def _aggregate_governance_quality(source_items: list[Document]) -> dict[str, Any
         meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
         metrics = _governance_quality_from_metadata(meta)
         if metrics is None:
-            metrics = _compute_governance_quality_metrics(doc.page_content or "")
+            metrics = _compute_governance_quality_metrics(doc.page_content)
         chars_non_space += metrics[0]
         chars_alnum_cjk += metrics[1]
         lines_total += metrics[2]

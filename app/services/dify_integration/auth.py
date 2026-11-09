@@ -13,12 +13,12 @@ _TOKEN_SPLIT_RE = re.compile(r"[,\s]+")
 
 
 def _split_items(raw: object) -> list[str]:
-    return [part for part in _TOKEN_SPLIT_RE.split(str(raw or "").strip()) if part]
+    return [part for part in _TOKEN_SPLIT_RE.split(raw.strip()) if part]
 
 
 def _token_matches(provided_token: str, expected_token: str) -> bool:
-    expected = str(expected_token or "").strip()
-    provided = str(provided_token or "").strip()
+    expected = expected_token.strip()
+    provided = provided_token.strip()
     if not expected or not provided:
         return False
     if expected.lower().startswith("sha256:"):
@@ -31,7 +31,9 @@ def _token_matches(provided_token: str, expected_token: str) -> bool:
 
 
 def _extract_bearer_token(authorization: str | None) -> str:
-    raw = str(authorization or "").strip()
+    if authorization is None:
+        raise HTTPException(status_code=401, detail="Invalid Dify Authorization header")
+    raw = authorization.strip()
     if not raw.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Invalid Dify Authorization header")
     token = raw[7:].strip()
@@ -41,8 +43,10 @@ def _extract_bearer_token(authorization: str | None) -> str:
 
 
 def _coerce_uuid(value: object, *, label: str) -> UUID:
+    if value is None:
+        raise HTTPException(status_code=400, detail=f"Invalid {label}")
     try:
-        return UUID(str(value or "").strip())
+        return UUID(str(value).strip())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=f"Invalid {label}") from exc
 

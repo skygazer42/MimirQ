@@ -188,7 +188,8 @@ def _detect_encoding(raw: bytes) -> tuple[str, float]:
         if callable(detect):
             try:
                 res = detect(raw)
-                enc = str((res or {}).get("encoding") or "").strip()
+                raw_encoding = (res or {}).get("encoding")
+                enc = raw_encoding.strip() if raw_encoding is not None else None
                 conf = float((res or {}).get("confidence") or 0.0)
                 if enc:
                     return enc, conf
@@ -406,7 +407,7 @@ def _utf8_byte_len(text: str) -> int:
     try:
         return len(text.encode("utf-8", errors="replace"))
     except Exception:
-        return len(text or "")
+        return len(text)
 
 
 def _apply_preprocess_steps(

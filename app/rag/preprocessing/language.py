@@ -29,7 +29,7 @@ def detect_language(text: str, *, min_chars: int = 40) -> LanguageDetectResult:
         - language: "zh" (mostly CJK), "en" (mostly Latin), "mixed", or "unknown"
         - confidence: 0..1 based on dominant-script ratio
     """
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return LanguageDetectResult(language="unknown", cjk_chars=0, latin_chars=0, confidence=0.0)
 

@@ -44,10 +44,12 @@ def _get_chardet():  # noqa: ANN202
     return optional_import("chardet", feature="text_encoding_detection")
 
 
-def _normalize_encoding(name: str) -> str:
-    raw = (name or "").strip()
+def _normalize_encoding(name: str | None) -> str | None:
+    if name is None:
+        return None
+    raw = (name).strip()
     if not raw:
-        return ""
+        return None
     lowered = raw.lower().replace("_", "-")
     # Common aliases from chardet / user-land.
     if lowered in {"utf-8-sig", "utf8-sig"}:
@@ -184,7 +186,8 @@ def _detect_encoding(blob: bytes) -> tuple[str | None, float]:
         return None, 0.0
     try:
         detected = chardet.detect(blob[:65536])
-        detected_encoding = (detected.get("encoding") or "").strip() or None
+        raw_encoding = detected.get("encoding")
+        detected_encoding = (raw_encoding.strip() or None) if raw_encoding is not None else None
         detected_confidence = float(detected.get("confidence") or 0.0)
     except Exception:
         return None, 0.0
@@ -223,7 +226,7 @@ def _replacement_decoded_text(
     default_encoding: str,
     had_bom: bool,
 ) -> DecodedText:
-    fallback = _normalize_encoding(detected_encoding or "") or default_encoding
+    fallback = _normalize_encoding(detected_encoding) or default_encoding
     try:
         return DecodedText(
             text=blob.decode(fallback, errors="replace"),
@@ -286,5 +289,5 @@ def read_text_file(path: Path, *, default_encoding: str = "utf-8") -> DecodedTex
             had_bom=had_bom,
         )
 
-    confidence = detected_confidence or 0.0 if _normalize_encoding(detected_encoding or "") == best_encoding else 0.0
+    confidence = detected_confidence or 0.0 if _normalize_encoding(detected_encoding) == best_encoding else 0.0
     return DecodedText(text=best_text, encoding=best_encoding, confidence=confidence, had_bom=had_bom)

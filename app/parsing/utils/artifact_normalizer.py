@@ -32,7 +32,7 @@ class _ArtifactNormalizationResult(TypedDict):
 
 
 def _safe_direct_child(root: Path, name: str, *, field: str) -> Path:
-    child = Path(str(name or "").strip())
+    child = Path(name.strip())
     if child.is_absolute() or len(child.parts) != 1 or child.name in {"", ".", ".."}:
         raise ValueError(f"invalid {field}: {name}")
     resolved_root = root.resolve(strict=False)
@@ -91,7 +91,7 @@ def _normalize_ref_path(raw: str) -> str:
     - strips leading './'
     - strips query/hash
     """
-    val = (raw or "").strip()
+    val = (raw).strip()
     if not val:
         return ""
     # Drop optional title: (path "title")
@@ -147,7 +147,7 @@ def _find_img_src_span(tag: str) -> tuple[int, int, str] | None:
 
 def rewrite_html_image_refs(text: str, resolver: Callable[[str], str | None]) -> str:
     """Rewrite quoted src values inside HTML img tags using a linear scan."""
-    source = str(text or "")
+    source = text
     lower = source.lower()
     out: list[str] = []
     cursor = 0

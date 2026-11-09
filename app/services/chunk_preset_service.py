@@ -19,7 +19,8 @@ def list_chunk_presets(
     include_global: bool,
     readable_dataset_ids: set[UUID] | None = None,
 ) -> list[ChunkPreset]:
-    q = (q or "").strip()
+    if q is not None:
+        q = q.strip()
 
     query = db.query(ChunkPreset).filter(ChunkPreset.tenant_id == tenant_id)
     if dataset_id is not None:

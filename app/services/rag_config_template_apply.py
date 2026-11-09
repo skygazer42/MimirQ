@@ -18,9 +18,9 @@ from app.core.model_execution import validate_rag_execution_selection
 def validate_rag_config_patch(patch: Mapping[str, Any]) -> None:
     """Reject retired selections before schema errors can be wrapped or discarded."""
     validate_rag_execution_selection(
-        reranker_provider=str(patch.get("reranker_provider") or ""),
-        sparse_provider=str(patch.get("sparse_retrieval_provider") or ""),
-        retrieval_profile=str(patch.get("retrieval_profile") or ""),
+        reranker_provider=patch.get("reranker_provider"),
+        sparse_provider=patch.get("sparse_retrieval_provider"),
+        retrieval_profile=patch.get("retrieval_profile"),
     )
 
 
@@ -37,7 +37,7 @@ def apply_rag_config_patch(
     applied: list[str] = []
 
     for k, v in raw_patch.items():
-        key = str(k or "").strip()
+        key = k.strip()
         if not key:
             continue
         if key in provided:

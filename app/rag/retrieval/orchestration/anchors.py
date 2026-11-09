@@ -40,8 +40,8 @@ _FIELD_PART_RE = re.compile(r"[^a-z0-9]+")
 _COMPACT_ANCHOR_DROP_RE = re.compile(r"[\s\"'“”‘’`´＂＇《》〈〉【】\[\]（）(){}]+")
 
 
-def _normalize_exact_anchor(value: Any, *, compact: bool = False) -> str:
-    text = str(value or "").strip()
+def _normalize_exact_anchor(value: str, *, compact: bool = False) -> str:
+    text = value.strip()
     if not text:
         return ""
     text = unicodedata.normalize("NFKC", text)
@@ -54,7 +54,7 @@ def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, 
     seen: set[tuple[str, str]] = set()
 
     def add(field: str, value: Any) -> None:
-        field_s = str(field or "").strip()
+        field_s = field.strip()
         if not field_s:
             return
         values: list[Any]
@@ -75,7 +75,7 @@ def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, 
             out.append(key)
 
     for field, value in meta.items():
-        field_s = str(field or "").strip()
+        field_s = field.strip()
         if not field_s or field_s.startswith("_"):
             continue
         add(field_s, value)
@@ -84,7 +84,7 @@ def _iter_metadata_exact_anchor_values(meta: dict[str, Any]) -> list[tuple[str, 
 
 
 def _looks_like_metadata_exact_anchor(field: str, text: str) -> bool:
-    field_norm = str(field or "").strip().lower()
+    field_norm = field.strip().lower()
     if any(field_norm.startswith(prefix) for prefix in _METADATA_EXACT_ANCHOR_SKIP_FIELD_PREFIXES):
         return False
     field_parts = {p for p in _FIELD_PART_RE.split(field_norm) if p}
@@ -160,8 +160,8 @@ def _apply_metadata_exact_anchor_to_result(
     result["metadata_exact_match_score"] = match_score
     result["metadata_exact_match_primary_score"] = float(metadata_match.get("primary_score") or 0.0)
     result["metadata_exact_match_boost"] = float(metadata_boost)
-    result["metadata_exact_match_field"] = str(metadata_match.get("field") or "")
-    result["metadata_exact_match_value"] = str(metadata_match.get("value") or "")
+    result["metadata_exact_match_field"] = metadata_match["field"]
+    result["metadata_exact_match_value"] = metadata_match["value"]
     result["metadata_exact_match_fields"] = list(metadata_match.get("fields") or [])
     result["metadata_exact_match_values"] = list(metadata_match.get("values") or [])
 

@@ -59,10 +59,12 @@ def normalize_object_storage_provider_name(raw: object) -> str:
 
 
 def parse_object_storage_region_profiles(raw: object) -> dict[str, dict[str, object]]:
+    if raw is None:
+        return {}
     if isinstance(raw, Mapping):
         source = dict(raw)
     else:
-        text = str(raw or "").strip()
+        text = raw.strip()
         if not text:
             return {}
         try:
@@ -74,7 +76,7 @@ def parse_object_storage_region_profiles(raw: object) -> dict[str, dict[str, obj
 
     profiles: dict[str, dict[str, object]] = {}
     for raw_region, raw_profile in source.items():
-        region = str(raw_region or "").strip().lower()
+        region = raw_region.strip().lower()
         if not region or not isinstance(raw_profile, Mapping):
             raise ValueError("OBJECT_STORAGE_REGION_PROFILES entries must map a non-empty region to an object")
         profiles[region] = dict(raw_profile)
@@ -82,7 +84,7 @@ def parse_object_storage_region_profiles(raw: object) -> dict[str, dict[str, obj
 
 
 def _is_local_jwt_http_host(host: str) -> bool:
-    normalized = str(host or "").strip().lower()
+    normalized = host.strip().lower()
     if not normalized:
         return False
     if normalized in _JWT_LOCAL_HOSTS or normalized.endswith(".localhost"):
@@ -95,15 +97,16 @@ def _is_local_jwt_http_host(host: str) -> bool:
 
 
 def validate_jwt_remote_url(raw_url: str, *, field_name: str) -> None:
-    url = str(raw_url or "").strip()
+    url = raw_url.strip()
     if not url:
         return
 
     parsed = urlparse(url)
-    scheme = str(parsed.scheme or "").strip().lower()
-    host = str(parsed.hostname or "").strip().lower()
+    scheme = parsed.scheme.strip().lower()
+    host = parsed.hostname
     if scheme not in {"http", "https"} or not host:
         raise ValueError(f"{field_name} must be a http(s) URL")
+    host = host.lower()
     if parsed.username or parsed.password:
         raise ValueError(f"{field_name} must not include userinfo")
     if scheme == "https":
@@ -167,7 +170,7 @@ def _normalize_choice_setting(
 def _validate_sha256_digest(value: str, message: str) -> None:
     if value.lower().startswith("sha256:"):
         digest = value.split(":", 1)[1].strip()
-        _raise_if(not re.fullmatch(r"[0-9a-fA-F]{64}", digest or ""), message)
+        _raise_if(not re.fullmatch(r"[0-9a-fA-F]{64}", digest), message)
 
 
 def _split_token_values(raw_value: str) -> list[str]:
@@ -265,7 +268,7 @@ def _validate_initial_admin_email(email: str) -> str:
 def _validate_initial_admin_password(settings: Settings, password: str) -> None:
     if not password:
         return
-    min_len = settings.PASSWORD_MIN_LENGTH or 8
+    min_len = settings.PASSWORD_MIN_LENGTH
     _raise_if(len(password) < min_len, f"INITIAL_ADMIN_PASSWORD must be at least {min_len} characters")
     _raise_if(
         len(password.encode("utf-8")) > 72,
@@ -293,8 +296,9 @@ def _validate_object_storage_profile(label: str, profile: Mapping[str, object]) 
     if not enabled:
         return
     for field_name in ("endpoint", "access_key", "secret_key", "bucket_name"):
-        _require_nonempty(
-            str(profile.get(field_name) or "").strip(),
+        value = profile.get(field_name)
+        _raise_if(
+            not isinstance(value, str) or not value.strip(),
             f"{label}.{field_name} is required when {label}.enabled=true",
         )
 
@@ -402,10 +406,11 @@ def validate_cors(settings: Settings) -> None:
             if origin.lower().strip() == "null":
                 raise ValueError("CORS_ORIGINS must not include 'null' in production")
             parsed = urlparse(origin)
-            scheme = (parsed.scheme or "").lower().strip()
-            host = (parsed.hostname or "").lower().strip()
+            scheme = (parsed.scheme).lower().strip()
+            host = parsed.hostname
             if scheme not in {"http", "https"} or not host:
                 raise ValueError("CORS_ORIGINS must be a comma-separated list of http(s) origins in production")
+            host = host.lower().strip()
             if host in {"localhost", "127.0.0.1", _ALL_INTERFACES_HOST} or host.endswith(".localhost"):
                 raise ValueError("CORS_ORIGINS must not include localhost origins in production")
 
@@ -1176,6 +1181,8 @@ def validate_kg_search(settings: Settings) -> None:
 
 
 def validate_vector_write_and_table_catalog(settings: Settings) -> None:
+    _require_nonempty(settings.UPLOAD_DIR.strip(), "UPLOAD_DIR must be non-empty")
+    _require_nonempty(settings.TABLE_STORE_DIR.strip(), "TABLE_STORE_DIR must be non-empty")
     _require_int_min(settings.VECTOR_WRITE_BATCH_SIZE, 1, "VECTOR_WRITE_BATCH_SIZE must be >= 1")
     _require_int_min(settings.VECTOR_WRITE_BATCH_MAX_CHARS, 0, "VECTOR_WRITE_BATCH_MAX_CHARS must be >= 0")
 

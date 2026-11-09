@@ -53,13 +53,13 @@ def summarize_near_dup_payload(payload: Any | None) -> dict[str, Any]:
         members: list[str] = []
         if isinstance(members_raw, list):
             for m in members_raw:
-                s = str(m or "").strip()
+                s = m.strip()
                 if s:
                     members.append(s)
         affected.update(members)
         largest = max(largest, len(members))
 
-        kc = str(c.get("keep_candidate") or "").strip()
+        kc = c["keep_candidate"].strip()
         if kc and kc not in seen_keep:
             keep_candidates.append(kc)
             seen_keep.add(kc)

@@ -179,7 +179,7 @@ class CitationRecord:
     payload: dict[str, Any] | None
     chunk_id: UUID | None
     document_id: UUID | None
-    fallback_text: str = ""
+    fallback_text: str | None = None
 
 
 @dataclass(frozen=True)
@@ -213,7 +213,7 @@ def _normalized_metric_names(metric_names: list[str] | None) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in metric_names or []:
-        key = str(raw or "").strip().lower()
+        key = raw.strip().lower()
         if not key or key in seen:
             continue
         seen.add(key)
@@ -326,7 +326,7 @@ def _build_http_clients() -> tuple[httpx.Client, httpx.AsyncClient]:
     - If a SOCKS proxy is detected, disable trust_env to avoid httpx issues.
     """
     trust_env = httpx_trust_env(logger=logger)
-    timeout = float(settings.LLM_TIMEOUT or 60)
+    timeout = float(settings.LLM_TIMEOUT)
     return httpx.Client(trust_env=trust_env, timeout=timeout), httpx.AsyncClient(trust_env=trust_env, timeout=timeout)
 
 
@@ -379,7 +379,8 @@ def _collect_citation_records(citations: Any) -> tuple[list[CitationRecord], lis
             continue
         chunk_id = _coerce_uuid(payload.get("chunk_id"))
         document_id = _coerce_uuid(payload.get("document_id"))
-        fallback_text = str(payload.get("chunk_content") or payload.get("quote") or payload.get("text") or "").strip()
+        raw_text = next((payload[key] for key in ("chunk_content", "quote", "text") if payload.get(key) is not None), None)
+        fallback_text = str(raw_text).strip() if raw_text is not None else None
         records.append(
             CitationRecord(
                 original=item,
@@ -507,8 +508,9 @@ def _build_contexts_from_citations(
         if allowed_set is not None and (doc_id is None or doc_id not in allowed_set):
             continue
 
-        content = (chunk.content if chunk is not None else None) or record.fallback_text or ""
-        content = str(content or "")
+        if chunk is None and record.fallback_text is None:
+            continue
+        content = chunk.content if chunk is not None else record.fallback_text
         if not content.strip():
             continue
         if max_context_chars and len(content) > max_context_chars:
@@ -860,7 +862,7 @@ def _build_regression_slice_summaries(
         groups: dict[str, list[dict[str, Any]]] = {}
         for m in metas:
             raw = m.get(key)
-            b = str(raw or "").strip().lower() or "unknown"
+            b = str(raw).strip().lower() or "unknown" if raw is not None else "unknown"
             if len(b) > 80:
                 b = b[:80]
             groups.setdefault(b, []).append(m)
@@ -870,7 +872,7 @@ def _build_regression_slice_summaries(
             summary = _build_retrieval_metrics_summary(items)
             rows.append({"key": bucket, "items": len(items), **summary})
 
-        rows.sort(key=lambda o: (-int(o.get("items") or 0), str(o.get("key") or "")))
+        rows.sort(key=lambda o: (-int(o.get("items") or 0), o["key"]))
         truncated = False
         if max_buckets > 0 and len(rows) > max_buckets:
             rows = rows[:max_buckets]
@@ -994,7 +996,7 @@ def _resolve_metrics(metric_names: list[str]):
     requested_names = metric_names or ["faithfulness", "response_relevancy"]
     resolved = []
     for name in requested_names:
-        key = (name or "").strip().lower()
+        key = name.strip().lower()
         factory = factory_map.get(key)
         if factory is None:
             raise ValueError(f"Unsupported RAGAS metric: {name}")
@@ -1054,7 +1056,7 @@ def _should_use_conversation_deterministic_eval(metric_names: list[str]) -> bool
 
 
 def _token_set(text: str) -> set[str]:
-    return {match.group(0).casefold() for match in _TOKEN_RE.finditer(str(text or ""))}
+    return {match.group(0).casefold() for match in _TOKEN_RE.finditer(text)}
 
 
 def _deterministic_response_relevancy(user_input: str, response: str) -> float | None:
@@ -1712,7 +1714,9 @@ def _load_regression_cases(
 
 
 def _normalize_access_mode(value: object) -> str:
-    normalized = str(value or "").strip().lower()
+    if value is None:
+        return "inherit"
+    normalized = str(value).strip().lower()
     if not normalized or normalized == "inherit":
         return "inherit"
     if normalized in {"only_me", "partial_members", "all_team_members"}:
@@ -1721,14 +1725,16 @@ def _normalize_access_mode(value: object) -> str:
 
 
 def _normalize_pipeline_hash(value: object) -> str:
-    normalized = str(value or "").strip()
+    if value is None:
+        return "unknown"
+    normalized = str(value).strip()
     if not normalized:
         return "unknown"
     return normalized[:16]
 
 
 def _stable_slice_bucket(values: set[str], *, default: str) -> str:
-    cleaned = {str(value or "").strip().lower() for value in values if str(value or "").strip()}
+    cleaned = {value.strip().lower() for value in values if value.strip()}
     if not cleaned:
         return default
     if len(cleaned) == 1:
@@ -1778,7 +1784,10 @@ def _chunk_quality_bucket(meta_dict: dict[str, Any]) -> str:
     gate = meta_dict.get("chunk_quality_gate")
     if not isinstance(gate, dict):
         return "unknown"
-    grade = str(gate.get("grade") or "").strip().lower()
+    raw_grade = gate.get("grade")
+    if raw_grade is None:
+        return "unknown"
+    grade = str(raw_grade).strip().lower()
     if grade in {"pass", "warn", "fail"}:
         return grade
     if grade:
@@ -1811,7 +1820,7 @@ def _load_evidence_document_attributes(
     for doc_id, file_type, access_mode, meta in rows:
         meta_dict = meta if isinstance(meta, dict) else {}
         doc_attr[doc_id] = {
-            "file_type": str(file_type or "").strip().lower() or "unknown",
+            "file_type": file_type.strip().lower() or "unknown",
             "language": extract_language_bucket(meta_dict),
             "directory": directory_bucket_from_source_path(meta_dict.get("source_path")),
             "pipeline_hash": _normalize_pipeline_hash(get_active_pipeline_hash(meta_dict)),
@@ -1872,8 +1881,12 @@ def _build_case_slice_meta(
 def _resolve_case_modality(case: RagasRegressionCase) -> tuple[str, dict[str, Any]]:
     multimodal_router_meta: dict[str, Any] = {"enabled": True, "modality": "text", "reasons": []}
     extra = case.extra if isinstance(case.extra, dict) else {}
-    override = str(extra.get("modality") or extra.get("query_modality") or "").strip().lower()
-    if override in {"text", "table", "image"}:
+    override = extra.get("modality")
+    if override is None:
+        override = extra.get("query_modality")
+    if isinstance(override, str):
+        override = override.strip().lower()
+    if override in ("text", "table", "image"):
         multimodal_router_meta["modality"] = override
         multimodal_router_meta["reasons"] = ["override"]
         return override, multimodal_router_meta
@@ -2063,7 +2076,7 @@ def _invoke_regression_graph(
         recursion_limit = max(1, int(settings.LANGGRAPH_RECURSION_LIMIT))
         config = {"configurable": {"thread_id": thread_id}, "recursion_limit": recursion_limit}
         graph_result = app.invoke(state, config=config, context=None) or {}
-    return (graph_result or {}).get("answer") or "", (graph_result or {}).get("citations") or [], graph_result
+    return graph_result["answer"], (graph_result or {}).get("citations") or [], graph_result
 
 
 def _resolve_citation_eval_limit(rag_params: dict[str, Any]) -> int:
@@ -2077,7 +2090,9 @@ def _top_hit_type(citations: Any) -> str:
     try:
         citation = (citations or [])[0] if isinstance(citations, list) else None
         if isinstance(citation, dict):
-            raw_hit_type = str(citation.get("hit_type") or "").strip().lower()
+            raw_hit_type = citation.get("hit_type")
+            if isinstance(raw_hit_type, str):
+                raw_hit_type = raw_hit_type.strip().lower()
             if raw_hit_type in {"vector", "keyword", "hybrid", "mmr", "tag", "image", "table"}:
                 return raw_hit_type
     except Exception:
@@ -2290,7 +2305,7 @@ def _replace_regression_items(
                 tenant_id=tenant_id,
                 case_id=item["case_id"],
                 question=item["question"],
-                response=item.get("response") or "",
+                response=item["response"],
                 retrieved_contexts=item["retrieved_contexts"],
                 citations=item["citations"],
                 scores=score_builder(item, idx),

@@ -83,7 +83,7 @@ def _resolve_origin_image_path(*, src: str, origin_path: Path) -> Path | None:
         base_dir = base_dir.parent
 
     base_dir_resolved = base_dir.resolve(strict=False)
-    path_obj = Path(resolved_ref or "")
+    path_obj = Path(resolved_ref)
     if not path_obj.is_absolute():
         path_obj = (base_dir_resolved / path_obj).resolve(strict=False)
     else:
@@ -114,7 +114,7 @@ def _read_local_image_bytes(path_obj: Path, *, max_bytes: int) -> bytes | None:
 
 
 def _safe_read_local_image_bytes(*, src: str, origin_path: Path, max_bytes: int) -> bytes | None:
-    raw = str(src or "").strip()
+    raw = src.strip()
     if not raw:
         return None
     if raw.startswith("data:"):
@@ -278,7 +278,7 @@ def _resolve_vlm_caption(
     cap_raw, note = _call_caption_backend(
         api_url=api_url,
         image_bytes=image_bytes,
-        filename=str(Path(unquote(str(src or "").strip())).name or "image"),
+        filename=str(Path(unquote(src.strip())).name or "image"),
         timeout_sec=float(timeout_sec or 60.0),
     )
     cap = _clean_caption_text(cap_raw, max_chars=max_caption_chars)

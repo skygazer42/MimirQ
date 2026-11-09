@@ -9,15 +9,15 @@ async def run_agentic_route(sample: dict[str, Any]) -> dict[str, Any]:
     answer_parts: list[str] = []
     citations: list[dict[str, Any]] = []
     done_payload: dict[str, Any] = {}
-    async for event in runner.stream(question=str(sample.get("query") or ""), history=[]):
+    async for event in runner.stream(question=sample["query"], history=[]):
         if not isinstance(event, dict):
             continue
-        event_type = str(event.get("type") or "")
+        event_type = event["type"]
         data = event.get("data") or {}
         if event_type == "citations" and isinstance(data, list):
             citations = list(data)
         elif event_type == "token" and isinstance(data, dict):
-            token = str(data.get("content") or "")
+            token = data["content"]
             if token:
                 answer_parts.append(token)
         elif event_type == "done" and isinstance(data, dict):
@@ -25,10 +25,10 @@ async def run_agentic_route(sample: dict[str, Any]) -> dict[str, Any]:
 
     metrics = dict(done_payload.get("metrics") or {})
     return build_runner_result(
-        sample_id=str(sample.get("sample_id") or ""),
+        sample_id=sample["sample_id"],
         route_id="agentic",
-        query_type=str(sample.get("query_type") or ""),
-        source_type=str(sample.get("source_type") or ""),
+        query_type=sample["query_type"],
+        source_type=sample["source_type"],
         expected_route=sample.get("expected_route"),
         actual_route=str(done_payload.get("route") or "agentic"),
         answer={"text": "".join(answer_parts)},

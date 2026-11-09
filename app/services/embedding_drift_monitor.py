@@ -103,8 +103,8 @@ def _init_embedding_model_for_drift():
     return create_langchain_embeddings_from_config(
         provider=mapped_provider,
         model=str(settings.EMBEDDING_MODEL or "text-embedding-3-small"),
-        api_key=api_key or "",
-        base_url=base_url or "",
+        api_key=api_key,
+        base_url=base_url,
         dimension=None,  # Auto-detect
     )
 
@@ -133,10 +133,10 @@ def _collect_drift_sample_items(
         if not row or len(row) < 3:
             continue
         vector_id_raw, content_raw, meta_raw = row
-        vector_id = str(vector_id_raw or "").strip()
+        vector_id = vector_id_raw.strip()
         if not vector_id:
             continue
-        content = str(content_raw or "")
+        content = content_raw
         if not content.strip():
             continue
         meta = meta_raw if isinstance(meta_raw, dict) else {}

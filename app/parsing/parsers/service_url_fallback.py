@@ -15,7 +15,7 @@ def build_docker_service_url_candidates(raw_url: str, *, service_hostnames: set[
     Keep both candidates so an env file from one shape does not silently break
     the other during Docker rebuild/restart workflows.
     """
-    raw = (raw_url or "").strip()
+    raw = (raw_url).strip()
     if not raw:
         return []
 
@@ -25,7 +25,7 @@ def build_docker_service_url_candidates(raw_url: str, *, service_hostnames: set[
     except Exception:
         return candidates
 
-    hostname = (parts.hostname or "").strip().lower()
+    hostname = parts.hostname.strip().lower() if parts.hostname is not None else None
     normalized_services = sorted({name.strip().lower() for name in service_hostnames if name.strip()})
     if not normalized_services:
         return candidates

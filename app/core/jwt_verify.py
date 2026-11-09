@@ -29,15 +29,15 @@ logger = get_logger("core.jwt_verify")
 
 
 def _validate_response_url_chain(*, requested_url: str, response: httpx.Response, error_name: str) -> None:
-    requested = (requested_url or "").strip()
-    response_urls = [str(getattr(item, "url", "") or "").strip() for item in getattr(response, "history", ())]
-    response_urls.append(str(getattr(response, "url", "") or "").strip())
+    requested = (requested_url).strip()
+    response_urls = [str(item.url) for item in response.history]
+    response_urls.append(str(response.url))
     if not response_urls[-1]:
         raise ValueError(error_name)
 
-    requested_scheme = (urlparse(requested).scheme or "").strip().lower()
+    requested_scheme = (urlparse(requested).scheme).strip().lower()
     for response_url in response_urls:
-        if requested_scheme == "https" and (urlparse(response_url).scheme or "").lower() != "https":
+        if requested_scheme == "https" and (urlparse(response_url).scheme).lower() != "https":
             raise ValueError(error_name)
         try:
             validate_jwt_remote_url(response_url, field_name="JWT_REMOTE_RESPONSE_URL")
@@ -52,15 +52,15 @@ def jwt_secret_key_candidates() -> list[str]:
     - settings.SECRET_KEY is always tried first
     - settings.SECRET_KEY_FALLBACKS can include previous keys (comma-separated)
     """
-    current = (settings.SECRET_KEY or "").strip()
+    current = (settings.SECRET_KEY).strip()
     out: list[str] = [current] if current else []
 
-    raw_fallbacks = (settings.SECRET_KEY_FALLBACKS or "").strip()
+    raw_fallbacks = (settings.SECRET_KEY_FALLBACKS).strip()
     if not raw_fallbacks:
         return out
 
     for item in raw_fallbacks.split(","):
-        key = (item or "").strip()
+        key = (item).strip()
         if not key or key == current:
             continue
         out.append(key)
@@ -109,7 +109,7 @@ def _oidc_lock(issuer: str) -> asyncio.Lock:
 
 
 def _oidc_config_url_for_issuer(issuer: str) -> str | None:
-    raw = (issuer or "").strip()
+    raw = (issuer).strip()
     if not raw:
         return None
     base = raw.rstrip("/")
@@ -120,20 +120,20 @@ def _oidc_config_url_for_issuer(issuer: str) -> str | None:
 
 
 def _normalize_oidc_issuer(raw_issuer: str) -> str:
-    raw = (raw_issuer or "").strip()
+    raw = (raw_issuer).strip()
     if not raw:
         return ""
     parsed = urlparse(raw)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         return ""
-    host = (parsed.hostname or "").lower()
+    host = parsed.hostname.lower()
     if parsed.port:
         host = f"{host}:{parsed.port}"
     return urlunparse(
         (
             parsed.scheme.lower(),
             host,
-            (parsed.path or "").rstrip("/"),
+            (parsed.path).rstrip("/"),
             "",
             "",
             "",
@@ -162,7 +162,7 @@ async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str
     ttl_sec = float(settings.JWT_OIDC_DISCOVERY_CACHE_TTL_SEC or 3600)
     max_stale_sec = float(settings.JWT_OIDC_DISCOVERY_MAX_STALE_SEC or 86400)
 
-    issuer = (issuer or "").strip()
+    issuer = (issuer).strip()
     if not issuer:
         return None
 
@@ -185,10 +185,10 @@ async def _get_oidc_jwks_uri(issuer: str, *, force_refresh: bool = False) -> str
         try:
             cfg = await _fetch_oidc_configuration(config_url)
             configured_issuer = _normalize_oidc_issuer(issuer)
-            discovered_issuer = _normalize_oidc_issuer(str(cfg.get("issuer") or ""))
+            discovered_issuer = _normalize_oidc_issuer(cfg["issuer"])
             if configured_issuer and discovered_issuer != configured_issuer:
                 raise ValueError("invalid_oidc_issuer_mismatch")
-            jwks_uri = str(cfg.get("jwks_uri") or "").strip()
+            jwks_uri = cfg["jwks_uri"].strip()
             try:
                 validate_jwt_remote_url(jwks_uri, field_name="OIDC discovery jwks_uri")
             except ValueError as exc:
@@ -287,7 +287,8 @@ def _find_jwk_for_kid(keys: list[dict[str, Any]], kid: str | None) -> dict[str, 
     if kid:
         wanted = kid.strip()
         for key in keys:
-            if str(key.get("kid") or "").strip() == wanted:
+            key_id = key.get("kid")
+            if isinstance(key_id, str) and key_id.strip() == wanted:
                 return key
         return None
 
@@ -298,16 +299,18 @@ def _find_jwk_for_kid(keys: list[dict[str, Any]], kid: str | None) -> dict[str, 
 
 
 async def _jwks_key_for_token(token: str) -> dict[str, Any]:
-    urls = parse_csv(settings.JWT_JWKS_URLS or "")
+    urls = parse_csv(settings.JWT_JWKS_URLS)
     if not urls and settings.JWT_JWKS_DISCOVERY_ENABLED:
-        issuer = (settings.JWT_ISSUER or "").strip()
+        issuer = (settings.JWT_ISSUER).strip()
         jwks_uri = await _get_oidc_jwks_uri(issuer)
         urls = [jwks_uri] if jwks_uri else []
     if not urls:
         raise InvalidTokenError("JWKS not configured")
 
     header = jwt.get_unverified_header(token)
-    kid = str(header.get("kid") or "").strip() or None
+    kid = header.get("kid")
+    if kid is not None:
+        kid = kid.strip()
 
     last_exc: Exception | None = None
     for url in urls:
@@ -337,8 +340,8 @@ async def decode_access_token(token: str) -> dict[str, Any]:
     """
     algorithm = (settings.ALGORITHM or "HS256").strip() or "HS256"
     algorithms = [algorithm]
-    issuer = (settings.JWT_ISSUER or "").strip()
-    audience = (settings.JWT_AUDIENCE or "").strip()
+    issuer = (settings.JWT_ISSUER).strip()
+    audience = (settings.JWT_AUDIENCE).strip()
 
     decode_kwargs: dict[str, Any] = {
         "algorithms": algorithms,

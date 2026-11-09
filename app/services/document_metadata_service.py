@@ -76,13 +76,14 @@ def _count_element_images(metadata: dict[str, Any]) -> int:
         for element in elements:
             if not isinstance(element, dict):
                 continue
-            kind = str(
+            kind = (
                 element.get("kind")
                 or element.get("type")
                 or element.get("category")
                 or element.get("visual_kind")
-                or ""
-            ).lower()
+            )
+            if kind is not None:
+                kind = kind.lower()
             if kind in {"image", "figure", "picture"}:
                 count += 1
 
@@ -98,7 +99,9 @@ def _count_element_tables(metadata: dict[str, Any]) -> int:
         for element in elements:
             if not isinstance(element, dict):
                 continue
-            kind = str(element.get("kind") or element.get("type") or element.get("category") or "").lower()
+            kind = element.get("kind") or element.get("type") or element.get("category")
+            if kind is not None:
+                kind = kind.lower()
             if kind == "table":
                 count += 1
 

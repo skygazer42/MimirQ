@@ -30,11 +30,11 @@ _SENTENCE_RE = re.compile(r"[^。！？!?\.\\n]+[。！？!?\.\\n]?", flags=re.S
 
 def _iter_sentence_spans(text: str) -> list[_Span]:
     spans: list[_Span] = []
-    for m in _SENTENCE_RE.finditer(text or ""):
+    for m in _SENTENCE_RE.finditer(text):
         start, end = m.start(), m.end()
         if end <= start:
             continue
-        if not (text[start:end] or "").strip():
+        if not (text[start:end]).strip():
             continue
         spans.append(_Span(start=start, end=end))
     return spans
@@ -111,7 +111,7 @@ class SentenceWindowChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

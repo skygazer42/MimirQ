@@ -29,7 +29,7 @@ def _safe_cell(value: object, *, max_chars: int) -> str:
 
 
 def _escape_md_cell(text: str) -> str:
-    text = (text or "").replace("\r", " ").replace("\n", " ").strip()
+    text = (text).replace("\r", " ").replace("\n", " ").strip()
     text = " ".join(text.split())
     # Keep Markdown tables stable.
     return text.replace("|", r"\|")

@@ -73,7 +73,9 @@ def _resolve_dify_kg_flags(setting: DifyRetrievalSetting) -> _DifyKGFlags:
 
 
 def _resolve_dify_latency_profile(setting: DifyRetrievalSetting) -> str:
-    raw = str(setting.latency_profile or "").strip().lower().replace("-", "_")
+    if setting.latency_profile is None:
+        return "quality"
+    raw = setting.latency_profile.strip().lower().replace("-", "_")
     if not raw or raw in {"default", "quality", "standard"}:
         return "quality"
     if raw in {"fast", "low_latency", "online"}:

@@ -262,17 +262,21 @@ _DIFY_TRACE_CITATION_METADATA_KEYS = (
 
 def _first_nonempty_str(*values: object) -> str | None:
     for value in values:
-        text = str(value or "").strip()
+        if value is None:
+            continue
+        text = str(value).strip()
         if text:
             return text
     return None
 
 
 def _uuid_or_none(value: object) -> UUID | None:
+    if value is None:
+        return None
     if isinstance(value, UUID):
         return value
     try:
-        return UUID(str(value or "").strip())
+        return UUID(str(value).strip())
     except (TypeError, ValueError):
         return None
 
@@ -283,7 +287,9 @@ def _header_value(headers: Mapping[str, str], name: str) -> str | None:
 
 
 def _diagnostic_value_hash(value: object) -> str:
-    text = str(value or "").strip()
+    if value is None:
+        return ""
+    text = str(value).strip()
     if not text:
         return ""
     return hashlib.sha256(text.encode("utf-8", "ignore")).hexdigest()[:16]
@@ -352,7 +358,9 @@ def _citation_chunk_id(citation: dict[str, Any]) -> str:
     raw_metadata = citation.get("metadata")
     metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
     for value in (citation.get("chunk_id"), metadata.get("chunk_id")):
-        text = str(value or "").strip()
+        if value is None:
+            continue
+        text = str(value).strip()
         if text:
             return text
     return ""
@@ -375,7 +383,9 @@ def _metadata_terms(value: Any) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in raw_items:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text or text in seen:
             continue
         seen.add(text)
@@ -390,7 +400,7 @@ def _response_hint_metadata_conditions_match(layer: dict[str, Any], field_spec: 
     if not isinstance(conditions, dict) or not conditions:
         return True
     for key, expected in conditions.items():
-        name = str(key or "").strip()
+        name = key.strip()
         if not name:
             return False
         expected_terms = {_normalize_match_term(term) for term in _metadata_terms(expected)}
@@ -403,7 +413,9 @@ def _response_hint_metadata_conditions_match(layer: dict[str, Any], field_spec: 
 
 
 def _normalize_match_term(value: Any) -> str:
-    text = str(value or "").strip().casefold()
+    if value is None:
+        return ""
+    text = str(value).strip().casefold()
     out: list[str] = []
     for char in text:
         if char.isspace():

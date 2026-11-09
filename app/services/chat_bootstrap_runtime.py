@@ -177,7 +177,7 @@ def _build_rag_template_meta(
     if not rag_config_template_resolver_debug:
         return rag_config_template_meta
     rag_config_template_meta["resolver_debug"] = rag_config_template_resolver_debug
-    strategy = str(rag_config_template_resolver_debug.get("strategy") or "").strip().lower()
+    strategy = rag_config_template_resolver_debug["strategy"].strip().lower()
     if strategy == "adaptive_epsilon_greedy":
         rag_config_template_meta["reward_writeback"] = build_adaptive_routing_reward_writeback(
             experiment_key=(chosen.ab_experiment_key),
@@ -203,10 +203,12 @@ def _resolve_rag_template_runtime(
     effective_rag_config_template_key: str | None,
     effective_rag_config_ab_experiment_key: str | None,
 ) -> tuple[ChatRAGConfig, dict[str, Any] | None]:
+    if effective_rag_config_template_key is not None:
+        effective_rag_config_template_key = effective_rag_config_template_key.strip()
+    if effective_rag_config_ab_experiment_key is not None:
+        effective_rag_config_ab_experiment_key = effective_rag_config_ab_experiment_key.strip()
     if not (
-        effective_rag_config_template_id
-        or (effective_rag_config_template_key or "").strip()
-        or (effective_rag_config_ab_experiment_key or "").strip()
+        effective_rag_config_template_id or effective_rag_config_template_key or effective_rag_config_ab_experiment_key
     ):
         return effective_rag_config, None
     chosen, rag_config_template_resolver_debug = resolve_rag_config_template(
@@ -480,7 +482,7 @@ async def prepare_stream_chat_runtime(
     cache_hit = False
 
     if isinstance(cached, dict):
-        full_response = str(cached.get("content") or "")
+        full_response = cached["content"]
         citations_data = cached.get("citations") if isinstance(cached.get("citations"), list) else []
         metrics_data = annotate_chat_cache_metrics(
             dict(cached.get("metrics") or {}),

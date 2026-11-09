@@ -106,8 +106,8 @@ def _record_retry_result(
     runtime.data.retry_per_query.append(
         {
             "kind": kind,
-            "query_chars": len(query or ""),
-            "query_tokens": runtime.module.num_tokens_from_string(query or ""),
+            "query_chars": len(query),
+            "query_tokens": runtime.module.num_tokens_from_string(query),
             "elapsed_sec": round(elapsed, 3),
             "ok": error is None,
             "retriever_debug": debug,

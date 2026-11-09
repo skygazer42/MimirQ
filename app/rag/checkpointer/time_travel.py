@@ -139,20 +139,16 @@ class TimeTravel:
 
         history: list[CheckpointInfo] = []
 
-        try:
-            states = self.graph.get_state_history(config, limit=limit)
+        states = self.graph.get_state_history(config, limit=limit)
 
-            for state in states:
-                checkpoint_id = state.config.get("configurable", {}).get("checkpoint_id")
-                info = _checkpoint_info_from_state(
-                    state=state,
-                    checkpoint_id=checkpoint_id or "",
-                    thread_id=thread_id,
-                )
-                history.append(info)
-
-        except Exception as e:
-            logger.warning("Failed to get state history for thread %s: %s", thread_id, e)
+        for state in states:
+            checkpoint_id = state.config["configurable"]["checkpoint_id"]
+            info = _checkpoint_info_from_state(
+                state=state,
+                checkpoint_id=checkpoint_id,
+                thread_id=thread_id,
+            )
+            history.append(info)
 
         return history
 
@@ -269,7 +265,7 @@ class TimeTravel:
         # Create new checkpoint with updated state
         new_config = self.graph.update_state(original_config, values=updates)
 
-        new_checkpoint_id = new_config.get("configurable", {}).get("checkpoint_id", "")
+        new_checkpoint_id = new_config["configurable"]["checkpoint_id"]
 
         if not continue_execution:
             return ForkResult(

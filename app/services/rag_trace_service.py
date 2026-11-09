@@ -585,7 +585,7 @@ def _decode_jsonl_tail(raw: bytes) -> str | None:
 def _parse_jsonl_dicts(text: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for line in text.splitlines():
-        line = (line or "").strip()
+        line = line.strip()
         if not line:
             continue
         try:
@@ -957,11 +957,11 @@ def _disabled_trace_response(*, path: str, window_minutes: int) -> RagTraceListR
 
 
 def _matches_trace_record(record: dict[str, Any], *, tenant_key: str, conversation_key: str, cutoff_ms: int) -> bool:
-    if str(record.get("event") or "") != "rag_trace":
+    if record.get('event') != "rag_trace":
         return False
-    if str(record.get("tenant_id") or "") != tenant_key:
+    if record.get('tenant_id') != tenant_key:
         return False
-    if str(record.get("conversation_id") or "") != conversation_key:
+    if record.get('conversation_id') != conversation_key:
         return False
     ts_ms = _to_int(record.get("ts_ms")) or 0
     return not (ts_ms and ts_ms < cutoff_ms)

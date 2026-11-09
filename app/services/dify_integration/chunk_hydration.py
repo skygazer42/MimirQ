@@ -52,7 +52,7 @@ def _load_chunk_content_map(
         return {}
     out: dict[str, str] = {}
     for chunk_id, content in rows:
-        text = str(content or "").strip()
+        text = content.strip()
         if text:
             out[str(chunk_id)] = text
     return out

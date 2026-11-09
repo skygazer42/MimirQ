@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.connector import ConnectorRun, ConnectorRunDocument
 from app.models.document import Document as DBDocument
-from app.services.connector_execution.shared.common import _connector_config_id_from_run
+from app.services.connector_execution.shared.common import _connector_config_id_from_run, _optional_source_text
 from app.services.connector_execution.shared.runtime import _now
 
 
@@ -48,7 +48,7 @@ def _apply_connector_identity_metadata(
 def _normalize_connector_string_list(values: object) -> list[str]:
     if not isinstance(values, list):
         return []
-    return [str(value or "").strip() for value in values if str(value or "").strip()]
+    return [value.strip() for value in values if value.strip()]
 
 
 def _normalize_connector_principal_list(values: object) -> list[str]:
@@ -63,10 +63,10 @@ def _db_row_sidecar_file_path(
     connector_id: str,
     connector_config_id: UUID | str | None = None,
 ) -> str:
-    config_suffix = str(connector_config_id or "").strip()
+    config_suffix = _optional_source_text(connector_config_id)
     if config_suffix:
-        return f"virtual://db_catalog/rows/{str(dataset_id)}/{str(connector_id or '').strip()}/{config_suffix}"
-    return f"virtual://db_catalog/rows/{str(dataset_id)}/{str(connector_id or '').strip()}"
+        return f"virtual://db_catalog/rows/{str(dataset_id)}/{connector_id.strip()}/{config_suffix}"
+    return f"virtual://db_catalog/rows/{str(dataset_id)}/{connector_id.strip()}"
 
 
 def _db_row_sidecar_filename(
@@ -76,8 +76,8 @@ def _db_row_sidecar_filename(
     connector_config_id: UUID | str | None = None,
 ) -> str:
     ds = str(dataset_id)
-    cid = str(connector_id or "").strip() or "db_catalog"
-    config_suffix = str(connector_config_id or "").strip()
+    cid = connector_id.strip() or "db_catalog"
+    config_suffix = _optional_source_text(connector_config_id)
     if config_suffix:
         return f"db_rows_{cid}_{config_suffix}_{ds}.sqlite"
     return f"db_rows_{cid}_{ds}.sqlite"
@@ -88,8 +88,8 @@ def _build_db_row_source_manifest(snapshots: list[dict[str, Any]]) -> dict[str, 
     for snap in snapshots or []:
         if not isinstance(snap, dict):
             continue
-        source_table = str(snap.get("source_table") or "").strip()
-        sync_token = str(snap.get("source_sync_token") or "").strip()
+        source_table = snap["source_table"].strip()
+        sync_token = snap["source_sync_token"].strip()
         if not source_table or not sync_token:
             continue
         out[source_table] = sync_token
@@ -128,7 +128,7 @@ def _upsert_db_row_sidecar_document(
     )
     source_ref = f"db_catalog_rows:{connector_id}"
     source_id = f"{connector_id}:{run.dataset_id}"
-    if str(connector_config_id or "").strip():
+    if _optional_source_text(connector_config_id):
         source_ref = f"{source_ref}:{connector_config_id}"
         source_id = f"{source_id}:{connector_config_id}"
 
@@ -160,7 +160,7 @@ def _upsert_db_row_sidecar_document(
             if legacy_doc is not None
             else {}
         )
-        if str(legacy_connector_meta.get("config_id") or "").strip() == str(connector_config_id):
+        if _optional_source_text(legacy_connector_meta.get('config_id')) == str(connector_config_id):
             doc = legacy_doc
     if doc is None:
         doc = DBDocument(

@@ -125,14 +125,20 @@ def _queryset_health_history_path() -> str:
 
 
 def _filter_queryset_health_rows(rows: list[Any], *, profile_hash: str | None) -> list[Any]:
-    ph = str(profile_hash or "").strip()
+    ph = profile_hash.strip() if profile_hash is not None else None
     if not ph:
         return rows
-    return [row for row in rows if isinstance(row, dict) and str(row.get("profile_hash") or "").strip() == ph]
+    return [
+        row
+        for row in rows
+        if isinstance(row, dict) and row.get("profile_hash") is not None and row["profile_hash"].strip() == ph
+    ]
 
 
 def _queryset_health_ts_to_ms(raw: Any) -> int:
-    ts = str(raw or "").strip()
+    if raw is None:
+        return 0
+    ts = str(raw).strip()
     if not ts:
         return 0
     try:
@@ -791,17 +797,17 @@ def diff_queryset_health_runs(
     path = Path(path_str)
     rows = load_queryset_health_history(path)
 
-    base_ts = str(baseline_generated_at or "").strip()
-    curr_ts = str(current_generated_at or "").strip()
+    base_ts = baseline_generated_at.strip()
+    curr_ts = current_generated_at.strip()
     if not base_ts or not curr_ts:
         raise HTTPException(status_code=400, detail="baseline_generated_at and current_generated_at are required")
 
     baseline = next(
-        (r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == base_ts),
+        (r for r in rows if isinstance(r, dict) and r.get("generated_at") == base_ts),
         None,
     )
     current = next(
-        (r for r in rows if isinstance(r, dict) and str(r.get("generated_at") or "").strip() == curr_ts),
+        (r for r in rows if isinstance(r, dict) and r.get("generated_at") == curr_ts),
         None,
     )
     if baseline is None or current is None:
@@ -957,8 +963,8 @@ def get_rag_trace_bundle_diff(
 ):
     _ensure_admin(db, tenant_id, account_id)
 
-    a = str(request_id_a or "").strip()
-    b = str(request_id_b or "").strip()
+    a = request_id_a.strip()
+    b = request_id_b.strip()
     if not a or not b:
         raise HTTPException(status_code=400, detail="request_id_a and request_id_b are required")
     if a == b:
@@ -1476,7 +1482,7 @@ def resolve_index_drift(
         tenant_id=tenant_id,
         item_id=item_id,
         resolved_by=account_id,
-        resolution_note=str(payload.resolution_note or ""),
+        resolution_note=payload.resolution_note,
     )
     if item is None:
         raise HTTPException(status_code=404, detail="index drift item not found")

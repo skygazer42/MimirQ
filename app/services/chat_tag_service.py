@@ -72,7 +72,7 @@ class _TableQueryLimits:
 
 
 def _normalize_source_hint(text: str) -> str:
-    s = str(text or "").strip()
+    s = text.strip()
     if not s:
         return ""
     s = s.strip("'\"`“”")
@@ -89,6 +89,15 @@ def _source_key_match(expected_key: str, candidate_value: str) -> bool:
     return ek_fold == cv_fold or ek_fold in cv_fold or cv_fold in ek_fold
 
 
+def _candidate_aliases(candidate: _TableCandidate) -> list[str]:
+    aliases = [candidate.table_id, candidate.filename]
+    if candidate.sheet_name is not None:
+        sheet_name = candidate.sheet_name.strip()
+        if sheet_name:
+            aliases.append(sheet_name)
+    return aliases
+
+
 def _candidate_source_keys(candidate: _TableCandidate) -> list[str]:
     out: list[str] = []
     for raw in (
@@ -98,12 +107,14 @@ def _candidate_source_keys(candidate: _TableCandidate) -> list[str]:
         candidate.filename,
         str(candidate.document_id),
     ):
-        s = _normalize_source_hint(raw or "")
+        if raw is None:
+            continue
+        s = _normalize_source_hint(raw)
         if not s:
             continue
         if s not in out:
             out.append(s)
-    filename = _normalize_source_hint(candidate.filename or "")
+    filename = _normalize_source_hint(candidate.filename)
     if filename and "." in filename:
         stem = filename.rsplit(".", 1)[0].strip()
         if stem and stem not in out:
@@ -112,7 +123,7 @@ def _candidate_source_keys(candidate: _TableCandidate) -> list[str]:
 
 
 def _candidate_matches_source_keys(candidate: _TableCandidate, expected_source_keys: list[str]) -> bool:
-    expected = [s for s in expected_source_keys if str(s or "").strip()]
+    expected = [s for s in expected_source_keys if s.strip()]
     if not expected:
         return True
     values = _candidate_source_keys(candidate)
@@ -132,7 +143,7 @@ def _enabled_reason() -> tuple[bool, str]:
     if not settings.TABLE_LLM_ALLOW_RESULT_EGRESS:
         # Chat will inject query results into the LLM context; treat this as "result egress".
         return False, "TABLE_LLM_ALLOW_RESULT_EGRESS=false"
-    has_llm_key = bool((settings.LLM_API_KEY or "").strip())
+    has_llm_key = bool((settings.LLM_API_KEY).strip())
     deterministic_ok = settings.TABLE_NL2SQL_DETERMINISTIC_ONLY or settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
     if not has_llm_key and not deterministic_ok:
         return False, "LLM_API_KEY is not configured"
@@ -140,13 +151,13 @@ def _enabled_reason() -> tuple[bool, str]:
 
 
 def _extract_terms(text: str, *, max_terms: int = 12) -> list[str]:
-    raw = (text or "").strip()
+    raw = (text).strip()
     if not raw:
         return []
     out: list[str] = []
     seen: set[str] = set()
     for m in _TERM_RE.finditer(raw):
-        t = (m.group(0) or "").strip()
+        t = m.group(0).strip()
         if not t:
             continue
         key = t.casefold() if t.isascii() else t
@@ -177,13 +188,15 @@ def _score_candidate(
 ) -> int:
     if not terms:
         return 0
+    if sheet_name is not None:
+        sheet_name = sheet_name.strip()
     sample_blob = _sample_value_blob(sample_rows)
-    col_names = [str(c.get("name") or "") for c in (columns or []) if isinstance(c, dict)]
+    col_names = [c['name'] for c in (columns or []) if isinstance(c, dict)]
     return sum(
         _score_candidate_term(
             term,
-            filename=filename or "",
-            sheet_name=sheet_name or "",
+            filename=filename,
+            sheet_name=sheet_name,
             col_names=col_names,
             sample_blob=sample_blob,
         )
@@ -212,7 +225,7 @@ def _score_candidate_term(
     term: str,
     *,
     filename: str,
-    sheet_name: str,
+    sheet_name: str | None,
     col_names: list[str],
     sample_blob: str,
 ) -> int:
@@ -241,7 +254,7 @@ def _tag_doc_uuid(table_id: str) -> UUID:
 
     Reason: chat API citations require UUID chunk_id; TAG context docs are not real chunks.
     """
-    return uuid5(UUID("00000000-0000-0000-0000-000000000000"), f"mimirq:tag:{str(table_id or '').strip()}")
+    return uuid5(UUID("00000000-0000-0000-0000-000000000000"), f"mimirq:tag:{table_id.strip()}")
 
 
 def build_chat_tag_context_docs(
@@ -276,8 +289,8 @@ def build_chat_tag_context_docs(
         meta["document_ids"] = len(doc_ids)
         return [], meta
 
-    intent = bool(_TABLE_INTENT_RE.search(question or ""))
-    terms = _extract_terms(question or "", max_terms=12)
+    intent = bool(_TABLE_INTENT_RE.search(question))
+    terms = _extract_terms(question, max_terms=12)
     candidates = _load_table_candidates(db, tenant_id=tenant_id, doc_ids=doc_ids, terms=terms)
     if not candidates:
         meta["reason"] = "no_table_assets"
@@ -349,8 +362,8 @@ def _table_candidates_from_document(document: DBDocument, *, terms: list[str]) -
     if dataset_id is None:
         return []
 
-    filename = (document.filename or "").strip()
-    file_type = (document.file_type or "").strip().lower()
+    filename = (document.filename).strip()
+    file_type = (document.file_type).strip().lower()
     metadata = document.doc_metadata or {}
     metadata = metadata if isinstance(metadata, dict) else {}
     store = metadata.get("table_store")
@@ -391,7 +404,10 @@ def _table_candidate_from_store_entry(
     if not isinstance(table, dict):
         return None
 
-    table_id = str(table.get("table_id") or "").strip()
+    table_id = table.get("table_id")
+    if table_id is None:
+        return None
+    table_id = table_id.strip()
     if not table_id:
         return None
 
@@ -475,7 +491,7 @@ def _pick_candidates(
         return []
 
     complex_query = bool(
-        re.search(r"(?i)\b(join|group\s+by|by|per|across|between)\b|按|分组|关联|维度|同比|环比", str(question or ""))
+        re.search(r"(?i)\b(join|group\s+by|by|per|across|between)\b|按|分组|关联|维度|同比|环比", question)
     )
     effective_max_tables, table_pick_policy = _table_pick_policy(
         candidates,
@@ -617,8 +633,8 @@ def _build_multi_table_docs(
     limits: _TableQueryLimits,
 ) -> tuple[list[Document], dict[str, Any]]:
     join_inputs, by_sql_table = _join_inputs_for_candidates(picked)
-    join_plan = plan_join_query_for_tables(question=str(question or ""), tables=join_inputs, max_rows=limits.max_rows)
-    join_sql = str(join_plan.get("sql") or "").strip()
+    join_plan = plan_join_query_for_tables(question=question, tables=join_inputs, max_rows=limits.max_rows)
+    join_sql = join_plan["sql"].strip()
     planner_diagnostics = _planner_dict(join_plan.get("planner") if isinstance(join_plan, dict) else None)
     join_provenance = planner_diagnostics.get("joins")
     if not isinstance(join_provenance, list):
@@ -698,7 +714,7 @@ def _join_inputs_for_candidates(
         join_inputs.append(
             {
                 "table_name": sql_table,
-                "table_aliases": [candidate.table_id, candidate.filename, candidate.sheet_name or ""],
+                "table_aliases": _candidate_aliases(candidate),
                 "columns": candidate.columns,
                 "row_count": candidate.row_count,
                 "sample_rows": candidate.sample_rows,
@@ -717,7 +733,10 @@ def _join_plan_risk(planner_diagnostics: dict[str, Any]) -> dict[str, Any] | Non
 
 
 def _sql_fingerprint_from_planner(planner_diagnostics: dict[str, Any], sql: str) -> str:
-    return str(planner_diagnostics.get("sql_fingerprint") or "").strip() or fingerprint_sql(sql, length=16)
+    fingerprint = planner_diagnostics.get("sql_fingerprint")
+    if fingerprint is not None:
+        fingerprint = fingerprint.strip()
+    return fingerprint or fingerprint_sql(sql, length=16)
 
 
 def _selected_sql_tables(
@@ -750,11 +769,11 @@ def _merged_join_schema_link(
     score_values: list[float] = []
     for candidate in selected_candidates:
         diagnostics = score_schema_link_diagnostics(
-            question=str(question or ""),
+            question=question,
             sql_table=f"sheet_{candidate.sheet_index}",
             columns=candidate.columns,
             sample_rows=candidate.sample_rows,
-            table_aliases=[candidate.table_id, candidate.filename, candidate.sheet_name or ""],
+            table_aliases=_candidate_aliases(candidate),
         )
         _extend_unique_strings(matched_columns, diagnostics["matched_columns"])
         _extend_unique_strings(matched_values, diagnostics["matched_values"])
@@ -774,7 +793,7 @@ def _extend_unique_strings(values: list[str], raw_values: Any) -> None:
     if not isinstance(raw_values, list):
         return
     for raw in raw_values:
-        text = str(raw or "").strip()
+        text = raw.strip()
         if text and text not in values:
             values.append(text)
 
@@ -927,11 +946,11 @@ def _single_table_document(
 ) -> Document:
     sql_table = f"sheet_{candidate.sheet_index}"
     schema_link_diagnostics = score_schema_link_diagnostics(
-        question=str(question or ""),
+        question=question,
         sql_table=sql_table,
         columns=candidate.columns,
         sample_rows=candidate.sample_rows,
-        table_aliases=[candidate.table_id, candidate.filename, candidate.sheet_name or ""],
+        table_aliases=_candidate_aliases(candidate),
     )
     sql, sql_generation_mode, sql_fingerprint, planner_diagnostics, schema_link_diagnostics = _single_table_sql_plan(
         candidate=candidate,
@@ -993,19 +1012,19 @@ def _single_table_sql_plan(
     planner_diagnostics: dict[str, Any] | None = None
     sql_generation_mode = "llm"
     sql_fingerprint = ""
-    has_llm_key = bool((settings.LLM_API_KEY or "").strip())
+    has_llm_key = bool((settings.LLM_API_KEY).strip())
     deterministic_only = settings.TABLE_NL2SQL_DETERMINISTIC_ONLY
     deterministic_fallback = settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
     dbrows_sql_first = settings.CHAT_TAG_DBROWS_SQL_FIRST_ENABLED and _is_dbrows_candidate(candidate)
 
     if deterministic_only or dbrows_sql_first or (not has_llm_key and deterministic_fallback):
         sql, sql_generation_mode, sql_meta = generate_sql_for_table_with_metadata(
-            question=str(question or ""),
+            question=question,
             sql_table=sql_table,
             columns=candidate.columns,
             max_rows=limits.max_rows,
             sample_rows=candidate.sample_rows,
-            table_aliases=[candidate.table_id, candidate.filename, candidate.sheet_name or ""],
+            table_aliases=_candidate_aliases(candidate),
         )
         planner_diagnostics, schema_link_diagnostics, sql_fingerprint = _sql_plan_metadata(
             sql_meta,
@@ -1013,7 +1032,7 @@ def _single_table_sql_plan(
         )
     else:
         sql = generate_sql_for_table(
-            question=str(question or ""),
+            question=question,
             sql_table=sql_table,
             columns=candidate.columns,
             max_rows=limits.max_rows,
@@ -1029,10 +1048,13 @@ def _single_table_sql_plan(
 
 
 def _is_dbrows_candidate(candidate: _TableCandidate) -> bool:
+    source_ext = candidate.source_ext
+    if source_ext is not None:
+        source_ext = source_ext.strip().lower()
     return (
-        (candidate.file_type or "").strip().lower() == "dbrows"
-        or (candidate.source_ext or "").strip().lower() == ".dbrows"
-        or (candidate.filename or "").strip().lower().endswith(".dbrows")
+        (candidate.file_type).strip().lower() == "dbrows"
+        or source_ext == ".dbrows"
+        or (candidate.filename).strip().lower().endswith(".dbrows")
     )
 
 
@@ -1040,18 +1062,24 @@ def _sql_plan_metadata(
     sql_meta: Any,
     *,
     schema_link_diagnostics: dict[str, Any],
-) -> tuple[dict[str, Any] | None, dict[str, Any], str]:
+) -> tuple[dict[str, Any] | None, dict[str, Any], str | None]:
     if not isinstance(sql_meta, dict):
-        return None, schema_link_diagnostics, ""
+        return None, schema_link_diagnostics, None
     linked = sql_meta.get("schema_link")
     if isinstance(linked, dict):
         schema_link_diagnostics = linked
     planner = sql_meta.get("planner")
     planner_diagnostics = planner if isinstance(planner, dict) else None
-    planner_fp = ""
+    planner_fp = None
     if isinstance(planner_diagnostics, dict):
-        planner_fp = str(planner_diagnostics.get("sql_fingerprint") or "").strip()
-    sql_fingerprint = str(sql_meta.get("sql_fingerprint") or planner_fp or "").strip()
+        planner_fp = planner_diagnostics.get("sql_fingerprint")
+        if planner_fp is not None:
+            planner_fp = planner_fp.strip()
+    sql_fingerprint = sql_meta.get("sql_fingerprint")
+    if sql_fingerprint is not None:
+        sql_fingerprint = sql_fingerprint.strip()
+    if not sql_fingerprint:
+        sql_fingerprint = planner_fp
     return planner_diagnostics, schema_link_diagnostics, sql_fingerprint
 
 
@@ -1122,7 +1150,10 @@ def _row_source_pk_hashes(candidate: _TableCandidate, payload: dict[str, Any]) -
     for row in rows:
         if not isinstance(row, list) or idx_pk >= len(row):
             continue
-        value = str(row[idx_pk] or "").strip()
+        value = row[idx_pk]
+        if value is None:
+            continue
+        value = value.strip()
         if not value or value in pk_hashes:
             continue
         pk_hashes.append(value)

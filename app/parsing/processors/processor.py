@@ -363,7 +363,7 @@ def index_chunks(
     records: list[IndexRecord] = []
     for chunk in chunks:
         meta = dict(chunk.metadata or {})
-        content = normalize_text(chunk.page_content or "", normalize_line_endings=True, remove_control_chars=True)
+        content = normalize_text(chunk.page_content, normalize_line_endings=True, remove_control_chars=True)
         records.append(
             IndexRecord(
                 kind=IndexKind.CHUNK,
@@ -381,7 +381,7 @@ def index_chunks(
         .upsert(
             tenant_id=tenant_id,
             records=records,
-            default_source=str(default_source or "").strip() or str(file_path.name),
+            default_source=default_source.strip() or str(file_path.name),
             commit=False,
             options=options,
         )
@@ -439,7 +439,7 @@ class DocumentProcessorService:
             if not db_doc:
                 cached_cancel = True
                 return True
-            status = str(db_doc.status or "").lower()
+            status = db_doc.status.lower()
             if status == "cancelled":
                 cached_cancel = True
                 return True
@@ -467,8 +467,12 @@ class DocumentProcessorService:
 
         try:
             meta = dict(getattr(db_document, "doc_metadata", None) or {})
-            active_hash = str(meta.get("active_pipeline_hash") or "").strip()
-            cur_hash = str(meta.get("pipeline_hash") or "").strip()
+            active_hash = meta.get("active_pipeline_hash")
+            cur_hash = meta.get("pipeline_hash")
+            if active_hash is not None:
+                active_hash = active_hash.strip()
+            if cur_hash is not None:
+                cur_hash = cur_hash.strip()
             active_ready = bool(meta.get("active_pipeline_ready"))
             if active_ready and active_hash and cur_hash and cur_hash != active_hash:
                 Indexer(db).delete_chunk_indexes_for_doc_pipeline_key(
@@ -618,7 +622,7 @@ class DocumentProcessorService:
     @staticmethod
     def _status_update_cancel_blocked(db_doc: DBDocument, status: str) -> bool:
         status_norm = str(status).lower()
-        current_status = str(db_doc.status or "").lower()
+        current_status = db_doc.status.lower()
         if current_status == "cancelled" and status_norm != "cancelled":
             return True
         meta = db_doc.doc_metadata or {}
@@ -652,7 +656,7 @@ class DocumentProcessorService:
         db_doc: DBDocument,
         status_norm: str,
         stage: str,
-        prev_stage: str,
+        prev_stage: str | None,
         failed_stage_hint: Any,
         error_code_hint: Any,
     ) -> None:
@@ -661,9 +665,8 @@ class DocumentProcessorService:
         try:
             from app.services.ingest_dead_letter_service import record_ingest_dead_letter
 
-            failed_stage = str(failed_stage_hint or prev_stage or stage or "").strip()
-            if not failed_stage:
-                failed_stage = None
+            raw_stage = next((value for value in (failed_stage_hint, prev_stage, stage) if value is not None), None)
+            failed_stage = (str(raw_stage).strip() or None) if raw_stage is not None else None
             record_ingest_dead_letter(
                 db,
                 document=db_doc,
@@ -672,7 +675,7 @@ class DocumentProcessorService:
                 error_message=db_doc.error_message,
                 original_payload={
                     "status": status_norm,
-                    "stage": str(stage or ""),
+                    "stage": stage,
                     "previous_stage": prev_stage,
                 },
             )
@@ -683,7 +686,7 @@ class DocumentProcessorService:
     def _adjust_processing_stage_metric(
         *,
         current_status: str,
-        prev_stage: str,
+        prev_stage: str | None,
         status: str,
         stage: str,
     ) -> None:
@@ -693,8 +696,8 @@ class DocumentProcessorService:
             adjust_processing_stage_gauge(
                 prev_status=current_status,
                 prev_stage=prev_stage,
-                new_status=str(status or ""),
-                new_stage=str(stage or ""),
+                new_status=status,
+                new_stage=stage,
             )
         except Exception as exc:
             logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
@@ -717,13 +720,13 @@ class DocumentProcessorService:
                 db,
                 tenant_id=tenant_id,
                 document_id=document_id,
-                new_status=str(status or ""),
+                new_status=status,
                 error_message=db_doc.error_message,
                 doc_meta=(dict(doc_meta or {}) if isinstance(doc_meta, dict) else None),
                 criticality=criticality,
             )
         except Exception as exc:
-            if str(criticality or "").strip().lower() == "required":
+            if criticality.strip().lower() == "required":
                 raise
             logger.warning(
                 "Ingestion run notification failed: tenant_id=%s document_id=%s error_type=%s",
@@ -749,12 +752,12 @@ class DocumentProcessorService:
 
         if db_doc:
             # Do not overwrite a user-requested cancellation from a long-running worker.
-            current_status = str(db_doc.status or "").lower()
+            current_status = db_doc.status.lower()
             if self._status_update_cancel_blocked(db_doc, status):
                 return
 
-            prev_stage = str(getattr(db_doc, "current_stage", None) or "")
-            status_norm = str(status or "").strip().lower()
+            prev_stage = getattr(db_doc, "current_stage", None)
+            status_norm = status.strip().lower()
             failed_stage_hint = kwargs.pop("failed_stage", None)
             error_code_hint = kwargs.pop("error_code", None)
             criticality = (
@@ -922,7 +925,7 @@ class DocumentProcessorService:
         meta = doc.metadata if isinstance(getattr(doc, "metadata", None), dict) else {}
         if not _is_table_segment_metadata(meta):
             return None
-        markdown = str(doc.page_content or "")
+        markdown = str(doc.page_content)
         if not markdown.strip():
             return None
 
@@ -980,7 +983,7 @@ class DocumentProcessorService:
     @staticmethod
     def _parsed_table_asset_payload(asset: Any, source_info: dict[str, Any]) -> dict[str, Any]:
         payload = {
-            "table_id": str(getattr(asset, "table_id", "")),
+            "table_id": asset.table_id,
             "sheet_index": int(getattr(asset, "sheet_index", 0) or 0),
             "sheet_name": getattr(asset, "sheet_name", None),
             "row_count": int(getattr(asset, "row_count", 0) or 0),
@@ -1033,7 +1036,8 @@ class DocumentProcessorService:
     ) -> dict[str, Any]:
         if not assets:
             existing = metadata.get("table_store")
-            if isinstance(existing, dict) and str(existing.get("source_ext") or "").lower() in {".pdf"}:
+            source_ext = existing.get("source_ext") if isinstance(existing, dict) else None
+            if isinstance(source_ext, str) and source_ext.lower() == ".pdf":
                 metadata.pop("table_store", None)
             return metadata
 
@@ -1300,10 +1304,10 @@ class DocumentProcessorService:
         if not db_doc:
             return
 
-        kg_python_plugin = str(effective.kg_python_plugin or "").strip()
+        kg_python_plugin = effective.kg_python_plugin.strip()
         if not kg_python_plugin:
             kg_python_plugin = derive_registered_stage_plugin_ref(
-                str(effective.chunk_python_plugin or "").strip(),
+                effective.chunk_python_plugin.strip(),
                 "kg",
             )
         kg_python_params = dict(effective.kg_python_params or {})
@@ -1319,7 +1323,7 @@ class DocumentProcessorService:
             "governance_noise_ratio_threshold": float(effective.governance_noise_ratio_threshold),
             "governance_common_lines_min_docs": int(effective.governance_common_lines_min_docs),
             "governance_common_lines_min_ratio": float(effective.governance_common_lines_min_ratio),
-            "governance_python_plugin": str(effective.governance_python_plugin or ""),
+            "governance_python_plugin": effective.governance_python_plugin,
             "governance_python_params": dict(effective.governance_python_params or {}),
             "governance_llm_auto_tagging_enabled": bool(effective.governance_llm_auto_tagging_enabled),
             "governance_llm_auto_tagging_max_chars": int(effective.governance_llm_auto_tagging_max_chars or 3000),
@@ -1330,7 +1334,7 @@ class DocumentProcessorService:
             "chunk_overlap": int(effective.chunk_overlap),
             "chunk_merge_small_min_chars": int(effective.chunk_merge_small_min_chars or 0),
             "chunk_strategy_params": dict(effective.chunk_strategy_params or {}),
-            "chunk_python_plugin": str(effective.chunk_python_plugin or ""),
+            "chunk_python_plugin": effective.chunk_python_plugin,
             "chunk_python_params": dict(effective.chunk_python_params or {}),
             "kg_python_plugin": kg_python_plugin,
             "kg_python_params": kg_python_params,
@@ -1364,7 +1368,7 @@ class DocumentProcessorService:
         """
 
         def _truncate(text: str) -> tuple[str, bool, int, int]:
-            raw = text or ""
+            raw = text
             raw_len = len(raw)
             if max_chars <= 0 or raw_len <= max_chars:
                 return raw, False, raw_len, raw_len
@@ -1429,8 +1433,8 @@ class DocumentProcessorService:
         before = list((before_items if before_items is not None else []))
         after = list((after_items if after_items is not None else []))
 
-        original_chars = sum(len(d.page_content or "") for d in before)
-        cleaned_chars = sum(len(d.page_content or "") for d in after)
+        original_chars = sum(len(d.page_content) for d in before)
+        cleaned_chars = sum(len(d.page_content) for d in after)
         patch: dict[str, Any] = {
             "governance_char_stats": {
                 "original_chars": int(max(0, original_chars)),
@@ -1614,7 +1618,7 @@ class DocumentProcessorService:
         text_parts: list[str] = []
         remaining = max_chars
         for item in items:
-            content = str(getattr(item, "page_content", "") or "").strip()
+            content = item.page_content.strip()
             if not content:
                 continue
             text_parts.append(content[:remaining])
@@ -1631,10 +1635,10 @@ class DocumentProcessorService:
         keyword_values: list[str] = []
         structured_tags: list[dict[str, Any]] = []
         for tag in list(getattr(result, "document_tags", []) or [])[:max_items]:
-            value = str(getattr(tag, "value", "") or "").strip()
+            value = tag.value.strip()
             if not value:
                 continue
-            tag_type = str(getattr(tag, "type", "") or "").strip()
+            tag_type = tag.type.strip()
             if tag_type == "keyword":
                 keyword_values.append(value)
             else:
@@ -1665,7 +1669,7 @@ class DocumentProcessorService:
             meta["document_keywords_provider"] = "llm"
         if structured_tags:
             meta["document_llm_auto_tags"] = structured_tags[:max_items]
-        summary = str(getattr(result, "summary", "") or "").strip()
+        summary = str(result.summary or "").strip()
         if summary:
             meta["document_llm_auto_summary"] = summary[:1000]
         meta["document_llm_auto_tagging"] = {
@@ -1814,7 +1818,7 @@ class DocumentProcessorService:
             "dedup_enabled": stats.dedup_enabled,
             "dedup_dropped": stats.dedup_dropped,
             "max_chunks_per_document": stats.max_chunks_per_document,
-            "max_chunks_strategy": str(stats.max_chunks_strategy or "").strip() or "head",
+            "max_chunks_strategy": stats.max_chunks_strategy.strip() or "head",
             "truncated": bool(stats.truncated_dropped > 0),
             "truncated_from": stats.truncated_from,
             "truncated_to": stats.truncated_to,
@@ -1834,7 +1838,7 @@ class DocumentProcessorService:
             return None
         end = _optional_int(meta.get("end_char"))
         if end is None:
-            end = start + len(chunk.page_content or "")
+            end = start + len(chunk.page_content)
         if end <= start:
             return None
         return start, end
@@ -1895,7 +1899,7 @@ class DocumentProcessorService:
                 original_text_max_chars=0,
             )
             gate = gate_raw if isinstance(gate_raw, dict) else None
-            recs = [str(x) for x in (recs_raw or []) if str(x or "").strip()]
+            recs = [str(x) for x in (recs_raw or []) if x.strip()]
             patches = [p for p in (patches_raw or []) if isinstance(p, dict)]
             return gate, recs, patches
         except Exception as exc:
@@ -1958,10 +1962,10 @@ class DocumentProcessorService:
         )
 
         stats = compute_chunking_stats_from_texts(
-            ((c.page_content or "") for c in chunks),
+            ((c.page_content) for c in chunks),
             short_threshold=int(short_threshold or 0),
         )
-        token_stats = compute_chunking_stats_from_texts_tokens(((c.page_content or "") for c in chunks))
+        token_stats = compute_chunking_stats_from_texts_tokens(((c.page_content) for c in chunks))
 
         # Best-effort chunk coverage metrics (requires offsets).
         ranges = self._chunk_coverage_ranges(chunks)
@@ -2093,12 +2097,12 @@ class DocumentProcessorService:
     @staticmethod
     def _inline_file_url_path(ref: str) -> str | None:
         parsed = urlparse(ref)
-        if str(parsed.scheme or "").lower() != "file":
+        if str(parsed.scheme).lower() != "file":
             return None
-        netloc = str(parsed.netloc or "").strip().lower()
+        netloc = str(parsed.netloc).strip().lower()
         if netloc and netloc not in {"localhost", "127.0.0.1"}:
             return None
-        resolved_ref = unquote(str(parsed.path or ""))
+        resolved_ref = unquote(str(parsed.path))
         if not resolved_ref:
             return None
         if re.match(r"^/[a-zA-Z]:/", resolved_ref):
@@ -2202,7 +2206,7 @@ class DocumentProcessorService:
             return markdown_text
 
         def replace_match(match: re.Match) -> str:
-            raw = match.group(1) or ""
+            raw = match.group(1)
             new = replacements.get(raw.strip())
             if not new:
                 return match.group(0)
@@ -2373,8 +2377,10 @@ class DocumentProcessorService:
 
         documents = []
         for item in chunks_dict:
-            text = item.get("content_with_weight") or item.get("text") or ""
-            if not text:
+            text = item.get("content_with_weight")
+            if text is None or text == "":
+                text = item.get("text")
+            if text is None or text == "":
                 continue
             meta = {
                 k: v
@@ -2398,7 +2404,8 @@ class DocumentProcessorService:
 
     @staticmethod
     def _metadata_doc_type_is_image(metadata: dict[str, Any]) -> bool:
-        return str(metadata.get("doc_type_kwd") or "").lower() == "image"
+        doc_type = metadata.get("doc_type_kwd")
+        return isinstance(doc_type, str) and doc_type.lower() == "image"
 
     @staticmethod
     def _drop_minio_disabled_image_metadata(metadata: dict[str, Any]) -> None:

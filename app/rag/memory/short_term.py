@@ -60,15 +60,15 @@ def _estimate_tokens(text: str) -> int:
 def _message_to_tokens(message: MessageLike) -> int:
     """Estimate tokens for a message."""
     if isinstance(message, BaseMessage):
-        content = message.content or ""
+        content = message.content
     elif isinstance(message, dict):
-        content = message.get("content", "")
+        content = message["content"]
     else:
         content = str(message)
 
     # Handle list content (multimodal)
     if isinstance(content, list):
-        text_parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+        text_parts = [p["text"] for p in content if isinstance(p, dict) and p.get("type") == "text"]
         content = " ".join(text_parts)
 
     return _estimate_tokens(str(content))
@@ -112,7 +112,7 @@ def trim_messages(
             converted.append(msg)
         elif isinstance(msg, dict):
             role = msg.get("role", "human")
-            content = msg.get("content", "")
+            content = msg["content"]
             if role == "system":
                 converted.append(SystemMessage(content=content))
             elif role == "assistant" or role == "ai":
@@ -219,13 +219,13 @@ async def summarize_messages(
             content = msg.content
         elif isinstance(msg, dict):
             role = msg.get("role", "unknown")
-            content = msg.get("content", "")
+            content = msg["content"]
         else:
             role = "unknown"
             content = str(msg)
 
         if isinstance(content, list):
-            text_parts = [p.get("text", "") for p in content if isinstance(p, dict) and p.get("type") == "text"]
+            text_parts = [p["text"] for p in content if isinstance(p, dict) and p.get("type") == "text"]
             content = " ".join(text_parts)
 
         conversation_text.append(f"{role}: {content}")
@@ -336,7 +336,7 @@ class ShortTermMemoryManager:
 
                 self._summary_cache[cache_key] = summary
 
-            summary = self._summary_cache.get(cache_key, "")
+            summary = self._summary_cache.get(cache_key)
 
             # Combine summary with recent messages
             if summary:
@@ -372,7 +372,7 @@ class ShortTermMemoryManager:
                 summary = await summarize_messages(old_messages, self.llm)
                 self._summary_cache[cache_key] = summary
 
-            summary = self._summary_cache.get(cache_key, "")
+            summary = self._summary_cache.get(cache_key)
 
             if summary:
                 summary_msg = SystemMessage(content=summary)
@@ -395,7 +395,7 @@ class ShortTermMemoryManager:
             if isinstance(msg, BaseMessage):
                 content = msg.content
             elif isinstance(msg, dict):
-                content = msg.get("content", "")
+                content = msg["content"]
             else:
                 content = str(msg)
 

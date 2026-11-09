@@ -51,7 +51,9 @@ def _xml_parser() -> etree.XMLParser:
 
 
 def _parse_iso_datetime(raw: str | None) -> datetime | None:
-    value = (raw or "").strip()
+    if raw is None:
+        return None
+    value = raw.strip()
     if not value:
         return None
     if value.endswith("Z"):
@@ -63,7 +65,9 @@ def _parse_iso_datetime(raw: str | None) -> datetime | None:
 
 
 def _normalize_path(raw: str | None) -> str:
-    value = (raw or "").strip()
+    if raw is None:
+        return "/"
+    value = raw.strip()
     if not value:
         return "/"
     parsed = urlparse(value)
@@ -75,7 +79,9 @@ def _normalize_path(raw: str | None) -> str:
 
 
 def _first_pem_certificate_b64(cert_pem: str | None) -> str | None:
-    raw = (cert_pem or "").strip()
+    if cert_pem is None:
+        return None
+    raw = cert_pem.strip()
     if not raw:
         return None
 
@@ -177,13 +183,10 @@ def _load_saml_providers() -> list[SamlProvider]:
     for item in parsed:
         if not isinstance(item, dict):
             continue
-        provider_id = str(item.get("id") or "").strip()
-        issuer = str(item.get("issuer") or "").strip()
-        audience = str(item.get("audience") or "").strip()
-        acs_url = str(item.get("acs_url") or "").strip()
-        idp_cert_pem = str(item.get("idp_cert_pem") or "").strip()
-        if not provider_id or not issuer or not audience or not acs_url or not idp_cert_pem:
+        fields = [item.get(key) for key in ("id", "issuer", "audience", "acs_url", "idp_cert_pem")]
+        if any(not isinstance(value, str) or not value.strip() for value in fields):
             continue
+        provider_id, issuer, audience, acs_url, idp_cert_pem = [value.strip() for value in fields]
         providers.append(
             SamlProvider(
                 id=provider_id,
@@ -203,7 +206,9 @@ def _resolve_provider(provider_id: str | None) -> SamlProvider:
     if not providers:
         raise HTTPException(status_code=400, detail="SAML not configured")
 
-    requested = (provider_id or "").strip()
+    requested = provider_id
+    if requested is not None:
+        requested = requested.strip()
     if requested:
         for provider in providers:
             if provider.id == requested:
@@ -269,10 +274,13 @@ def _collect_attribute_values(assertion: etree._Element, attr_name: str) -> list
         return []
     out: list[str] = []
     for attr in assertion.findall(".//saml:Attribute", namespaces=_NS):
-        if str(attr.get("Name") or "").strip() != name:
+        attribute_name = attr.get("Name")
+        if attribute_name is None or attribute_name.strip() != name:
             continue
         for value in attr.findall("./saml:AttributeValue", namespaces=_NS):
-            item = str(value.text or "").strip()
+            if value.text is None:
+                continue
+            item = value.text.strip()
             if item:
                 out.append(item)
     return out
@@ -290,15 +298,17 @@ def _validate_issuer_destination_and_status(
     if response_issuer != expected_issuer or assertion_issuer != expected_issuer:
         raise HTTPException(status_code=401, detail="Invalid SAML issuer")
 
-    destination = str(root.get("Destination") or "").strip()
+    destination = root.get("Destination")
+    if destination is not None:
+        destination = destination.strip()
     if destination != expected_acs:
         raise HTTPException(status_code=401, detail="Invalid SAML destination")
 
     status_code = root.find("./samlp:Status/samlp:StatusCode", namespaces=_NS)
-    if (
-        status_code is None
-        or str(status_code.get("Value") or "").strip() != "urn:oasis:names:tc:SAML:2.0:status:Success"
-    ):
+    status_value = status_code.get("Value") if status_code is not None else None
+    if status_value is not None:
+        status_value = status_value.strip()
+    if status_value != "urn:oasis:names:tc:SAML:2.0:status:Success":
         raise HTTPException(status_code=401, detail="SAML response not successful")
 
 
@@ -324,9 +334,9 @@ def _validate_assertion_conditions(
 
 def _validate_audience(*, assertion: etree._Element, expected_audience: str) -> None:
     audience_values = [
-        str(audience.text or "").strip()
+        audience.text.strip()
         for audience in assertion.findall(".//saml:AudienceRestriction/saml:Audience", namespaces=_NS)
-        if str(audience.text or "").strip()
+        if audience.text is not None and audience.text.strip()
     ]
     if expected_audience not in audience_values:
         raise HTTPException(status_code=401, detail="Invalid SAML audience")
@@ -345,7 +355,9 @@ def _validate_subject_confirmation(
     if subject_confirmation is None:
         raise HTTPException(status_code=401, detail="Missing SAML subject confirmation")
 
-    recipient = str(subject_confirmation.get("Recipient") or "").strip()
+    recipient = subject_confirmation.get("Recipient")
+    if recipient is not None:
+        recipient = recipient.strip()
     if recipient != expected_acs:
         raise HTTPException(status_code=401, detail="Invalid SAML recipient")
 
@@ -438,7 +450,10 @@ def exchange_saml_response(
     assertion = _verify_signature(root, provider)
     minimum_replay_ttl_sec = _validate_conditions(root, assertion, provider, acs_url)
 
-    replay_key = str(assertion.get("ID") or "").strip()
+    replay_key = assertion.get("ID")
+    if replay_key is None:
+        raise HTTPException(status_code=401, detail="Missing SAML replay identifier")
+    replay_key = replay_key.strip()
     ensure_saml_assertion_not_replayed(replay_key, minimum_ttl_sec=minimum_replay_ttl_sec)
 
     user, groups = _resolve_user_identity(db, assertion, provider)

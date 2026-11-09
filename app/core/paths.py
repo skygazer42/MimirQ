@@ -75,7 +75,7 @@ def _resolve_safe_child(base: Path, child: str, *, label: str) -> Path:
     guard here prevents accidental absolute-path or traversal use when a caller
     passes an untrusted filename/model name.
     """
-    raw = str(child or "").strip()
+    raw = child.strip()
     if not raw:
         raise ValueError(f"{label} is required")
     candidate = (base / raw).resolve(strict=False)

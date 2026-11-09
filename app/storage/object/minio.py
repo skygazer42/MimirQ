@@ -34,23 +34,23 @@ class MinIOObjectRef:
 
 
 def is_minio_uri(value: str) -> bool:
-    return str(value or "").strip().lower().startswith("minio://")
+    return value.strip().lower().startswith("minio://")
 
 
 def parse_minio_uri(uri: str) -> MinIOObjectRef:
-    parsed = urlparse(str(uri or "").strip())
+    parsed = urlparse(uri.strip())
     if parsed.scheme != "minio":
         raise ValueError("invalid_minio_uri_scheme")
-    bucket = (parsed.netloc or "").strip()
-    object_name = (parsed.path or "").lstrip("/").strip()
+    bucket = parsed.netloc.strip()
+    object_name = parsed.path.lstrip("/").strip()
     if not bucket or not object_name:
         raise ValueError("invalid_minio_uri")
     return MinIOObjectRef(bucket=bucket, object_name=object_name)
 
 
 def build_minio_uri(bucket: str, object_name: str) -> str:
-    b = (bucket or "").strip()
-    o = (object_name or "").lstrip("/").strip()
+    b = (bucket).strip()
+    o = (object_name).lstrip("/").strip()
     if not b or not o:
         raise ValueError("invalid_minio_uri_components")
     return f"minio://{b}/{o}"
@@ -340,7 +340,7 @@ class MinIOService:
 
         except Exception as e:
             logger.exception("MinIO presign URL failed: %s", e)
-            self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name", ""), error=str(e))
+            self._log_metric("presign", False, time.perf_counter() - t0, locals().get("object_name"), error=str(e))
             raise RuntimeError(f"MinIO get image URL failed: {e}") from e
 
     def _image_object_name(self, img_id: str, extension: str = "jpg") -> str:
@@ -375,7 +375,7 @@ class MinIOService:
                 "delete",
                 False,
                 time.perf_counter() - t0,
-                locals().get("object_name", ""),
+                locals().get("object_name"),
                 error=str(exc),
             )
             raise RuntimeError(f"MinIO delete image failed: {exc}") from exc
@@ -417,7 +417,7 @@ class MinIOService:
             elapsed = time.perf_counter() - batch_started_at
             if errors:
                 for error in errors:
-                    object_name = str(getattr(error, "name", "") or "")
+                    object_name = error.name or ""
                     self._log_metric("delete", False, elapsed, object_name, error=str(error))
                 raise RuntimeError(f"MinIO delete images failed for {len(errors)} object(s)")
 
@@ -433,7 +433,7 @@ class MinIOService:
         document_id: str,
         extension: str,
     ) -> str:
-        ext = (extension or "").strip().lower()
+        ext = (extension).strip().lower()
         if ext and not ext.startswith("."):
             ext = f".{ext}"
         if not ext:
@@ -461,7 +461,7 @@ class MinIOService:
             tenant_id=str(tenant_id),
             dataset_id=str(dataset_id),
             document_id=str(document_id),
-            extension=str(extension or ""),
+            extension=extension,
         )
         client = self._get_client()
         try:
@@ -512,7 +512,7 @@ class MinIOService:
         """
         client = self._get_client()
         t0 = time.perf_counter()
-        obj = str(object_name or "").lstrip("/").strip()
+        obj = object_name.lstrip("/").strip()
         if not obj:
             raise ValueError("object_name_required")
         blob = data if isinstance(data, (bytes, bytearray)) else bytes(data)
@@ -535,7 +535,7 @@ class MinIOService:
             object_name: object key in the configured bucket.
             max_bytes: hard cap (0 means "no cap").
         """
-        obj = str(object_name or "").lstrip("/").strip()
+        obj = object_name.lstrip("/").strip()
         if not obj:
             raise ValueError("object_name_required")
         max_bytes_i = max(0, int(max_bytes or 0))
@@ -653,7 +653,7 @@ class MinIOService:
             logger.warning("MinIO delete dataset images failed: %s", e)
             self._log_metric("delete_dataset", False, time.perf_counter() - t0, prefix, error=str(e))
 
-    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str, error: str | None = None) -> None:
+    def _log_metric(self, op: str, success: bool, elapsed: float, object_name: str | None, error: str | None = None) -> None:
         """Simple JSONL metrics log for external collection/monitoring."""
         try:
             self._metrics_path.parent.mkdir(parents=True, exist_ok=True)

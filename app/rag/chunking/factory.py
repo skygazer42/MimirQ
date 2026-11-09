@@ -73,7 +73,7 @@ class _MetadataAwareChunker(BaseChunker):
             if not meta.get("document_summary") or not meta.get("document_questions"):
                 meta.update(
                     build_document_metadata_enrichment(
-                        chunk.page_content or "",
+                        chunk.page_content,
                         metadata=meta,
                         **self._enrichment_kwargs(),
                     )
@@ -82,7 +82,7 @@ class _MetadataAwareChunker(BaseChunker):
             if not header:
                 out.append(chunk)
                 continue
-            payload = f"{header}\n\nContent:\n{chunk.page_content or ''}".strip()
+            payload = f"{header}\n\nContent:\n{chunk.page_content}".strip()
             meta["rich_metadata_header_applied"] = True
             meta["rich_metadata_header_chars"] = len(header)
             try:

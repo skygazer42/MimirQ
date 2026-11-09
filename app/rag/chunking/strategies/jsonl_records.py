@@ -29,7 +29,7 @@ _COMMENT_RE = re.compile(r"^\s*(#|//)")
 
 
 def _try_parse_json_line(line: str) -> tuple[Any, list[str]] | None:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return None
     if _COMMENT_RE.match(s):
@@ -62,7 +62,7 @@ def _iter_records(text: str) -> list[_Record]:
 def looks_like_jsonl_records(text: str) -> bool:
     if not text or len(text) < 80:
         return False
-    lines = [ln for ln in (text or "").splitlines() if ln.strip() and not _COMMENT_RE.match(ln)]
+    lines = [ln for ln in (text).splitlines() if ln.strip() and not _COMMENT_RE.match(ln)]
     if len(lines) < 3:
         return False
     sample = lines[:60]
@@ -183,7 +183,7 @@ class JsonlRecordsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

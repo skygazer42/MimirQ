@@ -49,14 +49,17 @@ class _SchemaLinkDiagnostics(TypedDict):
 
 def _table_column_names(columns: list[dict[str, Any]]) -> list[str]:
     return [
-        str(column.get("name") or "").strip()
+        column['name'].strip()
         for column in (columns or [])
-        if isinstance(column, dict) and str(column.get("name") or "").strip()
+        if isinstance(column, dict) and column['name'].strip()
     ]
 
 
 def _column_is_numeric(column: dict[str, Any]) -> bool:
-    dtype = str(column.get("dtype") or "").lower()
+    dtype = column.get("dtype")
+    if dtype is None:
+        return False
+    dtype = dtype.lower()
     return any(hint in dtype for hint in _NUMERIC_DTYPE_HINTS)
 
 
@@ -64,13 +67,13 @@ def _iter_named_columns(columns: list[dict[str, Any]]) -> Iterator[tuple[dict[st
     for column in columns or []:
         if not isinstance(column, dict):
             continue
-        name = str(column.get("name") or "").strip()
+        name = column['name'].strip()
         if name:
             yield column, name
 
 
 def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
-    model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL or "").strip()
+    model_name = (settings.LLM_MODEL_FAST or settings.LLM_MODEL).strip()
     if not model_name:
         model_name = "gpt-5.4-mini"
     return ChatOpenAI(
@@ -78,7 +81,7 @@ def _build_llm(*, temperature: float = 0.0) -> ChatOpenAI:
         api_key=settings.LLM_API_KEY,
         base_url=normalize_openai_compatible_base_url(settings.LLM_API_BASE),
         temperature=float(temperature),
-        timeout=float(settings.LLM_TIMEOUT or 60),
+        timeout=float(settings.LLM_TIMEOUT),
         max_retries=settings.LLM_MAX_RETRIES or 2,
         streaming=False,
     )
@@ -88,7 +91,7 @@ def extract_sql(text: str) -> str:
     """
     Extract best-effort SQL from LLM output (handles fenced code blocks).
     """
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw:
         return ""
     inner = extract_first_code_fence(raw, allowed_info_strings={"", "sql"})
@@ -103,21 +106,21 @@ def extract_sql(text: str) -> str:
 
 
 def _quote_ident(name: str) -> str:
-    s = str(name or "").strip()
+    s = name.strip()
     if not s:
         return '"_"'
     return f'"{s.replace(chr(34), chr(34) * 2)}"'
 
 
 def _quote_literal(value: str) -> str:
-    s = str(value or "").strip()
+    s = value.strip()
     if _NUMERIC_LITERAL_RE.match(s):
         return s
     return "'" + s.replace("'", "''") + "'"
 
 
 def _norm_key(value: str) -> str:
-    s = str(value or "").strip()
+    s = value.strip()
     return s.casefold() if s.isascii() else s
 
 
@@ -137,7 +140,7 @@ def _iter_table_named_columns(
     for table in tables or []:
         if not isinstance(table, dict):
             continue
-        table_name = str(table.get("table_name") or "").strip()
+        table_name = table['table_name'].strip()
         for column, name in _iter_named_columns(table.get("columns") or []):
             is_numeric = _column_is_numeric(column)
             if numeric is True and not is_numeric:
@@ -148,8 +151,8 @@ def _iter_table_named_columns(
 
 
 def _match_text(hay: str, needle: str) -> bool:
-    hs = str(hay or "").strip()
-    nd = str(needle or "").strip()
+    hs = hay.strip()
+    nd = needle.strip()
     if not hs or not nd:
         return False
     if nd.isascii():
@@ -161,7 +164,7 @@ def _unique_keep_order(values: list[str]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for raw in values:
-        s = str(raw or "").strip()
+        s = raw.strip()
         if not s:
             continue
         key = _norm_key(s)
@@ -173,13 +176,13 @@ def _unique_keep_order(values: list[str]) -> list[str]:
 
 
 def _extract_schema_terms(question: str, *, max_terms: int = 18) -> list[str]:
-    q = str(question or "").strip()
+    q = question.strip()
     if not q:
         return []
     terms: list[str] = []
     seen: set[str] = set()
     for m in _SCHEMA_TERM_RE.finditer(q):
-        t = str(m.group(0) or "").strip()
+        t = m.group(0).strip()
         if not t:
             continue
         key = _norm_key(t)
@@ -193,12 +196,12 @@ def _extract_schema_terms(question: str, *, max_terms: int = 18) -> list[str]:
 
 
 def _extract_quoted_literals(question: str, *, max_values: int = 8) -> list[str]:
-    q = str(question or "")
+    q = question
     if not q:
         return []
     out: list[str] = []
     for m in _QUOTED_LITERAL_RE.finditer(q):
-        s = str(m.group(1) or "").strip()
+        s = m.group(1).strip()
         if s:
             out.append(s)
         if len(out) >= max(1, int(max_values or 0)):
@@ -312,9 +315,9 @@ def score_schema_link_diagnostics(
     Diagnostics are intentionally compact and PII-safe: only matched schema/value signals,
     score, strategy, and reason.
     """
-    q = " ".join((question or "").strip().split())
+    q = " ".join((question).strip().split())
     col_names = _table_column_names(columns)
-    table_names = _unique_keep_order([str(sql_table or "").strip(), *list(table_aliases or [])])
+    table_names = _unique_keep_order([sql_table.strip(), *list(table_aliases or [])])
     terms = _extract_schema_terms(q, max_terms=20)
 
     matched_columns, matched_tables = _schema_link_matches(terms, col_names=col_names, table_names=table_names)
@@ -359,7 +362,7 @@ def infer_schema_relationships_for_tables(*, tables: list[dict[str, Any]]) -> li
 
 
 def _pick_join_group_column(question: str, tables: list[dict[str, Any]]) -> tuple[str | None, str | None]:
-    q = str(question or "")
+    q = question
     if not q:
         return None, None
     for table_name, _column, column_name in _iter_table_named_columns(tables, numeric=False):
@@ -369,7 +372,7 @@ def _pick_join_group_column(question: str, tables: list[dict[str, Any]]) -> tupl
 
 
 def _pick_join_metric_column(question: str, tables: list[dict[str, Any]]) -> tuple[str | None, str | None]:
-    q = str(question or "")
+    q = question
     # Prefer explicitly mentioned numeric columns first.
     for table_name, _column, column_name in _iter_table_named_columns(tables, numeric=True):
         if _match_text(q, column_name):
@@ -484,7 +487,7 @@ def _normalize_join_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]
     for raw in tables or []:
         if not isinstance(raw, dict):
             continue
-        table_name = str(raw.get("table_name") or "").strip()
+        table_name = raw['table_name'].strip()
         columns = raw.get("columns")
         if not table_name or not isinstance(columns, list):
             continue
@@ -609,10 +612,10 @@ def _dedupe_join_relationships(
     unique_relationships: list[dict[str, Any]] = []
     for rel in relationships:
         key = (
-            f"{str(rel.get('left_table') or '').strip()}."
-            f"{str(rel.get('left_column') or '').strip()}->"
-            f"{str(rel.get('right_table') or '').strip()}."
-            f"{str(rel.get('right_column') or '').strip()}"
+            f"{rel['left_table'].strip()}."
+            f"{rel['left_column'].strip()}->"
+            f"{rel['right_table'].strip()}."
+            f"{rel['right_column'].strip()}"
         )
         if key in dedupe_keys:
             continue
@@ -642,8 +645,8 @@ def _join_metric_expr(
 
 
 def _join_metric_aggregation(question: str, *, question_fold: str, group_col: str | None) -> str | None:
-    if bool(_TABLE_PICK_SUM_INTENT_RE.search(question or "")) or (
-        group_col is not None and "金额" in str(question or "")
+    if bool(_TABLE_PICK_SUM_INTENT_RE.search(question)) or (
+        group_col is not None and "金额" in question
     ):
         return "sum"
     if any(k in question_fold for k in ("avg", "average", "均值", "平均")):
@@ -680,7 +683,7 @@ def _build_join_query_sql(
     )
     reason = "join_projection"
     aggregation_column = metric_col if metric_table and metric_col else None
-    if bool(_TABLE_PICK_COUNT_INTENT_RE.search(question or "")):
+    if bool(_TABLE_PICK_COUNT_INTENT_RE.search(question)):
         if group_table and group_col:
             group_expr = _join_group_expr(
                 alias_map=alias_map, group_table=group_table, group_col=group_col, right_alias=right_alias
@@ -707,7 +710,7 @@ def _build_join_query_sql(
 
     aggregation = _join_metric_aggregation(
         question,
-        question_fold=str(question or "").casefold(),
+        question_fold=question.casefold(),
         group_col=group_col,
     )
     if aggregation == "sum":
@@ -792,6 +795,7 @@ def _build_join_planner(
     sql_fingerprint: str,
 ) -> dict[str, Any]:
     selected_plan = _selected_plan_candidates(state, selection)
+    candidate_id = selection.candidate["candidate_id"]
     return {
         # Keep strategy stable for downstream compatibility; expose beam usage via mode.
         "strategy": "deterministic_join",
@@ -805,7 +809,7 @@ def _build_join_planner(
         "selected_tables": selected_tables,
         "candidates": state.candidate_rows[: state.top_n],
         "multi_candidates": state.multi_candidate_rows[: state.top_n],
-        "selected_candidate_id": str((selection.candidate or {}).get("candidate_id") or ""),
+        "selected_candidate_id": candidate_id,
         "selected_score": round(selected_score, 6),
         "ambiguous": bool(selected_plan.get("ambiguous")),
         "ambiguity_gap": selected_plan.get("ambiguity_gap"),
@@ -863,15 +867,15 @@ def plan_join_query_for_tables(
         raise ValueError("low_confidence_join_plan")
 
     rel = _selected_join_payload(selection.candidate)
-    left_table = str(rel.get("left_table") or "").strip()
-    right_table = str(rel.get("right_table") or "").strip()
-    left_column = str(rel.get("left_column") or "").strip()
-    right_column = str(rel.get("right_column") or "").strip()
+    left_table = rel['left_table'].strip()
+    right_table = rel['right_table'].strip()
+    left_column = rel['left_column'].strip()
+    right_column = rel['right_column'].strip()
     if not left_table or not right_table or not left_column or not right_column:
         raise ValueError("invalid_join_relationship")
 
     relationships = _dedupe_join_relationships(selection.candidate, state.candidate_rows)
-    table_map = {str(t.get("table_name") or ""): t for t in valid_tables}
+    table_map = {t['table_name']: t for t in valid_tables}
     selected_tables = [
         str(v)
         for v in ((selection.candidate or {}).get("selected_tables") or [left_table, right_table])
@@ -942,7 +946,7 @@ def plan_join_query_for_tables(
 
 
 def _extract_question_limit(question: str, *, default_limit: int) -> int:
-    q = str(question or "").strip()
+    q = question.strip()
     if not q:
         return max(1, int(default_limit or 1))
 
@@ -969,17 +973,16 @@ def _pick_numeric_column(columns: list[dict[str, Any]]) -> str | None:
     for c in columns or []:
         if not isinstance(c, dict):
             continue
-        name = str(c.get("name") or "").strip()
+        name = c['name'].strip()
         if not name:
             continue
-        dtype = str(c.get("dtype") or "").strip().lower()
-        if any(h in dtype for h in _NUMERIC_DTYPE_HINTS):
+        if _column_is_numeric(c):
             return name
     return None
 
 
 def _pick_mentioned_column(question: str, columns: list[dict[str, Any]]) -> str | None:
-    q = str(question or "")
+    q = question
     q_fold = q.casefold()
     for _column, name in _iter_named_columns(columns):
         key = name.casefold() if name.isascii() else name
@@ -993,7 +996,7 @@ def _extract_group_terms(question: str) -> list[str]:
     for pattern in (r"(?i)\bgroup\s+by\s+(\w+)", r"按\s*([A-Za-z0-9_\u4e00-\u9fff]+)\s*分组"):
         match = re.search(pattern, question)
         if match:
-            terms.append(str(match.group(1) or "").strip())
+            terms.append(match.group(1).strip())
     return terms
 
 
@@ -1020,7 +1023,7 @@ def _match_group_requested_column(
 
 
 def _pick_group_column(question: str, columns: list[dict[str, Any]], *, exclude: str | None = None) -> str | None:
-    q = str(question or "")
+    q = question
     if not q:
         return None
     q_fold = q.casefold()
@@ -1047,7 +1050,7 @@ def _match_explicit_filter_predicate(question: str, col_names: list[str]) -> tup
         match = pat.search(question)
         if not match:
             continue
-        value = str(match.group(1) or "").strip().strip(".,，。;；")
+        value = match.group(1).strip().strip(".,，。;；")
         if value:
             return col, value
     return None, None
@@ -1072,7 +1075,7 @@ def _match_sample_value_filter(
         if not isinstance(row, dict):
             continue
         for key, value in list(row.items())[:40]:
-            col = str(key or "").strip()
+            col = key.strip()
             if not col or (col_names and col not in col_names):
                 continue
             if not _sample_value_matches_preferred_column(col, col_names, preferred_column):
@@ -1092,7 +1095,7 @@ def _infer_filter_predicate(
     sample_rows: list[dict[str, Any]] | None = None,
     preferred_column: str | None = None,
 ) -> tuple[str | None, str | None, str]:
-    q = str(question or "").strip()
+    q = question.strip()
     if not q:
         return None, None, "none"
 
@@ -1126,7 +1129,7 @@ def _infer_order_hint(
     question: str,
     default_column: str | None,
 ) -> tuple[str | None, str | None]:
-    q_fold = str(question or "").casefold()
+    q_fold = question.casefold()
     has_order = any(k in q_fold for k in ("order by", "排序", "排名", "top", "前"))
     if not has_order:
         return None, None
@@ -1219,7 +1222,7 @@ def _generate_deterministic_sql_with_diagnostics(
     max_rows: int,
     sample_rows: list[dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    q = " ".join((question or "").strip().split())
+    q = " ".join((question).strip().split())
     if not q:
         raise ValueError(_QUESTION_REQUIRED)
 
@@ -1312,18 +1315,22 @@ def _generate_sql_with_llm(
     """
     Generate a SELECT-only SQL query for a single SQLite table name.
     """
-    q = " ".join((question or "").strip().split())
+    q = " ".join((question).strip().split())
     if not q:
         raise ValueError(_QUESTION_REQUIRED)
 
     max_rows_i = max(1, int(max_rows or 0))
-    cols_str = "\n".join(
-        [
-            f"- {str(c.get('name') or '').strip()} ({str(c.get('dtype') or '').strip()})"
-            for c in (columns or [])
-            if isinstance(c, dict)
-        ]
-    )
+    schema_lines: list[str] = []
+    for column in columns or []:
+        if not isinstance(column, dict):
+            continue
+        name = column["name"].strip()
+        dtype = column.get("dtype")
+        if dtype is None:
+            schema_lines.append(f"- {name} ()")
+        else:
+            schema_lines.append(f"- {name} ({dtype.strip()})")
+    cols_str = "\n".join(schema_lines)
     cols_str = cols_str[:8000]
 
     system = SystemMessage(
@@ -1344,7 +1351,7 @@ def _generate_sql_with_llm(
 
     llm = _build_llm(temperature=0.0)
     resp = llm.invoke([system, user])
-    sql = extract_sql(str(getattr(resp, "content", "") or ""))
+    sql = extract_sql(resp.text)
     return sql
 
 
@@ -1384,7 +1391,7 @@ def generate_sql_for_table_with_metadata(
     """
     deterministic_only = settings.TABLE_NL2SQL_DETERMINISTIC_ONLY
     deterministic_fallback = settings.TABLE_NL2SQL_DETERMINISTIC_FALLBACK_ENABLED
-    llm_key = (settings.LLM_API_KEY or "").strip()
+    llm_key = (settings.LLM_API_KEY).strip()
 
     schema_link = score_schema_link_diagnostics(
         question=question,
@@ -1527,7 +1534,7 @@ def generate_answer_from_result(
     if not settings.TABLE_LLM_ALLOW_RESULT_EGRESS:
         raise RuntimeError("TABLE_LLM_ALLOW_RESULT_EGRESS=false")
 
-    q = " ".join((question or "").strip().split())
+    q = " ".join((question).strip().split())
     if not q:
         raise ValueError(_QUESTION_REQUIRED)
 
@@ -1537,7 +1544,7 @@ def generate_answer_from_result(
 
     # Keep payload bounded; SQL executor already caps, but double-guard here.
     preview = {
-        "sql": str(sql or "")[:20_000],
+        "sql": sql[:20_000],
         "columns": cols if isinstance(cols, list) else [],
         "rows": rows if isinstance(rows, list) else [],
         "truncated": truncated,
@@ -1553,10 +1560,10 @@ def generate_answer_from_result(
             "Keep the answer concise and include key numbers.\n"
         )
     )
-    user = HumanMessage(content=(f"Question: {q}\n\nSQL: {str(sql or '').strip()}\n\nResult: {preview_text}\n"))
+    user = HumanMessage(content=(f"Question: {q}\n\nSQL: {sql.strip()}\n\nResult: {preview_text}\n"))
     llm = _build_llm(temperature=0.0)
     resp = llm.invoke([system, user])
-    return str(getattr(resp, "content", "") or "").strip()
+    return resp.text.strip()
 
 
 def tag_enabled() -> bool:

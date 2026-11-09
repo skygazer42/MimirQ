@@ -125,8 +125,8 @@ def _transition_document_index_channel_best_effort(
             "tenant=%s document=%s channel=%s status=%s: %s",
             getattr(document, "tenant_id", None),
             getattr(document, "id", None),
-            str(channel or ""),
-            str(status or ""),
+            channel,
+            status,
             str(exc)[:200],
         )
 
@@ -135,7 +135,7 @@ TASK_JOB_RESULT_SCHEMA_V1 = "mimirq.task_job_result.v1"
 
 
 def _job_progress(*, stage: str, done: int | None = None, total: int | None = None, **extra: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {"stage": str(stage or "").strip() or "unknown"}
+    payload: dict[str, Any] = {"stage": stage.strip() or "unknown"}
     if done is not None:
         payload["done"] = max(0, int(done))
     if total is not None:
@@ -178,7 +178,7 @@ async def _job_result(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema": TASK_JOB_RESULT_SCHEMA_V1,
-        "job_name": str(job_name or "").strip() or "unknown_job",
+        "job_name": job_name.strip() or "unknown_job",
         "ok": bool(ok),
         "reason": str(reason).strip() if reason is not None else None,
         "elapsed_sec": round(max(0.0, float(time.perf_counter() - started_at)), 3),
@@ -539,7 +539,7 @@ async def _resolve_object_storage_document_path(
         )
 
     temp_dir = (Path(settings.UPLOAD_DIR) / str(tid) / ".tmp").resolve(strict=False)
-    suffix = f".{(doc.file_type or '').lower()}"
+    suffix = f".{doc.file_type.lower()}"
     temp_path = temp_dir / f"{did}.{uuid.uuid4().hex}{suffix}"
     try:
         await asyncio.to_thread(
@@ -582,7 +582,7 @@ async def _resolve_document_job_file_path(
     started_at: float,
     pipeline_hash: str | None,
 ) -> tuple[Path | None, Path | None, dict[str, Any] | None]:
-    raw_path = str(doc.file_path or "").strip()
+    raw_path = doc.file_path.strip()
     if not raw_path or raw_path.startswith("manual://"):
         return (
             None,
@@ -1040,7 +1040,7 @@ async def process_document_job(ctx, tenant_id: str, document_id: str, requested_
             parser_backend=parser_backend,
             chunk_strategy=chunk_strategy,
         )
-        result_status = str(result.get("status") or "").strip().lower() if isinstance(result, dict) else ""
+        result_status = result["status"].strip().lower() if isinstance(result, dict) else ""
         succeeded = result_status == "success"
         return await _process_document_job_result(
             ctx,
@@ -1108,7 +1108,7 @@ async def dataset_profile_scan_job(ctx, tenant_id: str, dataset_id: str, scan_ru
                 dataset_id=dataset_id,
                 scan_run_id=scan_run_id,
             )
-        if str(getattr(run, "status", "") or "") != "pending":
+        if run.status != "pending":
             return await _job_result(
                 ctx,
                 job_name="dataset_profile_scan_job",
@@ -1266,7 +1266,7 @@ async def dataset_precheck_scan_job(ctx, tenant_id: str, dataset_id: str, scan_r
                 dataset_id=dataset_id,
                 scan_run_id=scan_run_id,
             )
-        if str(getattr(run, "status", "") or "") != "pending":
+        if run.status != "pending":
             return await _job_result(
                 ctx,
                 job_name="dataset_precheck_scan_job",
@@ -1495,7 +1495,7 @@ async def _load_kg_document_or_result(
             stage="missing",
             done=0,
         )
-    if (doc.status or "").lower() == "completed":
+    if doc.status.lower() == "completed":
         return doc
     retry_cls = get_retry_exc()
     if retry_cls:
@@ -1650,10 +1650,14 @@ def _scope_kg_chunks(
         metadata = getattr(chunk, "doc_metadata", None)
         if not isinstance(metadata, dict):
             return False
-        doc_pipeline_key = str(metadata.get("doc_pipeline_key") or "").strip()
+        raw_key = metadata.get("doc_pipeline_key")
+        doc_pipeline_key = raw_key.strip() if isinstance(raw_key, str) else None
         if doc_pipeline_key and doc_pipeline_key == document_key:
             return True
-        pipeline_hash = str(metadata.get("pipeline_hash") or metadata.get("active_pipeline_hash") or "").strip()
+        raw_hash = metadata.get("pipeline_hash")
+        if raw_hash is None or raw_hash == "":
+            raw_hash = metadata.get("active_pipeline_hash")
+        pipeline_hash = raw_hash.strip() if isinstance(raw_hash, str) else None
         return bool(pipeline_hash and pipeline_hash == scoped_pipeline_hash)
 
     scoped = [chunk for chunk in chunks if _chunk_matches(chunk)]
@@ -1753,13 +1757,13 @@ def _kg_extraction_runtime(
             "prompt_template_key": frozen_options["prompt_template_key"],
             "prompt_ab_experiment_key": frozen_options["prompt_ab_experiment_key"],
             "extraction_backend": frozen_options["extraction_backend"],
-            "kg_python_plugin": str(frozen_options["kg_python_plugin"] or "").strip(),
+            "kg_python_plugin": frozen_options["kg_python_plugin"],
             "kg_python_params": dict(frozen_options["kg_python_params"] or {}),
         }
-    kg_python_plugin = str(getattr(effective, "kg_python_plugin", "") or "").strip()
+    kg_python_plugin = effective.kg_python_plugin.strip()
     if not kg_python_plugin:
         kg_python_plugin = derive_registered_stage_plugin_ref(
-            str(getattr(effective, "chunk_python_plugin", "") or "").strip(),
+            effective.chunk_python_plugin.strip(),
             "kg",
         )
     return {

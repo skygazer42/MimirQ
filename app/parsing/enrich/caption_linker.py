@@ -54,7 +54,7 @@ def find_nearest_caption(
             continue
         if _coerce_int(raw.get("page")) != page:
             continue
-        text = str(raw.get("text") or "").strip()
+        text = raw["text"].strip()
         if not pattern.match(text):
             continue
         candidate_bbox = _bbox(raw.get("bbox"))
@@ -69,8 +69,8 @@ def find_nearest_caption(
         return None
     _gap, _overlap, selected = min(candidates, key=lambda item: (item[0], item[1]))
     return {
-        "id": str(selected.get("id") or ""),
-        "text": str(selected.get("text") or "").strip(),
+        "id": selected["id"],
+        "text": selected["text"].strip(),
         "page": page,
         "bbox": dict(_bbox(selected.get("bbox")) or {}),
         "source_element_id": selected.get("source_element_id"),

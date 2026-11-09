@@ -98,7 +98,7 @@ def list_configs(
         query = query.filter(ConnectorConfig.enabled.is_(enabled))
 
     if dataset_id is None:
-        if (member.role or "").lower() not in EDIT_ROLES:
+        if member.role.lower() not in EDIT_ROLES:
             return {"total": 0, "items": []}
         query = query.filter(
             ConnectorConfig.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id))
@@ -227,7 +227,7 @@ async def run_saved_config(
     if not cfg:
         raise HTTPException(status_code=404, detail=CONNECTOR_CONFIG_NOT_FOUND_DETAIL)
 
-    connector_id = str(cfg.connector_id or "").strip()
+    connector_id = cfg.connector_id.strip()
     if connector_id in _DB_CONNECTOR_IDS:
         ensure_tenant_permission(
             db,
@@ -313,7 +313,7 @@ def reconcile_config(
     dataset_service.assert_dataset_writable(db, dataset, account_id)
 
     desired_refs = resolve_connector_reconcile_source_refs(
-        connector_id=str(cfg.connector_id or "").strip(),
+        connector_id=cfg.connector_id.strip(),
         config=dict(cfg.config or {}),
         state=dict(cfg.state or {}),
     )
@@ -327,7 +327,7 @@ def reconcile_config(
         db.query(DBDocument).filter(DBDocument.tenant_id == tenant_id, DBDocument.dataset_id == cfg.dataset_id).all()
     )
     report = plan_connector_reconcile(
-        connector_id=str(cfg.connector_id or "").strip(),
+        connector_id=cfg.connector_id.strip(),
         config_id=str(cfg.id),
         dataset_id=str(cfg.dataset_id),
         documents=documents,
@@ -348,7 +348,7 @@ def reconcile_config(
         resource_type="connector_config",
         resource_id=str(cfg.id),
         details={
-            "connector_id": str(cfg.connector_id or ""),
+            "connector_id": cfg.connector_id,
             "dataset_id": str(cfg.dataset_id),
             "desired_source_refs": int(report.get("desired_source_refs") or 0),
             "stale_source_refs": int(report.get("stale_source_refs") or 0),

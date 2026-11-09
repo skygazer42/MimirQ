@@ -23,7 +23,9 @@ def _collect_source_key_values(payload: Any, *, fields: tuple[str, ...]) -> list
         else:
             values = [raw]
         for val in values:
-            s = str(val or "").strip()
+            if val is None:
+                continue
+            s = str(val).strip()
             if s:
                 out.append(s)
     return out
@@ -36,7 +38,7 @@ def infer_expected_source_keys(
     scope: dict[str, Any] | None = None,
     max_keys: int = 12,
 ) -> dict[str, Any]:
-    q = str(query or "").strip()
+    q = query.strip()
     hints: list[str] = []
     reasons: list[str] = []
 
@@ -90,9 +92,9 @@ def infer_required_anchor_fields(
     query: str,
     default_fields: list[str] | tuple[str, ...] | None,
 ) -> dict[str, Any]:
-    out = [str(v or "").strip().lower() for v in (default_fields or []) if str(v or "").strip()]
+    out = [str(v).strip().lower() for v in (default_fields or []) if v is not None and str(v).strip()]
     reasons: list[str] = []
-    q = str(query or "")
+    q = query
     q_fold = q.casefold()
     if any(k in q_fold for k in ("row", "rows", "哪一行", "行数据", "primary key", "主键")):
         for field in ("row_source_table", "row_source_pk_hashes", "row_source_sync_token"):

@@ -27,7 +27,7 @@ def _key_weight_map(key_final: list[dict[str, Any]]) -> dict[Any, Any]:
 
 
 def _key_entity_ids(key_final: list[dict[str, Any]]) -> set[str]:
-    return {str(item.get("entity_id") or "").strip() for item in key_final or [] if item.get("entity_id")}
+    return {str(item["entity_id"]).strip() for item in key_final or [] if item.get("entity_id")}
 
 
 def _entity_weight(entity_id_value: str, key_weights: dict[Any, Any], default: float = 0.1) -> float:
@@ -40,7 +40,7 @@ def _entity_to_events(assoc_map: dict[str, list[Any]], graph_ids: set[str]) -> d
         if item_id not in graph_ids:
             continue
         for entity in entities or []:
-            entity_id_value = str(getattr(entity, "id", "") or "")
+            entity_id_value = str(entity.id)
             if entity_id_value:
                 entity_to_events.setdefault(entity_id_value, []).append(item_id)
     return entity_to_events
@@ -85,7 +85,7 @@ def _base_scores(
         item_id = event_id(event)
         similarity = cosine_similarity(query_vec, getattr(event, "content_vector", None) or [])
         entities = assoc_map.get(item_id, [])
-        boost = sum(key_weights.get(str(getattr(entity, "id", "") or ""), 0.0) for entity in entities)
+        boost = sum(key_weights.get(str(entity.id), 0.0) for entity in entities)
         phrase_boost = phrase_score(query, event_search_text(event)) * phrase_boost_weight
         recall_score = event_scores.get(item_id, 0.0)
         scores[item_id] = 0.5 * recall_score + 0.3 * similarity + 0.2 * boost + phrase_boost

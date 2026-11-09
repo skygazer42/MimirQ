@@ -39,7 +39,7 @@ class _Span:
 
 
 def _trim_table_edges(line: str) -> str:
-    inner = str(line or "").strip()
+    inner = line.strip()
     if inner.startswith("|"):
         inner = inner[1:]
     if inner.endswith("|"):
@@ -48,7 +48,7 @@ def _trim_table_edges(line: str) -> str:
 
 
 def _is_alignment_cell(cell: str) -> bool:
-    text = (cell or "").strip().strip(":").strip()
+    text = (cell).strip().strip(":").strip()
     return len(text) >= 3 and all(ch == "-" for ch in text)
 
 
@@ -59,7 +59,7 @@ def _looks_like_align_row(line: str) -> bool:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or "|" not in s:
         return False
     inner = _trim_table_edges(s)
@@ -82,7 +82,7 @@ def _is_table_start(lines: list[_Line], i: int) -> bool:
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -300,7 +300,7 @@ class MarkdownTableChunker(BaseChunker):
         return chunks
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

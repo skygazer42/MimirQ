@@ -42,7 +42,7 @@ _FIELD_KEY_ALLOWED = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01
 
 def _norm(s: str) -> str:
     # Faster and avoids regex backtracking hotspots.
-    return " ".join((s or "").strip().split()).lower()
+    return " ".join((s).strip().split()).lower()
 
 
 def _strip_numbered_prefix(s: str) -> str:
@@ -52,7 +52,7 @@ def _strip_numbered_prefix(s: str) -> str:
       1) Title
       1.2.3) Title
     """
-    raw = (s or "").lstrip()
+    raw = (s).lstrip()
     if not raw:
         return ""
 
@@ -83,7 +83,7 @@ def _strip_numbered_prefix(s: str) -> str:
 
 
 def _strip_trailing_colon(s: str) -> str:
-    out = (s or "").rstrip()
+    out = (s).rstrip()
     while out and out[-1].isspace():
         out = out[:-1]
     if out.endswith((":", "：")):
@@ -95,7 +95,7 @@ def _parse_confluence_heading(s: str) -> str | None:
     """
     Parse 'h1. Title' style headings.
     """
-    line = (s or "").strip()
+    line = (s).strip()
     if len(line) < 4:
         return None
     if line[0].lower() != "h":
@@ -114,7 +114,7 @@ def _parse_md_heading(s: str) -> str | None:
     """
     Parse Markdown ATX headings (1-6 '#') and return the title.
     """
-    line = (s or "").strip()
+    line = (s).strip()
     if not line:
         return None
     i = 0
@@ -131,7 +131,7 @@ def _parse_field_heading(s: str) -> str | None:
     """
     Parse 'Key: Value' style headings and return the key.
     """
-    line = (s or "").strip()
+    line = (s).strip()
     if not line:
         return None
     pos = line.find(":")
@@ -171,7 +171,7 @@ for k, vals in _SECTION_SYNONYMS.items():
 
 
 def _parse_heading_line(plain: str) -> tuple[str, str] | None:
-    s = (plain or "").strip()
+    s = (plain).strip()
     if not s:
         return None
     s = _strip_numbered_prefix(s)
@@ -257,7 +257,7 @@ def looks_like_jira_ticket(text: str) -> bool:
     # Require multiple distinct ticket sections.
     if len(keys) >= 4:
         return True
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if len(keys) >= 3 and any(k in lowered for k in ("issue type", "assignee", "reporter", "priority", "component")):
         return True
     return False
@@ -280,7 +280,7 @@ class JiraTicketChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

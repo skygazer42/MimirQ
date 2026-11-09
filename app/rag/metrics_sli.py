@@ -17,7 +17,9 @@ _RAG_LABEL_NAMES = ["tenant_id", "dataset_id"]
 def _label_value(*, enabled: bool, value: str | None) -> str:
     if not bool(enabled):
         return "all"
-    v = str(value or "").strip()
+    if value is None:
+        return "none"
+    v = value.strip()
     return v or "none"
 
 

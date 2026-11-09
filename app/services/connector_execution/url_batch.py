@@ -15,6 +15,7 @@ from app.services.connector_execution.shared.artifacts import (
     _normalize_connector_string_list,
 )
 from app.services.connector_execution.shared.common import (
+    _optional_source_text,
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
@@ -68,7 +69,7 @@ def _build_url_batch_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
 def _url_batch_processed_refs(documents: list[Any]) -> set[str]:
     processed_refs: set[str] = set()
     for doc in documents:
-        ref = str(getattr(doc, "source_ref", "") or "").strip()
+        ref = _optional_source_text(doc.source_ref)
         if ref:
             processed_refs.add(ref)
     return processed_refs
@@ -77,14 +78,15 @@ def _url_batch_processed_refs(documents: list[Any]) -> set[str]:
 def _url_batch_document_ids(*, stats: dict[str, Any], documents: list[Any]) -> list[str]:
     raw_doc_ids = stats.get("document_ids")
     if isinstance(raw_doc_ids, list):
-        doc_ids = [str(value).strip() for value in raw_doc_ids if str(value).strip()]
+        doc_ids = _normalize_connector_string_list(raw_doc_ids)
         if doc_ids:
             return doc_ids
-    return [
-        str(getattr(doc, "document_id", "") or "")
-        for doc in documents
-        if str(getattr(doc, "document_id", "") or "").strip()
-    ]
+    doc_ids = []
+    for doc in documents:
+        if doc.document_id is None:
+            raise ValueError("Connector run document_id is required")
+        doc_ids.append(str(doc.document_id))
+    return doc_ids
 
 
 def _build_url_batch_run_state(*, run: ConnectorRun, urls: list[str]) -> dict[str, Any]:
@@ -133,7 +135,7 @@ def _build_url_batch_run_state(*, run: ConnectorRun, urls: list[str]) -> dict[st
 def _url_batch_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
     with contextlib.suppress(Exception):
         db.refresh(run)
-    return str(run.status or "").lower() == "cancelled"
+    return run.status.lower() == "cancelled"
 
 
 async def _ingest_url_batch_url(

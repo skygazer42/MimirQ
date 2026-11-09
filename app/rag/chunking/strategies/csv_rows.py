@@ -29,7 +29,7 @@ _ROW_LINE_RE = re.compile(r"(?m)^\s*row\s+(?P<num>\d{1,9})\s*:\s*", flags=re.IGN
 
 
 def _iter_rows(text: str) -> list[_Row]:
-    matches = list(_ROW_LINE_RE.finditer(text or ""))
+    matches = list(_ROW_LINE_RE.finditer(text))
     if len(matches) < 2:
         return []
     rows: list[_Row] = []
@@ -119,7 +119,7 @@ class CsvRowsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

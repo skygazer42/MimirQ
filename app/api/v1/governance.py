@@ -158,9 +158,9 @@ def list_stale_documents_by_dataset(
         items.append(
             StaleDocumentItem(
                 id=d.id,
-                filename=str(d.filename or ""),
-                file_type=str(d.file_type or ""),
-                status=str(d.status or ""),
+                filename=d.filename,
+                file_type=d.file_type,
+                status=d.status,
                 lifecycle_owner=d.lifecycle_owner,
                 review_due_at=d.review_due_at,
                 authority_level=d.authority_level,

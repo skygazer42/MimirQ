@@ -25,27 +25,27 @@ class QdrantVectorStore:
         provider = EmbeddingProviders.PROVIDER_MAP.get(
             (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
         )
-        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
+        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
         self.emb = create_langchain_embeddings_from_config(
             provider=provider,
             model=model,
-            api_key=api_key or "",
-            base_url=base_url or "",
+            api_key=api_key,
+            base_url=base_url,
             dimension=None,
         )
         self.storage: list[tuple[list[float], dict[str, Any]]] = []
 
     def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
-        texts = [d.get("content", "") for d in docs]
+        texts = [d["content"] for d in docs]
         vectors = self.emb.embed_documents(texts)
         ids: list[str] = []
         for idx, (vec, doc) in enumerate(zip(vectors, docs, strict=False)):
             meta = dict(doc.get("metadata") or {})
             meta.setdefault("document_id", str(document_id))
             meta.setdefault("tenant_id", str(tenant_id))
-            meta.setdefault("content", doc.get("content", ""))
+            meta.setdefault("content", doc["content"])
             cid = str(meta.get("chunk_id") or f"{document_id}_qdrant_{idx}")
             meta["chunk_id"] = cid
             self.storage.append((vec, meta))
@@ -74,9 +74,9 @@ class QdrantVectorStore:
 
         out: list[dict[str, Any]] = []
         for vec, meta in self.storage:
-            if allowed_tenant and str(meta.get("tenant_id") or "") != allowed_tenant:
+            if allowed_tenant and meta["tenant_id"] != allowed_tenant:
                 continue
-            if allowed_ids and str(meta.get("document_id") or "") not in allowed_ids:
+            if allowed_ids and meta["document_id"] not in allowed_ids:
                 continue
             if metadata_filter and not match_metadata_filter(meta, metadata_filter):
                 continue
@@ -86,7 +86,7 @@ class QdrantVectorStore:
             out.append(
                 {
                     "chunk_id": meta.get("chunk_id"),
-                    "content": meta.get("content") or "",
+                    "content": meta["content"],
                     "metadata": meta,
                     "score": score,
                     "vector_score": score,
@@ -102,8 +102,8 @@ class QdrantVectorStore:
             (vec, meta)
             for vec, meta in self.storage
             if not (
-                str(meta.get("document_id") or "") == doc_id
-                and (tenant is None or str(meta.get("tenant_id") or "") == tenant)
+                meta["document_id"] == doc_id
+                and (tenant is None or meta["tenant_id"] == tenant)
             )
         ]
 
@@ -120,8 +120,8 @@ class QdrantVectorStore:
             (vec, meta)
             for vec, meta in self.storage
             if not (
-                str(meta.get("document_id") or "") == doc_id
-                and (tenant is None or str(meta.get("tenant_id") or "") == tenant)
+                meta["document_id"] == doc_id
+                and (tenant is None or meta["tenant_id"] == tenant)
                 and match_metadata_filter(meta, metadata_filter)
             )
         ]

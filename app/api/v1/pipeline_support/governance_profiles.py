@@ -30,9 +30,10 @@ GOVERNANCE_PROFILE_NOT_FOUND_DETAIL = "Governance profile not found"
 
 
 def _profile_key_for_row(row: DBGovernanceProfile) -> str:
-    raw = str(row.key or "").strip()
-    if raw:
-        return raw
+    if row.key is not None:
+        raw = row.key.strip()
+        if raw:
+            return raw
     return f"custom:{str(row.id)}"
 
 
@@ -40,7 +41,7 @@ def _profile_summary_from_row(row: DBGovernanceProfile) -> GovernanceProfileSumm
     return GovernanceProfileSummary(
         id=row.id,
         key=_profile_key_for_row(row),
-        name=str(row.name or ""),
+        name=row.name,
         description=row.description,
         is_system=bool(row.is_system),
     )
@@ -54,7 +55,7 @@ def _profile_out_from_row(row: DBGovernanceProfile) -> GovernanceProfileOut:
     return GovernanceProfileOut(
         id=row.id,
         key=_profile_key_for_row(row),
-        name=str(row.name or ""),
+        name=row.name,
         description=row.description,
         is_system=bool(row.is_system),
         payload=payload,
@@ -70,7 +71,7 @@ def _resolve_profile_ref(
     profile_ref: str,
     builtin_by_key: dict[str, Any],
 ) -> GovernanceProfileOut:
-    ref = str(profile_ref or "").strip()
+    ref = profile_ref.strip()
     if not ref:
         raise HTTPException(status_code=400, detail="profile_ref is required")
 
@@ -103,7 +104,7 @@ def _resolve_custom_profile_row(
     profile_ref: str,
     builtin_by_key: dict[str, Any],
 ) -> DBGovernanceProfile:
-    ref = str(profile_ref or "").strip()
+    ref = profile_ref.strip()
     if ref in builtin_by_key:
         raise HTTPException(status_code=403, detail="built-in profiles are read-only")
 
@@ -160,7 +161,10 @@ def _normalize_governance_profile_import_record(item: object) -> _GovernanceProf
         raise HTTPException(status_code=400, detail="Invalid profile item (expected object)")
 
     _reject_unknown_import_keys(item, {"name", "description", "key", "payload"}, label="profile")
-    name = str(item.get("name") or "").strip()
+    raw_name = item.get("name")
+    if not isinstance(raw_name, str):
+        raise HTTPException(status_code=400, detail="Profile name must be a string")
+    name = raw_name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Profile name is required")
 
@@ -187,7 +191,9 @@ def _normalize_governance_profile_import_record(item: object) -> _GovernanceProf
         raise HTTPException(status_code=400, detail=f"Invalid payload: {str(exc)[:200]}") from exc
 
     description = item.get("description")
-    desc = str(description or "").strip()[:2000] if description is not None else None
+    if description is not None and not isinstance(description, str):
+        raise HTTPException(status_code=400, detail="Profile description must be a string")
+    desc = description.strip()[:2000] if description is not None else None
     return _GovernanceProfileImportRecord(name=name, key=key, description=desc, payload=payload)
 
 

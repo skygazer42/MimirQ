@@ -97,7 +97,9 @@ def _normalize_error_reason(message: Any) -> str:
     - Take the prefix before ':' when present (many errors are "code: details").
     - Keep a conservative ASCII subset and bound the length.
     """
-    raw = str(message or "").strip()
+    if message is None:
+        return "unknown"
+    raw = str(message).strip()
     if not raw:
         return "unknown"
 

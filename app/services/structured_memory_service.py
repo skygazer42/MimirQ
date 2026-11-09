@@ -61,12 +61,12 @@ _STOPWORDS_ZH = {
 
 
 def _stable_sig(s: str) -> str:
-    s = str(s or "").strip()
+    s = s.strip()
     return s.casefold() if s.isascii() else s
 
 
 def _is_pii_like(text: str) -> bool:
-    t = str(text or "")
+    t = text
     if not t:
         return True
     if _EMAIL_RE.search(t):
@@ -79,7 +79,7 @@ def _is_pii_like(text: str) -> bool:
 
 
 def _clean_token(tok: str) -> str:
-    t = str(tok or "").strip()
+    t = tok.strip()
     # Strip common punctuation around tokens.
     return t.strip(" \t\r\n\"'“”‘’`()[]{}<>.,;:!?，。；：！？")
 
@@ -132,7 +132,7 @@ def extract_entity_tokens(*, text: str, max_entities: int) -> list[str]:
     if max_out <= 0:
         return []
 
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return []
 
@@ -156,7 +156,7 @@ def extract_fact_sentences(*, text: str, max_facts: int) -> list[str]:
     if max_out <= 0:
         return []
 
-    raw = str(text or "")
+    raw = text
     if not raw.strip():
         return []
 
@@ -165,7 +165,7 @@ def extract_fact_sentences(*, text: str, max_facts: int) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for p in parts:
-        s = (p or "").strip()
+        s = p.strip()
         if not s:
             continue
         if len(s) < 10 or len(s) > 220:
@@ -228,7 +228,9 @@ def _record_memory_entity(
     ent_counts: dict[str, int],
     ent_surface: dict[str, str],
 ) -> None:
-    tok = _clean_token(str(entity or ""))
+    if entity is None:
+        return
+    tok = _clean_token(str(entity))
     if not tok or _is_pii_like(tok):
         return
     sig = _stable_sig(tok)
@@ -242,7 +244,9 @@ def _record_memory_fact(
     facts: list[str],
     seen_fact: set[str],
 ) -> None:
-    text = str(fact or "").strip()
+    if fact is None:
+        return
+    text = str(fact).strip()
     if not text or _is_pii_like(text):
         return
     sig = _stable_sig(text)
@@ -263,7 +267,7 @@ def _collect_structured_memory_records(
     for rec in records or []:
         if not isinstance(rec, dict):
             continue
-        if str(rec.get("schema") or "") != "mimirq.structured_memory.v1":
+        if rec.get("schema") != "mimirq.structured_memory.v1":
             continue
         ents = rec.get("entities")
         if isinstance(ents, list):

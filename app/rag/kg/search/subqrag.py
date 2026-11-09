@@ -7,10 +7,10 @@ _TRAILING_PUNCT = " \t\r\n,;:!?，。；：！？"
 
 
 def build_subqrag_plan(query: str, *, max_subqueries: int = 3) -> dict[str, Any]:
-    root_query = str(query or "").strip()
+    root_query = query.strip()
     pieces = heuristic_decompose_query(root_query, max_subquestions=max_subqueries)
     if len(pieces) == 1:
-        piece_norm = str(pieces[0] or "").strip().rstrip(_TRAILING_PUNCT)
+        piece_norm = pieces[0].strip().rstrip(_TRAILING_PUNCT)
         root_norm = root_query.rstrip(_TRAILING_PUNCT)
         if piece_norm == root_norm:
             pieces = []
@@ -26,8 +26,8 @@ def build_subqrag_plan(query: str, *, max_subqueries: int = 3) -> dict[str, Any]
                 "query": subquery,
                 "method": route["method"],
                 "reason_codes": list(route.get("reason_codes") or []),
-                "complexity_label": str((route.get("complexity") or {}).get("label") or ""),
-                "kg_mode": str((route.get("kg_mode") or {}).get("mode") or ""),
+                "complexity_label": route["complexity"]["label"],
+                "kg_mode": route["kg_mode"]["mode"],
             }
         )
 

@@ -130,7 +130,7 @@ class MultiAgentRAGRunner:
                 for item in data:
                     if not isinstance(item, str):
                         continue
-                    query = " ".join(str(item or "").split()).strip()
+                    query = " ".join(item.split()).strip()
                     if not query:
                         continue
                     key = query.casefold()
@@ -151,13 +151,15 @@ class MultiAgentRAGRunner:
         return [MultiAgentPlanStep(query=question, rationale="fallback_single_query")]
 
     @staticmethod
-    def _citation_key(citation: dict[str, Any]) -> str:
-        document_id = str(citation.get("document_id") or "")
-        chunk_id = str(citation.get("chunk_id") or "")
-        page_number = str(citation.get("page_number") or citation.get("page") or "")
-        source = str(citation.get("source") or "")
-        snippet = " ".join(str(citation.get("snippet") or "").split())
-        return "|".join([document_id, chunk_id, page_number, source, snippet])
+    def _citation_key(citation: dict[str, Any]) -> tuple[str | None, ...]:
+        page_number = citation.get("page_number")
+        if page_number is None:
+            page_number = citation.get("page")
+        snippet = citation.get("snippet")
+        if snippet is not None:
+            snippet = " ".join(str(snippet).split())
+        values = (citation.get("document_id"), citation.get("chunk_id"), page_number, citation.get("source"), snippet)
+        return tuple((str(value) or None) if value is not None else None for value in values)
 
     @staticmethod
     def _citation_score(citation: dict[str, Any]) -> float:
@@ -242,7 +244,7 @@ class MultiAgentRAGRunner:
 
     @staticmethod
     def _normalized_plan_query(step: MultiAgentPlanStep, *, fallback_question: str) -> str:
-        return " ".join(str(step.query or "").split()).strip() or fallback_question
+        return " ".join(step.query.split()).strip() or fallback_question
 
     @staticmethod
     def _retrieval_started_event(*, index: int, query: str, rationale: str | None) -> dict[str, Any]:
@@ -312,7 +314,7 @@ class MultiAgentRAGRunner:
         results.sort(key=lambda item: item.index)
         retrieval_elapsed_total = float(sum(item.elapsed_sec for item in results))
         docs_by_key: dict[str, Document] = {}
-        citations_by_key: dict[str, dict[str, Any]] = {}
+        citations_by_key: dict[tuple[str | None, ...], dict[str, Any]] = {}
         final_retrieval_mode = retrieval_mode
 
         for item in results:
@@ -378,7 +380,7 @@ class MultiAgentRAGRunner:
             "context": _build_context(collected_docs, query=question),
             "history": _build_history_text(history),
             "question": question,
-            "format_instructions": str(base_state.get("format_instructions") or ""),
+            "format_instructions": base_state["format_instructions"],
         }
         full_response = ""
         gen_start = time.time()

@@ -42,7 +42,7 @@ class ClaimNLIVerificationResult:
 
 
 def _extract_label(content: str) -> tuple[str | None, str | None]:
-    raw = str(content or "").strip()
+    raw = content.strip()
     if not raw:
         return None, None
     try:
@@ -57,7 +57,7 @@ def _extract_label(content: str) -> tuple[str | None, str | None]:
 
     match = _LABEL_RE.search(raw)
     if match:
-        return str(match.group(1) or "").strip().lower(), raw[:240]
+        return match.group(1).strip().lower(), raw[:240]
     return None, raw[:240]
 
 
@@ -100,9 +100,7 @@ def verify_claim_with_nli(
     resolved_api_base = normalize_openai_compatible_base_url(
         api_base or settings.RAG_CLAIM_NLI_VERIFIER_API_BASE or settings.LLM_API_BASE
     )
-    resolved_timeout = float(
-        timeout_sec if timeout_sec is not None else settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC or 8
-    )
+    resolved_timeout = float(timeout_sec if timeout_sec is not None else settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC)
 
     if not resolved_model or not resolved_api_key or not resolved_api_base:
         return ClaimNLIVerificationResult(
@@ -129,7 +127,7 @@ def verify_claim_with_nli(
             },
             {
                 "role": "user",
-                "content": (f"Claim:\n{str(claim or '').strip()}\n\nEvidence:\n{str(evidence or '').strip()}\n"),
+                "content": (f"Claim:\n{claim.strip()}\n\nEvidence:\n{evidence.strip()}\n"),
             },
         ],
     }

@@ -8,6 +8,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.orchestration.common import _safe_int
 
 
@@ -20,15 +21,15 @@ def _citation_coverage_lists(citations: list[Any]) -> tuple[int, list[str], list
         if not isinstance(citation, dict):
             continue
         total += 1
-        document_id = str(citation.get("document_id") or "").strip()
-        pipeline_key = str(citation.get("doc_pipeline_key") or citation.get("pipeline_hash") or "").strip()
-        role = str(citation.get("retrieval_role") or "").strip().lower()
+        document_id = _stringified_metadata_text(citation, "document_id")
+        pipeline_key = _stringified_metadata_text(citation, "doc_pipeline_key") or _stringified_metadata_text(citation, "pipeline_hash")
+        role = _stringified_metadata_text(citation, "retrieval_role")
         if document_id:
             doc_ids.append(document_id)
         if pipeline_key:
             pipeline_keys.append(pipeline_key)
         if role:
-            roles.append(role)
+            roles.append(role.lower())
     return total, doc_ids, pipeline_keys, roles
 
 
@@ -188,8 +189,8 @@ def _parse_quality_low_sample(doc: Document, *, rank: int, score: float) -> dict
     meta = doc.metadata or {}
     return {
         "rank": int(rank),
-        "chunk_id": str(doc.id or meta.get("chunk_id") or ""),
-        "document_id": str(meta.get("document_id") or ""),
+        "chunk_id": doc.id if doc.id is not None else _stringified_metadata_text(meta, "chunk_id"),
+        "document_id": _stringified_metadata_text(meta, "document_id"),
         "score": round(float(score), 3),
     }
 
@@ -252,7 +253,7 @@ def _classify_parse_risk(
     payload = summary if summary is not None else {}
     considered = int(payload.get("considered") or 0)
     low_ratio = float(payload.get("low_ratio") or 0.0)
-    recommendation = str(payload.get("recommendation") or "").strip()
+    recommendation = _stringified_metadata_text(payload, "recommendation")
 
     level = _parse_risk_level(considered=considered, low_ratio=low_ratio, recommendation=recommendation)
     return {
@@ -271,7 +272,7 @@ def _classify_parse_risk(
     }
 
 
-def _parse_risk_level(*, considered: int, low_ratio: float, recommendation: str) -> str:
+def _parse_risk_level(*, considered: int, low_ratio: float, recommendation: str | None) -> str:
     if considered <= 0:
         return "unknown"
     if recommendation == "high_parse_risk_reparse_documents" or low_ratio >= 0.8:
@@ -322,14 +323,14 @@ def _count_parse_repair_actions(actions: list[Any]) -> tuple[dict[str, int], dic
         action_counts[action] = int(action_counts.get(action, 0) + 1)
         status_counts[status] = int(status_counts.get(status, 0) + 1)
         priority_counts[priority] = int(priority_counts.get(priority, 0) + 1)
-        doc_id = str(item.get("document_id") or "").strip()
+        doc_id = _stringified_metadata_text(item, "document_id")
         if doc_id:
             docs_seen.add(doc_id)
     return action_counts, status_counts, priority_counts, docs_seen
 
 
-def _parse_repair_run_id(payload: dict[str, Any]) -> str:
-    return str(payload.get("scheduler_run_id") or payload.get("schedule_run_id") or payload.get("run_id") or "").strip()
+def _parse_repair_run_id(payload: dict[str, Any]) -> str | None:
+    return _stringified_metadata_text(payload, "scheduler_run_id") or _stringified_metadata_text(payload, "schedule_run_id") or _stringified_metadata_text(payload, "run_id")
 
 
 def _parse_repair_gate_passed(payload: dict[str, Any]) -> Any:
@@ -355,7 +356,7 @@ def _build_parse_repair_actions_summary(
         "high_priority_count": int(priority_counts.get("high", 0)),
     }
     run_id = _parse_repair_run_id(payload)
-    source = str(payload.get("source") or payload.get("schema") or "").strip()
+    source = _stringified_metadata_text(payload, "source") or _stringified_metadata_text(payload, "schema")
     gate_passed = _parse_repair_gate_passed(payload)
     if run_id:
         out["run_id"] = run_id[:120]

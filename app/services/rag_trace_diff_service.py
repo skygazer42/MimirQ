@@ -44,7 +44,7 @@ def _delta_float(a: Any, b: Any) -> float | None:
 
 def _counter_sorted(counter: Counter[str]) -> dict[str, int]:
     # Stable ordering: higher count first, then key.
-    items = sorted(counter.items(), key=lambda x: (-x[1], str(x[0] or "")))
+    items = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
     return {str(k): v for k, v in items if k}
 
 
@@ -56,7 +56,7 @@ def _delta_counter(a: Counter[str], b: Counter[str]) -> dict[str, int]:
         if d:
             out[str(k)] = d
     # Stable ordering: larger magnitude first, then key.
-    return dict(sorted(out.items(), key=lambda x: (-abs(x[1]), str(x[0] or ""))))
+    return dict(sorted(out.items(), key=lambda x: (-abs(x[1]), x[0])))
 
 
 def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
@@ -74,16 +74,16 @@ def diff_rag_traces(a: RagTrace, b: RagTrace) -> dict[str, Any]:
     role_b: Counter[str] = Counter()
 
     for c in ta.citations or []:
-        ht = str(c.hit_type or "").strip() or ""
-        rr = str(c.retrieval_role or "").strip() or ""
+        ht = c.hit_type.strip() if c.hit_type is not None else None
+        rr = c.retrieval_role.strip() if c.retrieval_role is not None else None
         if ht:
             hit_a[ht] += 1
         if rr:
             role_a[rr] += 1
 
     for c in tb.citations or []:
-        ht = str(c.hit_type or "").strip() or ""
-        rr = str(c.retrieval_role or "").strip() or ""
+        ht = c.hit_type.strip() if c.hit_type is not None else None
+        rr = c.retrieval_role.strip() if c.retrieval_role is not None else None
         if ht:
             hit_b[ht] += 1
         if rr:

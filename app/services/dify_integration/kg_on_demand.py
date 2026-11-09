@@ -178,7 +178,7 @@ def _dify_kg_chunk_events(
     for event in events:
         if not isinstance(event, dict):
             continue
-        raw_chunk_id = str(event.get("chunk_id") or "").strip()
+        raw_chunk_id = common._first_nonempty_str(event.get("chunk_id"))
         if not raw_chunk_id:
             continue
         try:
@@ -205,21 +205,21 @@ def _dify_kg_record_citation(
     metadata.update(
         {
             "kg_on_demand": True,
-            "kg_event_id": str(event.get("id") or event.get("event_id") or ""),
+            "kg_event_id": common._first_nonempty_str(event.get("id"), event.get("event_id")),
             "kg_score": common._clamp_score(event.get("score") or event.get("weight") or event.get("relevance_score")),
             "chunk_id": str(chunk_id),
-            "document_id": str(record_values._row_value(row, "document_id") or ""),
+            "document_id": record_values._row_value(row, "document_id"),
             "chunk_index": record_values._row_value(row, "chunk_index"),
             "page_number": record_values._row_value(row, "page_number"),
         }
     )
     return (
         {
-            "content": str(record_values._row_value(row, "content") or ""),
+            "content": record_values._row_value(row, "content"),
             "relevance_score": metadata["kg_score"],
             "document_name": str(record_values._row_value(row, "filename") or "kg-on-demand"),
             "chunk_id": str(chunk_id),
-            "dataset_id": str(record_values._row_value(row, "dataset_id") or ""),
+            "dataset_id": record_values._row_value(row, "dataset_id"),
             "metadata": metadata,
         },
         record_values._row_value(row, "dataset_id"),

@@ -379,10 +379,7 @@ async def _dify_distributed_singleflight_payload(
 def _dify_singleflight_lease_ttl_sec(response_cache_ttl_sec: int) -> int:
     warmup_timeout_sec = 60
     with contextlib.suppress(Exception):
-        warmup_timeout_sec = max(
-            60,
-            min(300, int(float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC or 60.0))),
-        )
+        warmup_timeout_sec = max(60, min(300, int(float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC))))
     response_ttl_sec = max(60, int(response_cache_ttl_sec or 0))
     return max(60, min(300, max(response_ttl_sec, warmup_timeout_sec)))
 
@@ -516,7 +513,7 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         "enable_reranker": settings.ENABLE_RERANKER,
         "dify_reranker_enabled": settings.DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED,
         "reranker_provider": settings.RERANKER_PROVIDER,
-        "reranker_model": str(settings.RERANKER_MODEL or ""),
+        "reranker_model": settings.RERANKER_MODEL,
         "reranker_top_n": (settings.RERANKER_TOP_N or 20),
         "metadata_anchor_enabled": settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED,
         "metadata_anchor_preflight_enabled": settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED,
@@ -555,9 +552,9 @@ def _build_dify_response_cache_key(
     signature = {
         "schema": "mimirq.dify_external_response_cache.v1",
         "tenant_id": str(actor.tenant_id),
-        "account_id": str(actor.account_id or ""),
-        "knowledge_id": str(knowledge_id or "").strip(),
-        "query": str(query or "").strip(),
+        "account_id": actor.account_id,
+        "knowledge_id": knowledge_id.strip(),
+        "query": query.strip(),
         "retrieval_setting": retrieval_setting.model_dump(mode="json"),
         "metadata_condition": metadata_condition,
         "dataset_ids": [str(item) for item in scope_plan.dataset_ids],
@@ -569,7 +566,7 @@ def _build_dify_response_cache_key(
         "candidate_top_k": int(candidate_top_k),
         "score_threshold": float(score_threshold),
         "policy_plugin_refs": list(policy_plugin_refs),
-        "corpus_token": str(corpus_token or ""),
+        "corpus_token": corpus_token,
         "settings": _dify_response_cache_settings_signature(),
     }
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)

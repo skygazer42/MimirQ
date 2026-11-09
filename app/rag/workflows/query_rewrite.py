@@ -27,17 +27,19 @@ def run_query_rewrite_workflow(
     strategy_id: str | None = None,
     rewriter: Callable[[str, str, str], str] | None = None,
 ) -> QueryRewriteResult:
-    original = str(question or "").strip()
-    history = str(history_text or "").strip()
+    original = question.strip()
+    history = history_text.strip()
     resolved_strategy = resolve_query_rewrite_strategy_id(strategy_id or DEFAULT_QUERY_REWRITE_STRATEGY_ID)
     spec = build_query_rewrite_strategy_spec(resolved_strategy)
 
     rewritten = original
     if rewriter is not None:
         try:
-            candidate = str(rewriter(original, history, resolved_strategy) or "").strip()
+            candidate = rewriter(original, history, resolved_strategy)
+            if candidate is not None:
+                candidate = candidate.strip()
         except Exception:
-            candidate = ""
+            candidate = None
         if candidate:
             rewritten = candidate
 
@@ -58,15 +60,21 @@ class QueryRewriteWorkflow(BaseWorkflow):
         return WorkflowMode.CHAIN
 
     async def run(self, state: dict[str, Any]) -> WorkflowResult:
-        question = str(state.get("question") or state.get("query") or "").strip()
+        question = state.get("question")
+        if question is None:
+            question = state.get("query")
+        if question is not None:
+            question = question.strip()
         if not question:
             return self.create_result(state, success=False, error="query_rewrite_question_missing")
 
-        history_text = str(state.get("history_text") or "").strip()
+        history_text = state.get("history_text")
+        if history_text is not None:
+            history_text = history_text.strip()
         rewriter = state.get("query_rewriter")
         rewrite = run_query_rewrite_workflow(
             question=question,
-            history_text=history_text,
+            history_text=history_text if history_text is not None else "",
             strategy_id=state.get("query_rewrite_strategy"),
             rewriter=rewriter if callable(rewriter) else None,
         )

@@ -32,7 +32,9 @@ def _parse_datetime_best_effort(raw: str | None) -> datetime | None:
     - HTTP-date (e.g. Last-Modified: "Wed, 21 Oct 2015 07:28:00 GMT")
     - ISO 8601 timestamps (e.g. "2026-03-04T10:00:00Z")
     """
-    value = (raw if raw is not None else "").strip()
+    if raw is None:
+        return None
+    value = raw.strip()
     if not value:
         return None
 
@@ -67,7 +69,7 @@ class UrlIngestFile:
     final_path: Path
     file_ext: str
     downloaded: DownloadedURL
-    content_type: str
+    content_type: str | None
     fetched_at_iso: str
     content_sha256: str
 
@@ -104,7 +106,7 @@ def _ext_from_filename(name: str | None) -> str | None:
     return ext if ext else None
 
 
-def _ext_from_content_type(content_type: str) -> str | None:
+def _ext_from_content_type(content_type: str | None) -> str | None:
     if not content_type:
         return None
     if content_type in {"text/html"}:
@@ -131,7 +133,7 @@ def _assert_allowed_file_ext(file_ext: str) -> str:
     return file_ext
 
 
-def _resolve_url_file_ext(*, filename: str | None, url: str, content_type: str) -> str:
+def _resolve_url_file_ext(*, filename: str | None, url: str, content_type: str | None) -> str:
     file_ext = _ext_from_filename(filename)
     if not file_ext:
         from urllib.parse import urlparse
@@ -141,7 +143,7 @@ def _resolve_url_file_ext(*, filename: str | None, url: str, content_type: str) 
     if not file_ext:
         file_ext = _ext_from_content_type(content_type)
     if not file_ext:
-        if content_type.startswith("text/"):
+        if content_type is not None and content_type.startswith("text/"):
             file_ext = ".txt"
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported content-type: {content_type or 'unknown'}")
@@ -169,7 +171,7 @@ def _read_html_prefix(path: Path) -> str:
 
 async def _extract_url_canonical_metadata(
     *,
-    content_type: str,
+    content_type: str | None,
     final_path: Path,
     url_final: str,
 ) -> tuple[str | None, str | None]:
@@ -205,7 +207,9 @@ async def download_url_ingest_file(*, url: str, body: UrlUploadRequest, tenant_i
             ),
         )
 
-        content_type = (downloaded.content_type or "").split(";", 1)[0].strip().lower()
+        content_type = downloaded.content_type
+        if content_type is not None:
+            content_type = content_type.split(";", 1)[0].strip().lower()
         file_ext = _resolve_url_file_ext(filename=body.filename, url=url, content_type=content_type)
         final_path = upload_dir / f"{file_id}{file_ext}"
         source_lease.path = final_path
@@ -261,13 +265,17 @@ def write_local_html_ingest_file(*, body: LocalHtmlIngestRequest, tenant_id: UUI
 
 async def url_source_metadata(*, url: str, ingest_file: UrlIngestFile) -> UrlSourceMetadata:
     downloaded = ingest_file.downloaded
-    last_modified_raw = (downloaded.last_modified or "").strip()
-    if not last_modified_raw:
-        last_modified_raw = None
-    last_modified_norm = _normalize_datetime_utc_iso(last_modified_raw) if last_modified_raw else None
-    etag_raw = (downloaded.etag or "").strip()
-    if not etag_raw:
-        etag_raw = None
+    last_modified_raw = downloaded.last_modified
+    if last_modified_raw is not None:
+        last_modified_raw = last_modified_raw.strip()
+        if not last_modified_raw:
+            last_modified_raw = None
+    last_modified_norm = _normalize_datetime_utc_iso(last_modified_raw)
+    etag_raw = downloaded.etag
+    if etag_raw is not None:
+        etag_raw = etag_raw.strip()
+        if not etag_raw:
+            etag_raw = None
     if etag_raw and len(etag_raw) > 500:
         etag_raw = etag_raw[:500]
 

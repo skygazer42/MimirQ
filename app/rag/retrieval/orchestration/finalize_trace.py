@@ -209,18 +209,15 @@ class RetrievalTraceStageOutput:
 
 
 def _retrieval_variant_counts(retrieval_plan: list[tuple[Any, Any, Any]]) -> dict[str, int]:
-    try:
-        variants: dict[str, int] = {}
-        for kind, _q, _r in retrieval_plan:
-            key = str(kind or "").strip() or "main"
-            variants[key] = variants.get(key, 0) + 1
-        return variants
-    except (TypeError, ValueError, AttributeError):
-        return {}
+    variants: dict[str, int] = {}
+    for kind, _q, _r in retrieval_plan:
+        key = kind.strip()
+        variants[key] = variants.get(key, 0) + 1
+    return variants
 
 
 def _trace_per_query_item(item: dict[str, Any]) -> dict[str, Any]:
-    kind = str(item.get("kind") or "").strip() or "main"
+    kind = item["kind"].strip()
     payload: dict[str, Any] = {
         "kind": kind,
         "query_chars": int(item.get("query_chars") or 0),
@@ -243,11 +240,7 @@ def _trace_per_query_item(item: dict[str, Any]) -> dict[str, Any]:
 
 
 def _per_query_trace(retrieval_per_query: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    try:
-        return [_trace_per_query_item(item) for item in retrieval_per_query if isinstance(item, dict)]
-    except Exception as exc:  # noqa: BLE001
-        _log_orchestrator_fallback("run_retrieval", exc)
-        return []
+    return [_trace_per_query_item(item) for item in retrieval_per_query]
 
 
 def _citations_by_role(citations: list[dict[str, Any]]) -> dict[str, int]:
@@ -286,8 +279,8 @@ def build_retrieval_trace_stage(payload: RetrievalTraceStageInput) -> RetrievalT
     retrieval_trace = {
         "schema": "mimirq.retrieval_trace_pass.v1",
         "query_for_retrieval_hash": stable_hash(payload.query_for_retrieval),
-        "requested_retrieval_mode": str(payload.requested_retrieval_mode or ""),
-        "retrieval_mode": str(payload.request_retrieval_mode or ""),
+        "requested_retrieval_mode": payload.requested_retrieval_mode,
+        "retrieval_mode": payload.request_retrieval_mode,
         "retrieval_mode_auto_routed": bool(payload.retrieval_mode_routed),
         "retrieval_profile": payload.profile_norm,
         "retrieval_profile_requested": (

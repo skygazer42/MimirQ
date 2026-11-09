@@ -103,11 +103,11 @@ def _resolve_timeout_sec() -> float:
 
 
 def _sanitize_error_message(exc: BaseException) -> str:
-    message = str(exc or "").strip() or exc.__class__.__name__
+    message = str(exc).strip() or exc.__class__.__name__
     for secret in {
-        str(settings.EMBEDDING_API_KEY or ""),
-        str(settings.RERANKER_API_KEY or ""),
-        str(settings.LLM_API_KEY or ""),
+        settings.EMBEDDING_API_KEY,
+        settings.RERANKER_API_KEY,
+        settings.LLM_API_KEY,
     }:
         if secret:
             message = message.replace(secret, "[redacted]")
@@ -327,7 +327,7 @@ async def warmup_rag_runtime() -> dict[str, Any]:
     )
     probes = [embedding, reranker]
     failed = sum(1 for probe in probes if not probe.get("ready"))
-    completed = sum(1 for probe in probes if str(probe.get("status") or "") in {"completed", "skipped"})
+    completed = sum(1 for probe in probes if probe["status"] in {"completed", "skipped"})
     ready = failed == 0
     status = "completed" if ready else "failed"
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)

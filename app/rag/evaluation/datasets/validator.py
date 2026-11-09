@@ -60,7 +60,7 @@ def _validate_manifest(
     source_counts: Counter[str],
     errors: list[str],
 ) -> None:
-    if str(manifest.get("schema_version") or "").strip() != _MANIFEST_SCHEMA:
+    if manifest.get("schema_version") != _MANIFEST_SCHEMA:
         errors.append("manifest.schema_version invalid")
     if int(manifest.get("sample_count") or 0) != len(normalized_rows):
         errors.append("manifest.sample_count mismatch")

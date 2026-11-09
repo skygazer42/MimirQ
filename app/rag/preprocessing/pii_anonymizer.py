@@ -106,12 +106,12 @@ def _luhn_ok(digits: str) -> bool:
 
 
 def _valid_credit_card(text: str) -> bool:
-    digits = re.sub(r"[^\d]", "", text or "")
+    digits = re.sub(r"[^\d]", "", text)
     return _luhn_ok(digits)
 
 
 def _valid_phone_candidate(text: str) -> bool:
-    digits = re.sub(r"[^\d]", "", text or "")
+    digits = re.sub(r"[^\d]", "", text)
     # Keep it loose: 8-15 digits is a reasonable phone range; avoid long numeric runs.
     if len(digits) < 8 or len(digits) > 15:
         return False
@@ -120,7 +120,7 @@ def _valid_phone_candidate(text: str) -> bool:
 
 
 def anonymize_pii(text: str, *, enabled: bool, mode: PiiMode = "mask", mask: str = "[REDACTED]") -> PiiAnonymizeResult:
-    original = text or ""
+    original = text
     if not enabled or not original:
         return PiiAnonymizeResult(text=original, hits={}, changed=False)
 
@@ -131,7 +131,7 @@ def anonymize_pii(text: str, *, enabled: bool, mode: PiiMode = "mask", mask: str
         token_map = token_maps.setdefault(kind, {})
 
         def repl(match: re.Match[str]) -> str:
-            raw = match.group(0) or ""
+            raw = match.group(0)
             if validator is not None and not validator(raw):
                 return raw
             hits[kind] = hits.get(kind, 0) + 1
@@ -192,7 +192,7 @@ def _append_pattern_matches(
     max_matches: int,
 ) -> bool:
     for match in pattern.finditer(text):
-        raw = match.group(0) or ""
+        raw = match.group(0)
         if not raw:
             continue
         start, end = match.start(), match.end()
@@ -217,7 +217,7 @@ def find_pii_matches(text: str, *, max_matches: int = 50) -> list[PiiMatch]:
     best-effort and may include false positives; callers should show them as
     "needs review" rather than hard conclusions.
     """
-    s = text or ""
+    s = text
     if not s:
         return []
 

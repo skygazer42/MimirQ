@@ -38,7 +38,7 @@ def _select_quote_needle(quote: str) -> str:
     """
     import re
 
-    raw = " ".join(str(quote or "").split()).strip()
+    raw = " ".join(quote.split()).strip()
     if not raw:
         return ""
     # Prefer longer contiguous alnum/CJK runs (more specific than punctuation-heavy prefixes).
@@ -50,7 +50,7 @@ def _select_quote_needle(quote: str) -> str:
 
 
 def _escape_like(s: str) -> str:
-    return (s or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return (s).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +154,7 @@ def _load_suite_items(db: Session, *, tenant_id: UUID, suite_id: UUID, params: R
 
 
 def _normalize_item_status(item: EvidenceItem) -> str:
-    return str(item.status or "").strip().lower() or "unknown"
+    return item.status.strip().lower() or "unknown"
 
 
 def _limited_reference_sources(item: EvidenceItem, *, max_refs_per_item: int) -> list[Any]:

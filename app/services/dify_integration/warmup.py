@@ -93,7 +93,7 @@ def _resolve_dify_warmup_top_k() -> int:
 
 def _resolve_dify_warmup_timeout_sec() -> float:
     try:
-        timeout_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC or 60.0)
+        timeout_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC)
     except (TypeError, ValueError):
         timeout_sec = 60.0
     return max(1.0, timeout_sec)

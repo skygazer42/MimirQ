@@ -15,6 +15,9 @@ class _DatasetDedupRow(TypedDict):
 
 
 def _normalize_dataset_row(row: dict[str, Any]) -> _DatasetDedupRow:
+    dataset_id = row["dataset_id"]
+    if dataset_id is None:
+        raise ValueError("dataset_id is required")
     raw_summary = row.get("near_dup_summary")
     if isinstance(raw_summary, dict) and raw_summary:
         summary = dict(raw_summary)
@@ -22,7 +25,7 @@ def _normalize_dataset_row(row: dict[str, Any]) -> _DatasetDedupRow:
         summary = summarize_near_dup_payload(row.get("near_dup_payload"))
 
     return {
-        "dataset_id": str(row.get("dataset_id") or "").strip(),
+        "dataset_id": str(dataset_id).strip(),
         "dataset_name": row.get("dataset_name"),
         "enabled": bool(summary.get("enabled", False)),
         "pairs": int(summary.get("pairs") or 0),
@@ -39,7 +42,8 @@ def build_cross_dataset_dedup_report(rows: list[dict[str, Any]]) -> dict[str, An
         key=lambda item: (
             -item["affected_files"],
             -item["clusters"],
-            item["dataset_name"] or "",
+            item["dataset_name"] is not None,
+            item["dataset_name"],
             item["dataset_id"],
         )
     )

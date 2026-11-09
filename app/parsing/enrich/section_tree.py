@@ -18,7 +18,7 @@ def _heading_level(element: Mapping[str, Any]) -> int | None:
         if explicit is not None:
             return max(1, min(6, explicit))
 
-    text = str(element.get("text") or "").strip()
+    text = element["text"].strip()
     if not text:
         return None
     if _CN_TOP_RE.match(text):
@@ -29,13 +29,13 @@ def _heading_level(element: Mapping[str, Any]) -> int | None:
         return 1
     section = _SECTION_RE.match(text)
     if section:
-        token = str(section.group(1) or "")
+        token = section.group(1)
         return max(2, min(6, token.count(".") + 1))
     numeric = _NUMERIC_RE.match(text)
     if numeric:
-        token = str(numeric.group(1) or "")
+        token = numeric.group(1)
         return max(1, min(6, token.count(".") + 1))
-    if str(element.get("kind") or "").strip().lower() == "heading":
+    if element["kind"].strip().lower() == "heading":
         return 2
     return None
 
@@ -46,14 +46,14 @@ def build_section_tree(elements: Sequence[Mapping[str, Any]] | None) -> list[dic
     for index, raw in enumerate(elements or []):
         if not isinstance(raw, Mapping):
             continue
-        if str(raw.get("kind") or "").strip().lower() != "heading":
+        if raw["kind"].strip().lower() != "heading":
             continue
         level = _heading_level(raw)
         if level is None:
             continue
         node = {
             "id": str(raw.get("id") or f"section:{index}"),
-            "text": str(raw.get("text") or "").strip(),
+            "text": raw["text"].strip(),
             "level": level,
             "page": raw.get("page"),
             "bbox": raw.get("bbox") if isinstance(raw.get("bbox"), Mapping) else None,
@@ -74,18 +74,19 @@ def add_section_paths(
 ) -> list[dict[str, Any]]:
     if not elements:
         return []
-    by_id = {str(node.get("id") or ""): dict(node) for node in (section_tree or []) if isinstance(node, Mapping)}
+    by_id = {node["id"]: dict(node) for node in (section_tree or []) if isinstance(node, Mapping)}
     path_by_id: dict[str, list[str]] = {}
     for node_id, node in by_id.items():
         path: list[str] = []
         cursor = node
         seen: set[str] = set()
-        while cursor and str(cursor.get("id") or "") not in seen:
-            seen.add(str(cursor.get("id") or ""))
-            text = str(cursor.get("text") or "").strip()
+        while cursor and cursor["id"] not in seen:
+            seen.add(cursor["id"])
+            text = cursor["text"].strip()
             if text:
                 path.append(text)
-            parent_id = str(cursor.get("parent_id") or "")
+            parent_value = cursor.get("parent_id")
+            parent_id = str(parent_value) if parent_value is not None else None
             cursor = by_id.get(parent_id) if parent_id else {}
         path_by_id[node_id] = list(reversed(path))
 
@@ -93,7 +94,7 @@ def add_section_paths(
     out: list[dict[str, Any]] = []
     for raw in elements or []:
         item = dict(raw)
-        node_id = str(item.get("id") or "")
+        node_id = item["id"]
         if node_id in path_by_id:
             current_path = path_by_id[node_id]
         if current_path:

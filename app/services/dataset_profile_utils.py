@@ -302,7 +302,7 @@ def build_recall_risk_hints(
                 (h.get("observed") or {}).get("short_chunk_pct", (h.get("observed") or {}).get("duplicate_docs_pct", 0))
                 or 0
             ),
-            str(h.get("key") or ""),
+            h["key"],
         )
     )
     return hints[:8]

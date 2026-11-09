@@ -86,21 +86,7 @@ def _trim_top_citation(row: Any) -> dict[str, Any]:
 
 
 def _as_history_dicts(history: list[HistoryMessage]) -> list[dict[str, str]]:
-    out: list[dict[str, str]] = []
-    for msg in history or []:
-        if hasattr(msg, "model_dump"):
-            payload = msg.model_dump()
-        elif isinstance(msg, dict):
-            payload = dict(msg)
-        else:
-            payload = {}
-        out.append(
-            {
-                "role": str(payload.get("role") or ""),
-                "content": str(payload.get("content") or ""),
-            }
-        )
-    return out
+    return [{"role": message.role, "content": message.content} for message in history]
 
 
 @router.post("/explain", responses=_DEFAULT_HTTP_EXCEPTION_RESPONSES)

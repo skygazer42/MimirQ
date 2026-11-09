@@ -40,7 +40,7 @@ _TIMECODE_RE = re.compile(r"^\s*(?P<start>\d{2}:\d{2}:\d{2}[,\.]\d{3})\s*-->\s*(
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -65,7 +65,7 @@ def _iter_cues(text: str) -> list[_Cue]:
             prev = lines[i - 1].text.strip()
             if prev.isdigit():
                 cue_start = lines[i - 1].start
-        cue_starts.append((cue_start, (m.group("start") or "").strip(), (m.group("end") or "").strip()))
+        cue_starts.append((cue_start, (m.group("start")).strip(), (m.group("end")).strip()))
 
     if len(cue_starts) < 2:
         return []
@@ -175,7 +175,7 @@ def _split_subtitle_document(
     chunk_size: int,
     chunk_overlap: int,
 ) -> list[Document]:
-    text = doc.page_content or ""
+    text = doc.page_content
     if not text.strip():
         return []
 

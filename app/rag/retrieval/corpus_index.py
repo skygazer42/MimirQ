@@ -272,13 +272,13 @@ class CorpusIndex:
             "chunk_id": str(chunk),
             "tenant_id": str(tenant),
             "document_id": str(document),
-            "dataset_id": str(dataset) if dataset is not None else "",
+            "dataset_id": str(dataset) if dataset is not None else None,
             "chunk_index": index,
         }
         normalized.setdefault("source", "unknown")
         if page is not None:
             normalized.setdefault("page", page)
-        return Document(id=str(chunk), page_content=content or "", metadata=normalized)
+        return Document(id=str(chunk), page_content=content, metadata=normalized)
 
     def _load_retrieval_docs_from_db(
         self,

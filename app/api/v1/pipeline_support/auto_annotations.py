@@ -128,7 +128,7 @@ def _trim_entity_span(raw: str) -> tuple[str, int]:
     post-trim keeps matches like "项目由星海智能有限公司" usable without pretending
     to be a full NER model.
     """
-    text = str(raw or "").strip(_TRIM_PUNCTUATION_CHARS)
+    text = raw.strip(_TRIM_PUNCTUATION_CHARS)
     offset = raw.find(text) if text else 0
     if not text:
         return "", max(0, offset)
@@ -185,7 +185,7 @@ def _trim_match_span(source_text: str, start: int, end: int) -> tuple[int, int]:
 
 
 def _find_keyword_offsets(text: str, keyword: str, *, limit: int = 2) -> list[tuple[int, int]]:
-    kw = str(keyword or "").strip()
+    kw = keyword.strip()
     if len(kw) < 2:
         return []
 
@@ -202,7 +202,7 @@ def _find_keyword_offsets(text: str, keyword: str, *, limit: int = 2) -> list[tu
 
 
 def _is_focus_keyword(text: str) -> bool:
-    token = str(text or "").strip()
+    token = text.strip()
     if len(token) < 2:
         return False
     if token.casefold() in _FOCUS_KEYWORD_STOPWORDS:
@@ -250,8 +250,8 @@ def _dedupe_auto_annotations(items: list[AutoAnnotationItem], *, max_items: int)
     return out
 
 
-def _add_auto_annotation_provider(providers: set[str], raw_provider: object) -> None:
-    provider = str(raw_provider or "").strip().lower()
+def _add_auto_annotation_provider(providers: set[str], raw_provider: str) -> None:
+    provider = raw_provider.strip().lower()
     if not provider:
         return
     providers.update(_AUTO_PROVIDER_ALIASES.get(provider, (provider,)))
@@ -295,7 +295,7 @@ def _make_auto_document_tag(
     confidence: float,
     source: str,
 ) -> AutoDocumentTag | None:
-    value_s = str(value or "").strip()
+    value_s = value.strip()
     if not value_s:
         return None
     allowed = {"topic", "category", "domain", "industry", "doc_type", "sensitivity", "quality", "keyword"}
@@ -347,7 +347,7 @@ def _normalize_span_annotations(
 ) -> list[AutoAnnotationItem]:
     annotations: list[AutoAnnotationItem] = []
     for raw in raw_annotations:
-        quote = str(raw.text or "").strip()
+        quote = raw.text.strip()
         if not quote:
             continue
         for start, end in _find_keyword_offsets(text, quote, limit=1):
@@ -510,7 +510,7 @@ def _collect_entity_annotations(text: str, *, max_items: int) -> list[AutoAnnota
     out: list[AutoAnnotationItem] = []
     for pattern in (_ZH_ENTITY_RE, _EN_ENTITY_RE):
         for match in pattern.finditer(text):
-            raw = match.group(0) or ""
+            raw = match.group(0)
             trimmed, offset = _trim_entity_span(raw)
             if len(trimmed) < 2:
                 continue
@@ -594,7 +594,7 @@ def _append_focus_sentence_candidate(
     blocked: list[AutoAnnotationItem],
 ) -> None:
     for match in _FOCUS_SENTENCE_RE.finditer(text):
-        sentence = (match.group(0) or "").strip()
+        sentence = (match.group(0)).strip()
         if not sentence or not _focus_sentence_has_signal(sentence):
             continue
         start, end = _trim_match_span(text, match.start(), match.end())
@@ -1000,7 +1000,7 @@ def _parsed_content_by_doc_id(
         )
         .all()
     )
-    return {doc_id: (str(original or ""), str(cleaned or "")) for doc_id, original, cleaned in rows}
+    return {doc_id: (original, cleaned) for doc_id, original, cleaned in rows}
 
 
 def _select_common_line_text(original: str, cleaned: str, *, use_original: bool) -> str:

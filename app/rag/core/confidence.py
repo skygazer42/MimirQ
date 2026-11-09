@@ -27,7 +27,7 @@ def _resolve_gap_score(evidence_gap: dict[str, Any] | None) -> tuple[float, str]
     if not isinstance(evidence_gap, dict):
         return 0.9, "unavailable"
 
-    severity = str(evidence_gap.get("severity") or "").strip().lower()
+    severity = evidence_gap["severity"].strip().lower()
     has_gap = bool(evidence_gap.get("has_gap"))
     if not has_gap or severity in {"", "none"}:
         return 0.9, "none"

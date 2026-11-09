@@ -47,7 +47,7 @@ class SeparatorChunker(BaseChunker):
         chunks: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             if not text.strip():
                 continue
 

@@ -103,7 +103,7 @@ def _parse_en_heading(line: str) -> tuple[str, int, str] | None:
     Parse book-ish headings without regex to avoid backtracking hotspots.
     Returns (kind, level, number).
     """
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return None
     low = s.lower()
@@ -316,7 +316,7 @@ class BookStructuredChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

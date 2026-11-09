@@ -34,7 +34,9 @@ class _EmbeddingSummary(TypedDict):
 def _normalize_ids(values: Any) -> list[str]:
     out: list[str] = []
     for value in values or []:
-        item = str(value or "").strip()
+        if value is None:
+            continue
+        item = str(value).strip()
         if item and item not in out:
             out.append(item)
     return out
@@ -99,7 +101,7 @@ def rank_corpus_by_cosine(
 ) -> list[str]:
     scored: list[tuple[str, float]] = []
     for doc_id, embedding in (corpus_embeddings or {}).items():
-        did = str(doc_id or "").strip()
+        did = doc_id.strip()
         if not did:
             continue
         scored.append((did, _cosine(list(query_embedding or []), list(embedding or []))))
@@ -141,12 +143,12 @@ def run_embedding_benchmark(
     top_k_eff = max(1, int(top_k or 1))
     normalized_cases: list[_EmbeddingCase] = [
         {
-            "query_id": str((case or {}).get("query_id") or "").strip(),
-            "query": str((case or {}).get("query") or ""),
+            "query_id": str(case["query_id"]).strip(),
+            "query": case["query"],
             "expected_document_ids": _normalize_ids((case or {}).get("expected_document_ids")),
         }
         for case in cases or []
-        if str((case or {}).get("query_id") or "").strip()
+        if case is not None and case.get("query_id") is not None and str(case["query_id"]).strip()
     ]
 
     model_rows: list[dict[str, Any]] = []
@@ -208,9 +210,9 @@ def run_embedding_benchmark(
 
     return {
         "schema": EMBEDDING_BENCHMARK_SCHEMA,
-        "benchmark_name": str(benchmark_name or "").strip(),
+        "benchmark_name": benchmark_name.strip(),
         "top_k": top_k_eff,
-        "best_model_id": str((best or {}).get("model_id") or ""),
+        "best_model_id": best["model_id"] if best is not None else None,
         "models": model_rows,
     }
 

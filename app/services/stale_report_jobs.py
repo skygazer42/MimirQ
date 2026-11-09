@@ -33,7 +33,9 @@ def _dt_to_json(value: datetime) -> str:
 
 
 def _parse_datetime_best_effort(raw: object) -> datetime | None:
-    value = str(raw or "").strip()
+    if raw is None:
+        return None
+    value = str(raw).strip()
     if not value:
         return None
 
@@ -121,12 +123,12 @@ def _list_connector_document_rows(
     for r in rows:
         out.append(
             {
-                "connector_id": str(r.connector_id or ""),
+                "connector_id": str(r.connector_id),
                 "run_dataset_id": r.run_dataset_id,
                 "document_id": r.document_id,
                 "linked_at": r.linked_at,
                 "document_dataset_id": r.document_dataset_id,
-                "status": str(r.status or ""),
+                "status": r.status,
                 "created_at": r.created_at,
                 "updated_at": r.updated_at,
                 "processed_at": r.processed_at,
@@ -233,7 +235,8 @@ def _summarize_stale_rows(
         scanned += 1
 
         meta = row["doc_metadata"]
-        src_kind = str(meta.get("source_last_modified_source") or "").strip() or "unknown"
+        source_kind = meta.get("source_last_modified_source")
+        src_kind = "unknown" if source_kind is None else str(source_kind).strip() or "unknown"
         by_source_kind[src_kind] += 1
 
         eff_dt, reason = _effective_timestamp_and_reason(row=row, now=now)

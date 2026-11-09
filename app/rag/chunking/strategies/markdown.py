@@ -30,7 +30,7 @@ def _find_chunk_position(text: str, chunk_text: str, *, search_pos: int) -> tupl
 
 
 def _is_list_item_start(pattern: re.Pattern[str], line: str) -> bool:
-    return bool(pattern.match(line or ""))
+    return bool(pattern.match(line))
 
 
 def _is_list_continuation(line: str) -> bool:
@@ -210,7 +210,7 @@ class MarkdownHeaderChunker(BaseChunker):
         return max(end_pos - self.chunk_overlap, start_pos + 1)
 
     def _split_markdown_document(self, doc: Document, all_chunks: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
         if not self._is_markdown(text):
@@ -274,7 +274,7 @@ class MarkdownHeaderChunker(BaseChunker):
 
     def _fallback_split(self, doc: Document) -> list[Document]:
         """Split document using fallback splitter."""
-        text = doc.page_content or ""
+        text = doc.page_content
         original_metadata = dict(doc.metadata or {})
 
         chunks = self._fallback_splitter.split_text(text)
@@ -370,7 +370,7 @@ class MarkdownAwareChunker(BaseChunker):
         all_chunks: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             original_metadata = dict(doc.metadata or {})
 
             if not text.strip():
@@ -393,7 +393,7 @@ class MarkdownAwareChunker(BaseChunker):
                 # Calculate positions
                 pos = text.find(restored_text, max(0, search_pos))
                 if pos < 0:
-                    probe = (restored_text or "").strip()
+                    probe = (restored_text).strip()
                     if probe:
                         probe = probe[: min(120, len(probe))]
                         pos = text.find(probe, max(0, search_pos))
@@ -467,7 +467,7 @@ class MarkdownAwareChunker(BaseChunker):
         if not self.preserve_lists:
             return text, {}
 
-        lines = (text or "").splitlines(keepends=True)
+        lines = (text).splitlines(keepends=True)
         if not lines:
             return text, {}
 

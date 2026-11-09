@@ -68,7 +68,7 @@ class PromptCacheChatOpenAI(ChatOpenAI):
         super().__init__(*args, **kwargs)
         self._anthropic_compatible = detect_anthropic_compatible(
             model_name=self.model_name,
-            base_url=str(base_url or ""),
+            base_url=base_url,
         )
 
     def get_last_payload_meta(self) -> dict[str, Any]:
@@ -363,7 +363,7 @@ def build_chat_model_from_config(
     fallbacks: list[BaseChatModel] = []
     seen_models = {model_name} if model_name else set()
     for spec in _resolve_fallback_specs(base_config=cfg):
-        fallback_model_name = str(spec.get("model") or "").strip()
+        fallback_model_name = spec["model"].strip()
         if not fallback_model_name or fallback_model_name in seen_models:
             continue
         fallback_kwargs = dict(common_kwargs)

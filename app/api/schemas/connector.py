@@ -67,21 +67,21 @@ class WebCrawlAuthConfig(BaseModel):
             self.password = None
             return self
         if self.type == "cookie":
-            if not (self.cookie or "").strip():
+            if self.cookie is None or not self.cookie.strip():
                 raise ValueError("auth.cookie is required for type=cookie")
             self.token = None
             self.username = None
             self.password = None
             return self
         if self.type == "bearer":
-            if not (self.token or "").strip():
+            if self.token is None or not self.token.strip():
                 raise ValueError("auth.token is required for type=bearer")
             self.cookie = None
             self.username = None
             self.password = None
             return self
         if self.type == "basic":
-            if not (self.username or "").strip() or not (self.password or "").strip():
+            if self.username is None or self.password is None or not self.username.strip() or not self.password.strip():
                 raise ValueError("auth.username/password are required for type=basic")
             self.cookie = None
             self.token = None
@@ -341,8 +341,8 @@ class ConfluenceSpaceConnectorConfig(BaseModel):
         if not self.base_url:
             raise ValueError("base_url is required")
         parsed = urlparse(self.base_url)
-        scheme = (parsed.scheme or "").lower().strip()
-        if scheme not in {"http", "https"} or not (parsed.netloc or "").strip():
+        scheme = (parsed.scheme).lower().strip()
+        if scheme not in {"http", "https"} or not (parsed.netloc).strip():
             raise ValueError("base_url must be an absolute URL with scheme http or https")
         if not self.space_key:
             raise ValueError("space_key is required")
@@ -440,8 +440,8 @@ class JiraProjectConnectorConfig(BaseModel):
         if not self.base_url:
             raise ValueError("base_url is required")
         parsed = urlparse(self.base_url)
-        scheme = (parsed.scheme or "").lower().strip()
-        if scheme not in {"http", "https"} or not (parsed.netloc or "").strip():
+        scheme = (parsed.scheme).lower().strip()
+        if scheme not in {"http", "https"} or not (parsed.netloc).strip():
             raise ValueError("base_url must be an absolute URL with scheme http or https")
         if not self.project_key:
             raise ValueError("project_key is required")

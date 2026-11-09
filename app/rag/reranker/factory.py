@@ -51,7 +51,7 @@ def _api_cache_key(
 
 
 def _local_cache_key(provider: str, parts: list[str]) -> str:
-    payload = "|".join([str(provider or "").lower().strip()] + [str(p or "") for p in (parts or [])])
+    payload = "|".join([provider.lower().strip()] + [p for p in (parts or [])])
     digest = hashlib.sha256(payload.encode("utf-8", errors="ignore")).hexdigest()[:16]
     return f"{provider}:{digest}"
 
@@ -179,7 +179,7 @@ def _build_weighted_reranker(_requested_provider: str, **kwargs: Any) -> BaseRer
     if not weights:
         raise ValueError("WeightedReranker requires 'weights' parameter")
 
-    tenant_id = kwargs.get("tenant_id", "")
+    tenant_id = kwargs["tenant_id"]
     embedding_fn = kwargs.get("embedding_fn")
     return weighted_reranker_cls(
         tenant_id=tenant_id,

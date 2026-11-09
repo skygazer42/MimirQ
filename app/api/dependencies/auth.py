@@ -46,15 +46,16 @@ async def get_current_account_id_from_headers(
     x_tenant_id,
     request,
 ):
-    """Authenticate JWT or explicit development headers, including asset requests."""
+    # 开发模式：直接用 Header
     if settings.AUTH_MODE == "header":
-        user_id = x_user_id.strip() if x_user_id else ""
+        user_id = x_user_id.strip() if x_user_id is not None else None
         if not user_id:
             raise HTTPException(status_code=401, detail="X-User-ID header required")
         request.state.user_id = user_id
         set_request_user_id(user_id)
         return user_id
 
+    # JWT 模式
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
     token = authorization.strip()
@@ -79,14 +80,19 @@ async def get_current_account_id_from_headers(
         if header_tenant_id != identity.tenant_id:
             raise HTTPException(status_code=401, detail=INVALID_TOKEN_DETAIL)
 
+    # 写入请求上下文
     request.state.user_id = identity.user_id
     set_request_user_id(identity.user_id)
+
     if identity.tenant_id:
-        set_request_tenant_id(str(identity.tenant_id))
         request.state.tenant_id = identity.tenant_id
+        set_request_tenant_id(str(identity.tenant_id))
 
     optional_db_work_enabled = settings.JWT_GROUPS_SYNC_ENABLED or settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED
     if identity.tenant_id and optional_db_work_enabled:
+        user_agent = request.headers.get("User-Agent")
+        if user_agent is not None:
+            user_agent = user_agent.strip()
         await asyncio.to_thread(
             sync_jwt_memberships,
             tenant_id=identity.tenant_id,
@@ -94,7 +100,7 @@ async def get_current_account_id_from_headers(
             payload=payload,
             request_id=get_request_context()["request_id"],
             ip=request.client.host.strip() if request.client else None,
-            user_agent=request.headers.get("User-Agent", "").strip(),
+            user_agent=user_agent,
         )
     return identity.user_id
 

@@ -34,8 +34,8 @@ def _extract_attr(tag_text: str, key: str) -> str | None:
     if not tag_text:
         return None
     for m in _ATTR_RE.finditer(tag_text[:800]):
-        if (m.group("key") or "").strip() == key:
-            val = (m.group("val") or "").strip()
+        if (m.group("key")).strip() == key:
+            val = (m.group("val")).strip()
             return val[:200] or None
     return None
 
@@ -46,7 +46,7 @@ def _build_testcase_blocks(text: str) -> list[_CaseBlock]:
     blocks: list[_CaseBlock] = []
     for m in _TESTCASE_ANY_RE.finditer(text):
         start = m.start()
-        tag = m.group(0) or ""
+        tag = m.group(0)
         if tag.rstrip().endswith("/>"):
             end = m.end()
         else:
@@ -133,7 +133,7 @@ class JUnitXMLChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

@@ -78,7 +78,9 @@ def _normalize_allow_account_ids(raw: object) -> list[str]:
         raise ValueError("allow_account_ids must be a list")
     out: list[str] = []
     for item in raw:
-        v = str(item or "").strip()
+        if item is None:
+            continue
+        v = str(item).strip()
         if not v:
             continue
         if len(v) > 255:
@@ -130,14 +132,14 @@ def _coerce_rule(rule: FlsRule | Mapping[str, Any] | object, *, index: int) -> F
 
 
 def _normalize_fls_rule(rule: FlsRule, *, index: int, seen_ids: set[str]) -> FlsRule:
-    rid = (rule.id or "").strip()
+    rid = rule.id.strip()
     if not RULE_ID_RE.match(rid):
         raise ValueError(f"invalid rule.id format at index={index}")
     if rid in seen_ids:
         raise ValueError(f"duplicate rule.id: {rid}")
     seen_ids.add(rid)
 
-    name = (rule.name or "").strip()
+    name = rule.name.strip()
     if not name:
         raise ValueError(f"rule.name is required at index={index}")
 
@@ -163,7 +165,7 @@ def _normalize_fls_rule(rule: FlsRule, *, index: int, seen_ids: set[str]) -> Fls
 
 
 def validate_and_normalize_fls_policy(policy: FlsPolicy) -> FlsPolicy:
-    if (policy.version or "").strip() not in {"1"}:
+    if policy.version.strip() not in {"1"}:
         raise ValueError("unsupported FLS policy version")
 
     rules_in = policy.rules or []
@@ -207,7 +209,9 @@ class FlsUserContext:
 def _is_allowed(rule: FlsRule, ctx: FlsUserContext) -> bool:
     if ctx.account_id and ctx.account_id in (rule.allow_account_ids or []):
         return True
-    role = (ctx.role or "").strip().lower()
+    role = ctx.role
+    if role is not None:
+        role = role.strip().lower()
     if role and role in (rule.allow_roles or []):
         return True
     return False
@@ -223,18 +227,18 @@ def resolve_fls_mask_for_column(
 ) -> str | None:
     if policy is None or not policy.rules:
         return None
-    src = str(source or "").strip().lower()
+    src = source.strip().lower()
     if not src:
         return None
 
-    name = str(column_name or "")
+    name = column_name
     for rule in policy.rules:
         if not rule.enabled:
             continue
         sources = rule.sources or []
         if src not in sources:
             continue
-        pat = (rule.column_name_regex or "").strip()
+        pat = rule.column_name_regex.strip()
         if not pat:
             continue
         try:
@@ -246,7 +250,9 @@ def resolve_fls_mask_for_column(
         if _is_allowed(rule, ctx):
             return None
 
-        mask = (rule.mask or "").strip()
+        mask = rule.mask
+        if mask is not None:
+            mask = mask.strip()
         return mask or default_mask
     return None
 
@@ -261,7 +267,7 @@ def build_fls_column_mask_map(
 ) -> dict[str, str]:
     out: dict[str, str] = {}
     for col in columns or []:
-        name = str(col or "")
+        name = col
         if not name:
             continue
         mask = resolve_fls_mask_for_column(policy, source=source, column_name=name, ctx=ctx, default_mask=default_mask)

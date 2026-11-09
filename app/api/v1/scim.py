@@ -65,9 +65,11 @@ _REMOVE_MEMBER_FILTER_RE = re.compile(r'members\[\s*value\s+eq\s+"([^"]+)"\s*\]'
 
 def get_scim_tenant_id(request: Request, x_tenant_id: str | None = Header(default=None)) -> UUID:
     tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
-    raw_tenant = (x_tenant_id or "").strip()
+    raw_tenant = x_tenant_id.strip() if x_tenant_id is not None else None
     if not raw_tenant and tenant_header.lower() != "x-tenant-id":
-        raw_tenant = (request.headers.get(tenant_header) or "").strip()
+        raw_tenant = request.headers.get(tenant_header)
+        if raw_tenant is not None:
+            raw_tenant = raw_tenant.strip()
     if not raw_tenant:
         raise HTTPException(status_code=400, detail=f"{tenant_header} header required")
 
@@ -104,9 +106,9 @@ def _scim_error(*, status_code: int, detail: str, scim_type: str | None = None) 
     return _scim_json(out, status_code=status_code)
 
 
-def _hash_pii(value: str | None) -> str:
+def _hash_pii(value: str) -> str:
     """Stable short hash for potentially sensitive identifiers."""
-    raw = (value or "").strip().encode("utf-8", "ignore")
+    raw = value.strip().encode("utf-8", "ignore")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
@@ -129,7 +131,7 @@ def _token_matches(provided_token: str, expected_token: str) -> bool:
 
 
 def _extract_client_ip(request: Request) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
-    candidate = request.client.host if request.client else ""
+    candidate = request.client.host if request.client else None
     if not candidate:
         return None
     try:
@@ -178,11 +180,9 @@ def _require_scim_actor(request: Request, authorization: Annotated[str | None, H
         if not networks or not any(client_ip in net for net in networks):
             raise HTTPException(status_code=403, detail="Forbidden")
 
-    auth = (authorization or "").strip()
-    if not auth:
+    if authorization is None or not authorization.strip():
         raise HTTPException(status_code=401, detail="Unauthorized")
-
-    token = auth
+    token = authorization.strip()
     if token.lower().startswith("bearer "):
         token = token[7:].strip()
     else:
@@ -197,9 +197,8 @@ def _require_scim_actor(request: Request, authorization: Annotated[str | None, H
 def _scim_page(*, start_index: int, count: int) -> tuple[int, int, int]:
     start = max(1, start_index)
     page_size = max(1, count or 200)
-    max_page_size = settings.SCIM_PAGE_SIZE_MAX or 200
-    if max_page_size > 0:
-        page_size = min(page_size, max_page_size)
+    max_page_size = settings.SCIM_PAGE_SIZE_MAX
+    page_size = min(page_size, max_page_size)
     skip = start - 1
     return skip, page_size, start
 
@@ -217,7 +216,7 @@ def _list_response(
 
 
 def _scim_user(member: TenantMember) -> dict[str, Any]:
-    uid = (member.user_id or "").strip()
+    uid = member.user_id.strip()
     return {
         "schemas": [_URN_USER],
         "id": uid,
@@ -434,9 +433,10 @@ def create_group(
     if not isinstance(payload, dict):
         return _scim_error(status_code=400, detail=_INVALID_SCIM_PAYLOAD_DETAIL, scim_type="invalidSyntax")
 
-    display_name = str(payload.get("displayName") or "").strip()
-    if not display_name:
+    display_name = payload.get("displayName")
+    if not isinstance(display_name, str) or not display_name.strip():
         return _scim_error(status_code=400, detail="displayName is required", scim_type="invalidValue")
+    display_name = display_name.strip()
     if len(display_name) > 255:
         return _scim_error(status_code=400, detail="displayName too long (max=255)", scim_type="invalidValue")
 
@@ -498,9 +498,10 @@ def put_group(
     if not isinstance(payload, dict):
         return _scim_error(status_code=400, detail=_INVALID_SCIM_PAYLOAD_DETAIL, scim_type="invalidSyntax")
 
-    display_name = str(payload.get("displayName") or "").strip()
-    if not display_name:
+    display_name = payload.get("displayName")
+    if not isinstance(display_name, str) or not display_name.strip():
         return _scim_error(status_code=400, detail="displayName is required", scim_type="invalidValue")
+    display_name = display_name.strip()
     if len(display_name) > 255:
         return _scim_error(status_code=400, detail="displayName too long (max=255)", scim_type="invalidValue")
 
@@ -508,7 +509,12 @@ def put_group(
     external_id_arg: str | None = None
     external_id_hash: str | None = None
     if "externalId" in payload:
-        raw_ext = str(payload.get("externalId") or "").strip()
+        raw_ext = payload.get("externalId")
+        if raw_ext is None:
+            raw_ext = ""
+        if not isinstance(raw_ext, str):
+            return _scim_error(status_code=400, detail="externalId must be a string", scim_type="invalidValue")
+        raw_ext = raw_ext.strip()
         if len(raw_ext) > 255:
             return _scim_error(status_code=400, detail="externalId too long (max=255)", scim_type="invalidValue")
         external_id_arg = raw_ext  # may be "" to clear
@@ -715,9 +721,10 @@ def create_user(
     if not isinstance(payload, dict):
         return _scim_error(status_code=400, detail=_INVALID_SCIM_PAYLOAD_DETAIL, scim_type="invalidSyntax")
 
-    user_name = str(payload.get("userName") or "").strip()
-    if not user_name:
+    user_name = payload.get("userName")
+    if not isinstance(user_name, str) or not user_name.strip():
         return _scim_error(status_code=400, detail="userName is required", scim_type="invalidValue")
+    user_name = user_name.strip()
     if len(user_name) > 255:
         return _scim_error(status_code=400, detail="userName too long (max=255)", scim_type="invalidValue")
 
@@ -773,8 +780,13 @@ def _extract_active_patch(ops: object) -> bool | None:
     for raw in ops:
         if not isinstance(raw, dict):
             continue
-        op = str(raw.get("op") or "").strip().lower()
-        path = str(raw.get("path") or "").strip().lower()
+        op = raw.get("op")
+        path = raw.get("path")
+        if not isinstance(op, str) or (path is not None and not isinstance(path, str)):
+            continue
+        op = op.strip().lower()
+        if path is not None:
+            path = path.strip().lower()
         value = raw.get("value")
 
         # Common pattern: {"op":"Replace","path":"active","value":false}
@@ -810,7 +822,11 @@ def patch_user(
         return _scim_error(status_code=404, detail="User not found")
 
     schemas = payload.get("schemas") if isinstance(payload, dict) else None
-    if not isinstance(schemas, list) or _URN_PATCH_OP not in {str(s or "") for s in schemas}:
+    if (
+        not isinstance(schemas, list)
+        or any(not isinstance(schema, str) for schema in schemas)
+        or _URN_PATCH_OP not in schemas
+    ):
         return _scim_error(status_code=400, detail="Invalid SCIM PATCH payload", scim_type="invalidSyntax")
 
     ops = payload.get("Operations") if isinstance(payload, dict) else None
@@ -874,7 +890,10 @@ def _extract_member_ids(raw: object) -> list[str]:
     for item in values:
         if not isinstance(item, dict):
             continue
-        uid = str(item.get("value") or "").strip()
+        uid = item.get("value")
+        if not isinstance(uid, str):
+            continue
+        uid = uid.strip()
         if not uid or uid in seen:
             continue
         seen.add(uid)
@@ -890,15 +909,20 @@ def _membership_patch_targets(ops: list[Any]) -> tuple[list[str], list[str]]:
     for op in ops:
         if not isinstance(op, dict):
             continue
-        op_name = str(op.get("op") or "").strip().lower()
-        path = str(op.get("path") or "").strip()
+        op_name = op.get("op")
+        path = op.get("path")
+        if not isinstance(op_name, str) or (path is not None and not isinstance(path, str)):
+            continue
+        op_name = op_name.strip().lower()
+        if path is not None:
+            path = path.strip()
         value = op.get("value")
 
         if op_name in {"add", "replace"} and (not path or path.lower().startswith("members")):
             to_add.extend(_extract_member_ids(value))
             continue
 
-        if op_name == "remove" and path.lower().startswith("members"):
+        if op_name == "remove" and path is not None and path.lower().startswith("members"):
             extracted = _extract_member_ids(value)
             if extracted:
                 to_remove.extend(extracted)
@@ -931,7 +955,11 @@ def patch_group_membership(
         return _scim_error(status_code=404, detail="PATCH group membership not enabled")
 
     schemas = payload.get("schemas") if isinstance(payload, dict) else None
-    if not isinstance(schemas, list) or _URN_PATCH_OP not in {str(s or "") for s in schemas}:
+    if (
+        not isinstance(schemas, list)
+        or any(not isinstance(schema, str) for schema in schemas)
+        or _URN_PATCH_OP not in schemas
+    ):
         return _scim_error(status_code=400, detail="Invalid SCIM PATCH payload", scim_type="invalidSyntax")
 
     ops = payload.get("Operations") if isinstance(payload, dict) else None

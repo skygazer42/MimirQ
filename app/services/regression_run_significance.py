@@ -33,8 +33,9 @@ def _deterministic_bootstrap_index(metric_key: str, iteration: int, offset: int,
     return int.from_bytes(digest[:8], "big") % size
 
 
-def _case_id(item: Any) -> str:
-    return str(_get_value(item, "case_id") or "").strip()
+def _case_id(item: Any) -> str | None:
+    value = _get_value(item, "case_id")
+    return str(value).strip() if value is not None else None
 
 
 def _infer_metric_keys(base_items: Iterable[Any], target_items: Iterable[Any]) -> list[str]:
@@ -279,10 +280,13 @@ def compare_regression_items(
         target_item = target_by_case[case_id]
         metric_diffs, deltas = _metric_diffs_for_case(keys=keys, base_item=base_item, target_item=target_item)
         mean_delta = _mean(deltas)
+        question = _get_value(target_item, "question")
+        if question is None:
+            question = _get_value(base_item, "question")
         case_diffs.append(
             {
                 "case_id": case_id,
-                "question": str(_get_value(target_item, "question") or _get_value(base_item, "question") or ""),
+                "question": question,
                 "metric_diffs": metric_diffs,
                 "mean_delta": mean_delta,
                 "label": _case_diff_label(mean_delta),

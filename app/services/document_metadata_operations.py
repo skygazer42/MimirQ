@@ -74,7 +74,7 @@ def patch_pipeline(
     account_id: str,
 ) -> DBDocument:
     document = _get_writable_document(db=db, document_id=document_id, tenant_id=tenant_id, account_id=account_id)
-    status = (document.status or "").lower()
+    status = (document.status).lower()
     if status == "processing" or (status == "pending" and not is_reprocessable_pending_document(document)):
         raise HTTPException(status_code=409, detail=f"Cannot edit pipeline for a {status} document")
 

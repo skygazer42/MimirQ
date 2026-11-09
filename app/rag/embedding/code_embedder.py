@@ -3,7 +3,7 @@ import hashlib
 
 def embed_code_snippet(code: str, *, dimension: int = 256) -> list[float]:
     dim = max(1, int(dimension or 1))
-    digest = hashlib.sha256(str(code or "").encode("utf-8", "ignore")).digest()
+    digest = hashlib.sha256(code.encode("utf-8", "ignore")).digest()
     out: list[float] = []
     while len(out) < dim:
         for byte in digest:

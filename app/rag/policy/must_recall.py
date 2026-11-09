@@ -16,7 +16,9 @@ def normalize_source_keys(raw: Any) -> list[str]:
         values = []
 
     for v in values:
-        s = str(v or "").strip()
+        if v is None:
+            continue
+        s = str(v).strip()
         if not s:
             continue
         key = s.casefold()

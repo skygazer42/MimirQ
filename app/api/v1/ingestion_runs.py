@@ -113,7 +113,7 @@ def _run_out(run: DBIngestionRun) -> IngestionRunOut:
         docs.append(
             IngestionRunDocumentOut(
                 document_id=d.document_id,
-                status=str(d.status or ""),
+                status=d.status,
                 source_ref=d.source_ref,
                 created_at=d.created_at,
             )
@@ -123,9 +123,9 @@ def _run_out(run: DBIngestionRun) -> IngestionRunOut:
         id=run.id,
         tenant_id=run.tenant_id,
         dataset_id=run.dataset_id,
-        kind=str(run.kind or ""),
+        kind=run.kind,
         requested_by=run.requested_by,
-        status=str(run.status or ""),
+        status=run.status,
         config=dict(run.config or {}),
         stats=dict(run.stats or {}),
         error_message=run.error_message,
@@ -274,18 +274,18 @@ def list_ingestion_runs(
         ds = dataset_service.get_dataset(db, tenant_id, dataset_id)
         dataset_service.assert_dataset_writable(db, ds, account_id)
         q = q.filter(DBIngestionRun.dataset_id == dataset_id)
-    elif str(member.role or "").lower() not in EDIT_ROLES:
+    elif member.role.lower() not in EDIT_ROLES:
         return IngestionRunListResponse(total=0, items=[])
     else:
         q = q.filter(
             DBIngestionRun.dataset_id.in_(_writable_dataset_ids_subquery(tenant_id=tenant_id, account_id=account_id))
         )
 
-    status_norm = str(status or "").strip().lower()
+    status_norm = status.strip().lower() if status is not None else None
     if status_norm:
         q = q.filter(DBIngestionRun.status == status_norm)
 
-    kind_norm = str(kind or "").strip()
+    kind_norm = kind.strip() if kind is not None else None
     if kind_norm:
         q = q.filter(DBIngestionRun.kind == kind_norm)
 
@@ -348,8 +348,8 @@ def export_ingestion_run_json(
         run_id=run_id,
         details={
             "dataset_id": str(run.dataset_id) if run.dataset_id else None,
-            "kind": str(run.kind or ""),
-            "status": str(run.status or ""),
+            "kind": run.kind,
+            "status": run.status,
             "documents": len(run.documents or []),
         },
     )
@@ -387,8 +387,8 @@ def export_ingestion_run_html(
         run_id=run_id,
         details={
             "dataset_id": str(run.dataset_id) if run.dataset_id else None,
-            "kind": str(run.kind or ""),
-            "status": str(run.status or ""),
+            "kind": run.kind,
+            "status": run.status,
             "documents": len(run.documents or []),
         },
     )
@@ -398,7 +398,7 @@ def export_ingestion_run_html(
     html = render_dataset_report_html(
         title=title,
         dataset_name=str(payload.get("kind") or "ingestion_run"),
-        dataset_id=str(payload.get("id") or ""),
+        dataset_id=str(payload["id"]),
         generated_at=payload.get("created_at"),
         report=payload,
         redact=False,
@@ -486,7 +486,7 @@ def replay_ingestion_run(
         dataset_id=base.dataset_id,
         requested_by=account_id,
         kind="replay",
-        config={"replay_of": str(base.id), "base_kind": str(base.kind or "")},
+        config={"replay_of": str(base.id), "base_kind": base.kind},
         expected_documents=len(doc_ids),
     )
 

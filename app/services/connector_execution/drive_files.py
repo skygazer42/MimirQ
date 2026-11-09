@@ -23,6 +23,7 @@ from app.services.connector_execution.shared.artifacts import (
     _normalize_connector_string_list,
 )
 from app.services.connector_execution.shared.common import (
+    _optional_source_text,
     _append_connector_error,
     _connector_config_id_from_run,
     _connector_run_completion_status,
@@ -82,22 +83,22 @@ async def _discover_drive_sources(
     client: httpx.AsyncClient,
     *,
     settings_map: dict[str, Any],
-) -> list[tuple[str, str, str, str]]:
-    discovered_sources: list[tuple[str, str, str, str]] = []
+) -> list[tuple[str, str, str | None, str]]:
+    discovered_sources: list[tuple[str, str, str | None, str]] = []
     for source_url in settings_map.get("urls") or []:
-        file_id_raw = _extract_drive_file_id(str(source_url or ""))
-        file_id = str(file_id_raw or "").strip()
+        file_id_raw = _extract_drive_file_id(source_url)
+        file_id = _optional_source_text(file_id_raw)
         source_ref = _drive_source_ref(
             file_id=file_id_raw,
-            source_url=str(source_url or ""),
+            source_url=source_url,
         )
         source_token = await _drive_fetch_file_sync_token(
             client=client,
             file_id=file_id,
-            source_url=str(source_url or ""),
+            source_url=source_url,
             headers=dict(settings_map.get("auth_headers") or {}),
         )
-        discovered_sources.append((str(source_url or ""), source_ref, file_id, source_token))
+        discovered_sources.append((source_url, source_ref, file_id, source_token))
     return discovered_sources
 
 
@@ -181,7 +182,7 @@ def _initialize_drive_files_run_stats(
 def _drive_files_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
     with contextlib.suppress(Exception):
         db.refresh(run)
-    return str(run.status or "").lower() == "cancelled"
+    return run.status.lower() == "cancelled"
 
 
 async def _resolve_drive_source_acl(

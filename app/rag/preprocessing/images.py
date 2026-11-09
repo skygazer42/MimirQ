@@ -72,8 +72,8 @@ def _replace_markdown_image(
         removed[0] += 1
         return ""
 
-    alt = (match.group("alt") or "").strip()
-    url = (match.group(url_group) or "").strip()
+    alt = (match.group("alt")).strip()
+    url = (match.group(url_group)).strip()
     if _is_decorative_image(alt=alt, url=url):
         removed[0] += 1
         return ""
@@ -85,9 +85,9 @@ def _replace_html_image(match: re.Match[str], *, mode: ImageRemoveMode, removed:
         removed[0] += 1
         return ""
 
-    tag = match.group(0) or ""
+    tag = match.group(0)
     attrs = {
-        (m.group("key") or "").strip().lower(): (m.group("val") or "").strip() for m in _HTML_ATTR_RE.finditer(tag)
+        (m.group("key")).strip().lower(): (m.group("val")).strip() for m in _HTML_ATTR_RE.finditer(tag)
     }
     if _is_decorative_image(alt=attrs.get("alt", ""), url=attrs.get("src", "")):
         removed[0] += 1
@@ -108,7 +108,7 @@ def _strip_image_line(line: str, *, mode: ImageRemoveMode, removed: list[int]) -
 
 
 def strip_images(text: str, *, mode: ImageRemoveMode) -> ImageStripResult:
-    original = text or ""
+    original = text
     if not original or mode == "none":
         return ImageStripResult(text=original, removed=0, changed=False)
 

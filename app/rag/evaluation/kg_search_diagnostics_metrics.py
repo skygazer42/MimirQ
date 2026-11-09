@@ -46,7 +46,10 @@ def compute_kg_hit_metrics(*, events: list[dict[str, Any]], evidence_chunk_ids: 
     for idx, ev in enumerate((events or [])[:kk], 1):
         if not isinstance(ev, dict):
             continue
-        cid = str(ev.get("chunk_id") or "").strip()
+        raw_id = ev.get("chunk_id")
+        if raw_id is None:
+            continue
+        cid = str(raw_id).strip()
         if not cid:
             continue
         if cid not in ev_set:

@@ -36,8 +36,8 @@ def _candidate_lines(candidates: Sequence[RelationCandidate]) -> list[str]:
         rid = str(candidate.rid).strip()
         subj = str(candidate.subject_id).strip()
         obj = str(candidate.object_id).strip()
-        pred = str(candidate.predicate or "").strip() or "unknown"
-        evq = str(candidate.evidence_quote or "").strip()
+        pred = candidate.predicate.strip() or "unknown"
+        evq = candidate.evidence_quote.strip() if candidate.evidence_quote is not None else None
         if not rid or not subj or not obj:
             continue
         if evq:
@@ -71,19 +71,22 @@ def _response_schema() -> dict[str, Any]:
 def _normalize_kept_item(
     item: dict[str, Any], *, valid_rids: set[str], seen: set[str], allowed_predicates: set[str]
 ) -> dict[str, Any] | None:
-    rid = str(item.get("rid") or "").strip()
+    rid = item.get("rid")
+    if not isinstance(rid, str):
+        return None
+    rid = rid.strip()
     if not rid or rid not in valid_rids or rid in seen:
         return None
-    seen.add(rid)
-
-    pred_in = str(item.get("predicate") or "").strip()
-    pred = normalize_predicate(pred_in) if pred_in else ""
-    if not pred:
-        pred = "unknown"
+    pred_in = item.get("predicate")
+    evq = item.get("evidence_quote")
+    if any(value is not None and not isinstance(value, str) for value in (pred_in, evq)):
+        return None
+    pred = normalize_predicate(pred_in) if pred_in is not None else "unknown"
     if allowed_predicates and pred not in allowed_predicates:
         return None
 
-    evq = str(item.get("evidence_quote") or "").strip() or None
+    evq = (evq.strip() or None) if evq is not None else None
+    seen.add(rid)
     return {
         "rid": rid,
         "predicate": pred,
@@ -95,7 +98,7 @@ def _normalize_kept_item(
 class RelationVerifier:
     def __init__(self, llm_client: BaseLLMClient, *, allowed_predicates: Sequence[str] | None = None):
         self.llm_client = llm_client
-        allow = [normalize_predicate(p) for p in (allowed_predicates or []) if str(p or "").strip()]
+        allow = [normalize_predicate(p) for p in (allowed_predicates or []) if p.strip()]
         self.allowed_predicates = set(allow)
 
     async def _verify_candidates_with_llm(
@@ -145,11 +148,11 @@ class RelationVerifier:
         candidates: Sequence[RelationCandidate],
         max_keep: int = 20,
     ) -> dict[str, Any]:
-        clean_text = (text or "").strip()
+        clean_text = (text).strip()
         if not clean_text:
             return {"kept": []}
 
-        cand_list = [c for c in (candidates or []) if str(c.rid or "").strip()]
+        cand_list = [c for c in (candidates or []) if c.rid.strip()]
         if not cand_list:
             return {"kept": []}
 

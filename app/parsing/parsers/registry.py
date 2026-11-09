@@ -62,7 +62,7 @@ def _aliases_for(canonical_name: str, *extra_aliases: str) -> tuple[str, ...]:
     aliases: list[str] = []
 
     def _add(alias: str) -> None:
-        token = str(alias or "").strip().lower()
+        token = alias.strip().lower()
         if token and token not in aliases:
             aliases.append(token)
 
@@ -489,7 +489,7 @@ _BACKEND_BY_ALIAS = {alias: family for family in _BACKEND_FAMILIES for alias in 
 
 
 def get_parser_export(name: str) -> ParserExport | None:
-    normalized = str(name or "").strip()
+    normalized = name.strip()
     if not normalized:
         return None
     return _EXPORT_BY_NAME.get(normalized)

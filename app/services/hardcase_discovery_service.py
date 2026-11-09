@@ -23,7 +23,9 @@ logger = get_logger(__name__)
 
 
 def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
-    s = str(value or "").strip()
+    if value is None:
+        return None
+    s = str(value).strip()
     if not s:
         return None
     lim = max(0, int(max_len or 0))
@@ -116,7 +118,7 @@ def _drop_partial_first_jsonl_line(raw: bytes, *, truncated: bool) -> bytes:
 def _parse_jsonl_dict_records(text: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for raw_line in text.splitlines():
-        line = (raw_line or "").strip()
+        line = raw_line.strip()
         if not line:
             continue
         try:
@@ -164,7 +166,7 @@ def build_rag_trace_index_from_records(
     - Prefer latest record per request_id by ts_ms
     - PII-safe: do not carry question/query text
     """
-    tenant_key = str(tenant_id or "").strip()
+    tenant_key = tenant_id.strip()
     cutoff = _to_int(cutoff_ms, default=0)
 
     best_by_request: dict[str, dict[str, Any]] = {}
@@ -173,9 +175,9 @@ def build_rag_trace_index_from_records(
     for r in records or []:
         if not isinstance(r, Mapping):
             continue
-        if str(r.get("event") or "") != "rag_trace":
+        if r.get('event') != "rag_trace":
             continue
-        if tenant_key and str(r.get("tenant_id") or "") != tenant_key:
+        if tenant_key and r.get('tenant_id') != tenant_key:
             continue
 
         ts_ms = _to_int(r.get("ts_ms"), default=0)
@@ -437,8 +439,8 @@ def build_parse_risk_hardcase_candidate(
 
     dedupe_payload = {
         "reason": "parse_risk_tail",
-        "query_hash": str(query_hash or "").strip(),
-        "mode": str(retrieval_mode or "").strip(),
+        "query_hash": query_hash.strip(),
+        "mode": retrieval_mode.strip(),
         "profile": retrieval_profile,
         "cfg_hash": cfg_hash,
         "parse_risk_level": level,
@@ -446,8 +448,8 @@ def build_parse_risk_hardcase_candidate(
     return {
         "schema": "mimirq.hardcase_candidate.v1",
         "reason": "parse_risk_tail",
-        "query_hash": str(query_hash or "").strip(),
-        "retrieval_mode": str(retrieval_mode or "").strip(),
+        "query_hash": query_hash.strip(),
+        "retrieval_mode": retrieval_mode.strip(),
         "retrieval_profile": (retrieval_profile),
         "retrieval_config_hash": cfg_hash,
         "parse_risk_level": level,

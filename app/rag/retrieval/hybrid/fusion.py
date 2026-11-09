@@ -10,6 +10,7 @@ from typing import Any, TypedDict
 
 from app.core.config import settings
 from app.rag.core.hashing import stable_hash
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.hybrid.common import (
     NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
     _apply_exact_content_bonus_to_result,
@@ -75,12 +76,20 @@ class FusionMixin:
     @staticmethod
     def _resolve_chunk_type(result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
-        raw = str(meta.get("chunk_type") or meta.get("content_type") or meta.get("visual_kind") or "").strip().lower()
+        raw = (
+            _stringified_metadata_text(meta, "chunk_type")
+            or _stringified_metadata_text(meta, "content_type")
+            or _stringified_metadata_text(meta, "visual_kind")
+        )
+        if raw is not None:
+            raw = raw.lower()
         if raw in {"text", "formula", "table", "code", "figure", "chart_data", "seal"}:
             return raw
         if raw == "chart":
             return "figure"
-        role = str(meta.get("chunk_semantic_role") or "").strip().lower()
+        role = _stringified_metadata_text(meta, "chunk_semantic_role")
+        if role is not None:
+            role = role.lower()
         if role == "code":
             return "code"
         if role == "table":
@@ -100,13 +109,18 @@ class FusionMixin:
     def _resolve_field_signal(self, result: dict[str, Any]) -> str:
         meta = result.get("metadata") or {}
         hinted = (
-            str(meta.get("embedding_field_role") or meta.get("embedding_field_kind") or meta.get("field_channel") or "")
-            .strip()
-            .lower()
+            _stringified_metadata_text(meta, "embedding_field_role")
+            or _stringified_metadata_text(meta, "embedding_field_kind")
+            or _stringified_metadata_text(meta, "field_channel")
         )
+        if hinted is not None:
+            hinted = hinted.lower()
         if hinted in {"title", "heading", "body"}:
             return hinted
-        chunk_id = str(result.get("chunk_id") or meta.get("chunk_id") or "").strip().lower()
+        chunk_id = _stringified_metadata_text(result, "chunk_id") or _stringified_metadata_text(meta, "chunk_id")
+        if chunk_id is None:
+            return "body"
+        chunk_id = chunk_id.lower()
         if chunk_id.endswith(":title"):
             return "title"
         if chunk_id.endswith(":heading"):
@@ -396,7 +410,7 @@ class FusionMixin:
             return {}
         budgets: dict[str, int] = {}
         for key, value in raw.items():
-            channel = str(key or "").strip().lower()
+            channel = key.strip().lower()
             if not channel:
                 continue
             try:
@@ -411,7 +425,7 @@ class FusionMixin:
             return {}
         min_scores: dict[str, float] = {}
         for key, value in raw.items():
-            channel = str(key or "").strip().lower()
+            channel = key.strip().lower()
             if not channel:
                 continue
             try:
@@ -427,7 +441,7 @@ class FusionMixin:
         allowed = set(FusionMixin._FUSION_CHANNELS)
         weights: dict[str, float] = {}
         for key, value in raw.items():
-            channel = str(key or "").strip().lower()
+            channel = key.strip().lower()
             if not channel or channel not in allowed:
                 continue
             try:
@@ -882,7 +896,7 @@ class FusionMixin:
             return documents
 
         query_tokens = self._tokenize_lexical_text(query)
-        doc_tokens_list = [self._tokenize_lexical_text(doc.get("content", "")) for doc in documents]
+        doc_tokens_list = [self._tokenize_lexical_text(doc["content"]) for doc in documents]
 
         doc_term_frequencies = [Counter(tokens) for tokens in doc_tokens_list]
         document_frequencies: Counter[str] = Counter()
@@ -917,7 +931,7 @@ class FusionMixin:
         phrase_boost_weight = max(0.0, settings.RETRIEVAL_EXACT_PHRASE_RERANK_BOOST)
         for doc, kw_score in zip(documents, keyword_scores, strict=False):
             vec_score = doc.get("vector_score", doc.get("score", 0.0))
-            phrase = query_phrase_match(query, str(doc.get("content", "") or ""))
+            phrase = query_phrase_match(query, doc["content"])
             phrase_score = float(phrase.get("score", 0.0) or 0.0)
             phrase_boost = phrase_score * phrase_boost_weight
             final_score = vector_weight * float(vec_score) + keyword_weight * float(kw_score) + phrase_boost
@@ -990,7 +1004,7 @@ class FusionMixin:
         selected: list[dict[str, Any]] = []
         candidates = list(documents)
         # Pre-cache tokens to avoid multiple tokenizations
-        tokens_map = {id(doc): self._tokenize_for_similarity(doc.get("content", "")) for doc in candidates}
+        tokens_map = {id(doc): self._tokenize_for_similarity(doc["content"]) for doc in candidates}
 
         while candidates and len(selected) < top_k:
             best = self._best_mmr_candidate(

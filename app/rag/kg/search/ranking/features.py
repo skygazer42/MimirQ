@@ -6,18 +6,15 @@ from app.rag.retrieval.query_phrase_match import query_phrase_match
 
 
 def event_id(event: Any) -> str:
-    return str(getattr(event, "id", "") or "")
+    return str(event.id)
 
 
-def event_document_id(event: Any) -> str:
-    return str(getattr(event, "document_id", "") or "").strip()
+def event_document_id(event: Any) -> str | None:
+    return str(event.document_id) if event.document_id is not None else None
 
 
 def event_search_text(event: Any) -> str:
-    return (
-        f"{getattr(event, 'title', '') or ''} {getattr(event, 'summary', '') or ''} "
-        f"{getattr(event, 'content', '') or ''}"
-    )
+    return " ".join((event.title, event.summary, event.content))
 
 
 def phrase_score(query: str, text: str) -> float:
@@ -57,7 +54,7 @@ def clamped_hop(event_hops: dict[str, int] | None, event_id_value: str) -> int:
 def shared_key_entity_count(entities: list[Any], key_entity_ids: set[str]) -> int:
     shared = 0
     for entity in entities or []:
-        entity_id = str(getattr(entity, "id", "") or "")
+        entity_id = str(entity.id)
         if entity_id and entity_id in key_entity_ids:
             shared += 1
     return max(0, min(shared, 5))

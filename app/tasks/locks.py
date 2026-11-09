@@ -51,7 +51,7 @@ _SEMAPHORE_HEARTBEATS_LOCK = threading.Lock()
 
 
 def task_job_timeout_sec(*, default_sec: int = _DEFAULT_TASK_JOB_TIMEOUT_SEC) -> int:
-    return max(1, settings.TASK_JOB_TIMEOUT_SEC or default_sec)
+    return settings.TASK_JOB_TIMEOUT_SEC
 
 
 def task_job_lock_ttl_sec(*, minimum_sec: int = _TASK_JOB_LOCK_MIN_TTL_SEC) -> int:
@@ -63,7 +63,7 @@ def task_semaphore_lease_ttl_sec(
     default_sec: int = _DEFAULT_TASK_SEMAPHORE_LEASE_TTL_SEC,
     minimum_sec: int = _TASK_SEMAPHORE_LEASE_MIN_TTL_SEC,
 ) -> int:
-    configured = settings.TASK_SEMAPHORE_LEASE_TTL_SEC or default_sec
+    configured = settings.TASK_SEMAPHORE_LEASE_TTL_SEC
     return max(max(1, (minimum_sec or 0)), configured)
 
 
@@ -283,7 +283,7 @@ async def dataset_acquire(
     if limit <= 0:
         return None
 
-    ds = str(dataset_id or "").strip()
+    ds = dataset_id.strip()
     if not ds:
         return None
 

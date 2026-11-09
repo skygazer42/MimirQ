@@ -31,7 +31,9 @@ def _coerce_mapping(value: Any) -> dict[str, Any]:
 
 
 def _safe_str(value: Any, *, max_len: int = 255) -> str | None:
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     return text[: max(1, int(max_len or 1))]
@@ -78,7 +80,9 @@ def _index_messages(
         conversation_id = _safe_str(row.get("conversation_id"))
         if conversation_id is None:
             continue
-        role = str(row.get("role") or "").strip().lower()
+        role = row.get("role")
+        if isinstance(role, str):
+            role = role.strip().lower()
         if role == "assistant":
             assistants_by_conversation.setdefault(conversation_id, []).append(row)
             message_id = _safe_str(row.get("id"))
@@ -214,7 +218,7 @@ def build_dataset_analysis_sources(
         trace = _coerce_mapping(raw_trace)
         request_id = _safe_str(trace.get("request_id"))
         conversation_id = _safe_str(trace.get("conversation_id"))
-        conversation = conversation_by_id.get(conversation_id or "", {})
+        conversation = conversation_by_id.get(conversation_id, {})
         assistant_message, assistant_match = _match_assistant_message(
             request_id=request_id,
             conversation_id=conversation_id,

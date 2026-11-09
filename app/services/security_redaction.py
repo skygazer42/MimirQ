@@ -29,7 +29,7 @@ def redact_sql_literals(sql: str) -> str:
     """
     Mask sensitive SQL literal values while preserving query structure.
     """
-    raw = str(sql or "")
+    raw = sql
     if not raw:
         return ""
     redacted = _SQL_STRING_LITERAL_RE.sub("'<redacted>'", raw)
@@ -47,7 +47,7 @@ def redact_connection_info(config: dict[str, Any], *, enabled: bool) -> dict[str
         return out
 
     for key, value in list(out.items()):
-        lowered = str(key or "").strip().lower()
+        lowered = key.strip().lower()
         if lowered in _CONNECTION_KEYS and value not in (None, ""):
             out[key] = "<redacted_conn>"
             continue

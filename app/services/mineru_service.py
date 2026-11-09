@@ -84,7 +84,7 @@ def _markdown_zip_infos(infos: list[zipfile.ZipInfo]) -> list[zipfile.ZipInfo]:
     for info in infos:
         if info.is_dir():
             continue
-        name = (info.filename or "").replace("\\", "/")
+        name = (info.filename).replace("\\", "/")
         parts = [part.lower() for part in name.split("/") if part]
         if "__macosx" in parts:
             continue
@@ -97,7 +97,7 @@ def _preferred_markdown_info(markdown_infos: list[zipfile.ZipInfo]) -> zipfile.Z
     preferred_names = ["full.md", "output.md", "result.md", "index.md", "readme.md"]
     for preferred_name in preferred_names:
         for info in markdown_infos:
-            base = (info.filename or "").replace("\\", "/").split("/")[-1].lower()
+            base = (info.filename).replace("\\", "/").split("/")[-1].lower()
             if base == preferred_name:
                 return info
 
@@ -105,7 +105,7 @@ def _preferred_markdown_info(markdown_infos: list[zipfile.ZipInfo]) -> zipfile.Z
         return None
 
     def sort_key(info: zipfile.ZipInfo) -> tuple[int, int]:
-        depth = len([part for part in (info.filename or "").replace("\\", "/").split("/") if part])
+        depth = len([part for part in (info.filename).replace("\\", "/").split("/") if part])
         return (depth, -(info.file_size or 0))
 
     return min(markdown_infos, key=sort_key)
@@ -140,7 +140,7 @@ def _preview_image_members(zip_file: zipfile.ZipFile) -> dict[str, str]:
     for info in zip_file.infolist():
         if info.is_dir():
             continue
-        name = (info.filename or "").replace("\\", "/").lstrip("/")
+        name = (info.filename).replace("\\", "/").lstrip("/")
         if not name:
             continue
         parts_lower = [part.lower() for part in name.split("/") if part]
@@ -155,8 +155,8 @@ def _preview_image_members(zip_file: zipfile.ZipFile) -> dict[str, str]:
 
 def _preview_zip_member_for_ref(ref: str, member_by_key: dict[str, str]) -> tuple[str, str] | None:
     parsed_ref = urlparse(ref)
-    scheme = (parsed_ref.scheme or "").lower().strip()
-    if scheme in {"http", "https"} or (parsed_ref.netloc or "").strip():
+    scheme = (parsed_ref.scheme).lower().strip()
+    if scheme in {"http", "https"} or (parsed_ref.netloc).strip():
         return None
     if "/api/v1/documents/image/" in ref or "/api/v1/documents/image-url/" in ref:
         return None
@@ -179,14 +179,18 @@ def _normalize_batch_state_counters(extract_result: list[Any]) -> tuple[int, int
     for item in extract_result:
         if not isinstance(item, dict):
             continue
-        state = str(item.get("state") or "").lower()
+        state = item.get("state")
+        if state is not None:
+            state = str(state).lower()
         if state == "done":
             completed_files += 1
             continue
         if state == "failed":
             failed_files += 1
             if not first_error:
-                err = (item.get("err_msg") or "").strip()
+                err = item.get("err_msg")
+                if err is not None:
+                    err = err.strip()
                 if err:
                     first_error = err
             continue
@@ -218,7 +222,8 @@ def _matching_extract_item(
     for item in extract_result:
         if not isinstance(item, dict):
             continue
-        if str(item.get(field_name) or "") == expected:
+        value = item.get(field_name)
+        if value is not None and str(value) == expected:
             return item
     return None
 
@@ -257,8 +262,8 @@ def _extract_preview_image_reference(
                 images_dir=images_dir,
                 preview_id=img_id,
                 binding=(
-                    {"tenant_id": str(tenant_id), "account_id": str(account_id or "").strip()}
-                    if str(account_id or "").strip()
+                    {"tenant_id": str(tenant_id), "account_id": account_id.strip()}
+                    if account_id is not None and account_id.strip()
                     else None
                 ),
             )
@@ -349,12 +354,12 @@ class MinerUService:
         - If the token looks like a JWT and is expired, treat online mode as disabled
           (best-effort) to avoid repeated 401 failures.
         """
-        self.api_base = (settings.MINERU_API_BASE or "").strip().rstrip("/") or "https://mineru.net/api/v4"
-        self.api_token = (settings.MINERU_API_TOKEN or "").strip()
-        self.model_version = (settings.MINERU_MODEL_VERSION or "").strip() or "vlm"
+        self.api_base = (settings.MINERU_API_BASE).strip().rstrip("/") or "https://mineru.net/api/v4"
+        self.api_token = (settings.MINERU_API_TOKEN).strip()
+        self.model_version = (settings.MINERU_MODEL_VERSION).strip() or "vlm"
         self.local_backend = _normalize_local_backend(settings.MINERU_BACKEND)
 
-        local_url = (settings.MINERU_LOCAL_SERVER_URL or "").strip()
+        local_url = (settings.MINERU_LOCAL_SERVER_URL).strip()
         self.local_server_url = local_url.rstrip("/") if local_url else None
 
         self._token_exp = try_get_jwt_exp(self.api_token) if self.api_token else None
@@ -688,12 +693,14 @@ class MinerUService:
                 extract_result = []
 
             item = self._pick_extract_item(extract_result, data_id=data_id, filename=filename)
-            state = str((item or {}).get("state") or "").lower()
+            state = item.get("state") if item is not None else None
+            if state is not None:
+                state = str(state).lower()
 
-            logger.info("Task %s state=%s (data_id=%s)", batch_id, state or "unknown", data_id or "")
+            logger.info("Task %s state=%s (data_id=%s)", batch_id, state or "unknown", data_id)
 
             if state == "done":
-                return item or {}
+                return item
             if state == "failed":
                 err = (item or {}).get("err_msg") or UNKNOWN_ERROR
                 raise RuntimeError(f"Task {batch_id} failed: {err}")
@@ -1037,7 +1044,7 @@ class MinerUService:
             )
 
             try:
-                content_type = str(resp.headers.get("Content-Type", "") or "")
+                content_type = resp.headers.get("Content-Type")
                 body = resp.content
             finally:
                 try:
@@ -1045,7 +1052,7 @@ class MinerUService:
                 except Exception as exc:
                     logger.debug(MINERU_FALLBACK_LOG_MESSAGE, exc)
 
-            if ("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower()):
+            if content_type is None or (("zip" not in content_type.lower()) and (OCTET_STREAM not in content_type.lower())):
                 raise RuntimeError(f"MinerU returned unexpected content type: {content_type}")
 
             return await asyncio.to_thread(

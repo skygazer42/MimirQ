@@ -43,7 +43,9 @@ def _as_list(value: Any) -> list[Any]:
 
 
 def _norm_bucket(value: Any, *, fallback: str = "unknown") -> str:
-    s = str(value or "").strip().lower()
+    if value is None:
+        return fallback
+    s = str(value).strip().lower()
     return s or fallback
 
 
@@ -198,7 +200,8 @@ def _build_hit_type_index(citations: list[Any]) -> dict[str, str]:
     hit_by_chunk: dict[str, str] = {}
     for citation in citations:
         citation_dict = _as_dict(citation)
-        chunk_id = str(citation_dict.get("chunk_id") or "").strip()
+        raw_chunk_id = citation_dict.get("chunk_id")
+        chunk_id = str(raw_chunk_id).strip() if raw_chunk_id is not None else None
         if not chunk_id:
             continue
         hit_by_chunk[chunk_id] = _norm_hit_type(citation_dict.get("hit_type"))
@@ -304,7 +307,8 @@ def compute_suite_coverage(
         for ref in refs:
             ref_dict = _as_dict(ref)
             document_id = _as_uuid(ref_dict.get("document_id"))
-            chunk_id = str(ref_dict.get("chunk_id") or "").strip()
+            raw_chunk_id = ref_dict.get("chunk_id")
+            chunk_id = str(raw_chunk_id).strip() if raw_chunk_id is not None else None
             if document_id is None:
                 continue
 

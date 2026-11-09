@@ -67,7 +67,7 @@ def _sanitize_extra_headers(extra: dict[str, str] | None) -> dict[str, str]:
             continue
         if name.lower() in _BLOCKED_EXTRA_HEADERS:
             continue
-        val = str(v or "")
+        val = v
         if len(val) > _MAX_HEADER_VALUE_CHARS:
             val = val[:_MAX_HEADER_VALUE_CHARS]
         out[name] = val
@@ -75,7 +75,7 @@ def _sanitize_extra_headers(extra: dict[str, str] | None) -> dict[str, str]:
 
 
 def _parse_csv(raw: str) -> list[str]:
-    parts = [p.strip() for p in (raw or "").split(",")]
+    parts = [p.strip() for p in (raw).split(",")]
     return [p for p in parts if p]
 
 
@@ -86,11 +86,11 @@ def _host_in_allowlist(host: str, allowlist: list[str]) -> bool:
     - "example.com" matches exactly.
     - "*.foo.com" matches "a.foo.com" but NOT "foo.com".
     """
-    h = (host or "").strip().lower()
+    h = (host).strip().lower()
     if not h:
         return False
     for raw in allowlist:
-        pat = (raw or "").strip().lower()
+        pat = (raw).strip().lower()
         if not pat:
             continue
         if pat.startswith("*.") and len(pat) > 2:
@@ -135,12 +135,12 @@ class _ParsedIngestURL:
 
 
 def _parse_ingest_url(url: str) -> _ParsedIngestURL:
-    raw = (url or "").strip()
+    raw = (url).strip()
     if not raw:
         raise HTTPException(status_code=400, detail="url is required")
 
     parsed = urlparse(raw)
-    scheme = (parsed.scheme or "").lower().strip()
+    scheme = (parsed.scheme).lower().strip()
     if scheme not in {"http", "https"}:
         raise HTTPException(status_code=400, detail="url scheme must be http or https")
     if not parsed.hostname:
@@ -324,12 +324,13 @@ class _DownloadOptions:
 def _effective_max_bytes(max_bytes: int | None) -> int:
     max_bytes_eff = max_bytes if max_bytes is not None else settings.URL_INGEST_MAX_BYTES
     if max_bytes_eff <= 0:
-        return settings.MAX_FILE_SIZE or 50_000_000
+        return settings.MAX_FILE_SIZE
     return max_bytes_eff
 
 
 def _build_download_headers(*, user_agent: str | None, extra_headers: dict[str, str] | None) -> dict[str, str]:
-    ua = (user_agent or "").strip() or "MimirQ/1.0 (+url-ingest)"
+    ua = "MimirQ/1.0 (+url-ingest)" if user_agent is None else user_agent.strip()
+    ua = ua or "MimirQ/1.0 (+url-ingest)"
     headers = {"Accept": "*/*", "User-Agent": ua}
     headers.update(_sanitize_extra_headers(extra_headers))
     return headers
@@ -363,10 +364,10 @@ async def _validated_redirect_url(
         raise HTTPException(status_code=400, detail="redirects are not allowed")
     if hops >= max_redirects:
         raise HTTPException(status_code=400, detail="too many redirects")
-    loc = (resp.headers.get("location") or "").strip()
-    if not loc:
+    loc = resp.headers.get("location")
+    if loc is None or not loc.strip():
         raise HTTPException(status_code=400, detail="redirect location missing")
-    return urljoin(request_url, loc)
+    return urljoin(request_url, loc.strip())
 
 
 def _raise_for_fetch_status(resp: httpx.Response) -> None:
@@ -397,8 +398,8 @@ async def _write_response_body(resp: httpx.Response, *, destination: Path, max_b
 
 
 def _download_result(resp: httpx.Response, *, size_bytes: int, final_url: str) -> DownloadedURL:
-    last_modified = (resp.headers.get("last-modified") or "").strip() or None
-    etag = (resp.headers.get("etag") or "").strip() or None
+    last_modified = resp.headers.get("last-modified")
+    etag = resp.headers.get("etag")
     if etag and len(etag) > 500:
         etag = etag[:500]
     return DownloadedURL(

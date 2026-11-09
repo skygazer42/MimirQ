@@ -31,7 +31,9 @@ def should_hot_reload_config(
     current_state: ConfigHotReloadState | None = None,
 ) -> bool:
     current = build_config_hot_reload_state() if current_state is None else current_state
-    previous = (previous_combined_fingerprint or "").strip()
+    if previous_combined_fingerprint is None:
+        return True
+    previous = previous_combined_fingerprint.strip()
     if not previous:
         return True
     return previous != current.combined_fingerprint.strip()

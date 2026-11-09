@@ -73,13 +73,13 @@ def _extract_plain_text(*, extracted_html: str, raw_html: str) -> str:
     extract_text = getattr(html_text, "extract_text", None) if html_text is not None else None
     if callable(extract_text):
         try:
-            text = extract_text(extracted_html or "", guess_layout=True) or ""
+            text = extract_text(extracted_html, guess_layout=True)
         except Exception:
             text = ""
     if text:
         return text
     # Last resort: keep raw HTML (still searchable, but less clean).
-    return extracted_html or raw_html or ""
+    return extracted_html or raw_html
 
 
 def _build_metadata(
@@ -113,7 +113,7 @@ class HtmlParser:
 
     def parse(self, file_path: Path, *, html_xpath: str | None = None) -> list[Document]:
         decoded = read_text_file(file_path)
-        raw_html = decoded.text or ""
+        raw_html = decoded.text
         title, extracted_html = _extract_readability_content(raw_html)
         text, xpath_matches, xpath_error = _extract_xpath_text(raw_html, html_xpath)
         if not text:

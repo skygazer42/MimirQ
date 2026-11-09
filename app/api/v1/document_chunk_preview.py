@@ -133,7 +133,7 @@ def _decode_escaped_input_preview(value: str) -> str:
 
     Keep aligned with frontend behavior and ingestion SeparatorChunker handling.
     """
-    raw = str(value or "")
+    raw = value
     if not raw:
         return raw
     try:
@@ -323,7 +323,7 @@ def _build_preview_request_config(
         original_text_max_chars=(original_text_max_chars or 0),
         max_chunks=(max_chunks or 0),
         use_parse_cache=use_parse_cache,
-        parser_backend=(parser_backend or ""),
+        parser_backend=(parser_backend),
         resolved_chunk_strategy=resolved_chunk_strategy,
         warnings_out=warnings_out,
     )
@@ -401,7 +401,8 @@ def _resolve_separator_chunker_state(
     if separator_max_chunk_size is not None:
         merged["separator_max_chunk_size"] = separator_max_chunk_size
 
-    preset = str(merged.get("separator_preset") or "").strip() or "paragraph"
+    raw_preset = merged.get("separator_preset")
+    preset = "paragraph" if raw_preset is None else raw_preset.strip() or "paragraph"
     if preset != "custom":
         separator_value = SeparatorChunker.PRESET_SEPARATORS.get(preset)
         if separator_value is None:
@@ -410,7 +411,7 @@ def _resolve_separator_chunker_state(
         raw = merged.get("separator")
         if raw is None:
             raw = merged.get("separator_custom")
-        separator_value = _decode_escaped_input_preview(str(raw or "") or "\n\n")
+        separator_value = _decode_escaped_input_preview("\n\n" if raw is None or raw == "" else raw)
 
     keep_sep_norm = _coerce_bool_preview(merged.get("keep_separator"))
     keep_sep_bool = True if keep_sep_norm is None else bool(keep_sep_norm)
@@ -493,7 +494,7 @@ def _resolve_preview_pipeline_state(
 def _materialize_preview_documents(parsed_docs_payload: list[dict[str, Any]] | None) -> list[Document]:
     return [
         Document(
-            page_content=str(item.get("page_content") or ""),
+            page_content=item["page_content"],
             metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
             id=item.get("id") if isinstance(item.get("id"), str) else None,
         )
@@ -575,7 +576,7 @@ def _filter_preview_chunks(
         original_chunks = chunks
         filtered: list[Document] = []
         for chunk in original_chunks:
-            content = (chunk.page_content or "").strip()
+            content = (chunk.page_content).strip()
             if len(content) >= min_chars:
                 filtered.append(chunk)
                 continue
@@ -590,7 +591,7 @@ def _filter_preview_chunks(
             ):
                 filtered.append(chunk)
         if not filtered and original_chunks:
-            filtered = [max(original_chunks, key=lambda item: len((item.page_content or "").strip()))]
+            filtered = [max(original_chunks, key=lambda item: len((item.page_content).strip()))]
         chunks = filtered
         dropped = before - len(chunks)
         if dropped:
@@ -614,22 +615,22 @@ def _build_preview_text_context(
     original_text_max_chars: int,
 ) -> tuple[dict[int, int], dict[object, int], dict[int, int], int, str | None]:
     if not documents:
-        total_characters = sum(len(chunk.page_content or "") for chunk in chunks)
+        total_characters = sum(len(chunk.page_content) for chunk in chunks)
         total_characters += 2 * (len(chunks) - 1) if chunks else 0
         original_text_value = None
         if include_original and total_characters <= (original_text_max_chars or 0):
-            original_text_value = "\n\n".join(chunk.page_content or "" for chunk in chunks) if chunks else ""
+            original_text_value = "\n\n".join(chunk.page_content for chunk in chunks)
         integrated_map = {}
         current_pos = 0
         for idx, chunk in enumerate(chunks):
             integrated_map[idx] = current_pos
-            current_pos += len(chunk.page_content or "") + 2
+            current_pos += len(chunk.page_content) + 2
         return integrated_map, {}, {}, total_characters, original_text_value
 
     page_texts: list[_PreviewPageText] = []
     current_pos = 0
     for doc in documents:
-        text = doc.page_content or ""
+        text = doc.page_content
         meta = doc.metadata or {}
         page_texts.append(
             {
@@ -651,7 +652,7 @@ def _build_preview_text_context(
             page_start_map[page] = item["start"]
     original_text_value = None
     if include_original and total_characters <= (original_text_max_chars or 0):
-        original_text_value = "\n".join(item["text"] for item in page_texts) if page_texts else ""
+        original_text_value = "\n".join(item["text"] for item in page_texts)
     return {}, page_start_map, page_index_start_map, total_characters, original_text_value
 
 
@@ -663,7 +664,7 @@ def _resolve_preview_chunk_offsets(
     page_start_map: dict[object, int],
     page_index_start_map: dict[int, int],
 ) -> tuple[int, int, object | None]:
-    content = chunk.page_content or ""
+    content = chunk.page_content
     meta = chunk.metadata if isinstance(chunk.metadata, dict) else {}
     page_num = meta.get("page") or meta.get("page_number")
     page_index = meta.get("page_index")
@@ -765,7 +766,7 @@ def _collect_preview_chunk_metrics(
         )
         if end_idx > start_idx:
             chunk_ranges.append((start_idx, end_idx))
-        content = chunk.page_content or ""
+        content = chunk.page_content
         meta = chunk.metadata if isinstance(chunk.metadata, dict) else {}
         needs_review_delta, prev_token_set = _annotate_preview_semantic_quality(
             content=content,
@@ -931,7 +932,7 @@ def _preview_parse_cache_key(
 ) -> str:
     return (
         f"parse:{str(tenant_id)}:{str(account_id)}:{str(file_sha256)}:{str(file_ext)}:"
-        f"{str(parser_backend or '').strip().lower()}:{cache_version}"
+        f"{parser_backend.strip().lower()}:{cache_version}"
     )
 
 
@@ -948,7 +949,7 @@ def _store_preview_parse_cache(
 ) -> None:
     if not cache_key:
         return
-    total_chars = sum(len(str(item.get("page_content") or "")) for item in parsed_docs_payload)
+    total_chars = sum(len(item["page_content"]) for item in parsed_docs_payload)
     if cache_max_doc_chars > 0 and total_chars > cache_max_doc_chars:
         return
     preview_parse_cache.set(
@@ -956,9 +957,9 @@ def _store_preview_parse_cache(
         ParseCacheEntry(
             created_at_monotonic=time.monotonic(),
             created_at_wall=time.time(),
-            file_sha256=str((file_sha256 if file_sha256 is not None else "")),
-            parser_backend=(parser_backend or ""),
-            resolved_backend=str(resolved_backend or ""),
+            file_sha256=file_sha256,
+            parser_backend=(parser_backend),
+            resolved_backend=resolved_backend,
             documents=list(parsed_docs_payload),
             total_chars=total_chars,
         ),
@@ -1007,7 +1008,7 @@ async def _parse_uncached_preview_documents(
             "mode": "preview",
         },
         disconnect_check=request.is_disconnected,
-        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+        timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
     )
     duration_ms = int(max(0.0, (time.perf_counter() - parse_started) * 1000.0))
     return (
@@ -1137,7 +1138,7 @@ async def _build_uploaded_preview_execution_state(
                 "mode": "preview",
             },
             disconnect_check=request.is_disconnected,
-            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC or 60 * 30),
+            timeout_sec=float(settings.TASK_JOB_TIMEOUT_SEC),
         )
         chunks = _materialize_preview_documents(result.get("documents") if isinstance(result, dict) else [])
         chunks, governance_duration_ms = _apply_preview_governance(chunks, pipeline_state=pipeline_state)
@@ -1253,7 +1254,7 @@ async def _run_uploaded_chunk_preview(
 
 
 def _preview_failure_detail(exc: Exception, *, production_message: str) -> str:
-    msg = (str(exc) or "").strip()
+    msg = (str(exc)).strip()
     if not msg:
         msg = exc.__class__.__name__
     msg = msg[:200]
@@ -1424,7 +1425,7 @@ def _build_chunk_preview_response(
             review_signals = _compute_chunk_preview_review_signals(
                 chunk_items=chunk_items,
                 unit=unit,
-                strategy=str(signals_strategy or ""),
+                strategy=signals_strategy,
             )
     preview_duration_ms = int(max(0.0, (time.perf_counter() - preview_started) * 1000.0))
     _set_preview_server_timing(
@@ -1482,7 +1483,7 @@ def _build_chunk_preview_response(
 def _should_inline_preview_parse(file_ext: str) -> bool:
     if not settings.PREVIEW_INLINE_TEXT_PARSE_ENABLED:
         return False
-    ext = (file_ext or "").strip().lower()
+    ext = (file_ext).strip().lower()
     return ext == ".md" or ext in parser_factory.PLAIN_TEXT_EXTENSIONS
 
 
@@ -1496,7 +1497,7 @@ def _serialize_preview_parse_documents(documents: list[Document]) -> list[dict[s
             safe_metadata = {}
         out.append(
             {
-                "page_content": doc.page_content or "",
+                "page_content": doc.page_content,
                 "metadata": safe_metadata,
                 "id": doc.id,
             }
@@ -1583,11 +1584,13 @@ def preview_chunking_by_sha(
     dataset_service.ensure_member(db, tenant_id, account_id)
 
     preview_started = time.perf_counter()
-    sha = str(file_fields.file_sha256 or "").strip().lower()
+    sha = file_fields.file_sha256.strip().lower()
     if not re.fullmatch(r"[0-9a-f]{64}", sha):
         raise HTTPException(status_code=400, detail="file_sha256 must be a 64-char hex string")
 
-    raw_type = str(file_fields.file_type or "").strip().lower().lstrip(".")
+    raw_type = file_fields.file_type
+    if raw_type is not None:
+        raw_type = raw_type.strip().lower().lstrip(".")
     if not raw_type and file_fields.filename:
         raw_type = Path(str(file_fields.filename)).suffix.lower().lstrip(".")
     if not raw_type:

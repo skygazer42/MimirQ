@@ -15,7 +15,9 @@ _WS_RE = re.compile(r"\s+")
 
 
 def _normalize_cell(cell: Any) -> str:
-    return _WS_RE.sub(" ", str(cell or "")).strip().lower()
+    if cell is None:
+        return ""
+    return _WS_RE.sub(" ", str(cell)).strip().lower()
 
 
 def _f1_from_counters(pred: Counter[Any], gold: Counter[Any]) -> float | None:

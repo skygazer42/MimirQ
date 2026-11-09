@@ -17,7 +17,9 @@ logger = get_logger(__name__)
 
 
 def clip_text(value: Any, *, max_len: int = 400) -> str:
-    text = str(value or "").strip()
+    if value is None:
+        return ""
+    text = str(value).strip()
     max_len = max(0, int(max_len or 0))
     if not max_len:
         return ""
@@ -36,7 +38,9 @@ def clip_contexts_for_judge(
     cap_chars = max(50, int(max_chars or 50))
     out: list[str] = []
     for raw in contexts or []:
-        text = str(raw or "").strip()
+        if raw is None:
+            continue
+        text = str(raw).strip()
         if not text:
             continue
         out.append(text[:cap_chars])
@@ -130,7 +134,7 @@ def render_llm_judge_prompt(
     prompt_content: str | None = None,
     prompt_variables: list[str] | None = None,
 ) -> str:
-    if kind != "generation" or not str(prompt_content or "").strip():
+    if kind != "generation" or prompt_content is None or not prompt_content.strip():
         return default_llm_judge_prompt(kind=kind, question=question, answer=answer, contexts=contexts)
 
     variable_names = [str(item).strip() for item in (prompt_variables or []) if str(item).strip()]
@@ -139,9 +143,9 @@ def render_llm_judge_prompt(
     contexts_text = "\n".join([f"[C{i + 1}] {c}" for i, c in enumerate(contexts or [])]).strip()
     payload: dict[str, Any] = {}
     if "question" in variable_names:
-        payload["question"] = str(question or "")
+        payload["question"] = question
     if "answer" in variable_names:
-        payload["answer"] = str(answer or "")
+        payload["answer"] = answer
     if "contexts" in variable_names:
         payload["contexts"] = contexts_text
     prompt = PromptTemplate(template=str(prompt_content), input_variables=variable_names)
@@ -201,9 +205,12 @@ def _coerce_judge_details(value: Any, *, allowed_fields: set[str]) -> list[dict[
 def coerce_llm_judge_payload(raw: Any) -> dict[str, Any]:
     obj = raw if isinstance(raw, dict) else {}
     quotes_raw = obj.get("evidence_quotes") or obj.get("quotes") or obj.get("evidence") or []
+    reason = obj.get("reason")
+    if reason is None:
+        reason = obj.get("explanation")
     out = {
         "score": _coerce_judge_score(obj.get("score")),
-        "reason": clip_text(obj.get("reason") or obj.get("explanation") or "", max_len=240),
+        "reason": clip_text(reason, max_len=240),
         "evidence_quotes": _coerce_judge_quotes(quotes_raw),
     }
 
@@ -241,7 +248,7 @@ def _invoke_llm_judge_once(
     err: str | None = None
     try:
         response = llm.invoke(prompt)
-        content = str(getattr(response, "content", None) or response or "")
+        content = str(response.content if hasattr(response, "content") else response)
     except Exception as exc:  # noqa: BLE001
         err = f"invoke_error:{type(exc).__name__}:{str(exc)[:120]}"
 
@@ -395,7 +402,7 @@ def _resolve_generation_judge_prompt(
     selection_requested = bool(
         db is not None
         and tenant_id is not None
-        and (template_id or (template_key or "").strip() or (ab_experiment_key or "").strip())
+        and (template_id or template_key or ab_experiment_key)
     )
     if not selection_requested:
         return None, None, None, {}
@@ -447,10 +454,10 @@ def _attach_llm_judge_item(
 ) -> tuple[float | None, float | None, float | None] | None:
     if not isinstance(item, dict):
         return None
-    question = str(item.get("question") or "")
+    question = item["question"]
     if not question.strip():
         return None
-    answer = str(item.get("response") or "")
+    answer = item["response"]
     contexts = clip_contexts_for_judge(item.get("retrieved_contexts"), max_contexts=6, max_chars=900)
     retrieval = run_llm_judge(
         llm=llm,

@@ -70,7 +70,7 @@ def _normalize_predicate_key(value: str) -> str:
     - "Works With" -> "works_with"
     - "located-in" -> "located_in"
     """
-    text = (value or "").strip().casefold()
+    text = (value).strip().casefold()
     text = re.sub(r"\s+", "_", text)
     text = text.replace("-", "_").replace(":", "_").replace("/", "_")
     text = _PRED_SAFE_RE.sub("", text)
@@ -106,10 +106,10 @@ class CandidateEntity:
 def _candidate_prompt_lines(candidates: Sequence[CandidateEntity]) -> list[str]:
     lines: list[str] = []
     for candidate in candidates:
-        cid = str(candidate.cid or "").strip()
+        cid = candidate.cid.strip()
         if not cid:
             continue
-        name = str(candidate.name or "").strip()
+        name = candidate.name.strip()
         if not name:
             continue
         etype = str(candidate.type or "unknown").strip() or "unknown"
@@ -143,10 +143,15 @@ def _response_schema() -> dict[str, Any]:
 def _normalize_relation(
     raw: dict[str, Any], *, valid_ids: set[str], allowed_predicates: set[str]
 ) -> dict[str, Any] | None:
-    subj = str(raw.get("subject_id") or "").strip()
-    obj = str(raw.get("object_id") or "").strip()
-    pred_in = str(raw.get("predicate") or "").strip()
+    if not all(isinstance(raw.get(field), str) for field in ("subject_id", "object_id", "predicate")):
+        return None
+    subj = raw["subject_id"].strip()
+    obj = raw["object_id"].strip()
+    pred_in = raw["predicate"].strip()
     if not subj or not obj or not pred_in:
+        return None
+    evidence_quote = raw.get("evidence_quote")
+    if evidence_quote is not None and not isinstance(evidence_quote, str):
         return None
     if subj not in valid_ids or obj not in valid_ids or subj == obj:
         return None
@@ -165,7 +170,7 @@ def _normalize_relation(
         "object_id": obj,
         "confidence": clamp_confidence(raw.get("confidence"), default=0.5),
         "qualifiers": raw.get("qualifiers") if isinstance(raw.get("qualifiers"), dict) else None,
-        "evidence_quote": str(raw.get("evidence_quote") or "").strip() or None,
+        "evidence_quote": (evidence_quote.strip() or None) if evidence_quote is not None else None,
     }
 
 
@@ -178,7 +183,7 @@ class RelationProcessor:
     ):
         self.llm_client = llm_client
         # Store normalized allowlist for fast membership checks.
-        allow = [normalize_predicate(p) for p in (allowed_predicates or []) if str(p or "").strip()]
+        allow = [normalize_predicate(p) for p in (allowed_predicates or []) if p.strip()]
         self.allowed_predicates = set(allow)
 
     async def extract_relations(
@@ -197,7 +202,7 @@ class RelationProcessor:
         - confidence (0..1)
         - qualifiers (dict | None)
         """
-        clean_text = (text or "").strip()
+        clean_text = (text).strip()
         if not clean_text:
             return []
 
@@ -249,7 +254,7 @@ class RelationProcessor:
         if not isinstance(rels_raw, list):
             return []
 
-        valid_ids = {c.cid for c in cand_list if str(c.cid or "").strip()}
+        valid_ids = {c.cid for c in cand_list if c.cid.strip()}
 
         out: list[dict[str, Any]] = []
         for raw in rels_raw:

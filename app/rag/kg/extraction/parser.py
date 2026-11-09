@@ -95,7 +95,7 @@ _TYPE_MAP: dict[str, str] = {
 
 
 def normalize_entity_name(name: str) -> str:
-    text = unicodedata.normalize("NFKC", str(name or ""))
+    text = unicodedata.normalize("NFKC", name)
     text = _WS_RE.sub(" ", text).strip()
     # Trim paired quotes at edges (keep internal punctuation like C++, node.js, e-mail).
     text = text.strip(_EDGE_QUOTE_CHARS).strip()
@@ -117,7 +117,7 @@ def normalize_entity_name(name: str) -> str:
 
 
 def normalize_entity_type(type_name: str) -> str:
-    text = unicodedata.normalize("NFKC", str(type_name or ""))
+    text = unicodedata.normalize("NFKC", type_name)
     text = _WS_RE.sub(" ", text).strip()
     if not text:
         return "unknown"

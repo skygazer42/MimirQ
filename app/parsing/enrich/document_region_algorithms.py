@@ -13,11 +13,14 @@ _CHART_TEXT_RE = re.compile(
 
 
 def _region_from_element(element: Mapping[str, Any], *, region_type: str) -> dict[str, Any]:
+    source_id = element.get("id")
+    if source_id is None:
+        source_id = element.get("source_element_id")
     return {
         "region_type": region_type,
-        "source_element_id": str(element.get("id") or element.get("source_element_id") or ""),
-        "kind": str(element.get("kind") or ""),
-        "text": str(element.get("text") or "")[:500],
+        "source_element_id": str(source_id) if source_id is not None else None,
+        "kind": element["kind"],
+        "text": element["text"][:500],
         "page": element.get("page"),
         "bbox": dict(element.get("bbox") or {}) if isinstance(element.get("bbox"), Mapping) else None,
     }
@@ -26,8 +29,8 @@ def _region_from_element(element: Mapping[str, Any], *, region_type: str) -> dic
 def detect_formula_regions(elements: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     regions: list[dict[str, Any]] = []
     for element in elements:
-        kind = str(element.get("kind") or "").lower()
-        text = str(element.get("text") or "")
+        kind = element["kind"].lower()
+        text = element["text"]
         if kind in {"equation", "formula"} or _FORMULA_TEXT_RE.search(text):
             regions.append(_region_from_element(element, region_type="formula"))
     return {"schema": "mimirq.formula_regions.v1", "count": len(regions), "regions": regions}
@@ -36,10 +39,10 @@ def detect_formula_regions(elements: Sequence[Mapping[str, Any]]) -> dict[str, A
 def detect_chart_regions(elements: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     regions: list[dict[str, Any]] = []
     for element in elements:
-        kind = str(element.get("kind") or "").lower()
-        text = str(element.get("text") or "")
+        kind = element["kind"].lower()
+        text = element["text"]
         attrs = element.get("attributes") if isinstance(element.get("attributes"), Mapping) else {}
-        hint = f"{text} {attrs.get('caption_text') or ''} {attrs.get('source_content_type') or ''}"
+        hint = " ".join(str(value) for value in (text, attrs.get("caption_text"), attrs.get("source_content_type")) if value is not None)
         if kind in {"chart", "plot"} or (kind in {"image", "figure"} and _CHART_TEXT_RE.search(hint)):
             regions.append(_region_from_element(element, region_type="chart"))
     return {"schema": "mimirq.chart_regions.v1", "count": len(regions), "regions": regions}

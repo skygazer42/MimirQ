@@ -171,8 +171,8 @@ class APIReranker(BaseReranker):
         self._cb_open_until = 0.0
 
     def _cache_key(self, query: str, document: str, *, max_length: int) -> str:
-        q = (query or "").strip()
-        d = (document or "").strip()
+        q = (query).strip()
+        d = (document).strip()
         if not q or not d:
             return ""
         payload = f"{q}\n\n{d}\n\nmax_length={int(max_length)}".encode("utf-8", errors="ignore")
@@ -377,7 +377,7 @@ class APIReranker(BaseReranker):
     def _circuit_open_stats(self, *, query: str, docs: int, provider: str) -> dict[str, Any]:
         if settings.ENABLE_METRICS_LOG:
             try:
-                query_hash = hashlib.sha256((query or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+                query_hash = hashlib.sha256((query).encode("utf-8", errors="ignore")).hexdigest()[:12]
             except Exception:
                 query_hash = None
             log_metrics(
@@ -387,7 +387,7 @@ class APIReranker(BaseReranker):
                     "model": self.model,
                     "url": self.url,
                     "query_hash": query_hash,
-                    "query_chars": len(query or ""),
+                    "query_chars": len(query),
                     "docs": docs,
                     "skipped": True,
                     "skip_reason": "circuit_open",
@@ -421,7 +421,7 @@ class APIReranker(BaseReranker):
         documents: list[str] = []
         for candidate in candidates:
             candidate_ids.append(str(candidate.id))
-            text = (candidate.text or "").strip()
+            text = (candidate.text).strip()
             if max_chars > 0 and len(text) > max_chars:
                 text = text[:max_chars] + "..."
             documents.append(text)
@@ -490,7 +490,7 @@ class APIReranker(BaseReranker):
         if not settings.ENABLE_METRICS_LOG:
             return
         try:
-            query_hash = hashlib.sha256((query or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+            query_hash = hashlib.sha256((query).encode("utf-8", errors="ignore")).hexdigest()[:12]
         except Exception:
             query_hash = None
         log_metrics(
@@ -500,12 +500,12 @@ class APIReranker(BaseReranker):
                 "model": self.model,
                 "url": self.url,
                 "query_hash": query_hash,
-                "query_chars": len(query or ""),
+                "query_chars": len(query),
                 "docs": len(candidates),
                 "missing_docs": len(missing_docs),
                 "elapsed_sec": round(float(elapsed), 3),
                 "batch_size": batch_size,
-                "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY or 1),
+                "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY),
                 "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS),
                 "max_retries": int(settings.RERANKER_API_MAX_RETRIES),
                 "cache_enabled": bool(cache_enabled),
@@ -543,10 +543,10 @@ class APIReranker(BaseReranker):
             "provider": provider,
             "model": self.model,
             "url": self.url,
-            "query_chars": len(query or ""),
+            "query_chars": len(query),
             "docs": len(candidates),
             "batch_size": batch_size,
-            "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY or 1),
+            "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY),
             "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS),
             "max_retries": int(settings.RERANKER_API_MAX_RETRIES),
             "cache_enabled": bool(cache_enabled),
@@ -555,7 +555,7 @@ class APIReranker(BaseReranker):
         }
         if settings.ENABLE_METRICS_LOG:
             try:
-                query_hash = hashlib.sha256((query or "").encode("utf-8", errors="ignore")).hexdigest()[:12]
+                query_hash = hashlib.sha256((query).encode("utf-8", errors="ignore")).hexdigest()[:12]
             except Exception:
                 query_hash = None
             log_metrics(
@@ -565,11 +565,11 @@ class APIReranker(BaseReranker):
                     "model": self.model,
                     "url": self.url,
                     "query_hash": query_hash,
-                    "query_chars": len(query or ""),
+                    "query_chars": len(query),
                     "docs": len(candidates),
                     "elapsed_sec": round(float(elapsed), 3),
                     "batch_size": batch_size,
-                    "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY or 1),
+                    "max_concurrency": int(settings.RERANKER_API_MAX_CONCURRENCY),
                     "rate_limit_qps": float(settings.RERANKER_API_RATE_LIMIT_QPS),
                     "max_retries": int(settings.RERANKER_API_MAX_RETRIES),
                     "cache_enabled": bool(cache_enabled),
@@ -618,7 +618,7 @@ class APIReranker(BaseReranker):
         batch_size = max(1, int(batch_size))
         max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES))
         backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC))
-        max_concurrency = max(1, int(settings.RERANKER_API_MAX_CONCURRENCY))
+        max_concurrency = int(settings.RERANKER_API_MAX_CONCURRENCY)
         batches = self._document_batches(documents, batch_size=batch_size)
         sem = asyncio.Semaphore(max_concurrency)
 
@@ -696,7 +696,7 @@ class APIReranker(BaseReranker):
         timeout_sec = float(settings.RERANKER_API_TIMEOUT_SEC or self.timeout.total or 30.0)
         max_retries = max(0, int(settings.RERANKER_API_MAX_RETRIES))
         backoff = max(0.0, float(settings.RERANKER_API_RETRY_BACKOFF_SEC))
-        max_concurrency = max(1, int(settings.RERANKER_API_MAX_CONCURRENCY))
+        max_concurrency = int(settings.RERANKER_API_MAX_CONCURRENCY)
         trust_env = httpx_trust_env(logger=logger)
         batches = self._document_batches(documents, batch_size=batch_size)
 
@@ -872,7 +872,7 @@ class APIReranker(BaseReranker):
         if not candidates:
             return []
 
-        documents = [c.get("text", "") for c in candidates]
+        documents = [c["text"] for c in candidates]
         scores = await self.acompute_score(query, documents)
 
         results = []

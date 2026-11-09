@@ -29,7 +29,9 @@ def _normalize_refs(value: Any, *, max_items: int = 10_000) -> list[str]:
     seen: set[str] = set()
     limit = max(1, int(max_items or 0))
     for raw in raw_items:
-        item = str(raw or "").strip()
+        if raw is None:
+            continue
+        item = str(raw).strip()
         if not item or item in seen:
             continue
         seen.add(item)
@@ -57,7 +59,7 @@ def resolve_connector_reconcile_source_refs(
         return sorted(manifest.keys())
 
     config_map = config if isinstance(config, Mapping) else {}
-    cid = str(connector_id or "").strip()
+    cid = connector_id.strip()
     if cid in {"url_batch", "drive_files"}:
         return _normalize_refs(config_map.get("urls"))
     return []

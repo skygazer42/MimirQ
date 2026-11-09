@@ -138,7 +138,7 @@ def get_answer_lineage(
 ) -> dict[str, Any]:
     record = load_answer_lineage_trace(
         tenant_id=tenant_id,
-        request_id=str(request_id or "").strip(),
+        request_id=request_id.strip(),
     )
     if not isinstance(record, dict):
         raise HTTPException(status_code=404, detail="Answer lineage not found")
@@ -150,6 +150,6 @@ def get_answer_lineage(
     ):
         raise HTTPException(status_code=404, detail="Answer lineage not found")
     payload = build_answer_lineage_payload(trace_record=record)
-    if str(payload.get("schema") or "") != ANSWER_LINEAGE_SCHEMA:
+    if payload["schema"] != ANSWER_LINEAGE_SCHEMA:
         raise HTTPException(status_code=500, detail="Invalid answer lineage payload")
     return payload

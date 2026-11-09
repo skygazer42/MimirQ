@@ -11,6 +11,7 @@ from app.rag.retrieval.planner import (
 )
 from app.services.dify_integration.common import (
     _MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS,
+    _first_nonempty_str,
     _metadata_terms,
     _normalize_match_term,
 )
@@ -53,8 +54,8 @@ def knowledge_mapping_plugin_refs(mapping: Any) -> tuple[str, ...]:
     refs = raw_refs if isinstance(raw_refs, list | tuple | set) else [raw_refs]
     out: list[str] = []
     seen: set[str] = set()
-    for raw in refs:
-        ref = str(raw or "").strip()
+    for raw in _metadata_terms(refs):
+        ref = raw.strip()
         if not ref or ref in seen:
             continue
         seen.add(ref)
@@ -75,8 +76,8 @@ def retrieval_policy_filter_fields_for_plugin_refs(
         raw_fields = policy.get("filter_fields") if isinstance(policy, dict) else None
         if not isinstance(raw_fields, list | tuple | set):
             continue
-        for raw in raw_fields:
-            field_name = str(raw or "").strip()
+        for raw in _metadata_terms(raw_fields):
+            field_name = raw.strip()
             if field_name:
                 out.add(field_name)
     return out
@@ -130,7 +131,7 @@ def policy_string_terms_for_policy_refs(
         if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_term in metadata_terms(policy.get(key)):
-            term = str(raw_term or "").strip()
+            term = raw_term.strip()
             normalized = normalize_term(term)
             if not term or not normalized or normalized in seen:
                 continue
@@ -148,14 +149,14 @@ def service_anchor_admin_aliases_for_policy_refs(
         policy = retrieval_policy_for_plugin_ref(plugin_ref)
         for raw_field in policy.get("anchor_fields") or ():
             field = dict(raw_field) if isinstance(raw_field, dict) else {}
-            if str(field.get("role") or "").strip() != "administrative_area":
+            if _first_nonempty_str(field.get("role")) != "administrative_area":
                 continue
             raw_aliases = field.get("aliases")
             if not isinstance(raw_aliases, dict):
                 continue
             for canonical, values in raw_aliases.items():
                 for raw_value in (canonical, *_metadata_terms(values)):
-                    value = str(raw_value or "").strip()
+                    value = _first_nonempty_str(raw_value)
                     normalized = _normalize_match_term(value)
                     if not value or not normalized or normalized in seen:
                         continue
@@ -175,10 +176,10 @@ def fast_response_field_rules_for_policy_refs(
             continue
         for raw_rule in policy.get("fast_response_field_rules") or ():
             rule = dict(raw_rule) if isinstance(raw_rule, dict) else {}
-            label = str(rule.get("label") or "").strip()
+            label = _first_nonempty_str(rule.get("label"))
             if not label or label in seen_labels:
                 continue
-            markers = tuple(marker for marker in _metadata_terms(rule.get("markers")) if str(marker or "").strip())
+            markers = tuple(marker for marker in _metadata_terms(rule.get("markers")) if marker.strip())
             if not markers:
                 continue
             seen_labels.add(label)
@@ -199,7 +200,7 @@ def requested_label_prefixes_for_policy_refs(
         if not isinstance(response_hints, dict):
             continue
         for field_spec in _response_hint_dict_list(response_hints, "answer_highlight_metadata_fields"):
-            prefix = str(field_spec.get("requested_labels_prefix") or "").strip()
+            prefix = _first_nonempty_str(field_spec.get("requested_labels_prefix"))
             if not prefix or prefix in seen:
                 continue
             seen.add(prefix)
@@ -219,7 +220,7 @@ def resolved_policy_terms_for_plugin_refs(
     for plugin_ref in policy_plugin_refs or ():
         policy = policy_resolver(plugin_ref)
         for raw_term in terms_resolver(policy):
-            term = str(raw_term or "").strip()
+            term = raw_term.strip()
             normalized = normalize_term(term) if normalize_term is not None else term
             if not term or not normalized or normalized in seen:
                 continue
@@ -311,7 +312,7 @@ def mixed_intent_leading_noise_terms_for_policy_refs(
     terms: list[str] = []
     seen: set[str] = set()
     for raw_term in _MIXED_INTENT_DEFAULT_LEADING_NOISE_TERMS:
-        term = str(raw_term or "").strip()
+        term = raw_term.strip()
         normalized = _normalize_match_term(term)
         if not term or not normalized or normalized in seen:
             continue
@@ -320,7 +321,7 @@ def mixed_intent_leading_noise_terms_for_policy_refs(
     for plugin_ref in policy_plugin_refs or ():
         policy = retrieval_policy_for_plugin_ref(plugin_ref)
         for raw_term in retrieval_policy_mixed_intent_leading_noise_terms(policy):
-            term = str(raw_term or "").strip()
+            term = raw_term.strip()
             normalized = _normalize_match_term(term)
             if not term or not normalized or normalized in seen:
                 continue
@@ -336,7 +337,7 @@ def resolve_knowledge_policy_filter_fields(
     knowledge_mapping_plugin_refs: Callable[[Any], tuple[str, ...]],
     retrieval_policy_filter_fields_for_plugin_refs: Callable[[tuple[str, ...]], set[str] | None],
 ) -> set[str] | None:
-    key = str(knowledge_id or "").strip()
+    key = knowledge_id.strip()
     raw_mapping = knowledge_map.get(key)
     return retrieval_policy_filter_fields_for_plugin_refs(knowledge_mapping_plugin_refs(raw_mapping))
 
@@ -348,7 +349,7 @@ def resolve_knowledge_policy_fallback_multiplier(
     knowledge_mapping_plugin_refs: Callable[[Any], tuple[str, ...]],
     retrieval_policy_fallback_multiplier_for_plugin_refs: Callable[[tuple[str, ...]], int],
 ) -> int:
-    key = str(knowledge_id or "").strip()
+    key = knowledge_id.strip()
     raw_mapping = knowledge_map.get(key)
     return retrieval_policy_fallback_multiplier_for_plugin_refs(knowledge_mapping_plugin_refs(raw_mapping))
 
@@ -359,7 +360,7 @@ def resolve_knowledge_policy_plugin_refs(
     knowledge_map: dict[str, Any],
     knowledge_mapping_plugin_refs: Callable[[Any], tuple[str, ...]],
 ) -> tuple[str, ...]:
-    key = str(knowledge_id or "").strip()
+    key = knowledge_id.strip()
     raw_mapping = knowledge_map.get(key)
     return knowledge_mapping_plugin_refs(raw_mapping)
 

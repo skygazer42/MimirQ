@@ -19,7 +19,9 @@ logger = get_logger("kg.extract.skills")
 
 
 def _strip_text(value: object) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _coerce_text_items(values: list[object], *, limit: int) -> list[str]:
@@ -72,7 +74,7 @@ class SkillProcessor:
         text: str,
         max_skills: int = 3,
     ) -> list[dict[str, Any]]:
-        clean_text = (text or "").strip()
+        clean_text = (text).strip()
         if not clean_text:
             return []
 
@@ -132,13 +134,19 @@ class SkillProcessor:
         for raw in raw_skills:
             if not isinstance(raw, dict):
                 continue
-            name = str(raw.get("name") or "").strip()
-            if not name:
+            name = raw.get("name")
+            if not isinstance(name, str) or not name.strip():
                 continue
+            name = name.strip()
 
-            category = str(raw.get("category") or "").strip() or None
-            summary = str(raw.get("summary") or "").strip() or None
-            evidence_quote = str(raw.get("evidence_quote") or "").strip() or None
+            category = raw.get("category")
+            summary = raw.get("summary")
+            evidence_quote = raw.get("evidence_quote")
+            if any(value is not None and not isinstance(value, str) for value in (category, summary, evidence_quote)):
+                continue
+            category = category.strip() or None if category is not None else None
+            summary = summary.strip() or None if summary is not None else None
+            evidence_quote = evidence_quote.strip() or None if evidence_quote is not None else None
             if evidence_quote and len(evidence_quote) > 240:
                 evidence_quote = evidence_quote[:240]
             steps = _coerce_str_list(raw.get("steps"), max_items=30)

@@ -59,8 +59,10 @@ _DEFAULT_STRUCTURED_OUTPUT_INSTRUCTIONS = (
 )
 
 
-def normalize_structured_preset_key(preset: str | None) -> str:
-    key = str(preset or "").strip().lower()
+def normalize_structured_preset_key(preset: str | None) -> str | None:
+    if preset is None:
+        return None
+    key = preset.strip().lower()
     return key if key in STRUCTURED_OUTPUT_MODELS else ""
 
 
@@ -77,7 +79,7 @@ def build_structured_abstain_payload(
 ) -> dict[str, Any]:
     key = normalize_structured_preset_key(preset)
     payload: dict[str, Any] = {
-        "answer": str(answer or ""),
+        "answer": answer,
         "citations": list(citations or []),
     }
     if key == "faq":

@@ -3,16 +3,17 @@ from typing import Any
 from langchain_core.documents import Document
 
 from app.rag.retrieval.hierarchy_expand import FetchByHierarchyKey, expand_hierarchy_context
+from app.rag.core.metadata import _stringified_metadata_text
 from app.rag.retrieval.sibling_expand import expand_document_siblings
 
 
 def _chunk_id_from_item(item: dict[str, Any]) -> str:
     meta = item.get("metadata") or {}
-    return str(item.get("chunk_id") or meta.get("chunk_id") or "").strip()
+    return str(item["chunk_id"]).strip()
 
 
 def _header_path_from_meta(meta: dict[str, Any]) -> str | None:
-    header_path = str(meta.get("header_path") or meta.get("header_context") or "").strip()
+    header_path = _stringified_metadata_text(meta, "header_path") or _stringified_metadata_text(meta, "header_context")
     return header_path if header_path else None
 
 
@@ -31,7 +32,7 @@ def _coerce_chunk_index(meta: dict[str, Any]) -> int | None:
 
 
 def _normalize_short_doc_ids(short_doc_ids: set[str] | None) -> set[str]:
-    return {str(doc_id).strip() for doc_id in (short_doc_ids if short_doc_ids else set()) if str(doc_id or "").strip()}
+    return {str(doc_id).strip() for doc_id in (short_doc_ids if short_doc_ids else set()) if doc_id.strip()}
 
 
 def _build_original_result_map(
@@ -69,10 +70,10 @@ def _neighbor_item(
     anchor_chunk_id: str,
 ) -> dict[str, Any]:
     stored_meta = dict(getattr(chunk, "doc_metadata", None) or {})
-    stored_meta.setdefault("tenant_id", str(getattr(chunk, "tenant_id", "") or ""))
-    stored_meta.setdefault("document_id", str(getattr(chunk, "document_id", "") or ""))
+    stored_meta.setdefault("tenant_id", str(chunk.tenant_id))
+    stored_meta.setdefault("document_id", str(chunk.document_id))
     stored_meta.setdefault("chunk_index", int(getattr(chunk, "chunk_index", 0) or 0))
-    stored_meta.setdefault("chunk_id", str(getattr(chunk, "id", "") or ""))
+    stored_meta.setdefault("chunk_id", str(chunk.id))
     if getattr(chunk, "page_number", None) is not None:
         stored_meta.setdefault("page", chunk.page_number)
     if not stored_meta.get("source"):
@@ -81,8 +82,8 @@ def _neighbor_item(
     stored_meta["retrieval_role"] = "neighbor"
     anchor_score = float(result.get("score", 0.0) or 0.0)
     return {
-        "chunk_id": str(getattr(chunk, "id", "") or ""),
-        "content": str(getattr(chunk, "content", "") or ""),
+        "chunk_id": str(chunk.id),
+        "content": chunk.content,
         "metadata": stored_meta,
         "score": float(anchor_score * 0.85) if anchor_score else 0.0,
     }
@@ -135,7 +136,7 @@ def _append_short_document_expansion(
         if chunk_id in seen:
             expanded.append(item)
             continue
-        if str((item.get("metadata") or {}).get("retrieval_role") or "").strip() == "sibling":
+        if (item.get("metadata") or {}).get("retrieval_role") == "sibling":
             sibling_added += 1
         seen.add(chunk_id)
         expanded.append(item)
@@ -197,7 +198,7 @@ def _append_neighbor_window(
             pending_score_neighbors.append(item)
         else:
             expanded.append(item)
-        seen.add(str(getattr(neighbor_chunk, "id", "") or "").strip())
+        seen.add(str(neighbor_chunk.id).strip())
         neighbor_added += 1
     return neighbor_added
 
@@ -239,7 +240,7 @@ def _eligible_neighbor_chunk(
     neighbor_chunk = neighbors_by_pair.get((doc_key, neighbor_index))
     if neighbor_chunk is None:
         return None
-    neighbor_chunk_id = str(getattr(neighbor_chunk, "id", "") or "").strip()
+    neighbor_chunk_id = str(neighbor_chunk.id).strip()
     if not neighbor_chunk_id or neighbor_chunk_id in seen:
         return None
     if max_added and neighbor_added >= max_added:
@@ -274,7 +275,7 @@ def _process_ranked_result(
 ) -> tuple[int, int]:
     meta = result.get("metadata") or {}
     anchor_chunk_id = _chunk_id_from_item(result)
-    doc_key = str(meta.get("document_id") or "").strip()
+    doc_key = _stringified_metadata_text(meta, "document_id")
     if doc_key in short_doc_ids:
         return _process_short_doc_result(
             result=result,

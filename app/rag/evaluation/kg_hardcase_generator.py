@@ -28,11 +28,15 @@ _WS_RE = re.compile(r"\s+")
 
 
 def _collapse_ws(text: Any) -> str:
-    return _WS_RE.sub(" ", str(text or "").strip())
+    if text is None:
+        return ""
+    return _WS_RE.sub(" ", str(text).strip())
 
 
 def _normalize_kind(value: Any) -> HardcaseKind | None:
-    s = str(value or "").strip().casefold()
+    if not isinstance(value, str):
+        return None
+    s = value.strip().casefold()
     if s == "knowledge_pressure":
         return "knowledge_pressure"
     if s == "reasoning_pressure":

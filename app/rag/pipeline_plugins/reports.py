@@ -38,7 +38,9 @@ EventResolver = Callable[[Any], str]
 
 
 def _text(value: Any) -> str:
-    return str(value or "").strip()
+    if value is None:
+        return ""
+    return str(value).strip()
 
 
 def _clean_one_line(value: Any, *, limit: int = 160) -> str:
@@ -50,7 +52,7 @@ def _clean_one_line(value: Any, *, limit: int = 160) -> str:
 
 def _metadata_value(metadata: Mapping[str, Any], key: str) -> Any:
     current: Any = metadata
-    for part in str(key or "").split("."):
+    for part in key.split("."):
         if not isinstance(current, Mapping):
             return None
         current = current.get(part)
@@ -154,7 +156,7 @@ def _chunk_example(
     example: dict[str, Any] = {
         "title": title_resolver(doc),
         "chunk_kind": _text(metadata.get("chunk_kind")) or "unknown",
-        "content_chars": len(doc.page_content or ""),
+        "content_chars": len(doc.page_content),
         "metadata_focus": _metadata_focus(metadata, metadata_highlight_keys),
         "content_preview": _clean_one_line(doc.page_content, limit=max(40, int(preview_chars or 0))),
     }
@@ -172,7 +174,7 @@ def _entity_types(events: Sequence[Any]) -> list[str]:
         if not isinstance(entities, list):
             continue
         for entity in entities:
-            value = _text(getattr(entity, "type", ""))
+            value = _text(entity.type)
             if value:
                 types.add(value)
     return sorted(types)

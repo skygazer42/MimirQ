@@ -23,9 +23,9 @@ def _normalize_tenant_id(value: Any) -> str | None:
 
 
 def _extract_trace_payload(row: Mapping[str, Any]) -> tuple[dict[str, Any] | None, str]:
-    if str(row.get("event") or "").strip() == "rag_trace":
+    if row.get('event') == "rag_trace":
         return dict(row), "trace"
-    if str(row.get("schema") or "").strip() == "mimirq.training_export_row.v1":
+    if row.get('schema') == "mimirq.training_export_row.v1":
         snap = row.get("trace_snapshot")
         if isinstance(snap, dict):
             return dict(snap), "training_export"

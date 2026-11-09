@@ -56,7 +56,7 @@ def build_rag_config_patch_hash(patch: Any) -> str:
     obj = patch if isinstance(patch, dict) else {}
     cleaned: dict[str, Any] = {}
     for k, v in obj.items():
-        key = str(k or "").strip()
+        key = k.strip()
         if not key:
             continue
         if v is None:
@@ -78,16 +78,16 @@ def build_adaptive_routing_reward_writeback(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema": "mimirq.rag_config_reward_writeback.v1",
-        "experiment_key": str(experiment_key or "").strip()[:120] or "unknown",
-        "variant": str(variant or "").strip()[:80] or "unknown",
-        "strategy": str(strategy or "").strip()[:80] or "adaptive_epsilon_greedy",
-        "decision": str(decision or "").strip()[:40] or "unknown",
-        "request_id": str(request_id or "").strip()[:128],
+        "experiment_key": experiment_key.strip()[:120] if experiment_key is not None else None,
+        "variant": variant.strip()[:80] if variant is not None else None,
+        "strategy": strategy.strip()[:80] if strategy is not None else None,
+        "decision": decision.strip()[:40] if decision is not None else None,
+        "request_id": request_id.strip()[:128] if request_id is not None else None,
     }
-    tid = str(template_id or "").strip()
+    tid = template_id.strip() if template_id is not None else None
     if tid:
         payload["template_id"] = tid[:80]
-    tkey = str(template_key or "").strip()
+    tkey = template_key.strip() if template_key is not None else None
     if tkey:
         payload["template_key"] = tkey[:120]
     return payload
@@ -103,7 +103,11 @@ def _as_float(value: Any) -> float | None:
 
 
 def _variant_key(variant: RagConfigTemplate) -> str:
-    return str(variant.ab_variant or "").strip() or str(variant.id)
+    if variant.ab_variant is not None:
+        label = variant.ab_variant.strip()
+        if label:
+            return label
+    return str(variant.id)
 
 
 def _normalize_variant_weights(variants: Sequence[RagConfigTemplate]) -> tuple[list[float], float]:
@@ -177,7 +181,9 @@ def aggregate_feedback_rewards(
             rating = _as_float(getattr(row, rating_field, None))
             reward = _as_float(getattr(row, reward_field, None))
 
-        variant = str(variant_raw or "").strip()
+        if variant_raw is None:
+            continue
+        variant = str(variant_raw).strip()
         if not variant:
             continue
         if reward is None:

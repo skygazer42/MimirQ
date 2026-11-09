@@ -75,7 +75,7 @@ def _has_heading_boundary(text: str, idx: int) -> bool:
 
 
 def _parse_en_prefixed_heading(line: str, *, prefix: str, max_segments: int) -> str | None:
-    s = (line or "").strip()
+    s = (line).strip()
     if not s:
         return None
     low = s.lower()
@@ -275,7 +275,7 @@ class LawsStructuredChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

@@ -364,7 +364,7 @@ class HTTPClientPool:
                     retry_after = None
                     if status == 429:
                         try:
-                            retry_after = float(e.response.headers.get("Retry-After", ""))
+                            retry_after = float(e.response.headers.get("Retry-After"))
                         except (TypeError, ValueError):
                             retry_after = None
 

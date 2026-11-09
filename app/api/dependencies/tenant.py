@@ -55,7 +55,9 @@ async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
         return tenant_uuid
 
     claim = settings.JWT_TENANT_CLAIM.strip()
-    authorization = request.headers.get("authorization", "").strip()
+    authorization = request.headers.get("authorization")
+    if authorization is not None:
+        authorization = authorization.strip()
     if settings.AUTH_MODE != "jwt" or not claim or not authorization:
         return None
 
@@ -69,9 +71,11 @@ async def _preferred_jwt_tenant_id(request: Request) -> UUID | None:
 
 def _tenant_uuid_from_header_or_default(request: Request, x_tenant_id: str | None) -> UUID:
     tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
-    raw = (x_tenant_id if x_tenant_id is not None else "").strip()
+    raw = x_tenant_id.strip() if x_tenant_id is not None else None
     if not raw and tenant_header.lower() != "x-tenant-id":
-        raw = request.headers.get(tenant_header, "").strip()
+        raw = request.headers.get(tenant_header)
+        if raw is not None:
+            raw = raw.strip()
     source = "header"
     if not raw:
         if is_production_env():

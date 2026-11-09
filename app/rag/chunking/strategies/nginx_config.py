@@ -43,8 +43,8 @@ def _extract_directive_value(text: str, directive: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(text or "")
-    d = str(directive or "").strip()
+    raw = text
+    d = directive.strip()
     if not raw or not d:
         return None
     d_cf = d.casefold()
@@ -94,13 +94,13 @@ def _find_matching_brace(text: str, start: int) -> int | None:
 def _iter_named_blocks(text: str, kind: str) -> list[_Block]:
     blocks: list[_Block] = []
     for m in _BLOCK_OPEN_RE.finditer(text):
-        if (m.group("kind") or "").strip().lower() != kind:
+        if (m.group("kind")).strip().lower() != kind:
             continue
         start = m.start()
         end = _find_matching_brace(text, start)
         if end is None:
             continue
-        rest = (m.group("rest") or "").strip()
+        rest = (m.group("rest")).strip()
         title = rest if rest else None
         blocks.append(_Block(start=start, end=end, kind=kind, title=title, level=1))
     return blocks
@@ -195,7 +195,7 @@ class NginxConfigChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

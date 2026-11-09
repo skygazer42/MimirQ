@@ -39,7 +39,7 @@ _HEADER_KEYWORDS = [
     "时间",
 ]
 
-_HEADER_KEYS = {str(k or "").strip().casefold() for k in _HEADER_KEYWORDS if str(k or "").strip()}
+_HEADER_KEYS = {k.strip().casefold() for k in _HEADER_KEYWORDS if k.strip()}
 _HEADER_START_KEYS = {"from", "发件人"}
 
 
@@ -53,7 +53,7 @@ def _parse_header_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return None
 
@@ -79,7 +79,7 @@ def _parse_header_line(line: str) -> tuple[str, str] | None:
 
 
 def _looks_like_thread_separator_line(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return False
     # Require some dashes to avoid false positives.
@@ -93,7 +93,7 @@ def _looks_like_thread_separator_line(line: str) -> bool:
 
 
 def _looks_like_on_wrote_line(line: str) -> bool:
-    s = str(line or "").strip()
+    s = line.strip()
     if not s:
         return False
 
@@ -110,7 +110,7 @@ def _looks_like_on_wrote_line(line: str) -> bool:
 
 
 def _has_quote_lines(text: str) -> bool:
-    for ln in str(text or "").splitlines():
+    for ln in text.splitlines():
         if ln.lstrip().startswith(">"):
             return True
     return False
@@ -220,7 +220,7 @@ def looks_like_email_thread(text: str) -> bool:
     if msgs:
         return True
     # Best-effort: many threads include separators even without full headers.
-    head = (text or "")[:50000]
+    head = (text)[:50000]
     has_sep = any(_looks_like_thread_separator_line(ln) for ln in head.splitlines())
     has_headers = _count_header_lines(head.splitlines()[:120]) >= 3
     return has_sep and has_headers
@@ -333,7 +333,7 @@ class EmailThreadChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

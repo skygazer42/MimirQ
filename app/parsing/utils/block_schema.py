@@ -26,18 +26,19 @@ _KIND_ALIASES = {
 
 
 def clean_position_tags(text: Any) -> str:
-    return POSITION_TAG_RE.sub("", str(text or "")).strip()
+    return POSITION_TAG_RE.sub("", text).strip()
 
 
 def normalize_block_kind(kind: Any) -> str:
-    return _KIND_ALIASES.get(str(kind or "").strip().lower(), "paragraph")
+    key = kind.strip().lower() if isinstance(kind, str) else None
+    return _KIND_ALIASES.get(key, "paragraph")
 
 
 def parse_position_tags(text: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for match in POSITION_TAG_RE.finditer(str(text or "")):
+    for match in POSITION_TAG_RE.finditer(text):
         pages: list[int] = []
-        for token in str(match.group(1) or "").split("-"):
+        for token in match.group(1).split("-"):
             try:
                 page = int(token)
             except Exception:
@@ -79,7 +80,8 @@ def build_block_element(
     normalized_kind = normalize_block_kind(kind)
     positions = parse_position_tags(text)
     first_position = positions[0] if positions else {}
-    native_kind = str(kind or "").strip().lower() or normalized_kind
+    raw_kind = kind.strip().lower() if isinstance(kind, str) else None
+    native_kind = raw_kind or normalized_kind
     merged_attributes: dict[str, Any] = {
         "source_backend": source_backend,
         "source_element_id": source_element_id,

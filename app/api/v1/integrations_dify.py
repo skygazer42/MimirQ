@@ -763,7 +763,7 @@ def _dify_error_response(exc: HTTPException) -> JSONResponse:
     if isinstance(detail, dict) and "error_code" in detail and "error_msg" in detail:
         payload = {"error_code": int(detail["error_code"]), "error_msg": str(detail["error_msg"])}
     else:
-        msg = str(detail or "")
+        msg = str(detail)
         if exc.status_code == 401 and "authorization header" in msg.lower():
             code = 1001
         elif exc.status_code == 401:
@@ -1162,7 +1162,7 @@ def _dify_response_cache_settings_signature() -> dict[str, Any]:
         "enable_reranker": bool(settings.ENABLE_RERANKER),
         "dify_reranker_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_RERANKER_ENABLED),
         "reranker_provider": str(settings.RERANKER_PROVIDER),
-        "reranker_model": str(settings.RERANKER_MODEL or ""),
+        "reranker_model": settings.RERANKER_MODEL,
         "reranker_top_n": int(settings.RERANKER_TOP_N),
         "metadata_anchor_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_DB_FALLBACK_ENABLED),
         "metadata_anchor_preflight_enabled": bool(settings.DIFY_EXTERNAL_KNOWLEDGE_METADATA_ANCHOR_PREFLIGHT_ENABLED),
@@ -1207,9 +1207,9 @@ def _build_dify_response_cache_key(
     signature = {
         "schema": "mimirq.dify_external_response_cache.v1",
         "tenant_id": str(actor.tenant_id),
-        "account_id": str(actor.account_id or ""),
-        "knowledge_id": str(knowledge_id or "").strip(),
-        "query": str(query or "").strip(),
+        "account_id": actor.account_id,
+        "knowledge_id": knowledge_id.strip(),
+        "query": query.strip(),
         "retrieval_setting": retrieval_setting.model_dump(mode="json"),
         "metadata_condition": metadata_condition or None,
         "dataset_ids": [str(item) for item in scope_plan.dataset_ids],
@@ -1221,7 +1221,7 @@ def _build_dify_response_cache_key(
         "candidate_top_k": int(candidate_top_k),
         "score_threshold": float(score_threshold),
         "policy_plugin_refs": list(policy_plugin_refs),
-        "corpus_token": str(corpus_token or ""),
+        "corpus_token": corpus_token,
         "settings": _dify_response_cache_settings_signature(),
     }
     raw = json.dumps(signature, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str)
@@ -1251,7 +1251,7 @@ def _coerce_dataset_id_list(value: Any) -> list[UUID]:
 def _route_hint_terms(raw_route: dict[str, Any]) -> tuple[str, ...]:
     raw_terms = raw_route.get("terms") or raw_route.get("query_terms") or raw_route.get("contains")
     terms = raw_terms if isinstance(raw_terms, list | tuple | set) else [raw_terms]
-    return tuple(str(term or "").strip() for term in terms if str(term or "").strip())
+    return tuple(str(term).strip() for term in terms if term is not None and str(term).strip())
 
 
 def _mapping_query_routes(mapping: dict[str, Any]) -> list[Any] | None:
@@ -1301,7 +1301,7 @@ def _normalized_inherited_route_sources(raw_sources: Any) -> list[str]:
     inherited_sources: list[str] = []
     seen_sources: set[str] = set()
     for source in normalized_sources:
-        source_key = str(source or "").strip()
+        source_key = _first_nonempty_str(source)
         if not source_key or source_key in seen_sources:
             continue
         seen_sources.add(source_key)
@@ -1434,12 +1434,12 @@ def _metadata_anchor_dataset_ids_for_query(
     ):
         return dataset_ids
 
-    requested_refs = {str(ref or "").strip() for ref in policy_plugin_refs or () if str(ref or "").strip()}
+    requested_refs = {ref.strip() for ref in policy_plugin_refs or () if ref.strip()}
     if not requested_refs:
         return dataset_ids
 
     knowledge_map = _load_knowledge_map()
-    current_mapping = knowledge_map.get(str(knowledge_id or "").strip())
+    current_mapping = knowledge_map.get(knowledge_id.strip())
     if not isinstance(current_mapping, dict):
         return dataset_ids
     try:
@@ -1562,7 +1562,7 @@ def _resolve_dify_warmup_knowledge_ids(knowledge_map: dict[str, Any] | None = No
     seen: set[str] = set()
     out: list[str] = []
     for item in candidates:
-        knowledge_id = str(item or "").strip()
+        knowledge_id = item.strip()
         if not knowledge_id or knowledge_id in seen:
             continue
         seen.add(knowledge_id)
@@ -1582,7 +1582,7 @@ def _dify_knowledge_resolution_mode() -> str:
 
 
 def _resolve_knowledge_dataset_scope(knowledge_id: str, *, query: str = "") -> DatasetScopePlan:
-    key = str(knowledge_id or "").strip()
+    key = knowledge_id.strip()
     knowledge_map = _load_knowledge_map()
     if key in knowledge_map:
         raw_mapping = knowledge_map[key]
@@ -1684,7 +1684,7 @@ def _load_chunk_content_map(
         return {}
     out: dict[str, str] = {}
     for chunk_id, content in rows:
-        text = str(content or "").strip()
+        text = content.strip()
         if text:
             out[str(chunk_id)] = text
     return out
@@ -1755,7 +1755,7 @@ def _metadata_answer_highlights(
     seen: set[str] = set()
 
     def add(text: str) -> None:
-        value = str(text or "").strip()
+        value = text.strip()
         if not value or value in seen:
             return
         seen.add(value)
@@ -1789,7 +1789,7 @@ def _metadata_answer_field_configured(
     field_specs: tuple[dict[str, Any], ...],
 ) -> bool:
     return "answer" in highlight_keys or any(
-        str(spec.get("metadata") or spec.get("key") or spec.get("field") or "").strip() == "answer"
+        _first_nonempty_str(spec.get("metadata"), spec.get("key"), spec.get("field")) == "answer"
         for spec in field_specs
     )
 
@@ -1823,7 +1823,7 @@ def _add_metadata_answer_hint_values(
 
 def _response_hint_metadata_fields(field_spec: dict[str, Any]) -> tuple[str, ...]:
     fields = _response_hint_string_list(field_spec, "fields")
-    single_field = str(field_spec.get("field") or "").strip()
+    single_field = _first_nonempty_str(field_spec.get("field"))
     if single_field and single_field not in fields:
         fields = (*fields, single_field)
     return fields
@@ -1839,7 +1839,7 @@ def _add_metadata_answer_field_spec_highlights(
 ) -> None:
     if not _response_hint_metadata_conditions_match(layer, field_spec):
         return
-    metadata_key = str(field_spec.get("metadata") or field_spec.get("key") or "").strip()
+    metadata_key = _first_nonempty_str(field_spec.get("metadata"), field_spec.get("key"))
     source = layer.get(metadata_key) if metadata_key else layer
     if source is None:
         return
@@ -1886,7 +1886,7 @@ def _add_metadata_answer_dict_field_spec_highlights(
         policy_plugin_refs=policy_plugin_refs,
         enabled=field_spec.get("prioritize_query_fields") is True,
     )
-    requested_prefix = str(field_spec.get("requested_labels_prefix") or "").strip()
+    requested_prefix = _first_nonempty_str(field_spec.get("requested_labels_prefix"))
     if requested_prefix and requested_labels:
         separator = str(field_spec.get("requested_labels_separator") or "、")
         add(f"{requested_prefix}：{separator.join(requested_labels)}")
@@ -1904,7 +1904,7 @@ def _question_anchor_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str,
     for plugin_ref in policy_plugin_refs or ():
         policy = _retrieval_policy_for_plugin_ref(plugin_ref)
         for raw_term in _response_hint_string_list(policy, "question_intent_terms"):
-            term = str(raw_term or "").strip()
+            term = raw_term.strip()
             normalized = _normalize_match_term(term)
             if not term or not normalized or normalized in seen:
                 continue
@@ -1914,7 +1914,7 @@ def _question_anchor_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str,
 
 
 def _query_prefers_question_anchor(query: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return False
     if any(marker in text for marker in _QUESTION_ANCHOR_QUERY_MARKERS):
@@ -1972,7 +1972,7 @@ def _record_matches_quoted_query_anchor_for_policy(
     anchors = _quoted_query_anchor_terms(query)
     if not anchors:
         return True
-    values: list[str] = [str(record.get("content") or ""), str(record.get("title") or "")]
+    values: list[str] = [record["content"], record["title"]]
     anchor_fields = _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs)
     for metadata in _iter_record_metadata_layers(record):
         for field in anchor_fields:
@@ -1999,7 +1999,7 @@ def _anchor_binding_fields_for_policy_refs(policy_plugin_refs: tuple[str, ...]) 
         if isinstance(raw_anchor_fields, list | tuple):
             for raw in raw_anchor_fields:
                 raw_dict = dict(raw) if isinstance(raw, dict) else {}
-                field = str(raw_dict.get("metadata") or "").strip()
+                field = _first_nonempty_str(raw_dict.get("metadata"))
                 normalized = _normalize_match_term(field)
                 if normalized and field not in seen:
                     seen.add(field)
@@ -2016,7 +2016,7 @@ def _exact_query_anchor_fields_for_policy_refs(policy_plugin_refs: tuple[str, ..
         "service_aliases",
     )
     for field in (*_EXACT_QUERY_ANCHOR_FIELDS, *anchor_fields):
-        text = str(field or "").strip()
+        text = field.strip()
         if text and text not in seen:
             seen.add(text)
             fields.append(text)
@@ -2033,7 +2033,7 @@ def _policy_slot_intent_terms_for_policy_refs(policy_plugin_refs: tuple[str, ...
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
             for raw_term in mapping.get("terms") or ():
-                term = str(raw_term or "").strip()
+                term = _first_nonempty_str(raw_term)
                 normalized = _normalize_match_term(term)
                 if len(normalized) < 3 or normalized in seen:
                     continue
@@ -2050,7 +2050,7 @@ def _metadata_anchor_preflight_block_terms_for_policy_refs(policy_plugin_refs: t
         if not isinstance(policy, dict) or policy.get("schema") != "mimirq.retrieval_policy.v1":
             continue
         for raw_term in _response_hint_string_list(policy, "metadata_anchor_preflight_block_terms"):
-            term = str(raw_term or "").strip()
+            term = raw_term.strip()
             normalized = _normalize_match_term(term)
             if not term or not normalized or normalized in seen:
                 continue
@@ -2105,7 +2105,7 @@ def _requested_policy_slot_specs_for_query(
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
-            field = str(mapping.get("metadata") or "").strip()
+            field = _first_nonempty_str(mapping.get("metadata"))
             if not field:
                 continue
             raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
@@ -2116,7 +2116,7 @@ def _requested_policy_slot_specs_for_query(
             if not any((normalized := _normalize_match_term(term)) and normalized in query_term for term in terms):
                 continue
             for raw_value in slot_values:
-                value = str(raw_value or "").strip()
+                value = raw_value.strip()
                 normalized_value = _normalize_match_term(value)
                 key = f"{field}\0{normalized_value}"
                 if not value or not normalized_value or key in seen:
@@ -2151,7 +2151,7 @@ def _query_allows_metadata_anchor_preflight(
             query_prefers_service_anchor
             and not _query_has_quoted_anchor_candidate(query)
             and any(
-                marker in str(query or "")
+                marker in query
                 for marker in ("合并回答", "一并回答", "一起回答", "分别回答", "分开回答", "请合并", "请分别")
             )
         ):
@@ -2203,7 +2203,7 @@ def _mixed_intent_subject_anchor(segment: str, *, policy_plugin_refs: tuple[str,
         return ""
     best_index = len(text)
     intent_markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)
-    for marker in sorted((str(item or "").strip() for item in intent_markers), key=len, reverse=True):
+    for marker in sorted((item.strip() for item in intent_markers), key=len, reverse=True):
         if not marker:
             continue
         index = text.find(marker)
@@ -2227,7 +2227,7 @@ def _mixed_intent_retrieval_queries(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    text = str(query or "").strip()
+    text = query.strip()
     if not _query_has_mixed_intent_for_policy(text, policy_plugin_refs=policy_plugin_refs):
         return ()
 
@@ -2422,7 +2422,7 @@ def _policy_slot_canonical_query_term(
     value: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> str:
-    normalized_field = str(field or "").strip()
+    normalized_field = field.strip()
     normalized_value = _normalize_match_term(value)
     if not normalized_field or not normalized_value:
         return ""
@@ -2437,7 +2437,7 @@ def _policy_slot_canonical_query_term(
         ]
         mappings.sort(key=lambda mapping: 1 if isinstance(mapping.get("values"), list | tuple | set) else 0)
         for mapping in mappings:
-            if str(mapping.get("metadata") or "").strip() != normalized_field:
+            if _first_nonempty_str(mapping.get("metadata")) != normalized_field:
                 continue
             raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
             values = raw_values or [mapping.get("value")]
@@ -2445,7 +2445,7 @@ def _policy_slot_canonical_query_term(
                 continue
             terms = tuple(_metadata_terms(mapping.get("terms")))
             return next((term for term in terms if len(_normalize_match_term(term)) >= 2), "")
-    return str(value or "").strip()
+    return value.strip()
 
 
 def _policy_slot_query_terms(
@@ -2454,7 +2454,7 @@ def _policy_slot_query_terms(
     value: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    normalized_field = str(field or "").strip()
+    normalized_field = field.strip()
     normalized_value = _normalize_match_term(value)
     if not normalized_field or not normalized_value:
         return ()
@@ -2466,14 +2466,14 @@ def _policy_slot_query_terms(
             continue
         for raw_mapping in policy.get("query_expansion_values") or ():
             mapping = dict(raw_mapping) if isinstance(raw_mapping, dict) else {}
-            if str(mapping.get("metadata") or "").strip() != normalized_field:
+            if _first_nonempty_str(mapping.get("metadata")) != normalized_field:
                 continue
             raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
             values = raw_values or [mapping.get("value")]
             if normalized_value not in {_normalize_match_term(item) for item in values}:
                 continue
             for raw_term in (*_metadata_terms(mapping.get("terms")), value):
-                term = str(raw_term or "").strip()
+                term = raw_term.strip()
                 normalized = _normalize_match_term(term)
                 if len(normalized) < 2 or normalized in seen:
                     continue
@@ -2522,7 +2522,7 @@ def _mixed_intent_policy_slot_queries(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     segment_term = _normalize_match_term(segment)
-    subject = str(subject_anchor or "").strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
+    subject = subject_anchor.strip(_SERVICE_ANCHOR_QUERY_TRAILING_CHARS)
     if len(segment_term) < 3 or len(_normalize_match_term(subject)) < 3:
         return ()
 
@@ -2556,7 +2556,7 @@ def _policy_slot_canonical_terms_by_value(mappings: list[dict[str, Any]]) -> dic
     for mapping in mappings:
         if "values" in mapping:
             continue
-        value = str(mapping.get("value") or "").strip()
+        value = _first_nonempty_str(mapping.get("value"))
         if value:
             canonical_terms.setdefault(value, []).extend(_metadata_terms(mapping.get("terms")))
     return canonical_terms
@@ -2573,7 +2573,7 @@ def _append_mixed_intent_policy_slot_queries(
 ) -> None:
     raw_values = mapping.get("values") if isinstance(mapping.get("values"), list | tuple | set) else None
     for raw_value in raw_values or [mapping.get("value")]:
-        value = str(raw_value or "").strip()
+        value = _first_nonempty_str(raw_value)
         if not value:
             continue
         canonical_terms = canonical_terms_by_value.get(value, [])
@@ -2595,7 +2595,7 @@ def _append_mixed_intent_policy_slot_queries(
 
 
 def _mixed_intent_segment_has_intent_marker(segment: str, *, policy_plugin_refs: tuple[str, ...] = ()) -> bool:
-    text = str(segment or "").strip()
+    text = segment.strip()
     if not text:
         return False
     markers = _mixed_intent_subject_terms_for_policy_refs(policy_plugin_refs)
@@ -2633,7 +2633,7 @@ def _content_with_answer_hints(
     query: str = "",
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> str:
-    body = str(content or "").strip()
+    body = content.strip()
     if not body:
         return body
     response_hints = _response_hints_for_metadata(metadata, policy_plugin_refs=policy_plugin_refs)
@@ -2712,7 +2712,7 @@ def _record_intent_bonus(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
-    query_text = str(query or "").casefold()
+    query_text = query.casefold()
     if not query_text:
         return 0.0
     matches = 0
@@ -3240,7 +3240,7 @@ def _record_final_rerank_text(
     seen: set[str] = set()
 
     def add(value: Any) -> None:
-        text = str(value or "").strip()
+        text = _first_nonempty_str(value)
         if not text or text in seen:
             return
         seen.add(text)
@@ -3346,7 +3346,7 @@ def _final_rerank_candidates(
         candidate_id = _record_final_rerank_candidate_id(record, index=index, used=used_ids)
         metadata = dict(record.get("metadata") if isinstance(record.get("metadata"), dict) else {})
         metadata["score"] = float(record.get("score") or 0.0)
-        metadata["title"] = str(record.get("title") or "")
+        metadata["title"] = record["title"]
         candidates.append(RerankCandidate(id=candidate_id, text=text, metadata=metadata))
         id_to_record[candidate_id] = record
     return candidates, id_to_record, candidate_count
@@ -3414,7 +3414,7 @@ def _requested_fast_response_labels(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    query_text = str(query or "")
+    query_text = query
     labels: list[str] = []
     seen: set[str] = set()
 
@@ -3503,7 +3503,7 @@ def _requested_response_hint_metadata_labels(
 ) -> tuple[str, ...]:
     if not enabled:
         return ()
-    query_text = str(query or "")
+    query_text = query
     if not query_text:
         return ()
     available = set(fields)
@@ -3576,7 +3576,7 @@ def _record_content_is_answerful(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
-    content = str(record.get("content") or "").strip()
+    content = record["content"].strip()
     return bool(content) and _record_has_answer_evidence(
         record,
         content=content,
@@ -3780,7 +3780,7 @@ def _composite_exact_anchor_slot_content(records: list[dict[str, Any]]) -> str:
         part
         for part in (
             _composite_stitched_section_text(records),
-            "\n\n".join(str(record.get("content") or "").strip() for record in records if record.get("content")),
+            "\n\n".join(record["content"].strip() for record in records if record.get("content")),
         )
         if part
     ]
@@ -3821,7 +3821,7 @@ def _record_is_anchor_only_qa(
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> bool:
     response_hints = _response_hints_for_record(record, policy_plugin_refs=policy_plugin_refs)
-    normalized = str(content or "").strip()
+    normalized = content.strip()
     answer_labels = _response_hint_string_list(response_hints, "answer_labels")
     answer_keywords = _response_hint_string_list(response_hints, "answer_keywords")
     if any(label and label in normalized for label in (*answer_labels, *answer_keywords)):
@@ -4283,7 +4283,7 @@ def _dify_kg_chunk_events(
     for event in events:
         if not isinstance(event, dict):
             continue
-        raw_chunk_id = str(event.get("chunk_id") or "").strip()
+        raw_chunk_id = _first_nonempty_str(event.get("chunk_id"))
         if not raw_chunk_id:
             continue
         try:
@@ -4310,21 +4310,21 @@ def _dify_kg_record_citation(
     metadata.update(
         {
             "kg_on_demand": True,
-            "kg_event_id": str(event.get("id") or event.get("event_id") or ""),
+            "kg_event_id": _first_nonempty_str(event.get("id"), event.get("event_id")),
             "kg_score": _clamp_score(event.get("score") or event.get("weight") or event.get("relevance_score")),
             "chunk_id": str(chunk_id),
-            "document_id": str(_row_value(row, "document_id") or ""),
+            "document_id": _row_value(row, "document_id"),
             "chunk_index": _row_value(row, "chunk_index"),
             "page_number": _row_value(row, "page_number"),
         }
     )
     return (
         {
-            "content": str(_row_value(row, "content") or ""),
+            "content": _row_value(row, "content"),
             "relevance_score": metadata["kg_score"],
             "document_name": str(_row_value(row, "filename") or "kg-on-demand"),
             "chunk_id": str(chunk_id),
-            "dataset_id": str(_row_value(row, "dataset_id") or ""),
+            "dataset_id": _row_value(row, "dataset_id"),
             "metadata": metadata,
         },
         _row_value(row, "dataset_id"),
@@ -4351,7 +4351,7 @@ def _dify_kg_records_from_rows(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-        if str(record.get("content") or "").strip():
+        if record["content"].strip():
             records.append(record)
     return records
 
@@ -4440,7 +4440,7 @@ def _records_from_citations(
             query=query,
             policy_plugin_refs=policy_plugin_refs,
         )
-        if str(record.get("content") or "").strip():
+        if record["content"].strip():
             records.append(record)
     return records
 
@@ -4585,7 +4585,7 @@ def _records_can_skip_metadata_anchor_fallback(
 
 
 def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return []
 
@@ -4593,7 +4593,7 @@ def _metadata_anchor_fallback_query_terms(query: str) -> list[str]:
     seen: set[str] = set()
 
     def add(raw: str) -> None:
-        term = str(raw or "").strip()
+        term = raw.strip()
         normalized = _normalize_match_term(term)
         if len(normalized) < 4 or normalized in seen:
             return
@@ -4622,7 +4622,7 @@ def _strip_service_anchor_query_noise(
     cutoff_terms: tuple[str, ...] = (),
     admin_aliases: tuple[str, ...] = (),
 ) -> str:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return ""
     text = _strip_service_anchor_leading_noise(text, leading_noise_terms=leading_noise_terms)
@@ -4650,7 +4650,7 @@ def _strip_service_anchor_query_noise(
 def _sorted_anchor_query_terms(terms: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     return tuple(
         sorted(
-            {str(term or "").strip() for term in terms if str(term or "").strip()},
+            {term.strip() for term in terms if term.strip()},
             key=len,
             reverse=True,
         )
@@ -4725,7 +4725,7 @@ def _metadata_anchor_service_name_query_terms(
     seen: set[str] = set()
     seen_text: set[str] = set()
 
-    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
+    for match in _QUOTED_ANCHOR_RE.finditer(query):
         literal = _quoted_anchor_match_text(match)
         _append_literal_metadata_anchor_term(terms, literal, min_chars=4, seen_text=seen_text)
     for quoted_anchor in _quoted_query_anchor_terms(query):
@@ -4826,7 +4826,7 @@ def _append_literal_metadata_anchor_term(
     min_chars: int,
     seen_text: set[str],
 ) -> None:
-    term = str(raw or "").strip()
+    term = raw.strip()
     normalized = _normalize_match_term(term)
     text_key = term.casefold()
     if len(normalized) < min_chars or text_key in seen_text:
@@ -4844,7 +4844,7 @@ def _append_metadata_anchor_term(
     cjk_min_chars: int | None = None,
     seen_text: set[str] | None = None,
 ) -> None:
-    term = str(raw or "").strip()
+    term = raw.strip()
     normalized = _normalize_match_term(term)
     text_key = term.casefold()
     effective_min_chars = cjk_min_chars if cjk_min_chars is not None and _contains_cjk(normalized) else min_chars
@@ -4903,7 +4903,7 @@ def _metadata_anchor_fallback_record_score(
     query: str,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> float:
-    content = str(record.get("content") or "").strip()
+    content = record["content"].strip()
     if content and _record_is_anchor_only_qa(record, content=content, policy_plugin_refs=policy_plugin_refs):
         return 0.0
     question_strength = _record_question_anchor_strength(
@@ -5017,7 +5017,7 @@ def _metadata_anchor_fallback_candidate_record(
     dataset_id = _coerce_uuid_text(_row_value(row, "dataset_id"))
     if dataset_id not in scoped_dataset_ids:
         return None
-    content = str(_row_value(row, "content") or "").strip()
+    content = _row_value(row, "content").strip()
     if not content:
         return None
     metadata = _metadata_anchor_row_metadata(row, dataset_id=dataset_id)
@@ -6133,7 +6133,7 @@ def _resolve_dify_warmup_top_k() -> int:
 
 def _resolve_dify_warmup_timeout_sec() -> float:
     try:
-        timeout_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC or 60.0)
+        timeout_sec = float(settings.DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC)
     except (TypeError, ValueError):
         timeout_sec = 60.0
     return max(1.0, timeout_sec)
@@ -6726,8 +6726,8 @@ def _build_dify_external_retrieval_context(
             "client_ip_hash": _diagnostic_value_hash(_request_client_ip(request)),
             "knowledge_id_hash": _diagnostic_value_hash(body.knowledge_id),
             "query_hash": _diagnostic_query_hash(body.query),
-            "knowledge_id_chars": len(str(body.knowledge_id or "")),
-            "query_chars": len(str(body.query or "")),
+            "knowledge_id_chars": len(body.knowledge_id),
+            "query_chars": len(body.query),
             "top_k": top_k,
             "candidate_top_k": candidate_top_k,
             "response_top_k": response_top_k,
@@ -6767,7 +6767,7 @@ def _dify_response_from_serialized_records(records: list[dict[str, Any]]) -> Dif
 
 def _set_main_trace_query(ctx: _DifyExternalRetrievalContext, path: str, *, ok: bool = True) -> None:
     entry = {"kind": "main", "query": ctx.body.query, "path": path, "ok": ok}
-    if ctx.trace_queries and str(ctx.trace_queries[0].get("kind") or "") == "main":
+    if ctx.trace_queries and ctx.trace_queries[0].get("kind") == "main":
         ctx.trace_queries[0] = entry
         return
     ctx.trace_queries.insert(0, entry)
@@ -7091,7 +7091,7 @@ async def _run_dify_metadata_anchor_fallback_call(
     except TimeoutError:
         logger.info(
             "Dify metadata anchor fallback exceeded request budget query_hash=%s",
-            _diagnostic_query_hash(str(call_kwargs.get("query") or "")),
+            _diagnostic_query_hash(call_kwargs["query"]),
         )
         return []
 

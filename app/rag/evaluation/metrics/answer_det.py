@@ -8,7 +8,9 @@ _REFUSAL_RE = re.compile(
 
 
 def _normalize(text: Any) -> str:
-    return " ".join(str(text or "").strip().split()).casefold()
+    if text is None:
+        return ""
+    return " ".join(str(text).strip().split()).casefold()
 
 
 def _tokenize(text: str) -> list[str]:
@@ -44,7 +46,7 @@ def evaluate_answer_deterministic(
     )
 
     return {
-        "question": str(question or ""),
+        "question": question,
         "answer_em": answer_em,
         "answer_f1": answer_f1,
         "refusal_correct": refusal_correct,

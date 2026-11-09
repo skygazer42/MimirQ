@@ -102,9 +102,7 @@ def _report_bundle_manifest(
 ) -> dict[str, object]:
     manifest: dict[str, object] = {
         "schema": "mimirq.report_bundle.v2",
-        "generated_at": report.generated_at.isoformat()
-        if hasattr(report.generated_at, "isoformat")
-        else str(report.generated_at or ""),
+        "generated_at": report.generated_at.isoformat(),
         "redact": bool(redact),
         "files": files,
     }
@@ -112,7 +110,7 @@ def _report_bundle_manifest(
         manifest["dataset"] = {"redacted": True}
     else:
         manifest["dataset_id"] = str(dataset_id)
-        manifest["dataset_name"] = str(report.dataset_name or "")
+        manifest["dataset_name"] = report.dataset_name
         manifest["pipeline_hash"] = pipeline_hash
     return manifest
 
@@ -263,7 +261,7 @@ def export_dataset_report_html(
 
     html = render_dataset_report_html(
         title="MimirQ · 数据集报告中心（质量 + 合规）",
-        dataset_name=str(report.dataset_name or ""),
+        dataset_name=report.dataset_name,
         dataset_id=str(dataset_id),
         generated_at=report.generated_at,
         report=report.model_dump(mode="json"),
@@ -299,7 +297,7 @@ def export_dataset_rag_audit_html(
 
     html = render_rag_audit_html(
         title="MimirQ · RAG Audit（Profile + Governance + Chunk + KG + Eval）",
-        dataset_name=str(report.dataset_name or ""),
+        dataset_name=report.dataset_name,
         dataset_id=str(dataset_id),
         generated_at=report.generated_at,
         report=report.model_dump(mode="json"),
@@ -353,7 +351,7 @@ def export_dataset_report_bundle_zip(
 
     report_html = render_dataset_report_html(
         title="MimirQ · 数据集报告中心（质量 + 合规）",
-        dataset_name=str(report.dataset_name or ""),
+        dataset_name=report.dataset_name,
         dataset_id=str(dataset_id),
         generated_at=report.generated_at,
         report=report.model_dump(mode="json"),
@@ -361,7 +359,7 @@ def export_dataset_report_bundle_zip(
     )
     rag_audit_html = render_rag_audit_html(
         title="MimirQ · RAG Audit（Profile + Governance + Chunk + KG + Eval）",
-        dataset_name=str(report.dataset_name or ""),
+        dataset_name=report.dataset_name,
         dataset_id=str(dataset_id),
         generated_at=report.generated_at,
         report=report.model_dump(mode="json"),

@@ -327,7 +327,7 @@ def _merge_kg_dataset_shard_results(
         reports = data.get("community_reports")
         if isinstance(reports, list):
             community_reports.extend(reports)
-        summary = str(data.get("global_summary") or "").strip()
+        summary = data["global_summary"].strip()
         if summary:
             global_summaries.append(summary)
 
@@ -433,7 +433,7 @@ def _resolve_query_mode_diag(
     classifier_enabled = bool(settings.KG_SEARCH_QUERY_MODE_CLASSIFIER_ENABLED)
     if requested_mode == "auto" and classifier_enabled:
         mode_diag = classify_kg_query_mode(
-            query=str(query or ""),
+            query=query,
             document_ids=list(document_ids or []),
             dataset_id=dataset_id,
             default_mode="auto",
@@ -551,7 +551,7 @@ def _annotate_kg_search_result(
     resolved_mode: str,
     mode_diag: dict[str, Any],
 ) -> dict[str, Any]:
-    confidence = str(mode_diag.get("confidence") or "")
+    confidence = mode_diag["confidence"]
     reason_codes = _mode_reason_codes(mode_diag)
     result["query_mode"] = {
         "requested": str(requested_mode),
@@ -661,7 +661,7 @@ async def kg_search(
         account_id=account_id,
         query_mode=resolved_mode,
         query_mode_reason_codes=list(mode_diag.get("reason_codes") or []),
-        query_mode_confidence=str(mode_diag.get("confidence") or ""),
+        query_mode_confidence=mode_diag["confidence"],
     )
     if isinstance(result, dict):
         result = _annotate_kg_search_result(

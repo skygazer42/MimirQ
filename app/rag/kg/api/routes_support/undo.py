@@ -27,7 +27,7 @@ def _get_applied_resolution_action(
     action = db.query(action_model).filter_by(tenant_id=tenant_id, id=action_id).first()
     if not action:
         raise HTTPException(status_code=404, detail="Resolution action not found")
-    if str(getattr(action, "status", "") or "").strip().lower() != "applied":
+    if action.status.strip().lower() != "applied":
         raise HTTPException(status_code=409, detail="Resolution action is not in applied state")
     return action
 
@@ -46,7 +46,7 @@ def _restore_updated_assocs(
     if not assoc_ids:
         return restored
     for assoc in db.query(event_entity_model).all():
-        assoc_id = str(getattr(assoc, "id", "") or "")
+        assoc_id = str(assoc.id)
         if assoc_id and assoc_id in assoc_ids:
             assoc.entity_id = entity_id
             restored += 1
@@ -89,7 +89,7 @@ def _restore_updated_relations(
     if not relation_ids:
         return restored
     for relation in db.query(relation_model).filter_by(tenant_id=tenant_id).all():
-        relation_id = str(getattr(relation, "id", "") or "")
+        relation_id = str(relation.id)
         if not relation_id or relation_id not in relation_ids:
             continue
         if getattr(relation, "subject_entity_id", None) == target_id:
@@ -118,7 +118,7 @@ def _restored_relation_row_payload(*, row: dict[str, Any], tenant_id: UUID, sour
         "chunk_id": _uuid_or_none(row.get("chunk_id")),
         "event_id": _uuid_or_none(row.get("event_id")),
         "subject_entity_id": _uuid_or_none(row.get("subject_entity_id")) or source_id,
-        "predicate": str(row.get("predicate") or "").strip() or "related_to",
+        "predicate": row["predicate"].strip(),
         "predicate_raw": _limited_optional_str(row.get("predicate_raw"), 200),
         "object_entity_id": _uuid_or_none(row.get("object_entity_id")) or source_id,
         "confidence": float(row.get("confidence", 0.5) or 0.5),
@@ -185,13 +185,13 @@ def _restore_source_entity_vector_if_needed(
             items=[
                 {
                     "id": str(source_id),
-                    "content": str(getattr(ent, "name", "") or ""),
+                    "content": ent.name,
                     "metadata": {
-                        "name": str(getattr(ent, "name", "") or ""),
-                        "normalized_name": str(getattr(ent, "normalized_name", "") or ""),
+                        "name": ent.name,
+                        "normalized_name": ent.normalized_name,
                         "tenant_id": str(tenant_id),
-                        "type": str(getattr(ent, "type", "") or "unknown"),
-                        "description": str(getattr(ent, "description", "") or ""),
+                        "type": str(ent.type or "unknown"),
+                        "description": str(ent.description or ""),
                         "index_kind": "entity",
                     },
                 }
@@ -280,7 +280,7 @@ def _undo_split_resolution_action(
         db,
         event_entity_model,
         entity_id=original_id,
-        assoc_ids={str(item) for item in (payload.get("moved_event_entity_ids") or []) if str(item or "").strip()},
+        assoc_ids={str(item) for item in (payload.get("moved_event_entity_ids") or []) if item.strip()},
     )
     stats.restored_relations += _restore_split_relations(
         db,
@@ -288,7 +288,7 @@ def _undo_split_resolution_action(
         tenant_id=tenant_id,
         original_id=original_id,
         new_id=new_id,
-        moved_relation_ids={str(item) for item in (payload.get("moved_relation_ids") or []) if str(item or "").strip()},
+        moved_relation_ids={str(item) for item in (payload.get("moved_relation_ids") or []) if item.strip()},
     )
     stats.deleted_new_entity = _delete_orphan_split_entity(
         db,
@@ -314,7 +314,7 @@ def _restore_split_relations(
     if not moved_relation_ids:
         return restored
     for relation in db.query(relation_model).filter_by(tenant_id=tenant_id).all():
-        relation_id = str(getattr(relation, "id", "") or "")
+        relation_id = str(relation.id)
         if not relation_id or relation_id not in moved_relation_ids:
             continue
         if getattr(relation, "subject_entity_id", None) == new_id:

@@ -14,21 +14,20 @@ from app.api.schemas.dataset import DatasetRAGDefaults
 from app.services.rag_config_template_apply import validate_rag_config_patch
 
 
-def _coerce_dataset_defaults(raw_dataset_defaults: Any) -> DatasetRAGDefaults | None:
+def _coerce_dataset_defaults(raw_dataset_defaults: Any) -> DatasetRAGDefaults:
     if isinstance(raw_dataset_defaults, DatasetRAGDefaults):
         return raw_dataset_defaults
     if isinstance(raw_dataset_defaults, dict):
-        try:
-            return DatasetRAGDefaults(**raw_dataset_defaults)
-        except Exception:
-            return None
-    return None
+        return DatasetRAGDefaults(**raw_dataset_defaults)
+    raise TypeError("dataset RAG defaults must be an object")
 
 
 def _normalized_dataset_overrides(defaults: DatasetRAGDefaults) -> dict[str, Any]:
     overrides = defaults.model_dump(exclude_none=True)
+    contract_mode = overrides.get("retrieval_contract_mode")
     if (
-        str(overrides.get("retrieval_contract_mode") or "").strip().lower() == "evidence_strict"
+        contract_mode is not None
+        and contract_mode.strip().lower() == "evidence_strict"
         and "visible_evidence_only" not in overrides
     ):
         overrides["visible_evidence_only"] = True
@@ -77,9 +76,9 @@ def merge_rag_config_with_dataset_defaults(
     if raw_dataset_defaults is None:
         return rag_config, []
 
+    if isinstance(raw_dataset_defaults, dict):
+        raw_dataset_defaults = {key: value for key, value in raw_dataset_defaults.items() if key not in provided}
     defaults = _coerce_dataset_defaults(raw_dataset_defaults)
-    if defaults is None:
-        return rag_config, []
 
     overrides = _normalized_dataset_overrides(defaults)
     if not overrides:

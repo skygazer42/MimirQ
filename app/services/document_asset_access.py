@@ -308,7 +308,9 @@ def filter_authorized_image_evidence(
     for doc in candidates:
         if len(allowed) >= max_images:
             break
-        reference = str(doc.metadata.get("img_id") or doc.metadata.get("image_id") or "").strip()
+        reference = doc.metadata.get("img_id") or doc.metadata.get("image_id")
+        if reference is not None:
+            reference = reference.strip()
         if not reference or reference in seen:
             continue
         seen.add(reference)

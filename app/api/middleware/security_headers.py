@@ -28,13 +28,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         cross_origin_resource_policy: str = "",
     ) -> None:
         super().__init__(app)
-        self.x_content_type_options = (x_content_type_options or "").strip()
-        self.x_frame_options = (x_frame_options or "").strip()
-        self.referrer_policy = (referrer_policy or "").strip()
-        self.strict_transport_security = (strict_transport_security or "").strip()
-        self.permissions_policy = (permissions_policy or "").strip()
-        self.cross_origin_opener_policy = (cross_origin_opener_policy or "").strip()
-        self.cross_origin_resource_policy = (cross_origin_resource_policy or "").strip()
+        self.x_content_type_options = (x_content_type_options).strip()
+        self.x_frame_options = (x_frame_options).strip()
+        self.referrer_policy = (referrer_policy).strip()
+        self.strict_transport_security = (strict_transport_security).strip()
+        self.permissions_policy = (permissions_policy).strip()
+        self.cross_origin_opener_policy = (cross_origin_opener_policy).strip()
+        self.cross_origin_resource_policy = (cross_origin_resource_policy).strip()
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         response = await call_next(request)

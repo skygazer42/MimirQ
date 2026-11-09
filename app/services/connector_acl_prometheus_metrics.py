@@ -43,13 +43,17 @@ def _enabled() -> bool:
 
 
 def _norm_connector_id(value: str | None) -> str:
-    s = str(value or "").strip().lower()
+    if value is None:
+        return "unknown"
+    s = str(value).strip().lower()
     s = re.sub(r"[^a-z0-9._:-]+", "_", s)
     return (s[:80] or "unknown").strip("_") or "unknown"
 
 
 def _norm_mode(value: str | None) -> str:
-    s = str(value or "").strip().lower()
+    if value is None:
+        return "inherit"
+    s = str(value).strip().lower()
     if not s:
         return "inherit"
     if s in {"", "inherit", "null", "none"}:

@@ -34,7 +34,7 @@ VALID_COLBERT_PROVIDERS = frozenset({"deterministic"})
 
 
 def _stable_key(text: str) -> str:
-    return hashlib.sha256((text or "").encode("utf-8", errors="ignore")).hexdigest()
+    return hashlib.sha256((text).encode("utf-8", errors="ignore")).hexdigest()
 
 
 def _l2_normalize(x: np.ndarray) -> np.ndarray:
@@ -46,12 +46,12 @@ def _l2_normalize(x: np.ndarray) -> np.ndarray:
 
 
 def _tokenize(text: str) -> list[str]:
-    raw = str(text or "").strip()
+    raw = text.strip()
     if not raw:
         return []
     out: list[str] = []
     for m in _TOKEN_RE.finditer(raw):
-        t = (m.group(0) or "").strip()
+        t = (m.group(0)).strip()
         if not t:
             continue
         out.append(t.casefold() if t.isascii() else t)
@@ -76,7 +76,7 @@ class DeterministicDenseEmbedder(DenseEmbedder):
     def encode_batch(self, texts: Sequence[str]) -> np.ndarray:
         rows: list[np.ndarray] = []
         for t in texts or []:
-            toks = _tokenize(str(t or ""))
+            toks = _tokenize(t)
             if not toks:
                 rows.append(np.zeros((self._dim,), dtype=np.float32))
                 continue
@@ -94,7 +94,7 @@ _EMBEDDER_CACHE: dict[str, DenseEmbedder] = {}
 
 def get_dense_embedder(*, provider: str, deterministic_dim: int = 64) -> DenseEmbedder:
     reject_retired_provider(provider, capability="colbert")
-    p = str(provider or "").strip().lower() or "deterministic"
+    p = provider.strip().lower() or "deterministic"
     if p != "deterministic":
         raise ValueError(f"Unsupported ColBERT provider: {provider}")
     key = f"deterministic:{int(deterministic_dim or 0)}"
@@ -109,7 +109,7 @@ def get_dense_embedder(*, provider: str, deterministic_dim: int = 64) -> DenseEm
 
 def build_colbert_provider_config(*, provider: str, deterministic_dim: int = 64) -> dict[str, Any]:
     reject_retired_provider(provider, capability="colbert")
-    p = str(provider or "").strip().lower() or "deterministic"
+    p = provider.strip().lower() or "deterministic"
     if p != "deterministic":
         raise ValueError(f"Unsupported ColBERT provider: {provider}")
     return {"provider": p, "deterministic_dim": int(deterministic_dim or 0)}
@@ -178,7 +178,7 @@ class ColbertAnnIndex:
 
 class ColbertAnnIndexStore:
     def __init__(self, *, base_dir: str) -> None:
-        self._base = Path(str(base_dir or "").strip() or "./data/colbert_indexes")
+        self._base = Path(base_dir.strip() or "./data/colbert_indexes")
 
     def _paths(self, *, cache_key: str, provider_config: dict[str, Any]) -> tuple[Path, Path]:
         key = f"{cache_key}|{json.dumps(provider_config, sort_keys=True, ensure_ascii=True)}"
@@ -201,9 +201,9 @@ class ColbertAnnIndexStore:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception:
             return None
-        if not isinstance(meta, dict) or str(meta.get("schema") or "") != _INDEX_SCHEMA_V1:
+        if not isinstance(meta, dict) or meta.get("schema") != _INDEX_SCHEMA_V1:
             return None
-        if str(meta.get("corpus_fingerprint") or "") != str(expected_fingerprint or ""):
+        if meta.get("corpus_fingerprint") != expected_fingerprint:
             return None
         try:
             data = np.load(npz_path, allow_pickle=False)
@@ -216,7 +216,7 @@ class ColbertAnnIndexStore:
         return ColbertAnnIndex(
             doc_ids=ids,
             vectors=_l2_normalize(vecs),
-            corpus_fingerprint=str(expected_fingerprint or ""),
+            corpus_fingerprint=expected_fingerprint,
             provider_config=dict(provider_config),
         )
 
@@ -246,7 +246,7 @@ class ColbertAnnIndexStore:
             meta = {
                 "schema": _INDEX_SCHEMA_V1,
                 "provider_config": dict(provider_config),
-                "corpus_fingerprint": str(corpus_fingerprint or ""),
+                "corpus_fingerprint": corpus_fingerprint,
                 "doc_count": len(ids),
                 "dim": int(vecs.shape[1]) if vecs.ndim == 2 else 0,
             }

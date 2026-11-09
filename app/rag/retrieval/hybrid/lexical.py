@@ -50,7 +50,9 @@ class LexicalDBMixin:
         dataset_uuids: list[UUID] = []
         seen: set[str] = set()
         for item in values:
-            text = str(item or "").strip()
+            if item is None:
+                continue
+            text = str(item).strip()
             if not text:
                 continue
             try:
@@ -139,7 +141,7 @@ class LexicalDBMixin:
 
     @staticmethod
     def _lexical_cjk_token_terms(raw_query: str) -> list[str]:
-        text = str(raw_query or "").strip()
+        text = raw_query.strip()
         if not text or not re.search(r"[\u3400-\u4dbf\u4e00-\u9fff]", text):
             return []
         try:
@@ -150,7 +152,7 @@ class LexicalDBMixin:
         candidates: list[str] = []
         seen: set[str] = set()
         for token in tokenize_lexical_text(text):
-            term = str(token or "").strip()
+            term = token.strip()
             if len(term) < 2:
                 continue
             # This channel is for CJK queries, but ASCII/numeric tokens inside
@@ -264,7 +266,7 @@ class LexicalDBMixin:
         meta.setdefault("lexical_score_raw", score)
         if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
             return None
-        return cid, {"chunk_id": cid, "content": content or "", "metadata": meta, "score": score}
+        return cid, {"chunk_id": cid, "content": content, "metadata": meta, "score": score}
 
     def _add_lexical_rows(
         self,
@@ -560,7 +562,7 @@ class LexicalDBMixin:
 
         Returns dicts with raw `score` values; downstream fusion normalizes.
         """
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query:
             return []
         if not bool(settings.LEXICAL_DB_ENABLED):
@@ -588,18 +590,18 @@ class LexicalDBMixin:
 
     @staticmethod
     def _escape_sql_like_term(value: str) -> str:
-        return str(value or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     @staticmethod
     def _metadata_exact_db_like_terms(value: str) -> list[str]:
-        raw = str(value or "").strip()
+        raw = value.strip()
         if not raw:
             return []
         variants: list[str] = []
         seen: set[str] = set()
 
         def add(text: str) -> None:
-            item = str(text or "").strip()
+            item = text.strip()
             if not item or item in seen:
                 return
             seen.add(item)
@@ -669,14 +671,14 @@ class LexicalDBMixin:
             meta["page"] = page_number
         meta.setdefault("lexical_method", "metadata_exact")
         meta["metadata_exact_candidate"] = True
-        meta["metadata_exact_candidate_field"] = str(metadata_match.get("field") or "")
+        meta["metadata_exact_candidate_field"] = metadata_match["field"]
         meta["metadata_exact_candidate_fields"] = list(metadata_match.get("fields") or [])
         meta["metadata_exact_candidate_score"] = float(match_score)
         if metadata_filter and not self._match_metadata_filter(meta, metadata_filter):
             return None
         return cid, {
             "chunk_id": cid,
-            "content": content or "",
+            "content": content,
             "metadata": meta,
             "score": max(1.0, float(match_score)),
         }
@@ -691,7 +693,7 @@ class LexicalDBMixin:
         document_ids: list[UUID] | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query or not _query_looks_like_cjk_metadata_anchor(raw_query):
             return []
 
@@ -741,7 +743,7 @@ class LexicalDBMixin:
         results.sort(
             key=lambda item: (
                 -float((item.get("metadata") or {}).get("metadata_exact_candidate_score") or 0.0),
-                str(item.get("chunk_id") or ""),
+                item["chunk_id"],
             )
         )
         return results[:limit]
@@ -755,7 +757,7 @@ class LexicalDBMixin:
         tenant_id: UUID | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
-        raw_query = str(query or "").strip()
+        raw_query = query.strip()
         if not raw_query:
             return []
         if self.metadata_exact_db_fallback_enabled is not None:

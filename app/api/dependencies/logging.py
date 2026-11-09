@@ -36,7 +36,7 @@ async def bind_route_context(request: Request) -> None:
         return
 
     # Fallback to raw path when routing information isn't available.
-    set_request_route(str(request.scope.get("path") or ""))
+    set_request_route(request.scope["path"])
 
 
 __all__ = ["bind_route_context"]

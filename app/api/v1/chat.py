@@ -583,7 +583,7 @@ async def chat(
         options=_ChatCacheLookupInput(
             db=db,
             tenant_id=tenant_id,
-            account_id=str(account_id or ""),
+            account_id=account_id,
             dataset_id=cache_scope_dataset_id,
             document_ids=doc_ids_to_use,
             history=request.history,
@@ -735,7 +735,7 @@ async def chat(
     vector_backend_used = metrics_data.get("vector_backend")
     structured_ok = bool(metrics_data.get("structured_parse_ok")) and structured_data is not None
 
-    total_tokens = num_tokens_from_string(full_response or "")
+    total_tokens = num_tokens_from_string(full_response)
     usage = {
         "prompt_tokens": 0,
         "completion_tokens": total_tokens,
@@ -751,7 +751,7 @@ async def chat(
         "citations": citations_data,
         "total_tokens": total_tokens,
         "usage": usage,
-        "total_chars": len(full_response or ""),
+        "total_chars": len(full_response),
         "retrieval_mode": retrieval_mode_used,
         "vector_backend": vector_backend_used,
         "confidence_score": metrics_data.get("confidence_score"),

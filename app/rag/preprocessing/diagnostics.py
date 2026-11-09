@@ -43,7 +43,7 @@ class GovernanceIssue:
 def _clip_samples(samples: list[str], *, limit: int = 5, max_len: int = 160) -> list[str]:
     out: list[str] = []
     for s in samples[: max(0, int(limit))]:
-        val = (s or "").strip()
+        val = s.strip()
         if not val:
             continue
         out.append(val[:max_len])
@@ -51,7 +51,7 @@ def _clip_samples(samples: list[str], *, limit: int = 5, max_len: int = 160) -> 
 
 
 def _line_stats(text: str) -> tuple[int, float, float, float]:
-    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    lines = [ln.strip() for ln in (text).splitlines() if ln.strip()]
     if not lines:
         return 0, 0.0, 0.0, 0.0
     lengths = [len(ln) for ln in lines]
@@ -63,7 +63,7 @@ def _line_stats(text: str) -> tuple[int, float, float, float]:
 
 
 def _density(text: str) -> float:
-    raw = text or ""
+    raw = text
     non_space = sum(1 for ch in raw if not ch.isspace())
     if non_space <= 0:
         return 0.0
@@ -271,8 +271,8 @@ def analyze_governance(
       actions that are already enabled.
     """
     opts = options or {}
-    raw_before = (before or "")[: max(0, int(max_chars))]
-    raw_after = (after or "")[: max(0, int(max_chars))]
+    raw_before = (before)[: max(0, int(max_chars))]
+    raw_after = (after)[: max(0, int(max_chars))]
 
     issues: list[GovernanceIssue] = []
     patch: dict[str, Any] = {}

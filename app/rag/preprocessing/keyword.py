@@ -74,7 +74,7 @@ def extract_keywords(
     extractor = get_keyword_extractor(provider)
     if not hasattr(extractor, "extract_keywords"):
         raise KeywordProviderUnavailableError(f"Invalid keyword extractor for provider={provider!r}")
-    keywords = extractor.extract_keywords(text or "", max_keywords_per_chunk=top_k, **kwargs)
+    keywords = extractor.extract_keywords(text, max_keywords_per_chunk=top_k, **kwargs)
     return sorted({str(k).strip() for k in (keywords or []) if str(k).strip()})
 
 
@@ -199,7 +199,7 @@ class SimpleKeywordExtractor:
     _TOKEN_RE = re.compile(r"[A-Za-z][A-Za-z0-9_+-]+|[\u4e00-\u9fff]{2,}")
 
     def extract_keywords(self, text: str, max_keywords_per_chunk: int | None = 10) -> set[str]:
-        raw = (text or "").strip()
+        raw = (text).strip()
         if not raw:
             return set()
 

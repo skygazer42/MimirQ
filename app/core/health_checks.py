@@ -20,7 +20,7 @@ HealthMode = Literal["ready", "health"]
 def redis_usage_flags(settings: object) -> dict[str, bool]:
     singleflight_redis_enabled = (
         bool(getattr(settings, "RETRIEVAL_CANDIDATE_SINGLEFLIGHT_ENABLED", True))
-        and len(str(getattr(settings, "SECRET_KEY", "") or "").strip()) >= 32
+        and len(str(settings.SECRET_KEY).strip()) >= 32
     )
     return {
         "task_queue": bool(getattr(settings, "TASK_QUEUE_ENABLED", False)),

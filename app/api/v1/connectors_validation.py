@@ -86,7 +86,7 @@ async def _check_ingest_url_candidates(
             checked.append({"url": url, "ok": True, "normalized_url": normalized})
             ok += 1
         except HTTPException as exc:
-            error = str(exc.detail or "")[:200]
+            error = exc.detail[:200]
             checked.append({"url": url, "ok": False, "error": error})
             warnings.append({"code": invalid_code, "url": url, "error": error})
         except Exception as exc:  # noqa: BLE001
@@ -136,7 +136,7 @@ async def _best_effort_connectivity_checks(
     - No redirects (SSRF defense-in-depth)
     - Fail-open (warnings) unless schema is invalid
     """
-    cid = str(connector_id or "").strip()
+    cid = connector_id.strip()
     if cid == "url_batch":
         url_check, warnings = await _url_ingest_connectivity_check(cfg=cast(UrlBatchConnectorConfig, cfg))
         return {"url_ingest": url_check}, warnings
@@ -173,7 +173,7 @@ async def _check_db_connectivity_best_effort(
 
     _ = db_connectors_module
 
-    cid = str(connector_id or "").strip()
+    cid = connector_id.strip()
     try:
         connector_cls = connector_class_registry.get(cid)
     except ConnectorNotFoundError:

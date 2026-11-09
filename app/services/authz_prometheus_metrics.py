@@ -23,7 +23,9 @@ AUTHZ_GROUP_PERMISSION_TOTAL = Counter(
 
 
 def _norm(value: str | None, *, allowed: set[str], fallback: str = "unknown") -> str:
-    normalized = (value or "").strip().lower()
+    if value is None:
+        return fallback
+    normalized = str(value).strip().lower()
     return normalized if normalized in allowed else fallback
 
 

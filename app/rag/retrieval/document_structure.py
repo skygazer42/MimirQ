@@ -1,4 +1,6 @@
 from typing import Any
+
+from app.rag.core.metadata import _stringified_metadata_text
 from uuid import UUID
 
 from app.rag.core.logging import get_logger
@@ -12,8 +14,10 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _clean_text(value: Any, *, max_len: int = 160) -> str:
-    text = str(value or "").strip()
+def _clean_text(value: Any, *, max_len: int = 160) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return ""
     text = " ".join(text.split())
@@ -100,7 +104,7 @@ def _append_unique(values: list[Any], value: Any) -> None:
 
 
 def _sorted_chunks(chunks: list[Any]) -> list[Any]:
-    return sorted(chunks or [], key=lambda c: (getattr(c, "chunk_index", 0) or 0, str(getattr(c, "id", ""))))
+    return sorted(chunks or [], key=lambda c: (getattr(c, "chunk_index", 0) or 0, str(c.id)))
 
 
 def _find_or_create_path_node(
@@ -146,7 +150,7 @@ def build_document_structure_from_chunks(
 
     max_nodes = max(1, min(int(max_nodes or 200), 1000))
     doc_meta = _as_dict(getattr(document, "doc_metadata", None))
-    document_id = str(getattr(document, "id", "") or "")
+    document_id = str(document.id)
     root_nodes: list[dict[str, Any]] = []
     by_path: dict[str, dict[str, Any]] = {}
     truncated = False
@@ -168,7 +172,7 @@ def build_document_structure_from_chunks(
             continue
 
         meta = _as_dict(getattr(chunk, "doc_metadata", None))
-        chunk_id = str(getattr(chunk, "id", "") or "")
+        chunk_id = str(chunk.id)
         if chunk_id:
             _append_unique(current_node["chunk_ids"], chunk_id)
         try:
@@ -187,8 +191,8 @@ def build_document_structure_from_chunks(
         "schema": _DOCUMENT_STRUCTURE_SCHEMA,
         "document": {
             "document_id": document_id,
-            "filename": str(getattr(document, "filename", "") or ""),
-            "file_type": str(getattr(document, "file_type", "") or ""),
+            "filename": document.filename,
+            "file_type": document.file_type,
             "page_count": doc_meta.get("page_count"),
             "description": doc_meta.get("doc_description") or doc_meta.get("description"),
         },
@@ -229,8 +233,8 @@ def explain_citations_with_structure(
     for idx, citation in enumerate(citations or []):
         if not isinstance(citation, dict):
             continue
-        doc_id = str(citation.get("document_id") or "")
-        chunk_id = str(citation.get("chunk_id") or citation.get("id") or "")
+        doc_id = _stringified_metadata_text(citation, "document_id")
+        chunk_id = _stringified_metadata_text(citation, "chunk_id") or _stringified_metadata_text(citation, "id")
         node = chunk_to_node.get((doc_id, chunk_id))
         if not node:
             trace.append(

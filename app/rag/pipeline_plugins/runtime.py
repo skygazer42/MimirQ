@@ -257,7 +257,7 @@ def _coerce_document(item: Any, *, stage: str, plugin_ref: str, index: int) -> D
     if isinstance(item, Document):
         meta = dict(item.metadata or {})
         meta.setdefault(f"{stage}_python_plugin", plugin_ref)
-        return Document(page_content=item.page_content or "", metadata=meta, id=getattr(item, "id", None))
+        return Document(page_content=item.page_content, metadata=meta, id=getattr(item, "id", None))
 
     if isinstance(item, str):
         return Document(page_content=item, metadata={f"{stage}_python_plugin": plugin_ref})
@@ -268,10 +268,12 @@ def _coerce_document(item: Any, *, stage: str, plugin_ref: str, index: int) -> D
             content = item.get("content")
         if content is None:
             content = item.get("text")
+        if content is None:
+            raise PythonPipelinePluginError(f"python plugin document at index {index} must provide page_content, content or text")
         meta = _coerce_metadata(item.get("metadata"))
         meta.setdefault(f"{stage}_python_plugin", plugin_ref)
         doc_id = item.get("id")
-        return Document(page_content=str(content or ""), metadata=meta, id=doc_id)
+        return Document(page_content=str(content), metadata=meta, id=doc_id)
 
     raise PythonPipelinePluginError(f"python plugin returned unsupported item at index {index}: {type(item).__name__}")
 
@@ -290,7 +292,7 @@ def _coerce_documents(result: Any, *, stage: str, plugin_ref: str) -> list[Docum
     out: list[Document] = []
     for idx, item in enumerate(result):
         doc = _coerce_document(item, stage=stage, plugin_ref=plugin_ref, index=idx)
-        if (doc.page_content or "").strip():
+        if (doc.page_content).strip():
             out.append(doc)
     return out
 
@@ -298,7 +300,9 @@ def _coerce_documents(result: Any, *, stage: str, plugin_ref: str) -> list[Docum
 def _coerce_uuid(value: Any) -> UUID | None:
     if isinstance(value, UUID):
         return value
-    text = str(value or "").strip()
+    if value is None:
+        return None
+    text = str(value).strip()
     if not text:
         return None
     try:
@@ -333,7 +337,8 @@ def _coerce_event_entity(item: Any, *, event_index: int, entity_index: int) -> E
         raise PythonPipelinePluginError(
             f"kg plugin returned unsupported entity at event {event_index}, index {entity_index}: {type(item).__name__}"
         )
-    name = str(item.get("name") or "").strip()
+    raw_name = item.get("name")
+    name = str(raw_name).strip() if raw_name is not None else None
     if not name:
         return None
     normalized = str(item.get("normalized_name") or item.get("normalized") or name).strip() or name
@@ -389,11 +394,12 @@ def _iter_kg_result(result: Any) -> list[Any]:
 
 
 def _kg_event_text_fields(item: dict[str, Any]) -> tuple[str, str, str]:
-    title = str(item.get("title") or "").strip()
-    summary = str(item.get("summary") or "").strip()
-    content = str(item.get("content") or "").strip()
+    raw_title, raw_summary, raw_content = item.get("title"), item.get("summary"), item.get("content")
+    title = str(raw_title).strip() if raw_title is not None else None
+    summary = str(raw_summary).strip() if raw_summary is not None else None
+    content = str(raw_content).strip() if raw_content is not None else None
     if not title:
-        title = (summary[:80] if summary else content[:80]).strip() or "KG Event"
+        title = (summary[:80] if summary else content[:80] if content else "KG Event").strip() or "KG Event"
     if not summary:
         summary = (content[:240] if content else title).strip() or title
     return title, summary, content or summary or title

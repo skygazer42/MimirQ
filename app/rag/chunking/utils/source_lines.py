@@ -13,7 +13,7 @@ class SourceLine:
 def iter_source_lines(text: str) -> list[SourceLine]:
     lines: list[SourceLine] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end

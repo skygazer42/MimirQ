@@ -53,10 +53,10 @@ def bind_request_context(
     *, request_id: str, tenant_id: str = "", user_id: str = "", route: str = ""
 ) -> dict[str, Token[str]]:
     tokens: dict[str, Token[str]] = {}
-    tokens["request_id"] = _request_id.set((request_id or "").strip())
-    tokens["tenant_id"] = _tenant_id.set((tenant_id or "").strip())
-    tokens["user_id"] = _user_id.set((user_id or "").strip())
-    tokens["route"] = _route.set((route or "").strip())
+    tokens["request_id"] = _request_id.set((request_id).strip())
+    tokens["tenant_id"] = _tenant_id.set((tenant_id).strip())
+    tokens["user_id"] = _user_id.set((user_id).strip())
+    tokens["route"] = _route.set((route).strip())
     return tokens
 
 
@@ -66,7 +66,7 @@ def set_request_user_id(user_id: str) -> None:
 
     Useful when auth is resolved after middleware binds initial context.
     """
-    _user_id.set((user_id or "").strip())
+    _user_id.set((user_id).strip())
 
 
 def set_request_tenant_id(tenant_id: str) -> None:
@@ -76,7 +76,7 @@ def set_request_tenant_id(tenant_id: str) -> None:
     Useful when tenant identity is derived from a verified source (e.g. JWT claim)
     rather than an untrusted header.
     """
-    _tenant_id.set((tenant_id or "").strip())
+    _tenant_id.set((tenant_id).strip())
 
 
 def set_request_route(route: str) -> None:
@@ -86,7 +86,7 @@ def set_request_route(route: str) -> None:
     Prefer route templates (e.g. `/api/v1/rag/retrieve`) over raw paths to keep
     cardinality low in log search tools.
     """
-    _route.set((route or "").strip())
+    _route.set((route).strip())
 
 
 def reset_request_context(tokens: dict[str, Token[str]]) -> None:
@@ -104,10 +104,10 @@ def reset_request_context(tokens: dict[str, Token[str]]) -> None:
 
 def get_request_context() -> dict[str, str]:
     return {
-        "request_id": _request_id.get() or "",
-        "tenant_id": _tenant_id.get() or "",
-        "user_id": _user_id.get() or "",
-        "route": _route.get() or "",
+        "request_id": _request_id.get(),
+        "tenant_id": _tenant_id.get(),
+        "user_id": _user_id.get(),
+        "route": _route.get(),
     }
 
 
@@ -120,9 +120,9 @@ class JSONFormatter(logging.Formatter):
             "msg": record.getMessage(),
         }
 
-        request_id = getattr(record, "request_id", None) or _request_id.get() or ""
-        tenant_id = getattr(record, "tenant_id", None) or _tenant_id.get() or ""
-        user_id = getattr(record, "user_id", None) or _user_id.get() or ""
+        request_id = getattr(record, "request_id", _request_id.get())
+        tenant_id = getattr(record, "tenant_id", _tenant_id.get())
+        user_id = getattr(record, "user_id", _user_id.get())
         if request_id:
             payload["request_id"] = request_id
         if tenant_id:
@@ -130,12 +130,12 @@ class JSONFormatter(logging.Formatter):
         if user_id:
             payload["user_id"] = user_id
 
-        route = getattr(record, "route", None) or _route.get() or ""
+        route = getattr(record, "route", _route.get())
         if route:
             payload["route"] = route
 
-        trace_id = getattr(record, "trace_id", None) or ""
-        span_id = getattr(record, "span_id", None) or ""
+        trace_id = getattr(record, "trace_id", None)
+        span_id = getattr(record, "span_id", None)
         if trace_id:
             payload["trace_id"] = trace_id
         if span_id:
@@ -157,10 +157,10 @@ def _install_record_factory() -> None:
 
     def record_factory(*args: Any, **kwargs: Any) -> logging.LogRecord:
         record = old_factory(*args, **kwargs)
-        record.request_id = _request_id.get() or ""
-        record.tenant_id = _tenant_id.get() or ""
-        record.user_id = _user_id.get() or ""
-        record.route = _route.get() or ""
+        record.request_id = _request_id.get()
+        record.tenant_id = _tenant_id.get()
+        record.user_id = _user_id.get()
+        record.route = _route.get()
         trace_id, span_id = _get_otel_trace_context()
         record.trace_id = trace_id
         record.span_id = span_id

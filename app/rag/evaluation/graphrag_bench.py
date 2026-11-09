@@ -16,7 +16,10 @@ def _to_float(value: Any) -> float:
 def summarize_graphrag_bench(rows: list[dict[str, Any]]) -> dict[str, Any]:
     systems: dict[str, dict[str, float]] = {}
     for row in rows or []:
-        system = str((row or {}).get("system") or "").strip()
+        raw_system = (row or {}).get("system")
+        if raw_system is None:
+            continue
+        system = str(raw_system).strip()
         if not system:
             continue
         recall = _to_float((row or {}).get("recall"))

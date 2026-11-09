@@ -62,7 +62,10 @@ def build_online_shadow_plan(
     for row in replay_records or []:
         if not isinstance(row, dict):
             continue
-        query_hash = str(row.get("query_hash") or "").strip()
+        raw_hash = row.get("query_hash")
+        if raw_hash is None:
+            continue
+        query_hash = str(raw_hash).strip()
         if not query_hash:
             continue
         rec: _ShadowSample = {
@@ -73,7 +76,7 @@ def build_online_shadow_plan(
             "seed": row.get("seed"),
         }
         sample_id = _stable_rank(
-            day_key=str(day_key or "").strip(),
+            day_key=day_key.strip(),
             query_hash=query_hash,
             dataset_id_hash=(rec["dataset_id_hash"] or ""),
         )[:16]
@@ -84,7 +87,7 @@ def build_online_shadow_plan(
         eligible,
         key=lambda row: (
             _stable_rank(
-                day_key=str(day_key or "").strip(),
+                day_key=day_key.strip(),
                 query_hash=row["query_hash"],
                 dataset_id_hash=(row["dataset_id_hash"] or ""),
             ),
@@ -115,14 +118,14 @@ def diff_online_shadow_runs(
     candidate: list[dict[str, Any]],
 ) -> dict[str, Any]:
     baseline_by_id = {
-        str(row.get("sample_id") or "").strip(): dict(row)
+        str(row["sample_id"]).strip(): dict(row)
         for row in baseline or []
-        if str(row.get("sample_id") or "").strip()
+        if row.get("sample_id") is not None and str(row["sample_id"]).strip()
     }
     candidate_by_id = {
-        str(row.get("sample_id") or "").strip(): dict(row)
+        str(row["sample_id"]).strip(): dict(row)
         for row in candidate or []
-        if str(row.get("sample_id") or "").strip()
+        if row.get("sample_id") is not None and str(row["sample_id"]).strip()
     }
 
     shared_ids = sorted(set(baseline_by_id.keys()) & set(candidate_by_id.keys()))

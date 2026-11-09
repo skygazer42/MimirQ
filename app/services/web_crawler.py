@@ -48,9 +48,11 @@ class _CrawlDegradation(TypedDict):
 
 def _request_origin(url: str) -> tuple[str, str, int | None] | None:
     try:
-        parsed = urlsplit(str(url or ""))
-        scheme = str(parsed.scheme or "").lower()
-        host = str(parsed.hostname or "").lower()
+        parsed = urlsplit(url)
+        scheme = parsed.scheme.lower()
+        host = parsed.hostname
+        if host is not None:
+            host = host.lower()
         if scheme not in {"http", "https"} or not host:
             return None
         port = parsed.port or (443 if scheme == "https" else 80)
@@ -78,14 +80,16 @@ def _build_page_sync_token(*, url: str, text: str | None, content_type: str | No
     """
     Best-effort content fingerprint used by connector incremental manifests.
     """
-    ct = str(content_type or "").split(";", 1)[0].strip().lower()
-    body = str(text or "")
-    if body:
+    ct = content_type
+    if ct is not None:
+        ct = ct.split(";", 1)[0].strip().lower()
+    body = text
+    if body is not None and body != "":
         digest = hashlib.sha256(body.encode("utf-8", "ignore")).hexdigest()
         if ct:
             return f"content_type:{ct}|body_sha256:{digest}"
         return f"body_sha256:{digest}"
-    return f"url_sha256:{hashlib.sha256(str(url or '').encode('utf-8', 'ignore')).hexdigest()}"
+    return f"url_sha256:{hashlib.sha256(url.encode('utf-8', 'ignore')).hexdigest()}"
 
 
 def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list[str]:
@@ -95,7 +99,7 @@ def _extract_sitemap_candidates_from_robots(text: str, *, base_url: str) -> list
     if not text:
         return []
     out: list[str] = []
-    for raw in (text or "").splitlines():
+    for raw in (text).splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):
             continue
@@ -124,18 +128,18 @@ def _xml_tag_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1] if "}" in tag else tag
 
 
-def _first_child_loc_text(node: "Element") -> str:
+def _first_child_loc_text(node: "Element") -> str | None:
     for child in node:
-        if _xml_tag_name(str(child.tag or "")).lower() != "loc":
+        if _xml_tag_name(child.tag).lower() != "loc":
             continue
-        return (child.text or "").strip()
-    return ""
+        return child.text.strip() if child.text is not None else None
+    return None
 
 
 def _named_children_loc_values(root: "Element", *, child_name: str) -> list[str]:
     values: list[str] = []
     for child in root:
-        if _xml_tag_name(str(child.tag or "")).lower() != child_name:
+        if _xml_tag_name(child.tag).lower() != child_name:
             continue
         loc = _first_child_loc_text(child)
         if loc:
@@ -146,9 +150,9 @@ def _named_children_loc_values(root: "Element", *, child_name: str) -> list[str]
 def _iter_loc_values(root: "Element") -> list[str]:
     values: list[str] = []
     for child in root.iter():
-        if _xml_tag_name(str(child.tag or "")).lower() != "loc":
+        if _xml_tag_name(child.tag).lower() != "loc":
             continue
-        loc = (child.text or "").strip()
+        loc = child.text.strip() if child.text is not None else None
         if loc:
             values.append(loc)
     return values
@@ -160,7 +164,7 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
 
     Supports both <urlset> and <sitemapindex>.
     """
-    raw = (xml_text or "").strip()
+    raw = (xml_text).strip()
     if not raw:
         return [], []
 
@@ -172,7 +176,7 @@ def _parse_sitemap_xml(xml_text: str) -> tuple[list[str], list[str]]:
     except Exception:
         return [], []
 
-    root_name = _xml_tag_name(str(root.tag or "")).lower()
+    root_name = _xml_tag_name(root.tag).lower()
     if root_name.endswith("sitemapindex"):
         return [], _named_children_loc_values(root, child_name="sitemap")
 
@@ -211,7 +215,7 @@ class _RobotsCache:
         except Exception:
             return None
         scheme = parsed.scheme or "https"
-        netloc = (parsed.netloc or "").strip().lower()
+        netloc = (parsed.netloc).strip().lower()
         if not netloc:
             return None
 
@@ -245,10 +249,10 @@ class _RobotsCache:
         rp = RobotFileParser()
         rp.set_url(final_url or robots_url)
         with contextlib.suppress(Exception):
-            rp.parse((text or "").splitlines())
+            rp.parse(text.splitlines())
 
         self._cache[netloc] = rp
-        self._raw[netloc] = text or ""
+        self._raw[netloc] = text
         return rp
 
     async def can_fetch(
@@ -293,13 +297,13 @@ def _normalize_url(raw: str) -> str:
     - Drop fragment (anchors).
     - Keep query (after tracking stripping).
     """
-    return normalize_url_for_dedup(str(raw or "").strip())
+    return normalize_url_for_dedup(raw.strip())
 
 
 def _compile_patterns(patterns: list[str]) -> list[re.Pattern[str]]:
     compiled: list[re.Pattern[str]] = []
     for raw in patterns or []:
-        pat = str(raw or "").strip()
+        pat = raw.strip()
         if not pat:
             continue
         try:
@@ -353,7 +357,9 @@ async def _resolve_redirect_hop(
         raise HTTPException(status_code=400, detail="redirects are not allowed")
     if hops >= max_redirects:
         raise HTTPException(status_code=400, detail="too many redirects")
-    loc = (resp.headers.get("location") or "").strip()
+    loc = resp.headers.get("location")
+    if loc is not None:
+        loc = loc.strip()
     if not loc:
         raise HTTPException(status_code=400, detail="redirect location missing")
     next_target = await _validated_fetch_target(urljoin(current_url, loc))
@@ -436,7 +442,9 @@ async def _fetch_page_text(
                 if resp.status_code >= 400:
                     raise HTTPException(status_code=400, detail=f"failed to fetch url (status={resp.status_code})")
 
-                content_type = (resp.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+                content_type = resp.headers.get("content-type")
+                if content_type is not None:
+                    content_type = content_type.split(";", 1)[0].strip().lower()
                 return await _read_response_text(resp, max_bytes=max_bytes), current, content_type
     finally:
         if pinned_https_client is not None:
@@ -457,7 +465,7 @@ def _extract_links_from_html(html_text: str, *, base_url: str) -> tuple[list[str
             },
         )
 
-    raw = (html_text or "").strip()
+    raw = (html_text).strip()
     if not raw:
         return [], None
 
@@ -560,14 +568,17 @@ def _collect_seed_scope(seeds: list[str]) -> tuple[set[str], set[tuple[str, str,
 
 def _build_crawl_headers(headers: dict[str, str] | None, *, user_agent: str | None) -> tuple[dict[str, str], str]:
     merged: dict[str, str] = {"Accept": "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"}
-    ua = (user_agent or "").strip() or "MimirQ/1.0 (+web-crawl)"
+    ua = user_agent
+    if ua is not None:
+        ua = ua.strip()
+    ua = ua or "MimirQ/1.0 (+web-crawl)"
     merged["User-Agent"] = ua
     if headers:
         for key, value in headers.items():
-            name = str(key or "").strip()
+            name = key.strip()
             if not name:
                 continue
-            merged[name] = str(value or "")[:20_000]
+            merged[name] = value[:20_000]
     return merged, ua
 
 
@@ -578,7 +589,7 @@ def _resolve_crawl_runtime(*, crawl_options: WebCrawlOptions, seeds: list[str]) 
         crawl_options.max_bytes if crawl_options.max_bytes is not None else settings.URL_INGEST_MAX_BYTES or 0
     )
     if max_bytes_eff <= 0:
-        max_bytes_eff = int(settings.MAX_FILE_SIZE or 50_000_000)
+        max_bytes_eff = int(settings.MAX_FILE_SIZE)
     return _CrawlRuntime(
         max_pages=int(crawl_options.max_pages),
         max_depth=int(crawl_options.max_depth),
@@ -647,7 +658,7 @@ async def _robots_allow_url(url: str, *, runtime: _CrawlRuntime) -> bool:
 
 
 def _normalized_sitemap_seed_urls(*, seeds: list[str], sitemap_urls: list[str] | None) -> list[str]:
-    sitemap_seed_urls: list[str] = [str(url or "").strip() for url in (sitemap_urls or []) if str(url or "").strip()]
+    sitemap_seed_urls: list[str] = [url.strip() for url in (sitemap_urls or []) if url.strip()]
     for seed in seeds:
         try:
             parsed = urlsplit(seed)
@@ -690,7 +701,7 @@ async def _extend_sitemap_queue_from_robots(
             timeout_sec=runtime.timeout_sec,
             follow_redirects=runtime.follow_redirects,
         )
-        raw_txt = runtime.robots_cache.get_raw((parsed.netloc or "").strip().lower()) or ""
+        raw_txt = runtime.robots_cache.get_raw(parsed.netloc.strip().lower())
         _enqueue_unique_urls(
             sitemap_queue,
             sitemap_seen,
@@ -762,7 +773,7 @@ async def _discover_pages_from_sitemaps(
             if len(discovered_pages) >= runtime.max_pages:
                 break
             with contextlib.suppress(Exception):
-                candidate = _normalize_url(urljoin(base_url, str(raw_page or "").strip()))
+                candidate = _normalize_url(urljoin(base_url, raw_page.strip()))
                 if (
                     candidate
                     and _url_passes_filters(candidate, runtime=runtime)
@@ -772,7 +783,7 @@ async def _discover_pages_from_sitemaps(
         _enqueue_unique_urls(
             sitemap_queue,
             sitemap_seen,
-            [urljoin(base_url, str(child or "").strip()) for child in nested_sitemaps if str(child or "").strip()],
+            [urljoin(base_url, child.strip()) for child in nested_sitemaps if child.strip()],
         )
 
     if not discovered_pages:
@@ -880,7 +891,7 @@ async def _crawl_page_queue(*, seeds: list[str], runtime: _CrawlRuntime, dedup_c
 
         canonical_url = (
             extract_canonical_url(text, base_url=final_url)
-            if dedup_canonical and text and "html" in (content_type or "")
+            if dedup_canonical and text and content_type is not None and "html" in content_type
             else None
         )
         _record_crawled_url(
@@ -892,7 +903,7 @@ async def _crawl_page_queue(*, seeds: list[str], runtime: _CrawlRuntime, dedup_c
             content_type=content_type,
         )
 
-        if depth >= runtime.max_depth or not text or "html" not in (content_type or ""):
+        if depth >= runtime.max_depth or not text or content_type is None or "html" not in content_type:
             continue
         links, degraded = _extract_links_from_html(text, base_url=final_url)
         _record_degraded_crawl(
@@ -924,7 +935,7 @@ async def crawl_site(
     Returns a list of normalized URLs to ingest (deduped).
     """
     crawl_options = _resolve_web_crawl_options(options=options, legacy_overrides=legacy_overrides)
-    seeds = [str(url or "").strip() for url in (crawl_options.start_urls or []) if str(url or "").strip()]
+    seeds = [url.strip() for url in (crawl_options.start_urls or []) if url.strip()]
     if not seeds:
         return WebCrawlResult(urls=[], visited=0, queued=0, errors=[])
     runtime = _resolve_crawl_runtime(crawl_options=crawl_options, seeds=seeds)

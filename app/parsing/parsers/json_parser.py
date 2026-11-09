@@ -20,7 +20,7 @@ def _try_parse_jsonl(raw: str) -> list[Any] | None:
     items: list[Any] = []
     parsed = 0
     total = 0
-    for line in (raw or "").splitlines():
+    for line in (raw).splitlines():
         stripped = line.strip()
         if not stripped:
             continue
@@ -42,7 +42,7 @@ class JsonParser:
 
     def parse(self, file_path: Path) -> list[Document]:
         decoded = read_text_file(file_path)
-        raw = decoded.text or ""
+        raw = decoded.text
 
         data: Any = None
         json_valid = False

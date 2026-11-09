@@ -168,7 +168,7 @@ def add_simhashes(
 ) -> dict[str, list[str]]:
     max_bucket_size_eff = max(0, int(max_bucket_size or 0))
     for sh in simhashes:
-        sh_norm = (sh or "").strip().lower()
+        sh_norm = sh.strip().lower()
         if not sh_norm:
             continue
         for key in bucket_keys_for_simhash(sh_norm):

@@ -56,7 +56,7 @@ _DIRECTIVE_HINT_RE = re.compile(r"(?m)^\s*\.\.\s*(toctree|rubric|note|warning|co
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -68,7 +68,7 @@ def _iter_lines(text: str) -> list[_Line]:
 
 
 def _detect_adornment_character(plain: str) -> str | None:
-    s = (plain or "").strip()
+    s = (plain).strip()
     if len(s) < 3:
         return None
     ch = s[0]
@@ -220,7 +220,7 @@ class RSTSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

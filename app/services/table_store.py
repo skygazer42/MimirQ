@@ -35,7 +35,7 @@ def format_table_id(*, document_id: UUID, sheet_index: int) -> str:
 
 
 def parse_table_id(raw: str) -> TableId | None:
-    s = str(raw or "").strip()
+    s = raw.strip()
     m = _TABLE_ID_RE.match(s)
     if not m:
         return None
@@ -68,7 +68,7 @@ def quote_sqlite_ident(name: str) -> str:
 
 
 def _table_store_root() -> Path:
-    return Path(settings.TABLE_STORE_DIR or DEFAULT_TABLE_STORE_DIR)
+    return Path(settings.TABLE_STORE_DIR)
 
 
 def table_store_path(*, tenant_id: UUID, dataset_id: UUID, document_id: UUID) -> Path:

@@ -48,7 +48,7 @@ def _should_disable_repo_env_file() -> bool:
         return True
     if os.getenv("PYTEST_CURRENT_TEST") or os.getenv("PYTEST_VERSION"):
         return True
-    argv0 = Path(str(sys.argv[0] or "")).name.lower()
+    argv0 = Path(sys.argv[0]).name.lower()
     return "pytest" in argv0
 
 
@@ -141,11 +141,11 @@ class Settings(BaseSettings):
     TASK_WORKER_MAX_JOBS: int = 10
     TASK_WORKER_HEARTBEAT_INTERVAL_SEC: float = 5.0
     TASK_WORKER_HEARTBEAT_TTL_SEC: int = 30
-    TASK_JOB_TIMEOUT_SEC: int = 60 * 30
+    TASK_JOB_TIMEOUT_SEC: int = Field(default=60 * 30, ge=1)
     # Redis semaphore lease TTL for tenant/dataset concurrency slots.
     # A short lease prevents dead workers from blocking capacity for too long;
     # active jobs keep ownership alive via owner-checked heartbeats.
-    TASK_SEMAPHORE_LEASE_TTL_SEC: int = 60
+    TASK_SEMAPHORE_LEASE_TTL_SEC: int = Field(default=60, ge=1)
     # Bound how long a worker waits in-process for a semaphore slot before
     # falling back to the existing queue retry path.
     TASK_SEMAPHORE_ACQUIRE_WAIT_SEC: float = 5.0
@@ -196,7 +196,7 @@ class Settings(BaseSettings):
     CHAT_RESPONSE_CACHE_ENABLED: bool = True
     CHAT_RESPONSE_CACHE_TTL_SEC: int = 300
     CHAT_RESPONSE_CACHE_PREFIX: str = "chat"
-    CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES: int = 200_000
+    CHAT_RESPONSE_CACHE_MAX_VALUE_BYTES: int = Field(default=200_000, ge=1)
     # Default guardrail: only cache stateless requests (no explicit history).
     CHAT_RESPONSE_CACHE_REQUIRE_EMPTY_HISTORY: bool = True
     # Best-effort in-process de-duplication for concurrent identical cacheable
@@ -247,7 +247,7 @@ class Settings(BaseSettings):
     TENANT_STORAGE_QUOTA_LIMIT_BYTES: int = 0
     TENANT_EMBED_CHAR_QUOTA_ENABLED: bool = False
     TENANT_EMBED_CHAR_QUOTA_LIMIT: int = 0
-    TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS: int = 24
+    TENANT_EMBED_CHAR_QUOTA_WINDOW_HOURS: int = Field(default=24, ge=1)
     TENANT_EMBED_CHAR_QUOTA_MODE: str = "block"
     TENANT_QUOTA_FAIL_CLOSED: bool = False
 
@@ -296,7 +296,7 @@ class Settings(BaseSettings):
     # Keep this separate from the general chat temperature so `/api/v1/chat` can stay fast
     # for structured presets without changing the default free-form chat behavior.
     LLM_STRUCTURED_TEMPERATURE: float = 0.0
-    LLM_TIMEOUT: int = 60
+    LLM_TIMEOUT: int = Field(default=60, ge=1)
     LLM_MAX_RETRIES: int = 3
     # Some OpenAI-compatible providers fail when LangChain reuses the shared pooled
     # async client for chat requests. Keep this OFF by default and opt in only when
@@ -340,7 +340,7 @@ class Settings(BaseSettings):
     SECURITY_HEADERS_REFERRER_POLICY: str = "strict-origin-when-cross-origin"
     # HSTS is off by default because TLS termination is deployment-specific.
     SECURITY_HEADERS_HSTS_ENABLED: bool = False
-    SECURITY_HEADERS_HSTS_MAX_AGE_SEC: int = 31536000  # 1 year
+    SECURITY_HEADERS_HSTS_MAX_AGE_SEC: int = Field(default=31536000, ge=1)  # 1 year
     SECURITY_HEADERS_HSTS_INCLUDE_SUBDOMAINS: bool = True
     SECURITY_HEADERS_HSTS_PRELOAD: bool = False
     # Optional modern headers (empty => not set).
@@ -409,7 +409,7 @@ class Settings(BaseSettings):
     EMBEDDING_MIGRATION_PROGRESS_TTL_SEC: int = 7 * 24 * 3600
 
     UPLOAD_DIR: str = "./uploads"
-    MAX_FILE_SIZE: int = 50_000_000
+    MAX_FILE_SIZE: int = Field(default=50_000_000, ge=1)
     USER_METADATA_FORM_JSON_MAX_CHARS: int = 20_000
     USER_METADATA_MAP_FORM_JSON_MAX_CHARS: int = 200_000
     # Hard cap for HTTP request bodies (Content-Length gate; 0 disables).
@@ -444,7 +444,7 @@ class Settings(BaseSettings):
     PRECHECK_TEXT_HIGH_REPLACEMENT_RATIO_THRESHOLD: float = 0.08
     PRECHECK_PDF_LOW_DENSITY_RATIO_THRESHOLD: float = 0.3
     PRECHECK_NEAR_DUP_HAMMING_THRESHOLD: int = 5
-    PRECHECK_NEAR_DUP_MAX_PAIRS: int = 5000
+    PRECHECK_NEAR_DUP_MAX_PAIRS: int = Field(default=5000, ge=1)
     # 0 means auto: 3/1000 files, with one representative sample per present file type.
     PRECHECK_SAMPLE_SIZE: int = 0
     PRECHECK_DIRECTORY_STATS_LIMIT: int = 200
@@ -478,7 +478,7 @@ class Settings(BaseSettings):
     # Security: do not follow redirects by default (avoid redirect-to-private SSRF).
     URL_INGEST_FOLLOW_REDIRECTS: bool = False
     # Max JSON size (chars) for `pipeline` form field on multipart endpoints (documents upload/preview).
-    PIPELINE_FORM_JSON_MAX_CHARS: int = 200_000
+    PIPELINE_FORM_JSON_MAX_CHARS: int = Field(default=200_000, ge=1)
     # Best-effort in-process parse cache for interactive preview endpoints (e.g. /documents/chunk-preview).
     # Note: cache is per-worker; set to False/0 to disable.
     PREVIEW_PARSE_CACHE_ENABLED: bool = True
@@ -549,8 +549,8 @@ class Settings(BaseSettings):
     PREPROCESS_SAMPLE_PAGES: int = 3
     # Parse-then-correct via external VLM backend.
     VLM_CORRECTION_API_URL: str = ""
-    VLM_CORRECTION_TIMEOUT_SEC: int = 60
-    VLM_CORRECTION_MAX_CHARS: int = 40_000
+    VLM_CORRECTION_TIMEOUT_SEC: int = Field(default=60, ge=1)
+    VLM_CORRECTION_MAX_CHARS: int = Field(default=40_000, ge=1)
     VLM_CORRECTION_MIN_TABLE_QUALITY: float = 0.6
     # Multi-parser competition matrix (Opt8) for workspace parsing selection.
     PARSE_COMPETITION_MATRIX_ENABLED: bool = False
@@ -575,8 +575,8 @@ class Settings(BaseSettings):
     # Conservative defaults: disabled unless explicitly enabled via pipeline metadata.
     IMAGE_CAPTION_ENABLED: bool = False
     IMAGE_OCR_ENABLED: bool = False
-    IMAGE_OCR_MAX_CHARS: int = 2000
-    IMAGE_OCR_MAX_IMAGES: int = 20
+    IMAGE_OCR_MAX_CHARS: int = Field(default=2000, ge=1)
+    IMAGE_OCR_MAX_IMAGES: int = Field(default=20, ge=1)
     # Multi-modal retrieval (optional): CLIP embeddings for image chunks.
     # Disabled by default to avoid pulling heavyweight ML deps in minimal deployments.
     IMAGE_EMBEDDING_ENABLED: bool = False
@@ -591,7 +591,7 @@ class Settings(BaseSettings):
 
     @property
     def allowed_extensions_list(self) -> list[str]:
-        raw = [ext.strip().lower() for ext in str(self.ALLOWED_EXTENSIONS or "").split(",")]
+        raw = [ext.strip().lower() for ext in self.ALLOWED_EXTENSIONS.split(",")]
         normalized: list[str] = []
         seen: set[str] = set()
         for ext in raw:
@@ -857,7 +857,7 @@ class Settings(BaseSettings):
     SCIM_BEARER_TOKEN: str = ""
     # Each SCIM credential set is bound to exactly one tenant.
     SCIM_TENANT_ID: str = ""
-    SCIM_PAGE_SIZE_MAX: int = 200
+    SCIM_PAGE_SIZE_MAX: int = Field(default=200, ge=1)
     # Defense-in-depth: optional client IP allowlist for SCIM endpoints.
     # Comma/space-separated CIDRs (e.g. "203.0.113.0/24,198.51.100.10/32").
     # Fail-closed when set.
@@ -889,7 +889,7 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_QUERY: str = "warmup probe"
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TOP_K: int = 1
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_MAX_KNOWLEDGE_IDS: int = 8
-    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC: float = 60.0
+    DIFY_EXTERNAL_KNOWLEDGE_WARMUP_TIMEOUT_SEC: float = Field(default=60.0, gt=0)
     DIFY_EXTERNAL_KNOWLEDGE_WARMUP_START_DELAY_SEC: float = 1.0
     # When true, /health/ready returns 503 until the Dify external knowledge
     # warmup has completed. This prevents Dify/LB traffic from hitting a cold
@@ -973,7 +973,7 @@ class Settings(BaseSettings):
     DIFY_EXTERNAL_KNOWLEDGE_KG_CHUNK_BOOST_MAX_PROMOTED: int = 2
 
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    PASSWORD_MIN_LENGTH: int = 8
+    PASSWORD_MIN_LENGTH: int = Field(default=8, ge=1)
 
     CORS_ORIGINS: str = "http" + "://localhost:3000,http" + "://localhost:3001"
     # Whether CORS responses include `Access-Control-Allow-Credentials: true`.
@@ -1358,7 +1358,7 @@ class Settings(BaseSettings):
     RAG_PARENT_CHILD_AUTO_MERGE_MIN_CHILDREN: int = 2
     RAG_PARENT_CHILD_AUTO_MERGE_MAX_PARENTS: int = 20
     WEB_SEARCH_ENABLED: bool = False
-    WEB_SEARCH_TIMEOUT_SEC: float = 8.0
+    WEB_SEARCH_TIMEOUT_SEC: float = Field(default=8.0, gt=0)
     WEB_SEARCH_MAX_RESULTS: int = 5
     TAVILY_API_KEY: str = ""
     SERPER_API_KEY: str = ""
@@ -1448,7 +1448,7 @@ class Settings(BaseSettings):
     RAG_CLAIM_NLI_VERIFIER_MODEL: str = ""
     RAG_CLAIM_NLI_VERIFIER_API_BASE: str = ""
     RAG_CLAIM_NLI_VERIFIER_API_KEY: str = ""
-    RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC: int = 8
+    RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC: int = Field(default=8, ge=1)
     # Strict grounding: treat missing evidence as non-existent. When enabled:
     # - Force abstain gate even if RAG_ABSTAIN_ENABLED=false
     # - Force claim-check (non-structured output) even if RAG_CLAIM_CHECK_ENABLED=false
@@ -1466,11 +1466,11 @@ class Settings(BaseSettings):
     # Tool-call middleware (logging wrapper)
     TOOL_CALL_LOG_ENABLED: bool = False
     TOOL_CALL_LOG_INCLUDE_PREVIEW: bool = False
-    TOOL_CALL_LOG_MAX_PREVIEW_CHARS: int = 500
+    TOOL_CALL_LOG_MAX_PREVIEW_CHARS: int = Field(default=500, ge=1)
     # Agent/workflow lifecycle logging
     AGENT_LOG_ENABLED: bool = False
     AGENT_LOG_INCLUDE_EXECUTION_PATH: bool = False
-    AGENT_LOG_MAX_PREVIEW_CHARS: int = 500
+    AGENT_LOG_MAX_PREVIEW_CHARS: int = Field(default=500, ge=1)
 
     VECTOR_BACKEND: Literal["milvus", "memory", "qdrant", "pgvector"] = "milvus"
     # Optional JSON object keyed by region -> backend, e.g. {"cn-shanghai":"qdrant"}.
@@ -1526,7 +1526,7 @@ class Settings(BaseSettings):
     # itself as a token if it's short enough (e.g., entity names).
     BM25_TOKENIZE_CJK_OOV_MAX_TERM_CHARS: int = 8
     # Upper bound for extra fallback tokens added per tokenization call.
-    BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS: int = 128
+    BM25_TOKENIZE_CJK_OOV_MAX_EXTRA_TOKENS: int = Field(default=128, ge=1)
     # =========================
     # Structured Table Store (TAG)
     # =========================
@@ -1558,9 +1558,9 @@ class Settings(BaseSettings):
     TABLE_STORE_AUTO_SHEET_THRESHOLD: int = 5
     TABLE_STORE_AUTO_FILE_BYTES_THRESHOLD: int = 5_000_000
     # Query/runtime guards (server-side safety, independent from LLM usage).
-    TABLE_QUERY_MAX_ROWS: int = 200
-    TABLE_QUERY_MAX_COLS: int = 200
-    TABLE_QUERY_MAX_BYTES: int = 1_000_000
+    TABLE_QUERY_MAX_ROWS: int = Field(default=200, ge=1)
+    TABLE_QUERY_MAX_COLS: int = Field(default=200, ge=1)
+    TABLE_QUERY_MAX_BYTES: int = Field(default=1_000_000, ge=1)
     TABLE_QUERY_MAX_SQL_CHARS: int = 20_000
     # Abort long-running SQL queries (SQLite VM instruction budget via progress handler).
     TABLE_QUERY_TIMEOUT_SEC: float = 5.0
@@ -1595,10 +1595,10 @@ class Settings(BaseSettings):
     TABLE_LLM_ALLOW_ROW_EGRESS: bool = False
     # LOTUS semantic operators (optional/experimental).
     TABLE_LOTUS_ENABLED: bool = False
-    TABLE_LOTUS_MAX_ROWS: int = 20_000
+    TABLE_LOTUS_MAX_ROWS: int = Field(default=20_000, ge=1)
     # Built-in semantic filter guards (LOTUS-like). These protect against accidental high-cost scans.
-    TABLE_SEM_FILTER_MAX_IN_ROWS: int = 2000
-    TABLE_SEM_FILTER_MAX_COLS: int = 30
+    TABLE_SEM_FILTER_MAX_IN_ROWS: int = Field(default=2000, ge=1)
+    TABLE_SEM_FILTER_MAX_COLS: int = Field(default=30, ge=1)
     TABLE_SEM_FILTER_MAX_CELL_CHARS: int = 200
     TABLE_SEM_FILTER_BATCH_SIZE: int = 25
     ENABLE_METRICS_LOG: bool = False
@@ -1699,11 +1699,11 @@ class Settings(BaseSettings):
     # recency-aware boost to retrieved documents (re-ranking only; no filtering).
     RAG_TEMPORAL_INTENT_ENABLED: bool = False
     RAG_TEMPORAL_INTENT_RECENCY_BOOST_ENABLED: bool = True
-    RAG_TEMPORAL_INTENT_MAX_DOCS: int = 200
+    RAG_TEMPORAL_INTENT_MAX_DOCS: int = Field(default=200, ge=1)
     # Online faithfulness proxy (claim support ratio against retrieved evidence text).
     FAITHFULNESS_SCORE_ENABLED: bool = True
     FAITHFULNESS_SCORE_MAX_CLAIMS: int = 24
-    FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS: int = 24_000
+    FAITHFULNESS_SCORE_MAX_EVIDENCE_CHARS: int = Field(default=24_000, ge=1)
     RAG_FOLLOWUP_SUGGESTIONS_ENABLED: bool = False
     SENTENCE_CITATIONS_INLINE_ENABLED: bool = False
     # appendix (default): add a compact "Sentence Citations" section at the end of the answer
@@ -1729,7 +1729,7 @@ class Settings(BaseSettings):
     RAG_AGENTIC_MAX_RETRIEVE_ROUNDS: int = 3
     RAG_AGENTIC_TOOLS_ENABLED: bool = False
     RAG_CRAG_STREAMING_ENABLED: bool = False
-    RAG_CRAG_STREAMING_MAX_RESULTS: int = 5
+    RAG_CRAG_STREAMING_MAX_RESULTS: int = Field(default=5, ge=1)
     RAG_CRAG_STREAMING_MIN_CITATIONS: int = 1
     RAG_CRAG_STREAMING_MIN_TOP_SCORE: float = 0.35
     RAG_SELF_RAG_ENABLED: bool = False
@@ -1755,7 +1755,7 @@ class Settings(BaseSettings):
     GOVERNANCE_COMMON_LINES_MIN_DOCS: int = 3
     GOVERNANCE_COMMON_LINES_MIN_RATIO: float = 0.35
     # Best-effort runtime guard for governance regex substitutions (ReDoS mitigation).
-    GOVERNANCE_REGEX_TIMEOUT_MS: int = 100
+    GOVERNANCE_REGEX_TIMEOUT_MS: int = Field(default=100, ge=1)
     # Comma-separated import prefixes allowed for legacy runtime Python plugin refs.
     # Blank by default so business logic lives in registered plugin packages.
     PYTHON_PIPELINE_PLUGIN_ALLOW_PREFIXES: str = ""
@@ -1830,7 +1830,7 @@ class Settings(BaseSettings):
     # Optional VLM correction for low-quality PDF pages.
     VLM_CORRECTION_ENABLED: bool = False
     VLM_CORRECTION_MIN_TABLE_SCORE: float = 0.6
-    VLM_CORRECTION_MAX_PAGES: int = 2
+    VLM_CORRECTION_MAX_PAGES: int = Field(default=2, ge=1)
     # Persist parsed markdown (raw+clean) for audit/debug.
     PERSIST_PARSED_CONTENT: bool = False
     PERSIST_PARSED_CONTENT_MAX_CHARS: int = 200_000
@@ -1849,7 +1849,7 @@ class Settings(BaseSettings):
     RERANKER_API_KEY: str = ""
     RERANKER_API_BASE: str = ""
     RERANKER_TOP_N: int = 20  # Rerank candidate count (higher = slower).
-    RERANKER_MAX_CHARS: int = 800  # Max chars per candidate.
+    RERANKER_MAX_CHARS: int = Field(default=800, ge=1)  # Max chars per candidate.
     RERANKER_TEMPERATURE: float = 0.0
     # Local model-backed rerankers (for example cross-encoder) should not block
     # user traffic on first-use remote downloads. Allow a short bounded wait, then
@@ -1858,7 +1858,7 @@ class Settings(BaseSettings):
     # API Reranker engineering knobs (batch/concurrency/rate-limit/circuit/cache)
     RERANKER_API_TIMEOUT_SEC: float = 30.0
     RERANKER_API_BATCH_SIZE: int = 32
-    RERANKER_API_MAX_CONCURRENCY: int = 4
+    RERANKER_API_MAX_CONCURRENCY: int = Field(default=4, ge=1)
     RERANKER_API_RATE_LIMIT_QPS: float = 0.0  # 0 disables
     RERANKER_API_MAX_RETRIES: int = 2
     RERANKER_API_RETRY_BACKOFF_SEC: float = 0.5
@@ -1908,12 +1908,10 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("MIMIRQ_VISION_LLM_MODEL", "VISION_LLM_MODEL"),
     )
     VISION_LLM_TIMEOUT_SEC: int = Field(
-        default=120,
-        validation_alias=AliasChoices("MIMIRQ_VISION_LLM_TIMEOUT_SEC", "VISION_LLM_TIMEOUT_SEC"),
+        default=120, validation_alias=AliasChoices("MIMIRQ_VISION_LLM_TIMEOUT_SEC", "VISION_LLM_TIMEOUT_SEC"), ge=1
     )
     VISION_LLM_MAX_TOKENS: int = Field(
-        default=4096,
-        validation_alias=AliasChoices("MIMIRQ_VISION_LLM_MAX_TOKENS", "VISION_LLM_MAX_TOKENS"),
+        default=4096, validation_alias=AliasChoices("MIMIRQ_VISION_LLM_MAX_TOKENS", "VISION_LLM_MAX_TOKENS"), ge=1
     )
     VISION_LLM_TEMPERATURE: float = Field(
         default=0.0,
@@ -1932,6 +1930,7 @@ class Settings(BaseSettings):
     VISION_RAG_READER_MAX_IMAGES: int = Field(
         default=2,
         validation_alias=AliasChoices("MIMIRQ_VISION_RAG_READER_MAX_IMAGES", "VISION_RAG_READER_MAX_IMAGES"),
+        ge=1,
     )
     VISION_RAG_READER_MAX_IMAGE_BYTES: int = Field(
         default=3_000_000,
@@ -1942,6 +1941,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices(
             "MIMIRQ_VISION_RAG_READER_MAX_OUTPUT_CHARS", "VISION_RAG_READER_MAX_OUTPUT_CHARS"
         ),
+        ge=1,
     )
     # Optional: generate the final answer directly with the Vision LLM when image evidence is present.
     # This is closer to "Vision-native RAG" but can be more expensive than VLM-as-Reader.
@@ -1952,6 +1952,7 @@ class Settings(BaseSettings):
     VISION_RAG_GENERATION_MAX_IMAGES: int = Field(
         default=2,
         validation_alias=AliasChoices("MIMIRQ_VISION_RAG_GENERATION_MAX_IMAGES", "VISION_RAG_GENERATION_MAX_IMAGES"),
+        ge=1,
     )
     VISION_RAG_GENERATION_MAX_IMAGE_BYTES: int = Field(
         default=3_000_000,
@@ -1977,7 +1978,7 @@ class Settings(BaseSettings):
     MAGIC_PDF_ENABLED: bool = False
     # Preferred production mode: external MagicPDF HTTP sidecar.
     MAGIC_PDF_API_URL: str = ""
-    MAGIC_PDF_REQUEST_TIMEOUT_SEC: int = 600
+    MAGIC_PDF_REQUEST_TIMEOUT_SEC: int = Field(default=600, ge=1)
     MAGIC_PDF_MAX_CONCURRENT_JOBS: int = 1
     # Local CLI fallback (kept for development/debug deployments).
     MAGIC_PDF_CLI: str = "magic-pdf"
@@ -2012,12 +2013,12 @@ class Settings(BaseSettings):
     KG_CHAT_ENABLED: bool = False
     # Hybrid KG extensions (disabled by default; safe opt-in).
     KG_RELATION_ENABLED: bool = False
-    KG_RELATION_MAX_RELATIONS_PER_CHUNK: int = 20
+    KG_RELATION_MAX_RELATIONS_PER_CHUNK: int = Field(default=20, ge=1)
     # Comma/newline separated predicate allowlist override (optional). When empty, defaults are used.
     KG_RELATION_ALLOWED_PREDICATES: str = ""
     # Heuristics for alias/canonicalization (high precision; helps reduce entity fragmentation).
     KG_RELATION_ALIAS_HEURISTIC_ENABLED: bool = True
-    KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK: int = 10
+    KG_RELATION_ALIAS_MAX_CANDIDATES_PER_CHUNK: int = Field(default=10, ge=1)
     KG_RELATION_ALIAS_CONFIDENCE: float = 0.95
     KG_ENTITY_CANONICALIZE_PARENTHESES_ALIAS: bool = True
     KG_SKILL_ENABLED: bool = False
@@ -2065,7 +2066,7 @@ class Settings(BaseSettings):
     KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY: str = "uniform"
     # Skip low-signal chunks (0 disables).
     KG_EXTRACT_MIN_CHARS: int = 0
-    KG_EXTRACT_CONTEXT_MAX_CHARS: int = 8000
+    KG_EXTRACT_CONTEXT_MAX_CHARS: int = Field(default=8000, ge=1)
     # 0 disables. When enabled, KG extraction wraps each per-chunk LLM call in a timeout.
     KG_EXTRACT_CHUNK_TIMEOUT_SEC: int = 0
     # Per-chunk retry (0 disables). Applies to transient failures in the extraction call.
@@ -2086,7 +2087,7 @@ class Settings(BaseSettings):
     KG_EXTRACT_ENTITY_VERIFY_ENABLED: bool = False
     KG_EXTRACT_RELATION_VERIFY_ENABLED: bool = False
     # Graph co-occurrence computation guardrail: cap entity count per event when building co-occurrence edges.
-    KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT: int = 60
+    KG_ENTITY_LINK_MAX_ENTITIES_PER_EVENT: int = Field(default=60, ge=1)
     # KG API guardrails.
     KG_API_MAX_DOCUMENT_IDS: int = 500
     KG_API_METRICS_ENABLED: bool = False
@@ -2120,9 +2121,9 @@ class Settings(BaseSettings):
     KG_SEARCH_GRAPH_EMBEDDINGS_WINDOW_SIZE: int = 5
     KG_SEARCH_GRAPH_EMBEDDINGS_SEED: int = 42
     # Upper bounds for building the local subgraph (keeps CI/unit tests fast).
-    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS: int = 200
-    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES: int = 400
-    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS: int = 1500
+    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_EVENTS: int = Field(default=200, ge=1)
+    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_ENTITIES: int = Field(default=400, ge=1)
+    KG_SEARCH_GRAPH_EMBEDDINGS_MAX_RELATIONS: int = Field(default=1500, ge=1)
     KG_SEARCH_GRAPH_EMBEDDINGS_TOP_K: int = 20
     KG_SEARCH_GRAPH_EMBEDDINGS_MIN_SIMILARITY: float = 0.35
     # - Disable clue generation entirely (saves CPU/memory; response still contains `clues: []`).
@@ -2173,20 +2174,20 @@ class Settings(BaseSettings):
     # Only run community detection when the query-mode classifier saw explicit global/overview intent.
     # This avoids adding latency to normal factoid queries that still route to "global" by fallback.
     KG_COMMUNITY_REQUIRE_GLOBAL_PATTERN: bool = True
-    KG_COMMUNITY_MAX_EVENTS: int = 200
-    KG_COMMUNITY_MAX_ENTITIES_PER_EVENT: int = 12
+    KG_COMMUNITY_MAX_EVENTS: int = Field(default=200, ge=1)
+    KG_COMMUNITY_MAX_ENTITIES_PER_EVENT: int = Field(default=12, ge=1)
     KG_COMMUNITY_MIN_EDGE_WEIGHT: float = 2.0
     KG_COMMUNITY_LABEL_PROPAGATION_ITERS: int = 25
     KG_COMMUNITY_MAX_COMMUNITIES: int = 12
-    KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY: int = 12
-    KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY: int = 6
-    KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS: int = 3200
+    KG_COMMUNITY_MAX_ENTITIES_PER_COMMUNITY: int = Field(default=12, ge=1)
+    KG_COMMUNITY_MAX_EVENTS_PER_COMMUNITY: int = Field(default=6, ge=1)
+    KG_COMMUNITY_GLOBAL_SUMMARY_MAX_CHARS: int = Field(default=3200, ge=1)
     # Query-aware LLM community summaries (LazyGraphRAG style).
     # Disabled by default to preserve latency/cost characteristics.
     KG_LAZY_COMMUNITY_SUMMARY_ENABLED: bool = False
     KG_LAZY_COMMUNITY_SUMMARY_TOP_N: int = 3
     KG_LAZY_COMMUNITY_SUMMARY_CACHE_TTL_SEC: int = 86400
-    KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES: int = 1024
+    KG_LAZY_COMMUNITY_SUMMARY_CACHE_MAX_ENTRIES: int = Field(default=1024, ge=1)
     KG_LAZY_COMMUNITY_SUMMARY_MAX_TOKENS: int = 300
     # Entity resolution (Wave15): merge/split actions may optionally update KG entity vectors.
     #
@@ -2323,7 +2324,7 @@ class Settings(BaseSettings):
     TENANT_QPS_QUOTA_REQUESTS_PER_SECOND: float = 0.0
     TENANT_QPS_QUOTA_BURST_SIZE: int = 0
     TENANT_QPS_QUOTA_REDIS_PREFIX: str = "tq"
-    TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC: int = 600
+    TENANT_QPS_QUOTA_REDIS_KEY_TTL_SEC: int = Field(default=600, ge=1)
 
     # MCP (Model Context Protocol) configuration
     MCP_ENABLED: bool = False

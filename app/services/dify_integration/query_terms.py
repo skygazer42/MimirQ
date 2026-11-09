@@ -44,7 +44,7 @@ def _strip_service_anchor_query_noise(
     cutoff_terms: tuple[str, ...] = (),
     admin_aliases: tuple[str, ...] = (),
 ) -> str:
-    text = str(query or "").strip()
+    text = query.strip()
     if not text:
         return ""
     text = _strip_service_anchor_leading_noise(text, leading_noise_terms=leading_noise_terms)
@@ -72,7 +72,7 @@ def _strip_service_anchor_query_noise(
 def _sorted_anchor_query_terms(terms: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     return tuple(
         sorted(
-            {str(term or "").strip() for term in terms if str(term or "").strip()},
+            {term.strip() for term in terms if term.strip()},
             key=len,
             reverse=True,
         )
@@ -147,7 +147,7 @@ def _metadata_anchor_service_name_query_terms(
     seen: set[str] = set()
     seen_text: set[str] = set()
 
-    for match in _QUOTED_ANCHOR_RE.finditer(str(query or "")):
+    for match in _QUOTED_ANCHOR_RE.finditer(query):
         literal = _quoted_anchor_match_text(match)
         _append_literal_metadata_anchor_term(terms, literal, min_chars=4, seen_text=seen_text)
     for quoted_anchor in _quoted_query_anchor_terms(query):
@@ -195,7 +195,7 @@ def _append_literal_metadata_anchor_term(
     min_chars: int,
     seen_text: set[str],
 ) -> None:
-    term = str(raw or "").strip()
+    term = raw.strip()
     normalized = _normalize_match_term(term)
     text_key = term.casefold()
     if len(normalized) < min_chars or text_key in seen_text:
@@ -213,7 +213,7 @@ def _append_metadata_anchor_term(
     cjk_min_chars: int | None = None,
     seen_text: set[str] | None = None,
 ) -> None:
-    term = str(raw or "").strip()
+    term = raw.strip()
     normalized = _normalize_match_term(term)
     text_key = term.casefold()
     effective_min_chars = cjk_min_chars if cjk_min_chars is not None and _contains_cjk(normalized) else min_chars

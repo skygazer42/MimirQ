@@ -29,7 +29,9 @@ def build_document_folder_tree(
     nodes_by_path: dict[str, DocumentFolderNode] = {"": root}
 
     for source_path in source_paths:
-        raw = (source_path or "").strip()
+        if source_path is None:
+            continue
+        raw = source_path.strip()
         if not raw:
             continue
         parts = [p for p in raw.split("/") if p]

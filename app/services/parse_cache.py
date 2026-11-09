@@ -36,7 +36,7 @@ SCHEMA = "mimirq.parse_cache.v2"
 
 def _parse_iso(ts: str) -> datetime | None:
     try:
-        dt = datetime.fromisoformat(str(ts or "").strip())
+        dt = datetime.fromisoformat(ts.strip())
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         return dt
@@ -60,10 +60,10 @@ def build_parse_cache_key(
 ) -> str:
     payload = {
         "schema": SCHEMA,
-        "file_sha256": str(file_sha256 or "").strip().lower(),
-        "backend": str(resolved_backend or "").strip().lower(),
-        "config_hash": str(config_hash or "").strip(),
-        "version": str(version or "").strip(),
+        "file_sha256": file_sha256.strip().lower(),
+        "backend": resolved_backend.strip().lower(),
+        "config_hash": config_hash.strip(),
+        "version": version.strip(),
     }
     return stable_hash(stable_json_dumps(payload), length=32)
 
@@ -74,9 +74,9 @@ def build_parse_cache_object_name(
     dataset_id: str,
     cache_key: str,
 ) -> str:
-    tid = str(tenant_id or "").strip()
-    did = str(dataset_id or "").strip()
-    key = str(cache_key or "").strip()
+    tid = tenant_id.strip()
+    did = dataset_id.strip()
+    key = cache_key.strip()
     if not tid or not did or not key:
         raise ValueError("invalid_parse_cache_object_name_components")
     prefix = str(settings.PARSE_CACHE_MINIO_PREFIX or "parse_cache").strip().strip("/")

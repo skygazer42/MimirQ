@@ -20,7 +20,7 @@ _DEFAULT_POLICY_PATH = _REPO_ROOT / "ci" / "perf_regression_policy.v1.json"
 
 
 def _strip_slashes(value: str) -> str:
-    return (value or "").strip().rstrip("/")
+    return (value).strip().rstrip("/")
 
 
 def _read_json(path: Path) -> dict[str, Any]:

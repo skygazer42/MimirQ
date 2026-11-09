@@ -70,7 +70,7 @@ def _parse_kv_line(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    raw = str(line or "").rstrip("\r\n")
+    raw = line.rstrip("\r\n")
     if not raw:
         return None
     s = raw.lstrip()
@@ -89,7 +89,7 @@ def _parse_kv_line(line: str) -> str | None:
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -106,7 +106,7 @@ def _build_sections(text: str) -> list[_Section]:
         m = _SECTION_RE.match(ln.text.strip())
         if not m:
             continue
-        name = (m.group("name") or "").strip() or "section"
+        name = (m.group("name")).strip() or "section"
         headers.append((ln.start, name))
 
     if not headers:
@@ -136,7 +136,7 @@ def _iter_kv(text: str, *, start: int, end: int) -> list[_KV]:
 def looks_like_kv_config(text: str) -> bool:
     if not text or len(text) < 120:
         return False
-    raw_lines = [ln for ln in (text or "").splitlines() if ln.strip()]
+    raw_lines = [ln for ln in (text).splitlines() if ln.strip()]
     if len(raw_lines) < 6:
         return False
     kv_lines = 0
@@ -306,7 +306,7 @@ class KVConfigChunker(BaseChunker):
             first = False
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         base_meta = dict(doc.metadata or {})
         if not text.strip():
             return

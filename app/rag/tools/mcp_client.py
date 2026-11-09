@@ -73,8 +73,11 @@ class ToolParameter:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ToolParameter":
+        name = data["name"]
+        if not isinstance(name, str):
+            raise MCPToolError("tool parameter name must be a string")
         return cls(
-            name=data.get("name", ""),
+            name=name,
             type=data.get("type", "string"),
             description=data.get("description", ""),
             required=data.get("required", False),
@@ -96,9 +99,12 @@ class MCPTool:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MCPTool":
+        name = data["name"]
+        if not isinstance(name, str) or not name.strip():
+            raise MCPToolError("tool name must be a non-empty string")
         params = [ToolParameter.from_dict(p) for p in data.get("parameters", [])]
         return cls(
-            name=data.get("name", ""),
+            name=name,
             description=data.get("description", ""),
             type=ToolType(data.get("type", "function")),
             parameters=params,
@@ -496,7 +502,9 @@ class MCPToolRegistry:
             tool_state = chain.run_before(tool_state)
 
         async def _execute(state: dict[str, Any]) -> dict[str, Any]:
-            tool_name = str(state.get("tool_name") or "")
+            tool_name = state["tool_name"]
+            if not isinstance(tool_name, str) or not tool_name.strip():
+                raise MCPToolError("tool name must be a non-empty string")
             tool_args = state.get("arguments") or {}
 
             # Try local first

@@ -3,6 +3,8 @@
 from collections.abc import Callable
 from typing import Any
 
+from app.services.dify_integration.common import _first_nonempty_str
+
 from app.services.dify_integration.common import (
     _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX as _DEFAULT_RESPONSE_HINT_ANSWER_PREFIX,
 )
@@ -79,7 +81,7 @@ def _metadata_answer_field_configured(
     field_specs: tuple[dict[str, Any], ...],
 ) -> bool:
     return "answer" in highlight_keys or any(
-        str(spec.get("metadata") or spec.get("key") or spec.get("field") or "").strip() == "answer"
+        _first_nonempty_str(spec.get("metadata"), spec.get("key"), spec.get("field")) == "answer"
         for spec in field_specs
     )
 
@@ -113,7 +115,7 @@ def _add_metadata_answer_hint_values(
 
 def _response_hint_metadata_fields(field_spec: dict[str, Any]) -> tuple[str, ...]:
     fields = _response_hint_string_list(field_spec, "fields")
-    single_field = str(field_spec.get("field") or "").strip()
+    single_field = _first_nonempty_str(field_spec.get("field"))
     if single_field and single_field not in fields:
         fields = (*fields, single_field)
     return fields
@@ -129,7 +131,7 @@ def _add_metadata_answer_field_spec_highlights(
 ) -> None:
     if not _response_hint_metadata_conditions_match(layer, field_spec):
         return
-    metadata_key = str(field_spec.get("metadata") or field_spec.get("key") or "").strip()
+    metadata_key = _first_nonempty_str(field_spec.get("metadata"), field_spec.get("key"))
     source = layer.get(metadata_key) if metadata_key else layer
     if source is None:
         return
@@ -176,7 +178,7 @@ def _add_metadata_answer_dict_field_spec_highlights(
         policy_plugin_refs=policy_plugin_refs,
         enabled=field_spec.get("prioritize_query_fields") is True,
     )
-    requested_prefix = str(field_spec.get("requested_labels_prefix") or "").strip()
+    requested_prefix = _first_nonempty_str(field_spec.get("requested_labels_prefix"))
     if requested_prefix and requested_labels:
         separator = str(field_spec.get("requested_labels_separator") or "、")
         add(f"{requested_prefix}：{separator.join(requested_labels)}")
@@ -195,7 +197,7 @@ def _content_with_answer_hints(
     query: str = "",
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> str:
-    body = str(content or "").strip()
+    body = content.strip()
     if not body:
         return body
     response_hints = _response_hints_for_metadata(metadata, policy_plugin_refs=policy_plugin_refs)
@@ -249,7 +251,7 @@ def _requested_fast_response_labels(
     *,
     policy_plugin_refs: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    query_text = str(query or "")
+    query_text = query
     labels: list[str] = []
     seen: set[str] = set()
 
@@ -338,7 +340,7 @@ def _requested_response_hint_metadata_labels(
 ) -> tuple[str, ...]:
     if not enabled:
         return ()
-    query_text = str(query or "")
+    query_text = query
     if not query_text:
         return ()
     available = set(fields)

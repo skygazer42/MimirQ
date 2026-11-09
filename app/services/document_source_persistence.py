@@ -184,7 +184,7 @@ def _log_cancelled_storage_error(exc: BaseException) -> None:
 async def _cleanup_unpersisted_store_object(*, store: MinIOService, reference: ObjectStorageRef) -> None:
     try:
         backend = object_store_backend_config(store)
-        if reference.bucket != str(backend.get("bucket", "") or "").strip():
+        if reference.bucket != backend["bucket"].strip():
             return
         await run_blocking_in_thread(
             store.delete_object,
@@ -258,7 +258,9 @@ async def persist_uploaded_document(db: Session, document: DBDocument, *, file_p
         duplicate = None
         try:
             file_sha256 = get_content_sha256(metadata)
-            pipeline_hash = str(metadata.get("pipeline_hash") or "").strip()
+            pipeline_hash = metadata.get("pipeline_hash")
+            if pipeline_hash is not None:
+                pipeline_hash = pipeline_hash.strip()
             if is_document_dedup_integrity_error(exc) and file_sha256 and pipeline_hash:
                 duplicate = find_duplicate_document(
                     db, tenant_id=tenant_id, dataset_id=dataset_id, file_sha256=file_sha256, pipeline_hash=pipeline_hash

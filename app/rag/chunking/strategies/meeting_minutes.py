@@ -72,7 +72,7 @@ _EN_CANON = {re.sub(r"\s+", " ", k.strip().lower()): v for k, v in _EN_SECTIONS.
 
 
 def _normalize_title(raw: str) -> str:
-    t = (raw or "").strip()
+    t = (raw).strip()
     if not t:
         return ""
     parsed = parse_markdown_hash_heading(t)
@@ -175,7 +175,7 @@ class MeetingMinutesChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

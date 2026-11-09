@@ -110,13 +110,13 @@ def list_db_catalog_tables(
         DbCatalogTable.tenant_id == tenant_id, DbCatalogTable.dataset_id == dataset_id
     )
 
-    eng = (engine or "").strip().lower()
+    eng = engine.strip().lower() if engine is not None else None
     if eng:
         if eng not in {"mysql", "sqlserver"}:
             raise HTTPException(status_code=400, detail="invalid engine")
         query = query.filter(DbCatalogTable.engine == eng)
 
-    needle = (q or "").strip()
+    needle = q.strip() if q is not None else None
     if needle:
         needle = needle[:200]
         like = f"%{needle}%"
@@ -153,7 +153,7 @@ def get_db_catalog_table(
     dataset_service.assert_dataset_readable(db, dataset, account_id)
 
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").strip().lower()
+    role = (member.role).strip().lower()
     fls_policy = parse_fls_policy_from_metadata(dataset.dataset_metadata or {})
     fls_ctx = FlsUserContext(account_id=account_id, role=role)
 
@@ -245,7 +245,7 @@ def list_db_catalog_profiles(
     if table is None:
         raise HTTPException(status_code=404, detail="table not found")
 
-    ent = (entitlement_hash or "").strip()
+    ent = entitlement_hash.strip() if entitlement_hash is not None else None
     if ent:
         ent = ent[:255]
 

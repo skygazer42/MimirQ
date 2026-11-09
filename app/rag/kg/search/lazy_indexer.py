@@ -2,7 +2,7 @@ from typing import Any
 
 
 def _stable_unique(values: list[str]) -> list[str]:
-    return sorted({str(v or "").strip() for v in (values or []) if str(v or "").strip()})
+    return sorted({v.strip() for v in (values or []) if v.strip()})
 
 
 def build_lazy_index_plan(

@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.config.rerank_profile import normalize_rerank_profile, resolve_rerank_search_k
 from app.core.config import settings
+from app.rag.core.metadata import _stringified_metadata_text
 from app.core.database import SessionLocal
 from app.models.dataset import Dataset as DBDataset
 from app.models.document import Document as DBDocument
@@ -207,7 +208,7 @@ class HybridRetriever(
         from app.rag.retrieval.sparse import resolve_sparse_provider_capability
 
         return resolve_sparse_provider_capability(
-            requested_provider=str(self.sparse_provider or ""),
+            requested_provider=self.sparse_provider,
             sparse_enabled=bool(sparse_enabled),
             default_provider="deterministic",
         )
@@ -334,7 +335,7 @@ class HybridRetriever(
             try:
                 shard_filter = self._build_vector_filter(
                     metadata_filter,
-                    embedding_space=str(shard_runtime.embedding_space_hash or "").strip(),
+                    embedding_space=shard_runtime.embedding_space_hash.strip(),
                     dataset_ids=shard_dataset_ids,
                 )
                 if shard_runtime.dataset_scoped:
@@ -358,7 +359,7 @@ class HybridRetriever(
                     )
                 return (
                     self._tag_vector_hits_with_expected_space(
-                        hits, expected_space=str(shard_runtime.embedding_space_hash or "").strip()
+                        hits, expected_space=shard_runtime.embedding_space_hash.strip()
                     ),
                     None,
                 )
@@ -411,7 +412,9 @@ class HybridRetriever(
             raw_items = []
 
         for raw in raw_items:
-            text = str(raw or "").strip()
+            if raw is None:
+                continue
+            text = str(raw).strip()
             if not text:
                 continue
             norm = text.casefold()
@@ -476,18 +479,20 @@ class HybridRetriever(
         elif isinstance(existing, dict) and isinstance(existing.get("$in"), (list, tuple, set)):
             allowed = set()
             for value in existing["$in"]:
-                text = str(value or "").strip()
+                if value is None:
+                    continue
+                text = str(value).strip()
                 if text:
                     allowed.add(text)
             merged["partition_keys"] = {"$in": [k for k in keys if k in allowed]}
         else:
-            existing_text = str(existing or "").strip()
+            existing_text = str(existing).strip()
             merged["partition_keys"] = {"$in": [k for k in keys if k == existing_text]}
 
         routing_entity_key = entity_key
         if not routing_entity_key:
             routing_entity_key = self.entity_key
-        routing_entity_key = str(routing_entity_key or "").strip()
+        routing_entity_key = routing_entity_key.strip() if routing_entity_key is not None else None
         if not routing_entity_key:
             routing_entity_key = None
         routing_candidates = entity_candidates
@@ -506,7 +511,7 @@ class HybridRetriever(
         preserved = meta.get(_RETRIEVAL_DISPLAY_CONTENT_KEY)
         if isinstance(preserved, str) and preserved:
             return preserved
-        return str(doc.page_content or "")
+        return doc.page_content
 
     @staticmethod
     def _normalize_document_questions(value: Any, *, max_items: int = 5) -> list[str]:
@@ -839,7 +844,7 @@ class HybridRetriever(
         document_scope = tuple(sorted(str(document_id) for document_id in normalized_document_ids))
         scope_key = (
             str(tenant_uuid),
-            str(dataset_id or ""),
+            str(dataset_id) if dataset_id is not None else None,
             tuple(str(dataset_scope_id) for dataset_scope_id in multi_dataset_scope),
             document_scope,
         )
@@ -1191,7 +1196,7 @@ class HybridRetriever(
 
     def _normalize_retrieval_query(self, query: str) -> tuple[str, str, "NormalizedQuery"]:
         max_query_chars = int(settings.RETRIEVAL_QUERY_MAX_CHARS)
-        if len(str(query or "")) > max_query_chars:
+        if len(query) > max_query_chars:
             raise ValueError(f"retrieval query exceeds RETRIEVAL_QUERY_MAX_CHARS={max_query_chars}")
         from app.query.normalize import normalize_query
 
@@ -1229,7 +1234,7 @@ class HybridRetriever(
         if overfetch_reasons:
             search_k = self._apply_retrieval_overfetch_bounds(requested_k=requested_k, search_k=search_k)
         fetch_k = search_k * 2
-        if str(self.retrieval_mode or "").strip().lower() == "mmr":
+        if self.retrieval_mode.strip().lower() == "mmr":
             fetch_k = search_k * max(1, int(self.mmr_fetch_k_multiplier or 0))
         return requested_k, search_k, fetch_k, overfetch_reasons
 
@@ -1240,9 +1245,9 @@ class HybridRetriever(
         metadata_filter_requested = bool(
             self.metadata_filter_enabled and isinstance(self.metadata_filter, dict) and self.metadata_filter
         )
-        if not dataset_scope_ids and self.tenant_id and (self.account_id or "").strip():
+        if not dataset_scope_ids and self.tenant_id and (self.account_id is not None and self.account_id.strip()):
             reasons.append("open_scope_acl")
-        if dataset_scope_ids or (self.tenant_id and (self.account_id or "").strip()):
+        if dataset_scope_ids or (self.tenant_id and (self.account_id is not None and self.account_id.strip())):
             reasons.append("active_pipeline")
         if metadata_filter_requested:
             reasons.append("metadata_filter")
@@ -1280,7 +1285,7 @@ class HybridRetriever(
         fetch_k: int,
         overfetch_reasons: list[str],
     ) -> dict[str, Any]:
-        retrieval_profile = str(self.retrieval_profile or "").strip().lower()
+        retrieval_profile = self.retrieval_profile.strip().lower() if self.retrieval_profile is not None else None
         if not retrieval_profile:
             retrieval_profile = None
         return {
@@ -1309,9 +1314,9 @@ class HybridRetriever(
                 "applied_rules": list(query_norm.applied_rules),
             },
             "scope": {
-                "tenant_id": str(self.tenant_id or ""),
-                "account_id_present": bool((self.account_id or "").strip()),
-                "dataset_id": str(self.dataset_id or ""),
+                "tenant_id": str(self.tenant_id) if self.tenant_id is not None else None,
+                "account_id_present": bool((self.account_id is not None and self.account_id.strip())),
+                "dataset_id": str(self.dataset_id) if self.dataset_id is not None else None,
                 "dataset_ids_count": len(dataset_scope_ids),
                 "document_ids_count": len(self.document_ids or []),
                 "kind": self._retrieval_scope_kind(
@@ -1626,7 +1631,7 @@ class HybridRetriever(
         ):
             if key in result:
                 meta[key] = result.get(key)
-        return Document(page_content=result.get("content", ""), metadata=meta, id=result.get("chunk_id"))
+        return Document(page_content=result["content"], metadata=meta, id=result.get("chunk_id"))
 
     def _apply_governance_policy(
         self,
@@ -1725,7 +1730,7 @@ class HybridRetriever(
             doc_features[doc_id] = features
             if features["publication_status"] != "published":
                 unpublished_doc_ids.add(doc_id)
-            supersedes_id = str(features.get("supersedes_document_id") or "").strip()
+            supersedes_id = _stringified_metadata_text(features, "supersedes_document_id")
             if filter_superseded and features["publication_status"] == "published" and supersedes_id:
                 superseded_doc_ids.add(supersedes_id)
         return doc_features, unpublished_doc_ids, superseded_doc_ids
@@ -1751,9 +1756,7 @@ class HybridRetriever(
             "authority_level": max(0, min(100, authority)),
             "updated_ts": updated_ts,
             "publication_status": publication_status,
-            "supersedes_document_id": str(
-                meta.get("_governance_supersedes_document_id", meta.get("supersedes_document_id", "")) or ""
-            ).strip(),
+            "supersedes_document_id": _stringified_metadata_text(meta, "_governance_supersedes_document_id") if "_governance_supersedes_document_id" in meta else _stringified_metadata_text(meta, "supersedes_document_id"),
         }
 
     def _filter_governance_results(
@@ -1813,7 +1816,7 @@ class HybridRetriever(
         for index, result in enumerate(results):
             base_score = self._governance_base_score(result)
             doc_id = self._get_doc_id(result)
-            features = doc_features.get(doc_id or "", {})
+            features = doc_features.get(doc_id, {})
             boost = self._governance_score_boost(
                 features,
                 prefer_authority=prefer_authority,

@@ -202,7 +202,7 @@ def _global_common_lines(
     if min_docs < 2:
         return set()
     return build_common_line_signatures(
-        [doc.page_content or "" for doc in documents],
+        [doc.page_content for doc in documents],
         min_docs=min_docs,
         min_ratio=options.common_lines_min_ratio,
         max_line_length=options.unwrap_max_line_length,
@@ -257,7 +257,7 @@ def _apply_base_cleanup(
 ) -> None:
     local_common_lines = (
         build_repeated_line_signatures(
-            state.text or "",
+            state.text,
             min_occurrences=options.common_lines_min_docs,
             max_line_length=options.unwrap_max_line_length,
         )
@@ -266,9 +266,9 @@ def _apply_base_cleanup(
     )
     common_lines = (global_common_lines | local_common_lines) if options.remove_common_lines else None
     result = clean_markdown(
-        state.text or "",
+        state.text,
         rules=active_rules,
-        regex_timeout_ms=settings.GOVERNANCE_REGEX_TIMEOUT_MS or 100,
+        regex_timeout_ms=settings.GOVERNANCE_REGEX_TIMEOUT_MS,
         common_lines=common_lines,
         remove_toc_lines=options.remove_toc_lines,
         remove_noise_lines=options.remove_noise_lines,
@@ -567,7 +567,7 @@ def _process_document(
     global_common_lines: set[str],
     totals: _GovernanceTotals,
 ) -> Document | None:
-    original_text = document.page_content or ""
+    original_text = document.page_content
     state = _DocumentState(source=document, original_text=original_text, text=original_text)
     _extract_frontmatter(state, options, totals)
     _apply_base_cleanup(

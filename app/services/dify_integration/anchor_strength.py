@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.services.dify_integration.common import (
     _QUESTION_ANCHOR_INTENT_GROUPS,
     _QUESTION_ANCHOR_SUBJECT_NOISE_TERMS,
+    _first_nonempty_str,
     _iter_record_metadata_layers,
     _metadata_terms,
     _normalize_match_term,
@@ -19,12 +20,12 @@ def _record_section_type_values(record: dict[str, Any]) -> tuple[str, ...]:
 def _record_slot_field_values(record: dict[str, Any], field: str) -> tuple[str, ...]:
     out: list[str] = []
     seen: set[str] = set()
-    field_name = str(field or "").strip()
+    field_name = field.strip()
     if not field_name:
         return ()
     for metadata in _iter_record_metadata_layers(record):
         for value in _metadata_terms(metadata.get(field_name)):
-            text = str(value or "").strip()
+            text = value.strip()
             normalized = _normalize_match_term(text)
             if not text or not normalized or normalized in seen:
                 continue
@@ -33,7 +34,7 @@ def _record_slot_field_values(record: dict[str, Any], field: str) -> tuple[str, 
     if field_name == "section_type":
         for metadata in _iter_record_metadata_layers(record):
             for value in _metadata_terms(metadata.get("section")):
-                text = str(value or "").strip()
+                text = value.strip()
                 normalized = _normalize_match_term(text)
                 if not text or not normalized or normalized in seen:
                     continue
@@ -60,19 +61,23 @@ def _record_has_any_requested_slot_field(
     record: dict[str, Any],
     requested_slot_specs: tuple[tuple[str, str], ...],
 ) -> bool:
-    fields = tuple(dict.fromkeys(field for field, _value in requested_slot_specs if str(field or "").strip()))
+    fields = tuple(dict.fromkeys(field for field, _value in requested_slot_specs if field.strip()))
     return any(_record_slot_field_values(record, field) for field in fields)
 
 
 def _record_is_full_answer_chunk(record: dict[str, Any]) -> bool:
     for metadata in _iter_record_metadata_layers(record):
-        chunk_kind = str(metadata.get("chunk_kind") or "").strip().lower()
-        answer_kind = str(metadata.get("answer_kind") or "").strip().lower()
+        chunk_kind = _first_nonempty_str(metadata.get("chunk_kind"))
+        answer_kind = _first_nonempty_str(metadata.get("answer_kind"))
+        if chunk_kind is not None:
+            chunk_kind = chunk_kind.lower()
+        if answer_kind is not None:
+            answer_kind = answer_kind.lower()
         if answer_kind in {"full_record", "record_full"}:
             return True
         if chunk_kind in {"full_record", "record_full"}:
             return True
-        if chunk_kind.endswith("_full") or chunk_kind.endswith("_record_full"):
+        if chunk_kind is not None and (chunk_kind.endswith("_full") or chunk_kind.endswith("_record_full")):
             return True
     return False
 
@@ -91,7 +96,7 @@ def _composite_stitched_section_text(records: list[dict[str, Any]]) -> str:
 
 
 def _composite_section_text(record: dict[str, Any]) -> str:
-    content = str(record.get("content") or "").strip()
+    content = record['content'].strip()
     if not content:
         return ""
     source_text = content.split("原始证据：", 1)[-1].strip() if "原始证据：" in content else content
@@ -108,12 +113,14 @@ def _composite_section_text(record: dict[str, Any]) -> str:
 
 
 def _ordered_section_sibling_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def sequence_key(record: dict[str, Any]) -> tuple[str, str, int, int, int, float]:
+    def sequence_key(record: dict[str, Any]) -> tuple[bool, str | None, bool, str | None, int, int, int, float]:
         metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
-        source_record_id = str(metadata.get("source_record_id") or "").strip()
-        section_type = str(metadata.get("section_type") or "").strip()
+        source_record_id = _first_nonempty_str(metadata.get("source_record_id"))
+        section_type = _first_nonempty_str(metadata.get("section_type"))
         return (
+            source_record_id is not None,
             source_record_id,
+            section_type is not None,
             section_type,
             _safe_int(metadata.get("source_chunk_index"), default=1_000_000),
             _safe_int(metadata.get("chunk_part_index"), default=1_000_000),

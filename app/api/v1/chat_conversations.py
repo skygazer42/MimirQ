@@ -279,7 +279,9 @@ def create_conversation(
 ):
     """Create a new conversation."""
     allow_empty_docs = bool(settings.CHAT_ALLOW_EMPTY_DOCUMENTS)
-    requested_title = str(request.title or "").strip()
+    requested_title = request.title.strip() if request.title is not None else None
+    if requested_title == "":
+        requested_title = None
 
     scope_dataset_id: UUID | None = None
     if request.document_ids:
@@ -308,7 +310,7 @@ def create_conversation(
     conversation = Conversation(
         tenant_id=tenant_id,
         owner_account_id=account_id,
-        title=requested_title or None,
+        title=requested_title,
         title_source=CONVERSATION_TITLE_SOURCE_MANUAL if requested_title else CONVERSATION_TITLE_SOURCE_AUTO,
         dataset_id=scope_dataset_id,
         document_ids=allowed_doc_ids,
@@ -347,7 +349,7 @@ def update_conversation(
 
     changed = False
     if "title" in payload.model_fields_set:
-        title = (payload.title or "").strip()
+        title = payload.title.strip() if payload.title is not None else None
         if title:
             conversation.title = title
             conversation.title_source = CONVERSATION_TITLE_SOURCE_MANUAL
@@ -370,7 +372,7 @@ def update_conversation(
             action="chat.conversation.update",
             resource_type="conversation",
             resource_id=str(conversation_id),
-            details={"title_chars": len((conversation.title or "").strip())},
+            details={"title_chars": len(conversation.title.strip()) if conversation.title is not None else 0},
         )
         db.commit()
         db.refresh(conversation)
@@ -390,7 +392,7 @@ def list_conversations(
 ):
     """List conversations."""
     dataset_service.ensure_member(db, tenant_id, account_id)
-    search_term = str(q or "").strip()
+    search_term = q.strip() if q is not None else None
     query = db.query(Conversation).filter(
         Conversation.tenant_id == tenant_id,
         Conversation.owner_account_id == account_id,
@@ -481,7 +483,9 @@ def export_conversation(
         .all()
     )
 
-    title = (conversation.title or "").strip() or f"Conversation {conversation_id}"
+    title = conversation.title.strip() if conversation.title is not None else None
+    if not title:
+        title = f"Conversation {conversation_id}"
 
     if fmt == "json":
         payload = {
@@ -511,10 +515,10 @@ def export_conversation(
         parts.append("")
 
         for m in messages:
-            role = str(m.role or "").strip() or "unknown"
+            role = m.role.strip() or "unknown"
             parts.append(f"## {role}")
             parts.append("")
-            parts.append(str(m.content or ""))
+            parts.append(m.content)
             parts.append("")
 
             if include_citations and role == "assistant" and isinstance(m.citations, list):
@@ -524,11 +528,11 @@ def export_conversation(
                     for c in cites[:20]:
                         if not isinstance(c, dict):
                             continue
-                        doc_name = (str(c.get("document_name") or "") or "").strip()
+                        doc_name = (str(c.get("document_name") or "")).strip()
                         doc_id = c.get("document_id")
                         chunk_index = c.get("chunk_index")
                         page = c.get("page_number")
-                        snippet = (str(c.get("chunk_content") or "") or "").strip()
+                        snippet = (str(c.get("chunk_content") or "")).strip()
                         if len(snippet) > 260:
                             snippet = snippet[:260] + "..."
                         parts.append(

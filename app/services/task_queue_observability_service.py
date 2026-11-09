@@ -69,7 +69,7 @@ def _queue_enabled() -> bool:
 
 
 def _queue_name() -> str:
-    name = str(settings.TASK_QUEUE_NAME or "").strip()
+    name = settings.TASK_QUEUE_NAME.strip()
     return name or "mimirq"
 
 
@@ -102,12 +102,12 @@ def _recent_job_outcomes_limit() -> int:
 
 
 def _workers_registry_key(queue_name: str) -> str:
-    q = str(queue_name or "").strip() or "mimirq"
+    q = queue_name.strip() or "mimirq"
     return f"ops:task_queue:workers:{q}"
 
 
 def _recent_jobs_key(queue_name: str) -> str:
-    q = str(queue_name or "").strip() or "mimirq"
+    q = queue_name.strip() or "mimirq"
     return f"ops:task_queue:recent_jobs:{q}"
 
 
@@ -160,8 +160,8 @@ async def observe_task_worker_heartbeat(*, redis: "ArqRedis | None", queue_name:
     if redis is None:
         return
 
-    q = str(queue_name or "").strip() or _queue_name()
-    wid = str(worker_id or "").strip()
+    q = queue_name.strip() or _queue_name()
+    wid = worker_id.strip()
     if not wid:
         return
 
@@ -190,7 +190,7 @@ async def observe_task_job_outcome(*, redis: "ArqRedis | None", queue_name: str,
     if payload is None:
         return
 
-    q = str(queue_name or "").strip() or _queue_name()
+    q = queue_name.strip() or _queue_name()
     key = _recent_jobs_key(q)
     ttl = max(300, _heartbeat_ttl_sec() * 10)
     limit = _recent_job_outcomes_limit()
@@ -276,7 +276,7 @@ async def _refresh_from_redis(
     if redis is None:
         return False, None, None, [], "redis_unavailable"
 
-    q = str(queue_name or "").strip() or _queue_name()
+    q = queue_name.strip() or _queue_name()
 
     # Broker health check.
     try:

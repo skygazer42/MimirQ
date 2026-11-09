@@ -10,13 +10,13 @@ def route_kg_search_method(query: str) -> dict[str, Any]:
 
     method = "hybrid"
     reason_codes: list[str] = []
-    if str(kg_mode.get("mode") or "") == "drift":
+    if kg_mode["mode"] == "drift":
         method = "drift_search"
         reason_codes.append("kg_mode_drift")
-    elif str(complexity.get("label") or "") == "structured":
+    elif complexity["label"] == "structured":
         method = "pprank"
         reason_codes.append("structured_pprank")
-    elif str(complexity.get("label") or "") == "multi_hop":
+    elif complexity["label"] == "multi_hop":
         method = "hybrid"
         reason_codes.append("multi_hop_hybrid")
     else:

@@ -34,7 +34,9 @@ def _coerce_nonneg_int(value: Any) -> int:
 
 
 def _safe_str(value: Any, *, max_len: int = 200) -> str | None:
-    s = str(value or "").strip()
+    if value is None:
+        return None
+    s = str(value).strip()
     if not s:
         return None
     lim = max(0, int(max_len or 0))
@@ -159,7 +161,7 @@ def _select_hard_candidates(
     per_document_counts: dict[str, int] = {}
     dropped = 0
     for row in candidates:
-        document_id = row["document_id"] or ""
+        document_id = row["document_id"]
         used = per_document_counts.get(document_id, 0) or 0
         if max_negatives_per_document > 0 and document_id and used >= max_negatives_per_document:
             dropped += 1
@@ -200,7 +202,7 @@ def mine_hard_negatives_for_case_from_trace(
 
     The output is PII-safe and MUST NOT include raw query text.
     """
-    qh = _safe_str(query_hash, max_len=64) or ""
+    qh = query_hash.strip()[:64]
     ref_chunk_ids = _extract_reference_chunk_ids(case)
     max_hard = max(0, int(max_hard_negatives or 0))
     per_doc_cap = max(0, int(max_negatives_per_document or 0))
@@ -316,7 +318,7 @@ def merge_hard_negative_records(
     if not rows:
         return _empty_merged_hard_negative_record()
 
-    query_hash = _first_safe_record_value(rows, "query_hash", max_len=64) or ""
+    query_hash = _first_safe_record_value(rows, "query_hash", max_len=64)
     retrieval_config_hash = _first_safe_record_value(rows, "retrieval_config_hash", max_len=128)
     hard_rows = _collect_record_dicts(rows, "hard_negatives")
     stats_sum = _sum_record_stats(rows)
@@ -341,7 +343,7 @@ def merge_hard_negative_records(
 
 
 def _parse_hard_negative_line(line: str) -> tuple[str, list[Any]] | None:
-    text = str(line or "").strip()
+    text = line.strip()
     if not text:
         return None
     try:
@@ -349,7 +351,7 @@ def _parse_hard_negative_line(line: str) -> tuple[str, list[Any]] | None:
     except Exception:
         get_logger(__name__).debug("Skipping item after non-critical exception", exc_info=True)
         return None
-    if not isinstance(payload, dict) or str(payload.get("schema") or "") != HARD_NEGATIVES_SCHEMA_V1:
+    if not isinstance(payload, dict) or payload.get("schema") != HARD_NEGATIVES_SCHEMA_V1:
         return None
     query_hash = _safe_str(payload.get("query_hash"), max_len=64)
     hard_negatives = payload.get("hard_negatives") or []

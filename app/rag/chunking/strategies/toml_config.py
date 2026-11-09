@@ -54,7 +54,7 @@ def _parse_toml_key_line(line: str) -> str | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = str(line or "").strip()
+    s = line.strip()
     if not s or s.startswith("#"):
         return None
     if "=" not in s:
@@ -80,7 +80,7 @@ def _parse_toml_key_line(line: str) -> str | None:
 def _iter_lines(text: str) -> list[_Line]:
     out: list[_Line] = []
     offset = 0
-    for raw in (text or "").splitlines(keepends=True):
+    for raw in (text).splitlines(keepends=True):
         start = offset
         end = start + len(raw)
         offset = end
@@ -97,7 +97,7 @@ def _build_sections(text: str) -> list[_Section]:
         m = _TABLE_RE.match(ln.plain.strip())
         if not m:
             continue
-        name = (m.group("name") or "").strip()
+        name = (m.group("name")).strip()
         if not name:
             continue
         # Distinguish [[array]] from [table]
@@ -151,7 +151,7 @@ def looks_like_toml_config(text: str) -> bool:
     lowered = text.lower()
     if "[tool." in lowered or "[project]" in lowered:
         return True
-    head = (text or "")[:80000]
+    head = (text)[:80000]
     has_table = False
     has_key = False
     for ln in head.splitlines()[:2000]:
@@ -314,7 +314,7 @@ class TOMLConfigChunker(BaseChunker):
             )
 
     def _split_document(self, doc: Document, out: list[Document]) -> None:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return
         base_meta = dict(doc.metadata or {})

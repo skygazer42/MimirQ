@@ -85,7 +85,7 @@ def create_group(
         resource_type="tenant_group",
         resource_id=str(group.id),
         details={
-            "name": str(getattr(group, "name", "") or "")[:255],
+            "name": group.name[:255],
             "has_external_id": bool(getattr(group, "external_id", None)),
         },
     )
@@ -144,7 +144,7 @@ def patch_group(
         resource_type="tenant_group",
         resource_id=str(group_id),
         details={
-            "name": str(getattr(group, "name", "") or "")[:255],
+            "name": group.name[:255],
             "has_external_id": bool(getattr(group, "external_id", None)),
         },
     )
@@ -203,7 +203,7 @@ def list_group_members(
         detail="No permission to view group members",
     )
     total, rows = tenant_group_service.list_members(db, tenant_id=tenant_id, group_id=group_id, skip=skip, limit=limit)
-    items = [TenantGroupMemberOut(user_id=str(r.user_id or ""), created_at=r.created_at) for r in rows]
+    items = [TenantGroupMemberOut(user_id=r.user_id, created_at=r.created_at) for r in rows]
     return TenantGroupMemberListResponse(total=total, items=items)
 
 

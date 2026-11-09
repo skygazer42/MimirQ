@@ -24,8 +24,10 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(default)
 
 
-def _norm_text(value: Any) -> str:
-    return str(value or "").strip().lower()
+def _norm_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value).strip().lower()
 
 
 def _to_bool(value: Any) -> bool:
@@ -43,19 +45,19 @@ def _clamp01(value: float) -> float:
     return value
 
 
-def _is_pdf(mime: str, ext: str) -> bool:
+def _is_pdf(mime: str | None, ext: str | None) -> bool:
     return mime in {"application/pdf", "application/x-pdf"} or ext == "pdf"
 
 
-def _is_html(mime: str, ext: str) -> bool:
-    return "html" in mime or ext in {"html", "htm"}
+def _is_html(mime: str | None, ext: str | None) -> bool:
+    return (mime is not None and "html" in mime) or ext in {"html", "htm"}
 
 
-def _is_markdown(mime: str, ext: str) -> bool:
-    return "markdown" in mime or ext in {"md", "markdown", "txt"}
+def _is_markdown(mime: str | None, ext: str | None) -> bool:
+    return (mime is not None and "markdown" in mime) or ext in {"md", "markdown", "txt"}
 
 
-def _is_spreadsheet(mime: str, ext: str) -> bool:
+def _is_spreadsheet(mime: str | None, ext: str | None) -> bool:
     if ext in {"xlsx", "xls", "csv", "tsv"}:
         return True
     return mime in {
@@ -65,11 +67,11 @@ def _is_spreadsheet(mime: str, ext: str) -> bool:
     }
 
 
-def _is_image(mime: str, ext: str) -> bool:
-    return mime.startswith("image/") or ext in {"png", "jpg", "jpeg", "webp", "tiff", "bmp"}
+def _is_image(mime: str | None, ext: str | None) -> bool:
+    return (mime is not None and mime.startswith("image/")) or ext in {"png", "jpg", "jpeg", "webp", "tiff", "bmp"}
 
 
-def _is_docx(mime: str, ext: str) -> bool:
+def _is_docx(mime: str | None, ext: str | None) -> bool:
     return ext in {"docx", "doc"} or mime in {
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -120,7 +122,7 @@ def _recommend_pdf_strategy(
     )
 
 
-def _recommend_non_pdf_strategy(mime: str, ext: str) -> tuple[str, float, dict[str, Any], list[str]]:
+def _recommend_non_pdf_strategy(mime: str | None, ext: str | None) -> tuple[str, float, dict[str, Any], list[str]]:
     if _is_spreadsheet(mime, ext):
         return (
             "spreadsheet_structured",
@@ -188,7 +190,9 @@ def recommend_parser_strategy(profile: Mapping[str, Any] | None) -> dict[str, An
     """
     payload = dict(profile or {})
     mime = _norm_text(payload.get("mime_type"))
-    ext = _norm_text(payload.get("file_extension")).lstrip(".")
+    ext = _norm_text(payload.get("file_extension"))
+    if ext is not None:
+        ext = ext.lstrip(".")
 
     page_count = max(1, _safe_int(payload.get("page_count"), 1))
     table_density = _clamp01(_safe_float(payload.get("table_density"), 0.0))

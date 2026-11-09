@@ -156,7 +156,7 @@ def _semantic_quality_summary(
     prev_token_set: set[str] | None = None
     for (content,) in chunks:
         sampled += 1
-        scores, prev_token_set = score_chunk_semantic_quality(content or "", prev_token_set=prev_token_set)
+        scores, prev_token_set = score_chunk_semantic_quality(content, prev_token_set=prev_token_set)
         density = scores["information_density"]
         completeness = scores["semantic_completeness"]
         self_contained = scores["self_containedness"]

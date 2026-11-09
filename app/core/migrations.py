@@ -32,7 +32,7 @@ def _default_tenant_uuid() -> str:
     try:
         from app.core.config import settings
 
-        raw = (settings.DEFAULT_TENANT_ID or "").strip()
+        raw = (settings.DEFAULT_TENANT_ID).strip()
         return str(UUID(raw)) if raw else fallback
     except Exception:  # noqa: BLE001
         return fallback

@@ -6,7 +6,7 @@ from typing import Any
 def summarize_format_distribution(paths: list[str]) -> dict[str, Any]:
     counts: Counter[str] = Counter()
     for raw in paths or []:
-        path = Path(str(raw or ""))
+        path = Path(raw)
         suffix = path.suffix.strip().lower().lstrip(".")
         counts[suffix or "unknown"] += 1
 

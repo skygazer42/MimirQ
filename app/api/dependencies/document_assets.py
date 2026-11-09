@@ -13,39 +13,41 @@ TenantResolver = Callable[[Request], Awaitable[UUID | None]]
 
 
 def _parse_tenant_id(value: str) -> UUID:
-    try:
-        return UUID(value)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Invalid tenant id") from exc
-
+    return UUID(value)
 
 def _explicit_tenant_id(request: Request) -> UUID | None:
     tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
-    raw = request.headers.get(tenant_header, "").strip()
+    raw = request.headers.get(tenant_header)
+    if raw is not None:
+        raw = raw.strip()
     if not raw and tenant_header.lower() != "x-tenant-id":
-        raw = request.headers.get("x-tenant-id", "").strip()
+        raw = request.headers.get("x-tenant-id")
+        if raw is not None:
+            raw = raw.strip()
     if raw:
         return _parse_tenant_id(raw)
 
     for key in ("tenant_id", "x_tenant_id", "tenant"):
-        raw = request.query_params.get(key, "").strip()
-        if raw:
-            return _parse_tenant_id(raw)
+        raw = request.query_params.get(key)
+        if raw is not None and raw.strip():
+            return _parse_tenant_id(raw.strip())
     return None
 
 
 def _asset_request_header_account(request: Request, *, is_production: bool) -> str | None:
-    account_id = request.headers.get("x-user-id", "").strip()
+    account_id = request.headers.get("x-user-id")
+    if account_id is not None:
+        account_id = account_id.strip()
     if not account_id and (is_production or not settings.ASSET_HEADER_AUTH_ALLOW_ANONYMOUS):
         raise HTTPException(status_code=401, detail="X-User-ID header required")
     return account_id if account_id else None
 
 
 def _asset_request_authorization(request: Request) -> str:
-    authorization = request.headers.get("authorization", "").strip()
-    if not authorization:
+    authorization = request.headers.get("authorization")
+    if authorization is None or not authorization.strip():
         raise HTTPException(status_code=401, detail="Authentication required")
-    return authorization
+    return authorization.strip()
 
 
 async def _resolve_account_id_for_asset_request(

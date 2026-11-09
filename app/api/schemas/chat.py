@@ -36,7 +36,7 @@ def _clean_int_fusion_map(raw: dict[str, int] | None, *, field_name: str) -> dic
         return None
     cleaned: dict[str, int] = {}
     for k, v in raw.items():
-        key = str(k or "").strip().lower()
+        key = k.strip().lower()
         if not key:
             continue
         if key not in FUSION_CHANNELS:
@@ -56,7 +56,7 @@ def _clean_float_fusion_map(
         return None
     cleaned: dict[str, float] = {}
     for k, v in raw.items():
-        key = str(k or "").strip().lower()
+        key = k.strip().lower()
         if not key:
             continue
         if key not in FUSION_CHANNELS:
@@ -68,12 +68,12 @@ def _clean_float_fusion_map(
     return cleaned
 
 
-def _profile_from_mode(mode: str) -> str:
+def _profile_from_mode(mode: str) -> str | None:
     return {
         "basic": "hybrid_ce",
         "contextual": "long_context",
         "expanded": "expanded",
-    }.get(mode, "")
+    }.get(mode)
 
 
 def _retrieval_knobs_appear_omitted(config: Any) -> bool:
@@ -83,9 +83,9 @@ def _retrieval_knobs_appear_omitted(config: Any) -> bool:
     return (
         int(config.top_k or 0) == int(default_top_k)
         and abs(float(config.score_threshold or 0.0) - float(default_score_threshold)) <= 1e-9
-        and str(config.retrieval_mode or "").strip().lower() == "hybrid"
+        and config.retrieval_mode.strip().lower() == "hybrid"
         and bool(config.enable_reranker) is bool(settings.ENABLE_RERANKER)
-        and str(config.reranker_provider or "").strip().lower() == default_reranker_provider
+        and config.reranker_provider.strip().lower() == default_reranker_provider
         and int(config.reranker_top_n or 0) == int(settings.RERANKER_TOP_N)
         and bool(config.enable_weight_rerank) is True
     )
@@ -437,7 +437,7 @@ class ChatRAGConfig(BaseModel):
         cleaned: list[str] = []
         seen: set[str] = set()
         for item in values:
-            s = str(item or "").strip()
+            s = item.strip()
             if not s:
                 continue
             key = s.casefold()
@@ -467,10 +467,12 @@ class ChatRAGConfig(BaseModel):
             )
         return raw
 
-    @field_validator("fusion_strategy", mode="before")
+    @field_validator("fusion_strategy", mode="after")
     @classmethod
-    def _normalize_fusion_strategy(cls, v: Any) -> str | None:
-        raw = str(v or "").strip().lower()
+    def _normalize_fusion_strategy(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        raw = v.strip().lower()
         if not raw:
             return None
         if raw in {"reciprocal_rank_fusion", "rrf"}:
@@ -507,7 +509,7 @@ class ChatRAGConfig(BaseModel):
 
         cleaned: dict[str, float] = {}
         for k, v in fw.items():
-            key = str(k or "").strip().lower()
+            key = k.strip().lower()
             if not key:
                 continue
             if key not in allowed:
@@ -550,8 +552,8 @@ class ChatRAGConfig(BaseModel):
         Note: presets are allowed to override user-provided values. This is intentional: a preset
         is a contract about retrieval behavior, not just a suggestion.
         """
-        p = (self.retrieval_profile or "").strip().lower()
-        mode = str(self.mode or "").strip().lower()
+        p = self.retrieval_profile.strip().lower() if self.retrieval_profile is not None else None
+        mode = self.mode
         default_profile_applied = False
 
         if not p and mode:

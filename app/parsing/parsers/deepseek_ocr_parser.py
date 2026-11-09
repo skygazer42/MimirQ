@@ -42,7 +42,7 @@ _HTML_IMAGE_REF_RE = re.compile(r"<img[^>]+src=[\"']([^\"']+)[\"']", flags=re.IG
 
 
 def _normalize_image_ext(ext: str) -> str:
-    normalized = (ext or "").strip().lower()
+    normalized = (ext).strip().lower()
     return "jpg" if normalized == "jpeg" else normalized
 
 
@@ -58,7 +58,7 @@ def _referenced_image_refs(markdown_text: str) -> list[str]:
     seen: set[str] = set()
     for pattern in (_MARKDOWN_IMAGE_REF_RE, _HTML_IMAGE_REF_RE):
         for match in pattern.finditer(markdown_text):
-            ref = (match.group(1) or "").strip()
+            ref = (match.group(1)).strip()
             if not ref or ref in seen:
                 continue
             seen.add(ref)
@@ -752,8 +752,8 @@ class DeepSeekOCRParser:
             raise RuntimeError(f"DeepSeek OCR API error {resp.status_code}: {resp.text[:500]}")
 
         data = resp.json()
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
-        text = str(content).strip()
+        content = data["choices"][0]["message"]["content"]
+        text = content.strip()
         for pattern in _TAG_PATTERNS:
             text = pattern.sub("", text)
         return text.strip()

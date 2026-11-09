@@ -37,9 +37,9 @@ def emit_db_catalog_sync_completed(
 def emit_db_catalog_sync_failed(
     *,
     tenant_id: str,
-    dataset_id: str,
+    dataset_id: str | None,
     run_id: str,
-    connector_id: str,
+    connector_id: str | None,
     elapsed_sec: float,
     error: str,
 ) -> None:
@@ -48,11 +48,11 @@ def emit_db_catalog_sync_failed(
             "event": "db_catalog.sync.failed",
             "success": False,
             "tenant_id": str(tenant_id),
-            "dataset_id": str(dataset_id),
+            "dataset_id": dataset_id,
             "run_id": str(run_id),
-            "connector_id": str(connector_id),
+            "connector_id": connector_id,
             "elapsed_sec": float(elapsed_sec or 0.0),
-            "error": str(error or "")[:500],
+            "error": error[:500],
         }
     )
 

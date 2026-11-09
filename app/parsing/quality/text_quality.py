@@ -37,7 +37,7 @@ class TextQualityScore:
 
 
 def score_parsed_text_quality(text: str) -> TextQualityScore:
-    raw = text or ""
+    raw = text
     lines = raw.splitlines()
     line_count = len(lines) if lines else 0
     chars_non_space = sum(1 for ch in raw if not ch.isspace())

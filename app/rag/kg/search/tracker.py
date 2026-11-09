@@ -38,8 +38,8 @@ def build_entity_node(entity: dict[str, Any]) -> dict[str, Any]:
         "id": ent_id,
         "type": "entity",
         "category": entity.get("type", "unknown"),
-        "content": _truncate_text(entity.get("name", "")),
-        "description": _truncate_text(entity.get("description", "")),
+        "content": _truncate_text(entity.get("name")),
+        "description": _truncate_text(entity.get("description")),
         "hop": entity.get("hop", 0),
     }
 
@@ -52,14 +52,18 @@ def build_event_node(event: Any, stage: str | None = None, hop: int | None = Non
         or getattr(event, "summary", None)
         or (event.get("content") if isinstance(event, dict) else "")
     )
-    node_id = f"{stage}_{ev_id}" if stage and ev_id else ev_id or _uuid_from_text("event", title or "")
+    node_id = (
+        f"{stage}_{ev_id}"
+        if stage and ev_id
+        else ev_id or _uuid_from_text("event", "" if title is None else title)
+    )
     return {
         "id": node_id,
         "event_id": str(ev_id) if ev_id else None,
         "type": "event",
         "category": stage or "event",
-        "content": _truncate_text(title or ""),
-        "description": _truncate_text(content or ""),
+        "content": _truncate_text(title),
+        "description": _truncate_text(content),
         "hop": hop,
     }
 

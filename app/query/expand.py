@@ -27,7 +27,9 @@ def _unique_rule_values(key: str, raw: Any) -> list[str]:
     seen: set[str] = set()
     unique: list[str] = []
     for item in values:
-        value = str(item or "").strip()
+        if item is None:
+            continue
+        value = str(item).strip()
         if not value or value == key:
             continue
         signature = value.casefold() if value.isascii() else value
@@ -53,7 +55,9 @@ def coerce_expansion_rules(raw: Any) -> dict[str, list[str]]:
 
     out: dict[str, list[str]] = {}
     for k, v in raw.items():
-        key = str(k or "").strip()
+        if k is None:
+            continue
+        key = str(k).strip()
         if not key:
             continue
         unique = _unique_rule_values(key, v)
@@ -155,7 +159,7 @@ def generate_dictionary_expansions(
       - expansions: list[dict] each containing {expanded_text, source_rule_id, weight, ...}
       - meta: small dict for traces/metrics
     """
-    base = (query or "").strip()
+    base = query.strip()
     if not base:
         return [], {"enabled": False, "used": False, "reason": "empty_query"}
 

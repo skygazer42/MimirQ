@@ -279,9 +279,9 @@ def _resolve_batch_move_target(
 
 
 def _move_document_conflicts(document: DBDocument) -> bool:
-    if (document.status or "").lower() in {"pending", "processing"}:
+    if (document.status).lower() in {"pending", "processing"}:
         return True
-    raw_path = (document.file_path or "").strip()
+    raw_path = (document.file_path).strip()
     if raw_path and is_object_storage_uri(raw_path):
         return True
     image_ids = (document.doc_metadata or {}).get("img_ids")

@@ -58,9 +58,9 @@ def _history_injection_hits(conversation_history: list[dict[str, Any]] | None) -
     for message in (conversation_history or [])[-4:]:
         if not isinstance(message, dict):
             continue
-        if str(message.get("role") or "").strip().lower() != "user":
+        if message["role"].strip().lower() != "user":
             continue
-        content = str(message.get("content") or "")
+        content = message["content"]
         if not content:
             continue
         if any(rule.pattern.search(content) for rule in INSTRUCTION_OVERRIDE_RULES + SYSTEM_PROMPT_PROBE_RULES):
@@ -101,7 +101,7 @@ class InputGuard:
         query: str,
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
-        text = str(query or "")
+        text = query
         return await asyncio.to_thread(self._check_sync, text, conversation_history)
 
     def _check_sync(
@@ -109,7 +109,7 @@ class InputGuard:
         query: str,
         conversation_history: list[dict[str, Any]] | None = None,
     ) -> GuardResult:
-        text = str(query or "")
+        text = query
         matched = _collect_matches(text, conversation_history)
 
         score = min(1.0, sum(sorted(matched.values(), reverse=True)[:3]))
@@ -136,7 +136,7 @@ class InputGuard:
 
     @staticmethod
     def _log_result(*, query: str, result: GuardResult) -> None:
-        query_hash = stable_hash(query or "")
+        query_hash = stable_hash(query)
         matched_rules = list(result.matched_rules or [])
         observe_input_guard(action=result.action, matched_rules=matched_rules)
 

@@ -116,9 +116,9 @@ def _decode_service_response(resp: requests.Response) -> tuple[Any, str]:
         try:
             data = resp.json()
         except Exception:
-            data = json.loads((resp.text or "").strip() or "{}")
+            data = json.loads((resp.text).strip() or "{}")
         return data, extract_markdown_response_text(data)
-    return data, resp.text or ""
+    return data, resp.text
 
 
 def _build_service_metadata(
@@ -201,7 +201,7 @@ class MagicPDFParser:
     def __init__(self) -> None:
         self._cli = (settings.MAGIC_PDF_CLI or "magic-pdf").strip() or "magic-pdf"
         self._api_url = settings.MAGIC_PDF_API_URL.strip()
-        self._request_timeout_sec = float(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC or 600)
+        self._request_timeout_sec = float(settings.MAGIC_PDF_REQUEST_TIMEOUT_SEC)
         self._session = requests.Session()
 
     @staticmethod
@@ -306,7 +306,7 @@ class MagicPDFParser:
                 timeout=timeout_sec,
                 env=env,
             )
-            stdout_text = proc.stdout or ""
+            stdout_text = proc.stdout
             if stdout_text:
                 logger.info("[magicpdf] %s", stdout_text.strip()[:4000])
             return stdout_text
@@ -354,7 +354,7 @@ class MagicPDFParser:
         logger.info("[magicpdf] parsing %s via service", file_path.name)
         resp = self._post_service_multipart(file_path=file_path, document_id=document_id)
         if int(getattr(resp, "status_code", 0) or 0) != 200:
-            raise RuntimeError(f"MagicPDF service API error {resp.status_code}: {(resp.text or '')[:500]}")
+            raise RuntimeError(f"MagicPDF service API error {resp.status_code}: {(resp.text)[:500]}")
 
         data, markdown_text = _decode_service_response(resp)
         if not markdown_text.strip():

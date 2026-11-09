@@ -16,7 +16,7 @@ _HEADING_LEVEL_RE = re.compile(r"(\d+)")
 
 
 def _looks_like_heading_style(style_name: str) -> bool:
-    s = (style_name or "").strip()
+    s = (style_name).strip()
     if not s:
         return False
     # Common styles: "Heading 1", "Heading 2", "标题 1", ...
@@ -25,7 +25,7 @@ def _looks_like_heading_style(style_name: str) -> bool:
 
 
 def _heading_level(style_name: str) -> int:
-    raw = (style_name or "").strip()
+    raw = (style_name).strip()
     m = _HEADING_LEVEL_RE.search(raw)
     if not m:
         return 2
@@ -69,7 +69,7 @@ def _list_level(p) -> int:  # noqa: ANN001
 
 
 def _list_marker(style_name: str) -> str:
-    s = (style_name or "").strip().lower()
+    s = (style_name).strip().lower()
     # Keep ordered lists recognizable; exact numbering is not required.
     if "number" in s or "编号" in s or "序号" in s:
         return "1."
@@ -99,7 +99,7 @@ def _iter_docx_blocks(doc):  # noqa: ANN001
 
 
 def _render_paragraph_block(block) -> str | None:  # noqa: ANN001
-    text = (getattr(block, "text", "") or "").strip()
+    text = block.text.strip()
     if not text:
         return None
 
@@ -124,7 +124,7 @@ def _render_table_block(block) -> str | None:  # noqa: ANN001
     for row in getattr(block, "rows", []) or []:
         cells: list[str] = []
         for cell in getattr(row, "cells", []) or []:
-            cells.append(clean_table_cell(getattr(cell, "text", "") or ""))
+            cells.append(clean_table_cell(cell.text))
         if any(cells):
             rows.append(cells)
 

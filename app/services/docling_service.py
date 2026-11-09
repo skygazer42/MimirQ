@@ -26,11 +26,11 @@ _POSITION_TAG_RE = re.compile(r"@@[0-9-]+\t[0-9.]+\t[0-9.]+\t[0-9.]+\t[0-9.]+##"
 def normalize_docling_base_url(value: str) -> str:
     """Accept either a service base URL or a stable-v1 conversion endpoint."""
 
-    raw = (value or "").strip().rstrip("/")
+    raw = (value).strip().rstrip("/")
     if not raw:
         return ""
     parsed = urlparse(raw)
-    path = (parsed.path or "").rstrip("/")
+    path = (parsed.path).rstrip("/")
     for suffix in _CONVERT_PATH_SUFFIXES:
         if path.endswith(suffix):
             path = path[: -len(suffix)]
@@ -64,9 +64,9 @@ class DoclingServiceParser:
     ) -> None:
         self.enabled = bool(settings.DOCLING_ENABLED)
         self.api_url = normalize_docling_base_url(
-            api_url if api_url is not None else str(settings.DOCLING_API_URL or "")
+            api_url if api_url is not None else settings.DOCLING_API_URL
         )
-        self.api_key = (api_key if api_key is not None else str(settings.DOCLING_API_KEY or "")).strip()
+        self.api_key = (api_key if api_key is not None else settings.DOCLING_API_KEY).strip()
         self.request_timeout_sec = float(
             request_timeout_sec if request_timeout_sec is not None else (settings.DOCLING_REQUEST_TIMEOUT_SEC or 600)
         )
@@ -198,7 +198,9 @@ class DoclingServiceParser:
         if not isinstance(payload, dict):
             raise RuntimeError("Docling service returned an invalid response payload.")
 
-        status = str(payload.get("status") or "").strip().lower()
+        status = payload.get("status")
+        if status is not None:
+            status = str(status).strip().lower()
         markdown = self._response_markdown(payload)
         if status not in _SUCCESS_STATUSES:
             raise RuntimeError(f"Docling conversion failed: {self._error_summary(payload)}")
@@ -218,4 +220,4 @@ class DoclingServiceParser:
 
     @staticmethod
     def remove_tag(text: str) -> str:
-        return _POSITION_TAG_RE.sub("", text or "")
+        return _POSITION_TAG_RE.sub("", text)

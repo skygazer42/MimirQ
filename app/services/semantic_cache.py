@@ -66,8 +66,8 @@ def _get_embeddings() -> "LangChainEmbeddingsAdapter":
     _embeddings = create_langchain_embeddings_from_config(
         provider=mapped_provider,
         model=settings.EMBEDDING_MODEL,
-        api_key=api_key or "",
-        base_url=base_url or "",
+        api_key=api_key,
+        base_url=base_url,
         dimension=None,  # Auto-detect
     )
     return _embeddings
@@ -197,7 +197,7 @@ def _semantic_cache_lookup_precheck(
 def _semantic_cache_embedding_or_skip(meta: dict[str, Any], *, query: str) -> list[float] | None:
     try:
         started_at = time.perf_counter()
-        vector = _get_embeddings().embed_query(query or "")
+        vector = _get_embeddings().embed_query(query)
         meta["embed_ms"] = round((time.perf_counter() - started_at) * 1000, 2)
         return vector
     except Exception:
@@ -247,15 +247,17 @@ def _semantic_cache_result_matches(
     except Exception:
         score = 0.0
     metadata = result.get("metadata") or {}
-    vector_id = str(result.get("id") or "").strip()
+    vector_id = result.get("id")
+    if vector_id is not None:
+        vector_id = str(vector_id).strip()
     if not vector_id:
         return None
     checks = (
-        str(metadata.get("tenant_id") or "") == str(tenant_id),
-        str(metadata.get("account_id") or "") == str(account_id or ""),
-        str(metadata.get("scope_hash") or "") == str(scope_hash),
-        str(metadata.get("corpus_cache_token") or "") == str(corpus_cache_token),
-        str(metadata.get("embedding_space_hash") or "") == embedding_space_hash,
+        metadata.get('tenant_id') == str(tenant_id),
+        metadata.get('account_id') == account_id,
+        metadata.get('scope_hash') == str(scope_hash),
+        metadata.get('corpus_cache_token') == str(corpus_cache_token),
+        metadata.get('embedding_space_hash') == embedding_space_hash,
     )
     if not all(checks):
         return None
@@ -422,7 +424,7 @@ def get_cached_semantic_payload(
         scope_hash=scope_hash,
         corpus_cache_token=corpus_cache_token,
         threshold=threshold,
-        embedding_space_hash=str(current_embedding_space_hash() or "") or "",
+        embedding_space_hash=current_embedding_space_hash(),
         now_epoch=int(time.time()),
         cleanup_budget=max(0, _LOOKUP_CLEANUP_MAX_DELETE),
     )
@@ -492,17 +494,17 @@ def set_cached_semantic_payload(
         return False
 
     try:
-        vec = _get_embeddings().embed_query(query or "")
+        vec = _get_embeddings().embed_query(query)
     except Exception:
         return False
 
     now = int(time.time())
     expires_at = now + ttl
-    pipeline_key = str(current_embedding_space_hash() or "") or ""
+    pipeline_key = current_embedding_space_hash()
     meta = {
         "tenant_id": str(tenant_id),
-        "account_id": str(account_id or ""),
-        "dataset_id": str((dataset_id if dataset_id is not None else "")) or "",
+        "account_id": account_id,
+        "dataset_id": str(dataset_id) if dataset_id is not None else "",
         "embedding_space_hash": pipeline_key,
         "corpus_cache_token": str(corpus_cache_token),
         "scope_hash": str(scope_hash),
@@ -572,12 +574,14 @@ def _evaluate_retention_row(
 ) -> None:
     if len(delete_ids) >= max_delete or not isinstance(row, dict):
         return
-    row_id = str(row.get("id") or "").strip()
-    row_tenant_id = str(row.get("tenant_id") or "").strip()
-    if not row_id or not row_tenant_id:
+    row_id = row.get("id")
+    row_tenant_id = row.get("tenant_id")
+    if not isinstance(row_id, str) or not isinstance(row_tenant_id, str) or not row_id.strip() or not row_tenant_id.strip():
         summary["failed"] = True
         summary["errors"].append("semantic cache maintenance row missing tenant scope")
         return
+    row_id = row_id.strip()
+    row_tenant_id = row_tenant_id.strip()
 
     expires_at = _coerce_epoch(row.get("expires_at_epoch"))
     if expires_at is not None:

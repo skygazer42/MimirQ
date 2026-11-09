@@ -36,7 +36,7 @@ _HUNK_RE = re.compile(r"(?m)^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@.*$")
 
 
 def _strip_quotes(s: str) -> str:
-    t = (s or "").strip()
+    t = (s).strip()
     if len(t) >= 2 and ((t[0] == '"' and t[-1] == '"') or (t[0] == "'" and t[-1] == "'")):
         t = t[1:-1].strip()
     return t
@@ -50,7 +50,7 @@ def _parse_diff_header_line(line: str) -> tuple[str, str] | None:
 
     We intentionally avoid regex to prevent catastrophic-backtracking hotspots.
     """
-    s = (line or "").strip()
+    s = (line).strip()
     prefix = "diff --git "
     if not s.startswith(prefix):
         return None
@@ -68,7 +68,7 @@ def _parse_diff_header_line(line: str) -> tuple[str, str] | None:
 
 
 def _iter_file_blocks(text: str) -> list[_FileBlock]:
-    raw = text or ""
+    raw = text
     if not raw:
         return []
 
@@ -264,7 +264,7 @@ class DiffPatchChunker(BaseChunker):
     def split_documents(self, documents: list[Document]) -> list[Document]:
         out: list[Document] = []
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

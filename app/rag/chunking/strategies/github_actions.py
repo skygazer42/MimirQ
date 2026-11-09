@@ -33,14 +33,14 @@ _ON_RE = re.compile(r"(?m)^(?P<indent>\s*)on\s*:\s*")
 
 
 def _find_jobs_anchor(text: str) -> tuple[int, int] | None:
-    m = _JOBS_RE.search(text or "")
+    m = _JOBS_RE.search(text)
     if not m:
         return None
-    return m.start(), len(m.group("indent") or "")
+    return m.start(), len(m.group("indent"))
 
 
 def _extract_workflow_name(text: str) -> str | None:
-    head = (text or "")[:8000]
+    head = (text)[:8000]
     offset = 0
     for raw_line in head.splitlines(keepends=True):
         _ = offset
@@ -127,7 +127,7 @@ def _job_candidate_for_line(line: _Line, *, base_indent: int) -> tuple[int, str]
     match = _KEY_RE.match(plain)
     if not match:
         return None
-    key = (match.group("key") or "").strip()
+    key = (match.group("key")).strip()
     return (indent, key) if key else None
 
 
@@ -250,7 +250,7 @@ class GitHubActionsChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

@@ -6,6 +6,7 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 from fastapi import HTTPException
+from langchain_core.messages import AIMessage
 
 
 class _RecordingDB:
@@ -436,7 +437,7 @@ def test_run_daily_stale_report_tracks_summary_and_write_order(
                 "connector_id": "",
                 "document_dataset_id": None,
                 "run_dataset_id": None,
-                "doc_metadata": None,
+                "doc_metadata": {},
                 "processed_at": None,
                 "updated_at": None,
                 "created_at": None,
@@ -719,14 +720,14 @@ def test_sem_filter_preserves_row_order_across_batches_and_fails_closed(
 
     responses = iter(
         [
-            SimpleNamespace(content='[true, "0"]'),
-            SimpleNamespace(content="not-json"),
+            AIMessage(content='[true, "0"]'),
+            AIMessage(content="not-json"),
         ]
     )
     invocations: list[str] = []
 
     class _FakeLLM:
-        def invoke(self, messages: list[object]) -> SimpleNamespace:
+        def invoke(self, messages: list[object]) -> AIMessage:
             user_message = messages[-1]
             invocations.append(str(getattr(user_message, "content", "") or ""))
             return next(responses)

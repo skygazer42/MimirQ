@@ -12,7 +12,9 @@ PIPELINE_EXECUTION_IDENTITY_SCHEMA = "mimirq.pipeline_execution_identity.v1"
 
 
 def normalize_content_sha256(value: Any) -> str | None:
-    raw = str(value or "").strip().lower()
+    if value is None:
+        return None
+    raw = str(value).strip().lower()
     return raw if raw else None
 
 
@@ -41,7 +43,9 @@ def set_content_sha256(meta: dict[str, Any], content_sha256: str | None) -> str 
 
 def build_document_dedup_key(*, content_sha256: str | None, pipeline_hash: str | None) -> str | None:
     sha = normalize_content_sha256(content_sha256)
-    ph = str((pipeline_hash if pipeline_hash is not None else "")).strip()
+    if pipeline_hash is None:
+        return None
+    ph = pipeline_hash.strip()
     if not sha or not ph:
         return None
     return f"{sha}:{ph}"

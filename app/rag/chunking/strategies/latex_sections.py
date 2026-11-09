@@ -60,8 +60,8 @@ def _iter_headings(text: str) -> list[LatexHeading]:
 
     headings: list[LatexHeading] = []
     for m in _CMD_RE.finditer(text):
-        cmd = (m.group("cmd") or "").strip().lower()
-        title = (m.group("title") or "").strip()
+        cmd = (m.group("cmd")).strip().lower()
+        title = (m.group("title")).strip()
         if not cmd:
             continue
         level = _CMD_LEVEL.get(cmd, 9)
@@ -106,7 +106,7 @@ def looks_like_latex_sections(text: str) -> bool:
     headings = _iter_headings(text)
     if len(headings) >= 2:
         return True
-    lowered = (text or "").lower()
+    lowered = (text).lower()
     if len(headings) == 1 and ("\\documentclass" in lowered or "\\begin{document}" in lowered):
         return True
     return False
@@ -163,7 +163,7 @@ class LatexSectionsChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

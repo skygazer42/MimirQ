@@ -47,7 +47,7 @@ class ChatResponseFinalizationInput:
 
 
 def _is_extractive_fallback_trace(metrics: dict[str, Any]) -> bool:
-    return str(metrics.get("generation_fallback_kind") or "").strip() == "extractive_retrieval_summary"
+    return metrics.get("generation_fallback_kind") == "extractive_retrieval_summary"
 
 
 def _retrieval_elapsed_seconds(metrics: dict[str, Any]) -> float | None:
@@ -68,7 +68,7 @@ def _retrieval_elapsed_seconds(metrics: dict[str, Any]) -> float | None:
 
 def _compact_retrieval_errors(metrics: dict[str, Any]) -> list[str]:
     errors_raw = metrics.get("retrieval_errors") or metrics.get("errors") or []
-    return [str(item)[:200] for item in errors_raw if str(item or "").strip()]
+    return [str(item)[:200] for item in errors_raw if item.strip()]
 
 
 def _safe_non_negative_int(value: Any) -> int:
@@ -104,7 +104,7 @@ def _extractive_fallback_cost_attribution(
         query_chars = sum(_safe_non_negative_int(item.get("query_chars")) for item in per_query)
         query_tokens = sum(_safe_non_negative_int(item.get("query_tokens")) for item in per_query)
     else:
-        fallback_query = str(metrics.get("query_for_retrieval") or question or "")
+        fallback_query = str(metrics.get('query_for_retrieval') or question)
         query_count = _safe_non_negative_int(metrics.get("retrieval_query_count")) or int(bool(fallback_query))
         query_chars = len(fallback_query)
         query_tokens = num_tokens_from_string(fallback_query) if fallback_query else 0
@@ -120,8 +120,8 @@ def _extractive_fallback_cost_attribution(
             "source": "extractive_fallback",
         },
         "embeddings": {
-            "provider": str(settings.EMBEDDING_PROVIDER or ""),
-            "model": str(settings.EMBEDDING_MODEL or ""),
+            "provider": settings.EMBEDDING_PROVIDER,
+            "model": settings.EMBEDDING_MODEL,
             "query_count": int(query_count),
             "query_chars": int(query_chars),
             "query_tokens": int(query_tokens),
@@ -130,7 +130,7 @@ def _extractive_fallback_cost_attribution(
         "retrieval": {
             "elapsed_sec": round(float(retrieval_elapsed_sec or 0.0), 3),
             "rerank_elapsed_sec": _fallback_rerank_elapsed_seconds(citations),
-            "vector_backend": str(metrics.get("vector_backend") or settings.VECTOR_BACKEND or ""),
+            "vector_backend": str(metrics.get('vector_backend') or settings.VECTOR_BACKEND),
             "query_count": int(query_count),
         },
     }
@@ -147,7 +147,7 @@ def _online_eval_contexts(citations: list[Any]) -> list[str]:
                 continue
         if not isinstance(citation, dict):
             continue
-        text = str(citation.get("chunk_content") or citation.get("quote") or citation.get("text") or "").strip()
+        text = citation["chunk_content"].strip()
         if not text or text in contexts:
             continue
         contexts.append(text)
@@ -204,7 +204,7 @@ def _maybe_enqueue_online_eval(options: ChatResponseFinalizationInput, metrics_o
             tenant_id=options.tenant_id,
             dataset_id=options.dataset_id_used,
             request_id=str(options.request_id),
-            answer=str(options.full_response or ""),
+            answer=options.full_response,
             contexts=_online_eval_contexts(options.citations),
             retrieval_mode=_online_eval_retrieval_mode(metrics_out, options.retrieval_mode_default),
             citations_count=int(len(options.citations or [])),
@@ -235,8 +235,8 @@ def _log_extractive_fallback_rag_trace(
         "conversation_id": str(conversation_id),
         "tenant_id": str(tenant_id),
         "request_id": str(request_id),
-        "question": str(question or ""),
-        "query_for_retrieval": str(metrics.get("query_for_retrieval") or question or ""),
+        "question": question,
+        "query_for_retrieval": str(metrics.get('query_for_retrieval') or question),
         "citations_count": int(len(citations or [])),
         "citations": list(citations or []),
         "retrieval": {

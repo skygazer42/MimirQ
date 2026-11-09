@@ -45,7 +45,7 @@ _HEADER_VALUE_CHAR_LIMIT = 200
 
 
 def _extract_commit_header_value(line: str, *, prefix: str) -> str | None:
-    stripped = (line or "").strip()
+    stripped = (line).strip()
     if not stripped:
         return None
     prefix_norm = prefix.casefold()
@@ -69,17 +69,17 @@ def _scan_commit_headers(chunk: str) -> tuple[str | None, str | None]:
 
 
 def _iter_commits(text: str) -> list[_Commit]:
-    starts = [m.start() for m in _COMMIT_RE.finditer(text or "")]
+    starts = [m.start() for m in _COMMIT_RE.finditer(text)]
     if not starts:
         return []
     commits: list[_Commit] = []
     for idx, start in enumerate(starts):
         end = starts[idx + 1] if idx + 1 < len(starts) else len(text)
-        chunk = (text or "")[start:end]
+        chunk = (text)[start:end]
         m = _COMMIT_RE.search(chunk)
         if not m:
             continue
-        sha = (m.group("sha") or "").strip()
+        sha = (m.group("sha")).strip()
         author, date = _scan_commit_headers(chunk)
         commits.append(_Commit(start=start, end=end, index=len(commits), sha=sha, author=author, date=date))
     return commits
@@ -171,7 +171,7 @@ class GitCommitLogChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

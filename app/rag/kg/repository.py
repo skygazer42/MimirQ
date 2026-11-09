@@ -61,20 +61,20 @@ def _allowed_document_ids_subquery_for_dataset(
 
 
 def _escape_like(value: str) -> str:
-    return str(value or "").replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _lexical_score(*, query_terms: list[str], name: str, normalized_name: str, text: str = "") -> float:
-    norm = str(normalized_name or "").casefold()
-    display = str(name or "").casefold()
-    hay = f"{display} {norm} {str(text or '').casefold()}".strip()
+    norm = normalized_name.casefold()
+    display = name.casefold()
+    hay = f"{display} {norm} {text.casefold()}".strip()
     if not hay:
         return 0.0
 
     score = 0.0
     matched = 0
     for term in query_terms:
-        t = str(term or "").casefold().strip()
+        t = term.casefold().strip()
         if not t:
             continue
         if norm == t or display == t:
@@ -145,7 +145,7 @@ def _as_uuid_list(values: Iterable[str | UUID]) -> list[UUID]:
 
 
 def _add_alias_surface(surfaces: list[str], seen: set[str], value: str) -> None:
-    surface = str(value or "").strip()
+    surface = value.strip()
     if not surface or len(surface) > 80:
         return
     sig = surface.casefold() if surface.isascii() else surface
@@ -182,7 +182,7 @@ def _normalize_alias_surfaces(surfaces: list[str], *, max_ngrams: int) -> list[s
 
 
 def _limited_alias_tokens(text: str, *, max_tokens: int) -> list[str]:
-    tokens = [token for token in _ALIAS_TOKEN_RE.findall(text) if str(token or "").strip()]
+    tokens = [token for token in _ALIAS_TOKEN_RE.findall(text) if token.strip()]
     return tokens[: max(1, int(max_tokens or 0))]
 
 
@@ -195,7 +195,7 @@ def _extract_alias_candidates(query: str, *, max_tokens: int = 32, max_ngrams: i
     - Generate a small set of candidate terms/phrases and use an indexed IN lookup on
       kg_entity_aliases.normalized_alias.
     """
-    text = unicodedata.normalize("NFKC", str(query or "")).strip()
+    text = unicodedata.normalize("NFKC", query).strip()
     if not text:
         return []
 
@@ -210,7 +210,7 @@ def _extract_alias_candidates(query: str, *, max_tokens: int = 32, max_ngrams: i
 
 def _lexical_terms(query: str) -> list[str]:
     terms = _extract_alias_candidates(query, max_tokens=24, max_ngrams=96)
-    return [term for term in terms if len(str(term or "").strip()) >= 2][:48]
+    return [term for term in terms if len(term.strip()) >= 2][:48]
 
 
 def _entity_lexical_clauses(terms: list[str]):
@@ -273,17 +273,17 @@ def _apply_entity_lexical_scope(
 
 
 def _format_lexical_entity(entity: KgEntity, *, terms: list[str], tenant_id: UUID | str) -> dict | None:
-    entity_id = str(entity.id or "")
+    entity_id = str(entity.id)
     score = _lexical_score(
         query_terms=terms,
-        name=str(entity.name or ""),
-        normalized_name=str(entity.normalized_name or ""),
+        name=entity.name,
+        normalized_name=entity.normalized_name,
     )
     if not entity_id or score <= 0:
         return None
     return {
         "entity_id": entity_id,
-        "name": str(entity.name or ""),
+        "name": entity.name,
         "type": str(entity.type or "unknown"),
         "similarity": score,
         "tenant_id": str(tenant_id),
@@ -298,12 +298,12 @@ def _canonical_entity_ids(rows: list[KgEntityAlias]) -> list[UUID]:
 def _alias_match_item(row: KgEntityAlias, entity: KgEntity, *, resolved_id: UUID, tenant_id: UUID) -> dict:
     return {
         "entity_id": str(resolved_id),
-        "name": str(entity.name or ""),
+        "name": entity.name,
         "type": str(entity.type or "unknown"),
         "similarity": 1.0,
         "tenant_id": str(tenant_id),
-        "alias_id": str(row.id or ""),
-        "alias": str(row.alias or ""),
+        "alias_id": str(row.id),
+        "alias": row.alias,
         "method": "alias_match",
     }
 
@@ -441,20 +441,20 @@ def _apply_event_lexical_scope(
 def _format_lexical_event(event: KgSourceEvent, *, terms: list[str], tenant_id: UUID | str) -> dict | None:
     score = _lexical_score(
         query_terms=terms,
-        name=str(event.title or ""),
-        normalized_name=str(event.title or ""),
-        text=f"{event.summary or ''} {event.content or ''}",
+        name=event.title,
+        normalized_name=event.title,
+        text=f"{event.summary} {event.content}",
     )
     if score <= 0:
         return None
     return {
-        "event_id": str(event.id or ""),
-        "title": str(event.title or ""),
-        "summary": str(event.summary or ""),
+        "event_id": str(event.id),
+        "title": event.title,
+        "summary": event.summary,
         "similarity": score,
         "tenant_id": str(tenant_id),
-        "chunk_id": str(event.chunk_id or ""),
-        "document_id": str(event.document_id or ""),
+        "chunk_id": str(event.chunk_id) if event.chunk_id is not None else None,
+        "document_id": str(event.document_id) if event.document_id is not None else None,
         "method": "lexical_match",
     }
 
@@ -532,13 +532,13 @@ class EntityRepository:
         scored: list[dict] = []
         seen_ids: set[str] = set()
         for ent in rows:
-            ent_id = str(ent.id or "")
+            ent_id = str(ent.id)
             if not ent_id or ent_id in seen_ids:
                 continue
             seen_ids.add(ent_id)
             if formatted := _format_lexical_entity(ent, terms=terms, tenant_id=tenant_id):
                 scored.append(formatted)
-        scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), str(item.get("name") or "")))
+        scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), item["name"]))
         return scored[: max(1, int(k))]
 
     def get_entities_by_ids(self, ids: Iterable[str | UUID], *, tenant_id: UUID | None = None) -> list[KgEntity]:
@@ -1189,7 +1189,7 @@ class EventRepository:
         for ev in rows:
             if formatted := _format_lexical_event(ev, terms=terms, tenant_id=tenant_id):
                 scored.append(formatted)
-        scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), str(item.get("event_id") or "")))
+        scored.sort(key=lambda item: (-float(item.get("similarity", 0.0) or 0.0), item["event_id"]))
         return scored[: max(1, int(k))]
 
     def search_events_by_entities(

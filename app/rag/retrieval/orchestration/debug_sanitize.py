@@ -18,14 +18,14 @@ def _copy_present_debug_keys(out: dict[str, Any], source: dict[str, Any], keys: 
 
 def _sanitize_query_normalization_debug(raw: Any) -> dict[str, Any] | None:
     qn = raw if isinstance(raw, dict) else {}
-    normalized = qn.get("normalized") if isinstance(qn.get("normalized"), str) else ""
+    normalized = qn.get("normalized")
     applied_rules = qn.get("applied_rules") if isinstance(qn.get("applied_rules"), list) else []
     if not normalized and not applied_rules:
         return None
     return {
         "applied_rules": [str(x) for x in applied_rules if x is not None][:20],
-        "original_chars": len(str(qn.get("original") or "")),
-        "normalized_chars": len(str(normalized or "")),
+        "original_chars": len(qn["original"]),
+        "normalized_chars": len(normalized) if normalized is not None else None,
     }
 
 
@@ -141,7 +141,7 @@ def _sanitize_governance_policy_debug(raw: Any) -> dict[str, Any] | None:
     for key in ("avg_boost", "max_boost"):
         if key in raw:
             out[key] = _safe_float(raw.get(key))
-    skip_reason = str(raw.get("skip_reason") or "").strip() if raw.get("skip_reason") is not None else ""
+    skip_reason = str(raw["skip_reason"]).strip() if raw.get("skip_reason") is not None else None
     if skip_reason:
         out["skip_reason"] = skip_reason[:80]
     return out if out else None

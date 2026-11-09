@@ -171,7 +171,7 @@ def _scan_run_reference_time(row: DBDatasetProfileScanRun) -> datetime | None:
 
 
 def _is_stale_scan_run(row: DBDatasetProfileScanRun, *, now: datetime) -> bool:
-    status = str(row.status or "").strip().lower()
+    status = row.status.strip().lower()
     if status not in {"pending", "running"}:
         return False
     ts = _scan_run_reference_time(row)
@@ -183,7 +183,7 @@ def _is_stale_scan_run(row: DBDatasetProfileScanRun, *, now: datetime) -> bool:
 
 
 def _is_hard_stale_scan_run(row: DBDatasetProfileScanRun, *, now: datetime) -> bool:
-    status = str(row.status or "").strip().lower()
+    status = row.status.strip().lower()
     ts = _scan_run_reference_time(row)
     if ts is None:
         return False
@@ -207,7 +207,7 @@ async def _expire_stale_dataset_profile_scan_runs(db: Session, *, tenant_id: UUI
     )
     expired = 0
     for row in rows:
-        status = str(row.status or "").strip().lower()
+        status = row.status.strip().lower()
         if not _is_stale_scan_run(row, now=now):
             continue
         if bool(settings.TASK_QUEUE_ENABLED):
@@ -249,7 +249,7 @@ def _mark_dataset_profile_scan_run_failed(
 ) -> None:
     failed_at = _dataset_scan_now()
     row.status = "failed"
-    row.error_message = str(error_message or "")[:200]
+    row.error_message = error_message[:200]
     row.finished_at = failed_at
     row.updated_at = failed_at
     try:
@@ -349,7 +349,7 @@ def _global_table_routing_defaults() -> dict[str, bool]:
 def _normalized_rule_extensions(rule: Any) -> list[str]:
     exts: list[str] = []
     for ext in (rule.match.extensions if rule.match is not None else []) or []:
-        sval = str(ext or "").strip().lower()
+        sval = ext.strip().lower()
         if not sval:
             continue
         exts.append(sval if sval.startswith(".") else "." + sval)
@@ -487,12 +487,7 @@ def _upsert_dataset_embedding_defaults_metadata(
         return False
 
     data = defaults.model_dump(exclude_none=True)
-    normalized: dict[str, str] = {}
-    for key in ("provider", "model", "api_base"):
-        raw = data.get(key)
-        value = str(raw or "").strip()
-        if value:
-            normalized[key] = value
+    normalized = data
 
     if normalized:
         try:
@@ -801,7 +796,7 @@ def _dataset_list_summary_from_row(row: Any) -> DatasetListIngestionSummary:
 
 
 def _dataset_id_search_expr(term: str):
-    normalized_term = str(term or "").strip().lower().replace("-", "")
+    normalized_term = term.strip().lower().replace("-", "")
     if not normalized_term:
         return None
     normalized_id = func.lower(func.replace(cast(Dataset.id, String), "-", ""))
@@ -818,7 +813,7 @@ def _normalize_dataset_default_parser_backend(value: str) -> str:
     Note: availability is not validated here (depends on deployment config); we only validate
     that the identifier is known to the backend.
     """
-    normalized = normalize_parser_backend(value) or ""
+    normalized = normalize_parser_backend(value)
     if not normalized:
         return ""
     if normalized not in _ALLOWED_PARSER_DEFAULTS:
@@ -846,7 +841,10 @@ def _set_string_metadata(
     normalizer=None,
     lowercase: bool = False,
 ) -> bool:
-    raw = str(value or "").strip()
+    if value is None:
+        meta.pop(key, None)
+        return True
+    raw = value.strip()
     if lowercase:
         raw = raw.lower()
     if raw:
@@ -1184,8 +1182,8 @@ def create_dataset(
         action="dataset.create",
         dataset_id=dataset.id,
         details={
-            "name": str(dataset.name or "")[:255],
-            "permission": str(dataset.permission or ""),
+            "name": dataset.name[:255],
+            "permission": dataset.permission,
         },
     )
 
@@ -1220,7 +1218,7 @@ def list_datasets(
     )
 
     filtered_query = scope_query
-    term = str((q if q is not None else "")).strip()
+    term = q.strip() if q is not None else None
     if term:
         id_search_expr = _dataset_id_search_expr(term)
         filtered_query = filtered_query.filter(
@@ -1353,7 +1351,7 @@ def _dataset_operational_status_counts(status_rows: list[tuple[Any, Any]]) -> di
         "testing": 0,
     }
     for status_value, count in status_rows:
-        key = str(status_value or "").strip().lower()
+        key = status_value.strip().lower()
         if key in counts:
             counts[key] = int(count or 0)
     return counts
@@ -1421,7 +1419,7 @@ def _dataset_list_item_out(
     prompt_template_id, prompt_template_key, prompt_ab_experiment_key = _dataset_prompt_defaults_out(ds)
     operational_status = None
     if ds.id in page_operational_status_by_id:
-        operational_status = str(page_operational_status_by_id.get(ds.id) or "")
+        operational_status = page_operational_status_by_id[ds.id]
 
     return DatasetOut(
         id=ds.id,
@@ -1578,8 +1576,8 @@ def update_dataset(
         dataset_id=updated.id,
         details={
             "changed": bool(payload.model_fields_set),
-            "name": str(updated.name or "")[:255],
-            "permission": str(updated.permission or ""),
+            "name": updated.name[:255],
+            "permission": updated.permission,
         },
     )
 
@@ -1648,7 +1646,7 @@ def export_dataset_config(
     return DatasetConfigExport(
         version="1",
         dataset_id=ds.id,
-        name=str(ds.name or ""),
+        name=ds.name,
         exported_at=datetime.now(timezone.utc),
         config=_build_dataset_config_bundle(ds),
     )
@@ -1732,7 +1730,7 @@ def put_dataset_retrieval_audit(
         action="dataset.retrieval_audit.put",
         dataset_id=dataset.id,
         details={
-            "status": str(audit.status or ""),
+            "status": audit.status,
             "gate_count": len(audit.gates),
             "plugin_ref_count": len(audit.plugin_refs),
             "failure_categories": dict(audit.failure_categories or {}),
@@ -2186,12 +2184,12 @@ def _ingestion_policy_version_items(meta: dict[str, Any]) -> list[dict]:
     return [item for item in items if isinstance(item, dict)]
 
 
-def _require_ingestion_policy_version(meta: dict[str, Any], version_id: Any) -> tuple[str, dict]:
-    target_id = str(version_id or "").strip()
+def _require_ingestion_policy_version(meta: dict[str, Any], version_id: str) -> tuple[str, dict]:
+    target_id = version_id.strip()
     if not target_id:
         raise HTTPException(status_code=400, detail="version_id is required")
     for item in _ingestion_policy_version_items(meta):
-        if str(item.get("id") or "").strip() == target_id:
+        if item["id"].strip() == target_id:
             return target_id, item
     raise HTTPException(status_code=404, detail="policy version not found")
 
@@ -2761,7 +2759,7 @@ def export_dataset_profile_html_report(
 
     html = render_dataset_profile_html(
         title="MimirQ · 数据画像报告",
-        dataset_name=str(dataset.name or ""),
+        dataset_name=dataset.name,
         dataset_id=str(dataset_id),
         generated_at=summary.generated_at,
         summary=summary.model_dump(),
@@ -2914,11 +2912,11 @@ def _document_sensitive_export_fields(doc: DBDocument, meta: dict[str, Any]) -> 
 
 
 def _document_redacted_export_fields(doc: DBDocument, meta: dict[str, Any]) -> dict[str, Any]:
-    filename = str(doc.filename or "").strip()
-    file_path = str(doc.file_path or "").strip()
-    owner_id = str(doc.owner_id or "").strip()
-    lifecycle_owner = str(doc.lifecycle_owner or "").strip()
-    error_message = str(doc.error_message or "").strip()
+    filename = doc.filename.strip()
+    file_path = doc.file_path.strip()
+    owner_id = doc.owner_id.strip() if doc.owner_id is not None else None
+    lifecycle_owner = doc.lifecycle_owner.strip() if doc.lifecycle_owner is not None else None
+    error_message = doc.error_message.strip() if doc.error_message is not None else None
     return {
         "filename_hash": (stable_hash(filename, length=16) if filename else None),
         "file_path_hash": (stable_hash(file_path, length=16) if file_path else None),
@@ -3107,7 +3105,7 @@ def _dataset_bundle_summary_payload(ds: Dataset, tenant_id: UUID, exported_at: d
             "id": str(ds.id),
             "name": ds.name,
             "description": ds.description,
-            "permission": str(ds.permission or ""),
+            "permission": ds.permission,
             "owner_id": ds.owner_id,
             "created_at": _dt_to_json(ds.created_at),
             "updated_at": _dt_to_json(ds.updated_at),
@@ -3120,7 +3118,7 @@ def _dataset_bundle_config_payload(ds: Dataset, exported_at: datetime) -> dict[s
         "schema": "mimirq.dataset_config_export.v1",
         "version": "1",
         "dataset_id": ds.id,
-        "name": str(ds.name or ""),
+        "name": ds.name,
         "exported_at": exported_at,
         "config": _build_dataset_config_bundle(ds),
     }
@@ -3147,7 +3145,7 @@ def _document_storage_manifest(raw_path: str, *, include_sensitive: bool) -> dic
 
 
 def _document_artifact_manifest(doc: DBDocument, row: dict[str, Any], *, include_sensitive: bool) -> dict[str, Any]:
-    raw_path = str(doc.file_path or "").strip()
+    raw_path = doc.file_path.strip()
     return {
         "document_id": str(doc.id),
         "doc_pipeline_key": row.get("doc_pipeline_key"),

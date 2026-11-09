@@ -203,7 +203,7 @@ class KGCommunitySummaryCache:
             return value, age_ms
 
     def set(self, key: str, value: str, *, ttl_sec: int, max_entries: int) -> None:
-        if not key or not str(value or "").strip():
+        if not key or not value.strip():
             return
         if int(ttl_sec or 0) <= 0:
             return

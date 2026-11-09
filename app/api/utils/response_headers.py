@@ -8,7 +8,7 @@ _ASCII_FILENAME_RE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def _clean_download_filename(filename: str, *, fallback: str = "download") -> str:
-    raw = _CONTROL_CHARS_RE.sub("_", str(filename or "")).replace("\\", "_").replace("/", "_")
+    raw = _CONTROL_CHARS_RE.sub("_", filename).replace("\\", "_").replace("/", "_")
     cleaned = raw.strip().strip('"').strip("'")
     if not cleaned or cleaned in {".", ".."}:
         cleaned = fallback

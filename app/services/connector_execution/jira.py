@@ -33,6 +33,7 @@ from app.services.connector_execution.confluence import (
 )
 from app.services.connector_execution.shared.artifacts import _apply_connector_identity_metadata
 from app.services.connector_execution.shared.common import (
+    _optional_source_text,
     _append_connector_error,
     _connector_run_completion_status,
     _finalize_connector_stats,
@@ -105,7 +106,7 @@ def _jira_api_base_url(base_url: str) -> str:
     - https://<site>.atlassian.net -> https://<site>.atlassian.net/rest/api/3
     - https://<site>.atlassian.net/rest/api/3 -> unchanged
     """
-    base = str(base_url or "").strip().rstrip("/")
+    base = base_url.strip().rstrip("/")
     if base.endswith("/rest/api/3"):
         return base
     if base.endswith("/rest/api"):
@@ -131,15 +132,17 @@ def _jira_extract_issue_updated(issue: dict) -> str | None:
         return None
     fields = issue.get("fields")
     if isinstance(fields, dict):
-        updated = str(fields.get("updated") or "").strip()
+        updated = _optional_source_text(fields.get('updated'))
         if updated:
             return updated
-    updated = str(issue.get("updated") or "").strip()
+    updated = _optional_source_text(issue.get('updated'))
     return updated or None
 
 
 def _jira_principal_value(raw: object) -> str:
-    value = str(raw or "").strip().lower()
+    if raw is None:
+        return ""
+    value = str(raw).strip().lower()
     value = re.sub(r"\s+", "-", value)
     return value[:255]
 
@@ -157,7 +160,9 @@ def _jira_role_principal_key(role_name: str) -> str:
 def _jira_security_level_principal_key(security: object) -> str:
     if not isinstance(security, dict):
         return ""
-    level_id = str(security.get("id") or "").strip()
+    level_id = security.get("id")
+    if level_id is not None:
+        level_id = str(level_id).strip()
     if level_id:
         return f"jira:policy:security-level/{level_id}"[:255]
     name = _jira_principal_value(security.get("name"))
@@ -170,12 +175,16 @@ def _jira_comment_visibility_principal_key(visibility: object) -> str:
     if not isinstance(visibility, dict):
         return ""
 
-    vis_type = str(visibility.get("type") or "").strip().lower()
-    vis_value = visibility.get("value") or visibility.get("identifier") or visibility.get("name")
+    vis_type = _jira_principal_value(visibility.get("type"))
+    vis_value = _jira_principal_value(visibility.get("value"))
+    if not vis_value:
+        vis_value = _jira_principal_value(visibility.get("identifier"))
+    if not vis_value:
+        vis_value = _jira_principal_value(visibility.get("name"))
     if vis_type == "group":
-        return _jira_group_principal_key(str(vis_value or ""))
+        return _jira_group_principal_key(vis_value)
     if vis_type == "role":
-        return _jira_role_principal_key(str(vis_value or ""))
+        return _jira_role_principal_key(vis_value)
     return ""
 
 
@@ -229,9 +238,9 @@ def _jira_adf_to_text(value: object) -> str:
     if not isinstance(value, dict):
         return str(value)
 
-    node_type = str(value.get("type") or "").strip().lower()
+    node_type = _optional_source_text(value.get('type'), lower=True)
     if node_type == "text":
-        return str(value.get("text") or "")
+        return value["text"]
     if node_type == "hardbreak":
         return "\n"
 
@@ -250,7 +259,7 @@ def _jira_adf_to_text(value: object) -> str:
 def _jira_adf_is_doc(value: object) -> bool:
     if not isinstance(value, dict):
         return False
-    return str(value.get("type") or "").strip().lower() == "doc" and isinstance(value.get("content"), list)
+    return _optional_source_text(value.get('type'), lower=True) == "doc" and isinstance(value.get("content"), list)
 
 
 _JIRA_ADF_MARK_TAGS = {
@@ -264,7 +273,7 @@ _JIRA_ADF_MARK_TAGS = {
 
 def _jira_adf_mark_link_html(text: str, mark: dict[str, Any]) -> str:
     attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
-    href = str(attrs.get("href") or "").strip()
+    href = _optional_source_text(attrs.get('href'))
     if not _is_link_href_allowed(href):
         return text
     return f'<a href="{html.escape(href)}">{text}</a>'
@@ -274,7 +283,7 @@ def _jira_adf_apply_mark_html(text: str, mark: object) -> str:
     if not isinstance(mark, dict):
         return text
 
-    mark_type = str(mark.get("type") or "").strip().lower()
+    mark_type = _optional_source_text(mark.get('type'), lower=True)
     if mark_type == "link":
         return _jira_adf_mark_link_html(text, mark)
 
@@ -283,7 +292,7 @@ def _jira_adf_apply_mark_html(text: str, mark: object) -> str:
 
 
 def _jira_adf_text_node_html(value: dict) -> str:
-    text = html.escape(str(value.get("text") or ""))
+    text = html.escape(value["text"])
 
     marks = value.get("marks") if isinstance(value.get("marks"), list) else []
     for mark in marks:
@@ -388,7 +397,7 @@ def _jira_adf_node_html_table_header(value: dict, child_items: list[object], dep
 
 def _jira_adf_node_html_inline_card(value: dict, child_items: list[object], depth: int) -> str:
     attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
-    url = str(attrs.get("url") or "").strip()
+    url = _optional_source_text(attrs.get('url'))
     if _is_http_or_https_url(url):
         esc = html.escape(url)
         return f'<a href="{esc}">{esc}</a>'
@@ -397,7 +406,7 @@ def _jira_adf_node_html_inline_card(value: dict, child_items: list[object], dept
 
 def _jira_adf_node_html_mention(value: dict, child_items: list[object], depth: int) -> str:
     attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
-    text = str(attrs.get("text") or attrs.get("displayName") or "").strip()
+    text = _optional_source_text(attrs.get('text'), attrs.get('displayName'))
     if text:
         return html.escape(text)
     return ""
@@ -405,7 +414,7 @@ def _jira_adf_node_html_mention(value: dict, child_items: list[object], depth: i
 
 def _jira_adf_node_html_emoji(value: dict, child_items: list[object], depth: int) -> str:
     attrs = value.get("attrs") if isinstance(value.get("attrs"), dict) else {}
-    text = str(attrs.get("text") or attrs.get("shortName") or "").strip()
+    text = _optional_source_text(attrs.get('text'), attrs.get('shortName'))
     if text:
         return html.escape(text)
     return ""
@@ -442,7 +451,7 @@ def _jira_adf_node_to_html(value: object, *, depth: int = 0) -> str:
     if not isinstance(value, dict):
         return html.escape(str(value))
 
-    node_type = str(value.get("type") or "").strip().lower()
+    node_type = _optional_source_text(value.get('type'), lower=True)
     content = value.get("content")
     child_items = content if isinstance(content, list) else []
 
@@ -490,7 +499,7 @@ def _jira_value_to_text(value: object) -> str:
     if _jira_adf_is_doc(value):
         return _jira_adf_to_text(value)
     if isinstance(value, list):
-        parts = [(_jira_value_to_text(item) or "").strip() for item in value]
+        parts = [_jira_value_to_text(item).strip() for item in value]
         parts = [p for p in parts if p]
         return ", ".join(parts)
     if isinstance(value, dict):
@@ -511,7 +520,7 @@ def _jira_html_from_value(raw: object) -> str:
 
 
 def _jira_html_from_field(*, rendered: object, raw: object) -> str:
-    rendered_text = str(rendered or "").strip() if isinstance(rendered, str) else ""
+    rendered_text = _optional_source_text(rendered) if isinstance(rendered, str) else ""
     if rendered_text:
         return rendered_text
 
@@ -522,8 +531,8 @@ def _jira_html_from_field(*, rendered: object, raw: object) -> str:
 
 
 def _jira_issue_url(*, base_url: str, issue_key: str) -> str:
-    base = str(base_url or "").strip().rstrip("/")
-    key = str(issue_key or "").strip()
+    base = base_url.strip().rstrip("/")
+    key = issue_key.strip()
     if not base or not key:
         return ""
     return f"{base}/browse/{quote(key, safe='')}"
@@ -539,10 +548,10 @@ def _normalize_jira_full_sync_scope(
 ) -> tuple[UUID, str, str, str, set[str]] | None:
     if dataset_id is None:
         return None
-    normalized_base_url = str(base_url or "").strip().rstrip("/")
-    normalized_project_key = str(project_key or "").strip().upper()
+    normalized_base_url = base_url.strip().rstrip("/")
+    normalized_project_key = project_key.strip().upper()
     normalized_connector_id = str(connector_id or "jira_project").strip() or "jira_project"
-    normalized_seen_urls = {str(url or "").strip() for url in (seen_issue_urls or set()) if str(url or "").strip()}
+    normalized_seen_urls = {url.strip() for url in (seen_issue_urls or set()) if url.strip()}
     if not normalized_base_url or not normalized_project_key:
         return None
     return dataset_id, normalized_base_url, normalized_project_key, normalized_connector_id, normalized_seen_urls
@@ -562,11 +571,13 @@ def _jira_project_doc_matches_scope(
     connector_id: str,
 ) -> tuple[dict[str, Any], dict[str, Any]] | None:
     meta, conn = _jira_project_connector_metadata(doc)
-    if str(conn.get("connector_id") or "") != connector_id:
+    if conn.get("connector_id") != connector_id:
         return None
-    if str(conn.get("base_url") or "").strip().rstrip("/") != base_url:
+    stored_base_url = _optional_source_text(conn.get("base_url"))
+    if stored_base_url is None or stored_base_url.rstrip("/") != base_url:
         return None
-    if str(conn.get("project_key") or "").strip().upper() != project_key:
+    stored_project_key = _optional_source_text(conn.get("project_key"))
+    if stored_project_key is None or stored_project_key.upper() != project_key:
         return None
     return meta, conn
 
@@ -688,7 +699,7 @@ def _soft_disable_jira_documents_missing_from_full_sync(
         if match is None:
             continue
         meta, conn = match
-        issue_url = str(conn.get("issue_url") or meta.get("source_url") or "").strip()
+        issue_url = _optional_source_text(conn.get('issue_url'), meta.get('source_url'))
         if not issue_url or issue_url in seen_urls:
             continue
 
@@ -701,7 +712,7 @@ def _soft_disable_jira_documents_missing_from_full_sync(
 
 
 def _jira_jql_updated_after(raw: str | None) -> str:
-    text = str(raw or "").strip()
+    text = _optional_source_text(raw)
     if not text:
         return ""
     normalized = _normalize_datetime_utc_iso(text)
@@ -725,14 +736,14 @@ def _jira_issue_field_name(fields: dict, key: str) -> str:
     raw = fields.get(key)
     if not isinstance(raw, dict):
         return ""
-    return str(raw.get("name") or "").strip()
+    return _optional_source_text(raw.get('name'))
 
 
 def _jira_issue_label_text(fields: dict) -> str:
     labels = fields.get("labels")
     if not isinstance(labels, list):
         return ""
-    cleaned = [str(label or "").strip() for label in labels if str(label or "").strip()]
+    cleaned = [label.strip() for label in labels if label.strip()]
     return ", ".join(cleaned)
 
 
@@ -767,8 +778,8 @@ def _jira_rendered_comment_at(rendered_comment_items: list[dict], idx: int) -> d
 
 def _jira_comment_meta_html(comment: dict) -> str:
     author_obj = comment.get("author")
-    author = str((author_obj or {}).get("displayName") or "").strip() if isinstance(author_obj, dict) else ""
-    created = str(comment.get("created") or "").strip()
+    author = _optional_source_text(author_obj.get('displayName')) if isinstance(author_obj, dict) else None
+    created = _optional_source_text(comment.get('created'))
     meta_bits = [bit for bit in (author, created) if bit]
     if not meta_bits:
         return ""
@@ -801,7 +812,7 @@ def _jira_render_custom_field_sections(*, fields: dict, rendered: dict) -> list[
     custom_fields = [
         (key, raw_value)
         for k, raw_value in (fields or {}).items()
-        if (key := str(k or "").strip()).startswith("customfield_")
+        if (key := k.strip()).startswith("customfield_")
     ]
     custom_fields.sort(key=lambda item: item[0])
 
@@ -818,7 +829,7 @@ def _jira_render_custom_field_sections(*, fields: dict, rendered: dict) -> list[
 
 
 def _jira_render_issue_document_preamble(*, issue_key: str, summary: str, issue_url: str, base_url: str) -> list[str]:
-    base_href = issue_url or str(base_url or "")
+    base_href = issue_url or base_url
     base_tag = f'  <base href="{html.escape(base_href)}" />' if base_href else ""
     return [
         "<!doctype html>",
@@ -870,10 +881,10 @@ def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: boo
     fields = _jira_issue_fields(issue)
     rendered = _jira_issue_rendered_fields(issue)
 
-    issue_key = str(issue.get("key") or "").strip()
+    issue_key = issue["key"].strip()
     summary = str(fields.get("summary") or issue_key or "Jira issue").strip()
     issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
-    updated = _jira_extract_issue_updated(issue) or ""
+    updated = _optional_source_text(_jira_extract_issue_updated(issue))
 
     issue_type = _jira_issue_field_name(fields, "issuetype")
     priority = _jira_issue_field_name(fields, "priority")
@@ -921,23 +932,23 @@ def _jira_render_issue_html(*, base_url: str, issue: dict, include_comments: boo
 
 
 def _jira_project_required_config(cfg: dict[str, Any]) -> tuple[str, str]:
-    base_url = str(cfg.get("base_url") or "").strip().rstrip("/")
-    project_key = str(cfg.get("project_key") or "").strip().upper()
+    base_url = cfg["base_url"].strip().rstrip("/")
+    project_key = cfg["project_key"].strip().upper()
     if not base_url or not project_key:
         raise ValueError("base_url and project_key are required")
     return base_url, project_key
 
 
-def _jira_project_cursor_state(cfg: dict[str, Any]) -> tuple[str, set[str]]:
+def _jira_project_cursor_state(cfg: dict[str, Any]) -> tuple[str | None, set[str]]:
     state = cfg.get("_state") if isinstance(cfg.get("_state"), dict) else {}
-    cursor_last_modified = str(state.get("last_modified") or "").strip() if isinstance(state, dict) else ""
+    cursor_last_modified = _optional_source_text(state.get('last_modified'))
     cursor_last_modified_ids = (
         set(normalize_boundary_ids(state.get("last_modified_ids"))) if isinstance(state, dict) else set()
     )
     return cursor_last_modified, cursor_last_modified_ids
 
 
-def _jira_project_effective_mode(cfg: dict[str, Any], *, cursor_last_modified: str) -> str:
+def _jira_project_effective_mode(cfg: dict[str, Any], *, cursor_last_modified: str | None) -> str:
     sync_mode = str(cfg.get("sync_mode") or "auto").strip().lower()
     effective_mode = sync_mode if sync_mode in {"auto", "full", "incremental"} else "auto"
     if effective_mode == "auto":
@@ -953,7 +964,7 @@ def _jira_project_custom_fields(cfg: dict[str, Any]) -> list[str]:
     custom_fields: list[str] = []
     custom_fields_seen: set[str] = set()
     for raw in custom_fields_in:
-        key = str(raw or "").strip().lower()
+        key = raw.strip().lower()
         if not key or len(key) > 80 or not re.fullmatch(r"customfield_\d+", key) or key in custom_fields_seen:
             continue
         custom_fields_seen.add(key)
@@ -1011,7 +1022,7 @@ def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
         "source_acl_fallback_mode": access_settings["source_acl_fallback_mode"],
         "has_manual_access_override": access_settings["has_manual_access_override"],
         "enable_source_acl": access_settings["enable_source_acl"],
-        "extra_jql": str(cfg.get("jql") or "").strip(),
+        "extra_jql": _optional_source_text(cfg.get('jql')),
         "user_agent": user_agent,
         "auth_headers": auth_headers,
         "api_base": _jira_api_base_url(base_url),
@@ -1023,9 +1034,9 @@ def _build_jira_project_run_settings(cfg: dict[str, Any]) -> dict[str, Any]:
 def _build_jira_project_search_jql(
     *,
     project_key: str,
-    extra_jql: str,
+    extra_jql: str | None,
     effective_mode: str,
-    cursor_last_modified: str,
+    cursor_last_modified: str | None,
 ) -> str:
     jql_parts = [f'project = "{project_key}"']
     if extra_jql:
@@ -1038,8 +1049,8 @@ def _build_jira_project_search_jql(
 
 
 def _build_jira_issue_info(*, base_url: str, issue: dict[str, Any]) -> JiraIssueInfo:
-    issue_key = str(issue.get("key") or "").strip()
-    issue_id = str(issue.get("id") or "").strip()
+    issue_key = issue["key"].strip()
+    issue_id = issue["id"].strip()
     issue_url = _jira_issue_url(base_url=base_url, issue_key=issue_key)
     updated = _jira_extract_issue_updated(issue)
     return {
@@ -1129,8 +1140,8 @@ def _resolve_jira_issue_acl(
             db,
             tenant_id=tenant_id,
             dataset_id=run.dataset_id,
-            base_url=str(settings_map.get("base_url") or ""),
-            project_key=str(settings_map.get("project_key") or ""),
+            base_url=settings_map['base_url'],
+            project_key=settings_map['project_key'],
             issue_url=issue_url,
             requested_by=requested_by,
             access=effective_access,
@@ -1179,12 +1190,12 @@ def _jira_attachment_ref(raw: object) -> dict[str, str] | None:
     if not isinstance(raw, dict):
         return None
 
-    attachment_id = str(raw.get("id") or "").strip()
+    attachment_id = _optional_source_text(raw.get('id'))
     if not attachment_id:
         return None
 
-    filename = str(raw.get("filename") or raw.get("title") or raw.get("name") or "").strip()
-    download_url = str(raw.get("content") or raw.get("downloadUrl") or raw.get("download_url") or "").strip()
+    filename = _optional_source_text(raw.get('filename'), raw.get('title'), raw.get('name'))
+    download_url = _optional_source_text(raw.get('content'), raw.get('downloadUrl'), raw.get('download_url'))
     if not download_url:
         return None
 
@@ -1213,7 +1224,7 @@ def _jira_extract_attachments(issue: dict, *, limit: int) -> list[dict[str, str]
 
 
 def _jira_extract_urls_from_text(value: object, *, limit: int) -> list[str]:
-    text = str(value or "").strip()
+    text = _optional_source_text(value)
     if not text:
         return []
 
@@ -1225,7 +1236,7 @@ def _jira_extract_urls_from_text(value: object, *, limit: int) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for m in url_re.finditer(text):
-        url = str(m.group(0) or "").strip()
+        url = m.group(0).strip()
         if not url or url in seen:
             continue
         seen.add(url)
@@ -1239,7 +1250,7 @@ def _jira_push_unique_http_url(out: list[str], seen: set[str], raw: object, *, l
     if len(out) >= limit:
         return
 
-    url = str(raw or "").strip()
+    url = _optional_source_text(raw)
     if not url or url in seen:
         return
     if not _is_http_or_https_url(url):
@@ -1254,14 +1265,14 @@ def _jira_extract_adf_text_mark_urls(node: dict[str, Any], out: list[str], seen:
     for mark in marks:
         if not isinstance(mark, dict):
             continue
-        if str(mark.get("type") or "").strip().lower() != "link":
+        if _optional_source_text(mark.get('type'), lower=True) != "link":
             continue
         attrs = mark.get("attrs") if isinstance(mark.get("attrs"), dict) else {}
         _jira_push_unique_http_url(out, seen, attrs.get("href"), limit=limit)
 
 
 def _jira_extract_adf_node_urls(node: dict[str, Any], out: list[str], seen: set[str], *, limit: int) -> None:
-    node_type = str(node.get("type") or "").strip().lower()
+    node_type = _optional_source_text(node.get('type'), lower=True)
     if node_type == "text":
         _jira_extract_adf_text_mark_urls(node, out, seen, limit=limit)
         return
@@ -1308,7 +1319,7 @@ def _jira_extend_unique_urls(out: list[str], seen: set[str], urls: list[str], *,
     for url in urls:
         if len(out) >= limit:
             return
-        normalized_url = str(url or "").strip()
+        normalized_url = url.strip()
         if not normalized_url or normalized_url in seen:
             continue
         seen.add(normalized_url)
@@ -1363,16 +1374,16 @@ def _jira_attachment_connector_metadata(
     return {
         "connector_id": "jira_project",
         "doc_kind": "attachment",
-        "base_url": str(base_url or "").strip(),
-        "project_key": str(project_key or "").strip().upper(),
+        "base_url": base_url.strip(),
+        "project_key": project_key.strip().upper(),
         "issue_id": issue_id,
         "issue_key": issue_key,
-        "issue_url": str(issue_url or "").strip(),
-        "attachment_id": str(attachment_id or "").strip(),
-        "filename": str(filename or "").strip(),
-        "download_url": str(download_url or "").strip(),
-        "run_id": str(run_id or "").strip(),
-        "mode": str(mode or "").strip(),
+        "issue_url": issue_url.strip(),
+        "attachment_id": attachment_id.strip(),
+        "filename": filename.strip(),
+        "download_url": download_url.strip(),
+        "run_id": run_id.strip(),
+        "mode": mode.strip(),
     }
 
 
@@ -1390,20 +1401,20 @@ def _jira_linked_artifact_connector_metadata(
     return {
         "connector_id": "jira_project",
         "doc_kind": "linked_artifact",
-        "base_url": str(base_url or "").strip(),
-        "project_key": str(project_key or "").strip().upper(),
+        "base_url": base_url.strip(),
+        "project_key": project_key.strip().upper(),
         "issue_id": issue_id,
         "issue_key": issue_key,
-        "issue_url": str(issue_url or "").strip(),
-        "link_url": str(link_url or "").strip(),
-        "run_id": str(run_id or "").strip(),
-        "mode": str(mode or "").strip(),
+        "issue_url": issue_url.strip(),
+        "link_url": link_url.strip(),
+        "run_id": run_id.strip(),
+        "mode": mode.strip(),
     }
 
 
 def _jira_should_send_auth_headers(*, base_url: str, url: str) -> bool:
-    base = str(base_url or "").strip()
-    target = str(url or "").strip()
+    base = base_url.strip()
+    target = url.strip()
     if not base or not target:
         return False
     try:
@@ -1413,7 +1424,7 @@ def _jira_should_send_auth_headers(*, base_url: str, url: str) -> bool:
         return False
     if not b.scheme or not b.netloc or not u.scheme or not u.netloc:
         return False
-    if str(u.scheme or "").lower() not in {"http", "https"}:
+    if u.scheme.lower() not in {"http", "https"}:
         return False
     return str(b.netloc).lower() == str(u.netloc).lower()
 
@@ -1442,14 +1453,14 @@ def _patch_jira_linked_artifact_document_metadata(
     if isinstance(acl_provenance, dict):
         meta_link["acl_provenance"] = dict(acl_provenance)
     meta_link["connector"] = _jira_linked_artifact_connector_metadata(
-        base_url=str(settings_map.get("base_url") or ""),
-        project_key=str(settings_map.get("project_key") or ""),
+        base_url=settings_map['base_url'],
+        project_key=settings_map['project_key'],
         issue_id=issue_id,
         issue_key=issue_key,
         issue_url=issue_url,
         link_url=link_url,
         run_id=str(run.id),
-        mode=str(settings_map.get("effective_mode") or ""),
+        mode=settings_map['effective_mode'],
     )
     link_doc.doc_metadata = meta_link
     _apply_connector_identity_metadata(
@@ -1477,7 +1488,7 @@ async def _ingest_single_jira_linked_artifact(
     fetch_headers = (
         settings_map.get("auth_headers")
         if _jira_should_send_auth_headers(
-            base_url=str(settings_map.get("base_url") or ""),
+            base_url=settings_map['base_url'],
             url=link_url,
         )
         else None
@@ -1534,7 +1545,7 @@ async def _ingest_single_jira_linked_artifact(
 def _jira_project_run_cancelled(db: Session, *, run: ConnectorRun) -> bool:
     with contextlib.suppress(Exception):
         db.refresh(run)
-    return str(run.status or "").lower() == "cancelled"
+    return run.status.lower() == "cancelled"
 
 
 async def _ingest_jira_issue_linked_artifacts(
@@ -1607,7 +1618,7 @@ async def _ingest_jira_issue_linked_artifacts(
             linked_listing_complete = False
             break
 
-        link_url = str(link_url or "").strip()
+        link_url = link_url.strip()
         if not link_url or link_url == issue_url or not _is_http_or_https_url(link_url):
             continue
 
@@ -1643,8 +1654,8 @@ async def _ingest_jira_issue_linked_artifacts(
                 db,
                 tenant_id=tenant_id,
                 dataset_id=run.dataset_id,
-                base_url=str(settings_map.get("base_url") or ""),
-                project_key=str(settings_map.get("project_key") or ""),
+                base_url=settings_map['base_url'],
+                project_key=settings_map['project_key'],
                 issue_url=issue_url,
                 seen_link_urls=seen_link_urls,
             )
@@ -1669,9 +1680,9 @@ def _patch_jira_attachment_document_metadata(
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
 ) -> None:
-    attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
-    filename = str(attachment_ref.get("filename") or "").strip()
-    download_url = str(attachment_ref.get("download_url") or "").strip()
+    attachment_id = attachment_ref['attachment_id'].strip()
+    filename = attachment_ref['filename'].strip()
+    download_url = attachment_ref['download_url'].strip()
     meta_att = dict(att_doc.doc_metadata or {})
     updated = issue_info["updated"]
     issue_id = issue_info["issue_id"]
@@ -1686,8 +1697,8 @@ def _patch_jira_attachment_document_metadata(
     if isinstance(acl_provenance, dict):
         meta_att["acl_provenance"] = dict(acl_provenance)
     meta_att["connector"] = _jira_attachment_connector_metadata(
-        base_url=str(settings_map.get("base_url") or ""),
-        project_key=str(settings_map.get("project_key") or ""),
+        base_url=settings_map['base_url'],
+        project_key=settings_map['project_key'],
         issue_id=issue_id,
         issue_key=issue_key,
         issue_url=issue_url,
@@ -1695,7 +1706,7 @@ def _patch_jira_attachment_document_metadata(
         filename=filename,
         download_url=download_url,
         run_id=str(run.id),
-        mode=str(settings_map.get("effective_mode") or ""),
+        mode=settings_map['effective_mode'],
     )
     att_doc.doc_metadata = meta_att
     _apply_connector_identity_metadata(
@@ -1720,9 +1731,9 @@ async def _ingest_single_jira_attachment(
     acl_provenance: dict[str, Any] | None,
     settings_map: dict[str, Any],
 ) -> UUID:
-    attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
-    filename = str(attachment_ref.get("filename") or "").strip()
-    download_url = str(attachment_ref.get("download_url") or "").strip()
+    attachment_id = attachment_ref['attachment_id'].strip()
+    filename = attachment_ref['filename'].strip()
+    download_url = attachment_ref['download_url'].strip()
     att_body = UrlUploadRequest(
         url=download_url,
         dataset_id=run.dataset_id,
@@ -1837,9 +1848,9 @@ async def _ingest_jira_issue_attachments(
             attachment_listing_complete = False
             break
 
-        attachment_id = str(attachment_ref.get("attachment_id") or "").strip()
-        filename = str(attachment_ref.get("filename") or "").strip()
-        download_url = str(attachment_ref.get("download_url") or "").strip()
+        attachment_id = attachment_ref['attachment_id'].strip()
+        filename = attachment_ref['filename'].strip()
+        download_url = attachment_ref['download_url'].strip()
         attachments_processed += 1
 
         if not attachment_id or not download_url:
@@ -1879,8 +1890,8 @@ async def _ingest_jira_issue_attachments(
                 db,
                 tenant_id=tenant_id,
                 dataset_id=run.dataset_id,
-                base_url=str(settings_map.get("base_url") or ""),
-                project_key=str(settings_map.get("project_key") or ""),
+                base_url=settings_map['base_url'],
+                project_key=settings_map['project_key'],
                 issue_url=issue_url,
                 seen_attachment_urls=seen_attachment_urls,
             )
@@ -1990,14 +2001,14 @@ def _finalize_jira_project_run(
     observed_issue_urls: set[str],
     listing_complete: bool,
 ) -> None:
-    if str(settings_map.get("effective_mode") or "") == "full" and run.dataset_id and listing_complete:
+    if settings_map['effective_mode'] == "full" and run.dataset_id and listing_complete:
         try:
             removed_issues_reconciled, removed_documents_disabled = _soft_disable_jira_documents_missing_from_full_sync(
                 db,
                 tenant_id=tenant_id,
                 dataset_id=run.dataset_id,
-                base_url=str(settings_map.get("base_url") or ""),
-                project_key=str(settings_map.get("project_key") or ""),
+                base_url=settings_map['base_url'],
+                project_key=settings_map['project_key'],
                 seen_issue_urls=observed_issue_urls,
             )
             progress["removed_issues_reconciled"] = int(removed_issues_reconciled)
@@ -2006,7 +2017,7 @@ def _finalize_jira_project_run(
             run.stats = _finalize_connector_stats(
                 _append_connector_error(
                     dict(run.stats or {}),
-                    url=f"jira://{str(settings_map.get('project_key') or '')}",
+                    url=f"jira://{settings_map['project_key']}",
                     exc=exc,
                 )
             )
@@ -2054,9 +2065,9 @@ def _finalize_jira_project_run(
                 details={
                     "dataset_id": str(run.dataset_id),
                     "connector_id": "jira_project",
-                    "base_url": str(settings_map.get("base_url") or ""),
-                    "project_key": str(settings_map.get("project_key") or ""),
-                    "mode": str(settings_map.get("effective_mode") or ""),
+                    "base_url": settings_map['base_url'],
+                    "project_key": settings_map['project_key'],
+                    "mode": settings_map['effective_mode'],
                     "updated_documents": int(progress.get("delta_acl_docs_updated") or 0),
                     "updated_sources": int(progress.get("delta_acl_sources_updated") or 0),
                     "fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
@@ -2496,11 +2507,11 @@ def _build_jira_project_issue_context(
         run_id=run_id,
         tenant_id=tenant_id,
         requested_by=requested_by,
-        base_url=str(settings_map.get("base_url") or ""),
-        project_key=str(settings_map.get("project_key") or ""),
-        cursor_last_modified=str(settings_map.get("cursor_last_modified") or ""),
+        base_url=settings_map['base_url'],
+        project_key=settings_map['project_key'],
+        cursor_last_modified=settings_map['cursor_last_modified'],
         cursor_last_modified_ids=set(settings_map.get("cursor_last_modified_ids") or set()),
-        effective_mode=str(settings_map.get("effective_mode") or ""),
+        effective_mode=settings_map['effective_mode'],
         include_comments=bool(settings_map.get("include_comments")),
         max_comments_per_issue=int(settings_map.get("max_comments_per_issue") or 0),
         include_attachments=bool(settings_map.get("include_attachments")),
@@ -2617,9 +2628,9 @@ async def _process_jira_project_issues(
     max_issues = int(settings_map.get("max_issues") or 0)
     page_size = int(settings_map.get("page_size") or 0)
     custom_fields = list(settings_map.get("custom_fields") or [])
-    search_url = str(settings_map.get("search_url") or "")
+    search_url = settings_map['search_url']
     headers = dict(settings_map.get("headers") or {})
-    jql = str(settings_map.get("jql") or "")
+    jql = settings_map['jql']
     issue_context = _build_jira_project_issue_context(
         run=run,
         run_id=run_id,
@@ -2655,17 +2666,17 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
         run = _get_jira_project_run(db, run_id=run_id, tenant_id=tenant_id)
         if run is None:
             return
-        if str(run.status or "").lower() in {"cancelled", "completed", "failed"}:
+        if run.status.lower() in {"cancelled", "completed", "failed"}:
             return
 
         _mark_jira_project_run_running(db, run=run)
 
         settings_map = _build_jira_project_run_settings(decrypt_connector_config_secrets(dict(run.config or {})))
         settings_map["jql"] = _build_jira_project_search_jql(
-            project_key=str(settings_map.get("project_key") or ""),
-            extra_jql=str(settings_map.get("extra_jql") or ""),
-            effective_mode=str(settings_map.get("effective_mode") or ""),
-            cursor_last_modified=str(settings_map.get("cursor_last_modified") or ""),
+            project_key=settings_map['project_key'],
+            extra_jql=settings_map['extra_jql'],
+            effective_mode=settings_map['effective_mode'],
+            cursor_last_modified=settings_map['cursor_last_modified'],
         )
 
         run.stats = _finalize_connector_stats(_initialize_jira_project_run_stats(run=run, settings_map=settings_map))
@@ -2690,9 +2701,9 @@ async def execute(*, run_id: UUID, tenant_id: UUID, requested_by: str) -> None:
             tenant_id=tenant_id,
             requested_by=requested_by,
             settings_map={
-                "effective_mode": str(settings_map.get("effective_mode") or ""),
-                "base_url": str(settings_map.get("base_url") or ""),
-                "project_key": str(settings_map.get("project_key") or ""),
+                "effective_mode": settings_map['effective_mode'],
+                "base_url": settings_map['base_url'],
+                "project_key": settings_map['project_key'],
                 "enable_source_acl": bool(settings_map.get("enable_source_acl")),
                 "source_acl_fallback_mode": str(settings_map.get("source_acl_fallback_mode") or "partial_members"),
             },

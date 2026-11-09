@@ -5,7 +5,7 @@ _TOKEN_RE = re.compile(r"\w+|[\u4e00-\u9fff]{2,}", flags=re.ASCII)
 
 
 def _tokenize(text: str) -> set[str]:
-    return {str(token).casefold() for token in _TOKEN_RE.findall(str(text or "").strip()) if str(token).strip()}
+    return {str(token).casefold() for token in _TOKEN_RE.findall(text.strip()) if str(token).strip()}
 
 
 def _score_reports(
@@ -14,9 +14,9 @@ def _score_reports(
     scored: list[tuple[float, dict[str, Any]]] = []
     for report in community_reports or []:
         if isinstance(report, dict):
-            summary = str(report.get("summary") or "").strip()
+            summary = report["summary"].strip()
             scored.append((float(len(query_tokens & _tokenize(summary))), dict(report)))
-    return sorted(scored, key=lambda item: (-item[0], str((item[1] or {}).get("community_id") or "")))
+    return sorted(scored, key=lambda item: (-item[0], item[1]["community_id"]))
 
 
 def _selected_reports(scored: list[tuple[float, dict[str, Any]]], top_k: int) -> list[dict[str, Any]]:
@@ -55,7 +55,7 @@ def run_drift_search(
     community_reports: list[dict[str, Any]],
     top_k: int = 3,
 ) -> dict[str, Any]:
-    query_tokens = _tokenize(str(query or ""))
+    query_tokens = _tokenize(query)
     scored = _score_reports(query_tokens, community_reports)
     selected = _selected_reports(scored, top_k)
 

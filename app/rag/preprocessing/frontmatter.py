@@ -27,7 +27,7 @@ class FrontmatterExtractResult:
 
 
 def _coerce_scalar(value: str) -> Any:
-    v = (value or "").strip()
+    v = (value).strip()
     if not v:
         return ""
 
@@ -49,7 +49,7 @@ def _coerce_scalar(value: str) -> Any:
 
 
 def _parse_frontmatter_key_value(line: str) -> tuple[str, str] | None:
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
 
@@ -78,7 +78,7 @@ def _parse_frontmatter_key_value(line: str) -> tuple[str, str] | None:
 
 
 def _parse_frontmatter_list_item(line: str) -> str | None:
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
     s = raw.lstrip()
@@ -94,7 +94,7 @@ def _parse_frontmatter_list_item(line: str) -> str | None:
 
 
 def _parse_markdown_h1_title(line: str) -> str | None:
-    raw = (line or "").rstrip("\r\n")
+    raw = (line).rstrip("\r\n")
     if not raw.strip():
         return None
     s = raw.lstrip()
@@ -112,7 +112,7 @@ def _parse_markdown_h1_title(line: str) -> str | None:
 
 
 def _parse_inline_list(value: str) -> list[str] | None:
-    v = (value or "").strip()
+    v = (value).strip()
     if not (v.startswith("[") and v.endswith("]")):
         return None
     inner = v[1:-1].strip()
@@ -179,7 +179,7 @@ def _parse_frontmatter_data(frontmatter_raw: str) -> dict[str, Any]:
             continue
 
         key, val_raw = kv
-        val_raw = (val_raw or "").strip()
+        val_raw = val_raw.strip()
         inline_list = _parse_inline_list(val_raw)
         if inline_list is not None:
             data[key] = inline_list
@@ -211,7 +211,7 @@ def extract_markdown_frontmatter(
         strip: remove the frontmatter block from output text
         max_chars: safety cap for the block size to parse
     """
-    raw = text or ""
+    raw = text
     if not raw:
         return None
 
@@ -249,7 +249,7 @@ def extract_markdown_title(text: str, *, max_lines: int = 60) -> str | None:
     - prefers the first H1 heading (`# Title`)
     - skips fenced code blocks
     """
-    raw = text or ""
+    raw = text
     if not raw:
         return None
 

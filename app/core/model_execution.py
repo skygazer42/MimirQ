@@ -32,7 +32,9 @@ class RetiredModelProviderError(ValueError):
 
 
 def reject_retired_provider(provider: str | None, *, capability: ModelCapability) -> None:
-    normalized = (provider if provider is not None else "").strip().lower().replace("-", "_")
+    if provider is None:
+        return
+    normalized = provider.strip().lower().replace("-", "_")
     if capability == "parser":
         normalized = normalized.replace(" ", "_")
     if normalized in _RETIRED_PROVIDERS[capability]:
@@ -42,7 +44,9 @@ def reject_retired_provider(provider: str | None, *, capability: ModelCapability
 
 
 def reject_retired_retrieval_profile(profile: str | None) -> None:
-    if (profile if profile is not None else "").strip().lower() == "sparse_splade":
+    if profile is None:
+        return
+    if profile.strip().lower() == "sparse_splade":
         raise RetiredModelProviderError("The sparse_splade retrieval profile has been retired")
 
 
@@ -56,7 +60,7 @@ def reject_retired_rerank_providers(raw: str | None) -> None:
     if isinstance(stages, list):
         for stage in stages:
             if isinstance(stage, dict):
-                reject_retired_provider(str(stage.get("provider") or ""), capability="reranker")
+                reject_retired_provider(stage.get("provider"), capability="reranker")
 
 
 def validate_rag_execution_selection(

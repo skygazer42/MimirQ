@@ -118,7 +118,7 @@ def _rewrite_preview_images_to_minio(
 def _existing_minio_image_refs(text: str) -> list[str]:
     existing: list[str] = []
     for match in MINIO_IMAGE_REF_RE.finditer(text):
-        value = (match.group(1) or "").strip()
+        value = match.group(1).strip()
         if value and value not in existing:
             existing.append(value)
     return existing
@@ -434,7 +434,9 @@ def _ensure_preview_page_indices(documents: list[Document]) -> None:
 
 
 def _preview_chunk_has_asset(meta: dict[str, Any], content: str | None = None) -> bool:
-    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+    doc_type = meta.get("doc_type_kwd")
+    if doc_type is not None:
+        doc_type = doc_type.lower()
     if doc_type in {"image", "table"}:
         return True
     if meta.get("image") is not None:
@@ -487,7 +489,7 @@ def _preview_chunk_mergeable(chunk: Document, *, page_index: int | None, page_te
     return (
         page_index is not None
         and page_index in page_text
-        and not _preview_chunk_has_asset(meta, chunk.page_content or "")
+        and not _preview_chunk_has_asset(meta, chunk.page_content)
         and not (meta.get("chunk_role") or meta.get("parent_id"))
         and _preview_local_range(meta) is not None
     )
@@ -578,7 +580,7 @@ def _consume_mergeable_preview_chunk(
             out.extend([pending, chunk])
         return None, None
 
-    if len((chunk.page_content or "").strip()) >= min_chars:
+    if len((chunk.page_content).strip()) >= min_chars:
         out.append(chunk)
         return None, None
 
@@ -643,7 +645,9 @@ def _preview_images_dir(tenant_id: UUID) -> Path:
 
 
 def _coerce_preview_owner_uuid(value: object) -> str | None:
-    raw = str(value or "").strip()
+    if value is None:
+        return None
+    raw = str(value).strip()
     if not raw:
         return None
     try:
@@ -663,7 +667,9 @@ def _preview_owner_binding(
             "dataset_id": dataset_id,
             "document_id": document_id,
         }
-    owner_account_id = (account_id if account_id is not None else "").strip()
+    owner_account_id = account_id
+    if owner_account_id is not None:
+        owner_account_id = owner_account_id.strip()
     if owner_account_id:
         return {"tenant_id": str(tenant_id), "account_id": owner_account_id}
     return None
@@ -695,7 +701,11 @@ def _load_preview_owner_binding(*, images_dir: Path, preview_id: str) -> dict[st
     tenant_id = _coerce_preview_owner_uuid(raw.get("tenant_id"))
     dataset_id = _coerce_preview_owner_uuid(raw.get("dataset_id"))
     document_id = _coerce_preview_owner_uuid(raw.get("document_id"))
-    account_id = str(raw.get("account_id") or "").strip()
+    account_id = raw.get("account_id")
+    if account_id is not None:
+        if not isinstance(account_id, str):
+            return None
+        account_id = account_id.strip()
     document_bound = bool(dataset_id and document_id and not account_id)
     account_bound = bool(account_id and not dataset_id and not document_id)
     if not tenant_id or not (document_bound or account_bound):
@@ -720,13 +730,13 @@ def _promote_preview_owner_binding(
     binding = _load_preview_owner_binding(images_dir=images_dir, preview_id=preview_id)
     if not binding:
         return False
-    if (binding.get("tenant_id") or "").strip() != (tenant_id or "").strip():
+    if binding["tenant_id"] != tenant_id.strip():
         return False
-    bound_dataset_id = (binding.get("dataset_id") or "").strip()
-    bound_document_id = (binding.get("document_id") or "").strip()
+    bound_dataset_id = binding["dataset_id"]
+    bound_document_id = binding["document_id"]
     if bound_dataset_id and bound_document_id:
-        return bound_dataset_id == (dataset_id or "").strip() and bound_document_id == (document_id or "").strip()
-    if (binding.get("account_id") or "").strip() != (account_id or "").strip():
+        return bound_dataset_id == (dataset_id).strip() and bound_document_id == (document_id).strip()
+    if binding["account_id"] != account_id.strip():
         return False
     return _write_preview_owner_binding(
         images_dir=images_dir,
@@ -767,7 +777,9 @@ def _materialize_extracted_preview_image_doc(
     if image_obj is None:
         return
 
-    doc_type = str(meta.get("doc_type_kwd") or "").lower()
+    doc_type = meta.get("doc_type_kwd")
+    if doc_type is not None:
+        doc_type = doc_type.lower()
     if doc_type != "image":
         meta.pop("image", None)
         doc.metadata = meta
@@ -851,7 +863,7 @@ def _preview_content_image_refs(content: str) -> list[str]:
     seen: set[str] = set()
     for pattern in (PREVIEW_MD_IMAGE_REF_RE, PREVIEW_HTML_IMAGE_REF_RE):
         for match in pattern.finditer(content):
-            ref = (match.group(1) or "").strip()
+            ref = match.group(1).strip()
             if not ref or ref in seen:
                 continue
             seen.add(ref)
@@ -874,8 +886,8 @@ def _preview_doc_asset_base_dir(doc: Document) -> Path | None:
 
 def _preview_local_ref_skippable(ref: str) -> bool:
     parsed_ref = urlparse(ref)
-    scheme = (parsed_ref.scheme or "").lower().strip()
-    if scheme in REMOTE_PREVIEW_IMAGE_SCHEMES or (parsed_ref.netloc or "").strip():
+    scheme = (parsed_ref.scheme).lower().strip()
+    if scheme in REMOTE_PREVIEW_IMAGE_SCHEMES or (parsed_ref.netloc).strip():
         return True
     ref_lower = ref.lower()
     return "/api/v1/documents/image-url/" in ref_lower or "/api/v1/documents/image/" in ref_lower
@@ -1012,7 +1024,7 @@ def _preview_local_image_replacements(
 
 
 def _replace_preview_image_ref(match: re.Match, replacements: dict[str, str]) -> str:
-    raw = match.group(1) or ""
+    raw = match.group(1)
     new = replacements.get(raw.strip())
     return match.group(0).replace(raw, new, 1) if new else match.group(0)
 
@@ -1286,9 +1298,9 @@ def _chunk_preview_quality_reason(raw: object) -> ChunkPreviewQualityReason | No
         return None
     try:
         return ChunkPreviewQualityReason(
-            code=str(raw.get("code") or "")[:80],
+            code=raw["code"][:80],
             severity=str(raw.get("severity") or "info"),  # type: ignore[arg-type]
-            message=str(raw.get("message") or "")[:200],
+            message=raw["message"][:200],
             meta=dict(raw.get("meta") or {}),
         )
     except Exception:
@@ -1310,9 +1322,9 @@ def _chunk_preview_recommendation_patch(raw: object) -> ChunkPreviewRecommendati
         return None
     try:
         return ChunkPreviewRecommendationPatch(
-            id=str(raw.get("id") or "")[:80],
-            title=str(raw.get("title") or "")[:120],
-            description=str(raw.get("description") or "")[:400],
+            id=raw["id"][:80],
+            title=raw["title"][:120],
+            description=raw["description"][:400],
             target=str(raw.get("target") or "preview"),  # type: ignore[arg-type]
             patch=dict(raw.get("patch") or {}),
         )

@@ -130,7 +130,7 @@ class ToolCallLoggingMiddleware:
         if asyncio.iscoroutinefunction(func):
 
             async def async_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-                tool_name = str(state.get("tool_name") or "")
+                tool_name = state["tool_name"]
                 arg_keys = sorted((state.get("arguments") or {}).keys())
                 t0 = time.time()
                 try:
@@ -166,7 +166,7 @@ class ToolCallLoggingMiddleware:
             return async_wrapper
 
         def sync_wrapper(state: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
-            tool_name = str(state.get("tool_name") or "")
+            tool_name = state["tool_name"]
             arg_keys = sorted((state.get("arguments") or {}).keys())
             t0 = time.time()
             out = func(state, *args, **kwargs)
@@ -196,7 +196,7 @@ class ToolCallLoggingMiddleware:
 def _tool_call_logging_wrapper(func: Callable) -> Callable:
     enabled = settings.TOOL_CALL_LOG_ENABLED
     include_preview = settings.TOOL_CALL_LOG_INCLUDE_PREVIEW
-    max_chars = settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS or 500
+    max_chars = settings.TOOL_CALL_LOG_MAX_PREVIEW_CHARS
     if not enabled:
         return func
     return ToolCallLoggingMiddleware(

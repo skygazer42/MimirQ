@@ -65,7 +65,9 @@ def parse_group_names_from_jwt_payload(payload: dict[str, Any], *, claim: str, m
     out: list[str] = []
     seen: set[str] = set()
     for item in items:
-        name = str(item or "").strip()
+        if item is None:
+            continue
+        name = str(item).strip()
         if not name or name in seen:
             continue
         if len(name) > 255:

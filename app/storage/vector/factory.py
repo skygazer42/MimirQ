@@ -150,14 +150,14 @@ class MemoryVectorStore(BaseVectorStore):
         provider = EmbeddingProviders.PROVIDER_MAP.get(
             (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
         )
-        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
+        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY
+        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE
         model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
         self.emb = create_langchain_embeddings_from_config(
             provider=provider,
             model=model,
-            api_key=api_key or "",
-            base_url=base_url or "",
+            api_key=api_key,
+            base_url=base_url,
             dimension=None,
         )
         self.storage: list[tuple[list[float], dict[str, Any]]] = []
@@ -165,7 +165,7 @@ class MemoryVectorStore(BaseVectorStore):
 
     def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         with self._lock:
-            texts = [d.get("content", "") for d in docs]
+            texts = [d["content"] for d in docs]
             vectors = self.emb.embed_documents(texts)
             for vec, doc in zip(vectors, docs, strict=False):
                 meta = dict(doc.get("metadata") or {})
@@ -173,7 +173,7 @@ class MemoryVectorStore(BaseVectorStore):
                 meta.setdefault("tenant_id", str(tenant_id))
                 if meta.get("chunk_id"):
                     meta["chunk_id"] = str(meta.get("chunk_id"))
-                meta.setdefault("content", doc.get("content", ""))
+                meta.setdefault("content", doc["content"])
                 self.storage.append((vec, meta))
             # In-memory mode uses placeholder IDs instead of real vector IDs.
             ids: list[str] = []
@@ -218,7 +218,7 @@ class MemoryVectorStore(BaseVectorStore):
                 results.append(
                     {
                         "chunk_id": meta.get("chunk_id"),
-                        "content": meta.get("content") or meta.get("text") or "",
+                        "content": meta["content"],
                         "metadata": meta,
                         "score": score,
                         "vector_score": score,
@@ -274,7 +274,7 @@ def _normalize_region(region: str | None = None) -> str:
 
 
 def _load_vector_region_backends() -> dict[str, str]:
-    raw = settings.VECTOR_REGION_BACKENDS or ""
+    raw = settings.VECTOR_REGION_BACKENDS
     if isinstance(raw, Mapping):
         source = dict(raw)
     else:
@@ -289,8 +289,8 @@ def _load_vector_region_backends() -> dict[str, str]:
 
     out: dict[str, str] = {}
     for key, value in source.items():
-        region = str(key or "").strip().lower()
-        backend = str(value or "").strip().lower()
+        region = key.strip().lower()
+        backend = value.strip().lower()
         if not region or not backend:
             continue
         out[region] = backend
@@ -316,8 +316,8 @@ def _embedding_client_cache_token() -> str:
         "openai_compatible",
     )
     model = str(settings.EMBEDDING_MODEL or "text-embedding-3-small").strip()
-    api_base = str(settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or "").strip()
-    api_key = str(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or "").strip()
+    api_base = str(settings.EMBEDDING_API_BASE or settings.LLM_API_BASE).strip()
+    api_key = str(settings.EMBEDDING_API_KEY or settings.LLM_API_KEY).strip()
     api_key_hash = stable_hash(api_key, length=16) if api_key else ""
     return stable_hash(f"{provider}|{model}|{api_base}|{api_key_hash}", length=24)
 

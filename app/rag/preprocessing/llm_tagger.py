@@ -47,7 +47,7 @@ class LLMTaggingResult(BaseModel):
 
 
 def build_tagger_context(text: str, *, max_chars: int = 3000) -> str:
-    clean = str(text or "").strip()
+    clean = text.strip()
     max_chars_i = max(200, int(max_chars or 3000))
     if len(clean) <= max_chars_i:
         return clean
@@ -70,10 +70,13 @@ def _iter_text_values(value: Any) -> list[str]:
         return out
     if isinstance(value, dict):
         for key in ("value", "text", "name", "label"):
-            text = str(value.get(key) or "").strip()
+            candidate = value.get(key)
+            if candidate is None:
+                continue
+            text = str(candidate).strip()
             if text:
                 return [text]
-    text = str(value or "").strip()
+    text = str(value).strip()
     return [text] if text else []
 
 
@@ -146,7 +149,10 @@ def _normalize_span_annotations(raw: dict[str, Any], *, max_items: int) -> list[
     for item in annotations:
         if not isinstance(item, dict):
             continue
-        text = str(item.get("text") or "").strip()
+        raw_text = item.get("text")
+        if raw_text is None:
+            continue
+        text = str(raw_text).strip()
         if not text:
             continue
         raw_type = str(item.get("type") or "custom").strip().lower()

@@ -65,7 +65,7 @@ def _supports_atomic_postgresql_upsert(db: Session) -> bool:
 
 
 def normalize_document_index_channel(channel: str) -> str:
-    normalized = str(channel or "").strip().lower()
+    normalized = channel.strip().lower()
     if normalized not in DOCUMENT_INDEX_CHANNELS:
         raise ValueError(f"unsupported document index channel: {channel}")
     return normalized
@@ -92,7 +92,7 @@ def _effective_channel_flags(document: DBDocument) -> dict[str, bool]:
 
 
 def legacy_document_index_channel_status(document: DBDocument, *, channel: str, enabled: bool) -> dict[str, Any]:
-    status_raw = str(document.status or "").strip().lower()
+    status_raw = document.status.strip().lower()
     meta = dict(document.doc_metadata or {})
     active_ready = bool(meta.get("active_pipeline_ready")) or status_raw == "completed"
 
@@ -198,7 +198,7 @@ def _existing_document_index_channel(
                     document_id=document.id,
                     pipeline_hash=normalized_hash,
                 )
-                if str(row.channel or "") == normalized_channel
+                if row.channel == normalized_channel
             ),
             None,
         )
@@ -378,7 +378,7 @@ def upsert_document_index_channel(
     commit: bool = False,
 ) -> DocumentIndexChannel:
     normalized_channel = normalize_document_index_channel(channel)
-    normalized_hash = str(pipeline_hash or "").strip()
+    normalized_hash = pipeline_hash.strip()
     normalized_status = str(status or "pending").strip().lower() or "pending"
     if not normalized_hash:
         raise ValueError("pipeline_hash is required")
@@ -437,7 +437,7 @@ def upsert_document_index_channel(
         )
         .first()
     )
-    previous_status = str(row.status or "").strip().lower() if row is not None else None
+    previous_status = row.status.strip().lower() if row is not None else None
     if row is None:
         row = DocumentIndexChannel(
             tenant_id=tenant_id,
@@ -681,18 +681,18 @@ def summarize_document_index_channels(
         channel
         for channel, payload in statuses.items()
         if bool(payload.get("enabled"))
-        and str(payload.get("status") or "").strip().lower()
+        and payload["status"].strip().lower()
         not in DOCUMENT_INDEX_CHANNEL_TERMINAL_READY | DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
     ]
     error_channels = [
         channel
         for channel, payload in statuses.items()
-        if str(payload.get("status") or "").strip().lower() in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
+        if payload["status"].strip().lower() in DOCUMENT_INDEX_CHANNEL_TERMINAL_ERROR
     ]
     disabled_channels = [
         channel
         for channel, payload in statuses.items()
-        if str(payload.get("status") or "").strip().lower() == "disabled"
+        if payload["status"].strip().lower() == "disabled"
     ]
     ready = not pending_channels and not error_channels
     return DocumentIndexChannelSummary(

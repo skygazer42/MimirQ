@@ -82,7 +82,7 @@ def _effective_config(*, rag_config: ChatRAGConfig, include_runtime_defaults: bo
     hierarchy_family_aggregation = (
         str(settings.HIERARCHY_RECALL_FAMILY_AGGREGATION).strip().lower()
         if rag_config.hierarchy_family_aggregation is None
-        else str(rag_config.hierarchy_family_aggregation or "").strip().lower()
+        else rag_config.hierarchy_family_aggregation.strip().lower()
     )
     hierarchy_tree_dedup = (
         bool(settings.HIERARCHY_RECALL_TREE_DEDUP)
@@ -157,7 +157,7 @@ async def get_retrieval_config_hash(
     fp = build_retrieval_config_fingerprint(config=effective)
     return RetrievalConfigHashResponse(
         schema=_SCHEMA,
-        hash=str(fp.get("hash") or ""),
+        hash=fp["hash"],
         fingerprint=fp,
         effective_config=effective,
     )

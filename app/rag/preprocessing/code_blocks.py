@@ -30,7 +30,7 @@ _LINE_NUMBER_RE = re.compile(r"^(?P<prefix>[ \t]*)(?P<num>\d{1,5})(?P<sep>[:.)]?
 
 def _should_strip_line_numbers(code_lines: list[str]) -> bool:
     # Consider only non-empty lines.
-    non_empty = [ln for ln in code_lines if (ln or "").strip()]
+    non_empty = [ln for ln in code_lines if (ln).strip()]
     if len(non_empty) < 5:
         return False
 
@@ -65,11 +65,11 @@ def _strip_line_numbers_from_block(code_lines: list[str]) -> tuple[list[str], in
     lines_stripped = 0
     changed_any = False
     for ln in code_lines:
-        m = _LINE_NUMBER_RE.match(ln or "")
+        m = _LINE_NUMBER_RE.match(ln)
         if not m:
             out.append(ln)
             continue
-        ws = m.group("ws") or ""
+        ws = m.group("ws")
         out.append(f"{m.group('prefix')}{ws[1:]}{m.group('body')}")
         lines_stripped += 1
         changed_any = True
@@ -86,7 +86,7 @@ def _flush_code_block(current_block: list[str]) -> tuple[list[str], int, int]:
 
 
 def strip_fenced_code_line_numbers(text: str) -> CodeLineNumberStripResult:
-    original = text or ""
+    original = text
     if not original:
         return CodeLineNumberStripResult(text="", blocks_changed=0, lines_stripped=0, changed=False)
 

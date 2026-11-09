@@ -177,9 +177,9 @@ def _add_relation_clue(
             "evidence_source": evidence_source,
             "confidence_bucket": bucket,
             "relation_id": str(rel.id),
-            "relation_document_id": str(rel.document_id or "") or None,
-            "relation_chunk_id": str(rel.chunk_id or "") or None,
-            "relation_event_id": str(rel.event_id or "") or None,
+            "relation_document_id": str(rel.document_id) if rel.document_id is not None else None,
+            "relation_chunk_id": str(rel.chunk_id) if rel.chunk_id is not None else None,
+            "relation_event_id": str(rel.event_id) if rel.event_id is not None else None,
             "step": f"hop-{hop + 1}",
         },
     )

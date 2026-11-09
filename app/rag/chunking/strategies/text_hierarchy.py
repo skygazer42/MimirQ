@@ -24,7 +24,7 @@ from app.rag.chunking.utils.hierarchical import hierarchical_chunk_markdown
 def _group_sentences_by_parent(sentences: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {}
     for sentence in sentences:
-        parent_id = str(sentence.get("parent_id") or "").strip()
+        parent_id = sentence["parent_id"].strip()
         if not parent_id:
             continue
         grouped.setdefault(parent_id, []).append(sentence)
@@ -36,13 +36,13 @@ def _group_sentences_by_parent(sentences: list[dict[str, Any]]) -> dict[str, lis
 def _build_paragraph_document(
     base_meta: dict[str, Any], paragraph: dict[str, Any], chunk_index: int
 ) -> Document | None:
-    paragraph_text = str(paragraph.get("text") or "")
+    paragraph_text = paragraph["text"]
     if not paragraph_text.strip():
         return None
 
     start = int(paragraph.get("start") or 0)
     end = int(paragraph.get("end") or (start + len(paragraph_text)))
-    parent_id = str(paragraph.get("id") or paragraph.get("hierarchy_node_key") or "").strip()
+    parent_id = paragraph["id"].strip()
     if not parent_id:
         return None
 
@@ -76,13 +76,13 @@ def _build_sentence_document(
     parent_start: int,
     chunk_index: int,
 ) -> Document | None:
-    sentence_text = str(sentence.get("text") or "")
+    sentence_text = sentence["text"]
     if not sentence_text.strip():
         return None
 
     start = int(sentence.get("start") or parent_start)
     end = int(sentence.get("end") or (start + len(sentence_text)))
-    sentence_id = str(sentence.get("id") or sentence.get("hierarchy_node_key") or "").strip()
+    sentence_id = sentence["id"].strip()
     if not sentence_id:
         return None
 
@@ -128,7 +128,7 @@ class TextHierarchyChunker(BaseChunker):
         out: list[Document] = []
 
         for doc in documents:
-            text = doc.page_content or ""
+            text = doc.page_content
             base_meta = dict(doc.metadata or {})
             if not text.strip():
                 continue

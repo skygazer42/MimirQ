@@ -184,7 +184,7 @@ def _parse_message_start(line: str) -> tuple[str, str | None] | None:
     Detect chat message boundaries. Implemented without regex to avoid backtracking hotspots.
     Returns (speaker, ts) where ts is a best-effort timestamp string.
     """
-    raw = line or ""
+    raw = line
     if not raw:
         return None
     s = raw
@@ -347,7 +347,7 @@ class ChatHistoryChunker(BaseChunker):
         return out
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 

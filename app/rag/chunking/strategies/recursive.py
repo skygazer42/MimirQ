@@ -65,7 +65,7 @@ class LangChainRecursiveChunker(BaseChunker):
         return Document(page_content=table_text, metadata=metadata)
 
     def _split_document(self, doc: Document) -> list[Document]:
-        text = doc.page_content or ""
+        text = doc.page_content
         if not text.strip():
             return []
 
