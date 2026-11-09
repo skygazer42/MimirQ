@@ -20,6 +20,8 @@ Status: implemented
 
 `regression_run_retention` 的计划和删除共用 `_candidate_run_ids`，同一处完成预算转换、最小一条与 5,000 条上限。计划不再先 COUNT 所有匹配记录，而是返回有限 ID 结果的长度；删除复用同一选择规则。租户、可选 dataset、completed/failed 状态、非空完成时间、cutoff 和原排序保持，单列查询按实际非空 UUID 主键解包。
 
+三个维护作业的后置审计由同模块 `_commit_retention_audit` 持有。它仅提交既有事件，审计失败先 rollback，再以 action、tenant 和异常堆栈记录 warning，保留已完成维护的原摘要。原来三份只在 rollback 失败时 debug 的分支退出；rollback 本身失败直接传播，不伪装 Session 已恢复。
+
 ## Alternatives considered
 
 - 失败后返回零并写日志可以维持成功响应，但零是有效业务结果，API 无法据此区分故障并会把请求报告为完成。
@@ -34,3 +36,5 @@ Status: implemented
 预算增量核对实际 argparse 定义、两个数据库作业和知识资产调用，模块 AST 只允许参数转换失败兜底退出与两份相同准备逻辑迁到已有 helper；数据库、审计、逐文档结果和汇总语句保持。正常整数含零／负数继续使用原最小值规则，不把此次整理当作新增严格类型或范围校验。
 
 回归候选增量核对 `_base_query`、真实主键声明、两个 API／作业调用者。全模块 AST 限定共同候选选择、两处失效预算兜底退出和计划的有界计数，实际删除及提交语句保持。SQL 执行计划、并发变化和数据库扫描成本未做运行验证；至多读取 5,000 个结果 ID 不等于声称数据库只扫描 5,000 行。
+
+后置审计增量逐项对照三个原事件的 action、resource、actor 和 details 实参及其顺序，模块结构对照限定共同提交／回滚／warning 政策与调用迁移。没有新增审计字段、配置、重试或持久化副本，未执行任何维护或审计写入。

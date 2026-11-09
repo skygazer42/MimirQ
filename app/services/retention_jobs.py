@@ -27,7 +27,6 @@ from app.services.audit_log_service import audit_log_event
 from app.services.regression_run_retention import plan_regression_run_purge, purge_regression_run_rows
 
 logger = get_logger(__name__)
-_RETENTION_FALLBACK_LOG_MESSAGE = "Ignoring non-critical retention fallback failure: %s"
 SYSTEM_RETENTION_ACTOR_ID = "system:retention"
 
 _delete_document_lifecycle: Callable[..., Awaitable[None]] | None = None
@@ -66,6 +65,37 @@ def _normalize_retention_inputs(*, retention_days: int, max_delete: int) -> tupl
     retention_days_i = max(1, int(retention_days))
     max_delete_i = max(1, int(max_delete))
     return retention_days_i, max_delete_i
+
+
+def _commit_retention_audit(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    actor_id: str | None,
+    action: str,
+    resource_type: str,
+    resource_id: str | None,
+    details: dict[str, Any],
+) -> None:
+    try:
+        audit_log_event(
+            db,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            action=action,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=details,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Retention operation completed but audit logging failed: action=%s tenant_id=%s",
+            action,
+            tenant_id,
+            exc_info=True,
+        )
 
 
 def _categorize_delete_status(status_code: int | None) -> str:
@@ -199,30 +229,23 @@ def run_audit_log_retention(
         )
 
     # Best-effort: record the retention run itself (small, PII-safe).
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="audit.logs.retention",
-            resource_type="audit_logs",
-            resource_id=None,
-            details={
-                "dry_run": bool(dry_run),
-                "retention_days": retention_days_i,
-                "cutoff": _dt_to_json(cutoff),
-                "max_delete": max_delete_i,
-                "eligible": eligible,
-                "deleted": deleted,
-                "ran_at": _dt_to_json(now0),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_RETENTION_FALLBACK_LOG_MESSAGE, exc)
+    _commit_retention_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="audit.logs.retention",
+        resource_type="audit_logs",
+        resource_id=None,
+        details={
+            "dry_run": bool(dry_run),
+            "retention_days": retention_days_i,
+            "cutoff": _dt_to_json(cutoff),
+            "max_delete": max_delete_i,
+            "eligible": eligible,
+            "deleted": deleted,
+            "ran_at": _dt_to_json(now0),
+        },
+    )
 
     return {
         "tenant_id": str(tenant_id),
@@ -281,31 +304,24 @@ def run_regression_run_retention(
         )
 
     # Best-effort: record the retention run itself (small, PII-safe).
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="evaluations.regression_runs.retention",
-            resource_type="ragas_regression_runs",
-            resource_id=str(dataset_id) if dataset_id is not None else None,
-            details={
-                "dry_run": bool(dry_run),
-                "retention_days": retention_days_i,
-                "cutoff": _dt_to_json(cutoff),
-                "max_delete": max_delete_i,
-                "eligible_runs": eligible,
-                "deleted_runs": deleted_runs,
-                "deleted_items": deleted_items,
-                "ran_at": _dt_to_json(now0),
-            },
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_RETENTION_FALLBACK_LOG_MESSAGE, exc)
+    _commit_retention_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="evaluations.regression_runs.retention",
+        resource_type="ragas_regression_runs",
+        resource_id=str(dataset_id) if dataset_id is not None else None,
+        details={
+            "dry_run": bool(dry_run),
+            "retention_days": retention_days_i,
+            "cutoff": _dt_to_json(cutoff),
+            "max_delete": max_delete_i,
+            "eligible_runs": eligible,
+            "deleted_runs": deleted_runs,
+            "deleted_items": deleted_items,
+            "ran_at": _dt_to_json(now0),
+        },
+    )
 
     return {
         "tenant_id": str(tenant_id),
@@ -384,22 +400,15 @@ async def run_knowledge_asset_retention(
         "ran_at": _dt_to_json(now0),
     }
 
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="knowledge.assets.retention",
-            resource_type="documents",
-            resource_id=str(dataset_id) if dataset_id is not None else None,
-            details=summary,
-        )
-        db.commit()
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_RETENTION_FALLBACK_LOG_MESSAGE, exc)
+    _commit_retention_audit(
+        db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="knowledge.assets.retention",
+        resource_type="documents",
+        resource_id=str(dataset_id) if dataset_id is not None else None,
+        details=summary,
+    )
 
     return summary
 
