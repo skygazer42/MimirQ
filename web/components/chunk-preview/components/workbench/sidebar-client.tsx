@@ -1249,29 +1249,7 @@ export function Sidebar({ variant = 'panel', section = 'all' }: SidebarProps = {
               disabled={!datasetId || !currentFile || ingestionLoading}
               className="h-8 w-full justify-start rounded-md border-info/15 bg-info/[0.04] text-[13px] shadow-none hover:bg-info/[0.08]"
               title={!datasetId ? t('sidebar.ingestionPreview.selectDatasetFirst') : undefined}
-              onClick={async () => {
-                if (!datasetId) {
-                  toast.error(t('sidebar.ingestionPreview.selectDatasetFirst'))
-                  return
-                }
-                if (!currentFile) return
-                setIngestionLoading(true)
-                setIngestionError(null)
-                try {
-                  const result = await pipelineApi.ingestionPreview(currentFile, {
-                    dataset_id: datasetId,
-                    parser_backend: parserBackend || undefined,
-                    chunk_strategy: chunkStrategy || undefined,
-                    diff_max_lines: 300,
-                  })
-                  setIngestionPreview(result)
-                  toast.success(t('sidebar.ingestionPreview.generatedSuccess'))
-                } catch (error: unknown) {
-                  setIngestionError(getErrorMessage(error, t('sidebar.ingestionPreview.requestFailed')))
-                } finally {
-                  setIngestionLoading(false)
-                }
-              }}
+              onClick={handleIngestionPreview}
             >
               {ingestionLoading ? (
                 <Loader2 className="mr-2 size-4 shrink-0 animate-spin motion-reduce:animate-none" />
