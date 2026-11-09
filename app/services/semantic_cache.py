@@ -87,15 +87,6 @@ def _hash_doc_scope(document_ids: list[str]) -> str:
     return hashlib.sha256(joined.encode("utf-8", "ignore")).hexdigest()
 
 
-def _coerce_metadata_filter(metadata_filter: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not metadata_filter or not isinstance(metadata_filter, dict):
-        return None
-    # Keep only small JSON-ish objects to avoid huge signatures.
-    if len(metadata_filter) > 50:
-        return None
-    return metadata_filter
-
-
 def build_semantic_cache_scope_hash(
     *,
     tenant_id: str,
@@ -120,7 +111,7 @@ def build_semantic_cache_scope_hash(
     pipeline_key = current_embedding_space_hash()
 
     signature: dict[str, Any] = {
-        "v": 1,
+        "v": 2,
         "tenant_id": str(tenant_id),
         "account_id": account_id,
         "dataset_id": dataset_id,
@@ -132,7 +123,7 @@ def build_semantic_cache_scope_hash(
         "top_k": int(top_k),
         "score_threshold": float(score_threshold),
         "retrieval_mode": retrieval_mode.strip().lower(),
-        "metadata_filter": _coerce_metadata_filter(metadata_filter),
+        "metadata_filter": metadata_filter,
     }
 
     scope_hash = stable_hash(stable_json_dumps(signature), length=32)
