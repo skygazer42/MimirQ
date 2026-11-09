@@ -9,6 +9,7 @@ from typing import Any, NoReturn
 from uuid import UUID
 
 from fastapi import BackgroundTasks, HTTPException
+from minio.error import S3Error
 from sqlalchemy.orm import Session
 
 from app.core.async_bridge import run_blocking_in_thread, run_coroutine_in_thread
@@ -66,7 +67,9 @@ def resolve_retry_source(
         raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
     try:
         store.stat_object(object_name=ref.object_name)
-    except Exception as exc:
+    except S3Error as exc:
+        if exc.code != "NoSuchKey":
+            raise
         raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
     return StoredProcessingSource(raw_path, store, ref.object_name)
 
