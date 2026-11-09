@@ -1,4 +1,4 @@
-# MimirQ Backend 目录结构
+# Ragvia Backend 目录结构
 
 ## 概览
 
@@ -161,7 +161,7 @@ docs = hybrid_retriever.retrieve(query, doc_ids, tenant_id, top_k=5)
 ```
 
 **子模块：**
-- `vector/` - 向量数据库（Milvus、FAISS、Chroma）
+- `vector/` - 向量数据库（Milvus、Chroma、Qdrant、pgvector）
 - `object/` - 对象存储（MinIO）
 - `search/` - 混合检索（BM25 + 向量）
 

@@ -240,7 +240,7 @@ def test_persist_document_chunks_touches_retrieval_scope_before_commit() -> None
 def test_non_milvus_delete_skips_legacy_dataset_embedding_config(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services import indexer
 
-    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(indexer.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(
         indexer.Indexer,
         "_embedding_runtime_for_document",

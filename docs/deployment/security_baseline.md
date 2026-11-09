@@ -1,6 +1,6 @@
-# Security Baseline（MimirQ / Kubernetes）
+# Security Baseline（Ragvia / Kubernetes）
 
-本页是面向平台/运维团队的 **K8s 安全基线落地指南**，目标是让 MimirQ 的私有化部署：
+本页是面向平台/运维团队的 **K8s 安全基线落地指南**，目标是让 Ragvia 的私有化部署：
 
 - 官方镜像默认启用 **安全上下文**（非 root、drop capabilities、seccomp）
 - 自定义镜像不兼容时可显式关闭 hardening
@@ -30,7 +30,7 @@ security:
 - 全局：`security.podSecurityContext` / `security.containerSecurityContext`
 - 组件级：`api.podSecurityContext` / `api.securityContext`（worker/cronjobs 同理）
 
-> 注意：chart **不会默认开启** `readOnlyRootFilesystem`，因为某些可选本地后端（如 Chroma/FAISS）可能需要写入容器文件系统。若你要开启，请先验证写路径并配合可写 volume（见 1.3）。
+> 注意：chart **不会默认开启** `readOnlyRootFilesystem`，因为某些可选本地后端（如 Chroma）可能需要写入容器文件系统。若你要开启，请先验证写路径并配合可写 volume（见 1.3）。
 
 ### 1.2 ServiceAccount token（建议默认不挂载）
 

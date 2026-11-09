@@ -123,7 +123,7 @@ def test_public_pr_live_core_gate_launcher_contract() -> None:
     assert 'PRIMARY_LOG="artifacts/live-core-primary.log"' in script
     assert 'SECONDARY_LOG="artifacts/live-core-secondary.log"' in script
     assert 'export AUTH_MODE="${AUTH_MODE:-header}"' in script
-    assert 'export VECTOR_BACKEND="${VECTOR_BACKEND:-faiss}"' in script
+    assert 'export VECTOR_BACKEND="${VECTOR_BACKEND:-memory}"' in script
     assert 'export MINIO_ENABLED="${MINIO_ENABLED:-false}"' in script
     assert 'export UPLOAD_DEDUP_ENABLED="${UPLOAD_DEDUP_ENABLED:-true}"' in script
     assert 'export DIFY_EXTERNAL_KNOWLEDGE_ENABLED="false"' in script
@@ -201,9 +201,7 @@ def test_python_audit_chroma_exception_stays_bound_to_the_embedded_local_backend
     assert "host=" not in chroma_backend
     assert "port=" not in chroma_backend
     assert "headers=" not in chroma_backend
-    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in (
-        helm_validation
-    )
+    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=chroma." in (helm_validation)
 
 
 def test_dependency_audit_covers_web_and_handbook_with_shared_policy() -> None:

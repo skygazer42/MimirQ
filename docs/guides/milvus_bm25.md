@@ -16,7 +16,7 @@ MILVUS_BM25_TIMEOUT_SEC=10
 MILVUS_BM25_MAX_CANDIDATES=2048
 ```
 
-Milvus 的连接参数继续使用已有 `MILVUS_HOST`、`MILVUS_PORT`、`MILVUS_USER` 和 `MILVUS_PASSWORD`。Chroma、FAISS 等部署保留向量能力，BM25 通道显示需要 Milvus，不回退到进程内索引。
+Milvus 的连接参数继续使用已有 `MILVUS_HOST`、`MILVUS_PORT`、`MILVUS_USER` 和 `MILVUS_PASSWORD`。Chroma 等其他受支持的部署保留向量能力，BM25 通道显示需要 Milvus，不回退到进程内索引。
 
 ## 已有文档回填
 

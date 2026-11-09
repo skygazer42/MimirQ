@@ -3,7 +3,7 @@ ColBERT-style ANN retrieval (production scaffold).
 
 This module provides an *optional* retrieval channel that:
 - builds a per-scope dense embedding index (persisted to disk, best-effort)
-- retrieves top candidates using cosine similarity (optionally FAISS when available)
+- retrieves top candidates using NumPy cosine similarity
 - is deterministic in unit tests via a hash-based embedder
 
 Important:
@@ -12,9 +12,7 @@ Important:
   without changing defaults.
 """
 
-import contextlib
 import hashlib
-import io
 import json
 import re
 import threading
@@ -92,9 +90,6 @@ class DeterministicDenseEmbedder(DenseEmbedder):
 
 _EMBEDDER_LOCK = threading.Lock()
 _EMBEDDER_CACHE: dict[str, DenseEmbedder] = {}
-_FAISS_LOCK = threading.Lock()
-_FAISS_MODULE: Any | None = None
-_FAISS_IMPORT_ATTEMPTED = False
 
 
 def get_dense_embedder(*, provider: str, deterministic_dim: int = 64) -> DenseEmbedder:
@@ -264,45 +259,12 @@ class ColbertAnnIndexStore:
 
 def topk_cosine_scores(*, query_vec: np.ndarray, doc_vecs: np.ndarray, k: int) -> list[tuple[int, float]]:
     kk = max(0, int(k or 0))
-    if kk <= 0:
-        return []
-    if query_vec.ndim != 1 or doc_vecs.ndim != 2:
-        return []
-    if doc_vecs.shape[0] <= 0:
+    if kk <= 0 or query_vec.ndim != 1 or doc_vecs.ndim != 2 or doc_vecs.shape[0] <= 0:
         return []
     q = query_vec.astype(np.float32, copy=False)
-    # doc_vecs is already L2-normalized; keep q normalized too.
     qn = q / (np.linalg.norm(q) + 1e-12)
-
-    faiss = None
-    global _FAISS_IMPORT_ATTEMPTED, _FAISS_MODULE
-    if not _FAISS_IMPORT_ATTEMPTED:
-        with _FAISS_LOCK:
-            if not _FAISS_IMPORT_ATTEMPTED:
-                try:
-                    with contextlib.redirect_stderr(io.StringIO()):
-                        import faiss as faiss_mod  # type: ignore
-
-                    _FAISS_MODULE = faiss_mod
-                except Exception:
-                    _FAISS_MODULE = None
-                finally:
-                    _FAISS_IMPORT_ATTEMPTED = True
-    faiss = _FAISS_MODULE
-
-    try:
-        if faiss is None:
-            raise RuntimeError("faiss unavailable")
-        # Build a temporary index (in-memory); persisted format stores vectors only.
-        index = faiss.IndexFlatIP(int(doc_vecs.shape[1]))
-        index.add(doc_vecs.astype(np.float32, copy=False))
-        scores, idxs = index.search(qn.reshape(1, -1), kk)
-        pairs = [(int(i), float(s)) for i, s in zip(idxs[0].tolist(), scores[0].tolist(), strict=False) if i >= 0]
-        pairs.sort(key=lambda x: (-x[1], x[0]))
-        return pairs
-    except Exception:
-        sims = doc_vecs @ qn
-        kk = min(kk, int(sims.shape[0]))
-        idx = np.argpartition(-sims, kk - 1)[:kk]
-        idx = idx[np.argsort(-sims[idx], kind="mergesort")]
-        return [(int(i), float(sims[i])) for i in idx.tolist()]
+    sims = doc_vecs @ qn
+    kk = min(kk, int(sims.shape[0]))
+    idx = np.argpartition(-sims, kk - 1)[:kk]
+    idx = idx[np.argsort(-sims[idx], kind="mergesort")]
+    return [(int(i), float(sims[i])) for i in idx.tolist()]

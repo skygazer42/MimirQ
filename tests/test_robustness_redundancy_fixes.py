@@ -271,7 +271,7 @@ def test_indexer_embedding_runtime_for_document_propagates_invalid_dataset_scope
 
     indexer = indexer_module.Indexer.__new__(indexer_module.Indexer)
     indexer._db = SimpleNamespace(query=lambda *_args, **_kwargs: _Query())
-    monkeypatch.setattr(indexer_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(indexer_module.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(
         indexer,
         "_load_dataset_metadata",
@@ -418,7 +418,7 @@ def test_retriever_embedding_runtime_propagates_invalid_dataset_scoped_config(
         def close(self) -> None:
             return None
 
-    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(retriever_module.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(retriever_module, "SessionLocal", lambda: _Session(), raising=True)
 
     with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):

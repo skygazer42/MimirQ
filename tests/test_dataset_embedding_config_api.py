@@ -9,7 +9,7 @@ def test_dataset_embedding_defaults_reject_non_milvus_backend(monkeypatch: pytes
     from app.api.schemas.dataset import DatasetEmbeddingDefaults
     from app.api.v1 import datasets
 
-    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
     metadata: dict[str, object] = {}
 
     with pytest.raises(HTTPException) as exc_info:
@@ -36,7 +36,7 @@ def test_create_dataset_rejects_invalid_embedding_defaults_before_service_call(
         called = True
         raise AssertionError("service should not be called")
 
-    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(datasets.dataset_service, "ensure_member", lambda *_a, **_k: object(), raising=True)
     monkeypatch.setattr(datasets.dataset_service, "_assert_edit_role", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(datasets.dataset_service, "create_dataset", _create_dataset, raising=True)
@@ -59,7 +59,7 @@ def test_create_checks_membership_before_embedding_config(monkeypatch: pytest.Mo
     from app.api.schemas.dataset import DatasetCreate, DatasetEmbeddingDefaults
     from app.api.v1 import datasets
 
-    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
 
     def _deny(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
         raise HTTPException(status_code=403, detail="Not a tenant member")
@@ -108,7 +108,7 @@ def test_clone_dataset_drops_invalid_embedding_defaults_on_non_milvus_backend(
     )
     captured: dict[str, object] = {}
 
-    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
     monkeypatch.setattr(datasets.dataset_service, "ensure_member", lambda *_a, **_k: None, raising=True)
     monkeypatch.setattr(datasets.dataset_service, "get_dataset", lambda *_a, **_k: source_dataset, raising=True)
     monkeypatch.setattr(datasets.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)
@@ -137,7 +137,7 @@ def test_update_rejects_invalid_embedding_before_dataset_commit(monkeypatch: pyt
     from app.api.schemas.dataset import DatasetEmbeddingDefaults, DatasetUpdate
     from app.api.v1 import datasets
 
-    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(datasets.settings, "VECTOR_BACKEND", "memory", raising=False)
     dataset = SimpleNamespace(dataset_metadata={})
     monkeypatch.setattr(datasets.dataset_service, "get_dataset", lambda *_a, **_k: dataset, raising=True)
     monkeypatch.setattr(datasets.dataset_service, "assert_dataset_writable", lambda *_a, **_k: None, raising=True)

@@ -4,7 +4,7 @@ Storage module
 Provides vector storage and object storage functionality.
 
 Main components:
-- vector: Vector databases (Milvus, FAISS, Chroma)
+- vector: Vector databases (Milvus, Chroma, Qdrant, pgvector)
 - object: Object storage (MinIO)
 
 Note: Hybrid retrieval has been moved to app.rag.retriever module.

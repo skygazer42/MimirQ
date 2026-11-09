@@ -30,30 +30,9 @@ if TYPE_CHECKING:
 
 logger = get_logger("storage.vector.factory")
 
-_FAISS_CLS = None
 _CHROMA_CLS = None
 _CHROMA_JSON_PREFIX = "__mimirq_json_v1__:"
 _CHROMA_ESCAPED_STRING_PREFIX = "__mimirq_string_v1__:"
-
-
-def _get_faiss_cls():
-    global _FAISS_CLS
-    if _FAISS_CLS is not None:
-        return _FAISS_CLS
-    try:
-        # `langchain_community.vectorstores.FAISS` lazily imports `faiss` in some code paths,
-        # which can make optional-dependency failures surface later (and break tests that
-        # only probe `_get_faiss_cls`). Import `faiss` eagerly so callers can reliably
-        # detect availability and skip gracefully when the binary is broken (e.g. numpy ABI mismatch).
-        import faiss as faiss
-        from langchain_community.vectorstores import FAISS
-
-        _FAISS_CLS = FAISS
-        return _FAISS_CLS
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(
-            "FAISS vector backend requires optional dependencies. Install `faiss-cpu` and `langchain-community`."
-        ) from exc
 
 
 def _get_chroma_cls():
@@ -216,7 +195,7 @@ def _similarity_hits(
 def _document_write_metadata(
     doc: dict[str, Any], *, document_id: UUID, tenant_id: UUID, chunk_index: int
 ) -> dict[str, Any]:
-    """Build the shared FAISS/Chroma document projection before backend encoding."""
+    """Build the Chroma document projection before backend encoding."""
     meta = dict(doc.get("metadata") or {})
     meta.setdefault("document_id", str(document_id))
     meta.setdefault("tenant_id", str(tenant_id))
@@ -227,21 +206,6 @@ def _document_write_metadata(
         meta["image_id"] = meta.get("img_id")
     meta.setdefault("image_url", meta.get("img_url"))
     return meta
-
-
-def _docstore_ids_matching_filter(docstore: Any, *, document_id: UUID, metadata_filter: dict[str, Any]) -> list[str]:
-    target = str(document_id)
-    ids_to_delete: list[str] = []
-    try:
-        for doc_id, doc in getattr(docstore, "_dict", {}).items():
-            metadata = getattr(doc, "metadata", None) or {}
-            if str(metadata.get("document_id") or "") != target:
-                continue
-            if _match_metadata_filter(metadata, metadata_filter):
-                ids_to_delete.append(str(doc_id))
-    except Exception:
-        return []
-    return ids_to_delete
 
 
 def _chroma_ids_matching_filter(collection: Any, *, document_id: UUID, metadata_filter: dict[str, Any]) -> list[str]:
@@ -258,7 +222,7 @@ def _chroma_ids_matching_filter(collection: Any, *, document_id: UUID, metadata_
 
 
 class BaseVectorStore:
-    """Unified interface for future FAISS/Chroma/Memory extensions."""
+    """Unified interface for vector storage backends."""
 
     def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
         raise NotImplementedError
@@ -494,213 +458,6 @@ class MemoryVectorStore(BaseVectorStore):
         return self.emb
 
 
-class FAISSVectorStore(BaseVectorStore):
-    """
-    FAISS backend for single-node/local development with optional persistence.
-    """
-
-    def __init__(self) -> None:
-        api_key = settings.EMBEDDING_API_KEY or settings.LLM_API_KEY or ""
-        base_url = settings.EMBEDDING_API_BASE or settings.LLM_API_BASE or ""
-        model = settings.EMBEDDING_MODEL or "text-embedding-3-small"
-        provider = EmbeddingProviders.PROVIDER_MAP.get(
-            (settings.EMBEDDING_PROVIDER or "openai_compatible").lower(), "openai_compatible"
-        )
-        self.emb = create_langchain_embeddings_from_config(
-            provider=provider,
-            model=model,
-            api_key=api_key or "",
-            base_url=base_url or "",
-            dimension=None,
-        )
-        self.store_by_tenant: dict[str, Any] = {}
-        self.persist_path = settings.FAISS_STORE_PATH
-        self.allow_dangerous_deserialization = bool(getattr(settings, "FAISS_ALLOW_DANGEROUS_DESERIALIZATION", False))
-        self._warned_dangerous_deserialization = False
-        self._tenant_locks_guard = threading.Lock()
-        self._tenant_locks: dict[str, threading.RLock] = {}
-
-    def _get_tenant_lock(self, tenant_id: UUID | None) -> threading.RLock:
-        key = _tenant_lock_key(tenant_id)
-        with self._tenant_locks_guard:
-            lock = self._tenant_locks.get(key)
-            if lock is None:
-                lock = threading.RLock()
-                self._tenant_locks[key] = lock
-            return lock
-
-    def _get_store(self, tenant_id: UUID | None) -> tuple[str, Any | None]:
-        key = _tenant_lock_key(tenant_id)
-        with self._get_tenant_lock(tenant_id):
-            store = self.store_by_tenant.get(key)
-            # If a persistence path exists and memory isn't loaded, try loading it.
-            if store is None and self.persist_path and os.path.isdir(self.persist_path):
-                if not self.allow_dangerous_deserialization:
-                    if not self._warned_dangerous_deserialization:
-                        logger.warning(
-                            "FAISS persistence found at %s but loading is disabled. "
-                            "Set FAISS_ALLOW_DANGEROUS_DESERIALIZATION=true only if the directory is trusted.",
-                            self.persist_path,
-                        )
-                        self._warned_dangerous_deserialization = True
-                    return key, None
-                try:
-                    faiss_cls = _get_faiss_cls()
-                    store = faiss_cls.load_local(
-                        folder_path=self.persist_path,
-                        embeddings=self.emb,
-                        index_name=key,
-                        allow_dangerous_deserialization=True,
-                    )
-                    self.store_by_tenant[key] = store
-                except Exception:
-                    store = None
-            return key, store
-
-    def add_documents(self, docs: list[dict[str, Any]], document_id: UUID, tenant_id: UUID) -> list[str]:
-        with self._get_tenant_lock(tenant_id):
-            texts = [d.get("content", "") for d in docs]
-            metadatas = []
-            ids = []
-            for idx, doc in enumerate(docs):
-                meta = _document_write_metadata(doc, document_id=document_id, tenant_id=tenant_id, chunk_index=idx)
-                metadatas.append(meta)
-                ids.append(str(meta.get("chunk_id")) if meta.get("chunk_id") else f"{document_id}_{idx}")
-
-            key, store = self._get_store(tenant_id)
-            if store is None:
-                faiss_cls = _get_faiss_cls()
-                store = faiss_cls.from_texts(texts=texts, embedding=self.emb, metadatas=metadatas, ids=ids)
-            else:
-                store.add_texts(texts=texts, metadatas=metadatas, ids=ids)
-
-            self.store_by_tenant[key] = store
-            # Persist (full save each time).
-            if self.persist_path:
-                os.makedirs(self.persist_path, exist_ok=True)
-                store.save_local(self.persist_path, index_name=key)
-            return ids
-
-    def search(
-        self,
-        query: str,
-        top_k: int,
-        score_threshold: float,
-        document_ids: list[UUID] | None,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
-        allowed = {str(did) for did in document_ids} if document_ids else None
-        requested_k: int | None = None
-        out: list[dict[str, Any]] = []
-        while True:
-            with self._get_tenant_lock(tenant_id):
-                _key, store = self._get_store(tenant_id)
-                if store is None:
-                    return []
-                docstore = getattr(getattr(store, "docstore", None), "_dict", None)
-                total_candidates = len(docstore) if isinstance(docstore, Mapping) else None
-                if requested_k is None:
-                    requested_k = _search_candidate_limit(top_k, total_candidates)
-                elif total_candidates is not None:
-                    requested_k = min(requested_k, total_candidates)
-                if requested_k <= 0:
-                    return []
-                results = store.similarity_search_with_score(query, k=requested_k)
-            out = _similarity_hits(
-                results=results,
-                score_threshold=score_threshold,
-                allowed=allowed,
-                metadata_filter=metadata_filter,
-                metadata_loader=lambda doc: doc.metadata or {},
-            )
-            if not _should_expand_candidate_window(
-                accepted_hits=len(out),
-                top_k=top_k,
-                requested_k=requested_k,
-                returned_hits=len(results),
-                total_candidates=total_candidates,
-            ):
-                break
-            next_k = _next_candidate_limit(requested_k, total_candidates)
-            if next_k <= requested_k:
-                break
-            requested_k = next_k
-            _yield_refill_lock_handoff()
-        out.sort(key=lambda x: x["score"], reverse=True)
-        return out[:top_k]
-
-    def delete_by_document_id(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        with self._get_tenant_lock(tenant_id):
-            key, store = self._get_store(tenant_id)
-            if store is None:
-                return
-            target = str(document_id)
-            ids_to_delete = []
-            try:
-                for doc_id, doc in getattr(store.docstore, "_dict", {}).items():
-                    if str((doc.metadata or {}).get("document_id")) == target:
-                        ids_to_delete.append(str(doc_id))
-            except Exception:
-                ids_to_delete = []
-
-            if ids_to_delete and hasattr(store, "delete"):
-                try:
-                    store.delete(ids_to_delete)
-                except Exception as exc:
-                    logger.debug("Ignoring FAISS delete-by-document-id failure: %s", exc)
-
-            # Persist (overwrite save).
-            if self.persist_path:
-                os.makedirs(self.persist_path, exist_ok=True)
-                store.save_local(self.persist_path, index_name=key)
-
-    def delete_by_document_id_and_filter(
-        self,
-        *,
-        document_id: UUID,
-        tenant_id: UUID | None,
-        metadata_filter: dict[str, Any],
-    ) -> None:
-        """
-        Best-effort selective delete for FAISS.
-
-        LangChain's FAISS wrapper supports delete-by-id (docstore keys), but does not provide
-        a stable "where" API. We implement selective delete by scanning the in-memory docstore
-        metadata for matches and deleting those doc IDs.
-        """
-        with self._get_tenant_lock(tenant_id):
-            if not metadata_filter or not isinstance(metadata_filter, dict):
-                return self.delete_by_document_id(document_id, tenant_id=tenant_id)
-
-            key, store = self._get_store(tenant_id)
-            if store is None:
-                return
-
-            ids_to_delete = _docstore_ids_matching_filter(
-                getattr(store, "docstore", None),
-                document_id=document_id,
-                metadata_filter=metadata_filter,
-            )
-            if not ids_to_delete:
-                return
-
-            if not hasattr(store, "delete"):
-                raise NotImplementedError("Selective delete is not supported for FAISS backend")
-            try:
-                store.delete(ids_to_delete)
-            except Exception as exc:
-                raise NotImplementedError("Selective delete is not supported for FAISS backend") from exc
-
-            # Persist (overwrite save) if enabled.
-            if self.persist_path:
-                os.makedirs(self.persist_path, exist_ok=True)
-                store.save_local(self.persist_path, index_name=key)
-
-    def get_embedding_client(self) -> "LangChainEmbeddingsAdapter":
-        return self.emb
-
-
 class ChromaVectorStore(BaseVectorStore):
     """Chroma backend persisted to a local path."""
 
@@ -861,7 +618,7 @@ class ChromaVectorStore(BaseVectorStore):
 
 _VECTOR_STORE_SINGLETONS: dict[str, BaseVectorStore] = {}
 _VECTOR_STORE_SINGLETONS_LOCK = threading.RLock()
-_EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory", "faiss", "chroma", "qdrant", "pgvector"})
+_EMBEDDING_AWARE_VECTOR_BACKENDS = frozenset({"memory", "chroma", "qdrant", "pgvector"})
 
 
 def _normalize_region(region: str | None = None) -> str:
@@ -897,6 +654,8 @@ def _resolve_vector_backend(*, backend: str | None = None, region: str | None = 
     requested = str(backend or settings.VECTOR_BACKEND or "milvus").strip().lower()
     if region_key:
         requested = _load_vector_region_backends().get(region_key, requested)
+    if requested == "faiss":
+        raise ValueError("FAISS vector backend has been retired. Select a supported backend explicitly.")
     return requested, (region_key or None)
 
 
@@ -928,7 +687,7 @@ def reset_vector_store_singletons() -> None:
 def get_vector_store(*, backend: str | None = None, region: str | None = None) -> BaseVectorStore:
     """
     Return the configured vector store backend (singleton).
-    Note: memory/faiss backends keep state in-process; singleton avoids losing data on each call.
+    The memory backend keeps state in-process; its singleton preserves that state.
     """
     backend_name, region_key = _resolve_vector_backend(backend=backend, region=region)
     cache_key = _vector_store_cache_key(backend_name=backend_name, region_key=region_key)
@@ -941,8 +700,6 @@ def get_vector_store(*, backend: str | None = None, region: str | None = None) -
             store: BaseVectorStore = MilvusVectorStore()
         elif backend_name == "memory":
             store = MemoryVectorStore()
-        elif backend_name == "faiss":
-            store = FAISSVectorStore()
         elif backend_name == "chroma":
             store = ChromaVectorStore()
         elif backend_name == "qdrant":

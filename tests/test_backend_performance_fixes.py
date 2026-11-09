@@ -675,7 +675,7 @@ def test_dataset_embedding_runtime_rejects_dataset_scoped_defaults_without_milvu
 ) -> None:
     import app.services.dataset_embedding_config as config_module
 
-    monkeypatch.setattr(config_module.settings, "VECTOR_BACKEND", "faiss", raising=False)
+    monkeypatch.setattr(config_module.settings, "VECTOR_BACKEND", "memory", raising=False)
 
     with pytest.raises(ValueError, match="VECTOR_BACKEND=milvus"):
         config_module.resolve_dataset_embedding_runtime(

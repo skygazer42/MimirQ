@@ -2,7 +2,7 @@
 LangChain-compatible embeddings adapter.
 
 Adapts app.rag.embedding models to LangChain's Embeddings interface
-for use with LangChain vector stores (Milvus, FAISS, Chroma, etc.).
+for use with LangChain vector stores (Milvus, Chroma, etc.).
 """
 
 import hashlib

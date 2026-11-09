@@ -21,7 +21,7 @@ function Assert-AuditSucceeded([string]$Name) {
 if (-not $SkipPython) {
   Write-Host "[audit] Python (pip-audit)"
   python -m pip_audit -r requirements.txt `
-    -r requirements-chroma.txt -r requirements-faiss.txt `
+    -r requirements-chroma.txt `
     --ignore-vuln PYSEC-2026-311 `
     --ignore-vuln PYSEC-2026-3046 `
     --ignore-vuln PYSEC-2026-2447 `

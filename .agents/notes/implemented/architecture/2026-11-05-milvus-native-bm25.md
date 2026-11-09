@@ -43,6 +43,8 @@ Milvus 2.6.11 的内置 BM25 function、中文 analyzer 和 sparse inverted inde
 
 ## Consequences
 
+本篇对非 Milvus 后端的兼容边界现按[退出 FAISS](../simplification/2026-11-06-retire-faiss.md)收窄，Milvus 全文、缓存与回填规则保持。
+
 Milvus 的统计范围和中文 analyzer 与原 rank-bm25/jieba 不同，排序需要按现有检索评测回归。已有数据在回填之前不能假称全文索引完整。独立全文集合增加一份持久正文，但退出各个 API worker 的常驻语料和 BM25 对象。
 
 apply 会刷新所涉文档和数据集的修订时间，沿用现有索引维护的更新时间语义。复用这些字段避免新增版本表，也使修订体现在现有更新时间显示中；正文和语义向量不被重算或删除。

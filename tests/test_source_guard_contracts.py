@@ -658,7 +658,7 @@ def test_helm_runtime_validation_has_fail_fast_guards_for_multi_instance_risks()
     assert "Distributed MimirQ deployments require ENV=production." in template
     assert "Distributed MimirQ deployments require DB_CREATE_ALL_ON_STARTUP=false." in template
     assert "Distributed MimirQ deployments require DB_RUNTIME_MIGRATIONS_ENABLED=false." in template
-    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=faiss or VECTOR_BACKEND=chroma." in template
+    assert "Distributed MimirQ deployments cannot use VECTOR_BACKEND=chroma." in template
     assert (
         "Distributed MimirQ deployments with local document storage require "
         "persistence.uploads.accessModes to include ReadWriteMany." in template

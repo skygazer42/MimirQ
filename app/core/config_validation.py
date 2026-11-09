@@ -767,7 +767,6 @@ def validate_minio(settings: Settings) -> None:
 
 
 def validate_object_storage(settings: Settings) -> None:
-    is_production = is_production_env()
     object_storage_provider = normalize_object_storage_provider_name(settings.OBJECT_STORAGE_PROVIDER)
     settings.OBJECT_STORAGE_PROVIDER = object_storage_provider
     object_storage_profiles = parse_object_storage_region_profiles(settings.OBJECT_STORAGE_REGION_PROFILES)
@@ -797,11 +796,6 @@ def validate_object_storage(settings: Settings) -> None:
         )
     for region, raw_profile in object_storage_profiles.items():
         _validate_object_storage_region_profile(region, raw_profile, base_object_storage, object_storage_provider)
-
-    _raise_if(
-        is_production and settings.FAISS_ALLOW_DANGEROUS_DESERIALIZATION,
-        "FAISS_ALLOW_DANGEROUS_DESERIALIZATION is not allowed in production",
-    )
 
 
 def validate_chunk_llm_and_retrieval(settings: Settings) -> None:

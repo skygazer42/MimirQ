@@ -20,7 +20,6 @@ x-backend-env: &backend_env
   # Retrieval-dev profile: keep startup light and deterministic.
   VECTOR_BACKEND: ${VECTOR_BACKEND_RETRIEVAL_DEV:-chroma}
   CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}
-  FAISS_STORE_PATH: ${FAISS_STORE_PATH_DOCKER:-/data/vector_faiss}
   MINIO_ENABLED: ${MINIO_ENABLED_RETRIEVAL_DEV:-false}
   MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_RETRIEVAL_DEV:-false}
   TASK_QUEUE_ENABLED: ${TASK_QUEUE_ENABLED_RETRIEVAL_DEV:-false}

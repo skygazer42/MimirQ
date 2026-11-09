@@ -1477,7 +1477,7 @@ class Settings(BaseSettings):
     AGENT_LOG_INCLUDE_EXECUTION_PATH: bool = False
     AGENT_LOG_MAX_PREVIEW_CHARS: int = 500
 
-    VECTOR_BACKEND: Literal["milvus", "memory", "faiss", "chroma", "qdrant", "pgvector"] = "milvus"
+    VECTOR_BACKEND: Literal["milvus", "memory", "chroma", "qdrant", "pgvector"] = "milvus"
     # Optional JSON object keyed by region -> backend, e.g. {"cn-shanghai":"qdrant"}.
     VECTOR_REGION_BACKENDS: str = ""
     # Indexing toggles (to reduce duplicate pipelines when desired)
@@ -1606,9 +1606,6 @@ class Settings(BaseSettings):
     TABLE_SEM_FILTER_MAX_COLS: int = 30
     TABLE_SEM_FILTER_MAX_CELL_CHARS: int = 200
     TABLE_SEM_FILTER_BATCH_SIZE: int = 25
-    FAISS_STORE_PATH: str = "./vector_faiss"
-    # FAISS persistence uses pickle; enable only when the index directory is fully trusted.
-    FAISS_ALLOW_DANGEROUS_DESERIALIZATION: bool = False
     CHROMA_PERSIST_PATH: str = "./vector_chroma"
     ENABLE_METRICS_LOG: bool = False
     METRICS_LOG_PATH: str = "./logs/rag_metrics.jsonl"

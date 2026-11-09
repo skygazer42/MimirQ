@@ -77,16 +77,6 @@ def _fail_import(
     monkeypatch.setattr(builtins, "__import__", _import)
 
 
-def _install_faiss_wrapper(monkeypatch: pytest.MonkeyPatch, faiss_cls: type) -> None:
-    package = ModuleType("langchain_community")
-    package.__dict__["__path__"] = []
-    vectorstores = ModuleType("langchain_community.vectorstores")
-    vectorstores.__dict__["FAISS"] = faiss_cls
-    package.__dict__["vectorstores"] = vectorstores
-    monkeypatch.setitem(sys.modules, "langchain_community", package)
-    monkeypatch.setitem(sys.modules, "langchain_community.vectorstores", vectorstores)
-
-
 def _install_chroma_wrapper(monkeypatch: pytest.MonkeyPatch, chroma_cls: type) -> None:
     module = ModuleType("langchain_chroma")
     module.__dict__["Chroma"] = chroma_cls
@@ -174,37 +164,6 @@ def test_llama_strategy_treats_missing_or_broken_import_as_unavailable(
     _fail_import(monkeypatch, "llama_index.core", error_type("optional dependency failed"))
 
     assert strategy_matrix._is_expected_unavailable("llama_index", RuntimeError("boom")) is True
-
-
-def test_faiss_probe_uses_import_without_reading_lazy_attributes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from app.storage.vector import factory as vector_factory
-
-    class FakeFAISS:
-        pass
-
-    monkeypatch.setattr(vector_factory, "_FAISS_CLS", None)
-    monkeypatch.setitem(sys.modules, "faiss", _hostile_lazy_module("faiss"))
-    _install_faiss_wrapper(monkeypatch, FakeFAISS)
-
-    assert vector_factory._get_faiss_cls() is FakeFAISS
-
-
-@pytest.mark.parametrize("error_type", [ModuleNotFoundError, RuntimeError])
-def test_faiss_probe_wraps_missing_or_broken_dependency(
-    monkeypatch: pytest.MonkeyPatch,
-    error_type: type[Exception],
-) -> None:
-    from app.storage.vector import factory as vector_factory
-
-    monkeypatch.setattr(vector_factory, "_FAISS_CLS", None)
-    _fail_import(monkeypatch, "faiss", error_type("optional dependency failed"))
-
-    with pytest.raises(RuntimeError, match="FAISS vector backend") as exc_info:
-        vector_factory._get_faiss_cls()
-
-    assert isinstance(exc_info.value.__cause__, error_type)
 
 
 def test_chroma_probe_uses_pypika_import_without_reading_lazy_attributes(

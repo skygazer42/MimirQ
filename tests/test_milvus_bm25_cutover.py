@@ -56,7 +56,7 @@ def test_shared_corpus_reads_and_writes_native_storage_without_local_bm25(monkey
     assert corpus.remove(tenant_id=tenant, metadata_filter={"document_id": str(document)}) == 4
 
 
-@pytest.mark.parametrize("backend", ["chroma", "faiss", "memory"])
+@pytest.mark.parametrize("backend", ["chroma", "memory"])
 def test_non_milvus_backend_disables_bm25_without_contacting_milvus(backend, monkeypatch):
     from app.core.config import settings
     from app.rag.retrieval.corpus_index import CorpusIndex, CorpusScope

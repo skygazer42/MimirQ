@@ -35,6 +35,8 @@ Docker CI 同时保留默认基础镜像与独立的 `mimirq-backend-chroma-ci` 
 
 ## Consequences
 
+FAISS 的安装配置、运行时后端和可选加速由[退出 FAISS](../simplification/2026-11-06-retire-faiss.md)接管并删除；本篇其余安装隔离决定及历史验证证据保留。
+
 BM25 的依赖与索引所有权现由[Milvus 原生 BM25](../architecture/2026-11-05-milvus-native-bm25.md)接管；本篇关于可选向量后端和安装隔离的决定保持。
 
 基础 API 安装不再承担本地 Torch 推理和未选择向量后端的安装成本；显式使用可选功能的环境需要选择对应配置。完整后端回归仍显式安装全部可选配置，以保持既有验证范围，其资源成本保留在该 CI 环境。本次未构建镜像、运行完整 Python 测试集或重装现有环境。

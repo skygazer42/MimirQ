@@ -506,7 +506,7 @@ compileall-docker:
 # - ecdsa: JWT signing uses the cryptography backend; verification is unaffected.
 audit-py:
 	PIP_DEFAULT_TIMEOUT=60 $(PY) -m pip_audit -r requirements.txt \
-		-r requirements-chroma.txt -r requirements-faiss.txt \
+		-r requirements-chroma.txt \
 		--timeout 60 \
 		--index-url https://pypi.org/simple \
 		--ignore-vuln PYSEC-2026-311 \

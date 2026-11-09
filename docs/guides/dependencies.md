@@ -1,6 +1,6 @@
 # Ragvia 依赖与安装配置
 
-API 使用 Milvus 客户端和模型服务接口。本地 Torch、sentence-transformers、HanLP、GLiNER、CLIP、SPLADE 与 HF ColBERT 推理已退出；Chroma 和 FAISS 仍作为可选向量后端按需安装。
+API 使用 Milvus 客户端和模型服务接口。本地 Torch、sentence-transformers、HanLP、GLiNER、CLIP、SPLADE、HF ColBERT 推理以及 FAISS 后端已退出；Chroma 继续按需安装。
 
 基础环境仍包含现有文档处理、ONNX OCR、评测和监控依赖。模型权重和 GPU 运行环境由独立模型服务管理，服务可以部署在本机或内网。普通解析、jieba、图片上传、预览、OCR 与模型看图对话继续保留；知识库 BM25 由 Milvus 原生全文索引提供。
 
@@ -11,7 +11,6 @@ API 使用 Milvus 客户端和模型服务接口。本地 Torch、sentence-trans
 | `requirements.txt`        | 默认后端依赖、Milvus 客户端、常规解析 | API 与远程 Embedding/Rerank                         |
 | `requirements-dev.txt`    | 基础环境和 pytest、Ruff、pip-audit 等工具   | 日常开发、基础验证                                  |
 | `requirements-chroma.txt` | 基础环境和 Chroma、LangChain Chroma 适配器  | 显式选择 Chroma 的本地知识库                        |
-| `requirements-faiss.txt`  | 基础环境和 FAISS                            | FAISS 后端或 ColBERT ANN 加速；无官方 Windows wheel |
 | `requirements-ci.txt`     | 开发工具和上述所有可选依赖                  | 现有完整后端回归；不用于默认 API 镜像               |
 
 所有可选配置都引用基础文件，可以独立安装。依赖版本沿用项目原有固定版本。
@@ -59,19 +58,19 @@ Ollama 原生向量服务使用 `provider=ollama`，当前客户端需要完整�
 
 即使服务使用相同模型名称和维度，provider 与向量空间标识仍会变化；请单独验证模型输出、归一化方式和索引迁移/重建，不直接把旧 local 索引视为服务模型索引。模型 API 的连接测试只验证服务可用性。
 
-## Chroma 与 FAISS 按需安装
+## Chroma 按需安装
 
 ```bash
 # VECTOR_BACKEND=chroma
 python -m pip install -r requirements-chroma.txt
 
-# VECTOR_BACKEND=faiss，仅适用于有对应 FAISS wheel 的平台
-python -m pip install -r requirements-faiss.txt
 ```
 
-项目生产默认仍为 Milvus。切换后端不会迁移已有向量索引；已有 Chroma/FAISS 数据应继续使用原后端，直到单独完成迁移。
+项目生产默认仍为 Milvus。切换后端不会迁移已有向量索引；已有 Chroma 数据需显式迁移后才能切换后端。
 
-`rank-bm25` 已移除：知识库 BM25 使用 Milvus 内置 function 和全文索引，聊天记忆在 PostgreSQL 的最近有界会话消息上进行关键词排序。API 不再构建本地 BM25 或缓存整份语料。Chroma/FAISS 保留向量能力；原生 BM25 需要 Milvus，不能通过安装 rank-bm25 恢复本地实现。jieba 继续服务轻量关键词、查询处理和聊天记忆。
+`requirements-faiss.txt`、FAISS 向量存储和 ColBERT 的 FAISS 加速已删除。旧 `VECTOR_BACKEND=faiss` 或地域后端映射会明确失败，需要显式选择受支持的后端，并单独导出/重建旧索引。现有 FAISS 文件和环境包不会自动删除或卸载。ColBERT 确定性 scaffold 的余弦排序使用已有 NumPy，不再按安装环境选择加速实现。
+
+`rank-bm25` 已移除：知识库 BM25 使用 Milvus 内置 function 和全文索引，聊天记忆在 PostgreSQL 的最近有界会话消息上进行关键词排序。API 不再构建本地 BM25 或缓存整份语料。Chroma 保留向量能力；原生 BM25 需要 Milvus，不能通过安装 rank-bm25 恢复本地实现。jieba 继续服务轻量关键词、查询处理和聊天记忆。
 
 已有文档需要先预览并显式执行[Milvus BM25 回填](./milvus_bm25.md)，不重新计算 Embedding 或自动修改原有语义向量集合。
 
@@ -85,13 +84,6 @@ docker build -f docker/Dockerfile --build-arg REQUIREMENTS_FILE=requirements-chr
 ```
 
 Compose 的 `BACKEND_REQUIREMENTS_FILE` 映射到该构建参数。主 Compose 默认使用基础配置；已有 lite 和 retrieval-dev 环境默认使用 `requirements-chroma.txt`，与其既有 Chroma 后端保持一致。
-
-如将 lite 环境显式改为 FAISS，在 `.env` 中同时配置：
-
-```dotenv
-BACKEND_REQUIREMENTS_FILE=requirements-faiss.txt
-VECTOR_BACKEND_LITE=faiss
-```
 
 配置变化后需要重新构建 API 和 worker 镜像。组合多个可选能力时，可以安装多份 requirements；自定义镜像应提供引用所需配置的 requirements 文件，并通过构建参数显式选择。
 

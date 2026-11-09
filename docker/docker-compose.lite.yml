@@ -20,7 +20,6 @@ x-backend-env: &backend_env
   DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@mimirq-postgres:5432/${POSTGRES_DB:-mimirq}
   # Lite defaults: local vector store and no object storage (lower resource usage).
   VECTOR_BACKEND: ${VECTOR_BACKEND_LITE:-chroma}
-  FAISS_STORE_PATH: ${FAISS_STORE_PATH_DOCKER:-/data/vector_faiss}
   CHROMA_PERSIST_PATH: ${CHROMA_PERSIST_PATH_DOCKER:-/app/vector_chroma}
   MINIO_ENABLED: ${MINIO_ENABLED_LITE_DOCKER:-false}
   MINIO_DOCUMENTS_ENABLED: ${MINIO_DOCUMENTS_ENABLED_LITE_DOCKER:-false}
@@ -32,7 +31,7 @@ x-backend-env: &backend_env
   TASK_QUEUE_NAME: ${TASK_QUEUE_NAME_DOCKER:-mimirq}
   TASK_WORKER_MAX_JOBS: ${TASK_WORKER_MAX_JOBS_DOCKER:-4}
   # Lite keeps the same Redis-backed idempotency/admission defaults, but remains a
-  # single-host profile because local Chroma/FAISS backends are not a multi-node baseline.
+  # single-host profile because local Chroma backends are not a multi-node baseline.
   UPLOAD_DEDUP_ENABLED: ${UPLOAD_DEDUP_ENABLED_DOCKER:-true}
   RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_ENABLED_DOCKER:-true}
   RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY: ${RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY_DOCKER:-3}
@@ -74,7 +73,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # FastAPI 后端（lite：Chroma/FAISS，无 Milvus/MinIO）
+  # FastAPI 后端（lite：Chroma，无 Milvus/MinIO）
   mimirq-api:
     build: *backend_build
     restart: unless-stopped

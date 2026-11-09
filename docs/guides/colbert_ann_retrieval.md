@@ -27,7 +27,7 @@
 
 1. **语料来源**：复用 BM25 的 scope cache（tenant/dataset/document scope 下的 chunks）。
 2. **索引构建**：对 chunk 文本做 batch encode 得到 dense vectors，落盘保存（可选）。
-3. **ANN 查询**：对 query encode 得到向量，与 doc vectors 做 cosine similarity Top-K（可选 FAISS）。
+3. **余弦查询**：对 query encode 得到向量，使用 NumPy 与 doc vectors 计算 cosine similarity Top-K。
 4. **集成策略**：在 `HybridRetriever` 的 vector 通道里，当 vector backend 返回空结果时，使用 ColBERT ANN 作为 fallback（opt-in）。
 
 > 注意：因为语料复用 BM25 cache，如果 scope 没有 BM25 文档缓存（未 upsert / 未 warm），该通道也会是空的。
