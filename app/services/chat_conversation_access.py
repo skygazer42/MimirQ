@@ -14,19 +14,11 @@ def _normalized_account_id(value: str | UUID | None) -> str | None:
     return str(value).strip() if value is not None else None
 
 
-def _conversation_owner_account_id(conv: Conversation) -> str | None:
-    return _normalized_account_id(conv.owner_account_id)
-
-
-def _conversation_legacy_user_id(conv: Conversation) -> str | None:
-    return _normalized_account_id(conv.user_id)
-
-
 def resolve_conversation_owner_account_id(conv: Conversation) -> str | None:
-    owner_account_id = _conversation_owner_account_id(conv)
+    owner_account_id = _normalized_account_id(conv.owner_account_id)
     if owner_account_id:
         return owner_account_id
-    return _conversation_legacy_user_id(conv)
+    return _normalized_account_id(conv.user_id)
 
 
 def _ensure_conversation_owner(account_id: str, conv: Conversation) -> None:
