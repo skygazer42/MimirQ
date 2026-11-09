@@ -36,9 +36,11 @@ def _dt_to_json(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
-def _normalize_lifecycle_state(value: str | None) -> str:
-    out = str(value or "either").strip().lower()
-    return out if out in {"archived", "disabled", "either"} else "either"
+def _normalize_lifecycle_state(value: str) -> str:
+    state = value.strip().lower()
+    if state not in {"archived", "disabled", "either"}:
+        raise ValueError("lifecycle_state must be archived, disabled, or either")
+    return state
 
 
 def _resolve_delete_document_lifecycle() -> Callable[..., Awaitable[None]]:

@@ -151,14 +151,8 @@ def _normalize_stale_report_limits(
     stale_after_days: int,
     max_documents: int,
 ) -> tuple[int, int]:
-    try:
-        days_i = max(1, int(stale_after_days or 0))
-    except Exception:
-        days_i = 30
-    try:
-        max_docs_i = max(1, int(max_documents or 0))
-    except Exception:
-        max_docs_i = 5000
+    days_i = max(1, int(stale_after_days))
+    max_docs_i = max(1, int(max_documents))
     return days_i, min(max_docs_i, 50_000)
 
 
