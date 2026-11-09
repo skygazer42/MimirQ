@@ -47,8 +47,8 @@ if __package__ in {None, ""}:
 
 def _parse_uuid(value: str) -> UUID:
     try:
-        return UUID(str(value))
-    except Exception as exc:  # noqa: BLE001
+        return UUID(value)
+    except ValueError as exc:
         raise argparse.ArgumentTypeError("tenant-id must be a valid UUID") from exc
 
 
@@ -137,22 +137,12 @@ def _job_selected(args: argparse.Namespace) -> bool:
 
 def _tenant_ids(args: argparse.Namespace, deps: SimpleNamespace) -> list[UUID]:
     if args.all_tenants:
-        tenant_ids: list[UUID] = []
         db = deps.SessionLocal()
         try:
             rows = db.query(deps.Tenant.id).all()
-            for row in rows:
-                candidate = getattr(row, "id", None)
-                if candidate is None:
-                    try:
-                        candidate = row[0]
-                    except (IndexError, KeyError, TypeError):
-                        continue
-                if isinstance(candidate, UUID):
-                    tenant_ids.append(candidate)
+            return [tenant_id for (tenant_id,) in rows]
         finally:
             db.close()
-        return tenant_ids
     if args.tenant_id is not None:
         return [args.tenant_id]
     return [UUID(str(deps.settings.DEFAULT_TENANT_ID))]
@@ -179,8 +169,8 @@ def _run_semantic_cache_job(
     return deps.run_semantic_cache_retention(
         tenant_id=tenant_id,
         dry_run=dry_run,
-        max_delete=int(args.max_delete or 0),
-        max_scan=int(args.max_scan or 0),
+        max_delete=args.max_delete,
+        max_scan=args.max_scan,
     )
 
 
@@ -199,8 +189,8 @@ def _run_dataset_jobs(
     rows = query.order_by(deps.Dataset.created_at.asc()).all()
     results: list[dict[str, Any]] = []
     for dataset_id, metadata in rows:
-        policy = deps.parse_retention_policy_from_metadata(metadata if isinstance(metadata, dict) else {})
-        if policy is None or not getattr(policy, "enabled", False):
+        policy = deps.parse_retention_policy_from_metadata(metadata)
+        if policy is None or not policy.enabled:
             continue
         result = asyncio.run(
             deps.run_dataset_retention_sweep(
@@ -209,8 +199,8 @@ def _run_dataset_jobs(
                 dataset_id=dataset_id,
                 policy=policy,
                 dry_run=dry_run,
-                max_documents=int(args.max_documents or 0),
-                max_versions_pruned=int(args.max_versions_pruned or 0),
+                max_documents=args.max_documents,
+                max_versions_pruned=args.max_versions_pruned,
                 actor_id="system:retention",
                 now=ran_at,
             )
@@ -231,8 +221,8 @@ def _run_db_jobs(
     results: list[dict[str, Any]] = []
     common = {
         "tenant_id": tenant_id,
-        "retention_days": int(args.retention_days or 0),
-        "max_delete": int(args.max_delete or 0),
+        "retention_days": args.retention_days,
+        "max_delete": args.max_delete,
         "dry_run": dry_run,
         "actor_id": "system:retention",
         "now": ran_at,
@@ -248,7 +238,7 @@ def _run_db_jobs(
                     db,
                     **common,
                     dataset_id=args.dataset_id,
-                    lifecycle_state=str(args.lifecycle_state or "either"),
+                    lifecycle_state=args.lifecycle_state,
                 )
             )
         )

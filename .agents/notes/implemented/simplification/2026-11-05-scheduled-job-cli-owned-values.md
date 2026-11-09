@@ -16,6 +16,8 @@ LTR 仅退出入口 int 转换、manifest 的 int 读取或零值回退之后的
 
 DB maintenance 的可注入延迟依赖槽、retention 的 SimpleNamespace 依赖包、nightly 的 _Runtime／_CliError 均承担现有边界或资源职责，保持其形状和失败政策。事务、session close、asyncio.run、finally 中的设置恢复和动态 SDK 访问不改；不新增 wrapper、Context、Manager 或微模块。
 
+保留任务与 DB maintenance 的 CLI 直接消费 argparse 已解析的整数、布尔值、表名字符串列表和生命周期 choices；两份 UUID 回调仅转换 ValueError。租户单列主键查询直接解包；保留策略解析器已经拥有原始 metadata 校验，调用端只判断其真实可空返回，再读取 Pydantic 的 enabled 字段。PostgreSQL 结果的 ok 按其实际返回契约读取，UTC 与 Callable 使用 Python 3.11 的标准入口。配置 UUID 的真实转换、表名空白规则、SQL 标识符校验和 lazy dependency 装配保持。
+
 ## Alternatives considered
 
 - dataclass 会改变解析 case 的字典／JSON 协议，因此只用 TypedDict。
@@ -27,3 +29,5 @@ DB maintenance 的可注入延迟依赖槽、retention 的 SimpleNamespace 依�
 95 个原函数的参数种类、名字、默认、装饰器和同步／异步种类保持。四处签名注解精确化单独列明；没有删除函数或新增业务执行层。逐文件完整源码、完整函数和模块投影、原始 argparse／SQL／资源／异常 AST、注解名字以及真实调用点静态签名绑定用于核对。未新增、扩展或执行 Python 测试，也未执行 CLI、SDK、应用、DB、模型、数据集、callback 或业务正则。
 
 活跃笔记中的[周期审计 Row 决定](../bug-fix/2026-11-05-periodic-audit-single-column-rows.md)与本组[单列 Row 修复](../bug-fix/2026-11-05-scheduled-job-single-column-rows.md)是独立缺陷决定；本篇从修复后的快照核对等价风格整理，不把旧 Row 修复混入等价投影。
+
+两个维护 CLI 的续作核对真实 argparse 声明、租户 UUID 主键、策略解析器／Pydantic 字段、PostgreSQL 三种成功返回和唯一调用链。完整模块 AST 对照仅允许上述取值、原生参数与标准导入，六个依赖槽及其所有 loader/getter、原错误处理、Session 关闭、业务顺序、选项和 JSON 保持。未新增、修改或运行 Python 测试，未执行模块导入、CLI／help、SQL、Session 或维护任务。
