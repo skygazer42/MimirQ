@@ -2033,3 +2033,28 @@ Ruff 检查通过，五文件均符合格式。各批全模块 AST 对照分别�
 141 篇 Note 的目录／链接、格式和归档门禁通过；新增决定记录登记后，覆盖 CSV 与全部 5,348 个已跟踪路径一致，无重复、遗漏或多余项，必填字段及状态合法。其他会话的大量工作树修改与未跟踪文件保留原位，没有纳入本批提交。
 
 按用户要求未新增、修改或运行 Python 测试。未执行服务入口、CLI、真实数据库查询／删除／flush／事务、维护任务、报告、审计写入、SDK 请求或时区运行验证；未启动应用或部署。以前的全仓检查、前端结果与运行环境限制保留各自历史归属。
+
+## 2026-11-09：周期审计状态与原生值续作
+
+| 提交 | 实际改动 |
+|---|---|
+| `b4ed2f55c` | 两处报告存在性查询不再把数据库错误变为 False；索引／证据报告的部分失败使 ok=False；两报告共用有界预算，私有 listing 消费已归一化值。|
+| `fadaf2c71` | 四份周期报告写入事务收敛到已有 helper；失败 rollback 后 warning，rollback 失败传播；陈旧报告和底层审计排队失败补充日志。|
+| `bd6c495e9` | 报告消费实际 builder／DTO 字段和原生计数；陈旧报告使用自有投影；两个 CLI 直接使用 argparse 原生值，UUID 仅映射 ValueError，真实主键 Row 不再静默过滤。|
+
+当前范围为三个服务文件和两份 CLI，最终运行：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/services/audit_log_service.py app/services/periodic_audit_jobs.py app/services/stale_report_jobs.py scripts/run_periodic_audit_jobs.py scripts/run_stale_report_jobs.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/services/audit_log_service.py app/services/periodic_audit_jobs.py app/services/stale_report_jobs.py scripts/run_periodic_audit_jobs.py scripts/run_stale_report_jobs.py
+```
+
+Ruff 检查通过，五文件均符合格式；各批源码与精确暂存 blob 通过 Python 3.11 AST 和编译。最终五份源码核对到当前 HEAD。全模块 AST 对照分别限定存在性失败、部分失败标志和预算 owner；四份写入事务仅 action／resource_type 不同的提取、原事件实参和返回标志；自有字段／类型读取及两份 CLI 的已声明原生参数。原 SQL 谓词、顺序、样本上限、时区、来源时间戳优先级、JSON 字段、argparse 选项／默认／互斥与资源关闭保持；明确列出的失败政策有意改变。
+
+类型证据来自索引报告实际成功字典、证据审计 Pydantic DTO 和空结果字典、陈旧报告十字段生产者、真实 UUID 主键声明以及 argparse 的 type／store_true。实际消费的七个索引字段在生产者 HEAD 与当时工作树的表达式一致，其他会话对 vector_backend 的修改保留各自归属。未把生产者其他变化纳入本批验证。原始 metadata 和时间解析继续使用原边界；没有按 None 数量批量删除合法可选值。
+
+报告写入仍采用原有 best-effort 政策，保留周期报告 audit_write_error 与陈旧报告 error 的不同字段。audit_log_event 仍不提交且 fail-open，排队失败现在记录 action、tenant 和堆栈，不声称审计必然落盘。logger 复用既有薄日志入口，其包初始化和实际 get_logger 源码完成静态核对；未执行模块导入或日志调用。
+
+141 篇 Note 目录／链接、格式与归档门禁通过；覆盖清单维持 5,348 个已跟踪路径，路径集合、无重复和必填字段／状态合法性再次核对。五份代码和既有 Note 为三份源码提交；记录另行提交，其他工作树与未跟踪文件保留原位。
+
+按用户要求未新增、修改或运行 Python 测试。未执行 CLI／help、报告、业务函数、Session、真实 SQL／事务、审计写入、SDK、服务器或部署；静态结果不证明运行时回归或全仓运营验收。之前的全仓、前端和其他类别结果保持各自历史归属。
