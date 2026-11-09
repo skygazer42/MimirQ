@@ -1,0 +1,21 @@
+.dialog {
+  font-family: var(--font-sans);
+  font-synthesis: none;
+  letter-spacing: normal;
+  line-break: strict;
+  -webkit-font-smoothing: antialiased;
+}
+
+.dialog :global([cmdk-item][aria-selected="true"]) {
+  background-color: hsl(var(--foreground) / 0.05);
+}
+
+.dialog :global([cmdk-item][aria-selected="true"])::before {
+  display: none;
+}
+
+.dialog :global([cmdk-separator]) {
+  height: 8px;
+  margin: 0;
+  background: transparent;
+}

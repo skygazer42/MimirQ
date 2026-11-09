@@ -1,0 +1,153 @@
+import fs from 'node:fs'
+import { test, expect } from '@playwright/test'
+import { fixtureMembers, memberEvidence, memberFixture, memberShot, openMembers, pickRole, reloadMembers } from './members-table.helpers'
+
+test('A uses one table, actual login identity and meaningful filters', async ({ page }) => {
+  const state = await memberFixture(page); await openMembers(page)
+  const table = page.getByRole('table', { name: '成员权限', exact: true })
+  await expect(table.getByRole('row')).toHaveCount(13)
+  await expect(table.locator('[data-current]')).toHaveCount(1)
+  await expect(table.locator('[data-current]')).toContainText('林澈')
+  await memberShot(page, 'desktop-a')
+  await page.getByRole('combobox', { name: '筛选成员范围', exact: true }).click(); await page.getByRole('option', { name: '当前账号', exact: true }).click()
+  await expect(table.getByRole('row')).toHaveCount(2)
+  await page.getByRole('button', { name: '清除筛选', exact: true }).click()
+  await page.getByRole('searchbox', { name: '搜索成员', exact: true }).fill('JI.HE')
+  await expect(table.getByRole('row')).toHaveCount(2); await expect(table).toContainText('季禾')
+  await page.getByRole('searchbox', { name: '搜索成员', exact: true }).fill('missing-name')
+  await expect(page.getByRole('heading', { name: '没有匹配的成员', exact: true })).toBeVisible()
+  expect(state.writes).toEqual([]); expect(state.blocked).toEqual([]); expect(state.errors).toEqual([])
+})
+
+test('role saves immediately, locks duplicates, keeps failure intent and reads back after reload', async ({ page }) => {
+  const state = await memberFixture(page); await openMembers(page)
+  state.failRole = '不能降级最后一个管理员'
+  await pickRole(page, '季禾', '编辑者')
+  await expect(page.locator('[data-members-workspace]').getByRole('alert')).toContainText('季禾改为编辑者失败')
+  await expect(page.getByRole('combobox', { name: '角色 季禾', exact: true })).toHaveText('查看者')
+  state.failRole = ''; let release = () => {}; state.gate = new Promise<void>(resolve => { release = resolve })
+  try {
+    await page.getByRole('button', { name: '重试修改', exact: true }).click()
+    await expect(page.getByRole('combobox', { name: '角色 季禾', exact: true })).toBeDisabled()
+    await expect(page.getByRole('searchbox', { name: '搜索成员', exact: true })).toBeDisabled()
+    expect(state.writes).toHaveLength(2)
+  } finally { release(); state.gate = null }
+  await expect(page.getByRole('combobox', { name: '角色 季禾', exact: true })).toHaveText('编辑者')
+  await expect(page.locator('[data-members-workspace]').getByRole('alert')).toHaveCount(0)
+  await reloadMembers(page); await expect(page.getByRole('combobox', { name: '角色 季禾', exact: true })).toHaveText('编辑者')
+  expect(state.writes.every(write => write.path.endsWith('/member-viewer-a'))).toBe(true)
+  expect(state.errors).toEqual([]); expect(state.blocked).toEqual([])
+})
+
+test('write success remains distinct from failed readback', async ({ page }) => {
+  const state = await memberFixture(page); await openMembers(page); state.failReadAfterWrite = true
+  await pickRole(page, '季禾', '编辑者')
+  await expect(page.locator('[data-members-workspace]').getByRole('alert')).toContainText('成员列表更新失败')
+  await expect(page.getByRole('combobox', { name: '角色 季禾', exact: true })).toHaveText('编辑者')
+  await expect(page.getByRole('button', { name: '重试修改', exact: true })).toHaveCount(0)
+  state.failList = false; await page.getByRole('button', { name: '重新读取', exact: true }).click()
+  await expect(page.locator('[data-members-workspace]').getByRole('alert')).toHaveCount(0); expect(state.writes).toHaveLength(1)
+})
+
+test('removal confirms consequences and retains the target on a server conflict', async ({ page }) => {
+  const state = await memberFixture(page); await openMembers(page)
+  await page.getByRole('button', { name: '成员操作 林澈', exact: true }).click()
+  await expect(page.getByRole('menu')).toContainText('不能移除当前账号')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button', { name: '成员操作 季禾', exact: true }).click(); await page.getByRole('menuitem', { name: '移除成员', exact: true }).click()
+  const dialog = page.getByRole('alertdialog', { name: '移除成员', exact: true })
+  await expect(dialog).toContainText('季禾'); await expect(dialog).toContainText('撤销组成员关系及显式的数据集、文档授权')
+  state.failRemove = '不能移除最后一个管理员'
+  await dialog.getByRole('button', { name: '移除成员', exact: true }).click(); await expect(dialog.getByRole('alert')).toContainText(state.failRemove)
+  state.failRemove = ''; await dialog.getByRole('button', { name: '移除成员', exact: true }).click()
+  await expect(dialog).toHaveCount(0); await expect(page.getByRole('table')).not.toContainText('季禾')
+  await expect(page.getByRole('searchbox', { name: '搜索成员', exact: true })).toBeFocused()
+  await reloadMembers(page); await expect(page.getByRole('table')).not.toContainText('季禾')
+  expect(state.writes.every(write => write.method === 'DELETE' && write.path.endsWith('/member-viewer-a'))).toBe(true)
+  expect(state.errors).toEqual([]); expect(state.blocked).toEqual([])
+})
+
+test('last administrator choices and self-demotion are explicit', async ({ page }) => {
+  const state = await memberFixture(page)
+  state.members = state.members.filter(member => member.role !== 'admin')
+  await openMembers(page)
+  await page.getByRole('combobox', { name: '角色 林澈', exact: true }).click()
+  await expect(page.getByRole('option', { name: '查看者', exact: true })).toBeDisabled()
+  await expect(page.getByRole('option', { name: '管理员', exact: true })).toBeEnabled()
+  await page.keyboard.press('Escape')
+  state.members.push(fixtureMembers()[1]); await page.getByRole('button', { name: '刷新成员', exact: true }).click()
+  await expect(page.getByRole('button', { name: '刷新成员', exact: true })).toBeEnabled()
+  await pickRole(page, '林澈', '查看者')
+  const dialog = page.getByRole('alertdialog', { name: '修改自己的角色？', exact: true })
+  await expect(dialog).toContainText('失去成员和设置管理权限')
+  await dialog.getByRole('button', { name: '取消', exact: true }).click(); expect(state.writes).toEqual([])
+  await expect(page.getByRole('combobox', { name: '角色 林澈', exact: true })).toHaveText('所有者')
+})
+
+test('readonly, read failure and true empty remain different states', async ({ page }) => {
+  const state = await memberFixture(page); state.canManage = false; await openMembers(page)
+  await expect(page.getByRole('combobox', { name: /^角色 / })).toHaveCount(0)
+  await page.getByRole('button', { name: '成员操作 季禾', exact: true }).click(); await expect(page.getByRole('menuitem', { name: '移除成员', exact: true })).toHaveCount(0); await page.keyboard.press('Escape')
+  state.failList = true; await page.getByRole('button', { name: '刷新成员', exact: true }).click()
+  await expect(page.locator('[data-members-workspace]').getByRole('alert')).toContainText('保留上次数据')
+  await reloadMembers(page); await expect(page.locator('[data-members-workspace]').getByRole('alert')).toContainText('成员列表读取失败')
+  await expect(page.getByRole('heading', { name: '还没有成员', exact: true })).toHaveCount(0)
+  state.failList = false; state.members = []; await page.getByRole('button', { name: '重新读取', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '还没有成员', exact: true })).toBeVisible(); await memberShot(page, 'empty-a')
+  expect(state.writes).toEqual([]); expect(state.blocked).toEqual([])
+})
+
+test('complete directory supports search beyond 500 and bounded pagination', async ({ page }) => {
+  const state = await memberFixture(page)
+  state.members = Array.from({ length: 507 }, (_, index) => ({ ...state.members[0], id: `record-${index}`, user_id: `account-${index}`, username: `成员${index}`, email: `person-${index}@example.com`, role: 'viewer' }))
+  await openMembers(page); expect(state.reads).toEqual([0, 500])
+  await expect(page.getByRole('table').getByRole('row')).toHaveCount(21)
+  await page.getByRole('button', { name: '下一页成员', exact: true }).click(); await expect(page.getByRole('table')).toContainText('成员20')
+  await page.getByRole('searchbox', { name: '搜索成员', exact: true }).fill('person-506@')
+  await expect(page.getByRole('table')).toContainText('成员506'); await expect(page.getByRole('button', { name: '下一页成员', exact: true })).toBeDisabled()
+  expect(state.errors).toEqual([])
+})
+
+test('role help and isolated identity tools are on demand, with honest failures and focus return', async ({ page }) => {
+  const state = await memberFixture(page); await openMembers(page)
+  await expect(page.getByLabel('SCIM Token', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '角色说明', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('内容访问仍需数据集和文档授权')
+  await memberShot(page, 'role-help')
+  await page.keyboard.press('Escape'); await expect(page.getByRole('button', { name: '角色说明', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: '身份接入', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '身份接入', exact: true })
+  await expect(dialog.getByLabel('租户 ID', { exact: true })).toHaveValue('tenant-fixture')
+  await dialog.getByLabel('SCIM Token', { exact: true }).fill('fixture-token-no-network'); state.failScim = true
+  await dialog.getByRole('button', { name: '测试服务配置', exact: true }).click(); await expect(dialog.getByRole('alert')).toContainText('SCIM 凭据无效')
+  await expect(dialog.getByLabel('SCIM Token', { exact: true })).toHaveValue('fixture-token-no-network')
+  state.failScim = false; await dialog.getByRole('button', { name: '测试服务配置', exact: true }).click(); await expect(dialog.getByRole('alert')).toHaveCount(0)
+  expect(state.scimCalls[0]).toEqual({ tenant: 'tenant-fixture', token: 'Bearer fixture-token-no-network' })
+  await dialog.getByRole('tab', { name: 'SAML', exact: true }).click(); await dialog.getByLabel(/身份源 ID/).fill('idp-fixture')
+  await dialog.getByRole('button', { name: '下载元数据', exact: true }).click(); await expect(dialog.getByRole('alert')).toContainText('尚未配置 SAML 身份源')
+  state.samlConfigured = true; const downloaded = page.waitForEvent('download'); await dialog.getByRole('button', { name: '下载元数据', exact: true }).click()
+  const file = await downloaded; expect(file.suggestedFilename()).toBe('saml-metadata.xml')
+  fs.mkdirSync(memberEvidence, { recursive: true }); await file.saveAs(`${memberEvidence}/fixture-saml-metadata.xml`)
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click(); await expect(page.getByRole('button', { name: '身份接入', exact: true })).toBeFocused()
+  await page.getByRole('button', { name: '身份接入', exact: true }).click(); await expect(page.getByLabel('SCIM Token', { exact: true })).toHaveValue('')
+  expect(state.blocked).toEqual([]); expect(state.errors).toEqual([]); expect(state.writes).toEqual([])
+})
+
+test('phone, dark and zoom layouts keep roles and actions accessible with long identities', async ({ page }) => {
+  const state = await memberFixture(page, 'dark'); await openMembers(page); await memberShot(page, 'desktop-dark')
+  await page.setViewportSize({ width: 390, height: 844 }); await reloadMembers(page); await memberShot(page, 'phone-dark')
+  await page.getByRole('button', { name: '成员操作 季禾', exact: true }).click(); await expect(page.getByRole('menu')).toContainText('2026-10-25'); await page.keyboard.press('Escape')
+  await page.setViewportSize({ width: 320, height: 740 }); await memberShot(page, 'phone-320')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  await page.setViewportSize({ width: 800, height: 500 }); await reloadMembers(page); await memberShot(page, 'zoom-equivalent')
+  await expect(page.getByRole('combobox', { name: '角色 季禾', exact: true })).toBeVisible()
+  const person = state.members.find(member => member.user_id === 'member-viewer-a')!
+  person.username = '这个成员名称很长需要完整换行而不是撑破整个页面'; person.email = 'long-identity-with-many-characters-and-context@example.com'
+  await page.getByRole('button', { name: '刷新成员', exact: true }).click(); await expect(page.getByRole('button', { name: '刷新成员', exact: true })).toBeEnabled()
+  await page.setViewportSize({ width: 390, height: 844 }); await reloadMembers(page); await page.getByRole('searchbox', { name: '搜索成员', exact: true }).fill(person.username)
+  await memberShot(page, 'phone-long-identity')
+  await page.getByRole('button', { name: `成员操作 ${person.username}`, exact: true }).click(); await page.getByRole('menuitem', { name: '移除成员', exact: true }).click()
+  await memberShot(page, 'phone-long-confirmation'); await expect(page.getByRole('alertdialog')).toContainText(person.username)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  expect(state.errors).toEqual([]); expect(state.blocked).toEqual([])
+})

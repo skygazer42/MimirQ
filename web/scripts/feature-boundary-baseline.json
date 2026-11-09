@@ -1,0 +1,26 @@
+[
+  {
+    "owner": "app/audit/audit-model.ts",
+    "file": "app/audit/audit-model.ts",
+    "rule": "model-effect",
+    "target": "window",
+    "count": 3,
+    "task": "F9"
+  },
+  {
+    "owner": "app/knowledge/feedback/feedback-inbox-model.ts",
+    "file": "app/knowledge/feedback/feedback-inbox-model.ts",
+    "rule": "model-import",
+    "target": "@/lib/api",
+    "count": 1,
+    "task": "F9"
+  },
+  {
+    "owner": "app/settings/groups/groups-model.ts",
+    "file": "app/settings/groups/groups-model.ts",
+    "rule": "model-effect",
+    "target": "window",
+    "count": 3,
+    "task": "F9"
+  }
+]

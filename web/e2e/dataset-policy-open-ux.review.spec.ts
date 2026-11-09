@@ -1,0 +1,101 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { test, expect, type Page } from '@playwright/test'
+import { datasetPolicyFixture, openPolicy } from './dataset-policy.helpers'
+
+const evidence = path.resolve(__dirname, '../../artifacts/rebrand/dataset-ingestion-policy-v1/ux-review/open-v1')
+
+async function exploreSaveRecovery(page: Page, state: Awaited<ReturnType<typeof datasetPolicyFixture>>, prefix: string) {
+  const renamed = 'Markdown 与纯文本（产品资料）'
+  await page.getByRole('textbox', { name: '规则名称', exact: true }).fill(renamed)
+  await page.getByRole('button', { name: '应用修改', exact: true }).click()
+  await expect(page.getByRole('button', { name: `编辑规则 ${renamed}`, exact: true })).toBeVisible()
+  state.failSave = '暂时无法保存策略，请重试'
+  await page.getByRole('button', { name: '保存策略', exact: true }).click()
+  await expect(page.getByText('暂时无法保存策略，请重试', { exact: false }).first()).toBeVisible()
+  await expect(page.getByText('有未保存的修改', { exact: true })).toBeVisible()
+  await expect(page.getByRole('switch', { name: `启用规则 ${renamed}`, exact: true })).toBeChecked()
+  await page.screenshot({ path: path.join(evidence, `${prefix}-save-failed.png`), animations: 'disabled' })
+  fs.writeFileSync(path.join(evidence, `${prefix}-failure-ui.txt`), await page.locator('body').innerText())
+  expect(state.policy.rules?.find(rule => rule.id === 'plain-text')?.name).toBe('Markdown 与纯文本')
+  await page.getByRole('button', { name: `编辑规则 ${renamed}`, exact: true }).click()
+  await expect(page.getByRole('textbox', { name: '规则名称', exact: true })).toHaveValue(renamed)
+  await page.screenshot({ path: path.join(evidence, `${prefix}-failed-edit-retained.png`), animations: 'disabled' })
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  state.failSave = ''
+  await page.getByText('重试保存', { exact: true }).click()
+  await expect(page.getByText('已保存', { exact: true })).toBeVisible()
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: '入库策略', exact: true })).toBeVisible({ timeout: 60000 })
+  await expect(page.getByRole('button', { name: `编辑规则 ${renamed}`, exact: true })).toBeVisible()
+  await expect(page.getByRole('switch', { name: `启用规则 ${renamed}`, exact: true })).toBeChecked()
+  await page.screenshot({ path: path.join(evidence, `${prefix}-recovered-after-refresh.png`), animations: 'disabled' })
+}
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    await page.screenshot({ path: path.join(evidence, `${testInfo.title.includes('mobile') ? 'mobile' : 'desktop'}-review-failure.png`), animations: 'disabled' })
+    fs.writeFileSync(path.join(evidence, 'review-failure-ui.txt'), await page.locator('body').innerText())
+  }
+})
+
+test('open UX review: enable a rule and inspect its saved preview', async ({ page }) => {
+  fs.mkdirSync(evidence, { recursive: true })
+  const state = await datasetPolicyFixture(page)
+  await openPolicy(page)
+  await expect(page.getByRole('heading', { name: '入库策略', exact: true })).toBeVisible()
+  await page.screenshot({ path: path.join(evidence, 'desktop-entry.png'), animations: 'disabled', fullPage: true })
+  fs.writeFileSync(path.join(evidence, 'desktop-entry.txt'), await page.locator('body').innerText())
+  console.log('DESKTOP UI', await page.locator('body').innerText())
+  console.log('ENTRY A11Y', await page.locator('main').ariaSnapshot())
+  await page.getByRole('row', { name: /Markdown 与纯文本/ }).getByRole('switch').click()
+  await page.screenshot({ path: path.join(evidence, 'desktop-enabled.png'), animations: 'disabled' })
+  await page.getByRole('button', { name: '保存策略', exact: true }).click()
+  await expect(page.getByText('已保存', { exact: true })).toBeVisible()
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: '入库策略', exact: true })).toBeVisible({ timeout: 60000 })
+  await expect(page.getByRole('switch', { name: '启用规则 Markdown 与纯文本', exact: true })).toBeChecked()
+  await page.screenshot({ path: path.join(evidence, 'desktop-saved-after-refresh.png'), animations: 'disabled' })
+  await page.getByRole('button', { name: '预览文件', exact: true }).click()
+  console.log('PREVIEW A11Y', await page.locator('body').ariaSnapshot())
+  await page.screenshot({ path: path.join(evidence, 'desktop-preview-open.png'), animations: 'disabled' })
+  await page.getByLabel('选择文件', { exact: true }).setInputFiles({ name: 'product-notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# 产品使用说明\n\n安装与使用说明。\n') })
+  await page.getByRole('button', { name: '生成预览', exact: true }).click()
+  await expect(page.getByText('安装与使用说明。', { exact: false }).first()).toBeVisible()
+  console.log('PREVIEW RESULT A11Y', await page.locator('body').ariaSnapshot())
+  await page.screenshot({ path: path.join(evidence, 'desktop-preview-result.png'), animations: 'disabled' })
+  await page.getByRole('button', { name: '关闭', exact: true }).click()
+  await page.getByRole('button', { name: '编辑规则 Markdown 与纯文本', exact: true }).click()
+  console.log('EDIT RULE A11Y', await page.locator('body').ariaSnapshot())
+  await page.screenshot({ path: path.join(evidence, 'desktop-rule-editor.png'), animations: 'disabled' })
+  await exploreSaveRecovery(page, state, 'desktop')
+  fs.writeFileSync(path.join(evidence, 'desktop-state.json'), JSON.stringify({ reads: state.reads, writes: state.writes, savedPolicy: state.policy, previews: state.previews, blocked: state.blocked, errors: state.errors }, null, 2))
+})
+
+test('open UX review: mobile task before navigation', async ({ page }) => {
+  const state = await datasetPolicyFixture(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openPolicy(page)
+  await page.screenshot({ path: path.join(evidence, 'mobile-entry.png'), animations: 'disabled', fullPage: true })
+  console.log('MOBILE A11Y', await page.locator('body').ariaSnapshot())
+  await page.getByRole('switch', { name: '启用规则 Markdown 与纯文本', exact: true }).click()
+  await page.getByRole('button', { name: '保存策略', exact: true }).click()
+  await expect(page.getByText('已保存', { exact: true })).toBeVisible()
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await expect(page.getByRole('heading', { name: '入库策略', exact: true })).toBeVisible({ timeout: 60000 })
+  await expect(page.getByRole('switch', { name: '启用规则 Markdown 与纯文本', exact: true })).toBeChecked()
+  await page.screenshot({ path: path.join(evidence, 'mobile-saved-after-refresh.png'), animations: 'disabled' })
+  await page.getByRole('button', { name: '编辑规则 Markdown 与纯文本', exact: true }).click()
+  console.log('MOBILE EDIT A11Y', await page.locator('body').ariaSnapshot())
+  await page.screenshot({ path: path.join(evidence, 'mobile-rule-editor.png'), animations: 'disabled' })
+  await exploreSaveRecovery(page, state, 'mobile')
+  await page.getByRole('button', { name: '预览文件', exact: true }).click()
+  await page.getByLabel('选择文件', { exact: true }).setInputFiles({ name: 'product-notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# 产品使用说明\n\n安装与使用说明。\n') })
+  await page.getByRole('button', { name: '生成预览', exact: true }).click()
+  await expect(page.getByText('安装与使用说明。', { exact: false }).first()).toBeVisible()
+  await page.screenshot({ path: path.join(evidence, 'mobile-preview-result.png'), animations: 'disabled' })
+  await page.getByRole('tab', { name: '文本差异', exact: true }).click()
+  await expect(page.getByRole('tabpanel', { name: '文本差异', exact: true })).toBeVisible()
+  await page.screenshot({ path: path.join(evidence, 'mobile-preview-diff.png'), animations: 'disabled' })
+  fs.writeFileSync(path.join(evidence, 'mobile-state.json'), JSON.stringify({ reads: state.reads, writes: state.writes, savedPolicy: state.policy, previews: state.previews, blocked: state.blocked, errors: state.errors }, null, 2))
+})
