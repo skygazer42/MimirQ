@@ -2007,3 +2007,29 @@ Ruff 检查通过，格式检查显示 1,217 个文件符合规则。使用 rg �
 SDK 证据来自安装版本 MinIO 的 HEAD 404 错误生成、S3Error.code 声明、真实 stat 实现和兼容存储继承关系；缓存范围证据来自请求 schema、真实读写调用与 stable_json_dumps/hash owner。新语义签名使旧条目未命中，旧数据由既有 TTL／维护处理，本轮不执行缓存清理或迁移。
 
 覆盖清单补到 5,347 个已跟踪路径，逐文件历史与当前局部验证分别注明。Python 测试依用户要求未新增、修改或运行，真实存储／下载／图片／缓存／数据库／SDK 请求／模型运行时未执行；这些静态检查不代表全仓运行验收完成。
+
+## 2026-11-09：维护作业失败与内部值续作
+
+| 提交 | 实际改动 |
+|---|---|
+| `7616386c5` | 审计日志计划查询失败直接传播；删除、commit 和 flush 失败 rollback 后重抛，真实空候选保持零。|
+| `61e089aaa` | 三个维护作业复用已有预算归一化，退出转换失败后替换预算；回归运行独立上限保持。|
+| `ad7d5c18b` | 回归运行计划与删除共用至多 5,000 个候选 ID；计划返回有限结果长度。|
+| `ff3b6bd6d` | 三个后置审计事件共用提交、回滚和 warning；action、actor、resource、details 及顺序保持，rollback 本身失败传播。|
+| `a274c2184` | 三处内部摘要时间直接接收 datetime 并返回字符串；直接使用真实计划长度、删除行数和必有候选字段。|
+| `3422c3679` | 无效清理生命周期状态在查询前失败；陈旧报告预算转换失败不再采用另一份天数／数量。|
+
+生产范围为 `app/services/audit_log_retention.py`、`retention_jobs.py`、`regression_run_retention.py`、`periodic_audit_jobs.py` 和 `stale_report_jobs.py`。当前五文件执行：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/services/audit_log_retention.py app/services/retention_jobs.py app/services/regression_run_retention.py app/services/periodic_audit_jobs.py app/services/stale_report_jobs.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/services/audit_log_retention.py app/services/retention_jobs.py app/services/regression_run_retention.py app/services/periodic_audit_jobs.py app/services/stale_report_jobs.py
+```
+
+Ruff 检查通过，五文件均符合格式。各批全模块 AST 对照分别限定主操作失败处理、预算复用、候选选择、原事件参数不变的审计提取、内部值读取和两个归一化函数的失败政策；每批源码和暂存 blob 通过 Python 3.11 AST 与编译。当前五文件的最终源码再次核对到 Git HEAD，保留原查询、tenant／dataset 条件、排序、删除参数和事务；明确列出的失败政策与计划计数算法属于本次有意变更。
+
+实际契约证据来自管理员 API、两份维护 CLI、真实文档／回归主键声明、同模块计划完整字段、datetime 赋值链以及安装版本 SQLAlchemy Query.delete 返回的 rowcount。保留 normal empty、可选 dataset／actor、逐文档删除分类、原始 HTTP／ISO 时间解析和各模块原时区策略。后置审计继续是已有的可选旁路；其共享 helper 记录传播到该边界的事件／提交异常，`audit_log_event` 内部既有的 fail-open 处理不在本轮改动范围。
+
+141 篇 Note 的目录／链接、格式和归档门禁通过；新增决定记录登记后，覆盖 CSV 与全部 5,348 个已跟踪路径一致，无重复、遗漏或多余项，必填字段及状态合法。其他会话的大量工作树修改与未跟踪文件保留原位，没有纳入本批提交。
+
+按用户要求未新增、修改或运行 Python 测试。未执行服务入口、CLI、真实数据库查询／删除／flush／事务、维护任务、报告、审计写入、SDK 请求或时区运行验证；未启动应用或部署。以前的全仓检查、前端结果与运行环境限制保留各自历史归属。
