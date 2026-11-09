@@ -8,7 +8,6 @@ Security/PII notes:
 - Keep all actions tenant-scoped.
 """
 
-import contextlib
 import threading
 import time
 from typing import Any
@@ -110,7 +109,11 @@ def maybe_sync_jwt_groups(*, tenant_id: UUID, account_id: str, jwt_payload: dict
         sync_jwt_groups_best_effort(tenant_id=tenant_id, account_id=account_id, jwt_payload=jwt_payload)
     except Exception as exc:  # noqa: BLE001
         # Never block auth; keep logs PII-minimal (no group list).
-        logger.debug("JWT group sync failed (%s)", exc.__class__.__name__)
+        logger.warning(
+            "JWT group sync failed: tenant_id=%s error_type=%s",
+            tenant_id,
+            type(exc).__name__,
+        )
 
 
 def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload: dict[str, Any]) -> None:
@@ -176,8 +179,7 @@ def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload
 
         db.commit()
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
         raise
     finally:
         db.close()

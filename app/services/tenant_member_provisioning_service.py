@@ -13,7 +13,6 @@ Design:
 - PII-minimal audit: store hashes, not raw user ids.
 """
 
-import contextlib
 import hashlib
 from collections.abc import Callable
 from uuid import UUID
@@ -22,7 +21,10 @@ from sqlalchemy.orm import Session
 
 from app.core.constants import UserRoles
 from app.models.tenant import Tenant, TenantMember
+from app.rag.core.logging import get_logger
 from app.services.audit_log_service import audit_log_event
+
+logger = get_logger("services.tenant_member_provisioning")
 
 
 def ensure_tenant_member_for_jwt_user(
@@ -97,6 +99,7 @@ def maybe_auto_provision_jwt_tenant_member_best_effort(
 
     - `db_factory` is typically `SessionLocal`.
     - Returns True when a member is created; False otherwise.
+    - Provisioning errors are logged; session creation and cleanup errors propagate.
     """
     db = db_factory()
     try:
@@ -111,13 +114,16 @@ def maybe_auto_provision_jwt_tenant_member_best_effort(
         if created:
             db.commit()
         return created
-    except Exception:  # noqa: BLE001
-        with contextlib.suppress(Exception):
-            db.rollback()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "JWT tenant member auto-provisioning failed: tenant_id=%s error_type=%s",
+            tenant_id,
+            type(exc).__name__,
+        )
+        db.rollback()
         return False
     finally:
-        with contextlib.suppress(Exception):
-            db.close()
+        db.close()
 
 
 __all__ = [

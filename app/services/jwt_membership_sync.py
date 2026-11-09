@@ -26,7 +26,11 @@ def sync_jwt_memberships(
 
             maybe_sync_jwt_groups(tenant_id=tenant_id, account_id=user_id, jwt_payload=payload)
         except Exception as exc:  # noqa: BLE001
-            logger.debug("JWT group sync failed during auth; continuing without sync: %s", exc)
+            logger.warning(
+                "JWT group sync could not run: tenant_id=%s error_type=%s",
+                tenant_id,
+                type(exc).__name__,
+            )
 
     if settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED:
         try:
@@ -44,4 +48,8 @@ def sync_jwt_memberships(
                 user_agent=user_agent,
             )
         except Exception as exc:  # noqa: BLE001
-            logger.debug("JWT tenant member auto-provisioning failed during auth; continuing: %s", exc)
+            logger.warning(
+                "JWT tenant member auto-provisioning could not finish: tenant_id=%s error_type=%s",
+                tenant_id,
+                type(exc).__name__,
+            )
