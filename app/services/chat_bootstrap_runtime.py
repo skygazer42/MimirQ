@@ -263,8 +263,8 @@ def _build_history_for_llm(
             )
             ctx = build_structured_memory_context(
                 records=records,
-                max_entities=int(settings.STRUCTURED_MEMORY_MAX_ENTITIES or 20),
-                max_facts=int(settings.STRUCTURED_MEMORY_MAX_FACTS or 8),
+                max_entities=settings.STRUCTURED_MEMORY_MAX_ENTITIES,
+                max_facts=settings.STRUCTURED_MEMORY_MAX_FACTS,
                 max_chars=int(settings.STRUCTURED_MEMORY_MAX_CONTEXT_CHARS or 1200),
             )
         except Exception:

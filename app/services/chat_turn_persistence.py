@@ -103,9 +103,19 @@ async def auto_update_summary_background(*, tenant_id: UUID, conversation_id: UU
             try:
                 db2.close()
             except Exception as exc:
-                logger.debug("Ignoring summary update session close failure: %s", exc)
-    except Exception:
-        return
+                logger.warning(
+                    "Summary update session close failed: tenant_id=%s conversation_id=%s error_type=%s",
+                    tenant_id,
+                    conversation_id,
+                    type(exc).__name__,
+                )
+    except Exception as exc:
+        logger.warning(
+            "Conversation summary update failed: tenant_id=%s conversation_id=%s error_type=%s",
+            tenant_id,
+            conversation_id,
+            type(exc).__name__,
+        )
 
 
 def _add_structured_memory_metadata(
@@ -126,7 +136,11 @@ def _add_structured_memory_metadata(
             max_facts=settings.STRUCTURED_MEMORY_MAX_FACTS,
         )
     except Exception as exc:
-        logger.debug("Ignoring structured memory extraction failure for %s: %s", log_context, exc)
+        logger.warning(
+            "Structured memory extraction failed: context=%s error_type=%s",
+            log_context,
+            type(exc).__name__,
+        )
 
 
 def _increment_conversation_message_count(*, db: Session, tenant_id: UUID, conversation_id: UUID) -> None:

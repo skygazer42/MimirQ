@@ -3,7 +3,6 @@ Chat API.
 """
 
 import asyncio
-import contextlib
 import uuid
 from dataclasses import replace
 from typing import Annotated, Any
@@ -416,16 +415,23 @@ def _maybe_schedule_summary_update(
     tenant_id: UUID,
     conversation_id: UUID | None,
 ) -> None:
-    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_ENABLED):
+    if not settings.PERSISTENT_SUMMARY_MEMORY_ENABLED:
         return
-    if not bool(settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE):
+    if not settings.PERSISTENT_SUMMARY_MEMORY_AUTO_UPDATE:
         return
-    if not bool(request.enable_summary_memory):
+    if not request.enable_summary_memory:
         return
     if not conversation_id:
         return
-    with contextlib.suppress(Exception):
+    try:
         background_tasks.add_task(_auto_update_summary_background, tenant_id=tenant_id, conversation_id=conversation_id)
+    except Exception as exc:
+        logger.warning(
+            "Conversation summary scheduling failed: tenant_id=%s conversation_id=%s error_type=%s",
+            tenant_id,
+            conversation_id,
+            type(exc).__name__,
+        )
 
 
 def _spawn_background_task(coro: Any) -> None:
@@ -436,19 +442,20 @@ def _spawn_background_task(coro: Any) -> None:
     """
     try:
         task = asyncio.create_task(coro)
-    except Exception:
-        with contextlib.suppress(Exception):
-            coro.close()
+    except Exception as exc:
+        logger.warning("Background task scheduling failed: error_type=%s", type(exc).__name__)
+        coro.close()
         return
 
     _BACKGROUND_TASKS.add(task)
 
     def _done(t: asyncio.Task[Any]) -> None:
         _BACKGROUND_TASKS.discard(t)
-        with contextlib.suppress(asyncio.CancelledError, Exception):
-            exc = t.exception()
-            if exc is not None:
-                logger.warning("Background task failed: %s", str(exc)[:200])
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc is not None:
+            logger.warning("Background task failed: error_type=%s", type(exc).__name__)
 
     task.add_done_callback(_done)
 

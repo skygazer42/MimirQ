@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 from dataclasses import dataclass
 from typing import Any, Callable
 from uuid import UUID
@@ -7,15 +6,12 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.rag.core.logging import get_logger
 from app.services.chat_cache_runtime import store_chat_response_cache_if_needed
 from app.services.chat_turn_persistence import (
     ChatTurnPersistInput,
     auto_update_summary_background,
     persist_chat_turn_sync,
 )
-
-logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -78,12 +74,11 @@ def dispatch_chat_stream_persistence(
     options: ChatStreamPersistInput,
 ) -> None:
     if persist_in_background:
-        with contextlib.suppress(Exception):
-            spawn_background_task(
-                persist_chat_stream_turn_background(
-                    options=options,
-                )
+        spawn_background_task(
+            persist_chat_stream_turn_background(
+                options=options,
             )
+        )
         return
 
     persist_chat_stream_turn_sync(
@@ -98,13 +93,12 @@ def dispatch_chat_stream_persistence(
         and bool(options.conversation_id)
     )
     if should_update_summary:
-        with contextlib.suppress(Exception):
-            spawn_background_task(
-                auto_update_summary_background(
-                    tenant_id=options.tenant_id,
-                    conversation_id=options.conversation_id,
-                )
+        spawn_background_task(
+            auto_update_summary_background(
+                tenant_id=options.tenant_id,
+                conversation_id=options.conversation_id,
             )
+        )
 
 
 def persist_chat_stream_turn_sync(
@@ -132,48 +126,37 @@ async def persist_chat_stream_turn_background(
         and options.enable_summary_memory
     )
 
-    def _persist_sync() -> bool:
+    def _persist_sync() -> None:
+        from app.core.database import SessionLocal  # noqa: WPS433
+
+        db2 = SessionLocal()
         try:
-            from app.core.database import SessionLocal  # noqa: WPS433
-
-            db2 = SessionLocal()
-            try:
-                metrics2 = dict(options.metrics)
-                store_chat_response_cache_if_needed(
-                    cache_eligible=options.cache_eligible,
-                    cache_hit=options.cache_hit,
-                    cache_key=options.cache_key,
-                    content=options.content,
-                    citations=options.citations,
+            metrics2 = dict(options.metrics)
+            store_chat_response_cache_if_needed(
+                cache_eligible=options.cache_eligible,
+                cache_hit=options.cache_hit,
+                cache_key=options.cache_key,
+                content=options.content,
+                citations=options.citations,
+                metrics=metrics2,
+                structured_data=options.structured_data,
+            )
+            persist_chat_turn_sync(
+                db=db2,
+                options=_chat_turn_persist_input(
+                    options=options,
                     metrics=metrics2,
-                    structured_data=options.structured_data,
-                )
-                persist_chat_turn_sync(
-                    db=db2,
-                    options=_chat_turn_persist_input(
-                        options=options,
-                        metrics=metrics2,
-                        increment_message_count=True,
-                        touch_conversation=False,
-                    ),
-                )
-            finally:
-                try:
-                    db2.close()
-                except Exception as exc:
-                    logger.debug("Ignoring background chat persistence session close failure: %s", exc)
+                    increment_message_count=True,
+                    touch_conversation=False,
+                ),
+            )
+        finally:
+            db2.close()
 
-            return True
-        except Exception:
-            return False
-
-    ok = await asyncio.to_thread(_persist_sync)
-    if not ok:
-        return
+    await asyncio.to_thread(_persist_sync)
 
     if should_update_summary:
-        with contextlib.suppress(Exception):
-            await auto_update_summary_background(
-                tenant_id=options.tenant_id,
-                conversation_id=options.conversation_id,
-            )
+        await auto_update_summary_background(
+            tenant_id=options.tenant_id,
+            conversation_id=options.conversation_id,
+        )
