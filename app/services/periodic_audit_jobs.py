@@ -44,10 +44,7 @@ def _dt_to_json(value: datetime) -> str:
 
 
 def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for k, v in counter.most_common(max(0, int(max_items or 0))):
-        out[str(k)] = v
-    return out
+    return dict(counter.most_common(max(0, max_items)))
 
 
 def _audit_already_written(
@@ -125,19 +122,16 @@ def _run_dataset_evidence_drift_audit(
     slice_top_n: int,
     max_items: int = 10_000,
 ) -> dict[str, Any]:
-    suite_ids = [
-        row[0]
-        for row in (
-            db.query(EvidenceSuite.id)
-            .filter(
-                EvidenceSuite.tenant_id == tenant_id,
-                EvidenceSuite.dataset_id == dataset_id,
-                EvidenceSuite.archived_at.is_(None),
-            )
-            .all()
+    rows = (
+        db.query(EvidenceSuite.id)
+        .filter(
+            EvidenceSuite.tenant_id == tenant_id,
+            EvidenceSuite.dataset_id == dataset_id,
+            EvidenceSuite.archived_at.is_(None),
         )
-        if row and row[0] is not None
-    ]
+        .all()
+    )
+    suite_ids = [suite_id for (suite_id,) in rows]
     if not suite_ids:
         return {
             "dataset_id": str(dataset_id),
@@ -165,9 +159,9 @@ def _run_dataset_evidence_drift_audit(
         suite_id=None,
         suite_dataset_id=dataset_id,
         items=items,
-        include_details=bool(include_details),
-        details_limit=int(details_limit or 0),
-        slice_top_n=int(slice_top_n or 0),
+        include_details=include_details,
+        details_limit=details_limit,
+        slice_top_n=slice_top_n,
     )
 
     return {
@@ -177,7 +171,7 @@ def _run_dataset_evidence_drift_audit(
         "ok_references": audit.ok_references,
         "drift_references": audit.drift_references,
         "drift_rate": audit.drift_rate,
-        "reasons": dict(audit.reasons or {}),
+        "reasons": dict(audit.reasons),
         "details_truncated": audit.details_truncated,
     }
 
@@ -187,22 +181,22 @@ def _resolve_dataset_audit_cap(max_datasets: int) -> int:
     return min(cap, 5000)
 
 
-def _summarize_index_audit_result(res: dict[str, Any], dataset_id: UUID) -> tuple[dict[str, Any], bool, int, int, int]:
-    vector_id_missing = int(res.get("vector_id_missing") or 0)
-    missing_backend = int(res.get("vector_ids_missing_in_backend") or 0)
-    orphan_ids = res.get("milvus_orphan_ids_sample") or []
-    orphan_count = len(orphan_ids) if isinstance(orphan_ids, list) else 0
+def _summarize_index_audit_result(res: dict[str, Any]) -> tuple[dict[str, Any], bool, int, int, int]:
+    vector_id_missing = res["vector_id_missing"]
+    missing_backend = res["vector_ids_missing_in_backend"]
+    orphan_ids = res["milvus_orphan_ids_sample"]
+    orphan_count = len(orphan_ids)
 
     return (
         {
-            "dataset_id": str(res.get("dataset_id") or dataset_id),
-            "active_documents": int(res.get("active_documents") or 0),
-            "active_chunks": int(res.get("active_chunks") or 0),
+            "dataset_id": res["dataset_id"],
+            "active_documents": res["active_documents"],
+            "active_chunks": res["active_chunks"],
             "vector_id_missing": vector_id_missing,
             "vector_ids_missing_in_backend": missing_backend,
             "milvus_orphan_ids_sampled": orphan_count,
-            "vector_ids_missing_in_backend_sample": list(res.get("vector_ids_missing_in_backend_sample") or [])[:20],
-            "milvus_orphan_ids_sample": list(orphan_ids)[:20],
+            "vector_ids_missing_in_backend_sample": res["vector_ids_missing_in_backend_sample"][:20],
+            "milvus_orphan_ids_sample": orphan_ids[:20],
         },
         (vector_id_missing > 0) or (missing_backend > 0) or (orphan_count > 0),
         max(0, vector_id_missing),
@@ -213,10 +207,10 @@ def _summarize_index_audit_result(res: dict[str, Any], dataset_id: UUID) -> tupl
 
 def _index_audit_severity(dataset_summary: dict[str, Any]) -> tuple[int, int, int, str]:
     return (
-        int(dataset_summary.get("vector_ids_missing_in_backend") or 0),
-        int(dataset_summary.get("vector_id_missing") or 0),
-        int(dataset_summary.get("milvus_orphan_ids_sampled") or 0),
-        str(dataset_summary.get("dataset_id") or ""),
+        dataset_summary["vector_ids_missing_in_backend"],
+        dataset_summary["vector_id_missing"],
+        dataset_summary["milvus_orphan_ids_sampled"],
+        dataset_summary["dataset_id"],
     )
 
 
@@ -331,7 +325,7 @@ def run_daily_index_audit_report(
             continue
 
         scanned += 1
-        dataset_summary, has_issue, vid_missing, missing_backend, orphan_cnt = _summarize_index_audit_result(res, ds_id)
+        dataset_summary, has_issue, vid_missing, missing_backend, orphan_cnt = _summarize_index_audit_result(res)
         vector_id_missing_total += vid_missing
         vector_missing_backend_total += missing_backend
         milvus_orphan_ids_total += orphan_cnt
@@ -550,25 +544,24 @@ def run_daily_evidence_drift_audit_report(
             continue
 
         scanned += 1
-        ti = int(res.get("total_items") or 0)
-        tr = int(res.get("total_references") or 0)
-        okr = int(res.get("ok_references") or 0)
-        dr = int(res.get("drift_references") or 0)
+        ti = res["total_items"]
+        tr = res["total_references"]
+        okr = res["ok_references"]
+        dr = res["drift_references"]
         total_items += max(0, ti)
         total_refs += max(0, tr)
         ok_refs += max(0, okr)
         drift_refs += max(0, dr)
 
-        rs = res.get("reasons") if isinstance(res.get("reasons"), dict) else {}
-        reasons.update({str(k): int(v or 0) for k, v in rs.items()})
+        reasons.update(res["reasons"])
 
         per_dataset.append(
             {
-                "dataset_id": str(res.get("dataset_id") or ds_id),
+                "dataset_id": res["dataset_id"],
                 "total_items": ti,
                 "total_references": tr,
                 "drift_references": dr,
-                "drift_rate": float(res.get("drift_rate") or 0.0),
+                "drift_rate": res["drift_rate"],
             }
         )
 
@@ -577,9 +570,9 @@ def run_daily_evidence_drift_audit_report(
     top_drift_datasets = sorted(
         per_dataset,
         key=lambda d: (
-            -float(d.get("drift_rate") or 0.0),
-            -int(d.get("drift_references") or 0),
-            str(d.get("dataset_id") or ""),
+            -d["drift_rate"],
+            -d["drift_references"],
+            d["dataset_id"],
         ),
     )[:50]
 

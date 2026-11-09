@@ -58,10 +58,7 @@ def _parse_datetime_best_effort(raw: object) -> datetime | None:
 
 
 def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:
-    out: dict[str, int] = {}
-    for k, v in counter.most_common(max(0, int(max_items or 0))):
-        out[str(k)] = v
-    return out
+    return dict(counter.most_common(max(0, max_items)))
 
 
 def _audit_already_written(db: Session, *, tenant_id: UUID, action: str, report_date: str) -> bool:
@@ -93,9 +90,6 @@ def _list_connector_document_rows(
     - Uses a conservative pre-filter on `documents.updated_at <= cutoff` to reduce work.
     - Returns a list of JSON-safe dict rows (bounded by max_documents).
     """
-    max_docs = max(1, int(max_documents or 0))
-    max_docs = min(max_docs, 50_000)
-
     q = (
         db.query(
             ConnectorRun.connector_id,
@@ -119,7 +113,7 @@ def _list_connector_document_rows(
         .filter(DBDocument.disabled_at.is_(None))
         .filter(DBDocument.updated_at <= cutoff)
         .order_by(DBDocument.updated_at.asc(), ConnectorRunDocument.created_at.asc())
-        .limit(max_docs)
+        .limit(max_documents)
     )
 
     rows = q.all()
@@ -189,7 +183,7 @@ def _effective_timestamp_and_reason(
     row: dict[str, Any],
     now: datetime,
 ) -> tuple[datetime, str]:
-    meta = row.get("doc_metadata") if isinstance(row.get("doc_metadata"), dict) else {}
+    meta = row["doc_metadata"]
 
     eff_dt = _parse_datetime_best_effort(meta.get("source_last_modified_at"))
     reason = "meta:source_last_modified_at"
@@ -197,7 +191,7 @@ def _effective_timestamp_and_reason(
         eff_dt = _parse_datetime_best_effort(meta.get("source_fetched_at"))
         reason = "meta:source_fetched_at"
     if eff_dt is None:
-        eff_dt = row.get("processed_at") or row.get("updated_at") or row.get("created_at") or row.get("linked_at")
+        eff_dt = row["processed_at"] or row["updated_at"] or row["created_at"] or row["linked_at"]
         reason = "fallback:document_timestamps"
 
     if isinstance(eff_dt, datetime):
@@ -229,17 +223,16 @@ def _summarize_stale_rows(
     age_buckets: Counter[str] = Counter()
 
     for row in rows:
-        doc_id_raw = row.get("document_id")
-        doc_id = str(doc_id_raw) if doc_id_raw is not None else ""
-        if not doc_id or doc_id in seen_doc_ids:
+        doc_id = str(row["document_id"])
+        if doc_id in seen_doc_ids:
             continue
         seen_doc_ids.add(doc_id)
 
-        connector_id = str(row.get("connector_id") or "unknown").strip() or "unknown"
+        connector_id = row["connector_id"].strip() or "unknown"
         by_connector_scanned[connector_id] += 1
         scanned += 1
 
-        meta = row.get("doc_metadata") if isinstance(row.get("doc_metadata"), dict) else {}
+        meta = row["doc_metadata"]
         src_kind = str(meta.get("source_last_modified_source") or "").strip() or "unknown"
         by_source_kind[src_kind] += 1
 
@@ -254,7 +247,7 @@ def _summarize_stale_rows(
         stale += 1
         by_connector_stale[connector_id] += 1
 
-        dataset_id = row.get("document_dataset_id") or row.get("run_dataset_id")
+        dataset_id = row["document_dataset_id"] or row["run_dataset_id"]
         if dataset_id is not None:
             by_dataset_stale[str(dataset_id)] += 1
         if len(stale_sample_ids) < 20:
