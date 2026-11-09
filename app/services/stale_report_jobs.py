@@ -8,7 +8,7 @@ Purpose:
 Design principles (similar to retention jobs):
 - Bounded: callers provide max_documents
 - Auditable: best-effort audit_log_event
-- Fail-open: never crash the product due to reporting automation
+- Audit writes are best-effort; required database lookups propagate failures
 """
 
 import contextlib
@@ -66,21 +66,18 @@ def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, i
 
 
 def _audit_already_written(db: Session, *, tenant_id: UUID, action: str, report_date: str) -> bool:
-    try:
-        row = (
-            db.query(AuditLog.id)
-            .filter(
-                AuditLog.tenant_id == tenant_id,
-                AuditLog.action == str(action),
-                AuditLog.resource_type == "stale_report",
-                AuditLog.resource_id == str(report_date),
-            )
-            .limit(1)
-            .first()
+    row = (
+        db.query(AuditLog.id)
+        .filter(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == str(action),
+            AuditLog.resource_type == "stale_report",
+            AuditLog.resource_id == str(report_date),
         )
-        return bool(row)
-    except Exception:
-        return False
+        .limit(1)
+        .first()
+    )
+    return row is not None
 
 
 def _list_connector_document_rows(

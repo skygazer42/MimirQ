@@ -12,7 +12,7 @@ Currently implemented:
 Design principles (mirrors retention/stale jobs):
 - Bounded: callers provide max_datasets + per-audit bounds
 - Auditable: best-effort audit_log_event with small payloads
-- Fail-open: never crash product flows due to automation
+- Audit writes are best-effort; required database lookups propagate failures
 """
 
 from collections import Counter
@@ -59,21 +59,18 @@ def _audit_already_written(
     resource_type: str,
     report_date: str,
 ) -> bool:
-    try:
-        row = (
-            db.query(AuditLog.id)
-            .filter(
-                AuditLog.tenant_id == tenant_id,
-                AuditLog.action == str(action),
-                AuditLog.resource_type == str(resource_type),
-                AuditLog.resource_id == str(report_date),
-            )
-            .limit(1)
-            .first()
+    row = (
+        db.query(AuditLog.id)
+        .filter(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.action == str(action),
+            AuditLog.resource_type == str(resource_type),
+            AuditLog.resource_id == str(report_date),
         )
-        return bool(row)
-    except Exception:
-        return False
+        .limit(1)
+        .first()
+    )
+    return row is not None
 
 
 def _list_dataset_ids_for_index_audit(
@@ -82,13 +79,11 @@ def _list_dataset_ids_for_index_audit(
     tenant_id: UUID,
     max_datasets: int,
 ) -> list[UUID]:
-    cap = max(1, int(max_datasets or 0))
-    cap = min(cap, 5000)
     rows = (
         db.query(Dataset.id)
         .filter(Dataset.tenant_id == tenant_id)
         .order_by(Dataset.updated_at.desc(), Dataset.created_at.desc(), Dataset.id.asc())
-        .limit(cap)
+        .limit(max_datasets)
         .all()
     )
     out: list[UUID] = []
@@ -104,16 +99,13 @@ def _list_dataset_ids_for_drift_audit(
     tenant_id: UUID,
     max_datasets: int,
 ) -> list[UUID]:
-    cap = max(1, int(max_datasets or 0))
-    cap = min(cap, 5000)
-
     # Prefer datasets that have recently-updated suites.
     rows = (
         db.query(EvidenceSuite.dataset_id, func.max(EvidenceSuite.updated_at))
         .filter(EvidenceSuite.tenant_id == tenant_id, EvidenceSuite.archived_at.is_(None))
         .group_by(EvidenceSuite.dataset_id)
         .order_by(func.max(EvidenceSuite.updated_at).desc())  # type: ignore[arg-type]
-        .limit(cap)
+        .limit(max_datasets)
         .all()
     )
     out: list[UUID] = []
@@ -191,11 +183,8 @@ def _run_dataset_evidence_drift_audit(
     }
 
 
-def _resolve_index_audit_dataset_cap(max_datasets: int) -> int:
-    try:
-        cap = max(1, int(max_datasets or 0))
-    except Exception:
-        cap = 50
+def _resolve_dataset_audit_cap(max_datasets: int) -> int:
+    cap = max(1, int(max_datasets))
     return min(cap, 5000)
 
 
@@ -306,7 +295,7 @@ def run_daily_index_audit_report(
             "skip_reason": "already_written",
         }
 
-    cap_ds = _resolve_index_audit_dataset_cap(max_datasets)
+    cap_ds = _resolve_dataset_audit_cap(max_datasets)
 
     ds_ids = list(dataset_ids or [])
     if not ds_ids:
@@ -367,7 +356,7 @@ def run_daily_index_audit_report(
         "milvus_orphan_ids_sampled_total": milvus_orphan_ids_total,
         "top_issue_datasets": list(top_issue_datasets),
         "errors_sample": list(errors),
-        "ok": True,
+        "ok": not errors,
         "skipped": False,
     }
 
@@ -534,11 +523,7 @@ def run_daily_evidence_drift_audit_report(
             "skip_reason": "already_written",
         }
 
-    try:
-        cap_ds = max(1, int(max_datasets or 0))
-    except Exception:
-        cap_ds = 50
-    cap_ds = min(cap_ds, 5000)
+    cap_ds = _resolve_dataset_audit_cap(max_datasets)
 
     ds_ids = list(dataset_ids or [])
     if not ds_ids:
@@ -623,7 +608,7 @@ def run_daily_evidence_drift_audit_report(
         "reasons": _bounded_top_counts(reasons, max_items=50),
         "top_drift_datasets": list(top_drift_datasets),
         "errors_sample": list(errors),
-        "ok": True,
+        "ok": not errors,
         "skipped": False,
     }
 
