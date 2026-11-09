@@ -99,7 +99,9 @@ def ensure_member(db: Session, tenant_id: UUID, account_id: str) -> TenantMember
 
 
 def _assert_edit_role(member: TenantMember) -> None:
-    role = (member.role or "").lower()
+    role = member.role
+    if role:
+        role = role.lower()
     if role not in EDIT_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No permission to manage dataset")
 
@@ -378,7 +380,9 @@ def resolve_writable_dataset(
         except HTTPException:
             continue
 
-    role = (getattr(member, "role", None) or "").lower()
+    role = member.role
+    if role:
+        role = role.lower()
     if role not in EDIT_ROLES:
         raise HTTPException(status_code=403, detail="No permission to create dataset. Please contact an administrator.")
 

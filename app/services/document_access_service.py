@@ -32,7 +32,9 @@ def _raise_no_document_access() -> NoReturn:
 def _document_acl_owner_allowed(*, account_id: str, document: DBDocument, dataset: Dataset | None) -> bool:
     if dataset is not None and (dataset.owner_id or "") == account_id:
         return True
-    owner_id = (document.owner_id or "").strip()
+    owner_id = document.owner_id
+    if owner_id:
+        owner_id = owner_id.strip()
     return bool(owner_id and owner_id == account_id)
 
 
@@ -146,13 +148,17 @@ def assert_document_writable_for_unassigned_target(
     document: DBDocument,
 ) -> None:
     member = dataset_service.ensure_member(db, tenant_id, account_id)
-    role = (member.role or "").lower()
+    role = member.role
+    if role:
+        role = role.lower()
     if role in UserRoles.ADMIN_ROLES:
         return
     if role not in UserRoles.EDIT_ROLES:
         raise HTTPException(status_code=403, detail=NO_UNASSIGNED_DOCUMENT_WRITE_DETAIL)
 
-    owner_id = (document.owner_id or "").strip()
+    owner_id = document.owner_id
+    if owner_id:
+        owner_id = owner_id.strip()
     if owner_id and owner_id == account_id:
         return
 
@@ -240,7 +246,8 @@ def update_document_access(
 
     mode = payload.mode
     document.access_mode = None if mode == "inherit" else mode
-    if not (document.owner_id or "").strip():
+    owner_id = document.owner_id
+    if not owner_id or not owner_id.strip():
         document.owner_id = account_id
 
     if mode == "partial_members":

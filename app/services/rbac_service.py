@@ -52,12 +52,16 @@ def all_tenant_permissions() -> tuple[str, ...]:
 
 
 def role_allows(permission: str, *, role: str | None) -> bool:
-    role_norm = (role or "").strip().lower()
+    role_norm = role
+    if role_norm:
+        role_norm = role_norm.strip().lower()
     return role_norm in allowed_roles_for_permission(permission)
 
 
 def assert_edit_role(member: TenantMember) -> None:
-    role = (member.role or "").lower()
+    role = member.role
+    if role:
+        role = role.lower()
     if role not in UserRoles.EDIT_ROLES:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No permission to edit")
 
