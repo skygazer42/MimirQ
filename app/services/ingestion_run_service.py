@@ -128,7 +128,7 @@ def on_document_status_update(
     criticality: IngestionRunCriticality = "best_effort",
 ) -> None:
     """
-    Best-effort: update run manifest records when a document changes status.
+    Update manifest records using the caller's required or best-effort policy.
     """
     status_norm = _normalize_status(new_status)
     criticality_norm = _normalize_criticality(criticality)
@@ -141,28 +141,20 @@ def on_document_status_update(
             document_id=document_id,
             target_run_id=target_run_id,
         )
-    except Exception as exc:
-        _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
-        return
-    if not rows:
-        return
+        if not rows:
+            return
 
-    try:
         prepared = _prepare_status_update_rows(
             db,
             tenant_id=tenant_id,
             document_id=document_id,
             rows=rows,
         )
-    except Exception as exc:
-        _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
-        return
-    if prepared is None:
-        return
-    rows, locked_runs = prepared
+        if prepared is None:
+            return
+        rows, locked_runs = prepared
 
-    # Update each run attachment (a doc may belong to multiple runs, e.g. replays).
-    try:
+        # A document may belong to several run attachments, including replays.
         finished_runs = _apply_status_updates_to_rows(
             db,
             tenant_id=tenant_id,
@@ -173,13 +165,18 @@ def on_document_status_update(
             doc_meta=doc_meta,
             now=_now_utc(),
         )
-    except Exception as exc:
-        _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
-        return
-    try:
         db.commit()
     except Exception as exc:
-        _handle_ingestion_run_failure(db, exc=exc, criticality=criticality_norm)
+        logger.warning(
+            "Ingestion run status update failed: tenant_id=%s document_id=%s criticality=%s error_type=%s",
+            tenant_id,
+            document_id,
+            criticality_norm,
+            type(exc).__name__,
+        )
+        db.rollback()
+        if criticality_norm == "required":
+            raise
         return
     _observe_finished_ingestion_runs(finished_runs)
 
@@ -196,27 +193,27 @@ def close_intake(
     """
     Reconcile the batch intake target with actual attached documents and finalize if possible.
     """
-    run = _lock_run_best_effort(db, tenant_id=tenant_id, run_id=run_id)
-    if run is None:
-        return
-
     try:
+        run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
+        if run is None:
+            return
         rows = _load_run_documents(db, tenant_id=tenant_id, run_id=run_id)
-    except Exception:
-        _rollback_quietly(db)
-        return
-
-    finished_meta = _reconcile_close_intake_stats(
-        run,
-        rows=rows,
-        attempted_inputs=attempted_inputs,
-        rejected_inputs=rejected_inputs,
-        rejection_reasons=rejection_reasons,
-    )
-    try:
+        finished_meta = _reconcile_close_intake_stats(
+            run,
+            rows=rows,
+            attempted_inputs=attempted_inputs,
+            rejected_inputs=rejected_inputs,
+            rejection_reasons=rejection_reasons,
+        )
         db.commit()
-    except Exception:
-        _rollback_quietly(db)
+    except Exception as exc:
+        logger.warning(
+            "Ingestion run intake close failed: tenant_id=%s run_id=%s error_type=%s",
+            tenant_id,
+            run_id,
+            type(exc).__name__,
+        )
+        db.rollback()
         return
     _observe_finished_ingestion_run(finished_meta)
 
@@ -348,42 +345,13 @@ def _lock_run_for_update(db: Session, *, tenant_id: UUID, run_id: UUID) -> Inges
     )
 
 
-def _complete_transaction_quietly(db: Session) -> None:
-    try:
-        db.commit()
-    except Exception:
-        _rollback_quietly(db)
-
-
-def _rollback_quietly(db: Session) -> None:
-    try:
-        db.rollback()
-    except Exception as rollback_exc:
-        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, rollback_exc)
-
-
-def _normalize_criticality(value: object) -> IngestionRunCriticality:
-    raw = str(value or "").strip().lower()
-    return "required" if raw == "required" else "best_effort"
-
-
-def _handle_ingestion_run_failure(
-    db: Session,
-    *,
-    exc: Exception,
-    criticality: IngestionRunCriticality,
-) -> None:
-    _rollback_quietly(db)
-    if criticality == "required":
-        raise exc
-
-
-def _lock_run_best_effort(db: Session, *, tenant_id: UUID, run_id: UUID) -> IngestionRun | None:
-    try:
-        return _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
-    except Exception:
-        _rollback_quietly(db)
-        return None
+def _normalize_criticality(value: IngestionRunCriticality) -> IngestionRunCriticality:
+    raw = value.strip().lower()
+    if raw == "required":
+        return "required"
+    if raw == "best_effort":
+        return "best_effort"
+    raise ValueError("criticality must be required or best_effort")
 
 
 def _observe_finished_ingestion_run(
@@ -555,7 +523,7 @@ def _prepare_status_update_rows(
         run_ids=candidate_run_ids,
     )
     if not locked_runs:
-        _complete_transaction_quietly(db)
+        db.commit()
         return None
     locked_rows = _locked_rows_for_document(
         db,
@@ -760,26 +728,22 @@ def _reconcile_close_intake_stats(
     rejected_inputs: int,
     rejection_reasons: list[object] | tuple[object, ...] | None,
 ) -> tuple[str | None, str | None, float | None] | None:
-    finished_meta: tuple[str | None, str | None, float | None] | None = None
-    try:
-        stats = _init_run_stats(run.stats)
-        config = dict(run.config or {})
-        statuses = {str(row.document_id): _normalize_status(row.status) for row in rows}
-        actual_total = len(statuses)
-        stats["total_documents"] = actual_total
-        stats["status_counts"] = dict(Counter(statuses.values()))
-        if attempted_inputs is not None:
-            stats["attempted_inputs"] = max(0, attempted_inputs)
-        stats["rejected_inputs"] = max(0, rejected_inputs)
-        stats["rejected_reasons_top"] = _bounded_reason_counts(rejection_reasons)
-        config["expected_documents"] = actual_total
-        run.config = config
+    stats = _init_run_stats(run.stats)
+    config = dict(run.config or {})
+    statuses = {str(row.document_id): _normalize_status(row.status) for row in rows}
+    actual_total = len(statuses)
+    stats["total_documents"] = actual_total
+    stats["status_counts"] = dict(Counter(statuses.values()))
+    if attempted_inputs is not None:
+        stats["attempted_inputs"] = max(0, attempted_inputs)
+    stats["rejected_inputs"] = max(0, rejected_inputs)
+    stats["rejected_reasons_top"] = _bounded_reason_counts(rejection_reasons)
+    config["expected_documents"] = actual_total
+    run.config = config
 
-        now = _now_utc()
-        finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
-        if finished_meta is None and actual_total == 0:
-            finished_meta = _finished_meta_for_empty_run(run, stats=stats, now=now)
-        run.stats = stats
-    except Exception as exc:
-        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+    now = _now_utc()
+    finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=now)
+    if finished_meta is None and actual_total == 0:
+        finished_meta = _finished_meta_for_empty_run(run, stats=stats, now=now)
+    run.stats = stats
     return finished_meta
