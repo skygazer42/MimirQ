@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.dataset import Dataset
 from app.models.document import Document as DBDocument
-from app.rag.core.logging import get_logger
 from app.rag.core.metadata import _looks_like_local_image_id
 from app.services import dataset_service
 from app.services.document_access_service import assert_document_acl_readable, get_document_for_lifecycle
@@ -23,7 +22,6 @@ from app.services.document_preview_utils import (
     _write_preview_owner_binding,
 )
 
-logger = get_logger(__name__)
 if TYPE_CHECKING:
     from langchain_core.documents import Document
 IMAGE_NOT_FOUND_DETAIL = "Image not found"
@@ -121,11 +119,7 @@ def _legacy_preview_binding(
 ) -> dict[str, str] | None:
     if account_id is None:
         return None
-    try:
-        document_ids = find_legacy_preview_document_ids(db, tenant_id=tenant_id, preview_id=preview_id)
-    except Exception:
-        logger.warning("Legacy preview image ownership lookup failed: preview_id=%s", preview_id, exc_info=True)
-        return None
+    document_ids = find_legacy_preview_document_ids(db, tenant_id=tenant_id, preview_id=preview_id)
     if not document_ids:
         return None
 
@@ -149,7 +143,9 @@ def _legacy_preview_binding(
                 continue
             try:
                 dataset_service.assert_dataset_readable(db, dataset, account_id)
-            except HTTPException:
+            except HTTPException as exc:
+                if exc.status_code not in {403, 404}:
+                    raise
                 dataset = None
             readable_datasets[dataset_id] = dataset
         if dataset is None:
@@ -162,7 +158,9 @@ def _legacy_preview_binding(
                 document=document,
                 dataset=dataset,
             )
-        except HTTPException:
+        except HTTPException as exc:
+            if exc.status_code not in {403, 404}:
+                raise
             continue
 
         binding = {

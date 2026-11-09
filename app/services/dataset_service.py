@@ -377,7 +377,9 @@ def resolve_writable_dataset(
         try:
             assert_dataset_writable(db, dataset, account_id)
             return dataset
-        except HTTPException:
+        except HTTPException as exc:
+            if exc.status_code not in {403, 404}:
+                raise
             continue
 
     role = member.role
