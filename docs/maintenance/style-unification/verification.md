@@ -1985,3 +1985,25 @@ Ruff 检查通过，格式检查显示 1,217 个文件符合规则。使用 rg �
 139 篇 Note 的目录／链接、格式及归档门禁通过。清单补登记两个新 Note，覆盖 5,346 个已跟踪路径，检查路径完全一致、无重复、必填字段和状态合法。其他会话的设置文件、暂存台账和未跟踪测试保持各自归属。
 
 按用户要求本轮没有新增、修改或运行 Python 测试。未执行真实去噪／压缩、LangGraph、缓存命中／失效、提示词、数据库、模型、前端或部署运行时；全仓可运营性和所有缓存维度不由本轮静态结果证明。GitHub 普通推送此前因网络连接失败，本轮源码均以本地提交记录为准。
+
+## 2026-11-09：资源错误与语义缓存范围续作
+
+| 提交 | 实际改动 |
+|---|---|
+| `abf188e8c` | 重试源 stat 仅将 SDK NoSuchKey 转换成原 404，其他存储错误传播。|
+| `7bcb9dd6b` | 完整 metadata_filter 进入语义缓存范围签名，签名升级 v2，退出丢弃大字典的 helper。|
+| `69eb39e3b` | 下载与图片资源的两处 stat 沿用相同错误分类，权限和流响应语句不变。|
+| `8b4fbdda0` | 语义缓存读写入口直接处理签名异常，退出两个单次异常转发及中间可空结果。|
+
+三个生产文件为 `app/services/document_processing_dispatch.py`、`app/api/v1/document_assets.py` 和 `app/services/semantic_cache.py`。使用现有环境执行：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/api/v1/document_assets.py app/services/document_processing_dispatch.py app/services/semantic_cache.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/api/v1/document_assets.py app/services/document_processing_dispatch.py app/services/semantic_cache.py
+```
+
+各批完整模块 AST 对照分别限定 SDK 导入与 stat 捕获分类、完整筛选字段与 v2、两个异常边界内联；调用参数及顺序、原鉴权／路径语句、Range／ETag／流关闭、Redis／向量调用和有效缓存失败政策保持。工作树和暂存 blob 通过 Python 3.11 AST 与源码编译；140 篇 Note 目录／链接、格式和归档门禁通过。
+
+SDK 证据来自安装版本 MinIO 的 HEAD 404 错误生成、S3Error.code 声明、真实 stat 实现和兼容存储继承关系；缓存范围证据来自请求 schema、真实读写调用与 stable_json_dumps/hash owner。新语义签名使旧条目未命中，旧数据由既有 TTL／维护处理，本轮不执行缓存清理或迁移。
+
+覆盖清单补到 5,347 个已跟踪路径，逐文件历史与当前局部验证分别注明。Python 测试依用户要求未新增、修改或运行，真实存储／下载／图片／缓存／数据库／SDK 请求／模型运行时未执行；这些静态检查不代表全仓运行验收完成。
