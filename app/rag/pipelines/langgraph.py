@@ -185,12 +185,11 @@ _RAG_RETRIEVE_CACHE_TTL_SEC = max(0, int(settings.RAG_GRAPH_CACHE_TTL_SEC))
 
 def _retrieve_cache_key(state: dict[str, Any]) -> str:
     history_text = format_history_text(state.get("history") or [], window=settings.CHAT_HISTORY_WINDOW)
-    history_text = history_text[:2000]
     doc_ids = state.get("document_ids") or []
-    doc_ids_key = ",".join(sorted(str(x) for x in doc_ids))[:2000]
+    doc_ids_key = ",".join(sorted(str(x) for x in doc_ids))
     # Security: retrieval is scoped by ACL and dataset; cache key MUST include account_id/dataset_id
     # to avoid cross-user leakage when cache is enabled.
-    account_id = str(state.get("account_id") or "")[:200]
+    account_id = str(state.get("account_id") or "")
     dataset_id = str(state.get("dataset_id") or "")
     from app.rag.embedding.utils import current_embedding_space_hash
 
@@ -201,11 +200,12 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
         policy_json = json.dumps(raw_policy, ensure_ascii=False, sort_keys=True, default=str)
     policy_hash = hashlib.sha256(policy_json.encode("utf-8", errors="ignore")).hexdigest()[:16] if policy_json else ""
     key_obj = {
-        "question": (state.get("question") or "")[:800],
+        "question": state.get("question") or "",
         "history": history_text,
         "tenant_id": str(state.get("tenant_id") or ""),
         "account_id": account_id,
         "dataset_id": dataset_id,
+        "dataset_ids": state.get("dataset_ids"),
         "document_ids": doc_ids_key,
         "document_scope_selected": state.get("document_ids") is not None,
         "embedding_space_hash": embedding_space,
