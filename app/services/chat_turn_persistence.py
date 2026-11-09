@@ -122,8 +122,8 @@ def _add_structured_memory_metadata(
         message_metadata["structured_memory"] = extract_structured_memory_for_turn(
             user_text=question,
             assistant_text=content,
-            max_entities=int(settings.STRUCTURED_MEMORY_MAX_ENTITIES or 20),
-            max_facts=int(settings.STRUCTURED_MEMORY_MAX_FACTS or 8),
+            max_entities=settings.STRUCTURED_MEMORY_MAX_ENTITIES,
+            max_facts=settings.STRUCTURED_MEMORY_MAX_FACTS,
         )
     except Exception as exc:
         logger.debug("Ignoring structured memory extraction failure for %s: %s", log_context, exc)
