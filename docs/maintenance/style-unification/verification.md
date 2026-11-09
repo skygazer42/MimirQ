@@ -2165,3 +2165,19 @@ API 与启动模块用 git apply --cached 只纳入已核对的两个任务入�
 144 篇 Note 目录／链接、格式和归档门禁通过；类型所有者与新的行为记录互相引用，历史正常路径证据保留原范围。覆盖 CSV 与全部 5,351 个跟踪路径相等，检查无重复／遗漏／多余项及必填字段／状态合法性。
 
 按用户要求未新增、修改或运行 Python 测试；未执行应用导入、访问／范围函数、提取器、Task／coroutine、Session、SQL／事务、缓存、摘要／模型、HTTP 或部署。静态证据不能证明真实并发、后台故障、取消与端到端聊天表现；其他会话的检查结果不纳入本批通过声明。
+
+## 2026-11-09：入库附件与状态事务续作
+
+- `1ce42e8f3`：附件查询／flush／统计／commit 共用事务，非重复 IntegrityError 不再继续统计；删除三份转发。
+- `2c3282bc3`：收尾及状态更新各持有一处失败出口，required 失败传播；删除四份转发，未知 criticality 在查询前拒绝。
+- `a7ff1cbc1`：数字只捕获 TypeError／ValueError／OverflowError，UUID 只捕获 ValueError；处理器在字段修改前校验要求，可选通知失败 warning。
+
+对 `app/services/ingestion_run_service.py`、`app/parsing/processors/processor.py` 运行 `python -m ruff check --no-cache`、`python -m ruff format --check --no-cache`，两个工作树文件均通过。使用 `E:/MimirQ/.venv/Scripts/python.exe` 对源码执行 Python 3.11 AST 解析和 compile；每个精确暂存 blob 另经 Ruff stdin／格式／编译。
+
+完整服务快照对照只允许本批事务与解析变换。核对唯一约束 `uq_ingestion_run_documents_tenant_run_document`、三个上传调用点和主文档已提交位置；重复附件仍幂等退出，完成指标只在 commit 后发布。原租户谓词、锁排序、目标数与统计公式保持。可选追踪不替代主文档结果；required 失败回滚后抛出，可选失败 warning。新增 warning 实参仅有操作标识、租户／run／文档标识、规范化要求和异常类型。
+
+处理器出现并发草稿修改后，分别核对暂存候选及工作树中的字段修改前校验／warning，其他草稿不纳入提交。最终候选 SHA-256（LF）：服务 `a64483f7493f4ef64eb539a3c32514056a54fe90e53541db16171bf1d051b8a2`，处理器 `196a33edf1e98bf4c4c5ec76abc94b68dea31da46fe70f2e4397f87c2274b6e4`。工作树含其他会话修改，不能视为 HEAD 字节。仅用已核对的暂存 hunk，未回退工作树。
+
+145 篇 Note 目录／链接、格式和归档门禁通过。CSV 登记本批 Note 并核对全部 5,352 个跟踪路径、无重复／遗漏和合法状态；两个生产文件只登记实际增量，历史审核保留来源。
+
+按用户要求未新增、修改或运行 Python 测试；未执行应用导入、解析器、上传／状态函数、pipeline、Session、SQL／事务、指标、SDK、服务器或部署。静态证据不证明真实数据库并发、取消或故障恢复，历史全仓结果不重报为本轮通过。
