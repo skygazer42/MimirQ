@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
+from minio.error import S3Error
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import document_assets as asset_identity
@@ -287,7 +288,9 @@ def _stream_object_storage_document(
 
     try:
         stat = store.stat_object(object_name=ref.object_name)
-    except Exception as exc:  # noqa: BLE001
+    except S3Error as exc:
+        if exc.code != "NoSuchKey":
+            raise
         logger.warning("Document asset stat failed for %r: %r", ref.object_name[:200], str(exc)[:200])
         raise HTTPException(status_code=404, detail=DOCUMENT_FILE_NOT_FOUND_DETAIL) from exc
 
@@ -434,7 +437,9 @@ def _image_object_name(img_id: str) -> str | None:
 def _stream_minio_image(*, request: Request, object_name: str) -> Response:
     try:
         stat = minio_service.stat_object(object_name=object_name)
-    except Exception as exc:  # noqa: BLE001
+    except S3Error as exc:
+        if exc.code != "NoSuchKey":
+            raise
         logger.warning("Image asset stat failed for %r: %r", object_name[:200], str(exc)[:200])
         raise HTTPException(status_code=404, detail=IMAGE_NOT_FOUND_DETAIL) from exc
     total_size = int(getattr(stat, "size", 0) or 0)
