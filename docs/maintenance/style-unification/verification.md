@@ -2080,3 +2080,30 @@ Ruff 检查通过，五文件均符合格式；各批源码与精确暂存 blob 
 141 篇 Note 目录／链接、格式与归档门禁通过；两个既有决定记录同步更新。覆盖清单仍与 5,348 个已跟踪路径相等，无重复、遗漏或多余项，必填字段与状态合法。已有服务工作树修改保持各自归属；本批仅提交两份 CLI、两个既有 Note 和独立验证记录。
 
 按用户要求未新增、修改或运行 Python 测试；未执行模块导入、CLI／help、实际清理、数据库查询／写入、Session、缓存、SDK 或服务运行。上述结果提供静态范围与契约证据，无法证明生产环境中的故障恢复、删除行为或全仓运行状态。
+
+## 2026-11-09：JWT 目录同步与鉴权边界续作
+
+| 提交 | 实际改动 |
+|---|---|
+| `5f09c5a79` | JWT 用户组预算保留显式零，默认 200 由 Settings 持有；原 0／2,000 上下界、解析器与数据库前退出保持。|
+| `cc7e0555a` | 三个目录模块使用仅含租户／类型的 warning；成员失败记录并 rollback，清理错误传播到既有可选入口；组 rollback 不再 suppress。|
+| `330f647d2` | 自定义租户头直接读取真实可空值，存在时去空白；只暂存该归一化 hunk，并记录共享鉴权草稿的基线边界修复。|
+
+验证范围为 `app/api/dependencies/auth.py`、`app/services/jwt_group_sync_service.py`、`app/services/jwt_membership_sync.py` 和 `app/services/tenant_member_provisioning_service.py`：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/api/dependencies/auth.py app/services/jwt_group_sync_service.py app/services/jwt_membership_sync.py app/services/tenant_member_provisioning_service.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/api/dependencies/auth.py app/services/jwt_group_sync_service.py app/services/jwt_membership_sync.py app/services/tenant_member_provisioning_service.py
+```
+
+四文件 Ruff／格式及 Python 3.11 AST／源码编译通过。三个同步服务的完整模块对照仅允许预算与错误／清理政策；设置开关、claim、TTL、租户查询、VIEWER、审计构造、实际调用／导入顺序和正常返回保持。四处 warning 的实参逐项核对，只含租户与异常类型，不传原异常文本或 traceback；原全局日志上下文另有所有者，不据此声明全局日志没有其他字段。
+
+零预算核对 Settings 的原生整数／默认声明、解析器非正上限的首个空返回，以及调用方在 SessionLocal 前的退出。既有成员保留 add-only 语义；零仅停止本次组写入，不撤销历史成员。可选同步结果继续不替代路由授权。
+
+共享鉴权草稿修改前哈希为 `9bdfaacbe17901fd51aa9705ee98febbe787e77b1779e156580221a1f75aec66`；修复后工作树哈希为 `104701db513f9260b50a5ce2e3e59389612a383984dc1b1365f23e41b14f948d`。检查当前解码器、租户入口与全局异常注册后，按已提交基线补回缺失开发头的 401、Bearer／身份错误映射、租户头匹配与 to_thread 调度。完整 AST 对照基线仅保留请求头归一化、原稿文档／注释和两项上下文写入顺序差异；原稿注释保留，两项上下文写入仍在调度前完成。未执行请求或错误路径运行时。
+
+鉴权仅用 `git apply --cached` 纳入已完成的请求头归一化 hunk，候选 blob 哈希为 `ecd20389b40db71608b849e88d5569b110744a4bfd18a159ce06acb176f76eef`，另经 Ruff stdin／格式及源码编译；其他共享草稿保持未提交，不能把工作树结果当作整个 HEAD 字节相同。三个同步服务的最终源码与 HEAD 一致。已有鉴权说明保持本地未跟踪状态，本批新增独立 Note，不发布历史草稿。
+
+142 篇 Note 的目录／链接、格式与归档门禁通过。覆盖清单补到 5,349 个已跟踪路径，路径集合、无重复、必填字段和状态合法性再次核对。四个代码路径、一条独立 Note 和三份维护记录属于本批范围，其他工作树与未跟踪修改保留其归属。
+
+按用户要求未新增、修改或运行 Python 测试；未执行应用导入、JWT／组解析、请求、目录写入、Session、真实 SQL／rollback／close、权限流程、SDK、服务器或部署。静态证据不证明真实数据库并发、认证集成或故障恢复表现，其他类别的历史结果保持各自来源。
