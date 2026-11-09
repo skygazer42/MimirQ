@@ -22,6 +22,8 @@ Status: implemented
 
 三个维护作业的后置审计由同模块 `_commit_retention_audit` 持有。它仅提交既有事件，审计失败先 rollback，再以 action、tenant 和异常堆栈记录 warning，保留已完成维护的原摘要。原来三份只在 rollback 失败时 debug 的分支退出；rollback 本身失败直接传播，不伪装 Session 已恢复。
 
+维护、周期审计和陈旧报告的摘要时间来自 `now or datetime.now(UTC)`，cutoff 由该时间减去 timedelta 得到；三处 `_dt_to_json` 因此直接接收 datetime 并返回字符串，保留各自原有的时区转换和 UTC 的 Z 表示。无效内部时间不再变成空时间。审计／回归的计划长度与真实 SQLAlchemy 删除行数直接使用；知识资产计划自行构造的必有 document_id 和 lifecycle_state 按键读取，不再跳过失效候选或补 unknown。可选 dataset、actor、外部时间戳解析、逐项删除失败归类和零候选结果保留原政策。
+
 ## Alternatives considered
 
 - 失败后返回零并写日志可以维持成功响应，但零是有效业务结果，API 无法据此区分故障并会把请求报告为完成。
@@ -38,3 +40,5 @@ Status: implemented
 回归候选增量核对 `_base_query`、真实主键声明、两个 API／作业调用者。全模块 AST 限定共同候选选择、两处失效预算兜底退出和计划的有界计数，实际删除及提交语句保持。SQL 执行计划、并发变化和数据库扫描成本未做运行验证；至多读取 5,000 个结果 ID 不等于声称数据库只扫描 5,000 行。
 
 后置审计增量逐项对照三个原事件的 action、resource、actor 和 details 实参及其顺序，模块结构对照限定共同提交／回滚／warning 政策与调用迁移。没有新增审计字段、配置、重试或持久化副本，未执行任何维护或审计写入。
+
+摘要值增量核对实际 datetime 赋值链、同模块计划的完整键、真实主键和安装版本 Query.delete 的 rowcount 返回，完整模块 AST 对照仅允许这些已核实的取值／格式化简化。未改动各查询、租户范围、删除参数、事务、排序或原始连接器时间戳解析；静态验证不能证明真实数据库和时区运行行为。

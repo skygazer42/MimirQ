@@ -32,16 +32,8 @@ SYSTEM_RETENTION_ACTOR_ID = "system:retention"
 _delete_document_lifecycle: Callable[..., Awaitable[None]] | None = None
 
 
-def _dt_to_json(v: datetime | None) -> str | None:
-    if v is None:
-        return None
-    try:
-        s = v.isoformat()
-    except Exception:
-        return None
-    if s.endswith("+00:00"):
-        s = s[:-6] + "Z"
-    return s
+def _dt_to_json(value: datetime) -> str:
+    return value.isoformat().replace("+00:00", "Z")
 
 
 def _normalize_lifecycle_state(value: str | None) -> str:
@@ -123,9 +115,7 @@ async def _execute_knowledge_asset_purge(
     errors = 0
 
     for row in planned:
-        document_id = row.get("document_id")
-        if document_id is None:
-            continue
+        document_id = row["document_id"]
         try:
             await delete_document_lifecycle(
                 document_id=document_id,
@@ -160,7 +150,7 @@ def plan_knowledge_asset_purge(
     lifecycle_state: str = "either",
 ) -> list[dict[str, Any]]:
     state = _normalize_lifecycle_state(lifecycle_state)
-    limit = max(1, int(max_delete or 0))
+    limit = max(1, int(max_delete))
 
     query = (
         db.query(
@@ -221,12 +211,10 @@ def run_audit_log_retention(
 
     cutoff = now0 - timedelta(days=retention_days_i)
 
-    eligible = int(plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i) or 0)
+    eligible = plan_audit_log_purge(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i)
     deleted = 0
     if not dry_run:
-        deleted = int(
-            purge_audit_log_rows(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i, commit=True) or 0
-        )
+        deleted = purge_audit_log_rows(db, tenant_id=tenant_id, cutoff=cutoff, max_delete=max_delete_i, commit=True)
 
     # Best-effort: record the retention run itself (small, PII-safe).
     _commit_retention_audit(
@@ -281,15 +269,12 @@ def run_regression_run_retention(
 
     cutoff = now0 - timedelta(days=retention_days_i)
 
-    eligible = int(
-        plan_regression_run_purge(
-            db,
-            tenant_id=tenant_id,
-            cutoff=cutoff,
-            max_delete=max_delete_i,
-            dataset_id=dataset_id,
-        )
-        or 0
+    eligible = plan_regression_run_purge(
+        db,
+        tenant_id=tenant_id,
+        cutoff=cutoff,
+        max_delete=max_delete_i,
+        dataset_id=dataset_id,
     )
     deleted_runs = 0
     deleted_items = 0
@@ -380,7 +365,7 @@ async def run_knowledge_asset_retention(
             actor_id=actor_id,
         )
 
-    state_counts = Counter(str(row.get("lifecycle_state") or "unknown") for row in planned)
+    state_counts = Counter(row["lifecycle_state"] for row in planned)
     summary = {
         "tenant_id": str(tenant_id),
         "dataset_id": str(dataset_id) if dataset_id is not None else None,

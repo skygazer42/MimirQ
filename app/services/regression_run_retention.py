@@ -92,17 +92,15 @@ def purge_regression_run_rows(
     if not run_ids:
         return (0, 0)
 
-    deleted_items = int(
+    deleted_items = (
         db.query(RagasRegressionItem)
         .filter(RagasRegressionItem.tenant_id == tenant_id, RagasRegressionItem.run_id.in_(run_ids))
         .delete(synchronize_session=False)
-        or 0
     )
-    deleted_runs = int(
+    deleted_runs = (
         db.query(RagasRegressionRun)
         .filter(RagasRegressionRun.tenant_id == tenant_id, RagasRegressionRun.id.in_(run_ids))
         .delete(synchronize_session=False)
-        or 0
     )
     if commit:
         db.commit()

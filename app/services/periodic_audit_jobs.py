@@ -40,16 +40,8 @@ _PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE = "Ignoring non-critical periodic audit fal
 SYSTEM_PERIODIC_AUDIT_ACTOR_ID = "system:periodic_audit"
 
 
-def _dt_to_json(v: datetime | None) -> str | None:
-    if v is None:
-        return None
-    try:
-        s = v.astimezone(UTC).isoformat()
-    except Exception:
-        return None
-    if s.endswith("+00:00"):
-        s = s[:-6] + "Z"
-    return s
+def _dt_to_json(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _bounded_top_counts(counter: Counter[str], *, max_items: int) -> dict[str, int]:

@@ -29,16 +29,8 @@ from app.services.audit_log_service import audit_log_event
 logger = get_logger(__name__)
 
 
-def _dt_to_json(v: datetime | None) -> str | None:
-    if v is None:
-        return None
-    try:
-        s = v.astimezone(UTC).isoformat()
-    except Exception:
-        return None
-    if s.endswith("+00:00"):
-        s = s[:-6] + "Z"
-    return s
+def _dt_to_json(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _parse_datetime_best_effort(raw: object) -> datetime | None:
