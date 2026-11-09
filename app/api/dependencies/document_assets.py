@@ -16,7 +16,7 @@ def _parse_tenant_id(value: str) -> UUID:
     return UUID(value)
 
 def _explicit_tenant_id(request: Request) -> UUID | None:
-    tenant_header = settings.TENANT_HEADER.strip() or "X-Tenant-ID"
+    tenant_header = settings.TENANT_HEADER
     raw = request.headers.get(tenant_header)
     if raw is not None:
         raw = raw.strip()
