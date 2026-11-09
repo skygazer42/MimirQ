@@ -194,15 +194,6 @@ def _semantic_cache_lookup_precheck(
     return meta, ttl
 
 
-def _semantic_cache_scope_hash_or_skip(meta: dict[str, Any], **kwargs: Any) -> str | None:
-    try:
-        scope_hash, _vector_id = build_semantic_cache_scope_hash(**kwargs)
-        return scope_hash
-    except Exception:
-        meta["skip_reason"] = "signature_error"
-        return None
-
-
 def _semantic_cache_embedding_or_skip(meta: dict[str, Any], *, query: str) -> list[float] | None:
     try:
         started_at = time.perf_counter()
@@ -390,21 +381,22 @@ def get_cached_semantic_payload(
     search_k = int(settings.SEMANTIC_CACHE_SEARCH_TOP_K or 5)
     search_k = max(1, min(20, search_k))
 
-    scope_hash = _semantic_cache_scope_hash_or_skip(
-        meta,
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id,
-        corpus_cache_token=corpus_cache_token,
-        behavior_hash=behavior_hash,
-        query=query,
-        top_k=top_k,
-        score_threshold=score_threshold,
-        retrieval_mode=retrieval_mode,
-        metadata_filter=metadata_filter,
-        document_ids=document_ids,
-    )
-    if scope_hash is None:
+    try:
+        scope_hash, _vector_id = build_semantic_cache_scope_hash(
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            corpus_cache_token=corpus_cache_token,
+            behavior_hash=behavior_hash,
+            query=query,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            retrieval_mode=retrieval_mode,
+            metadata_filter=metadata_filter,
+            document_ids=document_ids,
+        )
+    except Exception:
+        meta["skip_reason"] = "signature_error"
         return None, meta
 
     client = _get_redis_client()
@@ -445,13 +437,6 @@ def _semantic_cache_store_precheck() -> "tuple[int, Redis | None]":
     return ttl, _get_redis_client()
 
 
-def _semantic_cache_store_key_and_scope(**kwargs: Any) -> tuple[str, str] | None:
-    try:
-        return build_semantic_cache_scope_hash(**kwargs)
-    except Exception:
-        return None
-
-
 def set_cached_semantic_payload(
     *,
     tenant_id: str,
@@ -471,22 +456,22 @@ def set_cached_semantic_payload(
     if client is None:
         return False
 
-    scope_result = _semantic_cache_store_key_and_scope(
-        tenant_id=tenant_id,
-        account_id=account_id,
-        dataset_id=dataset_id,
-        corpus_cache_token=corpus_cache_token,
-        behavior_hash=behavior_hash,
-        query=query,
-        top_k=top_k,
-        score_threshold=score_threshold,
-        retrieval_mode=retrieval_mode,
-        metadata_filter=metadata_filter,
-        document_ids=document_ids,
-    )
-    if scope_result is None:
+    try:
+        scope_hash, vector_id = build_semantic_cache_scope_hash(
+            tenant_id=tenant_id,
+            account_id=account_id,
+            dataset_id=dataset_id,
+            corpus_cache_token=corpus_cache_token,
+            behavior_hash=behavior_hash,
+            query=query,
+            top_k=top_k,
+            score_threshold=score_threshold,
+            retrieval_mode=retrieval_mode,
+            metadata_filter=metadata_filter,
+            document_ids=document_ids,
+        )
+    except Exception:
         return False
-    scope_hash, vector_id = scope_result
 
     max_bytes = int(settings.SEMANTIC_CACHE_MAX_VALUE_BYTES or 0)
     try:
