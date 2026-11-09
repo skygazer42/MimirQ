@@ -268,7 +268,7 @@ def _now_utc() -> datetime:
 def _safe_int(v: object, *, default: int = 0) -> int:
     try:
         return int(v or 0)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return default
 
 
@@ -455,7 +455,7 @@ def _target_run_id_from_doc_meta(doc_meta: dict[str, Any] | None) -> UUID | None
         return None
     try:
         return UUID(str(raw))
-    except Exception:
+    except ValueError:
         return None
 
 

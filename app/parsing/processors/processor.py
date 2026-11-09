@@ -725,7 +725,12 @@ class DocumentProcessorService:
         except Exception as exc:
             if str(criticality or "").strip().lower() == "required":
                 raise
-            logger.debug(_PROCESSOR_CLEANUP_LOG_MESSAGE, exc)
+            logger.warning(
+                "Ingestion run notification failed: tenant_id=%s document_id=%s error_type=%s",
+                tenant_id,
+                document_id,
+                type(exc).__name__,
+            )
 
     async def _update_status(
         self, db: Session, tenant_id: UUID, document_id: UUID, status: str, progress: int, stage: str, **kwargs
@@ -760,6 +765,8 @@ class DocumentProcessorService:
                 .strip()
                 .lower()
             )
+            if criticality not in {"best_effort", "required"}:
+                raise ValueError("criticality must be required or best_effort")
             self._apply_status_update_fields(
                 db_doc,
                 status=status,
