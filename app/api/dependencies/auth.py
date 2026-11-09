@@ -29,7 +29,9 @@ async def get_current_account_id(
     """
     tenant_value = headers.x_tenant_id
     if not tenant_value:
-        tenant_value = request.headers.get(settings.TENANT_HEADER.strip(), "").strip()
+        tenant_value = request.headers.get(settings.TENANT_HEADER.strip())
+        if tenant_value:
+            tenant_value = tenant_value.strip()
     return await get_current_account_id_from_headers(
         authorization=headers.authorization,
         x_user_id=headers.x_user_id,
