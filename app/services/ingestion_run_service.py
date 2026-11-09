@@ -69,37 +69,50 @@ def add_document(
     """
     Attach a document to a run and update bounded run stats.
     """
-    run = _lock_run_best_effort(db, tenant_id=tenant_id, run_id=run_id)
-    if run is None:
-        return
+    try:
+        run = _lock_run_for_update(db, tenant_id=tenant_id, run_id=run_id)
+        if run is None:
+            return
 
-    existing = _find_run_document_attachment(
-        db,
-        tenant_id=tenant_id,
-        run_id=run_id,
-        document_id=document_id,
-        lock=True,
-    )
-    if existing is not None:
-        _complete_transaction_quietly(db)
-        return
+        existing = (
+            db.query(IngestionRunDocument)
+            .filter(
+                IngestionRunDocument.tenant_id == tenant_id,
+                IngestionRunDocument.run_id == run_id,
+                IngestionRunDocument.document_id == document_id,
+            )
+            .with_for_update()
+            .first()
+        )
+        if existing is not None:
+            db.commit()
+            return
 
-    row = IngestionRunDocument(
-        tenant_id=tenant_id,
-        run_id=run_id,
-        document_id=document_id,
-        source_ref=(source_ref[:1000] if source_ref else None),
-        status=_normalize_status(initial_status),
-    )
-    db.add(row)
-    if not _flush_run_document_insert(db):
-        return
-    finished_meta = _update_run_stats_for_new_document(
-        run,
-        initial_status=initial_status,
-        doc_meta=doc_meta,
-    )
-    if not _commit_run_document_insert(db):
+        row = IngestionRunDocument(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            document_id=document_id,
+            source_ref=(source_ref[:1000] if source_ref else None),
+            status=_normalize_status(initial_status),
+        )
+        db.add(row)
+        db.flush()
+        finished_meta = _update_run_stats_for_new_document(
+            run,
+            initial_status=initial_status,
+            doc_meta=doc_meta,
+        )
+        db.commit()
+    except Exception as exc:
+        if not (isinstance(exc, IntegrityError) and _is_duplicate_run_document_integrity_error(exc)):
+            logger.warning(
+                "Ingestion run attachment failed: tenant_id=%s run_id=%s document_id=%s error_type=%s",
+                tenant_id,
+                run_id,
+                document_id,
+                type(exc).__name__,
+            )
+        db.rollback()
         return
     _observe_finished_ingestion_run(finished_meta)
 
@@ -373,48 +386,6 @@ def _lock_run_best_effort(db: Session, *, tenant_id: UUID, run_id: UUID) -> Inge
         return None
 
 
-def _find_run_document_attachment(
-    db: Session,
-    *,
-    tenant_id: UUID,
-    run_id: UUID,
-    document_id: UUID,
-    lock: bool = False,
-) -> IngestionRunDocument | None:
-    try:
-        query = db.query(IngestionRunDocument).filter(
-            IngestionRunDocument.tenant_id == tenant_id,
-            IngestionRunDocument.run_id == run_id,
-            IngestionRunDocument.document_id == document_id,
-        )
-        if lock:
-            query = query.with_for_update()
-        return query.first()
-    except Exception:
-        return None
-
-
-def _flush_run_document_insert(db: Session) -> bool:
-    try:
-        db.flush()
-        return True
-    except IntegrityError as exc:
-        _rollback_quietly(db)
-        return not _is_duplicate_run_document_integrity_error(exc)
-    except Exception:
-        _rollback_quietly(db)
-        return False
-
-
-def _commit_run_document_insert(db: Session) -> bool:
-    try:
-        db.commit()
-        return True
-    except Exception:
-        _rollback_quietly(db)
-        return False
-
-
 def _observe_finished_ingestion_run(
     finished_meta: tuple[str | None, str | None, float | None] | None,
 ) -> None:
@@ -487,26 +458,24 @@ def _update_run_stats_for_new_document(
     initial_status: str,
     doc_meta: dict[str, Any] | None,
 ) -> tuple[str | None, str | None, float | None] | None:
-    finished_meta: tuple[str | None, str | None, float | None] | None = None
-    try:
-        stats = _init_run_stats(run.stats)
-        stats["total_documents"] = _safe_int(stats.get("total_documents"), default=0) + 1
-        sc = stats.get("status_counts")
-        sc = sc if isinstance(sc, dict) else {}
-        _bump_counter(sc, _normalize_status(initial_status), +1)
-        stats["status_counts"] = sc
-        finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=_now_utc())
+    stats = _init_run_stats(run.stats)
+    stats["total_documents"] = _safe_int(stats.get("total_documents"), default=0) + 1
+    sc = stats.get("status_counts")
+    sc = sc if isinstance(sc, dict) else {}
+    _bump_counter(sc, _normalize_status(initial_status), +1)
+    stats["status_counts"] = sc
+    finished_meta = _update_progress_and_finalize_run(run, stats=stats, finished_at=_now_utc())
 
-        meta = doc_meta if isinstance(doc_meta, dict) else {}
-        ph = str(meta.get("pipeline_hash") or "").strip()
-        if ph:
+    meta = doc_meta if isinstance(doc_meta, dict) else {}
+    raw_pipeline_hash = meta.get("pipeline_hash")
+    if raw_pipeline_hash:
+        pipeline_hash = str(raw_pipeline_hash).strip()
+        if pipeline_hash:
             dist = stats.get("pipeline_hash_docs")
             dist = dist if isinstance(dist, dict) else {}
-            _bump_counter(dist, ph[:64], +1)
+            _bump_counter(dist, pipeline_hash[:64], +1)
             stats["pipeline_hash_docs"] = dist
-        run.stats = stats
-    except Exception as exc:
-        logger.debug(_INGESTION_RUN_FALLBACK_LOG_MESSAGE, exc)
+    run.stats = stats
     return finished_meta
 
 
