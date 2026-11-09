@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import { expectSourceToContain } from '@/lib/source-test-utils'
 
 function readSource(relativePath: string) {
   return fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')
@@ -100,7 +101,7 @@ describe('analysis and observability surfaces stay crisp', () => {
     expect(regressionSrc).not.toContain('bg-[radial-gradient(')
     expect(regressionSrc).not.toContain('shadow-[0_16px_40px_rgba(15,23,42,0.04)]')
     expect(testCaseManagerSrc).not.toContain('bg-[#fffef9]')
-    expect(testCaseManagerSrc).toContain("dense\n            ? 'border-info/15 bg-info/[0.025] px-3 py-3'")
+    expectSourceToContain(testCaseManagerSrc, "dense ? 'border-info/15 bg-info/[0.025] px-3 py-3'")
 
     expect(healthSrc).toContain('rounded-2xl border-info/15 bg-background/72 shadow-none')
     expect(healthSrc).toContain('rounded-2xl bg-background/70 px-4 py-3 text-center shadow-none ring-1 ring-info/15')

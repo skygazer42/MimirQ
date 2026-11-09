@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import { expectSourceToContain } from '@/lib/source-test-utils'
 
 describe('knowledge evidence page source', () => {
   it('lazy-loads the expert evidence workbench behind a branded loading shell', () => {
@@ -10,7 +11,8 @@ describe('knowledge evidence page source', () => {
 
     expect(src).toContain("import dynamic from 'next/dynamic'")
     expect(src).toContain("import { PageLoading } from '@/components/ui/page-loading'")
-    expect(src).toContain(
+    expectSourceToContain(
+      src,
       "const EvidenceWorkbench = dynamic(() => import('@/components/ragviz/evidence-workbench').then((mod) => mod.EvidenceWorkbench), {",
     )
     expect(src).toContain('ssr: false')

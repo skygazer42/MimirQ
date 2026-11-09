@@ -10,6 +10,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import chroma from 'chroma-js'
+import postcss from 'postcss'
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const WEB_ROOT = path.resolve(SCRIPT_DIR, '..')
@@ -28,26 +29,19 @@ const CHECKS = [
   { id: 'destructive-control', fg: 'destructive-foreground', bg: 'destructive', min: 4.5 },
 ]
 
-function extractBlock(source, marker) {
-  const markerIndex = source.indexOf(marker)
-  if (markerIndex === -1) return null
+function normalizeSelectorQuotes(selector) {
+  return selector.replace(/\[([\w-]+)=(['"])([\w-]+)\2\]/g, '[$1="$3"]').trim()
+}
 
-  const braceStart = source.indexOf('{', markerIndex)
-  if (braceStart === -1) return null
-
-  let depth = 0
-  for (let index = braceStart; index < source.length; index += 1) {
-    const ch = source[index]
-    if (ch === '{') depth += 1
-    if (ch === '}') {
-      depth -= 1
-      if (depth === 0) {
-        return source.slice(braceStart + 1, index)
-      }
-    }
-  }
-
-  return null
+export function extractBlock(source, selector) {
+  const expectedSelector = normalizeSelectorQuotes(selector)
+  let block = null
+  postcss.parse(source).walkRules((rule) => {
+    if (block !== null || normalizeSelectorQuotes(rule.selector) !== expectedSelector) return
+    const css = rule.toString()
+    block = css.slice(css.indexOf('{') + 1, -1)
+  })
+  return block
 }
 
 function parseCssVariables(block) {
@@ -85,7 +79,7 @@ function formatRatio(value) {
 async function main() {
   const source = await fs.readFile(GLOBALS_PATH, 'utf8')
   const lightBlock = extractBlock(source, ':root')
-  const darkBlock = extractBlock(source, 'html.dark {')
+  const darkBlock = extractBlock(source, 'html.dark')
 
   if (!lightBlock || !darkBlock) {
     throw new Error('Could not locate :root/default html.dark token blocks in app/globals.css')
@@ -167,7 +161,9 @@ async function main() {
   process.stdout.write(`ui-check(contrast): OK (${reports.join(', ')})\n`)
 }
 
-main().catch((err) => {
-  process.stderr.write(`ui-check(contrast): ERROR ${String(err?.message || err)}\n`)
-  process.exit(2)
-})
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((err) => {
+    process.stderr.write(`ui-check(contrast): ERROR ${String(err?.message || err)}\n`)
+    process.exit(2)
+  })
+}

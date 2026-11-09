@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { describe, expect, it } from 'vitest'
+import ts from 'typescript'
 
 describe('history route source', () => {
   it('keeps the server wrapper auth-agnostic and lets the client fetch authenticated history data', () => {
@@ -49,9 +50,31 @@ describe('history route source', () => {
 
   it('suppresses hydration drift for message-group date labels in the active conversation pane', () => {
     const client = fs.readFileSync(path.resolve(__dirname, 'page-client.tsx'), 'utf8')
+    const source = ts.createSourceFile('page-client.tsx', client, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+    const dateLabels: { tag: string; expression: string; suppressHydrationWarning: boolean }[] = []
+    function visit(node: ts.Node) {
+      if (ts.isJsxElement(node) && node.openingElement.tagName.getText(source) === 'div') {
+        for (const child of node.children) {
+          if (!ts.isJsxExpression(child) || !child.expression) continue
+          dateLabels.push({
+            tag: 'div',
+            expression: child.expression.getText(source),
+            suppressHydrationWarning: node.openingElement.attributes.properties.some(
+              (attribute) =>
+                ts.isJsxAttribute(attribute) &&
+                attribute.name.getText(source) === 'suppressHydrationWarning' &&
+                (!attribute.initializer ||
+                  (ts.isJsxExpression(attribute.initializer) &&
+                    attribute.initializer.expression?.kind === ts.SyntaxKind.TrueKeyword)),
+            ),
+          })
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(source)
 
-    expect(client).toContain('<div suppressHydrationWarning')
-    expect(client).toContain('{group.label}')
+    expect(dateLabels).toContainEqual({ tag: 'div', expression: 'group.label', suppressHydrationWarning: true })
   })
 
   it('suppresses hydration drift for selected-conversation created-at chips', () => {
