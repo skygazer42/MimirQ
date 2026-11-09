@@ -5,11 +5,11 @@ Goal:
 - Support enterprise lifecycle controls (retention/purge) with bounded, auditable operations.
 
 Notes:
-- Best-effort: purge should never crash product flows, but it is an admin-only endpoint.
+- Planning and deletion failures propagate to the admin API or maintenance job.
+- Recording the maintenance operation itself remains a separate audit-log sidecar.
 - Keep outputs PII-minimal: return counts only by default.
 """
 
-import contextlib
 from collections.abc import Sequence
 from datetime import datetime
 from uuid import UUID
@@ -42,14 +42,11 @@ def plan_audit_log_purge(
 
     This intentionally avoids an unbounded COUNT(*) on very large audit tables.
     """
-    try:
-        candidate_ids = _candidate_ids_from_query(
-            db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id, AuditLog.created_at < cutoff),
-            max_delete=max_delete,
-        )
-        return len(candidate_ids)
-    except Exception:
-        return 0
+    candidate_ids = _candidate_ids_from_query(
+        db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id, AuditLog.created_at < cutoff),
+        max_delete=max_delete,
+    )
+    return len(candidate_ids)
 
 
 def purge_audit_log_rows(
@@ -63,16 +60,12 @@ def purge_audit_log_rows(
     """
     Delete audit log rows older than cutoff for a tenant, bounded by max_delete.
 
-    Returns the number of deleted rows (best-effort).
+    Returns the number of deleted rows; database failures propagate.
     """
-    try:
-        candidate_ids = _candidate_ids_from_query(
-            db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id, AuditLog.created_at < cutoff),
-            max_delete=max_delete,
-        )
-    except Exception as exc:
-        logger.warning("audit-log purge: candidate id query failed: %s", exc)
-        return 0
+    candidate_ids = _candidate_ids_from_query(
+        db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id, AuditLog.created_at < cutoff),
+        max_delete=max_delete,
+    )
 
     return delete_audit_log_rows(db, tenant_id=tenant_id, ids=candidate_ids, commit=commit)
 
@@ -91,20 +84,17 @@ def plan_filtered_audit_log_purge(
     until: datetime | None = None,
 ) -> int:
     """Return bounded row count for a filter-scoped audit-log purge."""
-    try:
-        q = apply_audit_log_filters(
-            db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id),
-            actor_id=actor_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            request_id=request_id,
-            since=since,
-            until=until,
-        )
-        return len(_candidate_ids_from_query(q, max_delete=max_delete))
-    except Exception:
-        return 0
+    q = apply_audit_log_filters(
+        db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id),
+        actor_id=actor_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        request_id=request_id,
+        since=since,
+        until=until,
+    )
+    return len(_candidate_ids_from_query(q, max_delete=max_delete))
 
 
 def purge_filtered_audit_log_rows(
@@ -122,21 +112,17 @@ def purge_filtered_audit_log_rows(
     commit: bool = True,
 ) -> int:
     """Delete rows matching explicit filters for a tenant, bounded by max_delete."""
-    try:
-        q = apply_audit_log_filters(
-            db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id),
-            actor_id=actor_id,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            request_id=request_id,
-            since=since,
-            until=until,
-        )
-        candidate_ids = _candidate_ids_from_query(q, max_delete=max_delete)
-    except Exception as exc:
-        logger.warning("audit-log purge: candidate id query failed: %s", exc)
-        return 0
+    q = apply_audit_log_filters(
+        db.query(AuditLog.id).filter(AuditLog.tenant_id == tenant_id),
+        actor_id=actor_id,
+        action=action,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        request_id=request_id,
+        since=since,
+        until=until,
+    )
+    candidate_ids = _candidate_ids_from_query(q, max_delete=max_delete)
 
     return delete_audit_log_rows(db, tenant_id=tenant_id, ids=candidate_ids, commit=commit)
 
@@ -162,14 +148,12 @@ def delete_audit_log_rows(
         if commit:
             db.commit()
         else:
-            with contextlib.suppress(Exception):
-                db.flush()
+            db.flush()
         return deleted
     except Exception as exc:
-        logger.warning(BOUNDED_DELETE_FAILED_LOG, exc)
-        with contextlib.suppress(Exception):
-            db.rollback()
-        return 0
+        db.rollback()
+        logger.warning(BOUNDED_DELETE_FAILED_LOG, exc, exc_info=True)
+        raise
 
 
 __all__ = [
