@@ -2133,3 +2133,35 @@ Ruff 检查通过，五文件均符合格式；各批源码与精确暂存 blob 
 143 篇 Note 目录／链接、格式与归档门禁通过，清单补到 5,350 个已跟踪路径，路径集合、无重复和必填字段／状态合法性再次核对。其他会话和历史证据保持其归属，本批不据局部检查声称全仓运行验收完成。
 
 按用户要求未新增、修改或运行 Python 测试；未执行应用导入、权限／图片／检索请求、业务函数、SQL／事务、Session、模型、SDK、服务器或部署。上述证据限定于源码、声明和静态控制流，不证明真实数据库故障、并发或端到端授权表现。
+
+## 2026-11-09：对话范围与后台写入续作
+
+| 提交 | 实际改动 |
+|---|---|
+| `42389fdd8` | 对话所有者解析直接调用同一归一化函数，删除两层单次字段转发。|
+| `f0afdd89a` | 全部文档失效时保留原明确范围，让已有聊天 409 生效；部分缺失仍沿原清理事务。|
+| `c2c1b321b` | 记忆提取直接使用原生实体／事实预算，显式零不再改为 20／8。|
+| `484a23f16` | 主后台写入失败交给 Task 回调；去掉重复 suppress／布尔转发；可选任务失败有类型级 warning；历史上下文读取同样保留零预算。|
+
+范围为 `app/services/chat_conversation_access.py`、`chat_stream_persistence.py`、`chat_turn_persistence.py`、`chat_bootstrap_runtime.py` 和 `app/api/v1/chat.py`。最终执行：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/services/chat_conversation_access.py app/services/chat_stream_persistence.py app/services/chat_turn_persistence.py app/services/chat_bootstrap_runtime.py app/api/v1/chat.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/services/chat_conversation_access.py app/services/chat_stream_persistence.py app/services/chat_turn_persistence.py app/services/chat_bootstrap_runtime.py app/api/v1/chat.py
+```
+
+五个工作树文件通过 Ruff／格式、Python 3.11 AST 和源码编译，精确暂存候选另经 Ruff stdin／格式／编译。完整模块投影分别只允许两层转发退出、失效范围清理条件、原生预算与主／可选任务失败归属；其他 SQL、角色、数据模型、消息／引用／审计字段、缓存／提交顺序、路由和事件结构保持。
+
+范围证据来自 Conversation 模型、实际加载顺序和现有解析器：访问检查先于已有范围解析，全部失效时不再提交空 ID，409 由原解析器发出。历史读取仍按原可读列表协议返回，用户明确文档／数据集覆盖仍优先；Session 依赖在异常时 rollback 并 close，范围解析的临时修改不会作为成功范围提交。部分缺失更新的原 tenant 谓词、更新时间保护、commit／refresh 保持。
+
+预算证据来自 Settings 原生整数默认、两个提取器的非正空返回和历史构造器的 [:max_e]／[:max_f]；写入及读取各两个参数直接传值。lookup、字符截断与其他预算保持原规则，未把字符上限零的现有不截断含义混入实体／事实的空结果语义。
+
+任务证据核对三个流式分发路径、唯一 asyncio 调度入口和共享主写入函数。实际 Scope 先创建／加载并 flush Conversation，沿用原 ID；后台工作线程保留指标副本、缓存与主写入顺序及 finally close，主失败直接到已有 Task 回调。强引用集合和移除／取消分支保持；创建失败仍按原 best-effort 返回但先记录并关闭未交付 coroutine，关闭异常不再掩盖。可选摘要分别处理调度、执行和关闭，保留取消传播；没有新状态库、重试、同步补写或 shield。
+
+新增 warning 的显式实参逐项核对，只含固定上下文、租户／会话标识或异常类型，不传原异常文本／traceback／问题／回答／引用；不声称原全局日志上下文没有其他字段。SSE done 仍在原时点发出，不代表数据库持久化成功；本批不改变完成事件协议。
+
+API 与启动模块用 git apply --cached 只纳入已核对的两个任务入口／无用 import 和两个历史记忆参数，其他已有草稿保留。提交版 chat.py 哈希 `c30010e96b86a7901e4928e631c8d5bff3c55815a2e57418eca61d183fd3e05b`、工作树 `bc4ceecb51a553d968b646b9011fef3b12a82cbd34e2039a5d7cad422783a628`；提交版 bootstrap 哈希 `2ec1387ad21ed1bb63fdcf8545fdbf56ee72bc576571f325a0a4c22f76b020b1`、工作树 `44bb58e5816ab9aeddc6a861a94496c45b47700a84272bfcc59bc55792739b1f`。一处原启动草稿条件只按 Ruff 重排换行，AST 不变，未纳入提交。其他三个源码与 HEAD 相同。
+
+144 篇 Note 目录／链接、格式和归档门禁通过；类型所有者与新的行为记录互相引用，历史正常路径证据保留原范围。覆盖 CSV 与全部 5,351 个跟踪路径相等，检查无重复／遗漏／多余项及必填字段／状态合法性。
+
+按用户要求未新增、修改或运行 Python 测试；未执行应用导入、访问／范围函数、提取器、Task／coroutine、Session、SQL／事务、缓存、摘要／模型、HTTP 或部署。静态证据不能证明真实并发、后台故障、取消与端到端聊天表现；其他会话的检查结果不纳入本批通过声明。
