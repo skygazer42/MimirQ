@@ -334,7 +334,7 @@ def _denoise_context_docs(docs: list[Document]) -> list[Document]:
     try:
         from app.rag.core.context_denoise import denoise_context_docs
 
-        return denoise_context_docs(docs) or list(docs)
+        return denoise_context_docs(docs)
     except Exception as exc:
         logger.debug("Context denoise failed, falling back to raw docs: %s", exc)
         return list(docs)
@@ -344,7 +344,7 @@ def _compress_context_docs_with_llm(docs: list[Document], *, query: str | None) 
     try:
         from app.rag.core.context_denoise import compress_context_docs_with_llm
 
-        return compress_context_docs_with_llm(docs, query=query) or list(docs)
+        return compress_context_docs_with_llm(docs, query=query)
     except Exception as exc:
         logger.debug("LLM context compression failed, skipping compression: %s", exc)
         return list(docs)
@@ -354,7 +354,7 @@ def _compress_context_docs(docs: list[Document], *, query: str | None) -> list[D
     try:
         from app.rag.core.context_compression import compress_context_docs
 
-        return compress_context_docs(docs, query=query) or list(docs)
+        return compress_context_docs(docs, query=query)
     except Exception as exc:
         logger.debug("Context compression failed, skipping compression: %s", exc)
         return list(docs)
@@ -364,7 +364,7 @@ def _reorder_context_docs(docs: list[Document]) -> list[Document]:
     try:
         from app.rag.core.doc_ordering import reorder_docs_for_generation
 
-        return reorder_docs_for_generation(docs) or list(docs)
+        return reorder_docs_for_generation(docs)
     except Exception as exc:
         logger.debug("Context doc ordering failed, skipping reorder: %s", exc)
         return list(docs)
