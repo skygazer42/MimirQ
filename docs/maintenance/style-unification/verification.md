@@ -2107,3 +2107,29 @@ Ruff 检查通过，五文件均符合格式；各批源码与精确暂存 blob 
 142 篇 Note 的目录／链接、格式与归档门禁通过。覆盖清单补到 5,349 个已跟踪路径，路径集合、无重复、必填字段和状态合法性再次核对。四个代码路径、一条独立 Note 和三份维护记录属于本批范围，其他工作树与未跟踪修改保留其归属。
 
 按用户要求未新增、修改或运行 Python 测试；未执行应用导入、JWT／组解析、请求、目录写入、Session、真实 SQL／rollback／close、权限流程、SDK、服务器或部署。静态证据不证明真实数据库并发、认证集成或故障恢复表现，其他类别的历史结果保持各自来源。
+
+## 2026-11-09：访问校验空值与错误边界续作
+
+| 提交 | 实际改动 |
+|---|---|
+| `b6a6721e3` | 四个 ORM 编辑角色入口保留真实空值，仅有值时 lower；公开角色预览保留 strip／lower；文档所有者读取／修复继续沿用原空白语义，退出空字符串替代。|
+| `292be6b52` | 旧预览主归属查询失败传播；数据集／预览候选只跳过 403／404；其他状态不再被报告成无可访问候选，退出无用局部日志。|
+
+范围为 `app/services/dataset_service.py`、`rbac_service.py`、`document_access_service.py` 和 `document_asset_access.py`。最终执行：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache app/services/dataset_service.py app/services/rbac_service.py app/services/document_access_service.py app/services/document_asset_access.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache app/services/dataset_service.py app/services/rbac_service.py app/services/document_access_service.py app/services/document_asset_access.py
+```
+
+四个工作树文件的 Ruff／格式及 Python 3.11 AST／源码编译通过；逐份精确暂存 blob 另经 Ruff stdin、格式与编译。角色／所有者增量分别对照共享工作树修改前快照和 Git 基线，只允许实际可空读取、原 lower／strip 与空白修复条件；资源增量只允许主查询捕获退出、三处状态分类和无用日志绑定退出。签名、查询谓词、角色集合、原 403／404 文案、候选顺序、写入及事务保持，明确列出的错误分类有意改变。
+
+真实 TenantMember.role 与 Document.owner_id 的 String 列可空，权限集合没有 None 或空字符串。缺失角色因此仍进入原拒绝分支；公开 role_allows 的 strip 与 ORM 编辑的 lower-only 保留各自契约，不把空白角色提升为管理员。原始 owner 不批量重写，仍仅在既有 ACL 修复条件成立时写入已授权账户。
+
+数据集选择、真实 legacy 精确引用 SQL、资源 API 包装、图像证据过滤和流式检索调用已核对。图片候选在授权前初始化为空，授权错误路径保留 finally 释放 Session，未使用未过滤图像。SQL 失败进入既有通用错误入口；真实缺失／拒绝继续按原规则隐藏资源细节。本批不执行图片请求、内容读取或模型调用。
+
+三个已有草稿文件使用 `git apply --cached` 仅暂存完成的 hunk，未重置工作树；完整工作树 AST 对照确保其他内容保持。最终 dataset_service／rbac_service／document_asset_access 源码与 HEAD 一致；document_access_service 的提交 blob 哈希为 `345fbdab6bd35f1c4cb716add0e0863b96423bd7e5170ebc9ac0fb1e32bdba8e`，工作树哈希为 `8a8eb2e15639431dd663e95f79a45f279e988bc5cb6a4cb3852c16ad1a0e317d`，差异仅为另一个已有数据集所有者比较，仍保留未提交。修改前快照保存在本机临时验证记录，未增加运行时模块、包装或数据模型。
+
+143 篇 Note 目录／链接、格式与归档门禁通过，清单补到 5,350 个已跟踪路径，路径集合、无重复和必填字段／状态合法性再次核对。其他会话和历史证据保持其归属，本批不据局部检查声称全仓运行验收完成。
+
+按用户要求未新增、修改或运行 Python 测试；未执行应用导入、权限／图片／检索请求、业务函数、SQL／事务、Session、模型、SDK、服务器或部署。上述证据限定于源码、声明和静态控制流，不证明真实数据库故障、并发或端到端授权表现。
