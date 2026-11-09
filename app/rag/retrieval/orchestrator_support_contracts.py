@@ -165,7 +165,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
         str(
             state.get("contextual_followup_mode")
             if state.get("contextual_followup_mode") is not None
-            else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE)
+            else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MODE
         )
         .strip()
         .lower()
@@ -181,7 +181,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_top_k")
                 if state.get("contextual_followup_top_k") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K)
+                else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_TOP_K
             ),
         ),
         "contextual_followup_max_docs": max(
@@ -189,7 +189,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_docs")
                 if state.get("contextual_followup_max_docs") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS)
+                else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_DOCS
             ),
         ),
         "contextual_followup_max_terms": max(
@@ -197,7 +197,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_terms")
                 if state.get("contextual_followup_max_terms") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS)
+                else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_TERMS
             ),
         ),
         "contextual_followup_min_term_chars": max(
@@ -205,7 +205,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_min_term_chars")
                 if state.get("contextual_followup_min_term_chars") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS)
+                else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MIN_TERM_CHARS
             ),
         ),
         "contextual_followup_max_query_chars": max(
@@ -213,7 +213,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_query_chars")
                 if state.get("contextual_followup_max_query_chars") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS)
+                else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_QUERY_CHARS
             ),
         ),
         "contextual_followup_max_hops": max(
@@ -221,7 +221,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             int(
                 state.get("contextual_followup_max_hops")
                 if state.get("contextual_followup_max_hops") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS)
+                else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_MAX_HOPS
             ),
         ),
         "contextual_followup_latency_budget_ms": max(
@@ -229,7 +229,7 @@ def _resolve_contextual_followup_settings(state: dict[str, Any]) -> dict[str, An
             float(
                 state.get("contextual_followup_latency_budget_ms")
                 if state.get("contextual_followup_latency_budget_ms") is not None
-                else (settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS)
+                else settings.RETRIEVAL_CONTEXTUAL_FOLLOWUP_LATENCY_BUDGET_MS
             ),
         ),
     }
@@ -250,7 +250,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
         str(
             state.get("hierarchy_family_aggregation")
             if state.get("hierarchy_family_aggregation") is not None
-            else (settings.HIERARCHY_RECALL_FAMILY_AGGREGATION)
+            else settings.HIERARCHY_RECALL_FAMILY_AGGREGATION
         )
         .strip()
         .lower()
@@ -274,7 +274,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
             int(
                 state.get("hierarchy_parent_depth")
                 if state.get("hierarchy_parent_depth") is not None
-                else (settings.HIERARCHY_RECALL_PARENT_DEPTH)
+                else settings.HIERARCHY_RECALL_PARENT_DEPTH
             ),
         ),
         "hierarchy_sibling_window": max(
@@ -282,7 +282,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
             int(
                 state.get("hierarchy_sibling_window")
                 if state.get("hierarchy_sibling_window") is not None
-                else (settings.HIERARCHY_RECALL_SIBLING_WINDOW)
+                else settings.HIERARCHY_RECALL_SIBLING_WINDOW
             ),
         ),
         "hierarchy_overfetch_factor": max(
@@ -290,7 +290,7 @@ def _resolve_hierarchy_settings(state: dict[str, Any]) -> dict[str, Any]:
             int(
                 state.get("hierarchy_overfetch_factor")
                 if state.get("hierarchy_overfetch_factor") is not None
-                else (settings.HIERARCHY_RECALL_OVERFETCH_FACTOR)
+                else settings.HIERARCHY_RECALL_OVERFETCH_FACTOR
             ),
         ),
     }
@@ -419,7 +419,7 @@ def _apply_intent_router(
             score_threshold=float(
                 state.get("score_threshold", settings.SIMILARITY_THRESHOLD)
                 if state.get("score_threshold", settings.SIMILARITY_THRESHOLD) is not None
-                else (settings.SIMILARITY_THRESHOLD)
+                else settings.SIMILARITY_THRESHOLD
             ),
             enable_reranker=bool(state.get("enable_reranker", settings.ENABLE_RERANKER)),
             enable_weight_rerank=bool(state.get("enable_weight_rerank", True)),
@@ -439,7 +439,7 @@ def _apply_intent_router(
             learned_router_confidence_min=float(
                 state.get("intent_router_model_confidence_min")
                 if state.get("intent_router_model_confidence_min") is not None
-                else (settings.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN)
+                else settings.RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN
             ),
         )
         for key, value in (overrides or {}).items():

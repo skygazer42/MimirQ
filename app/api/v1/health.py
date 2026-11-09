@@ -100,7 +100,7 @@ def _ensure_admin(db: Session, tenant_id: UUID, account_id: str) -> None:
 
 def _ready_cache_key() -> tuple[object, ...]:
     return (
-        (settings.VECTOR_BACKEND).lower(),
+        settings.VECTOR_BACKEND.lower(),
         settings.TASK_QUEUE_ENABLED,
         settings.DB_CREATE_ALL_ON_STARTUP,
         settings.DB_RUNTIME_MIGRATIONS_ENABLED,
@@ -145,7 +145,7 @@ def _collect_ready_details() -> tuple[dict[str, Any], int, dict[str, Any] | None
     db_status, db_ok = check_database(SessionLocal, require_schema_current=not application_manages_schema)
     ok &= db_ok
 
-    vector_backend = (settings.VECTOR_BACKEND).lower()
+    vector_backend = settings.VECTOR_BACKEND.lower()
     milvus_get_count = milvus_store.get_collection_count if vector_backend == "milvus" else None
     vector_status, milvus_status, vector_ok = check_vector(
         settings,

@@ -518,7 +518,7 @@ class ColbertCorpusIndex:
 
     @staticmethod
     def _colbert_provider_name() -> str:
-        return (settings.COLBERT_RETRIEVAL_PROVIDER).strip().lower()
+        return settings.COLBERT_RETRIEVAL_PROVIDER.strip().lower()
 
     @staticmethod
     def _build_colbert_provider_config(build_colbert_provider_config: Any, *, provider: str) -> dict[str, Any]:

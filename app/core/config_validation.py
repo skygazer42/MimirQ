@@ -190,7 +190,7 @@ def _validate_tokenized_sha256_digests(token_raw: str, field_name: str, required
 
 
 def _validate_initial_registration_token(settings: Settings) -> None:
-    initial_registration_token = (settings.INITIAL_REGISTRATION_TOKEN).strip()
+    initial_registration_token = settings.INITIAL_REGISTRATION_TOKEN.strip()
     _validate_sha256_digest(
         initial_registration_token,
         "INITIAL_REGISTRATION_TOKEN sha256 digest must be 64 hex chars",
@@ -200,7 +200,7 @@ def _validate_initial_registration_token(settings: Settings) -> None:
 def _validate_jwt_tenant_source(settings: Settings, auth_mode: str, is_production: bool) -> None:
     if auth_mode != "jwt" or not is_production:
         return
-    tenant_claim = (settings.JWT_TENANT_CLAIM).strip()
+    tenant_claim = settings.JWT_TENANT_CLAIM.strip()
     if not tenant_claim and not settings.TENANT_HEADER_TRUSTED:
         raise ValueError(
             "AUTH_MODE=jwt in production requires a trusted tenant source: "
@@ -213,7 +213,7 @@ def _validate_jwt_member_auto_provision(settings: Settings, auth_mode: str) -> N
     if not settings.JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED:
         return
     _raise_if(auth_mode != "jwt", "JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED requires AUTH_MODE=jwt")
-    claim = (settings.JWT_TENANT_CLAIM).strip()
+    claim = settings.JWT_TENANT_CLAIM.strip()
     _require_nonempty(
         claim,
         "JWT_TENANT_CLAIM required when JWT_TENANT_MEMBER_AUTO_PROVISION_ENABLED=true",
@@ -221,11 +221,11 @@ def _validate_jwt_member_auto_provision(settings: Settings, auth_mode: str) -> N
 
 
 def _validate_jwt_remote_settings(settings: Settings) -> None:
-    issuer = (settings.JWT_ISSUER).strip()
+    issuer = settings.JWT_ISSUER.strip()
     if issuer:
         validate_jwt_remote_url(issuer, field_name="JWT_ISSUER")
 
-    jwks_urls_raw = (settings.JWT_JWKS_URLS).strip()
+    jwks_urls_raw = settings.JWT_JWKS_URLS.strip()
     if jwks_urls_raw:
         for raw_url in [item.strip() for item in jwks_urls_raw.split(",") if item.strip()]:
             validate_jwt_remote_url(raw_url, field_name="JWT_JWKS_URLS")
@@ -274,7 +274,7 @@ def _validate_initial_admin_password(settings: Settings, password: str) -> None:
 
 
 def _validate_scim_allowlist(settings: Settings) -> None:
-    allow_raw = (settings.SCIM_IP_ALLOWLIST_CIDRS).strip()
+    allow_raw = settings.SCIM_IP_ALLOWLIST_CIDRS.strip()
     if not allow_raw:
         return
     cidrs = _split_token_values(allow_raw)
@@ -330,7 +330,7 @@ def validate_uvicorn_workers_and_distributed_limits(settings: Settings) -> None:
         raise ValueError("UVICORN_WORKERS must be a positive integer")
 
     if is_production and uvicorn_workers > 1:
-        distributed_limiter = settings.RATE_LIMIT_REDIS_ENABLED and bool((settings.REDIS_URL).strip())
+        distributed_limiter = settings.RATE_LIMIT_REDIS_ENABLED and bool(settings.REDIS_URL.strip())
         if settings.RATE_LIMIT_ENABLED and not distributed_limiter:
             raise ValueError("RATE_LIMIT_REDIS_ENABLED=true with REDIS_URL is required when UVICORN_WORKERS > 1")
         if settings.TENANT_QPS_QUOTA_ENABLED and not distributed_limiter:
@@ -341,10 +341,10 @@ def validate_uvicorn_workers_and_distributed_limits(settings: Settings) -> None:
 
 def validate_saml_replay(settings: Settings) -> None:
     is_production = is_production_env()
-    if is_production and (settings.SAML_PROVIDERS_JSON).strip():
+    if is_production and settings.SAML_PROVIDERS_JSON.strip():
         if not settings.SAML_REPLAY_REDIS_ENABLED:
             raise ValueError("SAML_REPLAY_REDIS_ENABLED=true is required for SAML in production")
-        if not (settings.REDIS_URL).strip():
+        if not settings.REDIS_URL.strip():
             raise ValueError("REDIS_URL is required for SAML replay protection in production")
 
 
@@ -352,7 +352,7 @@ def validate_trusted_hosts(settings: Settings) -> None:
     is_production = is_production_env()
     # Security: Host header hardening (production-only by default).
     if is_production and settings.TRUSTED_HOSTS_ENABLED:
-        raw_allowed = (settings.ALLOWED_HOSTS).strip()
+        raw_allowed = settings.ALLOWED_HOSTS.strip()
         allowed = [p.strip() for p in raw_allowed.split(",") if p.strip()]
         if not allowed:
             raise ValueError("ALLOWED_HOSTS required in production (comma-separated)")
@@ -427,10 +427,10 @@ def validate_auth_mode_and_jwt_claims(settings: Settings) -> None:
 
 
 def validate_initial_admin_bootstrap(settings: Settings) -> None:
-    email = (settings.INITIAL_ADMIN_EMAIL).strip()
-    username = (settings.INITIAL_ADMIN_USERNAME).strip()
+    email = settings.INITIAL_ADMIN_EMAIL.strip()
+    username = settings.INITIAL_ADMIN_USERNAME.strip()
     password = settings.INITIAL_ADMIN_PASSWORD
-    password_file = (settings.INITIAL_ADMIN_PASSWORD_FILE).strip()
+    password_file = settings.INITIAL_ADMIN_PASSWORD_FILE.strip()
 
     if not _validate_initial_admin_identity(email, username, password, password_file):
         return
@@ -447,13 +447,13 @@ def validate_scim(settings: Settings) -> None:
     # Security: SCIM provisioning auth guard (enterprise).
     if not settings.SCIM_ENABLED:
         return
-    token_raw = (settings.SCIM_BEARER_TOKEN).strip()
+    token_raw = settings.SCIM_BEARER_TOKEN.strip()
     _validate_tokenized_sha256_digests(
         token_raw,
         "SCIM_BEARER_TOKEN",
         "SCIM_BEARER_TOKEN required when SCIM_ENABLED=true",
     )
-    tenant_raw = (settings.SCIM_TENANT_ID).strip()
+    tenant_raw = settings.SCIM_TENANT_ID.strip()
     _require_nonempty(tenant_raw, "SCIM_TENANT_ID required when SCIM_ENABLED=true")
     _validate_uuid_value(tenant_raw, "SCIM_TENANT_ID must be a UUID")
     _validate_scim_allowlist(settings)
@@ -461,7 +461,7 @@ def validate_scim(settings: Settings) -> None:
 
 def validate_dify_resolution_mode(settings: Settings) -> None:
     is_production = is_production_env()
-    dify_resolution_mode = (settings.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE).strip().lower()
+    dify_resolution_mode = settings.DIFY_EXTERNAL_KNOWLEDGE_RESOLUTION_MODE.strip().lower()
     valid_dify_resolution_modes = {"mapped_only", "allow_dataset_uuid"}
     if dify_resolution_mode not in valid_dify_resolution_modes:
         raise ValueError(
@@ -483,14 +483,14 @@ def validate_dify_external_knowledge(settings: Settings) -> None:
     # Security: Dify external knowledge adapter auth guard.
     if not settings.DIFY_EXTERNAL_KNOWLEDGE_ENABLED:
         return
-    token_raw = (settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS).strip()
+    token_raw = settings.DIFY_EXTERNAL_KNOWLEDGE_API_KEYS.strip()
     _validate_tokenized_sha256_digests(
         token_raw,
         "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS",
         "DIFY_EXTERNAL_KNOWLEDGE_API_KEYS required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true",
     )
 
-    tenant_raw = (settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID).strip()
+    tenant_raw = settings.DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID.strip()
     _raise_if(
         is_production and not tenant_raw,
         "DIFY_EXTERNAL_KNOWLEDGE_TENANT_ID is required when DIFY_EXTERNAL_KNOWLEDGE_ENABLED=true in production",
@@ -689,15 +689,15 @@ def validate_dify_external_knowledge(settings: Settings) -> None:
 
 
 def validate_secret_key_and_jwt_key_source(settings: Settings) -> None:
-    auth_mode = (settings.AUTH_MODE).lower()
-    issuer = (settings.JWT_ISSUER).strip()
-    jwks_urls_raw = (settings.JWT_JWKS_URLS).strip()
+    auth_mode = settings.AUTH_MODE.lower()
+    issuer = settings.JWT_ISSUER.strip()
+    jwks_urls_raw = settings.JWT_JWKS_URLS.strip()
     # Security: Validate SECRET_KEY (required for JWT verification)
     if auth_mode == "jwt":
         if not settings.SECRET_KEY or settings.SECRET_KEY == _LEGACY_DEV_SECRET_KEY or len(settings.SECRET_KEY) < 32:
             raise ValueError("SECRET_KEY required for JWT auth (min 32 chars)")
 
-        algorithm = (settings.ALGORITHM).strip() or "HS256"
+        algorithm = settings.ALGORITHM.strip() or "HS256"
         if algorithm.upper().startswith("HS"):
             # HS* uses SECRET_KEY.
             pass
@@ -724,8 +724,8 @@ def validate_minio(settings: Settings) -> None:
     is_production = is_production_env()
     # Security: Warn about default MinIO credentials
     if settings.MINIO_ENABLED:
-        access_key = (settings.MINIO_ACCESS_KEY).strip()
-        secret_key = (settings.MINIO_SECRET_KEY).strip()
+        access_key = settings.MINIO_ACCESS_KEY.strip()
+        secret_key = settings.MINIO_SECRET_KEY.strip()
         missing_access_key = not access_key
         missing_secret_key = not secret_key
 
@@ -768,16 +768,16 @@ def validate_object_storage(settings: Settings) -> None:
     object_storage_provider = normalize_object_storage_provider_name(settings.OBJECT_STORAGE_PROVIDER)
     settings.OBJECT_STORAGE_PROVIDER = object_storage_provider
     object_storage_profiles = parse_object_storage_region_profiles(settings.OBJECT_STORAGE_REGION_PROFILES)
-    data_region = (settings.DATA_REGION).strip().lower()
+    data_region = settings.DATA_REGION.strip().lower()
     settings.DATA_REGION = data_region
 
     base_object_storage: dict[str, object] = {
         "provider": object_storage_provider,
         "enabled": settings.OBJECT_STORAGE_ENABLED,
-        "endpoint": (settings.OBJECT_STORAGE_ENDPOINT).strip(),
-        "access_key": (settings.OBJECT_STORAGE_ACCESS_KEY).strip(),
-        "secret_key": (settings.OBJECT_STORAGE_SECRET_KEY).strip(),
-        "bucket_name": (settings.OBJECT_STORAGE_BUCKET_NAME).strip(),
+        "endpoint": settings.OBJECT_STORAGE_ENDPOINT.strip(),
+        "access_key": settings.OBJECT_STORAGE_ACCESS_KEY.strip(),
+        "secret_key": settings.OBJECT_STORAGE_SECRET_KEY.strip(),
+        "bucket_name": settings.OBJECT_STORAGE_BUCKET_NAME.strip(),
         "documents_enabled": settings.OBJECT_STORAGE_DOCUMENTS_ENABLED,
     }
 
@@ -883,7 +883,7 @@ def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
         f"RETRIEVAL_QUERY_PARALLELISM ({settings.RETRIEVAL_QUERY_PARALLELISM}) must be >= 1",
     )
     _require_int_min(settings.RETRIEVAL_OVERFETCH_MULTIPLIER, 1, "RETRIEVAL_OVERFETCH_MULTIPLIER must be >= 1")
-    hierarchy_family_aggregation = (settings.HIERARCHY_RECALL_FAMILY_AGGREGATION).strip().lower()
+    hierarchy_family_aggregation = settings.HIERARCHY_RECALL_FAMILY_AGGREGATION.strip().lower()
     valid_hierarchy_family_aggregation = {"frequency", "score", "combined"}
     _raise_if(
         hierarchy_family_aggregation not in valid_hierarchy_family_aggregation,
@@ -951,7 +951,7 @@ def validate_embedding_and_migration(settings: Settings) -> None:
         raise ValueError("KG_GLINER_ENABLED has been retired; use llm or heuristic extraction")
     _require_int_min(settings.EMBEDDING_CACHE_TTL_SEC, 0, "EMBEDDING_CACHE_TTL_SEC must be >= 0")
 
-    emb_prefix = (settings.EMBEDDING_CACHE_PREFIX).strip()
+    emb_prefix = settings.EMBEDDING_CACHE_PREFIX.strip()
     _require_nonempty(emb_prefix, "EMBEDDING_CACHE_PREFIX must be non-empty")
     _require_no_whitespace(emb_prefix, "EMBEDDING_CACHE_PREFIX must not contain whitespace")
     _set_if_changed(settings, "EMBEDDING_CACHE_PREFIX", emb_prefix)
@@ -971,40 +971,40 @@ def validate_embedding_and_migration(settings: Settings) -> None:
             "EMBEDDING_SHADOW_ENABLED requires VECTOR_BACKEND=milvus",
         )
 
-        shadow_model = (settings.EMBEDDING_SHADOW_MODEL).strip()
+        shadow_model = settings.EMBEDDING_SHADOW_MODEL.strip()
         _require_nonempty(
             shadow_model,
             "EMBEDDING_SHADOW_MODEL must be non-empty when EMBEDDING_SHADOW_ENABLED=true",
         )
         _set_if_changed(settings, "EMBEDDING_SHADOW_MODEL", shadow_model)
 
-        shadow_collection = (settings.MILVUS_SHADOW_COLLECTION_NAME).strip()
+        shadow_collection = settings.MILVUS_SHADOW_COLLECTION_NAME.strip()
         _require_nonempty(
             shadow_collection,
             "MILVUS_SHADOW_COLLECTION_NAME must be non-empty when EMBEDDING_SHADOW_ENABLED=true",
         )
         _require_no_whitespace(shadow_collection, "MILVUS_SHADOW_COLLECTION_NAME must not contain whitespace")
-        primary_collection = (settings.MILVUS_COLLECTION_NAME).strip()
+        primary_collection = settings.MILVUS_COLLECTION_NAME.strip()
         _raise_if(
             primary_collection and primary_collection == shadow_collection,
             "MILVUS_SHADOW_COLLECTION_NAME must differ from MILVUS_COLLECTION_NAME",
         )
         _set_if_changed(settings, "MILVUS_SHADOW_COLLECTION_NAME", shadow_collection)
 
-        shadow_provider = (settings.EMBEDDING_SHADOW_PROVIDER).strip()
+        shadow_provider = settings.EMBEDDING_SHADOW_PROVIDER.strip()
         if shadow_provider:
             _require_no_whitespace(shadow_provider, "EMBEDDING_SHADOW_PROVIDER must not contain whitespace")
         _set_if_changed(settings, "EMBEDDING_SHADOW_PROVIDER", shadow_provider)
 
-        shadow_api_base = (settings.EMBEDDING_SHADOW_API_BASE).strip()
+        shadow_api_base = settings.EMBEDDING_SHADOW_API_BASE.strip()
         if shadow_api_base:
             _require_no_whitespace(shadow_api_base, "EMBEDDING_SHADOW_API_BASE must not contain whitespace")
         _set_if_changed(settings, "EMBEDDING_SHADOW_API_BASE", shadow_api_base)
 
-        shadow_api_key = (settings.EMBEDDING_SHADOW_API_KEY).strip()
+        shadow_api_key = settings.EMBEDDING_SHADOW_API_KEY.strip()
         _set_if_changed(settings, "EMBEDDING_SHADOW_API_KEY", shadow_api_key)
 
-    prog_prefix = (settings.EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX).strip()
+    prog_prefix = settings.EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX.strip()
     _require_nonempty(prog_prefix, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must be non-empty")
     _require_no_whitespace(prog_prefix, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX must not contain whitespace")
     _set_if_changed(settings, "EMBEDDING_MIGRATION_PROGRESS_REDIS_PREFIX", prog_prefix)
@@ -1034,7 +1034,7 @@ def validate_chat_and_retrieval_caches(settings: Settings) -> None:
         "RETRIEVAL_CANDIDATE_CACHE_MAX_VALUE_BYTES must be >= 0",
     )
 
-    cand_prefix = (settings.RETRIEVAL_CANDIDATE_CACHE_PREFIX).strip()
+    cand_prefix = settings.RETRIEVAL_CANDIDATE_CACHE_PREFIX.strip()
     _require_nonempty(cand_prefix, "RETRIEVAL_CANDIDATE_CACHE_PREFIX must be non-empty")
     _require_no_whitespace(cand_prefix, "RETRIEVAL_CANDIDATE_CACHE_PREFIX must not contain whitespace")
     _set_if_changed(settings, "RETRIEVAL_CANDIDATE_CACHE_PREFIX", cand_prefix)
@@ -1053,12 +1053,12 @@ def validate_chat_and_retrieval_caches(settings: Settings) -> None:
     _set_if_changed(settings, "SEMANTIC_CACHE_SCORE_THRESHOLD", sem_threshold)
     _require_int_min(settings.SEMANTIC_CACHE_SEARCH_TOP_K, 1, "SEMANTIC_CACHE_SEARCH_TOP_K must be >= 1")
 
-    sem_prefix = (settings.SEMANTIC_CACHE_REDIS_PREFIX).strip()
+    sem_prefix = settings.SEMANTIC_CACHE_REDIS_PREFIX.strip()
     _require_nonempty(sem_prefix, "SEMANTIC_CACHE_REDIS_PREFIX must be non-empty")
     _require_no_whitespace(sem_prefix, "SEMANTIC_CACHE_REDIS_PREFIX must not contain whitespace")
     _set_if_changed(settings, "SEMANTIC_CACHE_REDIS_PREFIX", sem_prefix)
 
-    sem_collection = (settings.SEMANTIC_CACHE_COLLECTION_NAME).strip()
+    sem_collection = settings.SEMANTIC_CACHE_COLLECTION_NAME.strip()
     _require_nonempty(sem_collection, "SEMANTIC_CACHE_COLLECTION_NAME must be non-empty")
     _require_no_whitespace(sem_collection, "SEMANTIC_CACHE_COLLECTION_NAME must not contain whitespace")
     _set_if_changed(settings, "SEMANTIC_CACHE_COLLECTION_NAME", sem_collection)
@@ -1081,7 +1081,7 @@ def validate_chat_and_retrieval_caches(settings: Settings) -> None:
         {"memory", "redis"},
         "EVIDENCE_POST_RERANK_CACHE_BACKEND must be one of: memory, redis",
     )
-    post_rerank_cache_prefix = (settings.EVIDENCE_POST_RERANK_CACHE_PREFIX).strip()
+    post_rerank_cache_prefix = settings.EVIDENCE_POST_RERANK_CACHE_PREFIX.strip()
     _require_nonempty(post_rerank_cache_prefix, "EVIDENCE_POST_RERANK_CACHE_PREFIX must be non-empty")
     _require_no_whitespace(post_rerank_cache_prefix, "EVIDENCE_POST_RERANK_CACHE_PREFIX must not contain whitespace")
     _set_if_changed(settings, "EVIDENCE_POST_RERANK_CACHE_PREFIX", post_rerank_cache_prefix)
@@ -1097,7 +1097,7 @@ def validate_chat_and_retrieval_caches(settings: Settings) -> None:
         0,
         "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_MAX_CONCURRENCY must be >= 0",
     )
-    adm_prefix = (settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX).strip()
+    adm_prefix = settings.RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX.strip()
     _require_nonempty(adm_prefix, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must be non-empty")
     _require_no_whitespace(adm_prefix, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX must not contain whitespace")
     _set_if_changed(settings, "RAG_RETRIEVAL_DISTRIBUTED_ADMISSION_PREFIX", adm_prefix)
@@ -1125,7 +1125,7 @@ def validate_kg_search(settings: Settings) -> None:
     _require_float_between(kg_quality_low, 0.0, 1.0, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD must be between 0 and 1")
     _set_if_changed(settings, "KG_QUALITY_LOW_CONFIDENCE_THRESHOLD", kg_quality_low)
     _require_int_min(settings.KG_QUALITY_RELATION_EDGES_LIMIT, 0, "KG_QUALITY_RELATION_EDGES_LIMIT must be >= 0")
-    kg_query_mode_default = (settings.KG_SEARCH_QUERY_MODE_DEFAULT).strip().lower()
+    kg_query_mode_default = settings.KG_SEARCH_QUERY_MODE_DEFAULT.strip().lower()
     _raise_if(
         kg_query_mode_default not in {"auto", "local", "global", "drift"},
         "KG_SEARCH_QUERY_MODE_DEFAULT must be one of: auto, local, global, drift",
@@ -1163,7 +1163,7 @@ def validate_kg_search(settings: Settings) -> None:
     )
     _require_int_min(settings.KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT, 0, "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT must be >= 0")
     _raise_if(
-        (settings.KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY).strip().lower() not in {"head", "uniform"},
+        settings.KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY.strip().lower() not in {"head", "uniform"},
         "KG_EXTRACT_MAX_CHUNKS_PER_DOCUMENT_STRATEGY must be one of: head, uniform",
     )
     _require_int_min(settings.KG_EXTRACT_LONG_DOC_MIN_CHUNKS, 0, "KG_EXTRACT_LONG_DOC_MIN_CHUNKS must be >= 0")
@@ -1222,13 +1222,13 @@ def validate_vector_write_and_table_catalog(settings: Settings) -> None:
 
 
 def validate_evidence_governance_and_quotas(settings: Settings) -> None:
-    signing_key_id = (settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID).strip()
+    signing_key_id = settings.EVIDENCE_CAPSULE_SIGNING_KEY_ID.strip()
     _require_nonempty(signing_key_id, "EVIDENCE_CAPSULE_SIGNING_KEY_ID must be non-empty")
     _require_no_whitespace(signing_key_id, "EVIDENCE_CAPSULE_SIGNING_KEY_ID must not contain whitespace")
     _set_if_changed(settings, "EVIDENCE_CAPSULE_SIGNING_KEY_ID", signing_key_id)
 
     if settings.EVIDENCE_CAPSULE_SIGNING_ENABLED:
-        signing_secret = (settings.EVIDENCE_CAPSULE_SIGNING_SECRET).strip()
+        signing_secret = settings.EVIDENCE_CAPSULE_SIGNING_SECRET.strip()
         _require_nonempty(signing_secret, "EVIDENCE_CAPSULE_SIGNING_SECRET must be non-empty when signing is enabled")
 
     index_strictness = _normalize_choice_setting(
@@ -1300,7 +1300,7 @@ def validate_workflow_and_retrieval_profiles(settings: Settings) -> None:
         "hierarchy_hybrid_ce",
         "hierarchy_grounded_strict",
     }
-    chat_default_profile = (settings.CHAT_DEFAULT_RETRIEVAL_PROFILE).strip().lower()
+    chat_default_profile = settings.CHAT_DEFAULT_RETRIEVAL_PROFILE.strip().lower()
     if chat_default_profile not in valid_retrieval_profiles:
         raise ValueError(
             "CHAT_DEFAULT_RETRIEVAL_PROFILE must be one of: " + ", ".join(sorted(valid_retrieval_profiles))
@@ -1316,14 +1316,14 @@ def validate_workflow_and_retrieval_profiles(settings: Settings) -> None:
 
 
 def validate_claim_verifier(settings: Settings) -> None:
-    claim_verifier_mode = (settings.RAG_CLAIM_VERIFIER_MODE).strip().lower()
+    claim_verifier_mode = settings.RAG_CLAIM_VERIFIER_MODE.strip().lower()
     valid_claim_verifier_modes = {"token_overlap", "semantic_heuristic", "strict"}
     if claim_verifier_mode not in valid_claim_verifier_modes:
         raise ValueError("RAG_CLAIM_VERIFIER_MODE must be one of: " + ", ".join(sorted(valid_claim_verifier_modes)))
     if settings.RAG_CLAIM_VERIFIER_MODE != claim_verifier_mode:
         settings.RAG_CLAIM_VERIFIER_MODE = claim_verifier_mode
 
-    claim_nli_provider = (settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER).strip().lower()
+    claim_nli_provider = settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER.strip().lower()
     claim_nli_aliases = {
         "": "none",
         "off": "none",
@@ -1343,10 +1343,10 @@ def validate_claim_verifier(settings: Settings) -> None:
         )
     if settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER != claim_nli_provider:
         settings.RAG_CLAIM_NLI_VERIFIER_PROVIDER = claim_nli_provider
-    if (settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC) < 1:
+    if settings.RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC < 1:
         raise ValueError("RAG_CLAIM_NLI_VERIFIER_TIMEOUT_SEC must be >= 1")
     if settings.RAG_CLAIM_NLI_VERIFIER_ENABLED and claim_nli_provider == "openai_compatible":
-        claim_nli_model = (settings.RAG_CLAIM_NLI_VERIFIER_MODEL).strip()
+        claim_nli_model = settings.RAG_CLAIM_NLI_VERIFIER_MODEL.strip()
         if not claim_nli_model:
             raise ValueError("RAG_CLAIM_NLI_VERIFIER_MODEL is required when NLI verifier is enabled")
         if settings.RAG_CLAIM_NLI_VERIFIER_MODEL != claim_nli_model:
@@ -1433,7 +1433,7 @@ def validate_retrieval_fallback_modes(settings: Settings) -> None:
         "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN must be between 0 and 1",
     )
     _set_if_changed(settings, "RAG_INTENT_ROUTER_MODEL_CONFIDENCE_MIN", intent_router_model_confidence_min)
-    intent_router_model_path = (settings.RAG_INTENT_ROUTER_MODEL_PATH).strip()
+    intent_router_model_path = settings.RAG_INTENT_ROUTER_MODEL_PATH.strip()
     _set_if_changed(settings, "RAG_INTENT_ROUTER_MODEL_PATH", intent_router_model_path)
 
 

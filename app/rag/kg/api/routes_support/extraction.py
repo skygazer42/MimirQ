@@ -79,7 +79,7 @@ def _scope_chunks_to_pipeline(
 
 
 def _default_prompt_template_id() -> UUID | None:
-    raw_tid = (settings.KG_EXTRACT_PROMPT_TEMPLATE_ID).strip()
+    raw_tid = settings.KG_EXTRACT_PROMPT_TEMPLATE_ID.strip()
     if not raw_tid:
         return None
     with contextlib.suppress(Exception):
@@ -108,11 +108,11 @@ def _effective_kg_extraction_options(
         pipeline_hash=_selected_extraction_pipeline_hash(document, options),
         prompt_template_id=options.prompt_template_id or _default_prompt_template_id(),
         prompt_template_key=(
-            (options.prompt_template_key or "").strip() or (settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY).strip() or None
+            (options.prompt_template_key or "").strip() or settings.KG_EXTRACT_PROMPT_TEMPLATE_KEY.strip() or None
         ),
         prompt_ab_experiment_key=(
             (options.prompt_ab_experiment_key or "").strip()
-            or (settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY).strip()
+            or settings.KG_EXTRACT_PROMPT_AB_EXPERIMENT_KEY.strip()
             or None
         ),
         kg_python_plugin=kg_python_plugin,
@@ -224,7 +224,7 @@ async def _enqueue_kg_extraction_response(
             prompt_template_id=effective.prompt_template_id,
             prompt_template_key=effective.prompt_template_key,
             prompt_ab_experiment_key=effective.prompt_ab_experiment_key,
-            extraction_backend=(effective.extraction_backend or (settings.KG_EXTRACTION_BACKEND).strip() or None),
+            extraction_backend=(effective.extraction_backend or settings.KG_EXTRACTION_BACKEND.strip() or None),
             kg_python_plugin=effective.kg_python_plugin,
             kg_python_params=effective.kg_python_params,
             replace_existing=effective.replace_existing,

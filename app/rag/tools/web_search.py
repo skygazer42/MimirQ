@@ -67,7 +67,7 @@ async def _run_tavily_search(
     lang: str | None = None,
     region: str | None = None,
 ) -> list[dict[str, Any]]:
-    api_key = (settings.TAVILY_API_KEY).strip()
+    api_key = settings.TAVILY_API_KEY.strip()
     if not api_key:
         raise RuntimeError("missing_tavily_api_key")
     payload: dict[str, Any] = {
@@ -113,7 +113,7 @@ async def _run_serper_search(
     lang: str | None = None,
     region: str | None = None,
 ) -> list[dict[str, Any]]:
-    api_key = (settings.SERPER_API_KEY).strip()
+    api_key = settings.SERPER_API_KEY.strip()
     if not api_key:
         raise RuntimeError("missing_serper_api_key")
     query_text = str(query or "")
@@ -163,7 +163,7 @@ async def _run_brave_search(
     lang: str | None = None,
     region: str | None = None,
 ) -> list[dict[str, Any]]:
-    api_key = (settings.BRAVE_SEARCH_API_KEY).strip()
+    api_key = settings.BRAVE_SEARCH_API_KEY.strip()
     if not api_key:
         raise RuntimeError("missing_brave_search_api_key")
     params: dict[str, Any] = {

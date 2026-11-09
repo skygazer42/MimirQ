@@ -1700,7 +1700,7 @@ def _build_magicpdf_parser_status(
 ) -> dict[str, object]:
     enabled = settings.MAGIC_PDF_ENABLED
     api_url = settings.MAGIC_PDF_API_URL.strip()
-    cli = (settings.MAGIC_PDF_CLI).strip() or "magic-pdf"
+    cli = settings.MAGIC_PDF_CLI.strip() or "magic-pdf"
     cli_ok = bool(resolve_cli_command(cli))
     models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     if not enabled:
@@ -1730,8 +1730,8 @@ async def _build_parser_statuses(
     resolve_cli_command: Callable[[str], str | None],
     resolve_magicpdf_models_dir: Callable[[str], str | None],
 ) -> dict[str, dict[str, object]]:
-    pandoc_cli = (settings.PANDOC_CLI).strip() or "pandoc"
-    libreoffice_cli = (settings.LIBREOFFICE_CLI).strip() or "soffice"
+    pandoc_cli = settings.PANDOC_CLI.strip() or "pandoc"
+    libreoffice_cli = settings.LIBREOFFICE_CLI.strip() or "soffice"
     parsers: dict[str, dict[str, object]] = {
         "basic": {"enabled": True, "available": True, "message": "built-in"},
         "markitdown": _build_import_parser_status(
@@ -1838,7 +1838,7 @@ def _get_milvus_status() -> dict[str, object]:
 
 
 def _get_vector_status() -> dict[str, object]:
-    backend = (settings.VECTOR_BACKEND).strip().lower()
+    backend = settings.VECTOR_BACKEND.strip().lower()
     if backend == "milvus":
         return _get_milvus_status()
 

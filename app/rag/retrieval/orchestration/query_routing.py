@@ -327,7 +327,7 @@ def resolve_evidence_contract(options: dict[str, Any], *, query: str) -> dict[st
         bool(retrieval_contract_policy.get("enable_partial_miss_second_pass"))
         and settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_ENABLED
     )
-    must_recall_second_pass_mode = (settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE).strip().lower() or "keyword"
+    must_recall_second_pass_mode = settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_MODE.strip().lower() or "keyword"
     must_recall_second_pass_top_k = max(
         int(state.get("top_k", settings.RETRIEVAL_TOP_K) or settings.RETRIEVAL_TOP_K),
         settings.RETRIEVAL_MUST_RECALL_SECOND_PASS_TOP_K,

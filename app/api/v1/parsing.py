@@ -511,7 +511,7 @@ def _magicpdf_fallback_available() -> bool:
         return False
     if magicpdf_service_configured(settings.MAGIC_PDF_API_URL):
         return True
-    cli = (settings.MAGIC_PDF_CLI).strip() or "magic-pdf"
+    cli = settings.MAGIC_PDF_CLI.strip() or "magic-pdf"
     models_dir = resolve_magicpdf_models_dir(settings.MAGIC_PDF_MODELS_DIR)
     return bool(resolve_cli_command(cli) and models_dir)
 
@@ -532,17 +532,17 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="deepseek_ocr",
-        enabled=bool(settings.DEEPSEEK_OCR_ENABLED) and bool((settings.SILICONFLOW_API_KEY).strip()),
+        enabled=bool(settings.DEEPSEEK_OCR_ENABLED) and bool(settings.SILICONFLOW_API_KEY.strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="qianfan_ocr",
-        enabled=bool(settings.QIANFAN_OCR_ENABLED) and bool((settings.QIANFAN_OCR_API_URL).strip()),
+        enabled=bool(settings.QIANFAN_OCR_ENABLED) and bool(settings.QIANFAN_OCR_API_URL.strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
         name="etl4llm",
-        enabled=bool(settings.ETL4LLM_ENABLED) and bool((settings.ETL4LLM_API_URL).strip()),
+        enabled=bool(settings.ETL4LLM_ENABLED) and bool(settings.ETL4LLM_API_URL.strip()),
     )
     _append_pdf_fallback_candidate(
         candidates,
@@ -552,7 +552,7 @@ def _build_pdf_fallback_candidates() -> list[str]:
     _append_pdf_fallback_candidate(
         candidates,
         name="docling",
-        enabled=bool(settings.DOCLING_ENABLED) and bool((settings.DOCLING_API_URL).strip()),
+        enabled=bool(settings.DOCLING_ENABLED) and bool(settings.DOCLING_API_URL.strip()),
     )
 
     # MagicPDF prefers service mode; local CLI remains a fallback.

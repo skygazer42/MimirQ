@@ -46,7 +46,7 @@ class _LexicalRun:
 
 
 def _lexical_search_config(top_k: int) -> tuple[str, int, bool, int]:
-    fts_config = (settings.LEXICAL_DB_FTS_CONFIG).strip() or "simple"
+    fts_config = settings.LEXICAL_DB_FTS_CONFIG.strip() or "simple"
     fetch_mult = max(1, settings.LEXICAL_DB_FETCH_MULTIPLIER)
     fetch_cap = max(10, settings.LEXICAL_DB_MAX_CANDIDATES)
     limit = max(0, top_k)

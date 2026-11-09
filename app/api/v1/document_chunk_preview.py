@@ -569,7 +569,7 @@ def _filter_preview_chunks(
     if merge_min > 0 and documents and chunks:
         chunks = _merge_small_chunks_preview(documents=documents, chunks=chunks, min_chars=merge_min)
 
-    min_chars = max(0, (settings.CHUNK_MIN_CHARS))
+    min_chars = max(0, settings.CHUNK_MIN_CHARS)
     if min_chars > 0 and chunks:
         before = len(chunks)
         original_chunks = chunks
@@ -1031,7 +1031,7 @@ async def _load_preview_parsed_payload(
     cache_ttl_sec = settings.PREVIEW_PARSE_CACHE_TTL_SEC
     cache_max_entries = settings.PREVIEW_PARSE_CACHE_MAX_ENTRIES
     cache_max_doc_chars = settings.PREVIEW_PARSE_CACHE_MAX_DOC_CHARS
-    cache_version = (settings.PREVIEW_PARSE_CACHE_VERSION).strip() or "v1"
+    cache_version = settings.PREVIEW_PARSE_CACHE_VERSION.strip() or "v1"
     cache_key: str | None = None
     parsed_docs_payload: list[dict[str, Any]] | None = None
     resolved_backend = str(config.parser_backend)
@@ -1624,7 +1624,7 @@ def preview_chunking_by_sha(
     cache_enabled = settings.PREVIEW_PARSE_CACHE_ENABLED
     cache_ttl_sec = settings.PREVIEW_PARSE_CACHE_TTL_SEC
     cache_max_entries = settings.PREVIEW_PARSE_CACHE_MAX_ENTRIES
-    cache_version = (settings.PREVIEW_PARSE_CACHE_VERSION).strip() or "v1"
+    cache_version = settings.PREVIEW_PARSE_CACHE_VERSION.strip() or "v1"
     if not (cache_enabled and config.use_parse_cache and cache_ttl_sec > 0 and cache_max_entries > 0):
         raise HTTPException(status_code=400, detail="parse cache disabled; please upload the file")
 
