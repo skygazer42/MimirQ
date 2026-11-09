@@ -48,8 +48,8 @@ def ensure_conversation_access(
     conv: Conversation,
 ) -> list[UUID]:
     """
-    Ensure the current user can access all documents bound to the conversation.
-    Returns the allowed document ids, or an empty list if the conversation is unscoped.
+    Check owner and dataset access, then return readable bound document ids.
+    Keep an expired explicit scope for the chat scope resolver.
     """
     _ensure_conversation_owner(account_id, conv)
     ensure_conversation_dataset_access(
@@ -69,7 +69,7 @@ def ensure_conversation_access(
         check_member=False,
     )
     remaining = [doc_id for doc_id in doc_ids if doc_id not in missing_ids]
-    if remaining != doc_ids:
+    if remaining and remaining != doc_ids:
         preserved_updated_at = conv.updated_at
         db.query(Conversation).filter(
             Conversation.id == conv.id,
