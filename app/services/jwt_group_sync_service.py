@@ -120,8 +120,7 @@ def sync_jwt_groups_best_effort(*, tenant_id: UUID, account_id: str, jwt_payload
     - tenant_group_members (by tenant_id + group_id + user_id)
     """
     claim = (settings.JWT_GROUPS_CLAIM or "groups").strip()
-    max_groups = settings.JWT_GROUPS_MAX_GROUPS or 200
-    max_groups = max(0, min(max_groups, 2000))
+    max_groups = max(0, min(settings.JWT_GROUPS_MAX_GROUPS, 2000))
 
     group_names = parse_group_names_from_jwt_payload(jwt_payload, claim=claim, max_groups=max_groups)
     if not group_names:
