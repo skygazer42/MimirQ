@@ -192,20 +192,13 @@ def _retrieve_cache_key(state: dict[str, Any]) -> str:
     # to avoid cross-user leakage when cache is enabled.
     account_id = str(state.get("account_id") or "")[:200]
     dataset_id = str(state.get("dataset_id") or "")
-    embedding_space = ""
-    try:
-        from app.rag.embedding.utils import current_embedding_space_hash
+    from app.rag.embedding.utils import current_embedding_space_hash
 
-        embedding_space = current_embedding_space_hash()
-    except Exception:
-        embedding_space = ""
+    embedding_space = current_embedding_space_hash()
     policy_json = ""
     raw_policy = state.get("intent_router_policy")
     if raw_policy is not None:
-        try:
-            policy_json = json.dumps(raw_policy, ensure_ascii=False, sort_keys=True, default=str)
-        except Exception:
-            policy_json = str(raw_policy)
+        policy_json = json.dumps(raw_policy, ensure_ascii=False, sort_keys=True, default=str)
     policy_hash = hashlib.sha256(policy_json.encode("utf-8", errors="ignore")).hexdigest()[:16] if policy_json else ""
     key_obj = {
         "question": (state.get("question") or "")[:800],
