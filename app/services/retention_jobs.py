@@ -9,7 +9,7 @@ This module provides small, testable building blocks that can be triggered by:
 Principles:
 - Bounded deletes (caller provides max_delete)
 - Auditable (records a small audit log event)
-- Fail-open: retention must never crash product flows
+- Audit logging is a sidecar; invalid required inputs stop the maintenance run
 """
 
 from collections import Counter
@@ -63,14 +63,8 @@ def _resolve_delete_document_lifecycle() -> Callable[..., Awaitable[None]]:
 
 
 def _normalize_retention_inputs(*, retention_days: int, max_delete: int) -> tuple[int, int]:
-    try:
-        retention_days_i = max(1, int(retention_days or 0))
-    except Exception:
-        retention_days_i = 90
-    try:
-        max_delete_i = max(1, int(max_delete or 0))
-    except Exception:
-        max_delete_i = 1000
+    retention_days_i = max(1, int(retention_days))
+    max_delete_i = max(1, int(max_delete))
     return retention_days_i, max_delete_i
 
 
@@ -193,14 +187,7 @@ def run_audit_log_retention(
     Returns a small PII-safe summary dict (counts and timestamps).
     """
     now0 = now or datetime.now(UTC)
-    try:
-        retention_days_i = max(1, int(retention_days or 0))
-    except Exception:
-        retention_days_i = 90
-    try:
-        max_delete_i = max(1, int(max_delete or 0))
-    except Exception:
-        max_delete_i = 100_000
+    retention_days_i, max_delete_i = _normalize_retention_inputs(retention_days=retention_days, max_delete=max_delete)
 
     cutoff = now0 - timedelta(days=retention_days_i)
 
@@ -266,14 +253,7 @@ def run_regression_run_retention(
     Returns a small PII-safe summary dict (counts and timestamps).
     """
     now0 = now or datetime.now(UTC)
-    try:
-        retention_days_i = max(1, int(retention_days or 0))
-    except Exception:
-        retention_days_i = 90
-    try:
-        max_delete_i = max(1, int(max_delete or 0))
-    except Exception:
-        max_delete_i = 200
+    retention_days_i, max_delete_i = _normalize_retention_inputs(retention_days=retention_days, max_delete=max_delete)
     max_delete_i = min(max_delete_i, 5000)
 
     cutoff = now0 - timedelta(days=retention_days_i)
