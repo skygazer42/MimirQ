@@ -12,6 +12,8 @@ Status: implemented
 
 周期审计和陈旧报告把“今日报告是否已写入”的查询异常当作 False，可能在未知状态或失败 Session 上继续运行。索引和证据报告虽收集逐数据集错误，最终却始终写 ok=True，导致依赖该字段的 CLI 返回成功退出码。两份数据集预算也会在转换失败时无声改用 50。
 
+四个周期报告各自复制相同的写入事务，失败时只在 rollback 也失败后打印 debug；陈旧报告还压掉 rollback 异常。底层 audit_log_event 在构造或 db.add 失败时无日志返回，外层即使 commit 成功也无法观察这次审计缺失。
+
 ## Decision
 
 `audit_log_retention` 的四个计划／候选查询入口直接传播失败。只有查询成功且候选为空时才返回零；原租户、过滤条件、时间范围、排序和 max_delete 上限保持。
@@ -29,6 +31,8 @@ Status: implemented
 `regression_run_retention` 的计划和删除共用 `_candidate_run_ids`，同一处完成预算转换、最小一条与 5,000 条上限。计划不再先 COUNT 所有匹配记录，而是返回有限 ID 结果的长度；删除复用同一选择规则。租户、可选 dataset、completed/failed 状态、非空完成时间、cutoff 和原排序保持，单列查询按实际非空 UUID 主键解包。
 
 三个维护作业的后置审计由同模块 `_commit_retention_audit` 持有。它仅提交既有事件，审计失败先 rollback，再以 action、tenant 和异常堆栈记录 warning，保留已完成维护的原摘要。原来三份只在 rollback 失败时 debug 的分支退出；rollback 本身失败直接传播，不伪装 Session 已恢复。
+
+四个周期报告共用原索引报告写入函数改名后的 `_write_audit_summary`，显式传入各自 action 和 resource_type。报告详情投影、commit、成功 dry_run 与失败 ok／audit_write_error 字段保持，失败先 rollback 再 warning，rollback 本身失败传播。陈旧报告沿用自己的 error 字段和返回协议，仅采用相同的回滚与可观测原则。audit_log_event 保留原构造、db.add、无 commit 与 fail-open 返回，捕获处记录 action、tenant 和堆栈，不记录 details、ip、actor 或消息正文。
 
 维护、周期审计和陈旧报告的摘要时间来自 `now or datetime.now(UTC)`，cutoff 由该时间减去 timedelta 得到；三处 `_dt_to_json` 因此直接接收 datetime 并返回字符串，保留各自原有的时区转换和 UTC 的 Z 表示。无效内部时间不再变成空时间。审计／回归的计划长度与真实 SQLAlchemy 删除行数直接使用；知识资产计划自行构造的必有 document_id 和 lifecycle_state 按键读取，不再跳过失效候选或补 unknown。可选 dataset、actor、外部时间戳解析、逐项删除失败归类和零候选结果保留原政策。
 
@@ -55,3 +59,5 @@ Status: implemented
 选择范围和陈旧报告预算增量核对两个 CLI 的真实 choices／整数默认、服务入口和查询前的转换顺序。完整模块对照限定两个归一化函数的失败政策，其他函数与所有查询、删除、提交、报告计数、来源时间戳优先级和序列化保持；没有执行报告或维护任务。
 
 报告状态增量核对两个 CLI 对 res.ok 的累计及退出码、五处报告存在性调用、两个私有 listing 的唯一调用方和实际 SQLAlchemy first 的可空返回。完整模块 AST 对照限定上述捕获退出、状态标志和单一预算 owner，原查询谓词、排序、有效预算、错误样本上限、业务计数及写入语句保持。未执行 CLI、查询或报告运行时；源码核对不等同于这些失败路径的运行回归。
+
+报告写入增量先证明四份事务 AST 仅 action／resource_type 字面量不同，再核对提取后调用实参与展开顺序。全模块对照限定共享提交政策、两个 warning 边界和底层排队失败日志；事件构造、detail 字段、错误标志、所有查询、业务汇总和外部输入解析保持。没有增加重试或另一个写入目的地，未调用业务、日志服务、Session 或任何外部系统。

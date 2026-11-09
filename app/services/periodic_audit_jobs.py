@@ -36,7 +36,6 @@ from app.services.evidence_drift_audit_service import audit_reference_sources_dr
 from app.services.index_audit_service import run_dataset_index_audit_internal
 
 logger = get_logger(__name__)
-_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE = "Ignoring non-critical periodic audit fallback failure: %s"
 SYSTEM_PERIODIC_AUDIT_ACTOR_ID = "system:periodic_audit"
 
 
@@ -221,11 +220,13 @@ def _index_audit_severity(dataset_summary: dict[str, Any]) -> tuple[int, int, in
     )
 
 
-def _write_index_audit_summary(
+def _write_audit_summary(
     *,
     db: Session,
     tenant_id: UUID,
     actor_id: str | None,
+    action: str,
+    resource_type: str,
     report_date: str,
     summary: dict[str, Any],
 ) -> dict[str, Any]:
@@ -234,8 +235,8 @@ def _write_index_audit_summary(
             db,
             tenant_id=tenant_id,
             actor_id=actor_id,
-            action="observability.index_audit.daily",
-            resource_type="index_audit_report",
+            action=action,
+            resource_type=resource_type,
             resource_id=report_date,
             details={k: v for k, v in summary.items() if k not in {"ok"}},
         )
@@ -243,10 +244,13 @@ def _write_index_audit_summary(
         summary["dry_run"] = False
         return summary
     except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
+        db.rollback()
+        logger.warning(
+            "Periodic audit report write failed: action=%s tenant_id=%s",
+            action,
+            tenant_id,
+            exc_info=True,
+        )
         summary["ok"] = False
         summary["dry_run"] = False
         summary["audit_write_error"] = True
@@ -364,10 +368,12 @@ def run_daily_index_audit_report(
         summary["dry_run"] = True
         return summary
 
-    return _write_index_audit_summary(
+    return _write_audit_summary(
         db=db,
         tenant_id=tenant_id,
         actor_id=actor_id,
+        action="observability.index_audit.daily",
+        resource_type="index_audit_report",
         report_date=report_date,
         summary=summary,
     )
@@ -456,28 +462,15 @@ def run_daily_embedding_drift_report(
         summary["dry_run"] = True
         return summary
 
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="observability.embedding_drift.daily",
-            resource_type="embedding_drift_report",
-            resource_id=report_date,
-            details={k: v for k, v in summary.items() if k not in {"ok"}},
-        )
-        db.commit()
-        summary["dry_run"] = False
-        return summary
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
-        summary["ok"] = False
-        summary["dry_run"] = False
-        summary["audit_write_error"] = True
-        return summary
+    return _write_audit_summary(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="observability.embedding_drift.daily",
+        resource_type="embedding_drift_report",
+        report_date=report_date,
+        summary=summary,
+    )
 
 
 def run_daily_evidence_drift_audit_report(
@@ -616,28 +609,15 @@ def run_daily_evidence_drift_audit_report(
         summary["dry_run"] = True
         return summary
 
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="evidence.drift_audit.daily",
-            resource_type="evidence_drift_report",
-            resource_id=report_date,
-            details={k: v for k, v in summary.items() if k not in {"ok"}},
-        )
-        db.commit()
-        summary["dry_run"] = False
-        return summary
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
-        summary["ok"] = False
-        summary["dry_run"] = False
-        summary["audit_write_error"] = True
-        return summary
+    return _write_audit_summary(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="evidence.drift_audit.daily",
+        resource_type="evidence_drift_report",
+        report_date=report_date,
+        summary=summary,
+    )
 
 
 def run_daily_access_review_summary(
@@ -784,28 +764,15 @@ def run_daily_access_review_summary(
         summary["dry_run"] = True
         return summary
 
-    try:
-        audit_log_event(
-            db,
-            tenant_id=tenant_id,
-            actor_id=actor_id,
-            action="compliance.access_review.daily",
-            resource_type="access_review_summary",
-            resource_id=report_date,
-            details={k: v for k, v in summary.items() if k not in {"ok"}},
-        )
-        db.commit()
-        summary["dry_run"] = False
-        return summary
-    except Exception:
-        try:
-            db.rollback()
-        except Exception as exc:
-            logger.debug(_PERIODIC_AUDIT_FALLBACK_LOG_MESSAGE, exc)
-        summary["ok"] = False
-        summary["dry_run"] = False
-        summary["audit_write_error"] = True
-        return summary
+    return _write_audit_summary(
+        db=db,
+        tenant_id=tenant_id,
+        actor_id=actor_id,
+        action="compliance.access_review.daily",
+        resource_type="access_review_summary",
+        report_date=report_date,
+        summary=summary,
+    )
 
 
 __all__ = [

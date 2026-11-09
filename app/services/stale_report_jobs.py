@@ -11,7 +11,6 @@ Design principles (similar to retention jobs):
 - Audit writes are best-effort; required database lookups propagate failures
 """
 
-import contextlib
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -355,8 +354,13 @@ def run_daily_stale_report(
         summary["dry_run"] = False
         return summary
     except Exception:
-        with contextlib.suppress(Exception):
-            db.rollback()
+        db.rollback()
+        logger.warning(
+            "Stale report audit write failed: tenant_id=%s report_date=%s",
+            tenant_id,
+            report_date,
+            exc_info=True,
+        )
         summary["ok"] = False
         summary["error"] = "failed_to_write_audit"
         summary["dry_run"] = False

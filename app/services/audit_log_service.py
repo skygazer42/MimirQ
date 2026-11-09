@@ -12,6 +12,9 @@ from uuid import UUID
 from sqlalchemy.orm import Query, Session
 
 from app.models.audit_log import AuditLog
+from app.rag.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 def apply_audit_log_filters(
@@ -83,7 +86,12 @@ def audit_log_event(
         db.add(item)
     except Exception:
         # Never block product flows due to audit logging.
-        return
+        logger.warning(
+            "Audit event could not be queued: action=%s tenant_id=%s",
+            action,
+            tenant_id,
+            exc_info=True,
+        )
 
 
 def build_chat_audit_details(
