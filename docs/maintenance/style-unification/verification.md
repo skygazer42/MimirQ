@@ -2058,3 +2058,25 @@ Ruff 检查通过，五文件均符合格式；各批源码与精确暂存 blob 
 141 篇 Note 目录／链接、格式与归档门禁通过；覆盖清单维持 5,348 个已跟踪路径，路径集合、无重复和必填字段／状态合法性再次核对。五份代码和既有 Note 为三份源码提交；记录另行提交，其他工作树与未跟踪文件保留原位。
 
 按用户要求未新增、修改或运行 Python 测试。未执行 CLI／help、报告、业务函数、Session、真实 SQL／事务、审计写入、SDK、服务器或部署；静态结果不证明运行时回归或全仓运营验收。之前的全仓、前端和其他类别结果保持各自历史归属。
+
+## 2026-11-09：保留任务 CLI 状态与入口续作
+
+| 提交 | 实际改动 |
+|---|---|
+| `5521e39ed` | 两份 CLI 直接使用原生参数、租户主键 Row、Pydantic 策略 enabled 和 PostgreSQL 结果；退出重复校验和转换，使用标准 UTC／Callable。|
+| `db36166cb` | 保留任务按各自真实结果协议累计失败，数据集已有 ok 反映文档／版本错误，跨租户累计不被成功覆盖；内部 DB 批次返回记录与失败状态。|
+
+本批生产范围为 `scripts/run_retention_jobs.py` 和 `scripts/run_db_maintenance_jobs.py`：
+
+```powershell
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff check --no-cache scripts/run_retention_jobs.py scripts/run_db_maintenance_jobs.py
+& E:/MimirQ/.venv/Scripts/python.exe -m ruff format --check --no-cache scripts/run_retention_jobs.py scripts/run_db_maintenance_jobs.py
+```
+
+两个文件的 Ruff 与格式检查通过；逐批源码和精确暂存 blob 通过 Python 3.11 AST 与编译，最终源码核对到 HEAD。完整模块 AST 对照限定 argparse 已声明的原生参数、主键结果、策略与 PostgreSQL 字段读取、标准导入，以及 CLI 的失败状态与私有返回签名。六个延迟依赖槽及全部 loader/getter、原 service kwargs／调用顺序、asyncio.run、Session 关闭、选项／默认／互斥和 JSON 结构保持。
+
+失败协议核对实际 HEAD／工作树的知识资产、数据集保留、语义缓存摘要和 dataset_not_found 短响应。CLI 使用已有字段，不向服务协议添加专用标志；仅就地更新数据集记录已有的 ok。not_found、零候选、未启用策略及正常 dry-run 保留成功含义。必填嵌套计数仅在实际 ok=True 摘要分支读取，错误状态按 logical or 累计，业务调用先于状态合并，后续任务仍按原选择顺序执行。
+
+141 篇 Note 目录／链接、格式与归档门禁通过；两个既有决定记录同步更新。覆盖清单仍与 5,348 个已跟踪路径相等，无重复、遗漏或多余项，必填字段与状态合法。已有服务工作树修改保持各自归属；本批仅提交两份 CLI、两个既有 Note 和独立验证记录。
+
+按用户要求未新增、修改或运行 Python 测试；未执行模块导入、CLI／help、实际清理、数据库查询／写入、Session、缓存、SDK 或服务运行。上述结果提供静态范围与契约证据，无法证明生产环境中的故障恢复、删除行为或全仓运行状态。
