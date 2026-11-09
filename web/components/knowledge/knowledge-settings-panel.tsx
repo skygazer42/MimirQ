@@ -136,12 +136,6 @@ const EMBEDDING_PRESETS = [
     apiBase: 'https://api.openai.com/v1',
     brand: 'OpenAI Embedding',
   },
-  {
-    model: 'bge-large-zh',
-    provider: 'local',
-    apiBase: '',
-    brand: '本地 Embedding',
-  },
 ] as const
 type EmbeddingPresetModel = (typeof EMBEDDING_PRESETS)[number]['model']
 const SETTINGS_GUIDE_PANEL_ID = 'knowledge-settings-guide'
@@ -169,10 +163,6 @@ const EMBEDDING_MODEL_META: Record<EmbeddingPresetModel, { description: string; 
     description: '响应更轻量，适合成本敏感或高频检索场景。',
     chips: ['低成本', '响应快', 'OpenAI 兼容'],
   },
-  'bge-large-zh': {
-    description: '中文语义更强，适合中文知识库和条款型文本。',
-    chips: ['中文增强', '本地可部署', '长文本友好'],
-  },
 }
 
 function normalizeApiBase(value: string | null | undefined): string {
@@ -190,6 +180,8 @@ function inferEmbeddingBrand(embedding: KnowledgeSettingsConfig['embedding'] | n
     .trim()
     .toLowerCase()
   const apiBase = normalizeApiBase(embedding.api_base)
+  if (provider === 'local') return '本地推理已停用，请选择模型服务'
+  if (provider === 'ollama') return 'Ollama 向量服务'
 
   if (
     provider === 'dashscope' ||
@@ -198,9 +190,6 @@ function inferEmbeddingBrand(embedding: KnowledgeSettingsConfig['embedding'] | n
     model === 'text-embedding-v3'
   ) {
     return 'Qwen Embedding'
-  }
-  if (provider === 'local' || model === 'bge-large-zh') {
-    return '本地 Embedding'
   }
   return 'OpenAI Embedding'
 }
@@ -607,6 +596,11 @@ export function KnowledgeSettingsPanel({
               </div>
 
               <div className="p-3">
+                {draftConfig?.embedding.provider.trim().toLowerCase() === 'local' ? (
+                  <p role="alert" className="mb-2 text-sm text-warning">
+                    当前模型使用已停用的本地推理，请选择模型服务后保存。已有索引不会自动迁移。
+                  </p>
+                ) : null}
                 {hasCustomEmbeddingModel ? (
                   <div className="mb-2 flex min-w-0 items-center gap-2 border-b border-border/45 pb-2 text-[10px]">
                     <span className="shrink-0 font-medium text-muted-foreground/72">当前自定义模型</span>
@@ -620,7 +614,8 @@ export function KnowledgeSettingsPanel({
                 <div className="grid gap-2 md:grid-cols-2">
                   {EMBEDDING_PRESETS.map((preset) => {
                     const model = preset.model
-                    const selected = draftConfig?.embedding.model === model
+                    const selected =
+                      draftConfig?.embedding.model === model && draftConfig.embedding.provider === preset.provider
                     return (
                       <button
                         key={model}

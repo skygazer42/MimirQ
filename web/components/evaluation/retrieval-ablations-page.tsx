@@ -2162,6 +2162,11 @@ export function RetrievalAblationsPage() {
                                 <SelectValue placeholder="选择重排器" />
                               </SelectTrigger>
                               <SelectContent>
+                                {!RERANKER_PROVIDER_OPTIONS.some((option) => option.key === rerankerProvider) ? (
+                                  <SelectItem value={rerankerProvider} disabled>
+                                    已停用（{rerankerProvider}）
+                                  </SelectItem>
+                                ) : null}
                                 {RERANKER_PROVIDER_OPTIONS.map((option) => (
                                   <SelectItem key={option.key} value={option.key}>
                                     {option.label}

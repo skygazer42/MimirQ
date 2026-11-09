@@ -20,12 +20,12 @@ RUN sed -i \
 
 FROM base AS builder
 
-# 复制依赖文件
-COPY requirements.txt /tmp/requirements.txt
+# Optional profiles must be selected explicitly by the image builder.
+ARG REQUIREMENTS_FILE=requirements.txt
+COPY requirements*.txt /tmp/
 
 # 安装系统依赖 + Python 依赖（builder stage）
 RUN --mount=type=cache,target=/root/.cache/pip \
-    --mount=type=cache,target=/tmp/torch-wheels \
     apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     unixodbc-dev \
@@ -34,20 +34,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     && /opt/venv/bin/pip install --upgrade pip setuptools wheel \
     # Avoid fetching "build dependencies" in isolated envs when network is flaky.
     # Most of our sdists are pure-Python and build fine with setuptools already present.
-    && mkdir -p /tmp/torch-wheels \
-    && TORCH_WHL="torch-2.13.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-    && TORCHVISION_WHL="torchvision-0.28.0+cpu-cp311-cp311-manylinux_2_28_x86_64.whl" \
-    && curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 \
-        -o "/tmp/torch-wheels/${TORCH_WHL}" \
-        "https://download-r2.pytorch.org/whl/cpu/${TORCH_WHL}" \
-    && curl --fail --location --continue-at - --retry 10 --retry-all-errors --retry-delay 5 \
-        -o "/tmp/torch-wheels/${TORCHVISION_WHL}" \
-        "https://download-r2.pytorch.org/whl/cpu/${TORCHVISION_WHL}" \
-    && /opt/venv/bin/pip install --retries 5 --timeout 120 \
-        "/tmp/torch-wheels/${TORCH_WHL}" \
-        "/tmp/torch-wheels/${TORCHVISION_WHL}" \
     && for attempt in 1 2 3; do \
-        /opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r "/tmp/requirements.txt" \
+        /opt/venv/bin/pip install --retries 10 --timeout 120 --no-build-isolation -r "/tmp/${REQUIREMENTS_FILE}" \
         && break; \
         if [ "$attempt" = "3" ]; then exit 1; fi; \
         sleep "$((attempt * 10))"; \

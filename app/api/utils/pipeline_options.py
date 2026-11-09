@@ -97,5 +97,9 @@ def to_pipeline_options(
     if pipeline is None:
         return PipelineOptions()
 
+    from app.services.pipeline_config import validate_pipeline_execution
+
     data = pipeline.model_dump(exclude_none=True)
-    return PipelineOptions(**data) if data else PipelineOptions()
+    options = PipelineOptions(**data) if data else PipelineOptions()
+    validate_pipeline_execution(options)
+    return options

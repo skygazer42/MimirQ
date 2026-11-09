@@ -127,11 +127,11 @@ def test_resolve_corpus_cache_token_changes_when_document_scope_dataset_embeddin
     dataset_id = uuid4()
     db_a = _CorpusTokenDB(
         document_rows=[(document_id, dataset_id, None, {})],
-        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "local", "model": "embed-a"}})],
+        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}})],
     )
     db_b = _CorpusTokenDB(
         document_rows=[(document_id, dataset_id, None, {})],
-        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "local", "model": "embed-b"}})],
+        dataset_rows=[(dataset_id, {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-b"}})],
     )
 
     token_a = token_mod.resolve_corpus_cache_token(
@@ -165,12 +165,28 @@ def test_resolve_corpus_cache_token_for_multi_dataset_scope_is_order_stable_and_
     dataset_a = uuid4()
     dataset_b = uuid4()
     rows_a = [
-        (dataset_a, "2026-01-01T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-a"}}),
-        (dataset_b, "2026-01-02T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-b"}}),
+        (
+            dataset_a,
+            "2026-01-01T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}},
+        ),
+        (
+            dataset_b,
+            "2026-01-02T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-b"}},
+        ),
     ]
     rows_b = [
-        (dataset_a, "2026-01-01T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-a"}}),
-        (dataset_b, "2026-01-03T00:00:00+00:00", {"embedding_defaults": {"provider": "local", "model": "embed-c"}}),
+        (
+            dataset_a,
+            "2026-01-01T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}},
+        ),
+        (
+            dataset_b,
+            "2026-01-03T00:00:00+00:00",
+            {"embedding_defaults": {"provider": "openai_compatible", "model": "embed-c"}},
+        ),
     ]
 
     token_a = token_mod.resolve_corpus_cache_token(

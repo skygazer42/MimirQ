@@ -78,10 +78,7 @@ def _native_sparse_query(query: str, policy: VectorSearchPolicy) -> tuple["Spars
     from app.rag.retrieval.sparse import get_sparse_encoder, parse_synonyms, resolve_sparse_provider_capability
 
     capability = resolve_sparse_provider_capability(
-        requested_provider=policy.sparse_provider,
-        sparse_enabled=True,
-        splade_model_name=settings.SPARSE_SPLADE_MODEL_NAME,
-        default_provider="deterministic",
+        requested_provider=policy.sparse_provider, sparse_enabled=True, default_provider="deterministic"
     )
     provider = (
         str(capability.get("effective_provider") or policy.sparse_provider or "deterministic").strip().lower()
@@ -91,12 +88,6 @@ def _native_sparse_query(query: str, policy: VectorSearchPolicy) -> tuple["Spars
         provider=provider,
         synonyms=parse_synonyms(settings.SPARSE_RETRIEVAL_SYNONYMS),
         synonyms_raw=settings.SPARSE_RETRIEVAL_SYNONYMS,
-        model_name=settings.SPARSE_SPLADE_MODEL_NAME,
-        device=settings.SPARSE_SPLADE_DEVICE or "cpu",
-        batch_size=settings.SPARSE_SPLADE_BATCH_SIZE or 8,
-        max_length=settings.SPARSE_SPLADE_MAX_LENGTH or 256,
-        top_k=settings.SPARSE_SPLADE_TOP_K or 128,
-        min_weight=float(settings.SPARSE_SPLADE_MIN_WEIGHT or 0.0),
     )
     return encoder.encode_batch([query])[0], provider
 

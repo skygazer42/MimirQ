@@ -34,6 +34,7 @@ def main() -> int:
             dataset_id=dataset_id,
             batch_size=max(1, int(args.batch_size or 1)),
         )
+        db.commit()
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
     finally:

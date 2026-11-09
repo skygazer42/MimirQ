@@ -9,6 +9,7 @@ from dataclasses import asdict
 from typing import Any, Callable
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_model_provider
 from app.core.regex_safety import looks_like_nested_quantifier
 from app.rag.core.logging import get_logger
 from app.rag.pipeline_plugins.refs import sanitize_python_plugin_ref
@@ -629,6 +630,11 @@ def build_pipeline_metadata(options: PipelineOptions) -> dict[str, Any] | None:
     return pipeline or None
 
 
+def validate_pipeline_execution(options: PipelineOptions | PipelineEffective) -> None:
+    """Validate selected capabilities at write and execution boundaries, preserving readable history."""
+    reject_retired_model_provider(options.governance_keywords_provider, capability="keyword")
+
+
 def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions | None) -> bool:
     """
     Upsert `meta["pipeline"]` from PipelineOptions (or remove it when empty).
@@ -637,6 +643,7 @@ def upsert_pipeline_metadata(meta: dict[str, Any], *, options: PipelineOptions |
     """
     if options is None:
         return False
+    validate_pipeline_execution(options)
     pipeline_meta = build_pipeline_metadata(options)
     if pipeline_meta:
         meta["pipeline"] = pipeline_meta
@@ -1175,7 +1182,10 @@ def resolve_pipeline_options(options: PipelineOptions) -> PipelineEffective:
         embedding_contextual_retrieval_lazy_mode=bool(embedding_contextual_retrieval_lazy_mode),
         embedding_field_aware_enabled=bool(embedding_field_aware_enabled),
         chunk_vector_enabled=_resolve_flag(settings.CHUNK_VECTOR_ENABLED, options.chunk_vector_enabled),
-        bm25_index_enabled=_resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled),
+        bm25_index_enabled=(
+            settings.VECTOR_BACKEND.strip().lower() == "milvus"
+            and _resolve_flag(settings.BM25_INDEX_ENABLED, options.bm25_index_enabled)
+        ),
         kg_enabled=_resolve_flag(settings.KG_ENABLED, options.kg_enabled),
         kg_python_plugin=str(kg_python_plugin or ""),
         kg_python_params=dict(kg_python_params),

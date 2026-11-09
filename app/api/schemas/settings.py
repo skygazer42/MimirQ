@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
+from app.core.model_execution import reject_retired_model_provider
 from app.services.navigation_visibility import normalize_navigation_modules
 
 _MINERU_BACKENDS = {"pipeline", "vlm-http-client"}
@@ -99,7 +100,7 @@ class MinioConfig(BaseModel):
 
 
 class RAGConfig(BaseModel):
-    """RAG parameter config."""
+    """Read-compatible RAG config; update requests separately reject retired selections."""
 
     chunk_size: int = 1000
     chunk_overlap: int = 200
@@ -389,6 +390,20 @@ class UpdateSettingsRequest(BaseModel):
     langgraph: LangGraphConfig | None = None
     navigation: NavigationConfig | None = None
     dify_external_knowledge: DifyExternalKnowledgeConfig | None = None
+
+    @field_validator("embedding")
+    @classmethod
+    def _validate_embedding_execution(cls, value: EmbeddingConfig | None) -> EmbeddingConfig | None:
+        if value is not None:
+            reject_retired_model_provider(value.provider, capability="embedding")
+        return value
+
+    @field_validator("rag")
+    @classmethod
+    def _validate_reranker_execution(cls, value: RAGConfig | None) -> RAGConfig | None:
+        if value is not None:
+            reject_retired_model_provider(value.reranker_provider, capability="reranker")
+        return value
 
 
 class TestLLMRequest(BaseModel):

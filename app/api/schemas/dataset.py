@@ -135,6 +135,7 @@ class DatasetRAGDefaults(BaseModel):
 
     enable_reranker: bool | None = None
     reranker_provider: str | None = None
+
     reranker_top_n: int | None = Field(default=None, ge=1, le=200)
 
     # Optional strict grounding mode: treat missing evidence as non-existent and abstain early.
@@ -267,8 +268,26 @@ class DatasetBase(BaseModel):
     retention_policy: DatasetRetentionPolicy | None = None
 
 
+def _validate_dataset_execution(
+    embedding: DatasetEmbeddingDefaults | None, rag: DatasetRAGDefaults | None, pipeline: DocumentPipelineOptions | None
+) -> None:
+    from app.core.model_execution import reject_retired_model_provider, validate_rag_execution_selection
+
+    if embedding is not None:
+        reject_retired_model_provider(embedding.provider, capability="embedding")
+    if rag is not None:
+        validate_rag_execution_selection(
+            reranker_provider=rag.reranker_provider, retrieval_profile=rag.retrieval_profile
+        )
+    if pipeline is not None:
+        reject_retired_model_provider(pipeline.governance_keywords_provider, capability="keyword")
+
+
 class DatasetCreate(DatasetBase):
-    pass
+    @model_validator(mode="after")
+    def _validate_execution(self) -> "DatasetCreate":
+        _validate_dataset_execution(self.embedding_defaults, self.rag_defaults, self.pipeline)
+        return self
 
 
 class DatasetUpdate(BaseModel):
@@ -290,6 +309,11 @@ class DatasetUpdate(BaseModel):
     chunk_targets_v2: DatasetChunkTargetsV2 | None = None
     pipeline: DocumentPipelineOptions | None = None
     retention_policy: DatasetRetentionPolicy | None = None
+
+    @model_validator(mode="after")
+    def _validate_execution(self) -> "DatasetUpdate":
+        _validate_dataset_execution(self.embedding_defaults, self.rag_defaults, self.pipeline)
+        return self
 
 
 DatasetOperationalStatus = Literal["active", "anomaly", "pending", "testing"]

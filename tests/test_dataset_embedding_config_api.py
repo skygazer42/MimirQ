@@ -15,7 +15,7 @@ def test_dataset_embedding_defaults_reject_non_milvus_backend(monkeypatch: pytes
     with pytest.raises(HTTPException) as exc_info:
         datasets._upsert_dataset_embedding_defaults_metadata(
             metadata,
-            defaults=DatasetEmbeddingDefaults(provider="local", model="embed-a"),
+            defaults=DatasetEmbeddingDefaults(provider="openai_compatible", model="embed-a"),
         )
 
     assert exc_info.value.status_code == 400
@@ -45,7 +45,7 @@ def test_create_dataset_rejects_invalid_embedding_defaults_before_service_call(
         datasets.create_dataset(
             DatasetCreate(
                 name="demo",
-                embedding_defaults=DatasetEmbeddingDefaults(provider="local", model="embed-a"),
+                embedding_defaults=DatasetEmbeddingDefaults(provider="openai_compatible", model="embed-a"),
             ),
             tenant_id=uuid4(),
             account_id="owner-1",
@@ -70,7 +70,7 @@ def test_create_checks_membership_before_embedding_config(monkeypatch: pytest.Mo
         datasets.create_dataset(
             DatasetCreate(
                 name="denied",
-                embedding_defaults=DatasetEmbeddingDefaults(provider="local", model="embed-a"),
+                embedding_defaults=DatasetEmbeddingDefaults(provider="openai_compatible", model="embed-a"),
             ),
             tenant_id=uuid4(),
             account_id="outsider",
@@ -95,7 +95,7 @@ def test_clone_dataset_drops_invalid_embedding_defaults_on_non_milvus_backend(
         description=None,
         permission=DatasetPermissionEnum.ALL_TEAM_MEMBERS,
         owner_id="owner-1",
-        dataset_metadata={"embedding_defaults": {"provider": "local", "model": "embed-a"}},
+        dataset_metadata={"embedding_defaults": {"provider": "openai_compatible", "model": "embed-a"}},
     )
     created_dataset = SimpleNamespace(
         id=uuid4(),
@@ -153,7 +153,7 @@ def test_update_rejects_invalid_embedding_before_dataset_commit(monkeypatch: pyt
     with pytest.raises(HTTPException) as exc_info:
         datasets.update_dataset(
             uuid4(),
-            DatasetUpdate(embedding_defaults=DatasetEmbeddingDefaults(provider="local", model="embed-a")),
+            DatasetUpdate(embedding_defaults=DatasetEmbeddingDefaults(provider="openai_compatible", model="embed-a")),
             tenant_id=uuid4(),
             account_id="owner-1",
             db=SimpleNamespace(),

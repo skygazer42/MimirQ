@@ -26,6 +26,7 @@ from app.core.redis_client import LazyRedisClient
 from app.core.redis_lease import extend_redis_lease, release_redis_lease, try_acquire_redis_lease
 from app.rag.core.logging import get_logger
 from app.rag.embedding.utils import current_embedding_space_hash
+from app.rag.retrieval.retriever_options import retrieval_cache_runtime_values
 from app.services.corpus_cache_tokens import resolve_corpus_cache_token
 from app.services.rag_runtime_limiter import RetrievalAdmissionTimeoutError
 
@@ -245,6 +246,7 @@ def build_chat_cache_key(
         # change can't serve stale cached responses.
         "embedding_space_hash": str(current_embedding_space_hash() or "") or None,
         "corpus_cache_token": str(corpus_cache_token or "") or None,
+        "retrieval_runtime": retrieval_cache_runtime_values(),
         "doc_scope": _hash_doc_scope(document_ids),
         "doc_count": len([d for d in document_ids if d]),
         "question": (question or "").strip(),

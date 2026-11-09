@@ -9,7 +9,6 @@ from langchain_core.documents import Document
 import app.api.v1.scim as scim
 import app.parsing.parsers.html_parser as html_parser_module
 import app.parsing.utils.artifact_normalizer as artifact_normalizer_module
-import app.rag.retrieval.sparse as sparse_module
 from app.api.v1 import document_manual as manual_module
 from app.parsing.parsers.html_parser import HtmlParser
 from app.parsing.quality.reading_order import score_reading_order
@@ -314,81 +313,6 @@ def test_normalize_document_elements_characterizes_markdown_and_derived_image_ou
             },
         },
     ]
-
-
-def test_splade_sparse_encoder_characterizes_special_token_zeroing_and_score_thresholds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    torch = pytest.importorskip("torch")
-    encoder = sparse_module.SpladeSparseEncoder(
-        model_name="demo",
-        batch_size=4,
-        max_length=8,
-        top_k=3,
-        min_weight=0.2,
-    )
-
-    class _FakeTokenizer:
-        all_special_ids = [0]
-
-        def __call__(self, _texts, **_kwargs):
-            return {
-                "attention_mask": torch.tensor(
-                    [
-                        [1, 1, 1],
-                        [1, 1, 0],
-                    ],
-                    dtype=torch.int64,
-                )
-            }
-
-        @staticmethod
-        def convert_ids_to_tokens(ids: list[int]) -> list[str]:
-            mapping = {
-                0: "[PAD]",
-                1: "alpha",
-                2: "beta",
-                3: "gamma",
-                4: "delta",
-            }
-            return [mapping[idx] for idx in ids]
-
-    class _FakeModel:
-        @staticmethod
-        def __call__(**_enc):
-            return SimpleNamespace(
-                logits=torch.tensor(
-                    [
-                        [
-                            [0.0, 2.0, -1.0, 0.0, 0.0],
-                            [1.0, 0.5, 1.5, 0.0, 0.0],
-                            [0.0, 0.0, 0.0, 0.0, 0.1],
-                        ],
-                        [
-                            [0.0, 0.0, 0.0, 3.0, 0.0],
-                            [0.0, 0.0, 0.1, 0.0, 0.0],
-                            [5.0, 5.0, 5.0, 5.0, 5.0],
-                        ],
-                    ],
-                    dtype=torch.float32,
-                )
-            )
-
-    encoder._tokenizer = _FakeTokenizer()
-    encoder._model = _FakeModel()
-    encoder._torch_device = "cpu"
-    monkeypatch.setattr(encoder, "_ensure_loaded", lambda: None)
-
-    vectors = encoder.encode_batch(["first", "second"])
-
-    assert vectors[0].weights == pytest.approx(
-        {
-            "alpha": 1.0986123,
-            "beta": 0.9162907,
-        },
-        rel=1e-5,
-    )
-    assert vectors[1].weights == pytest.approx({"gamma": 1.3862944}, rel=1e-5)
 
 
 def test_index_manual_document_chunks_characterizes_metadata_merging_and_image_tracking(

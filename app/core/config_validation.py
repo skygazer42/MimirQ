@@ -15,6 +15,7 @@ from uuid import UUID
 from email_validator import EmailNotValidError, validate_email
 
 from app.core.env import is_production_env
+from app.core.model_execution import reject_retired_model_provider
 from app.rag.retrieval.contract import (
     VALID_RETRIEVAL_CONTRACT_MODES,
     normalize_retrieval_contract_mode,
@@ -336,8 +337,6 @@ def validate_uvicorn_workers_and_distributed_limits(settings: Settings) -> None:
             raise ValueError(
                 "TENANT_QPS_QUOTA_ENABLED with UVICORN_WORKERS > 1 requires RATE_LIMIT_REDIS_ENABLED=true and REDIS_URL"
             )
-        if settings.BM25_INDEX_ENABLED and not settings.BM25_LAZY_BUILD_ENABLED:
-            raise ValueError("BM25_LAZY_BUILD_ENABLED must be true when UVICORN_WORKERS > 1")
 
 
 def validate_saml_replay(settings: Settings) -> None:
@@ -931,8 +930,6 @@ def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
     )
     _require_int_min(settings.MILVUS_EXPR_MAX_DOC_IDS or 0, 0, "MILVUS_EXPR_MAX_DOC_IDS must be >= 0")
 
-    _require_int_min(settings.BM25_CACHE_MAX_TENANTS or 0, 0, "BM25_CACHE_MAX_TENANTS must be >= 0")
-    _require_int_min(settings.BM25_EAGER_UPSERT_MAX_CHUNKS or 0, 0, "BM25_EAGER_UPSERT_MAX_CHUNKS must be >= 0")
     rebuild_max_chunks = settings.RETRIEVAL_REBUILD_MAX_CHUNKS or 0
     _require_int_min(rebuild_max_chunks, 0, "RETRIEVAL_REBUILD_MAX_CHUNKS must be >= 0")
     _raise_if(is_production and rebuild_max_chunks <= 0, "RETRIEVAL_REBUILD_MAX_CHUNKS must be > 0 in production")
@@ -945,6 +942,17 @@ def validate_chunk_llm_and_retrieval(settings: Settings) -> None:
 
 
 def validate_embedding_and_migration(settings: Settings) -> None:
+    reject_retired_model_provider(settings.EMBEDDING_PROVIDER, capability="embedding")
+    if settings.EMBEDDING_SHADOW_ENABLED:
+        reject_retired_model_provider(settings.EMBEDDING_SHADOW_PROVIDER, capability="embedding")
+    if settings.IMAGE_EMBEDDING_ENABLED:
+        raise ValueError(
+            "IMAGE_EMBEDDING_ENABLED has been retired; image uploads, OCR and vision APIs remain supported"
+        )
+    reject_retired_model_provider(settings.KG_EXTRACTION_BACKEND, capability="kg_extraction")
+    reject_retired_model_provider(settings.KG_EXTRACT_LONG_DOC_BACKEND, capability="kg_extraction")
+    if settings.KG_GLINER_ENABLED:
+        raise ValueError("KG_GLINER_ENABLED has been retired; use llm or heuristic extraction")
     _require_int_min(settings.EMBEDDING_CACHE_TTL_SEC or 0, 0, "EMBEDDING_CACHE_TTL_SEC must be >= 0")
 
     emb_prefix = (settings.EMBEDDING_CACHE_PREFIX or "").strip()
@@ -1507,25 +1515,15 @@ def validate_parse_quality(settings: Settings) -> None:
 def validate_sparse_and_colbert_providers(settings: Settings) -> None:
     sparse_provider = normalize_sparse_provider_name(settings.SPARSE_RETRIEVAL_PROVIDER or "deterministic")
     if sparse_provider not in VALID_SPARSE_PROVIDERS:
-        raise ValueError("SPARSE_RETRIEVAL_PROVIDER must be one of: " + ", ".join(sorted(VALID_SPARSE_PROVIDERS)))
-    if settings.SPARSE_RETRIEVAL_PROVIDER != sparse_provider:
-        settings.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
-
-    if settings.SPARSE_RETRIEVAL_ENABLED and sparse_provider == "splade":
-        splade_model_name = (settings.SPARSE_SPLADE_MODEL_NAME or "").strip()
-        if not splade_model_name:
-            raise ValueError(
-                "SPARSE_SPLADE_MODEL_NAME is required when "
-                "SPARSE_RETRIEVAL_ENABLED=true and SPARSE_RETRIEVAL_PROVIDER=splade"
-            )
-        if settings.SPARSE_SPLADE_MODEL_NAME != splade_model_name:
-            settings.SPARSE_SPLADE_MODEL_NAME = splade_model_name
-
-    colbert_rerank_provider = (settings.COLBERT_RERANK_PROVIDER or "deterministic").strip().lower()
-    if colbert_rerank_provider not in {"deterministic", "hf"}:
-        raise ValueError("COLBERT_RERANK_PROVIDER must be one of: deterministic, hf")
-    if settings.COLBERT_RERANK_PROVIDER != colbert_rerank_provider:
-        settings.COLBERT_RERANK_PROVIDER = colbert_rerank_provider
+        raise ValueError("SPARSE_RETRIEVAL_PROVIDER must be deterministic")
+    settings.SPARSE_RETRIEVAL_PROVIDER = sparse_provider
+    for field in ("COLBERT_RERANK_PROVIDER", "COLBERT_RETRIEVAL_PROVIDER"):
+        provider = str(getattr(settings, field) or "deterministic").strip().lower()
+        reject_retired_model_provider(provider, capability="colbert")
+        if provider != "deterministic":
+            raise ValueError(f"{field} must be deterministic")
+        setattr(settings, field, provider)
+    reject_retired_model_provider(settings.GOVERNANCE_KEYWORDS_PROVIDER, capability="keyword")
 
 
 def validate_checkpoint_memory_reranker(settings: Settings) -> None:
@@ -1541,6 +1539,7 @@ def validate_checkpoint_memory_reranker(settings: Settings) -> None:
     if settings.MEMORY_STORE_TYPE not in valid_memory_stores:
         raise ValueError(f"MEMORY_STORE_TYPE ({settings.MEMORY_STORE_TYPE}) must be one of {valid_memory_stores}")
 
+    reject_retired_model_provider(settings.RERANKER_PROVIDER, capability="reranker")
     # Validate reranker provider
     # Keep this aligned with app.rag.reranker.factory.get_reranker().
     valid_reranker_providers = {
@@ -1554,12 +1553,6 @@ def validate_checkpoint_memory_reranker(settings: Settings) -> None:
         "colbert",
         "late_interaction",
         "ltr",
-        "cross_encoder",
-        "cross-encoder",
-        "sentence_transformers",
-        "sentence-transformers",
-        "local_bge_v2_m3",
-        "bge_v2_m3",
         "long_context",
         "mmr",
         "kg_pagerank",

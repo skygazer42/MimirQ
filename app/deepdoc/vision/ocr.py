@@ -90,14 +90,7 @@ def _resolve_cuda_device_id(device_id: int | None) -> int | None:
             return None
     except Exception:
         return None
-    try:
-        import torch
-
-        if torch.cuda.is_available() and torch.cuda.device_count() > candidate:
-            return candidate
-    except Exception:
-        return None
-    return None
+    return candidate
 
 
 def _model_cache_tag(model_file_path: str, cuda_device_id: int | None) -> str:

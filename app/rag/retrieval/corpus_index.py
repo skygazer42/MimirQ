@@ -1,4 +1,4 @@
-"""Shared tenant/dataset/document corpus and derived index lifecycle."""
+"""Shared native BM25 lifecycle and explicit snapshots for derived test indexes."""
 
 import threading
 import time
@@ -7,32 +7,21 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from langchain_community.retrievers.bm25 import BM25Retriever
 from langchain_core.documents import Document
-from sqlalchemy import func
+from sqlalchemy import func, or_, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.document import Document as DBDocument
 from app.models.document import DocumentChunk
-from app.rag.core.filters import match_metadata_filter
 from app.rag.core.hashing import stable_hash
 from app.rag.preprocessing.tokenization import tokenize_for_bm25
 from app.rag.retrieval.corpus_artifacts import ColbertCorpusIndex, CorpusArtifacts, SparseCorpusIndex
-from app.rag.retrieval.hybrid.common import (
-    NON_CRITICAL_RETRIEVER_FALLBACK_LOG,
-    _log_retriever_fallback,
-    logger,
-)
-from app.rag.retrieval.hybrid.metadata_scope import collect_dataset_scope
-from app.rag.retrieval.hybrid.result_values import (
-    candidate_metadata_from_doc,
-    result_content_from_doc,
-    top_scored_results,
-)
-from app.rag.retrieval.hybrid.text_preparation import prepare_retrieval_document, question_channel_overlap_score
+from app.rag.retrieval.hybrid.common import _log_retriever_fallback
+from app.rag.retrieval.hybrid.text_preparation import prepare_retrieval_document
 from app.services import corpus_cache_tokens
+from app.storage.bm25.milvus import MilvusBM25Store, get_bm25_store
 
 
 @dataclass(frozen=True)
@@ -55,19 +44,15 @@ class CorpusSearchResult:
     status: dict[str, Any]
 
 
+def bm25_available() -> bool:
+    return settings.BM25_INDEX_ENABLED and settings.VECTOR_BACKEND.strip().lower() == "milvus"
+
+
 class CorpusIndex:
-    def __init__(self) -> None:
-        self._bm25_retrievers: dict[str, BM25Retriever] = {}
-        self._bm25_docs: dict[str, list[Document]] = {}
-        self._bm25_doc_ids: dict[str, set[str]] = {}
-        self._chunk_id_lookup: dict[str, dict[str, str]] = {}
-        self._bm25_deferred_scopes: set[str] = set()
-        self._bm25_build_locks: dict[str, threading.Lock] = {}
-        self._bm25_cache_order: OrderedDict[str, None] = OrderedDict()
-        self._bm25_cache_lock = threading.RLock()
-        self._bm25_cache_versions: dict[str, str] = {}
+    def __init__(self, *, bm25_store: MilvusBM25Store | None = None) -> None:
+        self._store = bm25_store if bm25_store is not None else get_bm25_store()
+        self._lock = threading.RLock()
         self._corpus_token_cache: OrderedDict[tuple, tuple[float, str]] = OrderedDict()
-        self._scope_specs: dict[str, CorpusScope] = {}
         self._corpus_artifacts = CorpusArtifacts(sparse=SparseCorpusIndex(), colbert=ColbertCorpusIndex())
 
     @property
@@ -78,141 +63,253 @@ class CorpusIndex:
     def _open_session() -> Session:
         return SessionLocal()
 
-    @staticmethod
-    def _tenant_key(tenant_id: UUID) -> str:
-        return str(tenant_id)
-
-    @staticmethod
-    def _resolve_tenant_uuid(tenant_id: UUID) -> UUID:
-        return tenant_id
+    _bm25_tokenize = staticmethod(tokenize_for_bm25)
 
     @staticmethod
     def _normalize_dataset_scope_ids(dataset_ids) -> tuple[UUID, ...]:
         return tuple(sorted(set(dataset_ids or ()), key=str))
 
     @staticmethod
-    def _collect_lexical_dataset_scope(metadata_filter: dict[str, Any] | None) -> list[UUID]:
-        return collect_dataset_scope(metadata_filter)
-
-    @staticmethod
-    def _match_metadata_filter(metadata: dict[str, Any], metadata_filter: dict[str, Any] | None) -> bool:
-        return match_metadata_filter(metadata, metadata_filter)
-
-    @staticmethod
     def _prepare_retrieval_document(document: Document) -> Document:
         return prepare_retrieval_document(document, log_fallback=_log_retriever_fallback)
 
-    _result_content_from_doc = staticmethod(result_content_from_doc)
-    _top_scored_results = staticmethod(top_scored_results)
-
-    def _question_channel_overlap_score(self, *, query_tokens: list[str], metadata: dict[str, Any]) -> float:
-        return question_channel_overlap_score(
-            query_tokens=query_tokens, metadata=metadata, tokenize=self._bm25_tokenize
-        )
-
-    def scope_key(self, scope: CorpusScope) -> str:
-        return self._bm25_scope_key(
-            tenant_id=scope.tenant_id, dataset_ids=scope.dataset_ids, document_ids=list(scope.document_ids)
-        )
+    @staticmethod
+    def scope_key(scope: CorpusScope) -> str:
+        tenant = str(scope.tenant_id)
+        if scope.document_ids:
+            ids = sorted(set(map(str, scope.document_ids)))
+            return f"{tenant}:documents:{len(ids)}:{stable_hash(','.join(ids), length=24)}"
+        datasets = sorted(set(map(str, scope.dataset_ids)))
+        if len(datasets) == 1:
+            return f"{tenant}:dataset:{datasets[0]}"
+        if datasets:
+            return f"{tenant}:datasets:{len(datasets)}:{stable_hash(','.join(datasets), length=24)}"
+        return tenant
 
     def search(
         self, query: str, *, scope: CorpusScope, top_k: int, metadata_filter: dict[str, Any] | None
     ) -> CorpusSearchResult:
-        return self._search_bm25(
+        if scope.tenant_id is None:
+            raise ValueError("Corpus search requires an explicit tenant")
+        status = {
+            "provider": "milvus_bm25",
+            "index_enabled": bm25_available(),
+            "scope": "documents" if scope.document_ids else "dataset" if scope.dataset_ids else "tenant",
+        }
+        if not bm25_available():
+            return CorpusSearchResult(
+                [],
+                {
+                    **status,
+                    "reason": "requires_milvus"
+                    if settings.VECTOR_BACKEND.strip().lower() != "milvus"
+                    else "index_disabled",
+                },
+            )
+        records = self._store.search(
             query,
-            top_k=top_k,
-            document_ids=list(scope.document_ids),
             tenant_id=scope.tenant_id,
-            metadata_filter=metadata_filter,
             dataset_ids=scope.dataset_ids,
+            document_ids=scope.document_ids,
+            metadata_filter=metadata_filter,
+            top_k=top_k,
         )
-
-    def scope_documents(self, scope: CorpusScope) -> CorpusSnapshot:
-        key = self.scope_key(scope)
-        with self._bm25_cache_lock:
-            documents = tuple(self._bm25_docs.get(key, ()))
-        return CorpusSnapshot(scope=scope, cache_key=key, documents=documents)
-
-    def chunk_id_lookup(self, scope: CorpusScope) -> dict[str, str]:
-        key = self.scope_key(scope)
-        with self._bm25_cache_lock:
-            combined = dict(self._chunk_id_lookup.get(self._tenant_key(scope.tenant_id), {}))
-            combined.update(self._chunk_id_lookup.get(key, {}))
-        return combined
+        return CorpusSearchResult(
+            records, {**status, "candidates": len(records), "reason": "ok" if records else "no_candidates"}
+        )
 
     def upsert(self, db: Session | None, *, tenant_id: UUID, documents: list[Document]) -> None:
-        groups: dict[UUID | None, list[Document]] = {}
-        all_documents = []
+        prepared = []
         for document in documents:
             metadata = dict(document.metadata)
-            current_tenant = metadata.get("tenant_id")
-            if current_tenant is not None and str(current_tenant) != str(tenant_id):
+            if metadata.get("tenant_id") is not None and str(metadata["tenant_id"]) != str(tenant_id):
                 raise ValueError("Corpus document tenant does not match its write scope")
             metadata["tenant_id"] = str(tenant_id)
-            dataset_id = metadata.get("dataset_id")
-            dataset_id = UUID(str(dataset_id)) if dataset_id is not None else None
-            updated = Document(page_content=document.page_content, id=document.id, metadata=metadata)
-            all_documents.append(updated)
-            groups.setdefault(dataset_id, []).append(updated)
-        updated_keys = set()
-        for dataset_id, group in groups.items():
-            self.upsert_bm25_documents(group, tenant_id=tenant_id, db=db)
-            scope = CorpusScope(tenant_id=tenant_id, dataset_ids=(dataset_id,) if dataset_id is not None else ())
-            key = self.scope_key(scope)
-            updated_keys.add(key)
-            version = self.resolve_version(scope, db=db) if db is not None else None
-            if version:
-                with self._bm25_cache_lock:
-                    self._bm25_cache_versions[key] = version
-        self._update_overlapping_scopes(tenant_id=tenant_id, documents=all_documents, updated_keys=updated_keys)
-
-    def _update_overlapping_scopes(self, *, tenant_id: UUID, documents: list[Document], updated_keys: set[str]) -> None:
-        incoming_ids = {str(document.id) for document in documents}
-        with self._bm25_cache_lock:
-            scopes = list(self._scope_specs.items())
-        for key, scope in scopes:
-            if key in updated_keys or scope.tenant_id != tenant_id or scope.document_ids:
-                continue
-            with self._get_bm25_build_lock(key):
-                with self._bm25_cache_lock:
-                    existing = self._bm25_docs.get(key)
-                if existing is None:
-                    continue
-                allowed = {str(dataset_id) for dataset_id in scope.dataset_ids}
-                added = [d for d in documents if not allowed or str(d.metadata.get("dataset_id")) in allowed]
-                retained = [d for d in existing if str(d.id) not in incoming_ids]
-                merged = self._merge_bm25_scope_docs(retained, added)
-                if merged == existing:
-                    continue
-                self._store_bm25_upsert_scope(
-                    cache_key=key,
-                    scope_deferred=False,
-                    merged_docs=merged,
-                    eager_limit=self._bm25_eager_upsert_max_chunks(),
-                    upsert_docs=added,
-                )
-            self._corpus_artifacts.sparse.clear_scope(key)
-            self._corpus_artifacts.colbert.clear_scope(key)
+            prepared.append(self._prepare_retrieval_document(document.model_copy(update={"metadata": metadata})))
+        if db is not None and prepared:
+            document_ids = {UUID(str(document.metadata["document_id"])) for document in prepared}
+            rows = (
+                db.query(DBDocument.id, DBDocument.dataset_id)
+                .filter(DBDocument.tenant_id == tenant_id, DBDocument.id.in_(document_ids))
+                .all()
+            )
+            datasets = {
+                str(document_id): str(dataset_id) if dataset_id is not None else "" for document_id, dataset_id in rows
+            }
+            for document in prepared:
+                document_id = str(document.metadata["document_id"])
+                if document_id not in datasets:
+                    raise ValueError("Corpus document does not exist in its tenant write scope")
+                document.metadata["dataset_id"] = datasets[document_id]
+        if settings.VECTOR_BACKEND.strip().lower() == "milvus":
+            self._store.upsert(prepared, tenant_id=tenant_id)
+        self._invalidate_derived_indexes(tenant_id)
 
     def remove(self, *, tenant_id: UUID, metadata_filter: dict[str, Any]) -> int:
-        return self.remove_from_bm25_index_by_metadata_filter(tenant_id=tenant_id, metadata_filter=metadata_filter)
-
-    def rebuild(self, db: Session, *, scope: CorpusScope, batch_size: int = 2000) -> int:
-        documents = self._load_retrieval_docs_for_rebuild(
-            db,
-            tenant_id=scope.tenant_id,
-            dataset_ids=scope.dataset_ids,
-            document_ids=list(scope.document_ids),
-            batch_size=batch_size,
+        if tenant_id is None:
+            raise ValueError("Corpus deletion requires an explicit tenant")
+        if not metadata_filter:
+            raise ValueError("Corpus deletion requires a nonempty metadata filter")
+        removed = (
+            self._store.delete(tenant_id=tenant_id, metadata_filter=metadata_filter)
+            if settings.VECTOR_BACKEND.strip().lower() == "milvus"
+            else 0
         )
-        self._build_bm25_index_from_documents(documents, tenant_id=scope.tenant_id, cache_key=self.scope_key(scope))
-        return len(documents)
+        self._invalidate_derived_indexes(tenant_id)
+        return removed
+
+    def _invalidate_derived_indexes(self, tenant_id: UUID) -> None:
+        prefix = str(tenant_id)
+        sparse, colbert = self.artifacts.sparse, self.artifacts.colbert
+        for key in list(sparse._sparse_doc_vectors):
+            if key == prefix or key.startswith(prefix + ":"):
+                sparse.clear_scope(key)
+        for key in list(colbert._colbert_index_cache):
+            if key == prefix or key.startswith(prefix + ":"):
+                colbert.clear_scope(key)
+        with self._lock:
+            for key in [key for key in self._corpus_token_cache if key[0] == prefix]:
+                self._corpus_token_cache.pop(key, None)
+
+    def clear_bm25_cache(self) -> None:
+        """Clear only derived artifacts and version tokens; native data is durable."""
+        with self._lock:
+            self._corpus_token_cache.clear()
+        self.artifacts.sparse.clear()
+        self.artifacts.colbert.clear()
+
+    def scope_documents(self, scope: CorpusScope) -> CorpusSnapshot:
+        """Read a bounded published snapshot only for selected derived indexes."""
+        db = self._open_session()
+        try:
+            documents = self._load_retrieval_docs_for_rebuild(
+                db, tenant_id=scope.tenant_id, dataset_ids=scope.dataset_ids, document_ids=list(scope.document_ids)
+            )
+        finally:
+            db.close()
+        return CorpusSnapshot(scope, self.scope_key(scope), tuple(documents))
+
+    def chunk_id_lookup(self, scope: CorpusScope, *, candidates: list[dict[str, Any]]) -> dict[str, str]:
+        """Resolve only legacy vector hits lacking IDs, never the full corpus."""
+        pairs = set()
+        for item in candidates:
+            metadata = item.get("metadata") or {}
+            if item.get("chunk_id") or metadata.get("chunk_id"):
+                continue
+            document, index = metadata.get("document_id"), metadata.get("chunk_index")
+            if document is not None and index is not None:
+                pairs.add((UUID(str(document)), int(index)))
+        if not pairs:
+            return {}
+        db = self._open_session()
+        try:
+            query = self._base_completed_chunk_query(db, scope.tenant_id).filter(
+                tuple_(DocumentChunk.document_id, DocumentChunk.chunk_index).in_(list(pairs))
+            )
+            if scope.dataset_ids:
+                query = query.filter(DBDocument.dataset_id.in_(scope.dataset_ids))
+            if scope.document_ids:
+                query = query.filter(DocumentChunk.document_id.in_(scope.document_ids))
+            lookup = {}
+            for row in self._iter_query_rows(query, batch_size=200):
+                document = self._document_from_chunk_row(row)
+                metadata = document.metadata
+                lookup[f"{metadata['document_id']}:{metadata['chunk_index']}"] = str(document.id)
+                if metadata.get("doc_pipeline_key"):
+                    lookup[f"{metadata['doc_pipeline_key']}:{metadata['chunk_index']}"] = str(document.id)
+            return lookup
+        finally:
+            db.close()
+
+    @staticmethod
+    def _iter_query_rows(query: Any, batch_size: int):
+        return query.yield_per(batch_size)
+
+    @staticmethod
+    def _base_completed_chunk_query(db: Session, tenant_uuid: UUID):
+        active_hash = func.coalesce(
+            func.nullif(DBDocument.doc_metadata["active_pipeline_hash"].as_string(), ""),
+            DBDocument.doc_metadata["pipeline_hash"].as_string(),
+            "",
+        )
+        chunk_hash = func.coalesce(
+            func.nullif(DocumentChunk.doc_metadata["pipeline_hash"].as_string(), ""),
+            func.substr(DocumentChunk.doc_metadata["doc_pipeline_key"].as_string(), 38),
+            "",
+        )
+        return (
+            db.query(
+                DocumentChunk.id,
+                DocumentChunk.content,
+                DocumentChunk.doc_metadata,
+                DocumentChunk.tenant_id,
+                DocumentChunk.document_id,
+                DocumentChunk.chunk_index,
+                DocumentChunk.page_number,
+                DBDocument.dataset_id,
+            )
+            .join(DBDocument)
+            .filter(
+                DBDocument.status == "completed",
+                DBDocument.publication_status == "published",
+                DBDocument.tenant_id == tenant_uuid,
+                DocumentChunk.tenant_id == tenant_uuid,
+                DBDocument.archived_at.is_(None),
+                DBDocument.disabled_at.is_(None),
+                DocumentChunk.disabled_at.is_(None),
+                or_(active_hash == "", chunk_hash == "", chunk_hash == active_hash),
+            )
+            .enable_eagerloads(False)
+            .execution_options(stream_results=True)
+        )
+
+    @staticmethod
+    def _document_from_chunk_row(row: Any) -> Document:
+        chunk, content, metadata, tenant, document, index, page, dataset = row
+        normalized = {
+            **(metadata or {}),
+            "chunk_id": str(chunk),
+            "tenant_id": str(tenant),
+            "document_id": str(document),
+            "dataset_id": str(dataset) if dataset is not None else "",
+            "chunk_index": index,
+        }
+        normalized.setdefault("source", "unknown")
+        if page is not None:
+            normalized.setdefault("page", page)
+        return Document(id=str(chunk), page_content=content or "", metadata=normalized)
+
+    def _load_retrieval_docs_from_db(
+        self,
+        db: Session,
+        *,
+        tenant_id: UUID,
+        dataset_id: UUID | None = None,
+        dataset_ids=(),
+        document_ids: list[UUID] | None = None,
+        max_chunks: int = 0,
+        batch_size: int = 2000,
+    ) -> list[Document]:
+        query = self._base_completed_chunk_query(db, tenant_id)
+        if dataset_id is not None:
+            query = query.filter(DBDocument.dataset_id == dataset_id)
+        if dataset_ids:
+            query = query.filter(DBDocument.dataset_id.in_(list(dataset_ids)))
+        if document_ids:
+            query = query.filter(DocumentChunk.document_id.in_(document_ids))
+        query = query.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
+        if max_chunks > 0:
+            query = query.limit(max_chunks)
+        return [
+            self._prepare_retrieval_document(self._document_from_chunk_row(row))
+            for row in self._iter_query_rows(query, batch_size)
+        ]
 
     def resolve_version(self, scope: CorpusScope, *, db: Session | None = None) -> str | None:
         dataset_ids = self._normalize_dataset_scope_ids(scope.dataset_ids)
         scope_key = (str(scope.tenant_id), tuple(map(str, dataset_ids)), tuple(sorted(map(str, scope.document_ids))))
         if db is None:
-            with self._bm25_cache_lock:
+            with self._lock:
                 cached = self._corpus_token_cache.get(scope_key)
                 if cached is not None and time.monotonic() - cached[0] <= 1.0:
                     self._corpus_token_cache.move_to_end(scope_key)
@@ -229,7 +326,7 @@ class CorpusIndex:
             )
             # Caller sessions may contain uncommitted writes; keep their versions out of the shared read cache.
             if token and own_session:
-                with self._bm25_cache_lock:
+                with self._lock:
                     self._corpus_token_cache[scope_key] = (time.monotonic(), token)
                     while len(self._corpus_token_cache) > 128:
                         self._corpus_token_cache.popitem(last=False)
@@ -241,577 +338,6 @@ class CorpusIndex:
             if own_session:
                 current_db.close()
 
-    def _resolve_candidate_cache_corpus_token(self, *, tenant_id, document_ids, dataset_ids=()) -> str | None:
-        return self.resolve_version(
-            CorpusScope(
-                tenant_id=tenant_id, dataset_ids=tuple(dataset_ids or ()), document_ids=tuple(document_ids or ())
-            )
-        )
-
-    def _clear_candidate_corpus_token_cache(self, tenant_id: UUID) -> None:
-        with self._bm25_cache_lock:
-            for key in [key for key in self._corpus_token_cache if key[0] == str(tenant_id)]:
-                self._corpus_token_cache.pop(key, None)
-
-    def _sync_sparse_index_after_bm25_upsert(
-        self, *, cache_key, tenant_id, dataset_scope_ids, merged_docs, upsert_docs
-    ) -> None:
-        if not settings.SPARSE_RETRIEVAL_ENABLED:
-            self._corpus_artifacts.sparse.clear_scope(cache_key)
-            return
-        version = self.resolve_version(CorpusScope(tenant_id=tenant_id, dataset_ids=dataset_scope_ids))
-        try:
-            self._corpus_artifacts.sparse._upsert_sparse_index_incremental(
-                cache_key=cache_key,
-                corpus_docs=merged_docs,
-                upsert_docs=upsert_docs,
-                version_token=version,
-                provider=settings.SPARSE_RETRIEVAL_PROVIDER,
-            )
-        except Exception as exc:
-            logger.warning("Sparse index update failed for scope %s: %s", cache_key, str(exc)[:200])
-
-    def _refresh_bm25_doc_ids(self, tenant_key: str, docs: list[Document] | None) -> None:
-        doc_ids: set[str] = set()
-        for d in docs or []:
-            meta = d.metadata or {}
-            doc_id = meta.get("document_id")
-            if doc_id is None:
-                continue
-            s = str(doc_id).strip()
-            if s:
-                doc_ids.add(s)
-        with self._bm25_cache_lock:
-            if docs:
-                self._bm25_doc_ids[tenant_key] = doc_ids
-            else:
-                self._bm25_doc_ids.pop(tenant_key, None)
-
-    @staticmethod
-    def _query_maybe_call(query: Any, method_name: str, *args: Any, **kwargs: Any) -> Any:
-        method = getattr(query, method_name, None)
-        if not callable(method):
-            return query
-        try:
-            return method(*args, **kwargs)
-        except TypeError:
-            return query
-
-    @staticmethod
-    def _iter_query_rows(query: Any, batch_size: int = 2000) -> Any:
-        return query.yield_per(batch_size)
-
-    @staticmethod
-    def _unpack_chunk_row(row: Any) -> tuple[Any, Any, Any, Any, Any, Any, Any, Any]:
-        try:
-            (
-                chunk_id,
-                content,
-                doc_metadata,
-                tenant_uuid_row,
-                document_uuid_row,
-                chunk_index,
-                page_number,
-                dataset_uuid_row,
-            ) = row
-            return (
-                chunk_id,
-                content,
-                doc_metadata,
-                tenant_uuid_row,
-                document_uuid_row,
-                chunk_index,
-                page_number,
-                dataset_uuid_row,
-            )
-        except (TypeError, ValueError, AttributeError):
-            return (
-                getattr(row, "id", None),
-                getattr(row, "content", None),
-                getattr(row, "doc_metadata", None),
-                getattr(row, "tenant_id", None),
-                getattr(row, "document_id", None),
-                getattr(row, "chunk_index", None),
-                getattr(row, "page_number", None),
-                getattr(row, "dataset_id", None),
-            )
-
-    @staticmethod
-    def _document_from_chunk_row(row: Any) -> Document:
-        (
-            chunk_id,
-            content,
-            doc_metadata,
-            tenant_uuid_row,
-            document_uuid_row,
-            chunk_index,
-            page_number,
-            dataset_uuid_row,
-        ) = CorpusIndex._unpack_chunk_row(row)
-        meta = dict(doc_metadata or {})
-        meta.setdefault("tenant_id", str(tenant_uuid_row))
-        meta.setdefault("document_id", str(document_uuid_row))
-        if dataset_uuid_row is not None:
-            meta.setdefault("dataset_id", str(dataset_uuid_row))
-        meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-        meta.setdefault("chunk_id", str(chunk_id))
-        meta.setdefault("source", meta.get("source", "unknown"))
-        if page_number is not None and (not meta.get("page")):
-            meta["page"] = page_number
-        meta.setdefault("image_id", meta.get("image_id"))
-        meta.setdefault("image_url", meta.get("image_url"))
-        return Document(page_content=content or "", id=str(chunk_id), metadata=meta)
-
-    @staticmethod
-    def _base_completed_chunk_query(db: Session, tenant_uuid: UUID) -> Any:
-        query = (
-            db.query(
-                DocumentChunk.id,
-                DocumentChunk.content,
-                DocumentChunk.doc_metadata,
-                DocumentChunk.tenant_id,
-                DocumentChunk.document_id,
-                DocumentChunk.chunk_index,
-                DocumentChunk.page_number,
-                DBDocument.dataset_id,
-            )
-            .join(DBDocument)
-            .filter(DBDocument.status == "completed")
-            .filter(DBDocument.publication_status == "published")
-            .filter(DocumentChunk.tenant_id == tenant_uuid)
-        )
-        query = CorpusIndex._query_maybe_call(query, "enable_eagerloads", False)
-        return CorpusIndex._query_maybe_call(query, "execution_options", stream_results=True)
-
-    @classmethod
-    def _load_chunk_documents(cls, query: Any, *, max_chunks: int = 0, batch_size: int = 2000) -> list[Document]:
-        if max_chunks:
-            query = query.limit(max_chunks)
-        return [cls._document_from_chunk_row(row) for row in cls._iter_query_rows(query, batch_size)]
-
-    def _bm25_scope_cache_ready(
-        self, *, cache_key: str, existing_docs: list[Document] | None, document_ids: list[UUID] | None
-    ) -> bool:
-        if existing_docs is None:
-            return False
-        if not document_ids:
-            self._touch_bm25_cache(cache_key)
-            return True
-        with self._bm25_cache_lock:
-            indexed = self._bm25_doc_ids.get(cache_key)
-        if indexed is None:
-            self._refresh_bm25_doc_ids(cache_key, existing_docs)
-            with self._bm25_cache_lock:
-                indexed = self._bm25_doc_ids.get(cache_key) or set()
-        requested = {str(did) for did in document_ids if did is not None}
-        if requested - set(indexed or set()):
-            return False
-        self._touch_bm25_cache(cache_key)
-        return True
-
-    def _bm25_existing_scope_ready(self, *, cache_key: str, document_ids: list[UUID] | None) -> bool:
-        with self._bm25_cache_lock:
-            if self._bm25_retrievers.get(cache_key) is None:
-                return False
-            existing_docs = self._bm25_docs.get(cache_key)
-        return self._bm25_scope_cache_ready(cache_key=cache_key, existing_docs=existing_docs, document_ids=document_ids)
-
-    def _bm25_scope_key(
-        self,
-        *,
-        tenant_id: UUID,
-        dataset_id: UUID | None = None,
-        dataset_ids: tuple[UUID, ...] | None = None,
-        document_ids: list[UUID] | None,
-    ) -> str:
-        """Return the cache key for the exact document, dataset, or tenant scope."""
-        scope = CorpusScope(
-            tenant_id=tenant_id,
-            dataset_ids=self._normalize_dataset_scope_ids([dataset_id] if dataset_id is not None else dataset_ids),
-            document_ids=tuple(document_ids or ()),
-        )
-        tenant_key = self._tenant_key(tenant_id)
-        if document_ids:
-            normalized_document_ids = sorted({str(document_id) for document_id in document_ids})
-            document_scope = ",".join(normalized_document_ids)
-            key = f"{tenant_key}:documents:{len(normalized_document_ids)}:{stable_hash(document_scope, length=24)}"
-            with self._bm25_cache_lock:
-                self._scope_specs[key] = scope
-            return key
-        scope_dataset_ids = self._normalize_dataset_scope_ids([dataset_id] if dataset_id is not None else dataset_ids)
-        if len(scope_dataset_ids) == 1:
-            key = f"{tenant_key}:dataset:{scope_dataset_ids[0]}"
-            with self._bm25_cache_lock:
-                self._scope_specs[key] = scope
-            return key
-        if scope_dataset_ids:
-            dataset_suffix = ",".join((str(ds_id) for ds_id in scope_dataset_ids))
-            key = f"{tenant_key}:datasets:{len(scope_dataset_ids)}:{stable_hash(dataset_suffix, length=24)}"
-            with self._bm25_cache_lock:
-                self._scope_specs[key] = scope
-            return key
-        key = tenant_key
-        with self._bm25_cache_lock:
-            self._scope_specs[key] = scope
-        return key
-
-    def _clear_bm25_cache_key(self, key: str) -> None:
-        """Clear a single BM25 cache entry (in-memory only)."""
-        with self._bm25_cache_lock:
-            self._drop_bm25_cache_key_locked(key)
-        self._corpus_artifacts.sparse.clear_scope(key)
-        self._corpus_artifacts.colbert.clear_scope(key)
-
-    def _mark_bm25_scope_deferred_locked(self, key: str) -> None:
-        self._bm25_deferred_scopes.add(key)
-        self._bm25_retrievers.pop(key, None)
-        self._bm25_docs.pop(key, None)
-        self._bm25_doc_ids.pop(key, None)
-        self._chunk_id_lookup.pop(key, None)
-
-    def _mark_bm25_scope_deferred(self, key: str) -> None:
-        with self._bm25_cache_lock:
-            self._mark_bm25_scope_deferred_locked(key)
-        self._touch_bm25_cache(key)
-
-    def _drop_bm25_cache_key_locked(self, key: str) -> None:
-        self._bm25_retrievers.pop(key, None)
-        self._bm25_docs.pop(key, None)
-        self._bm25_doc_ids.pop(key, None)
-        self._chunk_id_lookup.pop(key, None)
-        self._bm25_deferred_scopes.discard(key)
-        self._bm25_cache_versions.pop(key, None)
-        self._bm25_cache_order.pop(key, None)
-        for locks in (
-            self._bm25_build_locks,
-            self._corpus_artifacts.sparse._sparse_build_locks,
-            self._corpus_artifacts.colbert._colbert_build_locks,
-        ):
-            lock = locks.get(key)
-            if lock is None or not lock.locked():
-                locks.pop(key, None)
-        self._scope_specs.pop(key, None)
-
-    def _get_bm25_build_lock(self, tenant_key: str) -> threading.Lock:
-        return self._bm25_build_locks.setdefault(tenant_key, threading.Lock())
-
-    def _bm25_cache_max_tenants(self) -> int:
-        return max(0, settings.BM25_CACHE_MAX_TENANTS)
-
-    @staticmethod
-    def _bm25_eager_upsert_max_chunks() -> int:
-        return max(0, settings.BM25_EAGER_UPSERT_MAX_CHUNKS)
-
-    def _touch_bm25_cache(self, tenant_key: str) -> None:
-        """
-        Mark a tenant BM25 cache as recently used and evict LRU indices if needed.
-
-        Eviction is best-effort: it only removes in-memory caches (BM25 retriever + docs),
-        and will be rebuilt lazily on the next query for that tenant.
-        """
-        max_tenants = self._bm25_cache_max_tenants()
-        if max_tenants <= 0:
-            return
-        evicted: list[str] = []
-        with self._bm25_cache_lock:
-            if tenant_key in self._bm25_cache_order:
-                self._bm25_cache_order.move_to_end(tenant_key)
-            else:
-                self._bm25_cache_order[tenant_key] = None
-            safety = len(self._bm25_cache_order) + 1
-            while len(self._bm25_cache_order) > max_tenants and safety > 0:
-                safety -= 1
-                oldest = next(iter(self._bm25_cache_order))
-                build_lock = self._bm25_build_locks.get(oldest)
-                if oldest == tenant_key or (build_lock is not None and build_lock.locked()):
-                    self._bm25_cache_order.move_to_end(oldest)
-                    continue
-                self._bm25_cache_order.pop(oldest, None)
-                evicted.append(oldest)
-            for key in evicted:
-                self._drop_bm25_cache_key_locked(key)
-        if evicted:
-            logger.info("BM25 cache evicted %s keys (max=%s)", len(evicted), max_tenants)
-        for key in evicted:
-            self._corpus_artifacts.sparse.clear_scope(key)
-            self._corpus_artifacts.colbert.clear_scope(key)
-
-    def _missing_bm25_document_ids(
-        self, *, cache_key: str, existing_docs: list[Document], document_ids: list[UUID]
-    ) -> set[str]:
-        with self._bm25_cache_lock:
-            indexed = self._bm25_doc_ids.get(cache_key)
-        if indexed is None:
-            self._refresh_bm25_doc_ids(cache_key, existing_docs)
-            with self._bm25_cache_lock:
-                indexed = self._bm25_doc_ids.get(cache_key) or set()
-        requested = {str(did) for did in document_ids if did is not None}
-        return requested - set(indexed or set())
-
-    def _load_bm25_scope_documents(
-        self,
-        db: Session,
-        *,
-        tenant_uuid: UUID,
-        document_ids: list[UUID] | None = None,
-        dataset_ids: tuple[UUID, ...] | None = None,
-        max_chunks: int = 0,
-    ) -> list[Document]:
-        query = self._base_completed_chunk_query(db, tenant_uuid)
-        if document_ids:
-            query = query.filter(DocumentChunk.document_id.in_(document_ids))
-        elif dataset_ids:
-            query = query.filter(DBDocument.dataset_id.in_(dataset_ids))
-        query = query.order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-        return self._load_chunk_documents(query, max_chunks=max_chunks)
-
-    def _rebuild_bm25_scope_for_documents(
-        self,
-        db: Session,
-        *,
-        tenant_uuid: UUID,
-        cache_key: str,
-        document_ids: list[UUID],
-        missing_count: int,
-        max_chunks: int,
-    ) -> None:
-        docs = self._load_bm25_scope_documents(
-            db, tenant_uuid=tenant_uuid, document_ids=document_ids, max_chunks=max_chunks
-        )
-        if not docs:
-            return
-        self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
-        logger.info(
-            "BM25 lazy-built (scoped rebuild) %s chunks for tenant %s missing_docs=%s cap=%s",
-            len(docs),
-            cache_key,
-            missing_count,
-            max_chunks,
-        )
-
-    def _extend_bm25_scope_for_missing_documents(
-        self, db: Session, *, tenant_uuid: UUID, cache_key: str, missing: set[str], existing_count: int, max_chunks: int
-    ) -> None:
-        remaining = max(0, int(max_chunks) - existing_count) if max_chunks else 0
-        if max_chunks and remaining <= 0:
-            return
-        missing_ids = [UUID(doc_id) for doc_id in missing]
-        bm25_docs = self._load_bm25_scope_documents(
-            db, tenant_uuid=tenant_uuid, document_ids=missing_ids, max_chunks=remaining
-        )
-        if not bm25_docs:
-            return
-        with self._bm25_cache_lock:
-            existing_docs = list(self._bm25_docs.get(cache_key) or [])
-        merged_docs = self._merge_bm25_scope_docs(existing_docs, self._prepare_bm25_upsert_docs(bm25_docs))
-        self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
-        logger.info(
-            "BM25 lazy-extended %s chunks for scope %s (missing_docs=%s)", len(bm25_docs), cache_key, len(missing)
-        )
-
-    def _handle_missing_bm25_scope_docs(
-        self,
-        db: Session,
-        *,
-        tenant_uuid: UUID,
-        cache_key: str,
-        existing_docs: list[Document] | None,
-        document_ids: list[UUID] | None,
-        max_chunks: int,
-    ) -> bool | None:
-        if existing_docs is None or not document_ids:
-            return None
-        missing = self._missing_bm25_document_ids(
-            cache_key=cache_key, existing_docs=existing_docs, document_ids=document_ids
-        )
-        if not missing:
-            self._touch_bm25_cache(cache_key)
-            return True
-        existing_count = len(existing_docs)
-        if max_chunks and existing_count >= max_chunks:
-            self._rebuild_bm25_scope_for_documents(
-                db,
-                tenant_uuid=tenant_uuid,
-                cache_key=cache_key,
-                document_ids=document_ids,
-                missing_count=len(missing),
-                max_chunks=max_chunks,
-            )
-            return True
-        self._extend_bm25_scope_for_missing_documents(
-            db,
-            tenant_uuid=tenant_uuid,
-            cache_key=cache_key,
-            missing=missing,
-            existing_count=existing_count,
-            max_chunks=max_chunks,
-        )
-        return True
-
-    def _build_initial_bm25_scope(
-        self,
-        db: Session,
-        *,
-        tenant_uuid: UUID,
-        cache_key: str,
-        document_ids: list[UUID] | None,
-        dataset_ids: tuple[UUID, ...],
-        max_chunks: int,
-    ) -> bool:
-        docs = self._load_bm25_scope_documents(
-            db, tenant_uuid=tenant_uuid, document_ids=document_ids, dataset_ids=dataset_ids, max_chunks=max_chunks
-        )
-        if not docs:
-            return False
-        self._build_bm25_index_from_documents(docs, tenant_id=tenant_uuid, cache_key=cache_key)
-        logger.info(
-            "BM25 lazy-built %s chunks for scope %s (doc_ids=%s)",
-            len(docs),
-            cache_key,
-            len(document_ids) if document_ids else 0,
-        )
-        return True
-
-    @staticmethod
-    def _bm25_lazy_build_enabled() -> bool:
-        return settings.BM25_INDEX_ENABLED and settings.BM25_LAZY_BUILD_ENABLED
-
-    @staticmethod
-    def _can_lazy_build_scope(*, document_ids: list[UUID] | None, dataset_ids: tuple[UUID, ...]) -> bool:
-        full_tenant = settings.BM25_LAZY_BUILD_FULL_TENANT
-        return bool(document_ids or full_tenant or dataset_ids)
-
-    def _build_bm25_scope_inside_lock(
-        self, *, tenant_uuid: UUID, cache_key: str, document_ids: list[UUID] | None, dataset_ids: tuple[UUID, ...]
-    ) -> bool:
-        with self._bm25_cache_lock:
-            existing_retriever = self._bm25_retrievers.get(cache_key)
-            existing_docs = self._bm25_docs.get(cache_key)
-        if existing_retriever is not None and self._bm25_scope_cache_ready(
-            cache_key=cache_key, existing_docs=existing_docs, document_ids=document_ids
-        ):
-            return True
-        if not self._can_lazy_build_scope(document_ids=document_ids, dataset_ids=dataset_ids):
-            return False
-        if existing_retriever is None and existing_docs is not None and existing_docs:
-            self._build_bm25_index_from_documents(existing_docs, tenant_id=tenant_uuid, cache_key=cache_key)
-            logger.info("BM25 lazy-built %s cached chunks for scope %s", len(existing_docs), cache_key)
-            return True
-        max_chunks = max(0, settings.BM25_LAZY_BUILD_MAX_CHUNKS)
-        db = self._open_session()
-        try:
-            if existing_retriever is not None and existing_docs is not None and document_ids:
-                handled = self._handle_missing_bm25_scope_docs(
-                    db,
-                    tenant_uuid=tenant_uuid,
-                    cache_key=cache_key,
-                    existing_docs=existing_docs,
-                    document_ids=document_ids,
-                    max_chunks=max_chunks,
-                )
-                if handled is not None:
-                    return handled
-            return self._build_initial_bm25_scope(
-                db,
-                tenant_uuid=tenant_uuid,
-                cache_key=cache_key,
-                document_ids=document_ids,
-                dataset_ids=dataset_ids,
-                max_chunks=max_chunks,
-            )
-        except Exception as exc:
-            logger.warning("BM25 lazy build failed for scope %s: %s", cache_key, str(exc)[:200])
-            return False
-        finally:
-            try:
-                db.close()
-            except Exception as exc:
-                logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-    def _lazy_build_bm25_index(
-        self, *, tenant_id: UUID | None, document_ids: list[UUID] | None, dataset_ids: tuple[UUID, ...] = ()
-    ) -> bool:
-        """Build BM25 index on-demand to mitigate cold-start in multi-process deployments."""
-        if not self._bm25_lazy_build_enabled():
-            return False
-        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
-        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_ids=dataset_ids, document_ids=document_ids)
-        if self._bm25_existing_scope_ready(cache_key=cache_key, document_ids=document_ids):
-            return True
-        lock = self._get_bm25_build_lock(cache_key)
-        with lock:
-            return self._build_bm25_scope_inside_lock(
-                tenant_uuid=tenant_uuid, cache_key=cache_key, document_ids=document_ids, dataset_ids=dataset_ids
-            )
-
-    @staticmethod
-    def _bm25_tokenize(text: str) -> list[str]:
-        """Tokenize text for BM25 (shared)."""
-        return tokenize_for_bm25(text)
-
-    def build_bm25_index(self, chunks: list[DocumentChunk], tenant_id: UUID | None = None) -> None:
-        """Build/rebuild BM25 index."""
-        if not chunks:
-            return
-        docs: list[Document] = []
-        for chunk in chunks:
-            meta = dict(chunk.doc_metadata or {})
-            meta.setdefault("tenant_id", str(chunk.tenant_id))
-            meta.setdefault("document_id", str(chunk.document_id))
-            meta.setdefault("chunk_index", chunk.chunk_index)
-            meta.setdefault("chunk_id", str(chunk.id))
-            meta.setdefault("source", meta.get("source", "unknown"))
-            meta.setdefault("page", chunk.page_number or meta.get("page"))
-            meta.setdefault("image_id", meta.get("image_id"))
-            meta.setdefault("image_url", meta.get("image_url"))
-            docs.append(Document(page_content=chunk.content, id=str(chunk.id), metadata=meta))
-        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id)
-
-    def _build_bm25_index_from_documents(
-        self, docs: list[Document], *, tenant_id: UUID | None = None, cache_key: str | None = None
-    ) -> None:
-        """Build BM25 from LangChain Document list (avoids dependency on ORM objects)."""
-        if not docs:
-            return
-        docs = [self._prepare_retrieval_document(doc) for doc in docs if doc is not None]
-        if not docs:
-            return
-        key = str(cache_key) if cache_key is not None else self._tenant_key(tenant_id)
-        retriever = BM25Retriever.from_documents(docs, preprocess_func=self._bm25_tokenize, k=10)
-        lookup = self._build_chunk_id_lookup(docs)
-        with self._bm25_cache_lock:
-            self._bm25_deferred_scopes.discard(key)
-            self._bm25_retrievers[key] = retriever
-            self._bm25_docs[key] = docs
-            self._refresh_bm25_doc_ids(key, docs)
-            self._chunk_id_lookup[key] = lookup
-        self._touch_bm25_cache(key)
-        logger.info("BM25 index built with %s chunks for scope %s", len(docs), key)
-
-    def build_bm25_index_from_db(
-        self,
-        db: Session,
-        *,
-        tenant_id: UUID,
-        dataset_id: UUID | None = None,
-        document_ids: list[UUID] | None = None,
-        max_chunks: int = 0,
-        batch_size: int = 2000,
-    ) -> int:
-        docs = self._load_retrieval_docs_from_db(
-            db,
-            tenant_id=tenant_id,
-            dataset_id=dataset_id,
-            document_ids=document_ids,
-            max_chunks=max_chunks,
-            batch_size=batch_size,
-        )
-        cache_key = self._bm25_scope_key(
-            tenant_id=tenant_id, dataset_id=dataset_id if not document_ids else None, document_ids=document_ids
-        )
-        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id, cache_key=cache_key)
-        return len(docs)
-
     def _count_retrieval_docs_in_db(
         self,
         db: Session,
@@ -821,20 +347,14 @@ class CorpusIndex:
         document_ids: list[UUID] | None = None,
         dataset_ids=(),
     ) -> int:
-        q = (
-            db.query(func.count(DocumentChunk.id))
-            .join(DBDocument)
-            .filter(DBDocument.status == "completed")
-            .filter(DBDocument.publication_status == "published")
-            .filter(DocumentChunk.tenant_id == tenant_id)
-        )
-        if dataset_ids:
-            q = q.filter(DBDocument.dataset_id.in_(list(dataset_ids)))
+        query = self._base_completed_chunk_query(db, tenant_id).with_entities(func.count(DocumentChunk.id))
         if dataset_id is not None:
-            q = q.filter(DBDocument.dataset_id == dataset_id)
+            query = query.filter(DBDocument.dataset_id == dataset_id)
+        if dataset_ids:
+            query = query.filter(DBDocument.dataset_id.in_(list(dataset_ids)))
         if document_ids:
-            q = q.filter(DocumentChunk.document_id.in_(document_ids))
-        return int(q.scalar() or 0)
+            query = query.filter(DocumentChunk.document_id.in_(document_ids))
+        return int(query.scalar() or 0)
 
     def _raise_retrieval_rebuild_limit_exceeded(
         self,
@@ -892,6 +412,28 @@ class CorpusIndex:
             )
         return docs
 
+    def rebuild(self, db: Session, *, scope: CorpusScope, batch_size: int = 2000) -> int:
+        if not bm25_available():
+            raise ValueError("BM25 backfill requires Milvus and BM25_INDEX_ENABLED=true")
+        if batch_size <= 0:
+            raise ValueError("BM25 backfill batch size must be positive")
+        documents = self._load_retrieval_docs_for_rebuild(
+            db,
+            tenant_id=scope.tenant_id,
+            dataset_ids=scope.dataset_ids,
+            document_ids=list(scope.document_ids),
+            batch_size=batch_size,
+        )
+        if not documents:
+            self._store.initialize()
+        for start in range(0, len(documents), batch_size):
+            self._store.upsert(documents[start : start + batch_size], tenant_id=scope.tenant_id)
+        corpus_cache_tokens.invalidate_corpus_cache_scope(
+            db, tenant_id=scope.tenant_id, dataset_ids=scope.dataset_ids, document_ids=scope.document_ids
+        )
+        self._invalidate_derived_indexes(scope.tenant_id)
+        return len(documents)
+
     def rebuild_bm25_index_for_operational_scope(
         self,
         db: Session,
@@ -901,626 +443,48 @@ class CorpusIndex:
         document_ids: list[UUID] | None = None,
         batch_size: int = 2000,
     ) -> int:
-        docs = self._load_retrieval_docs_for_rebuild(
-            db, tenant_id=tenant_id, dataset_id=dataset_id, document_ids=document_ids, batch_size=batch_size
+        return self.rebuild(
+            db,
+            scope=CorpusScope(tenant_id, (dataset_id,) if dataset_id is not None else (), tuple(document_ids or ())),
+            batch_size=batch_size,
         )
-        cache_key = self._bm25_scope_key(
-            tenant_id=tenant_id, dataset_id=dataset_id if not document_ids else None, document_ids=document_ids
-        )
-        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id, cache_key=cache_key)
-        return len(docs)
-
-    def _load_retrieval_docs_from_db(
-        self,
-        db: Session,
-        *,
-        tenant_id: UUID,
-        dataset_id: UUID | None = None,
-        document_ids: list[UUID] | None = None,
-        max_chunks: int = 0,
-        batch_size: int = 2000,
-        dataset_ids=(),
-    ) -> list[Document]:
-        """
-        Load retrieval documents from DB with streaming to avoid large ORM materialization spikes.
-
-        This corpus is reused by BM25, sparse, and ColBERT rebuild paths.
-        """
-        q = (
-            db.query(
-                DocumentChunk.id,
-                DocumentChunk.content,
-                DocumentChunk.doc_metadata,
-                DocumentChunk.tenant_id,
-                DocumentChunk.document_id,
-                DocumentChunk.chunk_index,
-                DocumentChunk.page_number,
-            )
-            .join(DBDocument)
-            .filter(DBDocument.status == "completed")
-            .filter(DBDocument.publication_status == "published")
-            .filter(DocumentChunk.tenant_id == tenant_id)
-            .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
-            .enable_eagerloads(False)
-            .execution_options(stream_results=True)
-        )
-        if dataset_ids:
-            q = q.filter(DBDocument.dataset_id.in_(list(dataset_ids)))
-        if dataset_id is not None:
-            q = q.filter(DBDocument.dataset_id == dataset_id)
-        if document_ids:
-            q = q.filter(DocumentChunk.document_id.in_(document_ids))
-        if max_chunks and int(max_chunks) > 0:
-            q = q.limit(int(max_chunks))
-        docs: list[Document] = []
-        for chunk_id, content, doc_metadata, tenant_uuid, document_uuid, chunk_index, page_number in q.yield_per(
-            int(batch_size)
-        ):
-            meta = dict(doc_metadata or {})
-            meta.setdefault("tenant_id", str(tenant_uuid))
-            meta.setdefault("document_id", str(document_uuid))
-            meta.setdefault("chunk_index", int(chunk_index) if chunk_index is not None else None)
-            meta.setdefault("chunk_id", str(chunk_id))
-            meta.setdefault("source", meta.get("source", "unknown"))
-            if page_number is not None and (not meta.get("page")):
-                meta["page"] = page_number
-            meta.setdefault("image_id", meta.get("image_id"))
-            meta.setdefault("image_url", meta.get("image_url"))
-            docs.append(
-                self._prepare_retrieval_document(Document(page_content=content or "", id=str(chunk_id), metadata=meta))
-            )
-        return docs
 
     def rebuild_persisted_retrieval_indexes(
         self, db: Session, *, tenant_id: UUID, dataset_id: UUID | None = None, batch_size: int = 2000
     ) -> dict[str, Any]:
-        """
-        Rebuild persisted retrieval artifacts for a tenant/dataset scope.
-
-        This is the single-node operational entry point for sparse / ColBERT index rebuilds.
-        It refreshes the shared retrieval corpus from Postgres and writes persisted index artifacts
-        for the active retrieval channels.
-        """
-        docs = self._load_retrieval_docs_for_rebuild(
+        if batch_size <= 0:
+            raise ValueError("Retrieval backfill batch size must be positive")
+        scope = CorpusScope(tenant_id, (dataset_id,) if dataset_id is not None else ())
+        documents = self._load_retrieval_docs_for_rebuild(
             db, tenant_id=tenant_id, dataset_id=dataset_id, batch_size=batch_size
         )
-        cache_key = self._bm25_scope_key(tenant_id=tenant_id, dataset_id=dataset_id, document_ids=None)
-        self._build_bm25_index_from_documents(docs, tenant_id=tenant_id, cache_key=cache_key)
-        sparse_rebuilt = False
-        if settings.SPARSE_RETRIEVAL_ENABLED and docs:
-            sparse_version_token = self._resolve_candidate_cache_corpus_token(tenant_id=tenant_id, document_ids=None)
-            self._corpus_artifacts.sparse._build_sparse_index(
-                cache_key=cache_key,
-                docs=docs,
-                version_token=sparse_version_token,
+        key = self.scope_key(scope)
+        native = bm25_available()
+        if native:
+            if not documents:
+                self._store.initialize()
+            for start in range(0, len(documents), batch_size):
+                self._store.upsert(documents[start : start + batch_size], tenant_id=tenant_id)
+            corpus_cache_tokens.invalidate_corpus_cache_scope(db, tenant_id=tenant_id, dataset_ids=scope.dataset_ids)
+            self._invalidate_derived_indexes(tenant_id)
+        if settings.SPARSE_RETRIEVAL_ENABLED and documents:
+            self.artifacts.sparse._build_sparse_index(
+                cache_key=key,
+                docs=documents,
+                version_token=self.resolve_version(scope, db=db),
                 provider=settings.SPARSE_RETRIEVAL_PROVIDER,
             )
-            sparse_rebuilt = bool(self._corpus_artifacts.sparse._sparse_doc_vectors.get(cache_key))
-        colbert_rebuilt = False
-        if settings.COLBERT_RETRIEVAL_ENABLED and docs:
-            self._corpus_artifacts.colbert._build_colbert_index(cache_key=cache_key, docs=docs)
-            colbert_rebuilt = self._corpus_artifacts.colbert._colbert_index_cache.get(cache_key) is not None
+        if settings.COLBERT_RETRIEVAL_ENABLED and documents:
+            self.artifacts.colbert._build_colbert_index(cache_key=key, docs=documents)
         return {
             "tenant_id": str(tenant_id),
             "dataset_id": str(dataset_id) if dataset_id is not None else None,
-            "cache_key": cache_key,
-            "doc_count": len(docs),
-            "bm25_rebuilt": bool(docs),
-            "sparse_rebuilt": sparse_rebuilt,
-            "colbert_rebuilt": colbert_rebuilt,
+            "cache_key": key,
+            "doc_count": len(documents),
+            "bm25_rebuilt": native,
+            "sparse_rebuilt": settings.SPARSE_RETRIEVAL_ENABLED and bool(documents),
+            "colbert_rebuilt": settings.COLBERT_RETRIEVAL_ENABLED and bool(documents),
         }
-
-    def _prepare_bm25_upsert_docs(self, docs: list[Document]) -> list[Document]:
-        return [self._prepare_retrieval_document(doc) for doc in docs if doc is not None]
-
-    @staticmethod
-    def _infer_single_dataset_scope_from_docs(docs: list[Document]) -> UUID | None:
-        dataset_ids: set[UUID] = set()
-        for doc in docs:
-            meta = doc.metadata or {}
-            raw_dataset_id = meta.get("dataset_id")
-            if raw_dataset_id in (None, ""):
-                continue
-            try:
-                dataset_ids.add(UUID(str(raw_dataset_id)))
-            except (TypeError, ValueError):
-                return None
-            if len(dataset_ids) > 1:
-                return None
-        return next(iter(dataset_ids)) if dataset_ids else None
-
-    @staticmethod
-    def _merge_bm25_scope_docs(existing: list[Document], upsert_docs: list[Document]) -> list[Document]:
-        merged: dict[str, Document] = {str(d.id): d for d in existing if d.id is not None}
-        for d in upsert_docs:
-            if d.id is not None:
-                merged[str(d.id)] = d
-        return list(merged.values())
-
-    @staticmethod
-    def _build_chunk_id_lookup(merged_docs: list[Document]) -> dict[str, str]:
-        lookup: dict[str, str] = {}
-        for d in merged_docs:
-            meta = d.metadata or {}
-            doc_id = meta.get("document_id")
-            doc_pipeline_key = meta.get("doc_pipeline_key")
-            chunk_index = meta.get("chunk_index")
-            if doc_id is None or chunk_index is None or d.id is None:
-                continue
-            if doc_pipeline_key is not None:
-                lookup[f"{doc_pipeline_key}:{chunk_index}"] = str(d.id)
-            lookup[f"{doc_id}:{chunk_index}"] = str(d.id)
-        return lookup
-
-    def _replace_bm25_scope_index(self, *, cache_key: str, merged_docs: list[Document]) -> None:
-        retriever = BM25Retriever.from_documents(merged_docs, preprocess_func=self._bm25_tokenize, k=10)
-        lookup = self._build_chunk_id_lookup(merged_docs)
-        with self._bm25_cache_lock:
-            self._bm25_deferred_scopes.discard(cache_key)
-            self._bm25_retrievers[cache_key] = retriever
-            self._bm25_docs[cache_key] = merged_docs
-            self._refresh_bm25_doc_ids(cache_key, merged_docs)
-            self._chunk_id_lookup[cache_key] = lookup
-        self._touch_bm25_cache(cache_key)
-
-    def _defer_bm25_scope_index(self, *, cache_key: str, merged_docs: list[Document]) -> None:
-        del merged_docs
-        self._mark_bm25_scope_deferred(cache_key)
-
-    def _load_bm25_scope_documents_for_deferred_upsert(
-        self, *, tenant_uuid: UUID, dataset_scope_ids: tuple[UUID, ...], cache_key: str, db: Session | None = None
-    ) -> list[Document] | None:
-        # A new session cannot see chunks written by the caller's uncommitted transaction.
-        session = db if db is not None else self._open_session()
-        owns_session = db is None
-        try:
-            return self._load_bm25_scope_documents(session, tenant_uuid=tenant_uuid, dataset_ids=dataset_scope_ids)
-        except Exception as exc:
-            logger.warning("BM25 deferred corpus refresh failed for scope %s: %s", cache_key, str(exc)[:200])
-            return None
-        finally:
-            if owns_session:
-                try:
-                    session.close()
-                except Exception as exc:
-                    logger.debug(NON_CRITICAL_RETRIEVER_FALLBACK_LOG, exc)
-
-    def _clear_bm25_document_scope_caches(self, *, tenant_key: str) -> None:
-        document_scope_prefix = f"{tenant_key}:documents:"
-        with self._bm25_cache_lock:
-            document_scope_keys = [
-                key
-                for key in set(self._bm25_docs) | set(self._bm25_retrievers) | set(self._bm25_deferred_scopes)
-                if str(key).startswith(document_scope_prefix)
-            ]
-        for key in document_scope_keys:
-            self._clear_bm25_cache_key(key)
-
-    def _resolve_bm25_upsert_dataset_scope_ids(self, upsert_docs: list[Document]) -> tuple[UUID, ...]:
-        inferred_dataset_id = self._infer_single_dataset_scope_from_docs(upsert_docs)
-        return self._normalize_dataset_scope_ids([inferred_dataset_id] if inferred_dataset_id is not None else None)
-
-    def _merge_bm25_upsert_scope_documents(
-        self,
-        *,
-        cache_key: str,
-        tenant_uuid: UUID,
-        dataset_scope_ids: tuple[UUID, ...],
-        upsert_docs: list[Document],
-        sync_needs_corpus: bool,
-        db: Session | None,
-    ) -> tuple[bool, list[Document] | None]:
-        with self._bm25_cache_lock:
-            existing = list(self._bm25_docs.get(cache_key) or [])
-            scope_deferred = cache_key in self._bm25_deferred_scopes
-        if scope_deferred and (not existing) and sync_needs_corpus:
-            existing = self._load_bm25_scope_documents_for_deferred_upsert(
-                tenant_uuid=tenant_uuid, dataset_scope_ids=dataset_scope_ids, cache_key=cache_key, db=db
-            )
-            if existing is None:
-                return (scope_deferred, None)
-        return (scope_deferred, self._merge_bm25_scope_docs(existing, upsert_docs))
-
-    def _store_bm25_upsert_scope(
-        self,
-        *,
-        cache_key: str,
-        scope_deferred: bool,
-        merged_docs: list[Document] | None,
-        eager_limit: int,
-        upsert_docs: list[Document],
-    ) -> None:
-        if scope_deferred:
-            self._defer_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs or [])
-            logger.info(
-                "BM25 deferred scope retained for %s after upsert chunks=%s corpus_refresh=%s",
-                cache_key,
-                len(upsert_docs),
-                merged_docs is not None,
-            )
-            return
-        if merged_docs is not None and eager_limit > 0 and (len(merged_docs) > eager_limit):
-            self._defer_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs)
-            logger.info(
-                "BM25 index rebuild deferred for scope %s chunks=%s eager_limit=%s",
-                cache_key,
-                len(merged_docs),
-                eager_limit,
-            )
-            return
-        self._replace_bm25_scope_index(cache_key=cache_key, merged_docs=merged_docs or [])
-        logger.info("BM25 index updated to %s chunks for scope %s", len(merged_docs or []), cache_key)
-
-    def upsert_bm25_documents(
-        self, docs: list[Document], tenant_id: UUID | None = None, *, db: Session | None = None
-    ) -> None:
-        """
-        Incrementally update BM25 index (avoids full DB scan each time).
-        Note: BM25Retriever itself doesn't support incremental training, so we merge in-memory and rebuild.
-        This still significantly reduces DB query overhead, suitable for large-scale knowledge bases.
-
-        Pass ``db`` when calling from inside an open write transaction so a deferred-scope
-        corpus refresh reads the chunks that transaction just wrote.
-        """
-        if not docs:
-            return
-        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
-        upsert_docs = self._prepare_bm25_upsert_docs(docs)
-        if not upsert_docs:
-            return
-        self._clear_candidate_corpus_token_cache(tenant_uuid)
-        tenant_key = self._tenant_key(tenant_uuid)
-        self._clear_bm25_document_scope_caches(tenant_key=tenant_key)
-        dataset_scope_ids = self._resolve_bm25_upsert_dataset_scope_ids(upsert_docs)
-        cache_key = self._bm25_scope_key(tenant_id=tenant_uuid, dataset_ids=dataset_scope_ids, document_ids=None)
-        sync_needs_corpus = settings.SPARSE_RETRIEVAL_ENABLED or settings.COLBERT_RETRIEVAL_ENABLED
-        merged_docs: list[Document] | None = None
-        with self._get_bm25_build_lock(cache_key):
-            scope_deferred, merged_docs = self._merge_bm25_upsert_scope_documents(
-                cache_key=cache_key,
-                tenant_uuid=tenant_uuid,
-                dataset_scope_ids=dataset_scope_ids,
-                upsert_docs=upsert_docs,
-                sync_needs_corpus=sync_needs_corpus,
-                db=db,
-            )
-            eager_limit = self._bm25_eager_upsert_max_chunks()
-            self._store_bm25_upsert_scope(
-                cache_key=cache_key,
-                scope_deferred=scope_deferred,
-                merged_docs=merged_docs,
-                eager_limit=eager_limit,
-                upsert_docs=upsert_docs,
-            )
-        if merged_docs is not None:
-            self._sync_sparse_index_after_bm25_upsert(
-                cache_key=cache_key,
-                tenant_id=tenant_uuid,
-                dataset_scope_ids=dataset_scope_ids,
-                merged_docs=merged_docs,
-                upsert_docs=upsert_docs,
-            )
-            self._corpus_artifacts.colbert._sync_colbert_index_after_bm25_upsert(
-                cache_key=cache_key, merged_docs=merged_docs, upsert_docs=upsert_docs
-            )
-
-    def remove_document_from_bm25_index(self, document_id: UUID, tenant_id: UUID | None = None) -> None:
-        """Remove all chunks of a specified document from the BM25 index."""
-        self.remove_from_bm25_index_by_metadata_filter(
-            tenant_id=tenant_id, metadata_filter={"document_id": {"$eq": str(document_id)}}
-        )
-
-    def _bm25_filter_scope_keys(self, *, tenant_key: str) -> list[str]:
-        scope_prefixes = (f"{tenant_key}:dataset:", f"{tenant_key}:datasets:", f"{tenant_key}:documents:")
-        with self._bm25_cache_lock:
-            scope_keys = [
-                k
-                for k in set(self._bm25_docs) | set(self._bm25_retrievers) | set(self._bm25_deferred_scopes)
-                if k == tenant_key or str(k).startswith(scope_prefixes)
-            ]
-        return scope_keys or [tenant_key]
-
-    def _clear_bm25_scope_after_filter_delete(self, *, scope_key: str, removed: int) -> None:
-        with self._bm25_cache_lock:
-            self._drop_bm25_cache_key_locked(scope_key)
-        logger.info("BM25 index cleared for scope %s after filtered deletion (removed=%s)", scope_key, removed)
-
-    def remove_from_bm25_index_by_metadata_filter(
-        self, *, tenant_id: UUID | None = None, metadata_filter: dict[str, Any] | None = None
-    ) -> int:
-        """
-        Remove BM25 docs that match a metadata_filter (in-memory only).
-
-        This is used for versioned re-indexing (e.g. delete only a specific doc_pipeline_key),
-        without dropping other versions that may still serve as the active pipeline.
-        """
-        if not metadata_filter or not isinstance(metadata_filter, dict):
-            return 0
-        tenant_key = self._tenant_key(tenant_id)
-        self._clear_candidate_corpus_token_cache(tenant_id)
-        total_removed = 0
-        for scope_key in self._bm25_filter_scope_keys(tenant_key=tenant_key):
-            with self._get_bm25_build_lock(scope_key):
-                with self._bm25_cache_lock:
-                    existing = list(self._bm25_docs.get(scope_key) or [])
-                if not existing:
-                    continue
-                before_ids = {str(d.id) for d in existing if d is not None and d.id is not None}
-                filtered = [d for d in existing if not self._match_metadata_filter(d.metadata or {}, metadata_filter)]
-                after_ids = {str(d.id) for d in filtered if d is not None and d.id is not None}
-                removed = len(existing) - len(filtered)
-                if removed <= 0:
-                    continue
-                removed_ids = before_ids - after_ids
-                if not filtered:
-                    self._clear_bm25_scope_after_filter_delete(scope_key=scope_key, removed=removed)
-                else:
-                    self._replace_bm25_scope_index(cache_key=scope_key, merged_docs=filtered)
-            if not filtered:
-                self._corpus_artifacts.sparse.clear_scope(scope_key)
-                self._corpus_artifacts.colbert.clear_scope(scope_key)
-            elif removed_ids:
-                self._corpus_artifacts.sparse._remove_sparse_vectors_for_deleted_chunks(
-                    scope_key=scope_key, removed_ids=removed_ids, filtered=filtered
-                )
-                self._corpus_artifacts.colbert._remove_colbert_vectors_for_deleted_chunks(
-                    scope_key=scope_key, removed_ids=removed_ids, filtered=filtered
-                )
-            logger.info("BM25 index removed %s docs by metadata_filter for scope %s", removed, scope_key)
-            total_removed += removed
-        return total_removed
-
-    def clear_bm25_cache(self) -> None:
-        """Clear all cached BM25 indices (in-memory only)."""
-        with self._bm25_cache_lock:
-            self._bm25_retrievers.clear()
-            self._bm25_docs.clear()
-            self._bm25_doc_ids.clear()
-            self._chunk_id_lookup.clear()
-            self._bm25_deferred_scopes.clear()
-            self._bm25_build_locks.clear()
-            self._bm25_cache_versions.clear()
-            self._corpus_token_cache.clear()
-            self._bm25_cache_order.clear()
-            self._scope_specs.clear()
-        self._corpus_artifacts.sparse.clear()
-        self._corpus_artifacts.colbert.clear()
-
-    def _bm25_search_scope(
-        self,
-        *,
-        tenant_id: UUID | None,
-        document_ids: list[UUID] | None,
-        metadata_filter: dict[str, Any] | None = None,
-        dataset_ids=(),
-    ) -> tuple[UUID, tuple[UUID, ...], str | None]:
-        tenant_uuid = self._resolve_tenant_uuid(tenant_id)
-        dataset_scope_ids = () if document_ids else self._normalize_dataset_scope_ids(dataset_ids)
-        if not dataset_scope_ids and (not (document_ids or [])):
-            dataset_scope_ids = self._normalize_dataset_scope_ids(self._collect_lexical_dataset_scope(metadata_filter))
-        cache_key = self._bm25_scope_key(
-            tenant_id=tenant_uuid, dataset_ids=dataset_scope_ids, document_ids=document_ids
-        )
-        return (tenant_uuid, dataset_scope_ids, cache_key)
-
-    def _refresh_bm25_dataset_cache_version(
-        self,
-        *,
-        cache_key: str,
-        tenant_uuid: UUID,
-        dataset_scope_ids: tuple[UUID, ...],
-        document_ids: list[UUID] | None = None,
-    ) -> str | None:
-        if document_ids:
-            document_scope_ids = list(dict.fromkeys(document_ids))
-            current_version = self._resolve_candidate_cache_corpus_token(
-                tenant_id=tenant_uuid, document_ids=document_scope_ids
-            )
-        elif dataset_scope_ids:
-            current_version = self._bm25_dataset_cache_version(_tenant_id=tenant_uuid, _dataset_ids=dataset_scope_ids)
-        else:
-            return None
-        if not current_version:
-            return None
-        with self._bm25_cache_lock:
-            cached_version = self._bm25_cache_versions.get(cache_key)
-            cache_exists = (
-                self._bm25_retrievers.get(cache_key) is not None
-                or bool(self._bm25_docs.get(cache_key))
-                or cache_key in self._bm25_deferred_scopes
-            )
-        if cache_exists and (cached_version is None or cached_version != current_version):
-            self._clear_bm25_cache_key(cache_key)
-        return current_version
-
-    def _ensure_bm25_search_index(
-        self,
-        *,
-        cache_key: str,
-        tenant_uuid: UUID,
-        dataset_scope_ids: tuple[UUID, ...],
-        document_ids: list[UUID] | None,
-        status,
-    ) -> tuple[BM25Retriever | None, list[Document] | None]:
-        with self._bm25_cache_lock:
-            retriever = self._bm25_retrievers.get(cache_key)
-            docs = self._bm25_docs.get(cache_key)
-        if (
-            retriever is not None
-            and docs is not None
-            and self._bm25_scope_cache_ready(cache_key=cache_key, existing_docs=docs, document_ids=document_ids)
-        ):
-            status.update(
-                {
-                    "cache_ready_before": True,
-                    "cache_ready_after": True,
-                    "lazy_build_attempted": False,
-                    "lazy_build_success": False,
-                    "reason": "cache_hit",
-                }
-            )
-            return (retriever, docs)
-        lazy_attempted = self._bm25_lazy_build_enabled() and self._can_lazy_build_scope(
-            document_ids=document_ids, dataset_ids=dataset_scope_ids
-        )
-        lazy_success = self._lazy_build_bm25_index(
-            tenant_id=tenant_uuid, document_ids=document_ids, dataset_ids=dataset_scope_ids
-        )
-        with self._bm25_cache_lock:
-            retriever = self._bm25_retrievers.get(cache_key)
-            docs = self._bm25_docs.get(cache_key)
-        cache_ready_after = bool(retriever is not None and docs is not None)
-        if cache_ready_after:
-            reason = "lazy_build_success" if lazy_attempted else "cache_ready"
-        elif not lazy_attempted:
-            reason = "lazy_build_not_available"
-        else:
-            reason = "lazy_build_failed_or_empty"
-        status.update(
-            {
-                "cache_ready_before": False,
-                "cache_ready_after": cache_ready_after,
-                "lazy_build_attempted": bool(lazy_attempted),
-                "lazy_build_success": bool(lazy_success and cache_ready_after),
-                "reason": reason,
-            }
-        )
-        return (retriever, docs)
-
-    def _bm25_result_allowed(
-        self, *, metadata: dict[str, Any], allowed_ids: set[str] | None, metadata_filter: dict[str, Any] | None
-    ) -> bool:
-        if allowed_ids and str(metadata.get("document_id")) not in allowed_ids:
-            return False
-        return not (metadata_filter and (not self._match_metadata_filter(metadata, metadata_filter)))
-
-    def _bm25_result_from_doc(
-        self, *, doc: Document, raw_score: Any, final_score: float, question_channel_score: float
-    ) -> dict[str, Any]:
-        meta = doc.metadata or {}
-        out_meta = self._candidate_metadata_from_doc(meta, chunk_id=doc.id)
-        out_meta.update(
-            {
-                "bm25_score": float(final_score),
-                "bm25_score_raw": float(raw_score),
-                "question_channel_score": float(question_channel_score),
-            }
-        )
-        return {
-            "chunk_id": doc.id,
-            "content": self._result_content_from_doc(doc),
-            "metadata": out_meta,
-            "score": float(final_score),
-        }
-
-    def _bm25_results_from_scores(
-        self,
-        *,
-        docs: list[Document],
-        scores: Any,
-        query_tokens: list[str],
-        allowed_ids: set[str] | None,
-        metadata_filter: dict[str, Any] | None,
-    ) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        for doc, score in zip(docs, scores, strict=False):
-            meta = doc.metadata or {}
-            if not self._bm25_result_allowed(metadata=meta, allowed_ids=allowed_ids, metadata_filter=metadata_filter):
-                continue
-            question_channel_score = self._question_channel_overlap_score(query_tokens=query_tokens, metadata=meta)
-            final_score = float(score) + float(question_channel_score or 0.0)
-            results.append(
-                self._bm25_result_from_doc(
-                    doc=doc, raw_score=score, final_score=final_score, question_channel_score=question_channel_score
-                )
-            )
-        return results
-
-    def _search_bm25(
-        self,
-        query: str,
-        top_k: int = 10,
-        document_ids: list[UUID] | None = None,
-        tenant_id: UUID | None = None,
-        metadata_filter: dict[str, Any] | None = None,
-        *,
-        dataset_ids=(),
-    ) -> CorpusSearchResult:
-        """BM25 keyword retrieval (internal use, returns dicts with scores)."""
-        status = {
-            "index_enabled": settings.BM25_INDEX_ENABLED,
-            "lazy_build_enabled": bool(self._bm25_lazy_build_enabled()),
-            "lazy_build_full_tenant": settings.BM25_LAZY_BUILD_FULL_TENANT,
-            "lazy_build_max_chunks": max(0, settings.BM25_LAZY_BUILD_MAX_CHUNKS),
-            "cache_ready_before": False,
-            "cache_ready_after": False,
-            "lazy_build_attempted": False,
-            "lazy_build_success": False,
-            "scope": "unknown",
-            "reason": "not_run",
-        }
-        if not settings.BM25_INDEX_ENABLED:
-            status["reason"] = "index_disabled"
-            return CorpusSearchResult(records=[], status=status)
-        tenant_uuid, dataset_scope_ids, cache_key = self._bm25_search_scope(
-            tenant_id=tenant_id, document_ids=document_ids, metadata_filter=metadata_filter, dataset_ids=dataset_ids
-        )
-        if document_ids:
-            scope_kind = "documents"
-        elif dataset_scope_ids:
-            scope_kind = "dataset"
-        else:
-            scope_kind = "tenant"
-        status.update(
-            {
-                "scope": scope_kind,
-                "cache_key_type": scope_kind,
-                "document_scope_count": len(document_ids or []),
-                "dataset_scope": bool(dataset_scope_ids),
-            }
-        )
-        if tenant_uuid is None or cache_key is None:
-            status["reason"] = "missing_tenant_or_scope"
-            return CorpusSearchResult(records=[], status=status)
-        current_version = self._refresh_bm25_dataset_cache_version(
-            cache_key=cache_key, tenant_uuid=tenant_uuid, dataset_scope_ids=dataset_scope_ids, document_ids=document_ids
-        )
-        retriever, docs = self._ensure_bm25_search_index(
-            cache_key=cache_key,
-            tenant_uuid=tenant_uuid,
-            dataset_scope_ids=dataset_scope_ids,
-            document_ids=document_ids,
-            status=status,
-        )
-        if retriever is None or docs is None:
-            logger.warning("BM25 index not initialized, skipping keyword search")
-            status["cache_ready_after"] = False
-            status.setdefault("reason", "index_unavailable")
-            return CorpusSearchResult(records=[], status=status)
-        if current_version:
-            with self._bm25_cache_lock:
-                self._bm25_cache_versions[cache_key] = current_version
-        self._touch_bm25_cache(cache_key)
-        status.update({"cache_ready_after": True, "indexed_docs": len(docs or [])})
-        allowed_ids = {str(doc_id) for doc_id in document_ids} if document_ids else None
-        processed_query = retriever.preprocess_func(query)
-        scores = retriever.vectorizer.get_scores(processed_query)
-        query_tokens = [str(token or "").strip() for token in processed_query if str(token or "").strip()]
-        results = self._bm25_results_from_scores(
-            docs=docs,
-            scores=scores,
-            query_tokens=query_tokens,
-            allowed_ids=allowed_ids,
-            metadata_filter=metadata_filter,
-        )
-        out = self._top_scored_results(results, top_k)
-        status.update({"query_tokens": len(query_tokens), "candidates": len(out), "reason": "ok"})
-        return CorpusSearchResult(records=out, status=status)
-
-    def _bm25_dataset_cache_version(self, *, _tenant_id, _dataset_ids) -> str:
-        return self.resolve_version(CorpusScope(tenant_id=_tenant_id, dataset_ids=_dataset_ids)) or ""
-
-    _candidate_metadata_from_doc = staticmethod(candidate_metadata_from_doc)
 
 
 _shared_corpus_index = CorpusIndex()

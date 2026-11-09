@@ -269,9 +269,7 @@ def kg_extraction_options(
         bool | None, Query(description="Extract entity relations (triples) (override settings)")
     ] = None,
     extract_skills: Annotated[bool | None, Query(description="Extract Skill/SOP entities (override settings)")] = None,
-    extraction_backend: Annotated[
-        str | None, Query(description="Extraction backend override: llm, gliner, hybrid, heuristic")
-    ] = None,
+    extraction_backend: Annotated[str | None, Query(description="Extraction backend override: llm, heuristic")] = None,
     prompt_template_id: Annotated[UUID | None, Query()] = None,
     prompt_template_key: Annotated[str | None, Query()] = None,
     prompt_ab_experiment_key: Annotated[str | None, Query()] = None,

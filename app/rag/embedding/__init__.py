@@ -5,7 +5,6 @@ This module provides support for multiple embedding backends:
 - OpenAI-compatible APIs (SiliconFlow, OpenAI, etc.)
 - Ollama local embeddings
 - DashScope (Alibaba Cloud)
-- Sentence-transformers local models
 
 Usage:
     from app.rag.embedding import select_embedding_model, EmbedModelInfo
@@ -36,7 +35,6 @@ from app.rag.embedding.providers import (
     DeterministicTestEmbedding,
     OllamaEmbedding,
     OpenAICompatibleEmbedding,
-    SentenceTransformerEmbedding,
 )
 
 __all__ = [
@@ -45,7 +43,6 @@ __all__ = [
     # Providers
     "OpenAICompatibleEmbedding",
     "OllamaEmbedding",
-    "SentenceTransformerEmbedding",
     "DashScopeEmbedding",
     "DeterministicTestEmbedding",
     # LangChain adapter

@@ -30,7 +30,7 @@ from app.rag.pipeline_plugins.contracts import (
     RETRIEVAL_TEXT_METADATA_KEY,
 )
 from app.rag.preprocessing.normalization import normalize_text
-from app.rag.retriever import hybrid_retriever
+from app.rag.retrieval.corpus_index import bm25_available, get_corpus_index
 from app.services.dataset_embedding_config import (
     DatasetEmbeddingRuntimeConfig,
     collection_name_for_embedding_space,
@@ -954,6 +954,8 @@ class Indexer:
         return settings.CHUNK_VECTOR_ENABLED
 
     def _resolve_bm25_enabled(self, options: IndexingOptions | None) -> bool:
+        if settings.VECTOR_BACKEND.strip().lower() != "milvus":
+            return False
         if options and options.bm25_index_enabled is not None:
             return bool(options.bm25_index_enabled)
         return settings.BM25_INDEX_ENABLED
@@ -2007,7 +2009,7 @@ class Indexer:
             failures.append(exc)
 
         try:
-            hybrid_retriever.remove_document_from_bm25_index(document_id, tenant_id=tenant_id)
+            get_corpus_index().remove(tenant_id=tenant_id, metadata_filter={"document_id": str(document_id)})
         except Exception as exc:
             logger.warning("Failed to update BM25 index after deletion: %s", exc)
             failures.append(exc)
@@ -2058,7 +2060,7 @@ class Indexer:
             logger.warning("Failed to delete vectors (scoped): %s", str(exc)[:200])
 
         try:
-            hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+            get_corpus_index().remove(
                 tenant_id=tenant_id,
                 metadata_filter=filter_spec,
             )
@@ -2310,9 +2312,9 @@ class Indexer:
         tenant_id: UUID,
         document_ids: list[UUID] | None = None,
     ) -> None:
-        if not settings.BM25_INDEX_ENABLED:
+        if not bm25_available():
             return
-        count = hybrid_retriever.rebuild_bm25_index_for_operational_scope(
+        count = get_corpus_index().rebuild_bm25_index_for_operational_scope(
             self._db,
             tenant_id=tenant_id,
             document_ids=document_ids,
@@ -2668,7 +2670,7 @@ class Indexer:
     ) -> None:
         if not db_chunks:
             return
-        if not enable_bm25:
+        if not enable_bm25 or settings.VECTOR_BACKEND.strip().lower() != "milvus":
             return
 
         bm25_docs: list[LCDocument] = []
@@ -2695,7 +2697,7 @@ class Indexer:
             page_content, meta = _chunk_index_content(db_chunk.content or "", meta)
             bm25_docs.append(LCDocument(page_content=page_content, id=str(db_chunk.id), metadata=meta))
 
-        hybrid_retriever.upsert_bm25_documents(bm25_docs, tenant_id=tenant_id, db=self._db)
+        get_corpus_index().upsert(self._db, tenant_id=tenant_id, documents=bm25_docs)
 
     def _get_or_create_entity(
         self,

@@ -451,6 +451,9 @@ def _resolve_preview_pipeline_state(
         document_metadata={},
         request_overrides=pipeline_options,
     )
+    from app.services.pipeline_config import validate_pipeline_execution
+
+    validate_pipeline_execution(pipeline_effective)
     pipeline_strategy_params = dict(pipeline_effective.chunk_strategy_params or {})
     if config.resolved_chunk_strategy == "parent_child":
         chunker_kwargs = _resolve_parent_child_chunker_kwargs(

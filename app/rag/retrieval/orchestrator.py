@@ -446,6 +446,7 @@ from app.services.hardcase_discovery_service import (
     evaluate_parse_risk_auto_enqueue_policy,
 )
 from app.services.router_prometheus_metrics import observe_router_layers
+from app.storage.bm25.milvus import BM25IndexNotReadyError
 
 if TYPE_CHECKING:
     from app.models.document import DocumentChunk
@@ -1390,6 +1391,8 @@ def _invoke_retrieval_query(
         if bool(ctx.hierarchy_recall_enabled) and docs:
             debug = _hierarchy_invocation_debug(docs, debug)
         return kind, docs, None, time.time() - started, debug
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("_invoke_with_timing", exc)
         return kind, [], str(exc)[:200], time.time() - started, None
@@ -1471,6 +1474,8 @@ def _run_decomposition_chain(ctx: RetrievalRuntimeState) -> None:
         ctx.decompose_chain_elapsed = time.time() - chain_started
         if ctx.decompose_chain_used:
             ctx.retrieval_plan = [item for item in ctx.retrieval_plan if item[0] != "subq"]
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:
         _log_orchestrator_fallback("run_retrieval", exc)
         ctx.decompose_chain_used = False
@@ -2258,6 +2263,8 @@ def _invoke_contextual_followup(
         )
         debug = getattr(retriever_obj, "_last_debug_metrics", None)
         ctx.contextual_followup_retriever_debug = _sanitize_retriever_debug(debug if isinstance(debug, dict) else None)
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
         error = str(exc)[:200]
@@ -2430,6 +2437,8 @@ def _invoke_hard_fallback(ctx: RetrievalRuntimeState) -> list[Document]:
         )
         debug = getattr(retriever_obj, "_last_debug_metrics", None)
         ctx.hard_fallback_retriever_debug = _sanitize_retriever_debug(debug if isinstance(debug, dict) else None)
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
         error = str(exc)[:200]
@@ -2561,6 +2570,8 @@ def _invoke_must_recall_second_pass(ctx: RetrievalRuntimeState) -> list[Document
             retriever_obj.invoke(ctx.query_for_retrieval) or [],
             "must_recall_second_pass",
         )
+    except BM25IndexNotReadyError:
+        raise
     except Exception as exc:  # noqa: BLE001
         _log_orchestrator_fallback("run_retrieval", exc)
         ctx.must_recall_second_pass_error = str(exc)[:200]

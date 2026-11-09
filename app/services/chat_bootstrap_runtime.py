@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.schemas.chat import ChatRAGConfig, ChatRequest
 from app.core.config import settings
+from app.core.model_execution import RetiredModelProviderError
 from app.core.token_utils import num_tokens_from_string
 from app.models.chat import Conversation, Message
 from app.models.rag_config_template import RagConfigTemplate
@@ -126,6 +127,8 @@ def _resolve_dataset_rag_defaults(
             request_fields_set=_rag_fields_set(request),
             raw_dataset_defaults=raw_defaults,
         )
+    except RetiredModelProviderError:
+        raise
     except Exception:
         return request.rag_config, [], None, scope_dataset_id
     return effective_rag_config, dataset_rag_defaults_applied_fields, dataset_defaults_meta, dataset_id_used
@@ -246,6 +249,8 @@ def _resolve_rag_template_runtime(
         )
         _update_template_usage(db, chosen)
         return effective_rag_config, rag_config_template_meta
+    except RetiredModelProviderError:
+        raise
     except Exception:
         return effective_rag_config, None
 

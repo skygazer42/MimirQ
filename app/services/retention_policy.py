@@ -300,9 +300,9 @@ def _delete_version_search_indexes(
             metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
         )
     with contextlib.suppress(Exception):
-        from app.rag.retriever import hybrid_retriever
+        from app.rag.retrieval.corpus_index import get_corpus_index
 
-        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+        get_corpus_index().remove(
             tenant_id=tenant_id,
             metadata_filter={"doc_pipeline_key": {"$eq": target_key}},
         )

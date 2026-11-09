@@ -296,7 +296,7 @@ async def disable_chunk(
     db: Session,
 ) -> DocumentChunk:
     """Disable a chunk (exclude it from retrieval/indexing)."""
-    from app.rag.retriever import hybrid_retriever
+    from app.rag.retrieval.corpus_index import get_corpus_index
 
     dataset_service.ensure_member(db, tenant_id, account_id)
 
@@ -339,7 +339,7 @@ async def disable_chunk(
         vector_error = f"vector delete failed: {str(exc)[:160]}"
 
     try:
-        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+        get_corpus_index().remove(
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
@@ -697,7 +697,7 @@ async def _delete_chunk_indexes(
     account_id: str,
     document_id: UUID,
 ) -> tuple[str, str | None, str | None]:
-    from app.rag.retriever import hybrid_retriever
+    from app.rag.retrieval.corpus_index import get_corpus_index
 
     strictness = _normalize_index_consistency_strictness(patch_mode=False)
     vector_error: str | None = None
@@ -717,7 +717,7 @@ async def _delete_chunk_indexes(
         vector_error = f"vector delete failed: {str(exc)[:160]}"
 
     try:
-        hybrid_retriever.remove_from_bm25_index_by_metadata_filter(
+        get_corpus_index().remove(
             tenant_id=tenant_id,
             metadata_filter={"chunk_id": {"$eq": str(chunk.id)}},
         )
@@ -793,7 +793,7 @@ def _reembed_single_chunk(
     account_id: str,
     indexer: Indexer,
 ) -> bool:
-    from app.rag.retriever import hybrid_retriever
+    from app.rag.retrieval.corpus_index import get_corpus_index
 
     meta_for_vector = dict(chunk.doc_metadata or {})
     meta_for_vector.setdefault("tenant_id", str(tenant_id))
@@ -831,7 +831,7 @@ def _reembed_single_chunk(
             id=str(chunk.id),
             metadata=bm25_meta,
         )
-        hybrid_retriever.upsert_bm25_documents([bm25_doc], tenant_id=tenant_id, db=db)
+        get_corpus_index().upsert(db, tenant_id=tenant_id, documents=[bm25_doc])
     except Exception as exc:  # noqa: BLE001
         logger.debug("BM25 upsert failed for chunk %s: %s", str(chunk.id), str(exc)[:160])
 

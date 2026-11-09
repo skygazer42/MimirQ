@@ -128,7 +128,7 @@ const ragMessages = {
           },
           sparse: {
             label: 'Sparse',
-            summary: '检查 learned sparse / SPLADE 风格通道是否带来额外证据。',
+            summary: '检查 稀疏检索通道是否带来额外证据。',
           },
           colbert: {
             label: 'ColBERT',
